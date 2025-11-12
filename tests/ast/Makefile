@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -I./src
 TARGET = z80-lisp
-SOURCES = src/main.cpp src/tokenizer.cpp src/ast.cpp src/compiler.cpp
+SOURCES = src/main.cpp src/tokenizer.cpp src/ast.cpp
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)

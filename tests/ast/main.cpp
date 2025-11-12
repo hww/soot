@@ -4,7 +4,6 @@
 #include <vector>
 #include "tokenizer.h"
 #include "ast.h"
-#include "compiler.h"
 
 
 std::string read_file(const std::string& filename) {
@@ -24,9 +23,7 @@ int main(int argc, char* argv[]) {
         if (argc > 1) {
             source = read_file(argv[1]);
         } else {
-            //source = "(define x 42)\n(print \"Hello\")\n'(1 2 3)";
-            printf("add the file path");
-            exit(0);
+            source = "(define x 42)\n(print \"Hello\")\n'(1 2 3)";
         }
         
         // Токенизация
@@ -43,7 +40,6 @@ int main(int argc, char* argv[]) {
         Parser parser(std::move(tokens));
         auto ast = parser.parse_program();
         
-
         std::cout << "=== TOKENS ===" << std::endl;
         for (const auto& token : tokens) {
             std::cout << token.to_string() << std::endl;
@@ -51,12 +47,7 @@ int main(int argc, char* argv[]) {
         
         std::cout << "\n=== AST ===" << std::endl;
         std::cout << ast->to_string() << std::endl;
-
-        std::cout << "\n=== COMPILATION ===" << std::endl;
-        Compiler compiler;
-        auto bytecode = compiler.compile(ast.get());
-        compiler.print_bytecode();
-
+        
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
