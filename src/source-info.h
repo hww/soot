@@ -1,74 +1,97 @@
-#ifndef SOURCE_INFO_H
-#define SOURCE_INFO_H
+#pragma once
 
 #include <string>
-#include <unordered_map>
+#include <vector>
 #include <memory>
+#include <unordered_map>
+#include <optional>
 
-struct SourceInfo {
-    std::string filename;
-    int line;
-    int column;
-    std::string line_text;  // текст строки для отображения
-    
-    SourceInfo(const std::string& file = "", int ln = 0, int col = 0, const std::string& text = "")
-        : filename(file), line(ln), column(col), line_text(text) {}
-    
-    std::string to_string() const {
-        if (filename.empty()) return "unknown source";
-        return filename + ":" + std::to_string(line) + ":" + std::to_string(column);
-    }
-    
-    // Для ошибок с контекстом
-    std::string format_error(const std::string& message) const {
-        std::string result = "Error at " + to_string() + ": " + message + "\n";
-        if (!line_text.empty()) {
-            result += "  " + line_text + "\n";
-            result += "  " + std::string(column, ' ') + "^\n";  // Добавляем отступ
-        }
-        return result;
-    }
-};
-
-// Простая база исходников - отслеживает происхождение AST узлов
-class SourceDB {
-    std::unordered_map<const void*, SourceInfo> source_map;
-    
+// Базовый класс для исходного текста (аналог SourceText)
+class SourceText {
 public:
-    // Связать AST узел с информацией об исходнике
-    void link(const void* ast_node, const SourceInfo& info) {
-        source_map[ast_node] = info;
-    }
+    explicit SourceText(std::string text);
+    virtual ~SourceText() = default;
     
-    // Получить информацию об исходнике для AST узла
-    SourceInfo get_info(const void* ast_node) const {
-        auto it = source_map.find(ast_node);
-        return it != source_map.end() ? it->second : SourceInfo();
-    }
+    virtual std::string get_description() const = 0;
+    std::string get_line_containing_offset(int offset) const;
+    int get_line_number(int offset) const;
+    int get_column_number(int offset) const;
     
-    // Проверить есть ли информация об узле
-    bool has_info(const void* ast_node) const {
-        return source_map.find(ast_node) != source_map.end();
-    }
-    
-    // Наследование позиции (для макросов)
-    void inherit_info(const void* parent, const void* child) {
-        auto it = source_map.find(parent);
-        if (it != source_map.end()) {
-            source_map[child] = it->second;
-        }
-    }
-    
-    // Очистка базы (для тестов)
-    void clear() {
-        source_map.clear();
-    }
+    const char* get_text() const { return m_text.c_str(); }
+    int get_size() const { return m_text.size(); }
 
-    // УДАЛЯЕМ format_error из SourceDB - он должен быть только в SourceInfo
-    // SourceDB только хранит информацию, а форматирование делает SourceInfo
+    std::pair<int, int> get_line_and_column(int offset) const {
+        int line = get_line_number(offset);
+        int column = get_column_number(offset);
+        return {line, column};
+    }
+protected:
+    void build_line_offsets();
+    std::string m_text;
+    std::vector<int> m_line_offsets;
 };
 
-// Глобальная база исходников
-extern SourceDB g_source_db;
+// Текст из файла
+class FileSource : public SourceText {
+public:
+    FileSource(const std::string& filename, const std::string& file_content);
+    std::string get_description() const override { return m_filename; }
+    
+private:
+    std::string m_filename;
+};
 
-#endif
+// Текст из REPL
+class ReplSource : public SourceText {
+public:
+    explicit ReplSource(const std::string& text);
+    std::string get_description() const override { return "REPL"; }
+};
+
+// Текст из строки программы
+class StringSource : public SourceText {
+public:
+    StringSource(const std::string& text, const std::string& name = "string");
+    std::string get_description() const override { return m_name; }
+    
+private:
+    std::string m_name;
+};
+
+// Ссылка на позицию в исходном коде (аналог TextRef)
+struct SourceLocation {
+    int offset;
+    std::shared_ptr<SourceText> source;
+};
+
+// Главный менеджер исходного кода (аналог TextDb)
+class SourceManager {
+public:
+    struct ShortInfo {
+        std::string description;
+        int line = -1;
+        int column = -1;
+        std::string line_text;
+    };
+
+    // Регистрация исходников
+    void register_source(std::shared_ptr<SourceText> source);
+    
+    // Привязка объектов к исходному коду
+    void link_object(const class Object& obj, std::shared_ptr<SourceText> source, int offset);
+    void link_heap_object(const class HeapObject* obj, std::shared_ptr<SourceText> source, int offset);
+    
+    // Получение информации
+    std::string get_info_for(const class Object& obj) const;
+    std::optional<ShortInfo> get_short_info(const class Object& obj) const;
+    bool has_info(const class Object& obj) const;
+    
+    // Наследование информации (для макросов и т.д.)
+    void inherit_info(const class Object& parent, const class Object& child);
+
+private:
+    std::vector<std::shared_ptr<SourceText>> m_sources;
+    std::unordered_map<const HeapObject*, SourceLocation> m_location_map;
+    
+    std::optional<ShortInfo> get_short_info_for_location(const SourceLocation& loc) const;
+};

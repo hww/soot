@@ -2,10 +2,11 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include "tokenizer.h"
-#include "ast.h"
-#include "compiler.h"
-
+#include "reader.h"
+#include "object.h"
+#include "interpreter.h"
+#include "source-info.h"
+#include "command-line.h"  // Используем то, что уже есть
 
 std::string read_file(const std::string& filename) {
     std::ifstream file(filename);
@@ -17,55 +18,24 @@ std::string read_file(const std::string& filename) {
     return buffer.str();
 }
 
+#include <iostream>
+#include "reader.h"
+#include "interpreter.h"
+
 int main(int argc, char* argv[]) {
     try {
-        std::string source;
-        std::string filename;
+        Interpreter interpreter;
+        
+        // Если есть аргументы командной строки, обработать их
         if (argc > 1) {
-            filename = argv[1];
-            std::string extension = filename.substr(filename.find_last_of("."));
-
-            if (extension != ".lisp" && extension != ".scm" && extension != ".gc") {
-                std::cerr << "Error: Expected Lisp file (.lisp, .scm, .gc), got: " << filename << std::endl;
-                return 1;
-            }
-            source = read_file(argv[1]);
-        } else {
-            //source = "(define x 42)\n(print \"Hello\")\n'(1 2 3)";
-            printf("add the file path");
-            exit(0);
+            // TODO: обработка файлов из командной строки
+            std::cout << "Command line arguments not yet implemented\n";
         }
         
-        // Токенизация
-        Tokenizer tokenizer(source, filename);
-        std::vector<Token> tokens;
-        
-        while (true) {
-            Token token = tokenizer.next_token();
-            if (token.type == TokenType::EOF_TOKEN) break;
-            tokens.push_back(token);
-        }
-        
-        std::cout << "=== TOKENS ===" << std::endl;
-        for (const auto& token : tokens) {
-            std::cout << token.to_string() << std::endl;
-        }
-        
-        
-        // Парсинг AST
-        Parser parser(std::move(tokens));
-        auto ast = parser.parse_program();       
-
-        std::cout << "\n=== AST ===" << std::endl;
-        std::cout << ast->to_string() << std::endl;
-
-        std::cout << "\n=== COMPILATION ===" << std::endl;
-        Compiler compiler;
-        auto bytecode = compiler.compile(ast.get());
-        compiler.print_bytecode();
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        interpreter.execute_repl();
+    } 
+    catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
         return 1;
     }
     

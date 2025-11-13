@@ -1,7 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include "ast.h"
+#include "parser.h"
 #include "opcodes.h" 
 #include <vector>
 #include <cstdint>
@@ -31,7 +31,8 @@ class Compiler {
     size_t allocate_register() ;
     size_t add_string_constant(const std::string& str);
     size_t add_symbol_constant(const std::string& symbol);
-    
+    std::string type_to_string(ObjectType type);
+
     // Генерация кода для разных узлов
     size_t compile_expression(const ASTNode* node, size_t result_reg);
     size_t compile_list(const ASTNode* node, size_t result_reg);
@@ -41,7 +42,7 @@ class Compiler {
     size_t compile_call(const ASTNode* node, size_t result_reg);
     size_t compile_list_data(const ASTNode* node, size_t result_reg);
     void compile_error(const ASTNode* node, const std::string& message);
-
+    void collect_list_elements(const ASTNode* node, std::vector<const ASTNode*>& elements);
 public:
     Compiler() : next_register(0), next_data_index(0) {}
     

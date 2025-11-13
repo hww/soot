@@ -61,11 +61,28 @@ class Parser {
     bool match(TokenType type) const { return current().type == type; }
     bool at_end() const { return match(TokenType::EOF_TOKEN); }
     
+    // Основные методы парсинга
     std::unique_ptr<ASTNode> parse_expression();
     std::unique_ptr<ASTNode> parse_list();
     std::unique_ptr<ASTNode> parse_quoted();
     std::unique_ptr<ASTNode> parse_atom();
-
+    
+        // Вспомогательные методы для парсинга чисел
+    bool is_hex_char(char c) const;
+    bool is_float_start(char c) const;
+    bool is_decimal_start(char c) const;
+    bool str_contains(std::string_view str, char ch) const;
+    
+    // Парсеры разных форматов чисел
+    bool try_parse_binary(const Token& token, int64_t& result) const;
+    bool try_parse_hex(const Token& token, int64_t& result) const;
+    bool try_parse_integer(const Token& token, int64_t& result) const;
+    bool try_parse_float(const Token& token, double& result) const;
+    bool try_parse_boolean(const Token& token, bool& result) const;
+    bool try_parse_scientific(const Token& token, double& result) const;
+    
+    std::string parse_string_value(const Token& token) const;
+    
 public:
     Parser(std::vector<Token>&& t) : tokens(std::move(t)), pos(0) {}
     std::unique_ptr<ASTNode> parse_program(); 
