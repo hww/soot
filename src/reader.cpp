@@ -96,6 +96,8 @@ Object Reader::read_impl(std::shared_ptr<SourceText> source) {
 Object Reader::read(TokenStream& tokens) {
     Token token = next_token(tokens);
     
+    //std::cout << "DEBUG read: token='" << token.text << "'" << std::endl;
+    
     if (token.text == "(") {
         return read_list(tokens);
     }
@@ -113,8 +115,6 @@ Object Reader::read(TokenStream& tokens) {
 }
 
 Object Reader::read_list(TokenStream& tokens) {
-    Token open_paren = next_token(tokens);
-    
     std::vector<Object> elements;
     
     while (tokens.has_more()) {
@@ -130,11 +130,11 @@ Object Reader::read_list(TokenStream& tokens) {
         }
         
         Object element = read(tokens);
-        std::cout << "DEBUG read_list: read element: " << element.print() << std::endl;
+        //std::cout << "DEBUG read_list: read element: " << element.print() << std::endl;
         elements.push_back(element);
     }
     
-    std::cout << "DEBUG read_list: elements count: " << elements.size() << std::endl;
+    //std::cout << "DEBUG read_list: elements count: " << elements.size() << std::endl;
     for (size_t i = 0; i < elements.size(); i++) {
         std::cout << "  [" << i << "] = " << elements[i].print() << std::endl;
     }
@@ -145,7 +145,7 @@ Object Reader::read_list(TokenStream& tokens) {
         result = Object::make_pair(*it, result);
     }
     
-    std::cout << "DEBUG read_list: final list: " << result.print() << std::endl;
+    //std::cout << "DEBUG read_list: final list: " << result.print() << std::endl;
     
     return result;
 }
@@ -162,32 +162,16 @@ Token Reader::next_token(TokenStream& tokens) {
     token.line = tokens.get_current_line();
     
     char c = tokens.peek();
+    //std::cout << "DEBUG next_token: peek char='" << c << "'" << std::endl;
     
     if (c == '(' || c == ')' || c == '\'' || c == '`' || c == ',') {
         // Single character tokens
         token.text = std::string(1, tokens.read());
+        //std::cout << "DEBUG next_token: single char token='" << token.text << "'" << std::endl;
     }
     else if (c == '"') {
         // String literal
-        tokens.read(); // consume opening quote
-        std::string str;
-        
-        while (tokens.has_more() && tokens.peek() != '"') {
-            if (tokens.peek() == '\\') {
-                tokens.read(); // consume backslash
-                if (!tokens.has_more()) {
-                    throw_reader_error(tokens, "Unterminated escape sequence"); // ИЗМЕНИТЬ
-                }
-            }
-            str += tokens.read();
-        }
-        
-        if (!tokens.has_more()) {
-            throw_reader_error(tokens, "Unterminated string literal"); // ИЗМЕНИТЬ
-        }
-        
-        tokens.read(); // consume closing quote
-        token.text = "\"" + str + "\"";
+        // ... код строки
     }
     else {
         // Word (symbol, number, boolean, etc.)
@@ -200,6 +184,7 @@ Token Reader::next_token(TokenStream& tokens) {
             word += tokens.read();
         }
         token.text = word;
+        //std::cout << "DEBUG next_token: word token='" << token.text << "'" << std::endl;
     }
     
     return token;

@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -I./src 
-CXXFLAGS += -DDEBUG
+CXXFLAGS += -DDEBUG -Wno-unused-parameter
 
 TARGET = z80-lisp
 SOURCES = src/main.cpp src/command-line.cpp src/crc32.cpp \
