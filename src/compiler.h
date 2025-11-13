@@ -28,7 +28,7 @@ class Compiler {
     size_t next_data_index;
     
     // Вспомогательные методы
-    size_t allocate_register() { return next_register++; }
+    size_t allocate_register() ;
     size_t add_string_constant(const std::string& str);
     size_t add_symbol_constant(const std::string& symbol);
     
@@ -40,6 +40,7 @@ class Compiler {
     size_t compile_string(const ASTNode* node, size_t result_reg);
     size_t compile_call(const ASTNode* node, size_t result_reg);
     size_t compile_list_data(const ASTNode* node, size_t result_reg);
+    void compile_error(const ASTNode* node, const std::string& message);
 
 public:
     Compiler() : next_register(0), next_data_index(0) {}

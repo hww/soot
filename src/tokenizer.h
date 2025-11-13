@@ -9,6 +9,7 @@ class Tokenizer {
     size_t pos;
     size_t line;
     size_t line_start_offset;
+    std::string current_filename;
     
     char current() const { return pos < source.length() ? source[pos] : '\0'; }
     char peek() const { return (pos + 1) < source.length() ? source[pos + 1] : '\0'; }
@@ -32,8 +33,14 @@ class Tokenizer {
         return {pos, line};
     }
     
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ДЛЯ ОТЛАДКИ:
+    std::string get_current_line() const;
+    std::string get_current_line_at_offset(size_t offset) const;  // ← ДОБАВЛЯЕМ ЭТОТ МЕТОД
+    int compute_column(SourcePos pos) const;
+    void link_token_source(const Token& token, SourcePos start);  // ← И ЭТОТ ТОЖЕ
+    
 public:
-    Tokenizer(const std::string& input);
+    Tokenizer(const std::string& input, const std::string& filename = "");
     Token next_token();
 };
 
