@@ -30,7 +30,6 @@ public:
 
 // Forward declarations
 class EnvironmentObject;
-class LambdaObject;
 class MacroObject;
 class PairObject;
 
@@ -60,6 +59,9 @@ public:
     static Object make_string(const std::string& text);
     static Object make_pair(const Object& car, const Object& cdr);
     static Object make_array(const std::vector<Object>& elements);
+    static Object make_lambda(const std::vector<std::string>& params, 
+                         const Object& body, 
+                         std::shared_ptr<EnvironmentObject> closure_env);
 
     // String representation
     std::string print() const;
@@ -170,6 +172,27 @@ public:
     
     void set(const std::string& name, const Object& value) {
         bindings[name] = value;
+    }
+};
+
+// Добавь полное определение LambdaObject в object.h
+class LambdaObject : public HeapObject {
+public:
+    std::vector<std::string> parameters;
+    Object body;
+    std::shared_ptr<EnvironmentObject> closure_env;
+    
+    LambdaObject(std::vector<std::string> params, 
+                const Object& body, 
+                std::shared_ptr<EnvironmentObject> env)
+        : parameters(std::move(params)), body(body), closure_env(std::move(env)) {}
+    
+    std::string print() const override {
+        return "[lambda]";
+    }
+    
+    std::string inspect() const override {
+        return "[lambda] params=" + std::to_string(parameters.size());
     }
 };
 

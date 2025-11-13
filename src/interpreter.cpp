@@ -20,13 +20,46 @@ Interpreter::Interpreter() {
         {"+", &Interpreter::eval_plus},
         {"-", &Interpreter::eval_minus},
         {"*", &Interpreter::eval_times},
+        {"/", &Interpreter::eval_divide}, 
         {"print", &Interpreter::eval_print_builtin},
         {"cons", &Interpreter::eval_cons_builtin},
         {"car", &Interpreter::eval_car_builtin},
         {"cdr", &Interpreter::eval_cdr_builtin}
+        
     };
 }
-
+bool Interpreter::try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest) {
+    // Булевы значения жестко закодированы
+    if (sym.is_symbol()) {
+        auto sym_name = std::static_pointer_cast<SymbolObject>(sym.heap_obj)->name;
+        if (sym_name == "#t" || sym_name == "#f") {
+            *dest = sym;
+            return true;
+        }
+    }
+    
+    // ВАЖНО: Сначала ищем в переданном окружении env
+    if (env && sym.is_symbol()) {
+        try {
+            *dest = env->get(std::static_pointer_cast<SymbolObject>(sym.heap_obj)->name);
+            return true;
+        } catch (const std::runtime_error&) {
+            // Не найдено в env, продолжаем поиск
+        }
+    }
+    
+    // Затем ищем в глобальных переменных
+    if (sym.is_symbol()) {
+        auto sym_ptr = std::static_pointer_cast<SymbolObject>(sym.heap_obj).get();
+        auto it = global_vars.find(sym_ptr);
+        if (it != global_vars.end()) {
+            *dest = it->second;
+            return true;
+        }
+    }
+    
+    return false;
+}
 // Вспомогательные методы
 Arguments Interpreter::get_args(const Object& form, const Object& rest, const ArgumentSpec& spec) {
     Arguments args;
@@ -70,29 +103,6 @@ Object Interpreter::intern(const std::string& name) {
     return reader.get_symbol_table().intern(name);
 }
 
-bool Interpreter::try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest) {
-    // Булевы значения жестко закодированы
-    if (sym.is_symbol()) {
-        auto sym_name = std::static_pointer_cast<SymbolObject>(sym.heap_obj)->name;
-        if (sym_name == "#t" || sym_name == "#f") {
-            *dest = sym;
-            return true;
-        }
-    }
-    
-    // Упрощенная версия - ищем только в глобальных переменных
-    // В реальной реализации нужно искать в переданном env и его родителях
-    if (sym.is_symbol()) {
-        auto sym_ptr = std::static_pointer_cast<SymbolObject>(sym.heap_obj).get();
-        auto it = global_vars.find(sym_ptr);
-        if (it != global_vars.end()) {
-            *dest = it->second;
-            return true;
-        }
-    }
-    
-    return false;
-}
 
 // Основные методы оценки
 Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
@@ -131,37 +141,92 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     }
     return result;
 }
-
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
+    std::cout << "=== DEBUG eval_pair START ===" << std::endl;
+    std::cout << "obj: " << obj.print() << std::endl;
+    std::cout << "obj.inspect(): " << obj.inspect() << std::endl;
+    
     auto pair = obj.as_pair();
     Object head = pair->car;
     Object rest = pair->cdr;
 
+    std::cout << "head: " << head.print() << " type: " << (int)head.type << std::endl;
+    std::cout << "rest: " << rest.print() << std::endl;
+
     // Сначала проверяем специальные формы
     if (head.is_symbol()) {
         auto head_sym = std::static_pointer_cast<SymbolObject>(head.heap_obj)->name;
+        std::cout << "head is symbol: " << head_sym << std::endl;
 
-        // 1. Проверяем специальные формы
         auto kv_sf = special_forms.find(head_sym);
         if (kv_sf != special_forms.end()) {
+            std::cout << "found special form: " << head_sym << std::endl;
             return ((*this).*(kv_sf->second))(obj, rest, env);
         }
 
-        // 2. Проверяем встроенные функции
         auto kv_b = builtin_forms.find(head_sym);
         if (kv_b != builtin_forms.end()) {
+            std::cout << "found builtin: " << head_sym << std::endl;
             Arguments args = get_args(obj, rest, make_varargs());
             eval_args(&args, env);
             return ((*this).*(kv_b->second))(obj, args, env);
         }
     }
 
-    // 3. Если не нашли - пробуем оценить голову и применить
+    // Оцениваем голову
+    std::cout << "evaluating head..." << std::endl;
     Object evaluated_head = eval_with_rewind(head, env);
+    std::cout << "evaluated_head: " << evaluated_head.print() << " type: " << (int)evaluated_head.type << std::endl;
+
+    // Проверяем лямбду
+    if (evaluated_head.type == ObjectType::LAMBDA) {
+        std::cout << "APPLYING LAMBDA!" << std::endl;
+        auto lambda = std::static_pointer_cast<LambdaObject>(evaluated_head.heap_obj);
+        
+        std::cout << "lambda parameters: " << lambda->parameters.size() << std::endl;
+        std::cout << "lambda body: " << lambda->body.print() << std::endl;
+        
+        // Вычисляем аргументы
+        Arguments args = get_args(obj, rest, make_varargs());
+        std::cout << "args before eval: " << args.unnamed.size() << std::endl;
+        eval_args(&args, env);
+        std::cout << "args after eval: " << args.unnamed.size() << std::endl;
+        
+        // Проверяем количество аргументов
+        if (args.unnamed.size() != lambda->parameters.size()) {
+            throw_eval_error(obj, "lambda: wrong number of arguments");
+        }
+        
+        // Создаем новое окружение для вызова
+        auto call_env = std::make_shared<EnvironmentObject>(lambda->closure_env);
+        
+        // Связываем параметры - ДОБАВИМ ОТЛАДКУ
+        std::cout << "DEBUG: Binding parameters:" << std::endl;
+        for (size_t i = 0; i < lambda->parameters.size(); ++i) {
+            std::cout << "  " << lambda->parameters[i] << " = " << args.unnamed[i].print() << std::endl;
+            call_env->set(lambda->parameters[i], args.unnamed[i]);
+        }
+        
+        // Проверим что символ действительно связан
+        std::cout << "DEBUG: Checking if 'n' exists in call_env..." << std::endl;
+        try {
+            Object test_n = call_env->get("n");
+            std::cout << "DEBUG: n = " << test_n.print() << " (found in call_env)" << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << "DEBUG: n NOT found in call_env: " << e.what() << std::endl;
+        }
+        
+        // Выполняем тело лямбды
+        std::cout << "evaluating lambda body..." << std::endl;
+        Object result = eval_with_rewind(lambda->body, call_env);
+        std::cout << "lambda result: " << result.print() << std::endl;
+        return result;
+    }
     
+    // Проверяем встроенные функции после оценки
     if (evaluated_head.is_symbol()) {
-        // Символ может быть встроенной функцией, проверяем еще раз
         auto head_sym = std::static_pointer_cast<SymbolObject>(evaluated_head.heap_obj)->name;
+        std::cout << "evaluated_head is symbol: " << head_sym << std::endl;
         auto kv_b = builtin_forms.find(head_sym);
         if (kv_b != builtin_forms.end()) {
             Arguments args = get_args(obj, rest, make_varargs());
@@ -170,10 +235,10 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         }
     }
     
+    std::cout << "=== DEBUG eval_pair FAILED ===" << std::endl;
     throw_eval_error(obj, "cannot apply non-function object");
     return Object::make_empty_list();
 }
-
 // Специальные формы
 Object Interpreter::eval_quote(const Object& form, const Object& rest, 
                               const std::shared_ptr<EnvironmentObject>& env) {
@@ -206,11 +271,61 @@ Object Interpreter::eval_define(const Object& form, const Object& rest,
     return value;
 }
 
+
 Object Interpreter::eval_lambda(const Object& form, const Object& rest,
                                const std::shared_ptr<EnvironmentObject>& env) {
-    (void)form; (void)rest; (void)env;
-    // Упрощенная версия - пока возвращаем символ lambda
-    return intern("lambda");
+    std::cout << "=== DEBUG eval_lambda START ===" << std::endl;
+    std::cout << "form: " << form.print() << std::endl;
+    std::cout << "rest: " << rest.print() << std::endl;
+    
+    if (rest.is_empty_list()) {
+        throw_eval_error(form, "lambda: expected parameter list and body");
+    }
+    
+    // Получаем список параметров
+    Object params_obj = rest.car();
+    Object body_obj = rest.cdr();
+    
+    std::cout << "params_obj: " << params_obj.print() << std::endl;
+    std::cout << "body_obj: " << body_obj.print() << std::endl;
+    
+    if (!params_obj.is_list()) {
+        throw_eval_error(form, "lambda: parameter list must be a list");
+    }
+    
+    // Парсим параметры
+    std::vector<std::string> parameters;
+    Object current_param = params_obj;
+    while (!current_param.is_empty_list()) {
+        if (!current_param.is_pair()) {
+            throw_eval_error(form, "lambda: malformed parameter list");
+        }
+        
+        Object param = current_param.car();
+        if (!param.is_symbol()) {
+            throw_eval_error(form, "lambda: parameters must be symbols");
+        }
+        
+        parameters.push_back(param.as_symbol());
+        current_param = current_param.cdr();
+    }
+    
+    // Тело лямбды - это просто body_obj.car()
+    Object body = body_obj.car();
+    
+    std::cout << "DEBUG eval_lambda: parameters = ";
+    for (const auto& p : parameters) {
+        std::cout << p << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "DEBUG eval_lambda: body = " << body.print() << std::endl;
+    
+    // Создаем лямбда-объект с замыканием
+    Object result = Object::make_lambda(parameters, body, env);
+    std::cout << "DEBUG eval_lambda: result = " << result.print() << std::endl;
+    std::cout << "=== DEBUG eval_lambda END ===" << std::endl;
+    
+    return result;
 }
 
 Object Interpreter::eval_begin(const Object& form, const Object& rest,
@@ -329,6 +444,64 @@ Object Interpreter::eval_times(const Object& form, Arguments& args,
         result *= arg.as_integer();
     }
     return Object::make_integer(result);
+}
+
+Object Interpreter::eval_divide(const Object& form, Arguments& args,
+                               const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "/ requires at least one argument");
+    }
+    
+    // Проверяем тип первого аргумента
+    if (args.unnamed[0].is_integer()) {
+        if (args.unnamed.size() == 1) {
+            IntType val = args.unnamed[0].as_integer();
+            if (val == 0) {
+                throw_eval_error(form, "/: division by zero");
+            }
+            return Object::make_integer(1 / val);
+        }
+        
+        IntType result = args.unnamed[0].as_integer();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_integer()) {
+                throw_eval_error(form, "/: all arguments must be integers");
+            }
+            IntType divisor = args.unnamed[i].as_integer();
+            if (divisor == 0) {
+                throw_eval_error(form, "/: division by zero");
+            }
+            result /= divisor;
+        }
+        return Object::make_integer(result);
+        
+    } else if (args.unnamed[0].is_float()) {
+        if (args.unnamed.size() == 1) {
+            FloatType val = args.unnamed[0].as_float();
+            if (val == 0.0) {
+                throw_eval_error(form, "/: division by zero");
+            }
+            return Object::make_float(1.0 / val);
+        }
+        
+        FloatType result = args.unnamed[0].as_float();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_float()) {
+                throw_eval_error(form, "/: all arguments must be floats");
+            }
+            FloatType divisor = args.unnamed[i].as_float();
+            if (divisor == 0.0) {
+                throw_eval_error(form, "/: division by zero");
+            }
+            result /= divisor;
+        }
+        return Object::make_float(result);
+        
+    } else {
+        throw_eval_error(form, "/: arguments must be numbers");
+    }
+        return Object::make_empty_list(); 
 }
 
 Object Interpreter::eval_print_builtin(const Object& form, Arguments& args,
@@ -467,3 +640,4 @@ void Interpreter::execute_repl() {
     
     std::cout << "Goodbye!\n";
 }
+

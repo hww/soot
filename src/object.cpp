@@ -102,6 +102,8 @@ std::string Object::print() const {
             return std::string(1, char_value);
         case ObjectType::BOOLEAN:
             return boolean_value ? "#t" : "#f";
+        case ObjectType::LAMBDA:
+            return heap_obj ? heap_obj->inspect() : "[lambda]";            
         case ObjectType::SYMBOL:
         case ObjectType::STRING:
         case ObjectType::PAIR:
@@ -125,6 +127,7 @@ std::string Object::inspect() const {
             return "[char] '" + std::string(1, char_value) + "'";
         case ObjectType::BOOLEAN:
             return boolean_value ? "[boolean] #t" : "[boolean] #f";
+        case ObjectType::LAMBDA:
         case ObjectType::SYMBOL:
         case ObjectType::STRING:
         case ObjectType::PAIR:

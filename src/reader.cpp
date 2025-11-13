@@ -149,6 +149,16 @@ Object Reader::read_list(TokenStream& tokens) {
     
     return result;
 }
+
+Object Object::make_lambda(const std::vector<std::string>& params, 
+                          const Object& body, 
+                          std::shared_ptr<EnvironmentObject> closure_env) {
+    Object obj;
+    obj.type = ObjectType::LAMBDA;
+    obj.heap_obj = std::make_shared<LambdaObject>(params, body, closure_env);
+    return obj;
+}
+
 Token Reader::next_token(TokenStream& tokens) {
     tokens.skip_whitespace_and_comments();
     

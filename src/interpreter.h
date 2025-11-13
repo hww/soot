@@ -72,6 +72,8 @@ private:
                      const std::shared_ptr<EnvironmentObject>& env);
     Object eval_times(const Object& form, Arguments& args,
                      const std::shared_ptr<EnvironmentObject>& env);
+    Object eval_divide(const Object& form, Arguments& args,
+                            const std::shared_ptr<EnvironmentObject>& env);
     Object eval_print_builtin(const Object& form, Arguments& args,
                              const std::shared_ptr<EnvironmentObject>& env);
     Object eval_cons_builtin(const Object& form, Arguments& args,
