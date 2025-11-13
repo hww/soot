@@ -1,5 +1,6 @@
 #include "interpreter.h"
 #include <sstream>
+#include "libs/linenoise/linenoise.h"
 
 Interpreter::Interpreter() {
     // Инициализируем специальные формы
@@ -31,8 +32,8 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
     Arguments args;
     Object current = rest;
     while (current.is_pair()) {
-        args.unnamed.push_back(current.as_pair()->car);
-        current = current.as_pair()->cdr;
+        args.unnamed.push_back(current.car());
+        current = current.cdr();
     }
     return args;
 }
@@ -54,8 +55,8 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
     Object current = list;
     
     while (current.is_pair()) {
-        result.push_back(eval_with_rewind(current.as_pair()->car, env));
-        current = current.as_pair()->cdr;
+        result.push_back(eval_with_rewind(current.car(), env));
+        current = current.cdr();
     }
     
     if (!current.is_empty_list()) {
@@ -180,7 +181,7 @@ Object Interpreter::eval_quote(const Object& form, const Object& rest,
     if (!rest.is_pair()) {
         throw_eval_error(form, "quote requires one argument");
     }
-    return rest.as_pair()->car;
+    return rest.car();
 }
 
 Object Interpreter::eval_define(const Object& form, const Object& rest,
@@ -189,17 +190,17 @@ Object Interpreter::eval_define(const Object& form, const Object& rest,
         throw_eval_error(form, "define requires arguments");
     }
     
-    Object name_obj = rest.as_pair()->car;
+    Object name_obj = rest.car();
     if (!name_obj.is_symbol()) {
         throw_eval_error(form, "define name must be a symbol");
     }
     
-    Object value_part = rest.as_pair()->cdr;
+    Object value_part = rest.cdr();
     if (!value_part.is_pair()) {
         throw_eval_error(form, "define must have a value");
     }
     
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
+    Object value = eval_with_rewind(value_part.car(), env);
     auto sym_ptr = std::static_pointer_cast<SymbolObject>(name_obj.heap_obj).get();
     global_vars[sym_ptr] = value;
     return value;
@@ -218,8 +219,8 @@ Object Interpreter::eval_begin(const Object& form, const Object& rest,
     Object result = Object::make_empty_list();
     
     while (current.is_pair()) {
-        result = eval_with_rewind(current.as_pair()->car, env);
-        current = current.as_pair()->cdr;
+        result = eval_with_rewind(current.car(), env);
+        current = current.cdr();
     }
     
     return result;
@@ -230,12 +231,12 @@ Object Interpreter::eval_print(const Object& form, const Object& rest,
     Object current = rest;
     
     while (current.is_pair()) {
-        Object arg = eval_with_rewind(current.as_pair()->car, env);
+        Object arg = eval_with_rewind(current.car(), env);
         std::cout << arg.print();
-        if (current.as_pair()->cdr.is_pair()) {
+        if (current.cdr().is_pair()) {
             std::cout << " ";
         }
-        current = current.as_pair()->cdr;
+        current = current.cdr();
     }
     std::cout << std::endl;
     
@@ -248,13 +249,13 @@ Object Interpreter::eval_cons(const Object& form, const Object& rest,
         throw_eval_error(form, "cons requires two arguments");
     }
     
-    Object first = eval_with_rewind(rest.as_pair()->car, env);
-    Object second_part = rest.as_pair()->cdr;
+    Object first = eval_with_rewind(rest.car(), env);
+    Object second_part = rest.cdr();
     if (!second_part.is_pair()) {
         throw_eval_error(form, "cons requires two arguments");
     }
     
-    Object second = eval_with_rewind(second_part.as_pair()->car, env);
+    Object second = eval_with_rewind(second_part.car(), env);
     return Object::make_pair(first, second);
 }
 
@@ -264,12 +265,12 @@ Object Interpreter::eval_car(const Object& form, const Object& rest,
         throw_eval_error(form, "car requires one argument");
     }
     
-    Object arg = eval_with_rewind(rest.as_pair()->car, env);
+    Object arg = eval_with_rewind(rest.car(), env);
     if (!arg.is_pair()) {
         throw_eval_error(form, "car requires a pair argument");
     }
     
-    return arg.as_pair()->car;
+    return arg.car();
 }
 
 Object Interpreter::eval_cdr(const Object& form, const Object& rest,
@@ -278,12 +279,12 @@ Object Interpreter::eval_cdr(const Object& form, const Object& rest,
         throw_eval_error(form, "cdr requires one argument");
     }
     
-    Object arg = eval_with_rewind(rest.as_pair()->car, env);
+    Object arg = eval_with_rewind(rest.car(), env);
     if (!arg.is_pair()) {
         throw_eval_error(form, "cdr requires a pair argument");
     }
     
-    return arg.as_pair()->cdr;
+    return arg.cdr();
 }
 
 // Встроенные функции
@@ -358,7 +359,7 @@ Object Interpreter::eval_car_builtin(const Object& form, Arguments& args,
     if (args.unnamed.size() != 1 || !args.unnamed[0].is_pair()) {
         throw_eval_error(form, "car requires a pair argument");
     }
-    return args.unnamed[0].as_pair()->car;
+    return args.unnamed[0].car();
 }
 
 Object Interpreter::eval_cdr_builtin(const Object& form, Arguments& args,
@@ -367,7 +368,7 @@ Object Interpreter::eval_cdr_builtin(const Object& form, Arguments& args,
     if (args.unnamed.size() != 1 || !args.unnamed[0].is_pair()) {
         throw_eval_error(form, "cdr requires a pair argument");
     }
-    return args.unnamed[0].as_pair()->cdr;
+    return args.unnamed[0].cdr();
 }
 
 // Обработка ошибок
@@ -376,21 +377,77 @@ void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
 }
 
 // REPL
+#include "libs/linenoise/linenoise.h"
+
+// REPL
 void Interpreter::execute_repl() {
     want_exit = false;
-    std::string input;
     
-    std::cout << "Z80 Lisp REPL (type 'quit' to exit)\n";
+    // Инициализация linenoise
+    linenoiseHistorySetMaxLen(100);
+    linenoiseSetMultiLine(1);
+    
+    std::cout << "Z80 Lisp REPL (type 'quit' to exit, Ctrl+D to quit)\n";
+    std::cout << "Features: line editing, history (↑↓), multi-line input\n";
     
     while (!want_exit) {
-        try {
-            std::cout << "z80-lisp> ";
-            if (!std::getline(std::cin, input)) {
-                break; // EOF
+        std::string input;
+        bool complete = false;
+        
+        // Многострочный ввод
+        while (!complete) {
+            char* line;
+            if (input.empty()) {
+                line = linenoise("z80-lisp> ");
+            } else {
+                line = linenoise("...> ");  // Продолжение для многострочного ввода
             }
             
-            if (input.empty()) continue;
-            if (input == "quit" || input == "exit") break;
+            if (line == nullptr) {
+                // Ctrl+D
+                if (!input.empty()) {
+                    std::cout << "Input cancelled.\n";
+                    input.clear();
+                    continue;
+                } else {
+                    want_exit = true;
+                    break;
+                }
+            }
+            
+            std::string line_str(line);
+            free(line);
+            
+            if (line_str.empty()) {
+                // Пустая строка - проверяем завершенность
+                complete = reader.is_input_complete(input);
+                if (!complete) {
+                    continue; // Ждем продолжения
+                }
+            } else {
+                input += line_str + "\n";
+                complete = reader.is_input_complete(input);
+            }
+            
+            // Проверяем команды выхода
+            if (input.find("quit") != std::string::npos || 
+                input.find("exit") != std::string::npos) {
+                want_exit = true;
+                break;
+            }
+        }
+        
+        if (want_exit) break;
+        if (input.empty()) continue;
+        
+        try {
+            // Убираем последний \n если есть
+            if (!input.empty() && input.back() == '\n') {
+                input.pop_back();
+            }
+            
+            // Добавляем в историю если не пустая
+            linenoiseHistoryAdd(input.c_str());
             
             Object code = reader.read_from_string(input, "REPL input");
             
@@ -400,7 +457,7 @@ void Interpreter::execute_repl() {
             Object result = eval_with_rewind(code, repl_env);
             
             if (!result.is_empty_list() || input != "()") {
-                std::cout << result.print() << std::endl;
+                std::cout << "=> " << result.print() << std::endl;
             }
             
         } catch (const std::exception& e) {
