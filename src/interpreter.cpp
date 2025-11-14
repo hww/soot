@@ -12,7 +12,11 @@ Interpreter::Interpreter() {
         {"print", &Interpreter::eval_print},
         {"cons", &Interpreter::eval_cons},
         {"car", &Interpreter::eval_car},
-        {"cdr", &Interpreter::eval_cdr}
+        {"cdr", &Interpreter::eval_cdr},
+        {"if", &Interpreter::eval_if},
+        {"and", &Interpreter::eval_and},
+        {"or", &Interpreter::eval_or},
+        {"cond", &Interpreter::eval_cond}        
     };
 
     // Инициализируем встроенные функции
@@ -24,7 +28,12 @@ Interpreter::Interpreter() {
         {"print", &Interpreter::eval_print_builtin},
         {"cons", &Interpreter::eval_cons_builtin},
         {"car", &Interpreter::eval_car_builtin},
-        {"cdr", &Interpreter::eval_cdr_builtin}
+        {"cdr", &Interpreter::eval_cdr_builtin},
+        {"=", &Interpreter::eval_equals},
+        {"<", &Interpreter::eval_lt},
+        {">", &Interpreter::eval_gt},
+        {"<=", &Interpreter::eval_leq},
+        {">=", &Interpreter::eval_geq}        
         
     };
 }
@@ -641,3 +650,230 @@ void Interpreter::execute_repl() {
     std::cout << "Goodbye!\n";
 }
 
+
+
+Object Interpreter::eval_if(const Object& form, const Object& rest,
+                           const std::shared_ptr<EnvironmentObject>& env) {
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "if requires condition and branches");
+    }
+    
+    Object condition_obj = rest.car();
+    Object then_part_obj = rest.cdr();
+    
+    if (!then_part_obj.is_pair()) {
+        throw_eval_error(form, "if requires then branch");
+    }
+    
+    // Оцениваем условие
+    Object condition_result = eval_with_rewind(condition_obj, env);
+    
+    // В Lisp только #f считается ложью, все остальное - истина
+    if (truthy(condition_result)) {
+        // then ветка
+        return eval_with_rewind(then_part_obj.car(), env);
+    } else {
+        // else ветка (может быть отсутствовать)
+        Object else_part = then_part_obj.cdr();
+        if (else_part.is_pair()) {
+            return eval_with_rewind(else_part.car(), env);
+        } else {
+            return Object::make_empty_list(); // нет else - возвращаем ()
+        }
+    }
+}
+
+Object Interpreter::eval_cond(const Object& form, const Object& rest,
+                             const std::shared_ptr<EnvironmentObject>& env) {
+    std::cout << "=== DEBUG eval_cond START ===" << std::endl;
+    std::cout << "cond form: " << form.print() << std::endl;
+    
+    Object current_clause = rest;
+    int clause_index = 0;
+    
+    while (current_clause.is_pair()) {
+        std::cout << "DEBUG: Clause " << clause_index << ": " << current_clause.car().print() << std::endl;
+        
+        Object clause = current_clause.car();
+        
+        if (!clause.is_pair()) {
+            throw_eval_error(form, "cond clause must be a pair");
+        }
+        
+        Object condition = clause.car();
+        Object body = clause.cdr();
+        
+        std::cout << "DEBUG:   condition: " << condition.print() << std::endl;
+        std::cout << "DEBUG:   body: " << body.print() << std::endl;
+        
+        // Особый случай: (else ...)
+        if (condition.is_symbol() && 
+            std::static_pointer_cast<SymbolObject>(condition.heap_obj)->name == "else") {
+            std::cout << "DEBUG:   Found else clause!" << std::endl;
+            if (!body.is_pair()) {
+                throw_eval_error(form, "cond else clause must have body");
+            }
+            Object result = body.car();
+            std::cout << "DEBUG:   Returning else result: " << result.print() << std::endl;
+            std::cout << "=== DEBUG eval_cond END ===" << std::endl;
+            return result;
+        }
+        
+        // Обычная ветка: проверяем условие
+        std::cout << "DEBUG:   Evaluating condition..." << std::endl;
+        Object condition_result = eval_with_rewind(condition, env);
+        std::cout << "DEBUG:   Condition result: " << condition_result.print() << " truthy: " << truthy(condition_result) << std::endl;
+        
+        if (truthy(condition_result)) {
+            std::cout << "DEBUG:   Condition true!" << std::endl;
+            if (body.is_pair()) {
+                Object result = body.car();
+                std::cout << "DEBUG:   Returning body: " << result.print() << std::endl;
+                std::cout << "=== DEBUG eval_cond END ===" << std::endl;
+                return result;
+            } else {
+                std::cout << "DEBUG:   No body, returning condition result" << std::endl;
+                std::cout << "=== DEBUG eval_cond END ===" << std::endl;
+                return condition_result;
+            }
+        }
+        
+        current_clause = current_clause.cdr();
+        clause_index++;
+    }
+    
+    std::cout << "DEBUG: No conditions matched" << std::endl;
+    std::cout << "=== DEBUG eval_cond END ===" << std::endl;
+    return Object::make_empty_list();
+}
+// Вспомогательная функция для проверки истинности
+bool Interpreter::truthy(const Object& o) {
+    // В Lisp только #f считается ложью, все остальное - истина
+    if (o.is_boolean()) {
+        return o.as_boolean();
+    }
+    return true; // любое не-boolean значение - истина
+}
+
+Object Interpreter::eval_and(const Object& form, const Object& rest,
+                            const std::shared_ptr<EnvironmentObject>& env) {
+    Object current = rest;
+    Object result = Object::make_boolean(true); // and начинается с #t
+    
+    while (current.is_pair()) {
+        result = eval_with_rewind(current.car(), env);
+        if (!truthy(result)) {
+            return result; // короткое замыкание - возвращаем первое ложное
+        }
+        current = current.cdr();
+    }
+    
+    return result; // если все истинны - возвращаем последнее
+}
+
+Object Interpreter::eval_or(const Object& form, const Object& rest,
+                           const std::shared_ptr<EnvironmentObject>& env) {
+    Object current = rest;
+    
+    while (current.is_pair()) {
+        Object result = eval_with_rewind(current.car(), env);
+        if (truthy(result)) {
+            return result; // короткое замыкание - возвращаем первое истинное
+        }
+        current = current.cdr();
+    }
+    
+    return Object::make_boolean(false); // если все ложны - возвращаем #f
+}
+
+// Функции сравнения
+Object Interpreter::eval_equals(const Object& form, Arguments& args,
+                               const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "= requires exactly two arguments");
+    }
+    
+    // Простое сравнение для чисел
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        return Object::make_boolean(args.unnamed[0].as_integer() == args.unnamed[1].as_integer());
+    }
+    if (args.unnamed[0].is_float() && args.unnamed[1].is_float()) {
+        return Object::make_boolean(args.unnamed[0].as_float() == args.unnamed[1].as_float());
+    }
+    
+    // Для разных типов - не равны
+    return Object::make_boolean(false);
+}
+
+Object Interpreter::eval_lt(const Object& form, Arguments& args,
+                           const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "< requires exactly two arguments");
+    }
+    
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        return Object::make_boolean(args.unnamed[0].as_integer() < args.unnamed[1].as_integer());
+    }
+    if (args.unnamed[0].is_float() && args.unnamed[1].is_float()) {
+        return Object::make_boolean(args.unnamed[0].as_float() < args.unnamed[1].as_float());
+    }
+    
+    throw_eval_error(form, "< requires both arguments to be numbers of the same type");
+    return Object::make_empty_list();
+}
+
+Object Interpreter::eval_gt(const Object& form, Arguments& args,
+                           const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "> requires exactly two arguments");
+    }
+    
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        return Object::make_boolean(args.unnamed[0].as_integer() > args.unnamed[1].as_integer());
+    }
+    if (args.unnamed[0].is_float() && args.unnamed[1].is_float()) {
+        return Object::make_boolean(args.unnamed[0].as_float() > args.unnamed[1].as_float());
+    }
+    
+    throw_eval_error(form, "> requires both arguments to be numbers of the same type");
+    return Object::make_empty_list();
+}
+
+Object Interpreter::eval_leq(const Object& form, Arguments& args,
+                            const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "<= requires exactly two arguments");
+    }
+    
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        return Object::make_boolean(args.unnamed[0].as_integer() <= args.unnamed[1].as_integer());
+    }
+    if (args.unnamed[0].is_float() && args.unnamed[1].is_float()) {
+        return Object::make_boolean(args.unnamed[0].as_float() <= args.unnamed[1].as_float());
+    }
+    
+    throw_eval_error(form, "<= requires both arguments to be numbers of the same type");
+    return Object::make_empty_list();
+}
+
+Object Interpreter::eval_geq(const Object& form, Arguments& args,
+                            const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, ">= requires exactly two arguments");
+    }
+    
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        return Object::make_boolean(args.unnamed[0].as_integer() >= args.unnamed[1].as_integer());
+    }
+    if (args.unnamed[0].is_float() && args.unnamed[1].is_float()) {
+        return Object::make_boolean(args.unnamed[0].as_float() >= args.unnamed[1].as_float());
+    }
+    
+    throw_eval_error(form, ">= requires both arguments to be numbers of the same type");
+    return Object::make_empty_list();
+}
