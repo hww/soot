@@ -74,22 +74,15 @@ Object Reader::read_from_file(const std::string& filename) {
     return read_impl(std::move(source));
 }
 
+
 Object Reader::read_impl(std::shared_ptr<SourceText> source) {
     TokenStream tokens(std::move(source));
     tokens.skip_whitespace_and_comments();
-    
     if (!tokens.has_more()) {
-        return Object::make_empty_list(); // Empty input
+        return Object::make_empty_list();
     }
     
     Object result = read(tokens);
-    
-    // ДОБАВЬТЕ ЭТУ ПРОВЕРКУ: если остались токены - значит что-то не так
-    tokens.skip_whitespace_and_comments();
-    if (tokens.has_more()) {
-        throw_reader_error(tokens, "Unexpected input after expression");
-    }
-    
     return result;
 }
 
@@ -181,7 +174,42 @@ Token Reader::next_token(TokenStream& tokens) {
     }
     else if (c == '"') {
         // String literal
-        // ... код строки
+        //std::cout << "DEBUG next_token: reading string" << std::endl;
+        tokens.read(); // consume opening quote
+        std::string content;
+        bool escape = false;
+        
+        while (tokens.has_more()) {
+            char ch = tokens.read();
+            if (escape) {
+                switch (ch) {
+                    case 'n': content += '\n'; break;
+                    case 't': content += '\t'; break;
+                    case 'r': content += '\r'; break;
+                    case '"': content += '"'; break;
+                    case '\\': content += '\\'; break;
+                    default: 
+                        // Если неизвестная escape-последовательность, оставляем как есть
+                        content += '\\';
+                        content += ch;
+                        break;
+                }
+                escape = false;
+            } else if (ch == '\\') {
+                escape = true;
+            } else if (ch == '"') {
+                break; // закрывающая кавычка
+            } else {
+                content += ch;
+            }
+        }
+        
+        if (escape) {
+            throw_reader_error(tokens, "Unterminated escape sequence");
+        }
+        
+        token.text = "\"" + content + "\"";
+        //std::cout << "DEBUG next_token: string token='" << token.text << "'" << std::endl;
     }
     else {
         // Word (symbol, number, boolean, etc.)
