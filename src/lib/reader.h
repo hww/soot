@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 #include <optional>
+#include <fstream>
+#include <cstdlib>
 
 // Токен для парсинга
 struct Token {

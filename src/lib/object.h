@@ -8,14 +8,16 @@
 #include <cstdint>
 #include <map>
 #include <iostream>
-
+#include <sstream>
+#include <fstream>
+#include <cstdlib>
 // Портируемые типы
 using FloatType = double;
 using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
     EMPTY_LIST, INTEGER, FLOAT, CHAR, BOOLEAN,
-    SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID
+    SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE, FILE_PORT, EOF_OBJECT
 };
 
 std::string object_type_to_string(ObjectType type);
@@ -32,6 +34,8 @@ public:
 class EnvironmentObject;
 class MacroObject;
 class PairObject;
+class HashTableObject;
+class FilePortObject;
 
 // Main Object class
 class Object {
@@ -59,9 +63,16 @@ public:
     static Object make_string(const std::string& text);
     static Object make_pair(const Object& car, const Object& cdr);
     static Object make_array(const std::vector<Object>& elements);
-    static Object make_lambda(const std::vector<std::string>& params, 
-                         const Object& body, 
-                         std::shared_ptr<EnvironmentObject> closure_env);
+    static Object make_lambda(const std::vector<std::string>& params, const Object& body, std::shared_ptr<EnvironmentObject> closure_env);
+    static Object make_macro(const std::vector<std::string>& params, const Object& body, std::shared_ptr<EnvironmentObject> env);
+    static Object make_vector(const std::vector<Object>& elements);
+    static Object make_hash_table();
+    static Object make_file_port(const std::string& filename);
+    static Object make_eof() {
+        Object obj;
+        obj.type = ObjectType::EOF_OBJECT; // добавить в enum
+        return obj;
+    }
 
     // String representation
     std::string print() const;
@@ -78,6 +89,12 @@ public:
     bool is_array() const { return type == ObjectType::ARRAY; }
     bool is_empty_list() const { return type == ObjectType::EMPTY_LIST; }
     bool is_list() const { return is_empty_list() || is_pair(); }
+    bool is_lambda() const { return type == ObjectType::LAMBDA; }
+    bool is_macro() const { return type == ObjectType::MACRO; }
+    bool is_vector() const { return type == ObjectType::ARRAY; } 
+    bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
+    bool is_file_port() const { return type == ObjectType::FILE_PORT; }
+    bool is_eof() const { return type == ObjectType::EOF_OBJECT; }
 
     // Value access with type checking
     IntType as_integer() const;
@@ -86,6 +103,9 @@ public:
     bool as_boolean() const;
     std::string as_symbol() const;
     std::string as_string() const;
+    std::vector<Object> as_vector() const;
+    HashTableObject* as_hash_table() const;
+    FilePortObject* as_file_port() const;
 
     // For pair access
     Object car() const;
@@ -144,6 +164,29 @@ public:
     
     std::string inspect() const override {
         return "[array] size=" + std::to_string(elements.size());
+    }
+};
+class FilePortObject : public HeapObject {
+public:
+    std::ifstream file;
+    std::string filename;
+
+    FilePortObject(const std::string& fname) : filename(fname) {
+        file.open(fname);
+    }
+
+    ~FilePortObject() {
+        if (file.is_open()) {
+            file.close();
+        }
+    }
+
+    std::string print() const override {
+        return "#<input-port:" + filename + ">";
+    }
+
+    std::string inspect() const override {
+        return "[input-port:" + filename + "]";
     }
 };
 
@@ -210,15 +253,59 @@ public:
     }
 };
 
-// Symbol table for interning
-class SymbolTable {
+class MacroObject : public HeapObject {
 public:
-    Object intern(const std::string& name);
+    std::vector<std::string> parameters;
+    Object body;
+    std::shared_ptr<EnvironmentObject> closure_env;
 
-private:
-    std::unordered_map<std::string, std::shared_ptr<SymbolObject>> table;
+    MacroObject(const std::vector<std::string>& params,
+        const Object& b,
+        std::shared_ptr<EnvironmentObject> env)
+        : parameters(params), body(b), closure_env(env) {
+    }
+
+    std::string print() const override { return "[macro]"; }
+    std::string inspect() const override {
+        return "[macro params=" + std::to_string(parameters.size()) + "]";
+    }
 };
 
+class VectorObject : public HeapObject {
+public:
+    std::vector<Object> elements;
+    VectorObject(const std::vector<Object>& elems) : elements(elems) {}
+
+    std::string print() const override {
+        std::stringstream ss;
+        ss << "#(";
+        for (size_t i = 0; i < elements.size(); ++i) {
+            ss << elements[i].print();
+            if (i < elements.size() - 1) ss << " ";
+        }
+        ss << ")";
+        return ss.str();
+    }
+
+    std::string inspect() const override {
+        return "[vector size=" + std::to_string(elements.size()) + "]";
+    }
+};
+
+class HashTableObject : public HeapObject {
+public:
+    std::unordered_map<std::string, Object> data;
+
+    HashTableObject() = default;
+
+    std::string print() const override {
+        return "#<hash-table>";
+    }
+
+    std::string inspect() const override {
+        return "[hash-table size=" + std::to_string(data.size()) + "]";
+    }
+};
 // Аргументы функций
 struct Arguments {
     std::vector<Object> unnamed;
@@ -238,6 +325,8 @@ struct Arguments {
     bool has_named(const std::string& name) {
         return named.find(name) != named.end();
     }
+
+    std::string Arguments::print() const;
 };
 
 struct NamedArg {
@@ -250,4 +339,33 @@ struct ArgumentSpec {
     std::vector<std::string> unnamed;
     std::unordered_map<std::string, NamedArg> named;
     std::string rest;
+    std::string ArgumentSpec::print() const;
+    ArgumentSpec make_varargs();
+};
+
+
+class SymbolTable {
+private:
+    static constexpr double kMaxUsed = 0.75;
+    uint32_t m_power_of_two_size = 1;
+    uint32_t m_used_entries = 0;
+    uint32_t m_next_resize = 0;
+    uint32_t m_mask = 0b1;
+
+    struct Entry {
+        char* name = nullptr;
+        uint32_t hash = 0;
+    };
+
+    std::vector<Entry> m_entries;
+
+public:
+    SymbolTable();
+    ~SymbolTable();
+
+    Object intern(const std::string& name);
+
+private:
+    void resize();
+    uint32_t compute_hash(const char* data, size_t length) const;
 };

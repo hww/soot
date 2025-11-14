@@ -4,6 +4,7 @@ add_library(z80-lisp-lib
     lib/reader.cpp
     lib/interpreter.cpp
     lib/source-info.cpp
+    lib/crc32.cpp
 )
 
 # Линкуем с replxx

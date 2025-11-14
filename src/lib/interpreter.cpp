@@ -1,5 +1,7 @@
 #include "interpreter.h"
 #include <sstream>
+#include <filesystem>
+
 
 Interpreter::Interpreter() {
     // Инициализируем специальные формы
@@ -18,7 +20,10 @@ Interpreter::Interpreter() {
         {"cond", &Interpreter::eval_cond},
         {"set!", &Interpreter::eval_set},
         {"let", &Interpreter::eval_let},
-        {"while", &Interpreter::eval_while}
+        {"while", &Interpreter::eval_while},
+        {"macro", &Interpreter::eval_macro},
+        {"let*", &Interpreter::eval_let_star},
+        {"quasiquote", &Interpreter::eval_quasiquote}
     };
 
     // Инициализируем встроенные функции
@@ -26,7 +31,7 @@ Interpreter::Interpreter() {
         {"+", &Interpreter::eval_plus},
         {"-", &Interpreter::eval_minus},
         {"*", &Interpreter::eval_times},
-        {"/", &Interpreter::eval_divide}, 
+        {"/", &Interpreter::eval_divide},
         {"print", &Interpreter::eval_print_builtin},
         {"cons", &Interpreter::eval_cons_builtin},
         {"car", &Interpreter::eval_car_builtin},
@@ -43,9 +48,60 @@ Interpreter::Interpreter() {
         {"string?", &Interpreter::eval_string_p},
         {"list", &Interpreter::eval_list_func},
         {"length", &Interpreter::eval_length},
-        {"append", &Interpreter::eval_append}
-        
+        {"append", &Interpreter::eval_append},
+        {"eq?", &Interpreter::eval_eq},
+        {"gensym", &Interpreter::eval_gensym},
+        {"eval", &Interpreter::eval_eval},
+        {"set-car!", &Interpreter::eval_set_car},
+        {"set-cdr!", &Interpreter::eval_set_cdr},
+        {"exit", &Interpreter::eval_exit},
+        {"read", &Interpreter::eval_read},
+        {"load-file", &Interpreter::eval_load_file},
+        {"string-length", &Interpreter::eval_string_length},
+        {"string-ref", &Interpreter::eval_string_ref},
+        {"string-append", &Interpreter::eval_string_append},
+        {"substring", &Interpreter::eval_substring},
+        {"string->symbol", &Interpreter::eval_string_to_symbol},
+        {"symbol->string", &Interpreter::eval_symbol_to_string},
+        {"vector", &Interpreter::eval_vector},
+        {"vector-ref", &Interpreter::eval_vector_ref},
+        {"vector-set!", &Interpreter::eval_vector_set},
+        {"vector-length", &Interpreter::eval_vector_length},
+        {"vector?", &Interpreter::eval_vector_p},
+        {"make-hash-table", &Interpreter::eval_make_hash_table},
+        {"hash-table-set!", &Interpreter::eval_hash_table_set},
+        { "hash-table-ref", &Interpreter::eval_hash_table_ref},
+        {"hash-table?", &Interpreter::eval_hash_table_p},
+        {"open-input-file", &Interpreter::eval_open_input_file},
+        {"read-line", &Interpreter::eval_read_line},
+        {"close-input-port", &Interpreter::eval_close_input_port},
+        {"eof-object?", &Interpreter::eval_eof_object_p},
+        {"file-exists?", &Interpreter::eval_file_exists_p},
+        {"system", &Interpreter::eval_system},
+        // Преобразования типов
+        {"number->string",&Interpreter::eval_number_to_string},
+        {"string->number",&Interpreter::eval_string_to_number},
+        {"char->integer",&Interpreter::eval_char_to_integer},
+        {"integer->char",&Interpreter::eval_integer_to_char},
+
+        // Дополнительные предикаты
+        {"char?", &Interpreter::eval_char_p},
+        {"procedure?", &Interpreter::eval_procedure_p},
+        {"vector?", &Interpreter::eval_vector_p},
+        {"eqv?", &Interpreter::eval_eqv},
+
+        // Математические функции
+        {"abs", &Interpreter::eval_abs},
+        {"max", &Interpreter::eval_max},
+        {"min", &Interpreter::eval_min},
+        {"expt", &Interpreter::eval_expt},
+        {"sqrt", &Interpreter::eval_sqrt},
+
+        // Системные утилиты
+        {"current-directory", &Interpreter::eval_current_directory},
     };
+    m_true_object = Object::make_boolean(true);
+    m_false_object = Object::make_boolean(false);
 }
 bool Interpreter::try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest) {
 
@@ -163,8 +219,8 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     }
     return result;
 }
+
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
-    
     auto pair = obj.as_pair();
     Object head = pair->car;
     Object rest = pair->cdr;
@@ -189,32 +245,53 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
     // Оцениваем голову
     Object evaluated_head = eval_with_rewind(head, env);
 
+    // Проверяем макрос (используем dynamic_cast)
+    if (evaluated_head.type == ObjectType::MACRO) {
+        auto macro_ptr = dynamic_cast<MacroObject*>(evaluated_head.heap_obj.get());
+        if (macro_ptr) {
+            Arguments args = get_args(obj, rest, make_varargs());
+
+            // Для макросов аргументы НЕ оцениваются!
+            auto macro_env = std::make_shared<EnvironmentObject>(macro_ptr->closure_env);
+
+            // Создаем простой ArgumentSpec для макроса
+            ArgumentSpec macro_spec;
+            for (size_t i = 0; i < macro_ptr->parameters.size(); ++i) {
+                if (i < args.unnamed.size()) {
+                    macro_spec.unnamed.push_back(macro_ptr->parameters[i]);
+                }
+            }
+
+            set_args_in_env(obj, args, macro_spec, macro_env);
+
+            // Выполняем макрос для получения расширения
+            Object expansion = eval_with_rewind(macro_ptr->body, macro_env);
+
+            // Оцениваем расширение в исходном окружении
+            return eval_with_rewind(expansion, env);
+        }
+    }
+
     // Проверяем лямбду
     if (evaluated_head.type == ObjectType::LAMBDA) {
-        auto lambda = std::static_pointer_cast<LambdaObject>(evaluated_head.heap_obj);
-        
-        // Вычисляем аргументы
-        Arguments args = get_args(obj, rest, make_varargs());
-        eval_args(&args, env);
-        
-        // Проверяем количество аргументов
-        if (args.unnamed.size() != lambda->parameters.size()) {
-            throw_eval_error(obj, "lambda: wrong number of arguments");
+        auto lambda_ptr = dynamic_cast<LambdaObject*>(evaluated_head.heap_obj.get());
+        if (lambda_ptr) {
+            Arguments args = get_args(obj, rest, make_varargs());
+            eval_args(&args, env);
+
+            if (args.unnamed.size() != lambda_ptr->parameters.size()) {
+                throw_eval_error(obj, "lambda: wrong number of arguments");
+            }
+
+            auto call_env = std::make_shared<EnvironmentObject>(lambda_ptr->closure_env);
+            for (size_t i = 0; i < lambda_ptr->parameters.size(); ++i) {
+                call_env->set(lambda_ptr->parameters[i], args.unnamed[i]);
+            }
+
+            return eval_with_rewind(lambda_ptr->body, call_env);
         }
-        
-        // Создаем новое окружение для вызова
-        auto call_env = std::make_shared<EnvironmentObject>(lambda->closure_env);
-        
-        // Связываем параметры - ДОБАВИМ ОТЛАДКУ
-        for (size_t i = 0; i < lambda->parameters.size(); ++i) {
-            call_env->set(lambda->parameters[i], args.unnamed[i]);
-        }        
-       
-        // Выполняем тело лямбды
-        Object result = eval_with_rewind(lambda->body, call_env);
-        return result;
     }
-    
+
     // Проверяем встроенные функции после оценки
     if (evaluated_head.is_symbol()) {
         auto head_sym = std::static_pointer_cast<SymbolObject>(evaluated_head.heap_obj)->name;
@@ -225,10 +302,11 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
             return ((*this).*(kv_b->second))(obj, args, env);
         }
     }
-    
+
     throw_eval_error(obj, "cannot apply non-function object");
     return Object::make_empty_list();
 }
+
 // Специальные формы
 Object Interpreter::eval_quote(const Object& form, const Object& rest, 
                               const std::shared_ptr<EnvironmentObject>& env) {
@@ -598,8 +676,7 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest,
     int clause_index = 0;
     
     while (current_clause.is_pair()) {
-        //std::cout << "DEBUG: Clause " << clause_index << ": " << current_clause.car().print() << std::endl;
-        
+
         Object clause = current_clause.car();
         
         if (!clause.is_pair()) {
@@ -609,37 +686,25 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest,
         Object condition = clause.car();
         Object body = clause.cdr();
         
-        //std::cout << "DEBUG:   condition: " << condition.print() << std::endl;
-        //std::cout << "DEBUG:   body: " << body.print() << std::endl;
-        
         // Особый случай: (else ...)
         if (condition.is_symbol() && 
             std::static_pointer_cast<SymbolObject>(condition.heap_obj)->name == "else") {
-            //std::cout << "DEBUG:   Found else clause!" << std::endl;
             if (!body.is_pair()) {
                 throw_eval_error(form, "cond else clause must have body");
             }
             Object result = body.car();
-            //std::cout << "DEBUG:   Returning else result: " << result.print() << std::endl;
-            //std::cout << "=== DEBUG eval_cond END ===" << std::endl;
+
             return result;
         }
         
         // Обычная ветка: проверяем условие
-        //std::cout << "DEBUG:   Evaluating condition..." << std::endl;
         Object condition_result = eval_with_rewind(condition, env);
-        //std::cout << "DEBUG:   Condition result: " << condition_result.print() << " truthy: " << truthy(condition_result) << std::endl;
         
         if (truthy(condition_result)) {
-            //std::cout << "DEBUG:   Condition true!" << std::endl;
             if (body.is_pair()) {
                 Object result = body.car();
-                //std::cout << "DEBUG:   Returning body: " << result.print() << std::endl;
-                //std::cout << "=== DEBUG eval_cond END ===" << std::endl;
                 return result;
             } else {
-                //std::cout << "DEBUG:   No body, returning condition result" << std::endl;
-                //std::cout << "=== DEBUG eval_cond END ===" << std::endl;
                 return condition_result;
             }
         }
@@ -648,8 +713,6 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest,
         clause_index++;
     }
     
-    //std::cout << "DEBUG: No conditions matched" << std::endl;
-    //std::cout << "=== DEBUG eval_cond END ===" << std::endl;
     return Object::make_empty_list();
 }
 // Вспомогательная функция для проверки истинности
@@ -1023,3 +1086,953 @@ Object Interpreter::eval_append(const Object& form, Arguments& args,
 
     return result;
 }
+
+// Макросы
+Object Interpreter::eval_macro(const Object& form, const Object& rest,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    if (rest.is_empty_list()) {
+        throw_eval_error(form, "macro: expected parameter list and body");
+    }
+
+    Object params_obj = rest.car();
+    Object body_obj = rest.cdr();
+
+    if (!params_obj.is_list()) {
+        throw_eval_error(form, "macro: parameter list must be a list");
+    }
+
+    // Парсим параметры
+    std::vector<std::string> parameters;
+    Object current_param = params_obj;
+    while (!current_param.is_empty_list()) {
+        if (!current_param.is_pair()) {
+            throw_eval_error(form, "macro: malformed parameter list");
+        }
+
+        Object param = current_param.car();
+        if (!param.is_symbol()) {
+            throw_eval_error(form, "macro: parameters must be symbols");
+        }
+
+        parameters.push_back(param.as_symbol());
+        current_param = current_param.cdr();
+    }
+
+    Object body = body_obj.car();
+
+    // Создаем макро-объект с замыканием
+    Object result = Object::make_macro(parameters, body, env);
+    return result;
+}
+
+// let*
+Object Interpreter::eval_let_star(const Object& form, const Object& rest,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "let* requires bindings and body");
+    }
+
+    Object bindings_obj = rest.car();
+    Object body_obj = rest.cdr();
+
+    if (!bindings_obj.is_list()) {
+        throw_eval_error(form, "let* bindings must be a list");
+    }
+
+    auto current_env = env;
+
+    // Обрабатываем привязки последовательно
+    Object current_binding = bindings_obj;
+    while (current_binding.is_pair()) {
+        Object binding = current_binding.car();
+
+        if (!binding.is_pair()) {
+            throw_eval_error(form, "let* binding must be a pair (name value)");
+        }
+
+        Object name_obj = binding.car();
+        Object value_part = binding.cdr();
+
+        if (!name_obj.is_symbol()) {
+            throw_eval_error(form, "let* binding name must be a symbol");
+        }
+
+        if (!value_part.is_pair()) {
+            throw_eval_error(form, "let* binding must have a value");
+        }
+
+        // Создаем новое окружение для каждой привязки
+        auto new_env = std::make_shared<EnvironmentObject>(current_env);
+
+        // Оцениваем значение в ТЕКУЩЕМ окружении
+        Object value = eval_with_rewind(value_part.car(), current_env);
+        new_env->set(name_obj.as_symbol(), value);
+
+        current_env = new_env;
+        current_binding = current_binding.cdr();
+    }
+
+    // Выполняем тело в последнем окружении
+    Object result = Object::make_empty_list();
+    Object current_body = body_obj;
+    while (current_body.is_pair()) {
+        result = eval_with_rewind(current_body.car(), current_env);
+        current_body = current_body.cdr();
+    }
+    return result;
+}
+
+// Quasiquote
+Object Interpreter::eval_quasiquote(const Object& form, const Object& rest,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    if (rest.type != ObjectType::PAIR || rest.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
+        throw_eval_error(form, "quasiquote must have one argument!");
+    }
+    return quasiquote_helper(rest.as_pair()->car, env);
+}
+
+Object Interpreter::quasiquote_helper(const Object& form,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    if (!form.is_pair()) {
+        return form; // Не список - возвращаем как есть
+    }
+
+    const Object& car = form.as_pair()->car;
+    const Object& cdr = form.as_pair()->cdr;
+
+    // Проверяем unquote
+    if (car.is_symbol() && car.as_symbol() == "unquote") {
+        if (!cdr.is_pair() || !cdr.as_pair()->cdr.is_empty_list()) {
+            throw_eval_error(form, "unquote must have exactly one argument");
+        }
+        return eval_with_rewind(cdr.as_pair()->car, env);
+    }
+
+    // Проверяем unquote-splicing
+    if (car.is_pair() &&
+        car.as_pair()->car.is_symbol() &&
+        car.as_pair()->car.as_symbol() == "unquote-splicing") {
+
+        const Object& splicing_args = car.as_pair()->cdr;
+        if (!splicing_args.is_pair() || !splicing_args.as_pair()->cdr.is_empty_list()) {
+            throw_eval_error(form, "unquote-splicing must have exactly one argument");
+        }
+
+        Object spliced = eval_with_rewind(splicing_args.as_pair()->car, env);
+
+        // Рекурсивно обрабатываем хвост
+        Object processed_cdr = quasiquote_helper(cdr, env);
+
+        // "Вклеиваем" spliced список
+        if (!spliced.is_list()) {
+            throw_eval_error(form, "unquote-splicing requires a list");
+        }
+
+        // Строим новый список
+        Object result = processed_cdr;
+        Object current = spliced;
+        while (current.is_pair()) {
+            result = Object::make_pair(current.as_pair()->car, result);
+            current = current.as_pair()->cdr;
+        }
+        return result;
+    }
+
+    // Обычный список - рекурсивно обрабатываем car и cdr
+    Object processed_car = quasiquote_helper(car, env);
+    Object processed_cdr = quasiquote_helper(cdr, env);
+    return Object::make_pair(processed_car, processed_cdr);
+}
+
+// Генсимы
+Object Interpreter::eval_gensym(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    std::string name = "gensym" + std::to_string(gensym_id++);
+    return Object::make_symbol(name);
+}
+
+// Строгое равенство
+Object Interpreter::eval_eq(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "eq? requires two arguments");
+    }
+    return Object::make_boolean(args.unnamed[0] == args.unnamed[1]);
+}
+
+// Eval
+Object Interpreter::eval_eval(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "eval requires one argument");
+    }
+    return eval_with_rewind(args.unnamed[0], env);
+}
+
+// Мутабельные операции
+Object Interpreter::eval_set_car(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "set-car! requires two arguments");
+    }
+    if (!args.unnamed[0].is_pair()) {
+        throw_eval_error(form, "set-car! requires a pair as first argument");
+    }
+    args.unnamed[0].as_pair()->car = args.unnamed[1];
+    return args.unnamed[0];
+}
+
+Object Interpreter::eval_set_cdr(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "set-cdr! requires two arguments");
+    }
+    if (!args.unnamed[0].is_pair()) {
+        throw_eval_error(form, "set-cdr! requires a pair as first argument");
+    }
+    args.unnamed[0].as_pair()->cdr = args.unnamed[1];
+    return args.unnamed[0];
+}
+
+// Выход
+Object Interpreter::eval_exit(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form; (void)args; (void)env;
+    want_exit = true;
+    return Object::make_empty_list();
+}
+
+// Чтение
+Object Interpreter::eval_read(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "read requires one string argument");
+    }
+    try {
+        return reader.read_from_string(args.unnamed[0].as_string(), "read input");
+    }
+    catch (std::runtime_error& e) {
+        throw_eval_error(form, std::string("read error: ") + e.what());
+    }
+}
+
+// Загрузка файлов
+Object Interpreter::eval_load_file(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "load-file requires one string argument");
+    }
+    try {
+        Object code = reader.read_from_file(args.unnamed[0].as_string());
+        return eval_with_rewind(code, env);
+    }
+    catch (std::runtime_error& e) {
+        throw_eval_error(form, std::string("load-file error: ") + e.what());
+    }
+}
+
+// Улучшенная обработка аргументов
+ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
+    ArgumentSpec spec;
+
+    Object current = rest;
+    while (!current.is_empty_list()) {
+        Object arg = current.as_pair()->car;
+        if (!arg.is_symbol()) {
+            throw_eval_error(form, "args must be symbols");
+        }
+
+        std::string arg_name = arg.as_symbol();
+
+        if (arg_name == "&rest") {
+            current = current.as_pair()->cdr;
+            if (!current.is_pair()) {
+                throw_eval_error(form, "rest arg must have a name");
+            }
+            Object rest_name = current.as_pair()->car;
+            if (!rest_name.is_symbol()) {
+                throw_eval_error(form, "rest name must be a symbol");
+            }
+            spec.rest = rest_name.as_symbol();
+            break;
+        }
+        else {
+            spec.unnamed.push_back(arg_name);
+        }
+
+        current = current.as_pair()->cdr;
+    }
+    return spec;
+}
+
+void Interpreter::set_args_in_env(const Object& form, const Arguments& args,
+    const ArgumentSpec& arg_spec,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    // Простая реализация - только unnamed аргументы
+    if (args.unnamed.size() < arg_spec.unnamed.size()) {
+        throw_eval_error(form, "not enough arguments");
+    }
+
+    for (size_t i = 0; i < arg_spec.unnamed.size(); ++i) {
+        env->set(arg_spec.unnamed[i], args.unnamed[i]);
+    }
+
+    // Обработка rest аргументов
+    if (!arg_spec.rest.empty()) {
+        Object rest_list = Object::make_empty_list();
+        for (size_t i = arg_spec.unnamed.size(); i < args.unnamed.size(); ++i) {
+            rest_list = Object::make_pair(args.unnamed[i], rest_list);
+        }
+        env->set(arg_spec.rest, rest_list);
+    }
+}
+
+// string-length - длина строки
+Object Interpreter::eval_string_length(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "string-length requires one string argument");
+    }
+    return Object::make_integer(args.unnamed[0].as_string().length());
+}
+
+// string-ref - доступ к символу по индексу
+Object Interpreter::eval_string_ref(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2 || !args.unnamed[0].is_string() || !args.unnamed[1].is_integer()) {
+        throw_eval_error(form, "string-ref requires string and integer arguments");
+    }
+
+    const std::string& str = args.unnamed[0].as_string();
+    int64_t index = args.unnamed[1].as_integer();
+
+    if (index < 0 || index >= static_cast<int64_t>(str.length())) {
+        throw_eval_error(form, "string-ref: index out of range");
+    }
+
+    return Object::make_char(str[index]);
+}
+
+// string-append - конкатенация строк
+Object Interpreter::eval_string_append(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    std::string result;
+
+    for (const auto& arg : args.unnamed) {
+        if (!arg.is_string()) {
+            throw_eval_error(form, "string-append requires string arguments");
+        }
+        result += arg.as_string();
+    }
+
+    return Object::make_string(result);
+}
+
+// substring - подстрока
+Object Interpreter::eval_substring(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 3 || !args.unnamed[0].is_string() ||
+        !args.unnamed[1].is_integer() || !args.unnamed[2].is_integer()) {
+        throw_eval_error(form, "substring requires string, start, and end arguments");
+    }
+
+    const std::string& str = args.unnamed[0].as_string();
+    int64_t start = args.unnamed[1].as_integer();
+    int64_t end = args.unnamed[2].as_integer();
+
+    if (start < 0 || end > static_cast<int64_t>(str.length()) || start > end) {
+        throw_eval_error(form, "substring: invalid start or end index");
+    }
+
+    return Object::make_string(str.substr(start, end - start));
+}
+
+// string->symbol - строка в символ
+Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "string->symbol requires one string argument");
+    }
+    return Object::make_symbol(args.unnamed[0].as_string());
+}
+
+// symbol->string - символ в строку
+Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_symbol()) {
+        throw_eval_error(form, "symbol->string requires one symbol argument");
+    }
+    return Object::make_string(args.unnamed[0].as_symbol());
+}
+
+
+// Реализации:
+Object Interpreter::eval_vector(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    return Object::make_vector(args.unnamed);
+}
+
+Object Interpreter::eval_vector_ref(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2 || !args.unnamed[0].is_vector() || !args.unnamed[1].is_integer()) {
+        throw_eval_error(form, "vector-ref requires vector and integer arguments");
+    }
+
+    auto elements = args.unnamed[0].as_vector();
+    int64_t index = args.unnamed[1].as_integer();
+
+    if (index < 0 || index >= static_cast<int64_t>(elements.size())) {
+        throw_eval_error(form, "vector-ref: index out of range");
+    }
+
+    return elements[index];
+}
+
+Object Interpreter::eval_vector_set(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 3 || !args.unnamed[0].is_vector() ||
+        !args.unnamed[1].is_integer()) {
+        throw_eval_error(form, "vector-set! requires vector, index, and value arguments");
+    }
+
+    // Для мутабельности нужно изменить исходный вектор
+    auto vec_ptr = dynamic_cast<VectorObject*>(args.unnamed[0].heap_obj.get());
+    if (!vec_ptr) {
+        throw_eval_error(form, "vector-set!: not a vector");
+    }
+
+    int64_t index = args.unnamed[1].as_integer();
+    if (index < 0 || index >= static_cast<int64_t>(vec_ptr->elements.size())) {
+        throw_eval_error(form, "vector-set!: index out of range");
+    }
+
+    vec_ptr->elements[index] = args.unnamed[2];
+    return args.unnamed[2]; // возвращаем установленное значение
+}
+
+Object Interpreter::eval_vector_length(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_vector()) {
+        throw_eval_error(form, "vector-length requires one vector argument");
+    }
+    return Object::make_integer(args.unnamed[0].as_vector().size());
+}
+
+Object Interpreter::eval_vector_p(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "vector? requires one argument");
+    }
+    return Object::make_boolean(args.unnamed[0].is_vector());
+}
+
+// Реализации:
+Object Interpreter::eval_make_hash_table(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    (void)form;
+    return Object::make_hash_table();
+}
+
+Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 3 || !args.unnamed[0].is_hash_table()) {
+        throw_eval_error(form, "hash-table-set! requires hash-table, key, and value arguments");
+    }
+
+    auto ht = args.unnamed[0].as_hash_table();
+    std::string key;
+
+    // Поддержка строк и символов как ключей
+    if (args.unnamed[1].is_string()) {
+        key = args.unnamed[1].as_string();
+    }
+    else if (args.unnamed[1].is_symbol()) {
+        key = args.unnamed[1].as_symbol();
+    }
+    else {
+        throw_eval_error(form, "hash-table key must be string or symbol");
+    }
+
+    ht->data[key] = args.unnamed[2];
+    return args.unnamed[2];
+}
+
+Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2 || !args.unnamed[0].is_hash_table()) {
+        throw_eval_error(form, "hash-table-ref requires hash-table and key arguments");
+    }
+
+    auto ht = args.unnamed[0].as_hash_table();
+    std::string key;
+
+    if (args.unnamed[1].is_string()) {
+        key = args.unnamed[1].as_string();
+    }
+    else if (args.unnamed[1].is_symbol()) {
+        key = args.unnamed[1].as_symbol();
+    }
+    else {
+        throw_eval_error(form, "hash-table key must be string or symbol");
+    }
+
+    auto it = ht->data.find(key);
+    if (it == ht->data.end()) {
+        throw_eval_error(form, "hash-table-ref: key not found: " + key);
+    }
+
+    return it->second;
+}
+
+Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "hash-table? requires one argument");
+    }
+    return Object::make_boolean(args.unnamed[0].is_hash_table());
+}
+
+// Открытие файла
+Object Interpreter::eval_open_input_file(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "open-input-file requires one string argument");
+    }
+
+    std::string filename = args.unnamed[0].as_string();
+    try {
+        return Object::make_file_port(filename);
+    }
+    catch (const std::exception& e) {
+        throw_eval_error(form, "cannot open file: " + filename);
+    }
+}
+
+// Чтение строки
+Object Interpreter::eval_read_line(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_file_port()) {
+        throw_eval_error(form, "read-line requires one file-port argument");
+    }
+
+    auto port = args.unnamed[0].as_file_port();
+    if (!port->file.is_open()) {
+        throw_eval_error(form, "read-line: port is closed");
+    }
+
+    std::string line;
+    if (std::getline(port->file, line)) {
+        return Object::make_string(line);
+    }
+    else {
+        // Достигнут конец файла - возвращаем специальный объект
+        return Object::make_eof(); // нужно создать этот метод
+    }
+}
+
+// Закрытие порта
+Object Interpreter::eval_close_input_port(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_file_port()) {
+        throw_eval_error(form, "close-input-port requires one file-port argument");
+    }
+
+    auto port = args.unnamed[0].as_file_port();
+    if (port->file.is_open()) {
+        port->file.close();
+    }
+    return Object::make_empty_list();
+}
+
+// Проверка существования файла
+Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "file-exists? requires one string argument");
+    }
+
+    std::string filename = args.unnamed[0].as_string();
+    std::ifstream file(filename);
+    bool exists = file.good();
+    file.close();
+
+    return Object::make_boolean(exists);
+}
+// Проверка EOF объекта
+Object Interpreter::eval_eof_object_p(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "eof-object? requires one argument");
+    }
+
+    // Нужно создать специальный EOF объект в Object
+    return Object::make_boolean(args.unnamed[0].is_eof());
+}
+
+// Получение переменной окружения
+Object Interpreter::eval_get_environment_variable(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "get-environment-variable requires one string argument");
+    }
+
+    std::string var_name = args.unnamed[0].as_string();
+    const char* value = std::getenv(var_name.c_str());
+
+    if (value) {
+        return Object::make_string(value);
+    }
+    else {
+        return Object::make_boolean(false); // или пустой список
+    }
+}
+
+// Выполнение системной команды
+Object Interpreter::eval_system(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "system requires one string argument");
+    }
+
+    std::string command = args.unnamed[0].as_string();
+    int result = std::system(command.c_str());
+
+    return Object::make_integer(result);
+}
+
+// number->string
+Object Interpreter::eval_number_to_string(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() < 1 || args.unnamed.size() > 2) {
+        throw_eval_error(form, "number->string requires 1 or 2 arguments");
+    }
+
+    if (args.unnamed[0].is_integer()) {
+        int64_t num = args.unnamed[0].as_integer();
+        if (args.unnamed.size() == 2 && args.unnamed[1].is_integer()) {
+            int64_t base = args.unnamed[1].as_integer();
+            if (base == 16) {
+                // Шестнадцатеричный вывод
+                char buffer[32];
+                snprintf(buffer, sizeof(buffer), "%llx", (long long)num);
+                return Object::make_string(buffer);
+            }
+        }
+        return Object::make_string(std::to_string(num));
+    }
+    else if (args.unnamed[0].is_float()) {
+        double num = args.unnamed[0].as_float();
+        return Object::make_string(std::to_string(num));
+    }
+    else {
+        throw_eval_error(form, "number->string requires a number argument");
+    }
+}
+
+// string->number
+Object Interpreter::eval_string_to_number(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() < 1 || args.unnamed.size() > 2 || !args.unnamed[0].is_string()) {
+        throw_eval_error(form, "string->number requires string and optional base arguments");
+    }
+
+    std::string str = args.unnamed[0].as_string();
+    int base = 10;
+
+    if (args.unnamed.size() == 2 && args.unnamed[1].is_integer()) {
+        base = args.unnamed[1].as_integer();
+    }
+
+    try {
+        if (str.find('.') != std::string::npos || str.find('e') != std::string::npos) {
+            // Попытка парсинга как float
+            double value = std::stod(str);
+            return Object::make_float(value);
+        }
+        else {
+            // Попытка парсинга как integer
+            if (base == 16 && str.substr(0, 2) == "0x") {
+                str = str.substr(2);
+            }
+            int64_t value = std::stoll(str, nullptr, base);
+            return Object::make_integer(value);
+        }
+    }
+    catch (const std::exception&) {
+        return Object::make_boolean(false); // не удалось преобразовать
+    }
+}
+
+// char->integer
+Object Interpreter::eval_char_to_integer(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_char()) {
+        throw_eval_error(form, "char->integer requires one char argument");
+    }
+    return Object::make_integer(static_cast<int64_t>(args.unnamed[0].as_char()));
+}
+
+// integer->char
+Object Interpreter::eval_integer_to_char(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1 || !args.unnamed[0].is_integer()) {
+        throw_eval_error(form, "integer->char requires one integer argument");
+    }
+
+    int64_t code = args.unnamed[0].as_integer();
+    if (code < 0 || code > 255) {
+        throw_eval_error(form, "integer->char: code out of range 0-255");
+    }
+
+    return Object::make_char(static_cast<char>(code));
+}
+
+// char?
+Object Interpreter::eval_char_p(const Object & form, Arguments & args,
+    const std::shared_ptr<EnvironmentObject>&env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "char? requires one argument");
+    }
+    return Object::make_boolean(args.unnamed[0].is_char());
+}
+
+// procedure?
+Object Interpreter::eval_procedure_p(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "procedure? requires one argument");
+    }
+    bool is_proc = args.unnamed[0].is_lambda() ||
+        args.unnamed[0].is_macro() ||
+        (args.unnamed[0].is_symbol() && builtin_forms.find(args.unnamed[0].as_symbol()) != builtin_forms.end());
+    return Object::make_boolean(is_proc);
+}
+
+// eqv? - строгое равенство (как eq? но для примитивов)
+Object Interpreter::eval_eqv(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "eqv? requires two arguments");
+    }
+    return Object::make_boolean(args.unnamed[0] == args.unnamed[1]);
+}
+
+// abs - модуль
+Object Interpreter::eval_abs(const Object & form, Arguments & args,
+    const std::shared_ptr<EnvironmentObject>&env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "abs requires one argument");
+    }
+
+    if (args.unnamed[0].is_integer()) {
+        int64_t val = args.unnamed[0].as_integer();
+        return Object::make_integer(val < 0 ? -val : val);
+    }
+    else if (args.unnamed[0].is_float()) {
+        double val = args.unnamed[0].as_float();
+        return Object::make_float(val < 0 ? -val : val);
+    }
+    else {
+        throw_eval_error(form, "abs requires a number argument");
+    }
+}
+
+// max - максимум
+Object Interpreter::eval_max(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "max requires at least one argument");
+    }
+
+    if (args.unnamed[0].is_integer()) {
+        int64_t max_val = args.unnamed[0].as_integer();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_integer()) {
+                throw_eval_error(form, "max: all arguments must be integers");
+            }
+            int64_t val = args.unnamed[i].as_integer();
+            if (val > max_val) max_val = val;
+        }
+        return Object::make_integer(max_val);
+    }
+    else if (args.unnamed[0].is_float()) {
+        double max_val = args.unnamed[0].as_float();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_float()) {
+                throw_eval_error(form, "max: all arguments must be floats");
+            }
+            double val = args.unnamed[i].as_float();
+            if (val > max_val) max_val = val;
+        }
+        return Object::make_float(max_val);
+    }
+    else {
+        throw_eval_error(form, "max requires number arguments");
+    }
+}
+
+// min - минимум
+Object Interpreter::eval_min(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "min requires at least one argument");
+    }
+
+    if (args.unnamed[0].is_integer()) {
+        int64_t min_val = args.unnamed[0].as_integer();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_integer()) {
+                throw_eval_error(form, "min: all arguments must be integers");
+            }
+            int64_t val = args.unnamed[i].as_integer();
+            if (val < min_val) min_val = val;
+        }
+        return Object::make_integer(min_val);
+    }
+    else if (args.unnamed[0].is_float()) {
+        double min_val = args.unnamed[0].as_float();
+        for (size_t i = 1; i < args.unnamed.size(); ++i) {
+            if (!args.unnamed[i].is_float()) {
+                throw_eval_error(form, "min: all arguments must be floats");
+            }
+            double val = args.unnamed[i].as_float();
+            if (val < min_val) min_val = val;
+        }
+        return Object::make_float(min_val);
+    }
+    else {
+        throw_eval_error(form, "min requires number arguments");
+    }
+}
+
+// expt - возведение в степень
+Object Interpreter::eval_expt(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "expt requires two arguments");
+    }
+
+    // Простая реализация для целых чисел
+    if (args.unnamed[0].is_integer() && args.unnamed[1].is_integer()) {
+        int64_t base = args.unnamed[0].as_integer();
+        int64_t exponent = args.unnamed[1].as_integer();
+
+        if (exponent < 0) {
+            // Для отрицательных степеней возвращаем float
+            return Object::make_float(std::pow(static_cast<double>(base), exponent));
+        }
+
+        int64_t result = 1;
+        for (int64_t i = 0; i < exponent; ++i) {
+            result *= base;
+        }
+        return Object::make_integer(result);
+    }
+    else {
+        // Для смешанных типов используем float
+        double base = number_to_float(args.unnamed[0]);
+        double exponent = number_to_float(args.unnamed[1]);
+        return Object::make_float(std::pow(base, exponent));
+    }
+}
+
+// sqrt - квадратный корень
+Object Interpreter::eval_sqrt(const Object& form, Arguments& args,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.size() != 1) {
+        throw_eval_error(form, "sqrt requires one argument");
+    }
+
+    double val = number_to_float(args.unnamed[0]);
+    if (val < 0) {
+        throw_eval_error(form, "sqrt: negative argument");
+    }
+
+    return Object::make_float(std::sqrt(val));
+}
+
+
+// current-directory - текущая директория
+Object Interpreter::eval_current_directory(const Object & form, Arguments & args,
+    const std::shared_ptr<EnvironmentObject>&env) {
+    (void)env;
+    (void)form;
+    if (!args.unnamed.empty()) {
+        throw_eval_error(form, "current-directory takes no arguments");
+    }
+
+    try {
+        std::string cwd = std::filesystem::current_path().string();
+        return Object::make_string(cwd);
+    }
+    catch (const std::exception& e) {
+        throw_eval_error(form, "cannot get current directory");
+    }
+}
+
+// Добавим в private секцию Interpreter
+double Interpreter::number_to_float(const Object & obj) {
+    if (obj.is_float()) {
+        return obj.as_float();
+    }
+    else if (obj.is_integer()) {
+        return static_cast<double>(obj.as_integer());
+    }
+    else {
+        throw_eval_error(obj, "object cannot be converted to float");
+    }
+}
+
+int64_t Interpreter::number_to_integer(const Object& obj) {
+    if (obj.is_integer()) {
+        return obj.as_integer();
+    }
+    else if (obj.is_float()) {
+        return static_cast<int64_t>(obj.as_float());
+    }
+    else {
+        throw_eval_error(obj, "object cannot be converted to integer");
+    }
+}
+
+

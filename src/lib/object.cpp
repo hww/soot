@@ -1,4 +1,5 @@
 #include "object.h"
+#include "crc32.h"
 #include <sstream>
 #include <iostream>
 
@@ -88,6 +89,27 @@ Object Object::make_array(const std::vector<Object>& elements) {
     obj.heap_obj = std::make_shared<ArrayObject>(elements);
     return obj;
 }
+
+Object Object::make_vector(const std::vector<Object>& elements) {
+    Object obj;
+    obj.type = ObjectType::ARRAY; // или создаем новый ObjectType::VECTOR
+    obj.heap_obj = std::make_shared<VectorObject>(elements);
+    return obj;
+}
+
+Object Object::make_hash_table() {
+    Object obj;
+    obj.type = ObjectType::STRING_HASH_TABLE; // или создаем новый тип
+    obj.heap_obj = std::make_shared<HashTableObject>();
+    return obj;
+}
+Object Object::make_file_port(const std::string& filename) {
+    Object obj;
+    obj.type = ObjectType::FILE_PORT; // нужно добавить этот тип в enum
+    obj.heap_obj = std::make_shared<FilePortObject>(filename);
+    return obj;
+}
+
 
 // String representations
 std::string Object::print() const {
@@ -184,6 +206,25 @@ std::string Object::as_string() const {
     return str ? str->text : "";
 }
 
+std::vector<Object> Object::as_vector() const {
+    if (type != ObjectType::ARRAY) {
+        throw_type_error("vector");
+    }
+    auto vec = dynamic_cast<VectorObject*>(heap_obj.get());
+    return vec ? vec->elements : std::vector<Object>();
+}
+
+HashTableObject* Object::as_hash_table() const {
+    if (!is_hash_table()) {
+        throw_type_error("hash-table");
+    }
+    return dynamic_cast<HashTableObject*>(heap_obj.get());
+}
+
+FilePortObject* Object::as_file_port() const {
+    if (!is_file_port()) throw_type_error("file-port");
+    return dynamic_cast<FilePortObject*>(heap_obj.get());
+}
 // Pair accessors
 Object Object::car() const {
     if (type != ObjectType::PAIR) {
@@ -265,21 +306,112 @@ std::string PairObject::inspect() const {
     return ss.str();
 }
 
-// SymbolTable implementation
-Object SymbolTable::intern(const std::string& name) {
-    auto it = table.find(name);
-    if (it != table.end()) {
-        Object obj;
-        obj.type = ObjectType::SYMBOL;
-        obj.heap_obj = it->second;
-        return obj;
+
+// SymbolTable implementation с CRC32
+SymbolTable::SymbolTable() {
+    m_power_of_two_size = 1;
+    m_entries.resize(2);
+    m_used_entries = 0;
+    m_next_resize = m_entries.size() * kMaxUsed;
+    m_mask = 0b1;
+}
+
+SymbolTable::~SymbolTable() {
+    for (auto& e : m_entries) {
+        delete[] e.name;
     }
-    
-    auto symbol = std::make_shared<SymbolObject>(name);
-    table[name] = symbol;
-    
-    Object obj;
-    obj.type = ObjectType::SYMBOL;
-    obj.heap_obj = symbol;
-    return obj;
+}
+
+uint32_t SymbolTable::compute_hash(const char* data, size_t length) const {
+    return compute_crc32(data, length);
+}
+
+Object SymbolTable::intern(const std::string& name) {
+    const char* str = name.c_str();
+    size_t string_len = name.length();
+    uint32_t hash = compute_hash(str, string_len);
+
+    // Linear probing
+    for (uint32_t i = 0; i < m_entries.size(); i++) {
+        uint32_t slot_addr = (hash + i) & m_mask;
+        auto& slot = m_entries[slot_addr];
+
+        if (!slot.name) {
+            // Insert new symbol
+            slot.hash = hash;
+            char* name_copy = new char[string_len + 1];
+            memcpy(name_copy, str, string_len + 1);
+            slot.name = name_copy;
+            m_used_entries++;
+
+            if (m_used_entries >= m_next_resize) {
+                resize();
+                return intern(name);
+            }
+
+            return Object::make_symbol(name_copy);
+        }
+        else {
+            if (slot.hash != hash) continue;
+            if (strcmp(slot.name, str) != 0) continue;
+
+            // Symbol already exists
+            return Object::make_symbol(slot.name);
+        }
+    }
+
+    throw std::runtime_error("SymbolTable: impossible state reached");
+}
+
+void SymbolTable::resize() {
+    m_power_of_two_size++;
+    m_mask = (1U << m_power_of_two_size) - 1;
+
+    std::vector<Entry> new_entries(m_entries.size() * 2);
+
+    for (const auto& old_entry : m_entries) {
+        if (old_entry.name) {
+            bool inserted = false;
+            for (uint32_t i = 0; i < new_entries.size(); i++) {
+                uint32_t slot_addr = (old_entry.hash + i) & m_mask;
+                auto& slot = new_entries[slot_addr];
+                if (!slot.name) {
+                    slot.name = old_entry.name;
+                    slot.hash = old_entry.hash;
+                    inserted = true;
+                    break;
+                }
+            }
+            if (!inserted) {
+                throw std::runtime_error("SymbolTable: resize failed");
+            }
+        }
+    }
+
+    m_entries = std::move(new_entries);
+    m_next_resize = kMaxUsed * m_entries.size();
+}
+
+// Вспомогательные функции
+ArgumentSpec make_varargs() {
+    ArgumentSpec spec;
+    spec.varargs = true;
+    return spec;
+}
+
+std::string ArgumentSpec::print() const {
+    std::stringstream ss;
+    ss << "ArgumentSpec: unnamed=" << unnamed.size()
+        << " named=" << named.size()
+        << " rest=" << (rest.empty() ? "none" : rest)
+        << " varargs=" << (varargs ? "true" : "false");
+    return ss.str();
+}
+
+std::string Arguments::print() const {
+    std::stringstream ss;
+    ss << "Arguments: unnamed=" << unnamed.size()
+        << " named=" << named.size()
+        << " rest=" << rest.size();
+    return ss.str();
 }

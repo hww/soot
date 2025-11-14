@@ -503,3 +503,12 @@ void Reader::link_object(const Object& obj, const Token& token) {
     // Если есть незакрытые скобки или строки - ввод не завершен
     return paren_balance <= 0 && !in_string && !escape_next;
 }
+
+Object Object::make_macro(const std::vector<std::string>& params,
+    const Object& body,
+    std::shared_ptr<EnvironmentObject> env) {
+    Object obj;
+    obj.type = ObjectType::MACRO;
+    obj.heap_obj = std::make_shared<MacroObject>(params, body, env);
+    return obj;
+}
