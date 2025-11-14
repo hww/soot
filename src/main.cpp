@@ -2,11 +2,12 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include "reader.h"
-#include "object.h"
-#include "interpreter.h"
-#include "source-info.h"
-#include "command-line.h"  // Используем то, что уже есть
+#include <iostream>
+#include "lib/reader.h"
+#include "lib/object.h"
+#include "lib/interpreter.h"
+#include "lib/source-info.h"
+#include "lib/command-line.h"  // Используем то, что уже есть
 
 std::string read_file(const std::string& filename) {
     std::ifstream file(filename);
@@ -17,10 +18,6 @@ std::string read_file(const std::string& filename) {
     buffer << file.rdbuf();
     return buffer.str();
 }
-
-#include <iostream>
-#include "reader.h"
-#include "interpreter.h"
 
 int main(int argc, char* argv[]) {
     try {

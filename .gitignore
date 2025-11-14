@@ -1,0 +1,7 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/z80-lisp/FileContentIndex
+/.vs
+/out/build/x64-Debug
