@@ -35,6 +35,9 @@ public:
     
     // REPL
     void execute_repl();
+
+    // Доступ к ридеру
+    Reader& get_reader() { return reader; }
 private:
     // Специальные формы
     Object eval_quote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
@@ -75,6 +78,7 @@ private:
     Object eval_symbol_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+    Object eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_list_func(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_append(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -102,10 +106,7 @@ private:
     Object eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_hash_table_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
    
-    Object eval_open_input_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-    Object eval_read_line(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-    Object eval_close_input_port(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-    Object eval_eof_object_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+    Object eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
@@ -139,10 +140,16 @@ private:
         const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_get_environment_variable(const Object& form, Arguments& args,
         const std::shared_ptr<EnvironmentObject>& env);
+
+    std::string read_entire_file(const std::string& filename);
+
+    // Помошгик для чисел
+    bool is_number(const Object& obj);
+
     // Конвертация чисел
     int64_t number_to_integer(const Object& obj);
     double number_to_float(const Object& obj);
-    template<typename T> T number(const Object& obj);
+
 
 private:
     // Основной метод оценки пар
@@ -158,9 +165,6 @@ private:
     // Custom forms поддержка
     std::vector<std::pair<void*, std::function<Object(const Object&, Arguments&,
         const std::shared_ptr<EnvironmentObject>&)>>> m_custom_forms;
-
-    // Глобальные переменные
-    std::unordered_map<SymbolObject*, Object> global_vars;
     
     // Состояние
     Reader reader;

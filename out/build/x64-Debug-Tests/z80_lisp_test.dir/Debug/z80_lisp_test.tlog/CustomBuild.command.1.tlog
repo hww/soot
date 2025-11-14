@@ -1,0 +1,10 @@
+^C:\PROJECTS\H2W\Z80-LISP\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SC:/projects/h2w/z80-lisp -BC:/projects/h2w/z80-lisp/out/build/x64-Debug-Tests --check-stamp-file C:/projects/h2w/z80-lisp/out/build/x64-Debug-Tests/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

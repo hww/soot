@@ -1,0 +1,57 @@
+{
+	"backtrace" : 0,
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			}
+		]
+	},
+	"dependencies" : 
+	[
+		{
+			"id" : "z80_lisp_lib::@6890427a1f51a3e7e1df"
+		},
+		{
+			"id" : "z80_lisp_test::@6890427a1f51a3e7e1df"
+		},
+		{
+			"id" : "z80-lisp::@145eef247bfb46b6828c"
+		},
+		{
+			"id" : "gmock::@1fd7ba4b7f21464e3d50"
+		},
+		{
+			"id" : "gtest::@90013eb1b481ea580f52"
+		},
+		{
+			"id" : "ZERO_CHECK::@6890427a1f51a3e7e1df"
+		},
+		{
+			"id" : "gtest_main::@90013eb1b481ea580f52"
+		},
+		{
+			"id" : "z80-lisp-lib::@145eef247bfb46b6828c"
+		},
+		{
+			"id" : "gmock_main::@1fd7ba4b7f21464e3d50"
+		}
+	],
+	"id" : "ALL_BUILD::@6890427a1f51a3e7e1df",
+	"isGeneratorProvided" : true,
+	"name" : "ALL_BUILD",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

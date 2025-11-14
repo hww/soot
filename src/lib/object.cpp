@@ -1,4 +1,4 @@
-#include "object.h"
+п»ї#include "object.h"
 #include "crc32.h"
 #include <sstream>
 #include <iostream>
@@ -92,24 +92,37 @@ Object Object::make_array(const std::vector<Object>& elements) {
 
 Object Object::make_vector(const std::vector<Object>& elements) {
     Object obj;
-    obj.type = ObjectType::ARRAY; // или создаем новый ObjectType::VECTOR
+    obj.type = ObjectType::ARRAY; // РёР»Рё СЃРѕР·РґР°РµРј РЅРѕРІС‹Р№ ObjectType::VECTOR
     obj.heap_obj = std::make_shared<VectorObject>(elements);
     return obj;
 }
 
 Object Object::make_hash_table() {
     Object obj;
-    obj.type = ObjectType::STRING_HASH_TABLE; // или создаем новый тип
+    obj.type = ObjectType::STRING_HASH_TABLE; // РёР»Рё СЃРѕР·РґР°РµРј РЅРѕРІС‹Р№ С‚РёРї
     obj.heap_obj = std::make_shared<HashTableObject>();
     return obj;
 }
-Object Object::make_file_port(const std::string& filename) {
-    Object obj;
-    obj.type = ObjectType::FILE_PORT; // нужно добавить этот тип в enum
-    obj.heap_obj = std::make_shared<FilePortObject>(filename);
+static Object make_macro(const ArgumentSpec& args,
+    const Object& body,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    Object obj = MacroObject::make_new();
+    auto macro = obj.as_macro();
+    macro->args = args;
+    macro->body = body;
+    macro->parent_env = env;
     return obj;
 }
-
+static Object make_lambda(const ArgumentSpec& args,
+    const Object& body,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    Object obj = LambdaObject::make_new();
+    auto lambda = obj.as_lambda();
+    lambda->args = args;
+    lambda->body = body;
+    lambda->parent_env = env;
+    return obj;
+}
 
 // String representations
 std::string Object::print() const {
@@ -125,7 +138,9 @@ std::string Object::print() const {
         case ObjectType::BOOLEAN:
             return boolean_value ? "#t" : "#f";
         case ObjectType::LAMBDA:
-            return heap_obj ? heap_obj->inspect() : "[lambda]";            
+            return heap_obj ? heap_obj->inspect() : "[lambda]";      
+        case ObjectType::MACRO:  
+            return heap_obj ? heap_obj->print() : "#<macro>";
         case ObjectType::SYMBOL:
         case ObjectType::STRING:
         case ObjectType::PAIR:
@@ -135,7 +150,7 @@ std::string Object::print() const {
         default:
             return "[unknown]";
     }
-}
+} 
 
 std::string Object::inspect() const {
     switch (type) {
@@ -150,6 +165,9 @@ std::string Object::inspect() const {
         case ObjectType::BOOLEAN:
             return boolean_value ? "[boolean] #t" : "[boolean] #f";
         case ObjectType::LAMBDA:
+            return heap_obj ? heap_obj->inspect() : "[lambda]";
+        case ObjectType::MACRO: 
+            return heap_obj ? heap_obj->inspect() : "[macro]";
         case ObjectType::SYMBOL:
         case ObjectType::STRING:
         case ObjectType::PAIR:
@@ -220,11 +238,20 @@ HashTableObject* Object::as_hash_table() const {
     }
     return dynamic_cast<HashTableObject*>(heap_obj.get());
 }
-
-FilePortObject* Object::as_file_port() const {
-    if (!is_file_port()) throw_type_error("file-port");
-    return dynamic_cast<FilePortObject*>(heap_obj.get());
+MacroObject* Object::as_macro() const {
+    if (type != ObjectType::MACRO) {
+        throw_type_error("macro");
+    }
+    return static_cast<MacroObject*>(heap_obj.get());
 }
+
+LambdaObject* Object::as_lambda() const {
+    if (type != ObjectType::LAMBDA) {
+        throw_type_error("lambda");  // в†ђ РРЎРџР РђР’Р¬ "macro" РЅР° "lambda"
+    }
+    return static_cast<LambdaObject*>(heap_obj.get());
+}
+
 // Pair accessors
 Object Object::car() const {
     if (type != ObjectType::PAIR) {
@@ -307,7 +334,7 @@ std::string PairObject::inspect() const {
 }
 
 
-// SymbolTable implementation с CRC32
+// SymbolTable implementation СЃ CRC32
 SymbolTable::SymbolTable() {
     m_power_of_two_size = 1;
     m_entries.resize(2);
@@ -392,7 +419,7 @@ void SymbolTable::resize() {
     m_next_resize = kMaxUsed * m_entries.size();
 }
 
-// Вспомогательные функции
+// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ С„СѓРЅРєС†РёРё
 ArgumentSpec make_varargs() {
     ArgumentSpec spec;
     spec.varargs = true;
@@ -415,3 +442,4 @@ std::string Arguments::print() const {
         << " rest=" << rest.size();
     return ss.str();
 }
+

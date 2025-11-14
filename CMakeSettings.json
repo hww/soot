@@ -10,6 +10,24 @@
             "cmakeCommandArgs": "",
             "buildCommandArgs": "",
             "ctestCommandArgs": ""
+        },
+        {
+            "name": "x64-Debug-Tests",
+            "generator": "Visual Studio 17 2022",
+            "configurationType": "Debug",
+            "buildRoot": "${projectDir}\\out\\build\\${name}",
+            "installRoot": "${projectDir}\\out\\install\\${name}",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "variables": [
+                {
+                    "name": "BUILD_TESTS",
+                    "value": "ON",
+                    "type": "BOOL"
+                }
+            ]
         }
     ]
 }
+

@@ -17,7 +17,7 @@ using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
     EMPTY_LIST, INTEGER, FLOAT, CHAR, BOOLEAN,
-    SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE, FILE_PORT, EOF_OBJECT
+    SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE
 };
 
 std::string object_type_to_string(ObjectType type);
@@ -33,9 +33,11 @@ public:
 // Forward declarations
 class EnvironmentObject;
 class MacroObject;
+class LambdaObject;
 class PairObject;
 class HashTableObject;
 class FilePortObject;
+struct ArgumentSpec;
 
 // Main Object class
 class Object {
@@ -63,16 +65,11 @@ public:
     static Object make_string(const std::string& text);
     static Object make_pair(const Object& car, const Object& cdr);
     static Object make_array(const std::vector<Object>& elements);
-    static Object make_lambda(const std::vector<std::string>& params, const Object& body, std::shared_ptr<EnvironmentObject> closure_env);
-    static Object make_macro(const std::vector<std::string>& params, const Object& body, std::shared_ptr<EnvironmentObject> env);
+    static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
+    static Object make_macro(const ArgumentSpec& args,const Object& body,const std::shared_ptr<EnvironmentObject>& env);
     static Object make_vector(const std::vector<Object>& elements);
     static Object make_hash_table();
-    static Object make_file_port(const std::string& filename);
-    static Object make_eof() {
-        Object obj;
-        obj.type = ObjectType::EOF_OBJECT; // добавить в enum
-        return obj;
-    }
+
 
     // String representation
     std::string print() const;
@@ -93,8 +90,6 @@ public:
     bool is_macro() const { return type == ObjectType::MACRO; }
     bool is_vector() const { return type == ObjectType::ARRAY; } 
     bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
-    bool is_file_port() const { return type == ObjectType::FILE_PORT; }
-    bool is_eof() const { return type == ObjectType::EOF_OBJECT; }
 
     // Value access with type checking
     IntType as_integer() const;
@@ -105,7 +100,8 @@ public:
     std::string as_string() const;
     std::vector<Object> as_vector() const;
     HashTableObject* as_hash_table() const;
-    FilePortObject* as_file_port() const;
+    MacroObject* as_macro() const;
+    LambdaObject* as_lambda() const;
 
     // For pair access
     Object car() const;
@@ -166,108 +162,194 @@ public:
         return "[array] size=" + std::to_string(elements.size());
     }
 };
-class FilePortObject : public HeapObject {
-public:
-    std::ifstream file;
-    std::string filename;
-
-    FilePortObject(const std::string& fname) : filename(fname) {
-        file.open(fname);
-    }
-
-    ~FilePortObject() {
-        if (file.is_open()) {
-            file.close();
-        }
-    }
-
-    std::string print() const override {
-        return "#<input-port:" + filename + ">";
-    }
-
-    std::string inspect() const override {
-        return "[input-port:" + filename + "]";
-    }
-};
-
 // Add EnvironmentObject definition to fix the incomplete type error
 class EnvironmentObject : public HeapObject {
 public:
-    std::shared_ptr<EnvironmentObject> parent;
-    std::unordered_map<std::string, Object> bindings;
-    
+    std::shared_ptr<EnvironmentObject> parent_env;
+    std::unordered_map<std::string, Object> vars;  // Храним по СТРОКАМ, а не указателям
+
     EnvironmentObject() = default;
-    explicit EnvironmentObject(std::shared_ptr<EnvironmentObject> parent) : parent(std::move(parent)) {}
-    
+    explicit EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
+        : parent_env(std::move(parent)) {
+    }
+
     std::string print() const override { return "[environment]"; }
     std::string inspect() const override { return "[environment]"; }
-    
-    Object get(const std::string& name) const {
 
-        auto it = bindings.find(name);
-        if (it != bindings.end()) {
-            return it->second;
+    // Метод как в OpenGOAL - ищем переменную по имени
+    Object* find(const std::string& name) {
+        auto it = vars.find(name);
+        if (it != vars.end()) {
+            return &it->second;
         }
-
-        if (parent) {
-            return parent->get(name);
+        if (parent_env) {
+            return parent_env->find(name);
         }
-
-        throw std::runtime_error("Undefined symbol: " + name);
+        return nullptr;
     }
-    
-    bool set(const std::string& name, const Object& value) {
 
-        // Ищем в текущем окружении
-        auto it = bindings.find(name);
-        if (it != bindings.end()) {
-            it->second = value;
+    // Простой set - всегда устанавливает в текущее окружение
+    void set(const std::string& name, const Object& value) {
+        vars[name] = value;
+    }
+
+    // try_get для lookup без исключений
+    bool try_get(const std::string& name, Object* dest) const {
+        auto it = vars.find(name);
+        if (it != vars.end()) {
+            *dest = it->second;
             return true;
         }
-
-        // Добавляем в текущее окружение
-        bindings[name] = value;
-
-        return true; // Всегда успешно для let bindings
+        if (parent_env) {
+            return parent_env->try_get(name, dest);
+        }
+        return false;
     }
+
+    // get с исключением для обратной совместимости
+    Object get(const std::string& name) const {
+        Object result;
+        if (try_get(name, &result)) {
+            return result;
+        }
+        throw std::runtime_error("Undefined symbol: " + name);
+    }
+};
+// Аргументы функций
+struct Arguments {
+    std::vector<Object> unnamed;
+    std::map<std::string, Object> named;
+    std::vector<Object> rest;
+    bool has_rest = false;
+
+    Object get_named(const std::string& name, const Object& default_value) {
+        auto it = named.find(name);
+        return it != named.end() ? it->second : default_value;
+    }
+
+    Object get_named(const std::string& name) {
+        return named.at(name);
+    }
+
+    bool has_named(const std::string& name) {
+        return named.find(name) != named.end();
+    }
+
+    std::string Arguments::print() const;
+};
+
+struct NamedArg {
+    bool has_default = false;
+    Object default_value;
+};
+
+struct ArgumentSpec {
+    bool varargs = false;
+    std::vector<std::string> unnamed;
+    std::unordered_map<std::string, NamedArg> named;
+    std::string rest;
+
+    // Основные методы доступа
+    size_t size() const {
+        return unnamed.size() + named.size();
+    }
+
+    size_t unnamed_size() const {
+        return unnamed.size();
+    }
+
+    size_t named_size() const {
+        return named.size();
+    }
+
+    bool empty() const {
+        return unnamed.empty() && named.empty();
+    }
+
+    // Доступ по индексу (только для unnamed параметров)
+    const std::string& operator[](size_t index) const {
+        if (index >= unnamed.size()) {
+            throw std::out_of_range("ArgumentSpec index out of range");
+        }
+        return unnamed[index];
+    }
+
+    // Проверка наличия named параметра
+    bool has_named(const std::string& name) const {
+        return named.find(name) != named.end();
+    }
+
+    // Получение named параметра
+    const NamedArg& get_named(const std::string& name) const {
+        auto it = named.find(name);
+        if (it == named.end()) {
+            throw std::out_of_range("Named argument not found: " + name);
+        }
+        return it->second;
+    }
+
+    std::string print() const;
+    static ArgumentSpec make_varargs();
 };
 
 // Добавь полное определение LambdaObject в object.h
 class LambdaObject : public HeapObject {
 public:
-    std::vector<std::string> parameters;
+    std::string name;
+    std::shared_ptr<EnvironmentObject> parent_env;
     Object body;
-    std::shared_ptr<EnvironmentObject> closure_env;
-    
-    LambdaObject(std::vector<std::string> params, 
-                const Object& body, 
-                std::shared_ptr<EnvironmentObject> env)
-        : parameters(std::move(params)), body(body), closure_env(std::move(env)) {}
-    
-    std::string print() const override {
-        return "[lambda]";
+    ArgumentSpec args;  // ← Используй ArgumentSpec вместо std::vector<std::string>
+
+    LambdaObject() = default;
+
+    static Object make_new() {
+        Object obj;
+        obj.type = ObjectType::LAMBDA;
+        obj.heap_obj = std::make_shared<LambdaObject>();
+        return obj;
     }
-    
+
+    std::string print() const override {
+        if (name.empty()) {
+            return "<unnamed lambda>";
+        }
+        else {
+            return "<lambda \"" + name + "\">";
+        }
+    }
+
     std::string inspect() const override {
-        return "[lambda] params=" + std::to_string(parameters.size());
+        return "[lambda]\n  name: " + name + "\n" + args.print();
     }
 };
 
 class MacroObject : public HeapObject {
 public:
-    std::vector<std::string> parameters;
+    std::string name;
+    std::shared_ptr<EnvironmentObject> parent_env;
     Object body;
-    std::shared_ptr<EnvironmentObject> closure_env;
+    ArgumentSpec args;  // ← Используй ArgumentSpec вместо std::vector<std::string>
 
-    MacroObject(const std::vector<std::string>& params,
-        const Object& b,
-        std::shared_ptr<EnvironmentObject> env)
-        : parameters(params), body(b), closure_env(env) {
+    MacroObject() = default;
+
+    static Object make_new() {
+        Object obj;
+        obj.type = ObjectType::MACRO;
+        obj.heap_obj = std::make_shared<MacroObject>();
+        return obj;
     }
 
-    std::string print() const override { return "[macro]"; }
+    std::string print() const override {
+        if (name.empty()) {
+            return "<unnamed macro>";
+        }
+        else {
+            return "<macro \"" + name + "\">";
+        }
+    }
+
     std::string inspect() const override {
-        return "[macro params=" + std::to_string(parameters.size()) + "]";
+        return "[macro]\n  name: " + name + "\n" + args.print();
     }
 };
 
@@ -305,42 +387,6 @@ public:
     std::string inspect() const override {
         return "[hash-table size=" + std::to_string(data.size()) + "]";
     }
-};
-// Аргументы функций
-struct Arguments {
-    std::vector<Object> unnamed;
-    std::map<std::string, Object> named;
-    std::vector<Object> rest;
-    bool has_rest = false;
-    
-    Object get_named(const std::string& name, const Object& default_value) {
-        auto it = named.find(name);
-        return it != named.end() ? it->second : default_value;
-    }
-    
-    Object get_named(const std::string& name) {
-        return named.at(name);
-    }
-    
-    bool has_named(const std::string& name) {
-        return named.find(name) != named.end();
-    }
-
-    std::string Arguments::print() const;
-};
-
-struct NamedArg {
-    bool has_default = false;
-    Object default_value;
-};
-
-struct ArgumentSpec {
-    bool varargs = false;
-    std::vector<std::string> unnamed;
-    std::unordered_map<std::string, NamedArg> named;
-    std::string rest;
-    std::string ArgumentSpec::print() const;
-    ArgumentSpec make_varargs();
 };
 
 

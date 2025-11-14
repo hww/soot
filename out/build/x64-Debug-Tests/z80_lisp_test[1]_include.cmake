@@ -1,0 +1,5 @@
+if(EXISTS "C:/projects/h2w/z80-lisp/out/build/x64-Debug-Tests/z80_lisp_test[1]_tests.cmake")
+  include("C:/projects/h2w/z80-lisp/out/build/x64-Debug-Tests/z80_lisp_test[1]_tests.cmake")
+else()
+  add_test(z80_lisp_test_NOT_BUILT z80_lisp_test_NOT_BUILT)
+endif()

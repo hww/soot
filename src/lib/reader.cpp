@@ -88,9 +88,9 @@ Object Reader::read_impl(std::shared_ptr<SourceText> source) {
 
 Object Reader::read(TokenStream& tokens) {
     Token token = next_token(tokens);
-    
+
     //std::cout << "DEBUG read: token='" << token.text << "'" << std::endl;
-    
+
     if (token.text == "(") {
         return read_list(tokens);
     }
@@ -99,8 +99,32 @@ Object Reader::read(TokenStream& tokens) {
         Object quoted_expr = read(tokens);
         Object quote_symbol = m_symbols.intern("quote");
         link_object(quote_symbol, token);
-        
+
         return Object::make_pair(quote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
+    }
+    else if (token.text == "`") {  // ← ДОБАВЬ ЭТО
+        // Quasiquote: `expr -> (quasiquote expr)
+        Object quoted_expr = read(tokens);
+        Object quasiquote_symbol = m_symbols.intern("quasiquote");
+        link_object(quasiquote_symbol, token);
+
+        return Object::make_pair(quasiquote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
+    }
+    else if (token.text == ",") {  // ← ДОБАВЬ ЭТО
+        // Unquote: ,expr -> (unquote expr)
+        Object quoted_expr = read(tokens);
+        Object unquote_symbol = m_symbols.intern("unquote");
+        link_object(unquote_symbol, token);
+
+        return Object::make_pair(unquote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
+    }
+    else if (token.text == ",@") {  // ← ДОБАВЬ ЭТО
+        // Unquote-splicing: ,@expr -> (unquote-splicing expr)
+        Object quoted_expr = read(tokens);
+        Object unquote_splicing_symbol = m_symbols.intern("unquote-splicing");
+        link_object(unquote_splicing_symbol, token);
+
+        return Object::make_pair(unquote_splicing_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
     }
     else {
         return read_atom(token);
@@ -143,15 +167,6 @@ Object Reader::read_list(TokenStream& tokens) {
     return result;
 }
 
-Object Object::make_lambda(const std::vector<std::string>& params, 
-                          const Object& body, 
-                          std::shared_ptr<EnvironmentObject> closure_env) {
-    Object obj;
-    obj.type = ObjectType::LAMBDA;
-    obj.heap_obj = std::make_shared<LambdaObject>(params, body, closure_env);
-    return obj;
-}
-
 Token Reader::next_token(TokenStream& tokens) {
     tokens.skip_whitespace_and_comments();
     
@@ -167,10 +182,19 @@ Token Reader::next_token(TokenStream& tokens) {
     char c = tokens.peek();
     //std::cout << "DEBUG next_token: peek char='" << c << "'" << std::endl;
     
-    if (c == '(' || c == ')' || c == '\'' || c == '`' || c == ',') {
+    if (c == '(' || c == ')' || c == '\'' || c == '`') {
         // Single character tokens
         token.text = std::string(1, tokens.read());
-        //std::cout << "DEBUG next_token: single char token='" << token.text << "'" << std::endl;
+    }
+    else if (c == ',') {
+        tokens.read(); // consume ,
+        if (tokens.has_more() && tokens.peek() == '@') {
+            token.text = ",@";
+            tokens.read(); // consume @
+        }
+        else {
+            token.text = ",";
+        }
     }
     else if (c == '"') {
         // String literal
@@ -502,13 +526,4 @@ void Reader::link_object(const Object& obj, const Token& token) {
     
     // Если есть незакрытые скобки или строки - ввод не завершен
     return paren_balance <= 0 && !in_string && !escape_next;
-}
-
-Object Object::make_macro(const std::vector<std::string>& params,
-    const Object& body,
-    std::shared_ptr<EnvironmentObject> env) {
-    Object obj;
-    obj.type = ObjectType::MACRO;
-    obj.heap_obj = std::make_shared<MacroObject>(params, body, env);
-    return obj;
 }

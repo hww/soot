@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.15)
+﻿cmake_minimum_required(VERSION 3.15)
+
 project(z80-lisp
     VERSION 1.0.0
     DESCRIPTION "Z80 Lisp Interpreter"
@@ -10,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# � CMake policies
+# С CMake policies
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -52,16 +53,12 @@ endif()
 
 
 # Build options
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 option(BUILD_SHARED_LIBS "Build as shared library" OFF)
 
 
 # Include subdirectories
 add_subdirectory(src)
-
-if(BUILD_TESTS)
-    add_subdirectory(test)
-endif()
 
 # Installation (optional)
 install(TARGETS z80-lisp
@@ -69,3 +66,10 @@ install(TARGETS z80-lisp
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+#### LAST ONE
+
+if(BUILD_TESTS)
+    enable_testing()  # ← ВАЖНО: именно здесь!
+    include(tests/CMakeLists.txt)
+endif()
