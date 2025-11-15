@@ -71,12 +71,17 @@ private:
     bool try_parse_binary(const Token& token, Object& result);
     bool try_parse_boolean(const Token& token, Object& result);
     bool try_parse_char(const Token& token, Object& result);
-    
+    bool try_parse_symbol(const Token& token, Object& result);
+
     void link_object(const Object& obj, const Token& token);
 
     void throw_reader_error(TokenStream& tokens, const std::string& error);
     void throw_reader_error(const Token& token, const std::string& error);    
 
+    void add_reader_macro(const std::string& shortcut, std::string replacement);
+
     SymbolTable m_symbols;
     SourceManager m_sources;
+    bool m_valid_symbols_chars[256];
+    std::unordered_map<std::string, std::string> m_reader_macros;
 };

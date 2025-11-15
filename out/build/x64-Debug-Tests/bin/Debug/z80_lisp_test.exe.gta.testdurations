@@ -8,7 +8,7 @@
     <TestDuration Test="BasicTypesTest.FloatLiterals" Duration="1" />
     <TestDuration Test="BasicTypesTest.IntegerLiterals" Duration="1" />
     <TestDuration Test="BasicTypesTest.StringLiterals" Duration="1" />
-    <TestDuration Test="ArithmeticTest.Addition" Duration="1" />
+    <TestDuration Test="ArithmeticTest.Addition" Duration="2" />
     <TestDuration Test="ArithmeticTest.Division" Duration="1" />
     <TestDuration Test="ArithmeticTest.MixedOperations" Duration="1" />
     <TestDuration Test="ArithmeticTest.Multiplication" Duration="1" />

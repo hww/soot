@@ -10,34 +10,31 @@
 class Interpreter {
 public:
     Interpreter();
-    
+
     // Основные методы оценки
     Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
-    
+
     // Символы и окружение
     Object intern(const std::string& name);
     bool try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest);
     Object eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env);
-    
+
     // Вспомогательные методы
     Arguments get_args(const Object& form, const Object& rest, const ArgumentSpec& spec);
     void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
     ArgumentSpec make_varargs();
     std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
-    bool truthy(const Object& o);
-    void register_form(const std::string& name,
-        const std::function<Object(const Object&, Arguments&,
-            const std::shared_ptr<EnvironmentObject>&)>& form);
 
     // Обработка ошибок
     void throw_eval_error(const Object& o, const std::string& err);
-    
+
     // REPL
     void execute_repl();
 
     // Доступ к ридеру
     Reader& get_reader() { return reader; }
+
 private:
     // Специальные формы
     Object eval_quote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
@@ -78,7 +75,6 @@ private:
     Object eval_symbol_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-    Object eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_list_func(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_append(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -105,7 +101,7 @@ private:
     Object eval_hash_table_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_hash_table_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-   
+
     Object eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -120,6 +116,7 @@ private:
     Object eval_char_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_procedure_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_eqv(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+    Object eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env); // Изменено: теперь проверяет символы #t/#f
 
     // Математические функции
     Object eval_abs(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -128,7 +125,7 @@ private:
     Object eval_expt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_sqrt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-        // Системные утилиты
+    // Системные утилиты
     Object eval_current_directory(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
     // Quasiquote helpers
@@ -143,36 +140,38 @@ private:
 
     std::string read_entire_file(const std::string& filename);
 
-    // Помошгик для чисел
+    // Помощники для чисел
     bool is_number(const Object& obj);
-
-    // Конвертация чисел
     int64_t number_to_integer(const Object& obj);
     double number_to_float(const Object& obj);
 
+    // Boolean helpers (используют символы)
+    Object make_bool(bool value) { return value ? m_true_object : m_false_object; }
+    bool is_true(const Object& o) const { return !is_false(o); }
+    bool is_false(const Object& o) const { return o.is_symbol() && o.as_symbol() == m_false_object.as_symbol(); }
+    bool is_bool(const Object& o) const { return o.is_symbol() && (o.as_symbol() == m_false_object.as_symbol() || o.as_symbol() == m_true_object.as_symbol());; }
+    bool truthy(const Object& o) { return !is_false(o); }
 
 private:
     // Основной метод оценки пар
     Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
-    
+
     // Таблицы форм
-    std::unordered_map<std::string, 
-        Object (Interpreter::*)(const Object&, const Object&, const std::shared_ptr<EnvironmentObject>&)> special_forms;
-    
     std::unordered_map<std::string,
-        Object (Interpreter::*)(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>&)> builtin_forms;
-    
+        Object(Interpreter::*)(const Object&, const Object&, const std::shared_ptr<EnvironmentObject>&)> special_forms;
+
+    std::unordered_map<std::string,
+        Object(Interpreter::*)(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>&)> builtin_forms;
+
     // Custom forms поддержка
     std::vector<std::pair<void*, std::function<Object(const Object&, Arguments&,
         const std::shared_ptr<EnvironmentObject>&)>>> m_custom_forms;
-    
+
     // Состояние
     Reader reader;
     bool want_exit = false;
-
-    Object m_true_object;
-    Object m_false_object;
+    SymbolTable symbol_table;
+    Object m_true_object;  // Теперь это символ #t
+    Object m_false_object; // Теперь это символ #f
     int gensym_id = 0;
-
-
 };

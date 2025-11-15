@@ -52,7 +52,41 @@ void TokenStream::skip_whitespace_and_comments() {
 }
 
 // Reader implementation
-Reader::Reader() = default;
+Reader::Reader()
+{
+    // add default macros
+    add_reader_macro("'", "quote");
+    add_reader_macro("`", "quasiquote");
+    add_reader_macro(",", "unquote");
+    add_reader_macro(",@", "unquote-splicing");
+
+    // setup table of which characters are valid for starting a symbol
+    for (auto& x : m_valid_symbols_chars) {
+        x = false;
+    }
+
+    for (char x = 'a'; x <= 'z'; x++) {
+        m_valid_symbols_chars[(int)x] = true;
+    }
+
+    for (char x = 'A'; x <= 'Z'; x++) {
+        m_valid_symbols_chars[(int)x] = true;
+    }
+
+    for (char x = '0'; x <= '9'; x++) {
+        m_valid_symbols_chars[(int)x] = true;
+    }
+
+    const char bonus[] = "!$%&*+-/\\.,@^_-;:<>?~=#";
+
+    for (const char* c = bonus; *c; c++) {
+        m_valid_symbols_chars[(int)*c] = true;
+    }
+}
+
+void Reader::add_reader_macro(const std::string& shortcut, std::string replacement) {
+    m_reader_macros[shortcut] = std::move(replacement);
+}
 
 Object Reader::read_from_string(const std::string& code, const std::string& source_name) {
     auto source = std::make_shared<StringSource>(code, source_name);
@@ -88,7 +122,16 @@ Object Reader::read_impl(std::shared_ptr<SourceText> source) {
 
 Object Reader::read(TokenStream& tokens) {
     Token token = next_token(tokens);
+    // Сначала проверяем reader macros
+    auto macro_it = m_reader_macros.find(token.text);
+    if (macro_it != m_reader_macros.end()) {
+        // Применяем макрос: 'expr -> (quote expr)
+        Object quoted_expr = read(tokens);
+        Object macro_symbol = Object::make_symbol(&m_symbols, macro_it->second.c_str());
+        link_object(macro_symbol, token);
 
+        return Object::make_pair(macro_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
+    }
     //std::cout << "DEBUG read: token='" << token.text << "'" << std::endl;
 
     if (token.text == "(") {
@@ -97,7 +140,7 @@ Object Reader::read(TokenStream& tokens) {
     else if (token.text == "'") {
         // Quote: 'expr -> (quote expr)
         Object quoted_expr = read(tokens);
-        Object quote_symbol = m_symbols.intern("quote");
+        Object quote_symbol = Object::make_symbol(&m_symbols, "quote");
         link_object(quote_symbol, token);
 
         return Object::make_pair(quote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
@@ -105,7 +148,7 @@ Object Reader::read(TokenStream& tokens) {
     else if (token.text == "`") {  // ← ДОБАВЬ ЭТО
         // Quasiquote: `expr -> (quasiquote expr)
         Object quoted_expr = read(tokens);
-        Object quasiquote_symbol = m_symbols.intern("quasiquote");
+        Object quasiquote_symbol = Object::make_symbol(&m_symbols, "quasiquote");
         link_object(quasiquote_symbol, token);
 
         return Object::make_pair(quasiquote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
@@ -113,7 +156,7 @@ Object Reader::read(TokenStream& tokens) {
     else if (token.text == ",") {  // ← ДОБАВЬ ЭТО
         // Unquote: ,expr -> (unquote expr)
         Object quoted_expr = read(tokens);
-        Object unquote_symbol = m_symbols.intern("unquote");
+        Object unquote_symbol = Object::make_symbol(&m_symbols, "unquote");
         link_object(unquote_symbol, token);
 
         return Object::make_pair(unquote_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
@@ -121,7 +164,7 @@ Object Reader::read(TokenStream& tokens) {
     else if (token.text == ",@") {  // ← ДОБАВЬ ЭТО
         // Unquote-splicing: ,@expr -> (unquote-splicing expr)
         Object quoted_expr = read(tokens);
-        Object unquote_splicing_symbol = m_symbols.intern("unquote-splicing");
+        Object unquote_splicing_symbol = Object::make_symbol(&m_symbols, "unquote-splicing");
         link_object(unquote_splicing_symbol, token);
 
         return Object::make_pair(unquote_splicing_symbol, Object::make_pair(quoted_expr, Object::make_empty_list()));
@@ -255,60 +298,61 @@ Token Reader::next_token(TokenStream& tokens) {
 
 Object Reader::read_atom(const Token& token) {
     Object result;
-    
+
     // Check if it's a string first (ДОБАВЬТЕ ЭТОТ БЛОК)
-    if (!token.text.empty() && token.text[0] == '"' && token.text[token.text.size()-1] == '"') {
+    if (!token.text.empty() && token.text[0] == '"' && token.text[token.text.size() - 1] == '"') {
         // Remove quotes and process escape sequences
         std::string content = token.text.substr(1, token.text.size() - 2);
         std::string processed;
-        
+
         for (size_t i = 0; i < content.size(); ++i) {
             if (content[i] == '\\' && i + 1 < content.size()) {
                 switch (content[i + 1]) {
-                    case 'n': processed += '\n'; break;
-                    case 't': processed += '\t'; break;
-                    case 'r': processed += '\r'; break;
-                    case '"': processed += '"'; break;
-                    case '\\': processed += '\\'; break;
-                    default: 
-                        throw_reader_error(token, "Unknown escape sequence: \\" + std::string(1, content[i + 1]));
+                case 'n': processed += '\n'; break;
+                case 't': processed += '\t'; break;
+                case 'r': processed += '\r'; break;
+                case '"': processed += '"'; break;
+                case '\\': processed += '\\'; break;
+                default:
+                    throw_reader_error(token, "Unknown escape sequence: \\" + std::string(1, content[i + 1]));
                 }
                 i++; // skip next character
-            } else {
+            }
+            else {
                 processed += content[i];
             }
         }
-        
+
         result = Object::make_string(processed);
         link_object(result, token);
         return result;
     }
-    
+
     // Try different parsers in order of specificity
     if (try_parse_boolean(token, result) ||
         try_parse_char(token, result) ||
         try_parse_binary(token, result) ||
         try_parse_hex(token, result) ||
         try_parse_integer(token, result) ||
-        try_parse_float(token, result)) {
+        try_parse_float(token, result) ||
+        try_parse_symbol(token, result)) {
         link_object(result, token);
         return result;
     }
-    
-    // Default to symbol
-    result = m_symbols.intern(token.text);
-    link_object(result, token);
-    return result;
+
+    // Если ни один парсер не сработал - ошибка
+    throw_reader_error(token, "Invalid symbol: " + token.text);
+    return Object::make_empty_list();
 }
 
 // Number parsers (like OpenGOAL)
 bool Reader::try_parse_boolean(const Token& token, Object& result) {
     if (token.text == "#t" || token.text == "#T") {
-        result = Object::make_boolean(true);
+        result = Object::make_symbol(&m_symbols, "#t");
         return true;
     }
     else if (token.text == "#f" || token.text == "#F") {
-        result = Object::make_boolean(false);
+        result = Object::make_symbol(&m_symbols, "#f");
         return true;
     }
     return false;
@@ -462,41 +506,61 @@ void Reader::link_object(const Object& obj, const Token& token) {
 }
 
 
-    void Reader::throw_reader_error(TokenStream& tokens, const std::string& error) {
-        int offset = tokens.get_current_offset();
-        auto source = tokens.get_source();
-        
-        auto [line, col] = source->get_line_and_column(offset);
-        std::string line_text = source->get_line_containing_offset(offset);
-        
-        std::stringstream ss;
-        ss << "Parse error at " << source->get_description() 
-           << ":" << (line + 1) << ":" << (col + 1) << "\n";
-        ss << "  " << line_text << "\n";
-        ss << "  " << std::string(col, ' ') << "^\n";
-        ss << error;
-        
-        throw std::runtime_error(ss.str());
-    }
+void Reader::throw_reader_error(TokenStream& tokens, const std::string& error) {
+    int offset = tokens.get_current_offset();
+    auto source = tokens.get_source();
     
-    void Reader::throw_reader_error(const Token& token, const std::string& error) {
-        auto source = token.source;
-        int offset = token.offset;
-        
-        auto [line, col] = source->get_line_and_column(offset);
-        std::string line_text = source->get_line_containing_offset(offset);
-        
-        std::stringstream ss;
-        ss << "Parse error at " << source->get_description() 
-           << ":" << (line + 1) << ":" << (col + 1) << "\n";
-        ss << "  " << line_text << "\n";
-        ss << "  " << std::string(col, ' ') << "^\n";
-        ss << error;
-        
-        throw std::runtime_error(ss.str());
+    auto [line, col] = source->get_line_and_column(offset);
+    std::string line_text = source->get_line_containing_offset(offset);
+    
+    std::stringstream ss;
+    ss << "Parse error at " << source->get_description() 
+       << ":" << (line + 1) << ":" << (col + 1) << "\n";
+    ss << "  " << line_text << "\n";
+    ss << "  " << std::string(col, ' ') << "^\n";
+    ss << error;
+    
+    throw std::runtime_error(ss.str());
+}
+
+void Reader::throw_reader_error(const Token& token, const std::string& error) {
+    auto source = token.source;
+    int offset = token.offset;
+    
+    auto [line, col] = source->get_line_and_column(offset);
+    std::string line_text = source->get_line_containing_offset(offset);
+    
+    std::stringstream ss;
+    ss << "Parse error at " << source->get_description() 
+       << ":" << (line + 1) << ":" << (col + 1) << "\n";
+    ss << "  " << line_text << "\n";
+    ss << "  " << std::string(col, ' ') << "^\n";
+    ss << error;
+    
+    throw std::runtime_error(ss.str());
+}
+bool Reader::try_parse_symbol(const Token& token, Object& result) {
+    if (token.text.empty()) return false;
+
+    // Проверяем первый символ на валидность
+    char first_char = token.text[0];
+    if (!m_valid_symbols_chars[(int)first_char]) {
+        return false;
     }
 
-    bool Reader::is_input_complete(const std::string& code) {
+    // Проверяем остальные символы
+    for (size_t i = 1; i < token.text.size(); i++) {
+        char c = token.text[i];
+        if (!m_valid_symbols_chars[(int)c]) {
+            return false;
+        }
+    }
+
+    // Если все символы валидны - создаем символ
+    result = Object::make_symbol(&m_symbols, token.text.c_str());
+    return true;
+}
+bool Reader::is_input_complete(const std::string& code) {
     // Простая проверка: считаем скобки
     int paren_balance = 0;
     bool in_string = false;

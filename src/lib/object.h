@@ -11,24 +11,19 @@
 #include <sstream>
 #include <fstream>
 #include <cstdlib>
+#include <type_traits>
+#include <cstring>
+
 // Портируемые типы
 using FloatType = double;
 using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
-    EMPTY_LIST, INTEGER, FLOAT, CHAR, BOOLEAN,
+    EMPTY_LIST, INTEGER, FLOAT, CHAR,
     SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE
 };
 
 std::string object_type_to_string(ObjectType type);
-
-// Базовый класс для heap-allocated объектов
-class HeapObject {
-public:
-    virtual ~HeapObject() = default;
-    virtual std::string print() const = 0;
-    virtual std::string inspect() const = 0;
-};
 
 // Forward declarations
 class EnvironmentObject;
@@ -38,20 +33,100 @@ class PairObject;
 class HashTableObject;
 class FilePortObject;
 struct ArgumentSpec;
+class SymbolTable;
+
+// InternedSymbolPtr как в OpenGOAL
+struct InternedSymbolPtr {
+    const char* name_ptr;
+
+    struct hash {
+        auto operator()(const InternedSymbolPtr& x) const {
+            return std::hash<const void*>()((const void*)x.name_ptr);
+        }
+    };
+
+    bool operator==(const char* msg) const { return strcmp(msg, name_ptr) == 0; }
+    bool operator!=(const char* msg) const { return strcmp(msg, name_ptr) != 0; }
+    bool operator==(const std::string& str) const { return str == name_ptr; }
+    bool operator!=(const std::string& str) const { return str != name_ptr; }
+    bool operator==(const InternedSymbolPtr& other) const { return other.name_ptr == name_ptr; }
+    bool operator!=(const InternedSymbolPtr& other) const { return other.name_ptr != name_ptr; }
+};
+
+// FixedObject шаблон как в OpenGOAL
+template <typename T>
+std::string fixed_to_string(T x);
+
+template <>
+std::string fixed_to_string<FloatType>(FloatType x);
+
+template <>
+std::string fixed_to_string<char>(char x);
+
+template <>
+std::string fixed_to_string<IntType>(IntType x);
+
+template <>
+std::string fixed_to_string<InternedSymbolPtr>(InternedSymbolPtr x);
+
+template <typename T>
+class FixedObject {
+public:
+    T value;
+
+    explicit FixedObject(T v) : value(v) {}
+    FixedObject() = default;
+
+    std::string print() const { return fixed_to_string(value); }
+    std::string inspect() const {
+        return type_as_string() + " " + fixed_to_string(value);
+    }
+
+    bool operator==(const FixedObject<T>& other) const {
+        return value == other.value;
+    }
+
+private:
+    std::string type_as_string() const {
+        if constexpr (std::is_same_v<T, FloatType>)
+            return object_type_to_string(ObjectType::FLOAT);
+        if constexpr (std::is_same_v<T, IntType>)
+            return object_type_to_string(ObjectType::INTEGER);
+        if constexpr (std::is_same_v<T, char>)
+            return object_type_to_string(ObjectType::CHAR);
+        if constexpr (std::is_same_v<T, InternedSymbolPtr>)
+            return object_type_to_string(ObjectType::SYMBOL);
+        throw std::runtime_error("Unsupported FixedObject type");
+    }
+};
+
+// Fixed object types
+using IntegerObject = FixedObject<IntType>;
+using FloatObject = FixedObject<FloatType>;
+using CharObject = FixedObject<char>;
+using SymbolObject = FixedObject<InternedSymbolPtr>;
+
+// Базовый класс для heap-allocated объектов
+class HeapObject {
+public:
+    virtual ~HeapObject() = default;
+    virtual std::string print() const = 0;
+    virtual std::string inspect() const = 0;
+};
 
 // Main Object class
 class Object {
 public:
     ObjectType type = ObjectType::INVALID;
-    
-    // For fixed types (value semantics)
+
+    // For fixed types (value semantics) - как в OpenGOAL
     union {
-        IntType integer_value;
-        FloatType float_value;
-        char char_value;
-        bool boolean_value;
+        IntegerObject integer_obj;
+        FloatObject float_obj;
+        CharObject char_obj;
+        SymbolObject symbol_obj;
     };
-    
+
     // For heap types (reference semantics)
     std::shared_ptr<HeapObject> heap_obj;
 
@@ -59,14 +134,13 @@ public:
     static Object make_integer(IntType value);
     static Object make_float(FloatType value);
     static Object make_char(char value);
-    static Object make_boolean(bool value);
     static Object make_empty_list();
-    static Object make_symbol(const std::string& name);
+    static Object make_symbol(SymbolTable* table, const char* name);
     static Object make_string(const std::string& text);
     static Object make_pair(const Object& car, const Object& cdr);
     static Object make_array(const std::vector<Object>& elements);
     static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
-    static Object make_macro(const ArgumentSpec& args,const Object& body,const std::shared_ptr<EnvironmentObject>& env);
+    static Object make_macro(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
     static Object make_vector(const std::vector<Object>& elements);
     static Object make_hash_table();
 
@@ -79,7 +153,6 @@ public:
     bool is_integer() const { return type == ObjectType::INTEGER; }
     bool is_float() const { return type == ObjectType::FLOAT; }
     bool is_char() const { return type == ObjectType::CHAR; }
-    bool is_boolean() const { return type == ObjectType::BOOLEAN; }
     bool is_symbol() const { return type == ObjectType::SYMBOL; }
     bool is_string() const { return type == ObjectType::STRING; }
     bool is_pair() const { return type == ObjectType::PAIR; }
@@ -88,15 +161,15 @@ public:
     bool is_list() const { return is_empty_list() || is_pair(); }
     bool is_lambda() const { return type == ObjectType::LAMBDA; }
     bool is_macro() const { return type == ObjectType::MACRO; }
-    bool is_vector() const { return type == ObjectType::ARRAY; } 
+    bool is_vector() const { return type == ObjectType::ARRAY; }
     bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
+    bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
 
     // Value access with type checking
     IntType as_integer() const;
     FloatType as_float() const;
     char as_char() const;
-    bool as_boolean() const;
-    std::string as_symbol() const;
+    const InternedSymbolPtr& as_symbol() const;
     std::string as_string() const;
     std::vector<Object> as_vector() const;
     HashTableObject* as_hash_table() const;
@@ -120,34 +193,32 @@ class PairObject : public HeapObject {
 public:
     Object car;
     Object cdr;
-    
+
     PairObject(const Object& car, const Object& cdr) : car(car), cdr(cdr) {}
-    
+
     std::string print() const override;
     std::string inspect() const override;
-};
-
-class SymbolObject : public HeapObject {
-public:
-    std::string name;
-    explicit SymbolObject(std::string name) : name(std::move(name)) {}
-    std::string print() const override { return name; }
-    std::string inspect() const override { return "[symbol] " + name; }
 };
 
 class StringObject : public HeapObject {
 public:
     std::string text;
     explicit StringObject(std::string text) : text(std::move(text)) {}
-    std::string print() const override { return "\"" + text + "\""; }
-    std::string inspect() const override { return "[string] \"" + text + "\""; }
+
+    std::string print() const override {
+        return "\"" + text + "\"";
+    }
+
+    std::string inspect() const override {
+        return "[string] \"" + text + "\"";
+    }
 };
 
 class ArrayObject : public HeapObject {
 public:
     std::vector<Object> elements;
     explicit ArrayObject(std::vector<Object> elements) : elements(std::move(elements)) {}
-    
+
     std::string print() const override {
         std::string result = "#(";
         for (size_t i = 0; i < elements.size(); ++i) {
@@ -157,16 +228,16 @@ public:
         result += ")";
         return result;
     }
-    
+
     std::string inspect() const override {
         return "[array] size=" + std::to_string(elements.size());
     }
 };
-// Add EnvironmentObject definition to fix the incomplete type error
+
 class EnvironmentObject : public HeapObject {
 public:
     std::shared_ptr<EnvironmentObject> parent_env;
-    std::unordered_map<std::string, Object> vars;  // Храним по СТРОКАМ, а не указателям
+    std::unordered_map<std::string, Object> vars;
 
     EnvironmentObject() = default;
     explicit EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
@@ -176,7 +247,6 @@ public:
     std::string print() const override { return "[environment]"; }
     std::string inspect() const override { return "[environment]"; }
 
-    // Метод как в OpenGOAL - ищем переменную по имени
     Object* find(const std::string& name) {
         auto it = vars.find(name);
         if (it != vars.end()) {
@@ -188,12 +258,10 @@ public:
         return nullptr;
     }
 
-    // Простой set - всегда устанавливает в текущее окружение
     void set(const std::string& name, const Object& value) {
         vars[name] = value;
     }
 
-    // try_get для lookup без исключений
     bool try_get(const std::string& name, Object* dest) const {
         auto it = vars.find(name);
         if (it != vars.end()) {
@@ -206,7 +274,6 @@ public:
         return false;
     }
 
-    // get с исключением для обратной совместимости
     Object get(const std::string& name) const {
         Object result;
         if (try_get(name, &result)) {
@@ -215,6 +282,7 @@ public:
         throw std::runtime_error("Undefined symbol: " + name);
     }
 };
+
 // Аргументы функций
 struct Arguments {
     std::vector<Object> unnamed;
@@ -235,7 +303,7 @@ struct Arguments {
         return named.find(name) != named.end();
     }
 
-    std::string Arguments::print() const;
+    std::string print() const;
 };
 
 struct NamedArg {
@@ -249,42 +317,23 @@ struct ArgumentSpec {
     std::unordered_map<std::string, NamedArg> named;
     std::string rest;
 
-    // Основные методы доступа
-    size_t size() const {
-        return unnamed.size() + named.size();
-    }
+    size_t size() const { return unnamed.size() + named.size(); }
+    size_t unnamed_size() const { return unnamed.size(); }
+    size_t named_size() const { return named.size(); }
+    bool empty() const { return unnamed.empty() && named.empty(); }
 
-    size_t unnamed_size() const {
-        return unnamed.size();
-    }
-
-    size_t named_size() const {
-        return named.size();
-    }
-
-    bool empty() const {
-        return unnamed.empty() && named.empty();
-    }
-
-    // Доступ по индексу (только для unnamed параметров)
     const std::string& operator[](size_t index) const {
-        if (index >= unnamed.size()) {
-            throw std::out_of_range("ArgumentSpec index out of range");
-        }
+        if (index >= unnamed.size()) throw std::out_of_range("ArgumentSpec index out of range");
         return unnamed[index];
     }
 
-    // Проверка наличия named параметра
     bool has_named(const std::string& name) const {
         return named.find(name) != named.end();
     }
 
-    // Получение named параметра
     const NamedArg& get_named(const std::string& name) const {
         auto it = named.find(name);
-        if (it == named.end()) {
-            throw std::out_of_range("Named argument not found: " + name);
-        }
+        if (it == named.end()) throw std::out_of_range("Named argument not found: " + name);
         return it->second;
     }
 
@@ -292,13 +341,12 @@ struct ArgumentSpec {
     static ArgumentSpec make_varargs();
 };
 
-// Добавь полное определение LambdaObject в object.h
 class LambdaObject : public HeapObject {
 public:
     std::string name;
     std::shared_ptr<EnvironmentObject> parent_env;
     Object body;
-    ArgumentSpec args;  // ← Используй ArgumentSpec вместо std::vector<std::string>
+    ArgumentSpec args;
 
     LambdaObject() = default;
 
@@ -310,12 +358,7 @@ public:
     }
 
     std::string print() const override {
-        if (name.empty()) {
-            return "<unnamed lambda>";
-        }
-        else {
-            return "<lambda \"" + name + "\">";
-        }
+        return name.empty() ? "<unnamed lambda>" : "<lambda \"" + name + "\">";
     }
 
     std::string inspect() const override {
@@ -328,7 +371,7 @@ public:
     std::string name;
     std::shared_ptr<EnvironmentObject> parent_env;
     Object body;
-    ArgumentSpec args;  // ← Используй ArgumentSpec вместо std::vector<std::string>
+    ArgumentSpec args;
 
     MacroObject() = default;
 
@@ -340,37 +383,11 @@ public:
     }
 
     std::string print() const override {
-        if (name.empty()) {
-            return "<unnamed macro>";
-        }
-        else {
-            return "<macro \"" + name + "\">";
-        }
+        return name.empty() ? "<unnamed macro>" : "<macro \"" + name + "\">";
     }
 
     std::string inspect() const override {
         return "[macro]\n  name: " + name + "\n" + args.print();
-    }
-};
-
-class VectorObject : public HeapObject {
-public:
-    std::vector<Object> elements;
-    VectorObject(const std::vector<Object>& elems) : elements(elems) {}
-
-    std::string print() const override {
-        std::stringstream ss;
-        ss << "#(";
-        for (size_t i = 0; i < elements.size(); ++i) {
-            ss << elements[i].print();
-            if (i < elements.size() - 1) ss << " ";
-        }
-        ss << ")";
-        return ss.str();
-    }
-
-    std::string inspect() const override {
-        return "[vector size=" + std::to_string(elements.size()) + "]";
     }
 };
 
@@ -388,7 +405,6 @@ public:
         return "[hash-table size=" + std::to_string(data.size()) + "]";
     }
 };
-
 
 class SymbolTable {
 private:
@@ -409,7 +425,7 @@ public:
     SymbolTable();
     ~SymbolTable();
 
-    Object intern(const std::string& name);
+    InternedSymbolPtr intern(const std::string& name);
 
 private:
     void resize();
