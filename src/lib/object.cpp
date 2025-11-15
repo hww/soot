@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iostream>
 #include <cstring>
+#include <cassert>
 
 // Специализации fixed_to_string
 template <>
@@ -81,7 +82,7 @@ Object Object::make_empty_list() {
 Object Object::make_symbol(SymbolTable* table, const char* name) {
     Object obj;
     obj.type = ObjectType::SYMBOL;
-    obj.symbol_obj.value = table->intern(name);
+    obj.symbol_obj.value = table->intern(name);  // ← преобразуем в string
     return obj;
 }
 
@@ -234,6 +235,11 @@ LambdaObject* Object::as_lambda() const {
     return static_cast<LambdaObject*>(heap_obj.get());
 }
 
+EnvironmentObject* Object::as_env() const {
+    if (type != ObjectType::ENVIRONMENT) throw_type_error("environment");
+    return static_cast<EnvironmentObject*>(heap_obj.get());
+}
+
 // Pair accessors
 Object Object::car() const {
     if (type != ObjectType::PAIR) throw_type_error("pair");
@@ -307,90 +313,7 @@ std::string PairObject::inspect() const {
     return ss.str();
 }
 
-// SymbolTable implementation
-SymbolTable::SymbolTable() {
-    m_power_of_two_size = 1;
-    m_entries.resize(2);
-    m_used_entries = 0;
-    m_next_resize = m_entries.size() * kMaxUsed;
-    m_mask = 0b1;
-}
 
-SymbolTable::~SymbolTable() {
-    for (auto& e : m_entries) {
-        delete[] e.name;
-    }
-}
-
-uint32_t SymbolTable::compute_hash(const char* data, size_t length) const {
-    return compute_crc32(data, length);
-}
-
-InternedSymbolPtr SymbolTable::intern(const std::string& name) {
-    const char* str = name.c_str();
-    size_t string_len = name.length();
-    uint32_t hash = compute_hash(str, string_len);
-
-    for (uint32_t i = 0; i < m_entries.size(); i++) {
-        uint32_t slot_addr = (hash + i) & m_mask;
-        auto& slot = m_entries[slot_addr];
-
-        if (!slot.name) {
-            // Insert new symbol
-            slot.hash = hash;
-            char* name_copy = new char[string_len + 1];
-            memcpy(name_copy, str, string_len + 1);
-            slot.name = name_copy;
-            m_used_entries++;
-
-            if (m_used_entries >= m_next_resize) {
-                resize();
-                return intern(name);
-            }
-
-            // ИЗМЕНИТЬ: возвращаем InternedSymbolPtr
-            return InternedSymbolPtr{ name_copy };
-        }
-        else {
-            if (slot.hash != hash) continue;
-            if (strcmp(slot.name, str) != 0) continue;
-
-            // ИЗМЕНИТЬ: возвращаем InternedSymbolPtr
-            return InternedSymbolPtr{ slot.name };
-        }
-    }
-
-    throw std::runtime_error("SymbolTable: impossible state reached");
-}
-
-void SymbolTable::resize() {
-    m_power_of_two_size++;
-    m_mask = (1U << m_power_of_two_size) - 1;
-
-    std::vector<Entry> new_entries(m_entries.size() * 2);
-
-    for (const auto& old_entry : m_entries) {
-        if (old_entry.name) {
-            bool inserted = false;
-            for (uint32_t i = 0; i < new_entries.size(); i++) {
-                uint32_t slot_addr = (old_entry.hash + i) & m_mask;
-                auto& slot = new_entries[slot_addr];
-                if (!slot.name) {
-                    slot.name = old_entry.name;
-                    slot.hash = old_entry.hash;
-                    inserted = true;
-                    break;
-                }
-            }
-            if (!inserted) {
-                throw std::runtime_error("SymbolTable: resize failed");
-            }
-        }
-    }
-
-    m_entries = std::move(new_entries);
-    m_next_resize = kMaxUsed * m_entries.size();
-}
 
 // Вспомогательные функции
 ArgumentSpec make_varargs() {
@@ -414,4 +337,82 @@ std::string Arguments::print() const {
         << " named=" << named.size()
         << " rest=" << rest.size();
     return ss.str();
+}
+
+
+SymbolTable::SymbolTable() {
+    m_power_of_two_size = 1;  // 2 ^ 1 = 2
+    m_entries.resize(2);
+    m_used_entries = 0;
+    m_next_resize = (m_entries.size() * kMaxUsed);
+    m_mask = 0b1;
+}
+
+SymbolTable::~SymbolTable() {
+    for (auto& e : m_entries) {
+        delete[] e.name;
+    }
+}
+
+InternedSymbolPtr SymbolTable::intern(const char* str) {
+    size_t string_len = strlen(str);
+    uint32_t hash = compute_crc32(str, string_len);
+
+    // probe
+    for (uint32_t i = 0; i < m_entries.size(); i++) {
+        uint32_t slot_addr = (hash + i) & m_mask;
+        auto& slot = m_entries[slot_addr];
+        if (!slot.name) {
+            // not found, insert!
+            slot.hash = hash;
+            auto* name = new char[string_len + 1];
+            memcpy(name, str, string_len + 1);
+            slot.name = name;
+            m_used_entries++;
+
+            if (m_used_entries >= m_next_resize) {
+                resize();
+                return intern(str);
+            }
+            return { name };
+        }
+        else {
+            if (slot.hash != hash) {
+                continue;  // bad hash
+            }
+            if (strcmp(slot.name, str) != 0) {
+                continue;  // bad name
+            }
+            return { slot.name };
+        }
+    }
+
+    // should be impossible to reach.
+    assert(false);
+}
+
+void SymbolTable::resize() {
+    m_power_of_two_size++;
+    m_mask = (1U << m_power_of_two_size) - 1;
+
+    std::vector<Entry> new_entries(m_entries.size() * 2);
+    for (const auto& old_entry : m_entries) {
+        if (old_entry.name) {
+            bool done = false;
+            for (uint32_t i = 0; i < new_entries.size(); i++) {
+                uint32_t slot_addr = (old_entry.hash + i) & m_mask;
+                auto& slot = new_entries[slot_addr];
+                if (!slot.name) {
+                    slot.name = old_entry.name;
+                    slot.hash = old_entry.hash;
+                    done = true;
+                    break;
+                }
+            }
+            assert(done);
+        }
+    }
+
+    m_entries = std::move(new_entries);
+    m_next_resize = kMaxUsed * m_entries.size();
 }

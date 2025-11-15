@@ -1,4 +1,5 @@
-﻿cmake_minimum_required(VERSION 3.15)
+﻿# Верхний уровень
+cmake_minimum_required(VERSION 3.15)
 
 project(z80-lisp
     VERSION 1.0.0
@@ -51,14 +52,19 @@ else()
     endif()
 endif()
 
-
 # Build options
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_SHARED_LIBS "Build as shared library" OFF)
 
+# ВАЖНО: Отключаем тесты в fmt чтобы избежать конфликтов
+set(FMT_TEST OFF CACHE BOOL "Disable fmt tests" FORCE)
+
+# build format library
+include_directories(third_party/fmt/include)
+add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 
 # Include subdirectories
-add_subdirectory(src)
+include(src/CMakeLists.txt)
 
 # Installation (optional)
 install(TARGETS z80-lisp
@@ -67,9 +73,19 @@ install(TARGETS z80-lisp
     ARCHIVE DESTINATION lib
 )
 
-#### LAST ONE
-
+#### ТЕСТЫ - ПРОСТОЙ ВАРИАНТ
 if(BUILD_TESTS)
-    enable_testing()  # ← ВАЖНО: именно здесь!
+    # Отключаем лишнее в googletest
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    
+    if(WIN32)
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    endif()
+    
+    # Добавляем googletest
+    add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
+    
+    enable_testing()
     include(tests/CMakeLists.txt)
 endif()

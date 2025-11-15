@@ -39,7 +39,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Midl>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\projects\h2w\z80-lisp\third_party\fmt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -74,14 +74,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Name>ZERO_CHECK</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </ProjectReference>
-    <ProjectReference Include="C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\third_party\googletest\googlemock\gmock.vcxproj">
-      <Project>{329367DD-1543-3F06-AA4F-19BBB39160F8}</Project>
-      <Name>gmock</Name>
-    </ProjectReference>
-    <ProjectReference Include="C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\third_party\googletest\googlemock\gmock_main.vcxproj">
-      <Project>{96FB2CF7-DDB9-3AE0-A81C-AAC95C8BB484}</Project>
-      <Name>gmock_main</Name>
     </ProjectReference>
     <ProjectReference Include="C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\third_party\googletest\googletest\gtest.vcxproj">
       <Project>{16DFDC02-9843-36C3-B29C-12284E6A815B}</Project>

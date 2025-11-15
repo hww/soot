@@ -39,13 +39,15 @@ bool TokenStream::has_more(int ahead) const {
 void TokenStream::skip_whitespace_and_comments() {
     while (has_more()) {
         char c = peek();
-        
-        if (std::isspace(c)) {
-            read(); // consume whitespace
-        } else if (c == ';') {
-            // Skip comment until newline
+
+        // Безопасная проверка пробельных символов
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            read();
+        }
+        else if (c == ';') {
             while (has_more() && read() != '\n') {}
-        } else {
+        }
+        else {
             break;
         }
     }
@@ -209,22 +211,20 @@ Object Reader::read_list(TokenStream& tokens) {
     
     return result;
 }
-
 Token Reader::next_token(TokenStream& tokens) {
     tokens.skip_whitespace_and_comments();
-    
+
     if (!tokens.has_more()) {
         throw std::runtime_error("Unexpected end of input");
     }
-    
+
     Token token;
     token.source = tokens.get_source();
     token.offset = tokens.get_current_offset();
     token.line = tokens.get_current_line();
-    
+
     char c = tokens.peek();
-    //std::cout << "DEBUG next_token: peek char='" << c << "'" << std::endl;
-    
+
     if (c == '(' || c == ')' || c == '\'' || c == '`') {
         // Single character tokens
         token.text = std::string(1, tokens.read());
@@ -241,57 +241,58 @@ Token Reader::next_token(TokenStream& tokens) {
     }
     else if (c == '"') {
         // String literal
-        //std::cout << "DEBUG next_token: reading string" << std::endl;
         tokens.read(); // consume opening quote
         std::string content;
         bool escape = false;
-        
+
         while (tokens.has_more()) {
             char ch = tokens.read();
             if (escape) {
                 switch (ch) {
-                    case 'n': content += '\n'; break;
-                    case 't': content += '\t'; break;
-                    case 'r': content += '\r'; break;
-                    case '"': content += '"'; break;
-                    case '\\': content += '\\'; break;
-                    default: 
-                        // Если неизвестная escape-последовательность, оставляем как есть
-                        content += '\\';
-                        content += ch;
-                        break;
+                case 'n': content += '\n'; break;
+                case 't': content += '\t'; break;
+                case 'r': content += '\r'; break;
+                case '"': content += '"'; break;
+                case '\\': content += '\\'; break;
+                default:
+                    content += '\\';
+                    content += ch;
+                    break;
                 }
                 escape = false;
-            } else if (ch == '\\') {
+            }
+            else if (ch == '\\') {
                 escape = true;
-            } else if (ch == '"') {
-                break; // закрывающая кавычка
-            } else {
+            }
+            else if (ch == '"') {
+                break;
+            }
+            else {
                 content += ch;
             }
         }
-        
+
         if (escape) {
             throw_reader_error(tokens, "Unterminated escape sequence");
         }
-        
+
         token.text = "\"" + content + "\"";
-        //std::cout << "DEBUG next_token: string token='" << token.text << "'" << std::endl;
     }
     else {
         // Word (symbol, number, boolean, etc.)
         std::string word;
         while (tokens.has_more()) {
             char ch = tokens.peek();
-            if (std::isspace(ch) || ch == '(' || ch == ')' || ch == ';' || ch == '"') {
+            // Безопасная проверка разделителей
+            if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
+                ch == '(' || ch == ')' || ch == ';' || ch == '"') {
                 break;
             }
             word += tokens.read();
         }
         token.text = word;
-        //std::cout << "DEBUG next_token: word token='" << token.text << "'" << std::endl;
     }
-    
+
     return token;
 }
 
@@ -431,17 +432,18 @@ bool Reader::try_parse_hex(const Token& token, Object& result) {
 
 bool Reader::try_parse_integer(const Token& token, Object& result) {
     if (token.text.empty()) return false;
-    
+
     // Check format: optional sign followed by digits only
     size_t start = (token.text[0] == '+' || token.text[0] == '-') ? 1 : 0;
     if (start >= token.text.size()) return false; // Just a sign
-    
+
     for (size_t i = start; i < token.text.size(); i++) {
-        if (!std::isdigit(token.text[i])) {
+        char c = token.text[i];
+        if (c < '0' || c > '9') {  // ← Безопасная проверка цифр
             return false;
         }
     }
-    
+
     try {
         IntType value = std::stoll(token.text);
         result = Object::make_integer(value);
@@ -454,23 +456,23 @@ bool Reader::try_parse_integer(const Token& token, Object& result) {
 
 bool Reader::try_parse_float(const Token& token, Object& result) {
     if (token.text.empty()) return false;
-    
+
     // Check for scientific notation (replace d with e)
     std::string text = token.text;
     for (char& c : text) {
         if (c == 'd' || c == 'D') c = 'e';
     }
-    
+
     // Check format: must contain . or e for float
     bool has_dot = text.find('.') != std::string::npos;
     bool has_e = text.find('e') != std::string::npos;
-    
+
     if (!has_dot && !has_e) return false;
-    
+
     // Check characters
     size_t start = (text[0] == '+' || text[0] == '-') ? 1 : 0;
     bool has_dot_seen = false;
-    
+
     for (size_t i = start; i < text.size(); i++) {
         char c = text[i];
         if (c == '.') {
@@ -482,15 +484,21 @@ bool Reader::try_parse_float(const Token& token, Object& result) {
             if (i + 1 >= text.size()) return false;
             size_t exp_start = (text[i + 1] == '+' || text[i + 1] == '-') ? i + 2 : i + 1;
             for (size_t j = exp_start; j < text.size(); j++) {
-                if (!std::isdigit(text[j])) return false;
+                char digit = text[j];
+                if (digit < '0' || digit > '9') {  // ← Безопасная проверка цифр
+                    return false;
+                }
             }
             break; // Rest of string validated
         }
-        else if (!std::isdigit(c)) {
-            return false;
+        else {
+            char digit = text[i];
+            if (digit < '0' || digit > '9') {  // ← Безопасная проверка цифр
+                return false;
+            }
         }
     }
-    
+
     try {
         FloatType value = std::stod(text);
         result = Object::make_float(value);

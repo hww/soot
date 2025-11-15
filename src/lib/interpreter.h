@@ -9,7 +9,7 @@
 
 class Interpreter {
 public:
-    Interpreter();
+    Interpreter(const std::string& username = "user");
 
     // Основные методы оценки
     Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
@@ -152,6 +152,13 @@ private:
     bool is_bool(const Object& o) const { return o.is_symbol() && (o.as_symbol() == m_false_object.as_symbol() || o.as_symbol() == m_true_object.as_symbol());; }
     bool truthy(const Object& o) { return !is_false(o); }
 
+    InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
+        return reader.m_symbols.intern(name.c_str());
+    }
+    void define_var_in_env(const Object& env,const Object& var, const char* name)
+    {
+        env.as_env()->vars.set(InternedSymbolPtr{ intern_ptr(name) }, var);
+    }
 private:
     // Основной метод оценки пар
     Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
@@ -167,11 +174,20 @@ private:
     std::vector<std::pair<void*, std::function<Object(const Object&, Arguments&,
         const std::shared_ptr<EnvironmentObject>&)>>> m_custom_forms;
 
+    void vararg_check(const Object& form,
+        const Arguments& args,
+        const std::vector<std::optional<ObjectType>>& unnamed,
+        const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
+
+    Object eval_list_return_last(const Object& form,
+        Object rest,
+        const std::shared_ptr<EnvironmentObject>& env);
+
     // Состояние
     Reader reader;
     bool want_exit = false;
-    SymbolTable symbol_table;
     Object m_true_object;  // Теперь это символ #t
     Object m_false_object; // Теперь это символ #f
     int gensym_id = 0;
+    Object global_environment;
 };

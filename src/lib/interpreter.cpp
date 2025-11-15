@@ -1,8 +1,19 @@
 #include "interpreter.h"
+#include "fmt/format.h"
+
 #include <sstream>
 #include <filesystem>
 
-Interpreter::Interpreter() {
+Interpreter::Interpreter(const std::string& username) {
+    // Инициализируем boolean объекты как символы
+    m_true_object = Object::make_symbol(&reader.m_symbols, "#t");
+    m_false_object = Object::make_symbol(&reader.m_symbols, "#f");
+    // Interpreter startup:
+    // create the GOOS global environment
+    global_environment = EnvironmentObject::make_new("global");
+
+    auto user = Object::make_symbol(&reader.m_symbols, username.c_str());
+    define_var_in_env(global_environment, user, "*user*");
     // Инициализируем специальные формы
     special_forms = {
         {"quote", &Interpreter::eval_quote},
@@ -97,43 +108,106 @@ Interpreter::Interpreter() {
         {"current-directory", &Interpreter::eval_current_directory},
     };
 
-    // Инициализируем boolean объекты как символы
-    m_true_object = Object::make_symbol(&symbol_table, "#t");
-    m_false_object = Object::make_symbol(&symbol_table, "#f");
+
 }
 
-bool Interpreter::try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest) {
-    // Булевы значения жестко закодированы
-    if (sym.is_symbol()) {
-        const auto& sym_name = sym.as_symbol();
-
-        // Сравниваем УКАЗАТЕЛИ, а не строки
-        if (sym_name.name_ptr == m_true_object.as_symbol().name_ptr) {
-            *dest = m_true_object;
-            return true;
-        }
-        if (sym_name.name_ptr == m_false_object.as_symbol().name_ptr) {
-            *dest = m_false_object;
-            return true;
-        }
+bool Interpreter::try_symbol_lookup(const Object& sym,
+    const std::shared_ptr<EnvironmentObject>& env,
+    Object* dest) {
+    // Boolean проверка
+    if (sym.as_symbol().name_ptr == m_true_object.as_symbol().name_ptr) {
+        *dest = m_true_object;
+        return true;
+    }
+    if (sym.as_symbol().name_ptr == m_false_object.as_symbol().name_ptr) {
+        *dest = m_false_object;
+        return true;
     }
 
-    // Ищем в environment по имени символа
-    if (env && sym.is_symbol()) {
-        std::string name = sym.as_symbol().name_ptr ? sym.as_symbol().name_ptr : "";
-        return env->try_get(name, dest);
+    // Итеративный поиск по цепочке окружений
+    EnvironmentObject* search_env = env.get();
+    while (search_env != nullptr) {
+        Object* obj = search_env->find(sym.as_symbol());
+        if (obj) {
+            *dest = *obj;
+            return true;
+        }
+        search_env = search_env->parent_env.get();
     }
 
     return false;
 }
 
+
 Arguments Interpreter::get_args(const Object& form, const Object& rest, const ArgumentSpec& spec) {
     Arguments args;
-    Object current = rest;
-    while (current.is_pair()) {
-        args.unnamed.push_back(current.car());
-        current = current.cdr();
+
+    // loop over forms in list
+    const Object* current = &rest;
+    while (!current->is_empty_list()) {
+        const auto& arg = current->as_pair()->car;
+
+        // did we get a ":keyword"
+        if (arg.is_symbol() && arg.as_symbol().name_ptr && arg.as_symbol().name_ptr[0] == ':') {
+            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
+            const auto& kv = spec.named.find(key_name);
+
+            // check for unknown key name
+            if (!spec.varargs && kv == spec.named.end()) {
+                throw_eval_error(form, fmt::format("Key argument {} wasn't expected", key_name));
+            }
+
+            // check for multiple definition of key
+            if (args.named.find(key_name) != args.named.end()) {
+                throw_eval_error(form, fmt::format("Key argument {} multiply defined", key_name));
+            }
+
+            // check for well-formed :key value expression
+            current = &current->as_pair()->cdr;
+            if (current->is_empty_list()) {
+                throw_eval_error(form, "Key argument didn't have a value");
+            }
+
+            args.named[key_name] = current->as_pair()->car;
+        }
+        else {
+            // not a keyword. Add to unnamed or rest, depending on what we expect
+            if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
+                args.unnamed.push_back(arg);
+            }
+            else {
+                args.rest.push_back(arg);
+            }
+        }
+        current = &current->as_pair()->cdr;
     }
+
+    // Check expected key args and set default values on unset ones if possible
+    for (auto& kv : spec.named) {
+        const auto& defined_kv = args.named.find(kv.first);
+        if (defined_kv == args.named.end()) {
+            // key arg not given by user, try to use a default value.
+            if (kv.second.has_default) {
+                args.named[kv.first] = kv.second.default_value;
+            }
+            else {
+                throw_eval_error(form,
+                    "key argument \"" + kv.first + "\" wasn't given and has no default value");
+            }
+        }
+    }
+
+    // Check argument size, if spec defines it
+    if (!spec.varargs) {
+        if (args.unnamed.size() < spec.unnamed.size()) {
+            throw_eval_error(form, "didn't get enough arguments");
+        }
+
+        if (!args.rest.empty() && spec.rest.empty()) {
+            throw_eval_error(form, "got too many arguments");
+        }
+    }
+
     return args;
 }
 
@@ -166,7 +240,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
 }
 
 Object Interpreter::intern(const std::string& name) {
-    return Object::make_symbol(&symbol_table, name.c_str());
+    return Object::make_symbol(&reader.m_symbols, name.c_str());
 }
 
 Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
@@ -206,86 +280,72 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     return result;
 }
 
-
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
     auto pair = obj.as_pair();
     Object head = pair->car;
     Object rest = pair->cdr;
 
-    // Сначала проверяем специальные формы
+    // first see if we got a symbol:
     if (head.is_symbol()) {
-        auto head_sym = head.as_symbol();
+        const auto& head_sym = head.as_symbol();
         std::string head_str = head_sym.name_ptr ? head_sym.name_ptr : "";
 
+        // try a special form first
         auto kv_sf = special_forms.find(head_str);
         if (kv_sf != special_forms.end()) {
             return ((*this).*(kv_sf->second))(obj, rest, env);
         }
 
+        // try builtins next
         auto kv_b = builtin_forms.find(head_str);
         if (kv_b != builtin_forms.end()) {
             Arguments args = get_args(obj, rest, make_varargs());
+            // all "built-in" forms expect arguments to be evaluated
             eval_args(&args, env);
             return ((*this).*(kv_b->second))(obj, args, env);
         }
-    }
 
-    // Оцениваем голову
-    Object evaluated_head = eval_with_rewind(head, env);
+        // try macros next
+        Object macro_obj;
+        if (try_symbol_lookup(head, env, &macro_obj) && macro_obj.is_macro()) {
+            const auto& macro = macro_obj.as_macro();
+            Arguments args = get_args(obj, rest, macro->args);
 
-    // Проверяем макрос
-    if (evaluated_head.is_macro()) {
-        auto macro_ptr = evaluated_head.as_macro();
-        Arguments args = get_args(obj, rest, make_varargs());
-
-        // Для макросов аргументы НЕ оцениваются!
-        auto macro_env = std::make_shared<EnvironmentObject>(macro_ptr->parent_env);
-
-        // Создаем простой ArgumentSpec для макроса
-        ArgumentSpec macro_spec;
-        for (size_t i = 0; i < macro_ptr->args.size(); ++i) {
-            if (i < args.unnamed.size()) {
-                macro_spec.unnamed.push_back(macro_ptr->args[i]);
-            }
+            auto mac_env_obj = std::make_shared<EnvironmentObject>();
+            auto mac_env = mac_env_obj;
+            mac_env->parent_env = env;
+            set_args_in_env(obj, args, macro->args, mac_env);
+            // expand the macro!
+            Object expansion = eval_with_rewind(macro->body, mac_env);
+            return eval_with_rewind(expansion, env);
         }
-
-        set_args_in_env(obj, args, macro_spec, macro_env);
-
-        // Выполняем макрос для получения расширения
-        Object expansion = eval_with_rewind(macro_ptr->body, macro_env);
-
-        // Оцениваем расширение в исходном окружении
-        return eval_with_rewind(expansion, env);
     }
 
-    // Проверяем лямбду
-    if (evaluated_head.is_lambda()) {
-        auto lambda_ptr = evaluated_head.as_lambda();
-        Arguments args = get_args(obj, rest, make_varargs());
+    // eval the head and try it as a lambda
+    Object eval_head = eval_with_rewind(head, env);
+    if (eval_head.is_lambda()) {
+        const auto& lam = eval_head.as_lambda();
+        Arguments args = get_args(obj, rest, lam->args);
         eval_args(&args, env);
+        auto lam_env = std::make_shared<EnvironmentObject>();
+        lam_env->parent_env = lam->parent_env;
+        set_args_in_env(obj, args, lam->args, lam_env);
 
-        if (args.unnamed.size() != lambda_ptr->args.size()) {
-            throw_eval_error(obj, "lambda: wrong number of arguments");
+        // Если тело - список форм, выполняем все, возвращаем последний результат
+        Object result = Object::make_empty_list();
+        Object current = lam->body;
+
+        while (current.is_pair()) {
+            result = eval_with_rewind(current.car(), lam_env);
+            current = current.cdr();
         }
 
-        auto call_env = std::make_shared<EnvironmentObject>(lambda_ptr->parent_env);
-        for (size_t i = 0; i < lambda_ptr->args.size(); ++i) {
-            call_env->set(lambda_ptr->args[i], args.unnamed[i]);
+        // Если тело не список (одно выражение) - обработать этот случай
+        if (!current.is_empty_list()) {
+            result = eval_with_rewind(lam->body, lam_env);
         }
 
-        return eval_with_rewind(lambda_ptr->body, call_env);
-    }
-
-    // Проверяем встроенные функции после оценки
-    if (evaluated_head.is_symbol()) {
-        auto head_sym = evaluated_head.as_symbol();
-        std::string head_str = head_sym.name_ptr ? head_sym.name_ptr : "";
-        auto kv_b = builtin_forms.find(head_str);
-        if (kv_b != builtin_forms.end()) {
-            Arguments args = get_args(obj, rest, make_varargs());
-            eval_args(&args, env);
-            return ((*this).*(kv_b->second))(obj, args, env);
-        }
+        return result;
     }
 
     throw_eval_error(obj, "cannot apply non-function object");
@@ -318,42 +378,35 @@ Object Interpreter::eval_define(const Object& form, const Object& rest, const st
     Object value = eval_with_rewind(value_part.car(), env);
 
     // Сохраняем в ПЕРЕДАННЫЙ environment
-    std::string var_name = name_obj.as_symbol().name_ptr ? name_obj.as_symbol().name_ptr : "";
-    env->set(var_name, value);
+    env->vars.set(name_obj.as_symbol(), value);
 
     return value;
 }
 
-Object Interpreter::eval_lambda(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (rest.is_empty_list()) {
-        throw_eval_error(form, "lambda: expected parameter list and body");
-    }
-
+Object Interpreter::eval_lambda(const Object& form, const Object& rest,
+    const std::shared_ptr<EnvironmentObject>& env) {
+    // ...
     Object params_obj = rest.car();
-    Object body_obj = rest.cdr();
+    Object body_obj = rest.cdr();  // ВСЁ тело после параметров
 
     if (!params_obj.is_list()) {
         throw_eval_error(form, "lambda: parameter list must be a list");
     }
 
-    // Парсим параметры через ArgumentSpec
     ArgumentSpec args = parse_arg_spec(form, params_obj);
 
-    // Тело лямбды
     if (body_obj.is_empty_list()) {
         throw_eval_error(form, "lambda: expected body after parameter list");
     }
 
-    // Создаем лямбда-объект
     Object lambda_obj = LambdaObject::make_new();
     auto lambda = lambda_obj.as_lambda();
     lambda->args = args;
-    lambda->body = body_obj.car();
+    lambda->body = body_obj;  // ← ВСЁ тело, а не только car()!
     lambda->parent_env = env;
 
     return lambda_obj;
 }
-
 Object Interpreter::eval_begin(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     Object current = rest;
     Object result = Object::make_empty_list();
@@ -805,11 +858,10 @@ Object Interpreter::eval_set(const Object& form, const Object& rest, const std::
         throw_eval_error(form, "set! requires a value");
     }
 
-    std::string var_name = name_obj.as_symbol().name_ptr ? name_obj.as_symbol().name_ptr : "";
     Object value = eval_with_rewind(value_part.car(), env);
 
     if (env) {
-        env->set(var_name, value);
+        env->vars.set(name_obj.as_symbol(), value);
         return value;
     }
 
@@ -850,7 +902,7 @@ Object Interpreter::eval_let(const Object& form, const Object& rest, const std::
         }
 
         Object value = eval_with_rewind(value_part.car(), env);
-        let_env->set(name_obj.as_symbol().name_ptr ? name_obj.as_symbol().name_ptr : "", value);
+        let_env->vars.set(name_obj.as_symbol(), value);
 
         current_binding = current_binding.cdr();
     }
@@ -1004,7 +1056,6 @@ Object Interpreter::eval_macro(const Object& form, const Object& rest, const std
     if (!name_obj.is_symbol()) {
         throw_eval_error(form, "macro: name must be a symbol");
     }
-    std::string macro_name = name_obj.as_symbol().name_ptr ? name_obj.as_symbol().name_ptr : "";
 
     Object rrest = rest.cdr();
     if (rrest.is_empty_list()) {
@@ -1026,12 +1077,12 @@ Object Interpreter::eval_macro(const Object& form, const Object& rest, const std
 
     Object macro_obj = MacroObject::make_new();
     auto macro = macro_obj.as_macro();
-    macro->name = macro_name;
+    macro->name = name_obj.as_symbol().name_ptr;
     macro->args = args;
     macro->body = body_obj.car();
     macro->parent_env = env;
 
-    env->set(macro_name, macro_obj);
+    env->vars.set(name_obj.as_symbol(), macro_obj);
 
     return macro_obj;
 }
@@ -1072,7 +1123,7 @@ Object Interpreter::eval_let_star(const Object& form, const Object& rest, const 
         auto new_env = std::make_shared<EnvironmentObject>(current_env);
 
         Object value = eval_with_rewind(value_part.car(), current_env);
-        new_env->set(name_obj.as_symbol().name_ptr ? name_obj.as_symbol().name_ptr : "", value);
+        new_env->vars.set(name_obj.as_symbol(), value);
 
         current_env = new_env;
         current_binding = current_binding.cdr();
@@ -1191,7 +1242,7 @@ Object Interpreter::eval_gensym(const Object& form, Arguments& args, const std::
     (void)args;
     (void)env;
     std::string name = "gensym" + std::to_string(gensym_id++);
-    return Object::make_symbol(&symbol_table, name.c_str());
+    return Object::make_symbol(&reader.m_symbols, name.c_str());
 }
 
 Object Interpreter::eval_eq(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1271,7 +1322,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
 
     Object current = rest;
     while (!current.is_empty_list()) {
-        Object arg = current.as_pair()->car;
+        auto arg = current.as_pair()->car;
         if (!arg.is_symbol()) {
             throw_eval_error(form, "args must be symbols");
         }
@@ -1279,16 +1330,65 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
         std::string arg_name = arg.as_symbol().name_ptr ? arg.as_symbol().name_ptr : "";
 
         if (arg_name == "&rest") {
+            // special case for &rest
             current = current.as_pair()->cdr;
             if (!current.is_pair()) {
                 throw_eval_error(form, "rest arg must have a name");
             }
-            Object rest_name = current.as_pair()->car;
+            auto rest_name = current.as_pair()->car;
             if (!rest_name.is_symbol()) {
                 throw_eval_error(form, "rest name must be a symbol");
             }
+
             spec.rest = rest_name.as_symbol().name_ptr ? rest_name.as_symbol().name_ptr : "";
+
+            if (!current.as_pair()->cdr.is_empty_list()) {
+                throw_eval_error(form, "rest must be the last argument");
+            }
             break;
+        }
+        else if (arg_name == "&key") {
+            // special case for &key
+            current = current.as_pair()->cdr;
+            auto key_arg = current.as_pair()->car;
+            if (key_arg.is_symbol()) {
+                // form is &key name
+                auto key_arg_name = key_arg.as_symbol().name_ptr ? key_arg.as_symbol().name_ptr : "";
+                if (spec.named.find(key_arg_name) != spec.named.end()) {
+                    throw_eval_error(form, fmt::format("key argument {} multiply defined", key_arg_name));
+                }
+                spec.named[key_arg_name] = NamedArg();
+            }
+            else if (key_arg.is_pair()) {
+                // form is &key (name default-value)
+                auto key_iter = key_arg;
+                auto kn = key_iter.as_pair()->car;
+                key_iter = key_iter.as_pair()->cdr;
+                if (!kn.is_symbol()) {
+                    throw_eval_error(form, "key argument must have a symbol as a name");
+                }
+                auto key_arg_name = kn.as_symbol().name_ptr ? kn.as_symbol().name_ptr : "";
+                if (spec.named.find(key_arg_name) != spec.named.end()) {
+                    throw_eval_error(form, fmt::format("key argument {} multiply defined", key_arg_name));
+                }
+                NamedArg na;
+
+                if (!key_iter.is_pair()) {
+                    throw_eval_error(form, "invalid keyword argument definition");
+                }
+
+                na.has_default = true;
+                na.default_value = key_iter.as_pair()->car;
+
+                if (!key_iter.as_pair()->cdr.is_empty_list()) {
+                    throw_eval_error(form, "invalid keyword argument definition");
+                }
+
+                spec.named[key_arg_name] = na;
+            }
+            else {
+                throw_eval_error(form, "invalid key argument");
+            }
         }
         else {
             spec.unnamed.push_back(arg_name);
@@ -1299,23 +1399,44 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
     return spec;
 }
 
-void Interpreter::set_args_in_env(const Object& form, const Arguments& args,
+void Interpreter::set_args_in_env(const Object& form,
+    const Arguments& args,
     const ArgumentSpec& arg_spec,
     const std::shared_ptr<EnvironmentObject>& env) {
-    if (args.unnamed.size() < arg_spec.unnamed.size()) {
-        throw_eval_error(form, "not enough arguments");
+    if (arg_spec.rest.empty() && args.unnamed.size() != arg_spec.unnamed.size()) {
+        throw_eval_error(form, "did not get the expected number of unnamed arguments (got " +
+            std::to_string(args.unnamed.size()) + ", expected " +
+            std::to_string(arg_spec.unnamed.size()) + ")");
+    }
+    else if (!arg_spec.rest.empty() && args.unnamed.size() < arg_spec.unnamed.size()) {
+        throw_eval_error(form, "args with rest didn't get enough arguments (got " +
+            std::to_string(args.unnamed.size()) + " but need at least " +
+            std::to_string(arg_spec.unnamed.size()) + ")");
     }
 
-    for (size_t i = 0; i < arg_spec.unnamed.size(); ++i) {
-        env->set(arg_spec.unnamed[i], args.unnamed[i]);
+    // unnamed args
+    for (size_t i = 0; i < arg_spec.unnamed.size(); i++) {
+        env->vars.set(intern_ptr(arg_spec.unnamed.at(i)), args.unnamed.at(i));
     }
 
+    // named args
+    for (const auto& kv : arg_spec.named) {
+        env->vars.set(intern_ptr(kv.first), args.named.at(kv.first));
+    }
+
+    // rest args
     if (!arg_spec.rest.empty()) {
+        // will correctly handle the '() case
         Object rest_list = Object::make_empty_list();
-        for (size_t i = arg_spec.unnamed.size(); i < args.unnamed.size(); ++i) {
-            rest_list = Object::make_pair(args.unnamed[i], rest_list);
+        for (auto it = args.rest.rbegin(); it != args.rest.rend(); ++it) {
+            rest_list = Object::make_pair(*it, rest_list);
         }
-        env->set(arg_spec.rest, rest_list);
+        env->vars.set(intern_ptr(arg_spec.rest), rest_list);
+    }
+    else {
+        if (!args.rest.empty()) {
+            throw_eval_error(form, "got too many arguments");
+        }
     }
 }
 
@@ -1380,7 +1501,7 @@ Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, c
     if (args.unnamed.size() != 1 || !args.unnamed[0].is_string()) {
         throw_eval_error(form, "string->symbol requires one string argument");
     }
-    return Object::make_symbol(&symbol_table, args.unnamed[0].as_string().c_str());
+    return Object::make_symbol(&reader.m_symbols, args.unnamed[0].as_string().c_str());
 }
 
 Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {

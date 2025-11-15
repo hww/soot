@@ -1,5 +1,6 @@
 #pragma once
 
+#include "crc32.h"
 #include <string>
 #include <memory>
 #include <unordered_map>
@@ -13,6 +14,8 @@
 #include <cstdlib>
 #include <type_traits>
 #include <cstring>
+#include <unordered_set>
+#include <cassert>
 
 // Портируемые типы
 using FloatType = double;
@@ -32,8 +35,8 @@ class LambdaObject;
 class PairObject;
 class HashTableObject;
 class FilePortObject;
-struct ArgumentSpec;
 class SymbolTable;
+struct ArgumentSpec;
 
 // InternedSymbolPtr как в OpenGOAL
 struct InternedSymbolPtr {
@@ -164,6 +167,7 @@ public:
     bool is_vector() const { return type == ObjectType::ARRAY; }
     bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
     bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
+    bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
 
     // Value access with type checking
     IntType as_integer() const;
@@ -175,6 +179,8 @@ public:
     HashTableObject* as_hash_table() const;
     MacroObject* as_macro() const;
     LambdaObject* as_lambda() const;
+    EnvironmentObject* as_env() const;
+    bool as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
 
     // For pair access
     Object car() const;
@@ -234,52 +240,195 @@ public:
     }
 };
 
-class EnvironmentObject : public HeapObject {
+template <typename T>
+class InternedPtrMap {
 public:
-    std::shared_ptr<EnvironmentObject> parent_env;
-    std::unordered_map<std::string, Object> vars;
 
+    InternedPtrMap(const InternedPtrMap&) = delete;
+    InternedPtrMap& operator=(const InternedPtrMap&) = delete;
+    InternedPtrMap() { clear(); }
+
+    T* lookup(InternedSymbolPtr str) {
+        if (m_entries.size() < 10) {
+            for (auto& e : m_entries) {
+                if (e.key == str.name_ptr) {  // ← Сравниваем указатели!
+                    return &e.value;
+                }
+            }
+            return nullptr;
+        }
+        uint32_t hash = compute_crc32(str.name_ptr, sizeof(const char*));  // ← Используем name_ptr
+
+        // probe
+        for (uint32_t i = 0; i < m_entries.size(); i++) {
+            uint32_t slot_addr = (hash + i) & m_mask;
+            auto& slot = m_entries[slot_addr];
+            if (!slot.key) {
+                return nullptr;
+            }
+            else {
+                if (slot.key != str.name_ptr) {  // ← Сравниваем указатели!
+                    continue;
+                }
+                return &slot.value;
+            }
+        }
+        assert(false);
+    }
+
+    void set(InternedSymbolPtr ptr, const T& obj) {
+        uint32_t hash = compute_crc32(ptr.name_ptr, sizeof(const char*));  // ← Используем name_ptr
+
+        // probe
+        for (uint32_t i = 0; i < m_entries.size(); i++) {
+            uint32_t slot_addr = (hash + i) & m_mask;
+            auto& slot = m_entries[slot_addr];
+            if (!slot.key) {
+                // not found, insert!
+                slot.key = ptr.name_ptr;  // ← Сохраняем указатель!
+                slot.value = obj;
+                m_used_entries++;
+                if (m_used_entries >= m_next_resize) {
+                    resize();
+                }
+                return;
+            }
+            else {
+                if (slot.key == ptr.name_ptr) {  // ← Сравниваем указатели!
+                    slot.value = obj;
+                    return;
+                }
+            }
+        }
+        assert(false);
+    }
+
+    void clear() {
+        m_entries.clear();
+        m_power_of_two_size = 3;  // 2 ^ 3 = 8
+        m_entries.resize(8);
+        m_used_entries = 0;
+        m_next_resize = (m_entries.size() * kMaxUsed);
+        m_mask = 0b111;
+    }
+
+private:
+    struct Entry {
+        const char* key = nullptr;
+        T value;
+    };
+    std::vector<Entry> m_entries;
+
+    void resize() {
+        m_power_of_two_size++;
+        m_mask = (1U << m_power_of_two_size) - 1;
+
+        std::vector<Entry> new_entries(m_entries.size() * 2);
+        for (const auto& old_entry : m_entries) {
+            if (old_entry.key) {
+                bool done = false;
+                uint32_t hash = compute_crc32(old_entry.key, sizeof(const char*));
+                for (uint32_t i = 0; i < new_entries.size(); i++) {
+                    uint32_t slot_addr = (hash + i) & m_mask;
+                    auto& slot = new_entries[slot_addr];
+                    if (!slot.key) {
+                        slot.key = old_entry.key;
+                        slot.value = std::move(old_entry.value);
+                        done = true;
+                        break;
+                    }
+                }
+                assert(done);
+            }
+        }
+
+        m_entries = std::move(new_entries);
+        m_next_resize = kMaxUsed * m_entries.size();
+    }
+    int m_power_of_two_size = 0;
+    int m_used_entries = 0;
+    int m_next_resize = 0;
+    uint32_t m_mask = 0;
+    static constexpr float kMaxUsed = 0.7;
+};
+
+class SymbolTable {
+public:
+    SymbolTable(const SymbolTable&) = delete;
+    SymbolTable& operator=(const SymbolTable&) = delete;
+    SymbolTable();
+    ~SymbolTable();
+
+    InternedSymbolPtr intern(const char* str);
+
+private:
+    void resize();
+    int m_power_of_two_size = 0;
+    struct Entry {
+        uint32_t hash = 0;
+        const char* name = nullptr;
+    };
+    std::vector<Entry> m_entries;
+    int m_used_entries = 0;
+    int m_next_resize = 0;
+    uint32_t m_mask = 0;
+    static constexpr float kMaxUsed = 0.7;
+};
+
+using EnvironmentMap = InternedPtrMap<Object>;
+
+class EnvironmentObject : public HeapObject 
+{
+public:
+
+    std::string name;
+    std::shared_ptr<EnvironmentObject> parent_env;
+    EnvironmentMap vars;
+    
     EnvironmentObject() = default;
-    explicit EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
+    EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
         : parent_env(std::move(parent)) {
     }
 
-    std::string print() const override { return "[environment]"; }
-    std::string inspect() const override { return "[environment]"; }
-
-    Object* find(const std::string& name) {
-        auto it = vars.find(name);
-        if (it != vars.end()) {
-            return &it->second;
-        }
-        if (parent_env) {
-            return parent_env->find(name);
-        }
-        return nullptr;
+    Object* find(const char* n, SymbolTable* st) {
+        return vars.lookup(st->intern(n));
     }
 
-    void set(const std::string& name, const Object& value) {
-        vars[name] = value;
+    Object* find(InternedSymbolPtr ptr) {
+        return vars.lookup(ptr);
     }
 
-    bool try_get(const std::string& name, Object* dest) const {
-        auto it = vars.find(name);
-        if (it != vars.end()) {
-            *dest = it->second;
-            return true;
-        }
-        if (parent_env) {
-            return parent_env->try_get(name, dest);
-        }
-        return false;
+    static Object make_new() {
+        Object obj;
+        obj.type = ObjectType::ENVIRONMENT;
+        obj.heap_obj = std::make_shared<EnvironmentObject>();
+        return obj;
     }
 
-    Object get(const std::string& name) const {
-        Object result;
-        if (try_get(name, &result)) {
-            return result;
+    static Object make_new(std::string name,
+        std::shared_ptr<EnvironmentObject> parent_env = nullptr) {
+        Object obj;
+        obj.type = ObjectType::ENVIRONMENT;
+        auto env = std::make_shared<EnvironmentObject>();
+        env->name = std::move(name);
+        env->parent_env = std::move(parent_env);
+        obj.heap_obj = std::move(env);
+        return obj;
+    }
+
+    std::string print() const override {
+        if (name.empty()) {
+            return "<unnamed environment>";
         }
-        throw std::runtime_error("Undefined symbol: " + name);
+        else {
+            return "<environment \"" + name + "\">";
+        }
+    }
+
+    std::string inspect() const override {
+        std::string result = "[environment]\n  name: " + name +
+            "\n  parent: " + (parent_env ? parent_env->print() : "NONE") + "\n";
+        return result;
     }
 };
 
@@ -406,28 +555,3 @@ public:
     }
 };
 
-class SymbolTable {
-private:
-    static constexpr double kMaxUsed = 0.75;
-    uint32_t m_power_of_two_size = 1;
-    uint32_t m_used_entries = 0;
-    uint32_t m_next_resize = 0;
-    uint32_t m_mask = 0b1;
-
-    struct Entry {
-        char* name = nullptr;
-        uint32_t hash = 0;
-    };
-
-    std::vector<Entry> m_entries;
-
-public:
-    SymbolTable();
-    ~SymbolTable();
-
-    InternedSymbolPtr intern(const std::string& name);
-
-private:
-    void resize();
-    uint32_t compute_hash(const char* data, size_t length) const;
-};

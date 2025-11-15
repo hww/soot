@@ -1,0 +1,5 @@
+C:\projects\h2w\z80-lisp\src\lib\object.cpp;C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\z80-lisp-lib.dir\Debug\object.obj
+C:\projects\h2w\z80-lisp\src\lib\reader.cpp;C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\z80-lisp-lib.dir\Debug\reader.obj
+C:\projects\h2w\z80-lisp\src\lib\interpreter.cpp;C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\z80-lisp-lib.dir\Debug\interpreter.obj
+C:\projects\h2w\z80-lisp\src\lib\source-info.cpp;C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\z80-lisp-lib.dir\Debug\source-info.obj
+C:\projects\h2w\z80-lisp\src\lib\crc32.cpp;C:\projects\h2w\z80-lisp\out\build\x64-Debug-Tests\z80-lisp-lib.dir\Debug\crc32.obj

@@ -45,7 +45,7 @@ private:
 // Главный Reader (аналог goos::Reader)
 class Reader {
     friend class TokenStream; 
-
+    friend class Interpreter;
 public:
     Reader();
     
