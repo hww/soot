@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "interpreter.h"
 
+using namespace script;
+
 class VectorTest : public ::testing::Test {
 protected:
     void SetUp() override {

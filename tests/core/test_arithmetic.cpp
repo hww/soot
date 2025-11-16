@@ -1,6 +1,8 @@
 ﻿#include <gtest/gtest.h>
 #include "interpreter.h"
 
+using namespace script;
+
 class ArithmeticTest : public ::testing::Test {
 protected:
     void SetUp() override {

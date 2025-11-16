@@ -1,6 +1,6 @@
 #include "compiler.h"
 #include "crc32.h"
-#include "source-info.h"
+#include "source_info.h"
 #include "errors.h"
 #include <limits>
 #include <iostream>

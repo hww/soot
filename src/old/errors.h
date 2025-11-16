@@ -3,7 +3,7 @@
 
 #include <stdexcept>
 #include <string>
-#include "source-info.h"
+#include "source_info.h"
 
 // Базовое исключение для ошибок компиляции
 class CompileError : public std::exception {

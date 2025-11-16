@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "interpreter.h"
 
+using namespace script;
+
 class LoopTest : public ::testing::Test {
 protected:
     void SetUp() override {

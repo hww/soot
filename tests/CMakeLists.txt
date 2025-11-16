@@ -3,16 +3,17 @@
 # Добавляем эту строку в самое начало
 include(GoogleTest)
 
-add_library(z80_lisp_lib
-    src/lib/object.cpp
-    src/lib/interpreter.cpp  
-    src/lib/reader.cpp
-    src/lib/source-info.cpp
-    src/lib/crc32.cpp
-)
+#add_library(script_lib
+#    src/script/object.cpp
+#    src/script/interpreter.cpp  
+#    src/script/reader.cpp
+#    src/script/source_info.cpp
+#    src/script/crc32.cpp
+#    src/script/pretty_printer.cpp
+#)
 
 # Создаем тестовый исполняемый файл
-add_executable(z80_lisp_test
+add_executable(script_test
     tests/test_main.cpp
     tests/core/test_basic_types.cpp
     tests/core/test_arithmetic.cpp
@@ -32,14 +33,14 @@ add_executable(z80_lisp_test
 )
 
 # Линкуем с нашей библиотекой и gtest
-target_link_libraries(z80_lisp_test z80_lisp_lib gtest_main fmt)
-target_include_directories(z80_lisp_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/lib)
+target_link_libraries(script_test script_lib gtest_main fmt)
+target_include_directories(script_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
 if(MSVC)
-    set_target_properties(z80_lisp_test PROPERTIES 
+    set_target_properties(script_test PROPERTIES 
         VS_DEBUGGER_ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/Debug"
     )
 endif()
 
 # Регистрируем тесты для Test Explorer
-gtest_discover_tests(z80_lisp_test)
+gtest_discover_tests(script_test)

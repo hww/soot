@@ -1,0 +1,26 @@
+add_library(repl_core 
+    # REPL UI
+    src/repl/config.cpp
+    src/repl/repl_wrapper.cpp
+    
+    # nREPL протокол  
+    src/repl/nrepl/ReplServer.cpp
+    src/repl/nrepl/ReplClient.cpp
+    
+    # Низкоуровневые сокеты
+    src/repl/cross_sockets/XSocket.cpp
+    src/repl/cross_sockets/XSocketServer.cpp  
+    src/repl/cross_sockets/XSocketClient.cpp
+)
+
+target_link_libraries(repl_core PRIVATE 
+    fmt::fmt
+    script_core
+)
+
+if(WIN32)
+    target_link_libraries(repl_core PRIVATE ws2_32)
+endif()
+
+add_executable(z80-lisp src/main.cpp)
+target_link_libraries(z80-lisp PRIVATE repl_core script_core)

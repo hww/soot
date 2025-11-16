@@ -10,7 +10,7 @@ LINENOISE_OBJ = $(LINENOISE_SRC:.c=.o)
 TARGET = z80-lisp
 SOURCES = src/main.cpp src/command-line.cpp src/crc32.cpp \
 	src/reader.cpp src/object.cpp \
-	src/source-info.cpp src/interpreter.cpp
+	src/source_info.cpp src/interpreter.cpp
 OBJS = $(SOURCES:.cpp=.o)
 
 $(TARGET): $(OBJS) $(LINENOISE_OBJ)

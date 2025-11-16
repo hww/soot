@@ -2,6 +2,8 @@
 #include "interpreter.h"
 #include <cmath>
 
+using namespace script;
+
 class MathTest : public ::testing::Test {
 protected:
     void SetUp() override {

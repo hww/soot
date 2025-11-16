@@ -1,1 +1,0 @@
-C:/projects/h2w/z80-lisp/out/install/x64-Debug-Tests/bin/z80-lisp.exe

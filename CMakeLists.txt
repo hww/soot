@@ -1,7 +1,7 @@
 ﻿# Верхний уровень
 cmake_minimum_required(VERSION 3.15)
 
-project(z80-lisp
+project(repl
     VERSION 1.0.0
     DESCRIPTION "Z80 Lisp Interpreter"
     LANGUAGES C CXX
@@ -63,11 +63,20 @@ set(FMT_TEST OFF CACHE BOOL "Disable fmt tests" FORCE)
 include_directories(third_party/fmt/include)
 add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 
+include_directories(third_party/replxx/include)
+add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
+
 # Include subdirectories
 include(src/CMakeLists.txt)
 
 # Installation (optional)
-install(TARGETS z80-lisp
+install(TARGETS lisp
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+install(TARGETS repl
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib

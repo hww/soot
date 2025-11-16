@@ -1,5 +1,5 @@
 #include "parser.h"
-#include "source-info.h"
+#include "source_info.h"
 #include "errors.h"
 #include <sstream>
 #include <iostream>
@@ -7,7 +7,7 @@
 #include <cctype>
 #include <cstdlib>
 #include "parser.h"
-#include "source-info.h"
+#include "source_info.h"
 #include "errors.h"
 #include <sstream>
 #include <iostream>
