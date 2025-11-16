@@ -3,14 +3,7 @@
 # Добавляем эту строку в самое начало
 include(GoogleTest)
 
-#add_library(script_lib
-#    src/script/object.cpp
-#    src/script/interpreter.cpp  
-#    src/script/reader.cpp
-#    src/script/source_info.cpp
-#    src/script/crc32.cpp
-#    src/script/pretty_printer.cpp
-#)
+include_directories(common/script)
 
 # Создаем тестовый исполняемый файл
 add_executable(script_test
@@ -29,8 +22,7 @@ add_executable(script_test
     tests/core/test_loops.cpp
     tests/core/test_conversions.cpp
     tests/core/test_math.cpp
-    tests/core/test_system.cpp
-)
+    tests/core/test_system.cpp)
 
 # Линкуем с нашей библиотекой и gtest
 target_link_libraries(script_test script_lib gtest_main fmt)
