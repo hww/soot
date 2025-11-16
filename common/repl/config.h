@@ -22,9 +22,8 @@ public:
     bool append_keybinds = true;
     std::vector<KeyBind> keybinds = {
         {KeyBind::Modifier::CTRL, "C", "Clear screen", "(clear)"},
-        {KeyBind::Modifier::CTRL, "H", "Show help", "(help)"},
+        //{KeyBind::Modifier::CTRL, "H", "Show help", "(help)"},
         {KeyBind::Modifier::CTRL, "K", "Show keybinds", "(keybinds)"},
-        {KeyBind::Modifier::CTRL, "D", "Exit REPL", "(quit)"},
         {KeyBind::Modifier::CTRL, "L", "List history", "(history)"}
     };
 

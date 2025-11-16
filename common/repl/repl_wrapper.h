@@ -54,6 +54,14 @@ private:
     std::string get_current_repl_token(const std::string& context);
     void load_startup_files();
     void execute_startup_commands(const std::vector<std::string>& commands);
+    void show_history();
+    replxx::Replxx::completions_t get_completions(const std::string& input, int& context_len);
+    replxx::Replxx::hints_t get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color);
+    
+    void load_config(const std::string& filename = "config.lisp");
+    void parse_config_data(const script::Object& config_list);
+    void parse_keybinds(const script::Object& keybinds_list);
+    KeyBind::Modifier parse_modifier(const std::string& mod_str);
 
     std::unique_ptr<ReplServer> network_server_;
     std::thread network_thread_;
@@ -65,4 +73,5 @@ private:
     script::Reader reader;
     std::string username;
     bool nrepl_alive = false;
+    std::atomic<bool> should_exit_{ false };
 };

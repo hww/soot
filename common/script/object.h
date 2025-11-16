@@ -184,6 +184,9 @@ namespace script
         EnvironmentObject* as_env() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
         bool as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
+        
+        // C++ идеоматичные методы
+        std::vector<Object> as_c_vector() const;
 
         // For pair access
         Object car() const;

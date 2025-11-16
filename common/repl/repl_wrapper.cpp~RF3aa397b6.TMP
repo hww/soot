@@ -417,7 +417,7 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
 
 void ReplWrapper::load_config(const std::string& filename) {
     try {
-        auto config_data = reader.read_from_file(filename);
+        auto config_data = reader.read_file(filename);
         parse_config_data(config_data);
         fmt::print("Loaded config from {}\n", filename);
     }
@@ -444,7 +444,7 @@ void ReplWrapper::parse_config_data(const script::Object& config_list) {
                 }
                 else if (cmd_name == "keybind" && args.size() >= 5) {
                     KeyBind bind;
-                    bind.modifier = parse_modifier(args[1].as_symbol().name_ptr);
+                    bind.modifier = parse_modifier(args[1].as_symbol_string());
                     bind.key = args[2].as_string();
                     bind.description = args[3].as_string();
                     bind.command = args[4].as_string();

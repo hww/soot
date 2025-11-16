@@ -249,6 +249,18 @@ namespace script
         return std::dynamic_pointer_cast<EnvironmentObject>(heap_obj);
     }
 
+    std::vector<Object> Object::as_c_vector() const {
+        if (!is_list())
+            throw std::runtime_error("as_vector called on a " + object_type_to_string(type) + " " + print());
+        std::vector<Object> result;
+        Object current = *this;
+        while (current.is_pair()) {
+            result.push_back(current.car());
+            current = current.cdr();
+        }
+        return result;
+    }
+
     // Pair accessors
     Object Object::car() const {
         if (type != ObjectType::PAIR) throw_type_error("pair");
