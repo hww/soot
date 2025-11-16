@@ -1,4 +1,6 @@
 ﻿#include "repl_wrapper.h"
+#include "common/log/log.h"
+#include "common/versions/revision.h"
 #include <iostream>
 #include <fstream>
 
@@ -56,10 +58,11 @@ void ReplWrapper::execute_line(const std::string& line) {
 }
 
 void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects) {
-    fmt::print(fg(fmt::color::steel_blue), "-\n");
-    fmt::print(fg(fmt::color::gold) | fmt::emphasis::bold, " ALESTE LISP   ”‚\n");
-    fmt::print(fg(fmt::color::light_blue), "          Professional REPL       \n");
-    fmt::print(fg(fmt::color::steel_blue), " ”\n");
+    fmt::print(fg(fmt::color::steel_blue),                  "----------------------------------\n");
+    fmt::print(fg(fmt::color::gold) | fmt::emphasis::bold,  "             ALESTE LISP          \n");
+    fmt::print(fg(fmt::color::light_blue),                  "          Professional REPL       \n");
+    fmt::print(fg(fmt::color::steel_blue),                  "--------------------------------- \n");
+    fmt::print(fg(fmt::color::gray),                        " version: {} tag: {}\n", BUILT_SHA, BUILT_TAG);
 
     fmt::print("Loaded: ");
     for (const auto& project : loaded_projects) {
@@ -139,18 +142,24 @@ void ReplWrapper::run_script(const std::string& filename) {
 void ReplWrapper::start_network_server(int port) {
     if (network_running_) return;
 
-    network_server_ = std::make_unique<ReplServer>(port);
+    // Исправляем конструктор - добавляем shutdown callback
+    network_server_ = std::make_unique<ReplServer>(
+        [this]() { return !network_running_; },  // shutdown callback
+        port
+    );
+
     network_server_->set_message_handler([this](const std::string& msg, int client) {
         handle_network_message(msg, client);
         });
 
-    if (network_server_->init()) {
+    // Исправляем вызовы методов
+    if (network_server_->init_server()) {  // БЫЛО: init()
         network_running_ = true;
         network_thread_ = std::thread(&ReplWrapper::network_server_worker, this, port);
-        fmt::print(fg(fmt::color::green), "вњ… Network REPL server started on port {}\n", port);
+        fmt::print(fg(fmt::color::green), "✓ Network REPL server started on port {}\n", port);
     }
     else {
-        fmt::print(fg(fmt::color::red), "вќЊ Failed to start network REPL server\n");
+        fmt::print(fg(fmt::color::red), "✗ Failed to start network REPL server\n");
     }
 }
 
@@ -160,7 +169,7 @@ void ReplWrapper::stop_network_server() {
         network_thread_.join();
     }
     if (network_server_) {
-        network_server_->shutdown();
+        network_server_->shutdown_server();  // БЫЛО: shutdown()
         network_server_.reset();
     }
 }
@@ -179,17 +188,61 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
     fmt::print(fg(fmt::color::blue), "[NETWORK] Client {}: {}\n", client_socket, message);
 
     try {
-        // ПРАВИЛЬНО: используем eval_string который уже парсит и выполняет
         auto result = interpreter_.eval_string(message, "network");
         std::string response = "=> " + result.print();
 
-        ReplServer::write_to_socket(client_socket, response.c_str(), static_cast<int>(response.size()));
+        // Используем глобальную write_to_socket вместо ReplServer::
+        write_to_socket(client_socket, response.c_str(), response.size());
         fmt::print(fg(fmt::color::green), "[NETWORK] Response sent: {}\n", result.print());
 
     }
     catch (const std::exception& e) {
         std::string error = "Error: " + std::string(e.what());
-        ReplServer::write_to_socket(client_socket, error.c_str(), static_cast<int>(error.size()));
+        write_to_socket(client_socket, error.c_str(), error.size());
         fmt::print(fg(fmt::color::red), "[NETWORK] Error: {}\n", e.what());
+    }
+}
+
+void ReplWrapper::load_startup_files() {
+    // Загружаем pre-network startup файл
+    std::ifstream pre_file("startup-pre.gc");
+    if (pre_file) {
+        std::vector<std::string> pre_commands;
+        std::string line;
+        while (std::getline(pre_file, line)) {
+            if (!line.empty() && line[0] != ';') { // игнорируем пустые строки и комментарии
+                pre_commands.push_back(line);
+            }
+        }
+        execute_startup_commands(pre_commands);
+        lg::info("Loaded {} commands from startup-pre.gc", pre_commands.size());
+    }
+
+    // Загружаем post-network startup файл (если сеть включена)
+    if (config_.enable_network) {
+        std::ifstream post_file("startup-post.gc");
+        if (post_file) {
+            std::vector<std::string> post_commands;
+            std::string line;
+            while (std::getline(post_file, line)) {
+                if (!line.empty() && line[0] != ';') {
+                    post_commands.push_back(line);
+                }
+            }
+            execute_startup_commands(post_commands);
+            lg::info("Loaded {} commands from startup-post.gc", post_commands.size());
+        }
+    }
+}
+
+void ReplWrapper::execute_startup_commands(const std::vector<std::string>& commands) {
+    for (const auto& command : commands) {
+        try {
+            lg::debug("Executing startup command: {}", command);
+            execute_line(command);
+        }
+        catch (const std::exception& e) {
+            lg::warn("Startup command failed: {} - Error: {}", command, e.what());
+        }
     }
 }

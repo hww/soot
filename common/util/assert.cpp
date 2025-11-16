@@ -8,7 +8,6 @@
 
 #include "log/log.h"
 
-using namespace lg;
 
 void private_assert_failed(const char* expr,
     const char* file,
@@ -18,13 +17,13 @@ void private_assert_failed(const char* expr,
     if (!msg || msg[0] == '\0') {
         std::string log = fmt::format("Assertion failed: '{}'\n\tSource: {}:{}\n\tFunction: {}\n", expr,
             file, line, function);
-        Logger::fatal("{}", log);  // ← ЗАМЕНИТЬ die на fatal
+        lg::die("{}", log);  // ← ЗАМЕНИТЬ die на fatal
     }
     else {
         std::string log =
             fmt::format("Assertion failed: '{}'\n\tMessage: {}\n\tSource: {}:{}\n\tFunction: {}\n",
                 expr, msg, file, line, function);
-        Logger::fatal("{}", log);  // ← ЗАМЕНИТЬ die на fatal
+        lg::die("{}", log);  // ← ЗАМЕНИТЬ die на fatal
     }
     abort();
 }

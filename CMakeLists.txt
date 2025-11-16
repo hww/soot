@@ -67,8 +67,8 @@ write_revision_h()
 # Include folders
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(common)
+include_directories(common/cross_sockets)
 include_directories(third_party/fmt/include)
-
 
 # build format library
 include_directories(third_party/fmt/include)
@@ -77,7 +77,10 @@ add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 include_directories(third_party/replxx/include)
 add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 
+
+
 # Include subdirectories
+include(common/cross_sockets/CMakeLists.txt)
 include(common/script/CMakeLists.txt)
 #include(common/type_system/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)

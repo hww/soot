@@ -1,104 +1,88 @@
 #pragma once
 
 #include <string>
-#include <chrono>
-#include <mutex>
-#include <cstdio>
+#include <ctime>
+
+#ifdef __linux__
+#include <sys/time.h>
+#endif
+
 #include "fmt/format.h"
 #include "fmt/color.h"
 
 namespace lg {
 
-    enum class Level {
-        TRACE, DEBUG, INFO, WARN, ERROR, FATAL
-    };
+#ifdef __linux__
+	struct LogTime {
+		timeval tv;
+	};
+#else
+	struct LogTime {
+		time_t tim;
+	};
+#endif
 
-    class Logger {
-    public:
-        static void initialize();
-        static void shutdown();
+	enum class level {
+		trace = 0,
+		debug = 1,
+		info = 2,
+		warn = 3,
+		error = 4,
+		die = 5
+	};
 
-        static void setFile(const std::string& filename, bool append = false);
-        static void setStdoutLevel(Level level);
-        static void setFileLevel(Level level);
-        static void enableColors(bool enable = true);
+	namespace internal {
+		void log_message(level log_level, LogTime& now, const char* message);
+	}  // namespace internal
 
-        // Основные функции с fmt - ОПРЕДЕЛЕНИЯ В ЗАГОЛОВОЧНОМ ФАЙЛЕ
-        template<typename... Args>
-        static void log(Level level, fmt::format_string<Args...> format, Args&&... args) {
-            if (!initialized_) return;
+	// Возвращаем ротацию
+	void set_file(const std::string& filename, bool should_rotate = true, bool append = false);
+	void set_stdout_level(level log_level);
+	void set_file_level(level log_level);
+	void disable_ansi_colors();
+	void initialize();
+	void finish();
 
-            std::lock_guard<std::mutex> lock(mutex_);
+	template <typename... Args>
+	void log(level log_level, const std::string& format, Args&&... args) {
+		LogTime now;
+#ifdef __linux__
+		gettimeofday(&now.tv, nullptr);
+#else
+		now.tim = time(nullptr);
+#endif
+		std::string formatted_message = fmt::format(fmt::runtime(format), std::forward<Args>(args)...);
+		internal::log_message(log_level, now, formatted_message.c_str());
+	}
 
-            auto message = fmt::format(format, std::forward<Args>(args)...);
-            auto timestamp = formatTime();
-            auto levelStr = levelToString(level);
-            auto fullMessage = fmt::format("{} [{}] {}", timestamp, levelStr, message);
+	template <typename... Args>
+	void trace(const std::string& format, Args&&... args) {
+		log(level::trace, format, std::forward<Args>(args)...);
+	}
 
-            // Запись в файл
-            if (level >= fileLevel_ && file_) {
-                writeToFile(fullMessage);
-            }
+	template <typename... Args>
+	void debug(const std::string& format, Args&&... args) {
+		log(level::debug, format, std::forward<Args>(args)...);
+	}
 
-            // Запись в консоль
-            if (level >= stdoutLevel_) {
-                writeToConsole(fullMessage, level);
-            }
+	template <typename... Args>
+	void info(const std::string& format, Args&&... args) {
+		log(level::info, format, std::forward<Args>(args)...);
+	}
 
-            if (level == Level::FATAL) {
-                shutdown();
-                std::abort();
-            }
-        }
+	template <typename... Args>
+	void warn(const std::string& format, Args&&... args) {
+		log(level::warn, format, std::forward<Args>(args)...);
+	}
 
-        template<typename... Args>
-        static void trace(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::TRACE, format, std::forward<Args>(args)...);
-        }
+	template <typename... Args>
+	void error(const std::string& format, Args&&... args) {
+		log(level::error, format, std::forward<Args>(args)...);
+	}
 
-        template<typename... Args>
-        static void debug(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::DEBUG, format, std::forward<Args>(args)...);
-        }
+	template <typename... Args>
+	void die(const std::string& format, Args&&... args) {
+		log(level::die, format, std::forward<Args>(args)...);
+	}
 
-        template<typename... Args>
-        static void info(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::INFO, format, std::forward<Args>(args)...);
-        }
-
-        template<typename... Args>
-        static void warn(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::WARN, format, std::forward<Args>(args)...);
-        }
-
-        template<typename... Args>
-        static void error(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::ERROR, format, std::forward<Args>(args)...);
-        }
-
-        template<typename... Args>
-        static void fatal(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::FATAL, format, std::forward<Args>(args)...);
-        }
-
-        // Для обратной совместимости
-        template<typename... Args>
-        static void die(fmt::format_string<Args...> format, Args&&... args) {
-            log(Level::FATAL, format, std::forward<Args>(args)...);
-        }
-
-    private:
-        static std::string formatTime();
-        static std::string levelToString(Level level);
-        static void writeToFile(const std::string& message);
-        static void writeToConsole(const std::string& message, Level level);
-
-        static std::mutex mutex_;
-        static FILE* file_;
-        static Level stdoutLevel_;
-        static Level fileLevel_;
-        static bool colorsEnabled_;
-        static bool initialized_;
-    };
-
-} // namespace lg
+}  // namespace lg

@@ -52,6 +52,8 @@ private:
     void setup_keybinds();
     void network_server_worker(int port);
     std::string get_current_repl_token(const std::string& context);
+    void load_startup_files();
+    void execute_startup_commands(const std::vector<std::string>& commands);
 
     std::unique_ptr<ReplServer> network_server_;
     std::thread network_thread_;

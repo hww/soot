@@ -10,7 +10,7 @@ target_include_directories(repl_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(repl_lib PRIVATE script_lib fmt replxx)
+target_link_libraries(repl_lib PRIVATE script_lib fmt replxx xsockets_lib)
 
 if(WIN32)
     target_link_libraries(repl_lib PRIVATE ws2_32)

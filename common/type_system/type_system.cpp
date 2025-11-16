@@ -139,6 +139,97 @@ const char* basic_type_print(const Type* self) {
 }
 
 // ============================================================================
+// Реализации для Structure Type
+// ============================================================================
+
+bool structure_type_is_reference(const Type* self) {
+    return true; // Structure types are references
+}
+
+int structure_type_get_size_in_memory(const Type* self) {
+    const StructureType* structure_type = (const StructureType*)self;
+    return structure_type->size_in_mem;
+}
+
+int structure_type_get_load_size(const Type* self) {
+    return 4; // Structures are loaded as pointers (4 bytes)
+}
+
+bool structure_type_get_load_signed(const Type* self) {
+    return false; // Pointers are not sign-extended
+}
+
+const char* structure_type_print(const Type* self) {
+    const StructureType* structure_type = (const StructureType*)self;
+    static char buffer[256];
+    snprintf(buffer, sizeof(buffer), "[StructureType] %s (size: %d, fields: %d)",
+        self->name, structure_type->size_in_mem, structure_type->field_count);
+    return buffer;
+}
+
+// ============================================================================
+// Реализации виртуальных методов для BitFieldType
+// ============================================================================
+
+bool bitfield_type_is_reference(const Type* self) {
+    return false; // BitField types are value types
+}
+
+int bitfield_type_get_size_in_memory(const Type* self) {
+    const BitFieldType* bitfield_type = (const BitFieldType*)self;
+    return bitfield_type->base.size; // наследуем размер от ValueType
+}
+
+int bitfield_type_get_load_size(const Type* self) {
+    const BitFieldType* bitfield_type = (const BitFieldType*)self;
+    return bitfield_type->base.size;
+}
+
+bool bitfield_type_get_load_signed(const Type* self) {
+    const BitFieldType* bitfield_type = (const BitFieldType*)self;
+    return bitfield_type->base.sign_extend;
+}
+
+const char* bitfield_type_print(const Type* self) {
+    const BitFieldType* bitfield_type = (const BitFieldType*)self;
+    static char buffer[256];
+    snprintf(buffer, sizeof(buffer), "[BitFieldType] %s (size: %d bytes, fields: %d)",
+        self->name, bitfield_type->base.size, bitfield_type->field_count);
+    return buffer;
+}
+
+// ============================================================================
+// Реализации виртуальных методов для EnumType
+// ============================================================================
+
+bool enum_type_is_reference(const Type* self) {
+    return false; // Enum types are value types
+}
+
+int enum_type_get_size_in_memory(const Type* self) {
+    const EnumType* enum_type = (const EnumType*)self;
+    return enum_type->base.size;
+}
+
+int enum_type_get_load_size(const Type* self) {
+    const EnumType* enum_type = (const EnumType*)self;
+    return enum_type->base.size;
+}
+
+bool enum_type_get_load_signed(const Type* self) {
+    const EnumType* enum_type = (const EnumType*)self;
+    return enum_type->base.sign_extend;
+}
+
+const char* enum_type_print(const Type* self) {
+    const EnumType* enum_type = (const EnumType*)self;
+    static char buffer[256];
+    snprintf(buffer, sizeof(buffer), "[EnumType] %s (size: %d, bitfield: %s)",
+        self->name, enum_type->base.size, enum_type->is_bitfield ? "true" : "false");
+    return buffer;
+}
+
+// ============================================================================
 // Фабрики типов
 // ============================================================================
 

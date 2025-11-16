@@ -37,14 +37,25 @@ int main() {
     fmt::print("=== Тестируем виртуальные методы ===\n");
 
     Type* int_type = type_system_lookup(ts, "int");
-    Type* vector_type = type_system_lookup(ts, "vector");
-
-    if (int_type && vector_type) {
+    if (int_type) {
         fmt::print("✓ int.is_reference() = {}\n", int_type->is_reference(int_type));
         fmt::print("✓ int.get_size_in_memory() = {}\n", int_type->get_size_in_memory(int_type));
-        fmt::print("✓ vector.is_reference() = {}\n", vector_type->is_reference(vector_type));
-        fmt::print("✓ vector.get_size_in_memory() = {}\n", vector_type->get_size_in_memory(vector_type));
-        fmt::print("✓ vector.print() = {}\n", vector_type->print(vector_type));
+    }
+
+    Type* vector_type_obj = type_system_lookup(ts, "vector");
+
+    if (vector_type_obj) {
+        fmt::print("✓ int.is_reference() = {}\n", int_type->is_reference(int_type));
+        fmt::print("✓ int.get_size_in_memory() = {}\n", int_type->get_size_in_memory(int_type));
+        if (vector_type_obj && vector_type_obj->is_reference) {
+            fmt::print("✓ vector.is_reference() = {}\n", vector_type_obj->is_reference(vector_type_obj));
+        }
+        if (vector_type_obj && vector_type_obj->get_size_in_memory) {
+            fmt::print("✓ vector.get_size_in_memory() = {}\n", vector_type_obj->get_size_in_memory(vector_type_obj));
+        }
+        if (vector_type_obj && vector_type_obj->print) {
+            fmt::print("✓ vector.print() = {}\n", vector_type_obj->print(vector_type_obj));
+        }
     }
 
     // Создаем массив

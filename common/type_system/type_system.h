@@ -62,6 +62,23 @@ BasicType* type_system_create_basictype(TypeSystem* ts,
 // Базовые встроенные типы
 void type_system_initialize_builtin_types(TypeSystem* ts);
 
+BitFieldType* type_system_create_bitfieldtype(TypeSystem* ts,
+    const char* name,
+    const char* parent,
+    int size,
+    bool sign_extend);
+
+EnumType* type_system_create_enumtype(TypeSystem* ts,
+    const char* name,
+    const char* parent,
+    bool is_bitfield);
+
+void type_system_add_field_to_bitfield(TypeSystem* ts,
+    BitFieldType* bitfield,
+    const char* field_name,
+    TypeSpec* field_type,
+    int offset,  // в битах!
+    int size);   // в битах!
 
 // ============================================================================
 // Система полей
@@ -84,3 +101,9 @@ void type_system_add_field_to_structure(TypeSystem* ts,
 Field* type_system_lookup_field(TypeSystem* ts,
     const char* type_name,
     const char* field_name);
+
+
+// ============================================================================
+//  полей
+// ============================================================================
+

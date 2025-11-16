@@ -65,18 +65,6 @@ struct BasicType {
     bool final;
 };
 
-// ѕока заглушки дл€ остальных типов
-struct BitFieldType {
-    ValueType base;
-    // позже добавим BitField* fields
-};
-
-struct EnumType {
-    ValueType base;
-    bool is_bitfield;
-    // позже добавим entries
-};
-
 // Field structure (пока минимальна€)
 struct Field {
     const char* name;
@@ -98,4 +86,25 @@ struct MethodInfo {
     const char* defined_in_type;
     bool no_virtual;
     bool overrides_parent;
+};
+
+
+struct BitField {
+    // TypeSpec type;  // пока пропустим, добавим когда TypeSpec будет св€зан с Type
+    const char* name;
+    int offset;  // в битах
+    int size;    // в битах
+    bool skip_in_static_decomp;
+};
+
+struct BitFieldType {
+    ValueType base;
+    BitField* fields;
+    int field_count;
+};
+
+struct EnumType {
+    ValueType base;
+    bool is_bitfield;
+    // позже добавим записи enum
 };
