@@ -5,49 +5,29 @@
 
 namespace {
 
-    // Вспомогательные функции для работы с Object
-    const script::Object& car(const script::Object* x) {
-        if (!x->is_pair()) 
-            throw std::runtime_error("invalid defenum form");
-        return x->as_pair()->car;
-    }
-
-    const script::Object* cdr(const script::Object* x) {
-        if (!x->is_pair()) 
-            throw std::runtime_error("invalid defenum form");
-        return &x->as_pair()->cdr;
-    }
-
     std::string symbol_string(const script::Object& obj) {
-        if (obj.is_symbol()) return obj.as_symbol().name_ptr;
+        if (obj.is_symbol()) {
+            return obj.as_symbol().name_ptr;
+        }
         throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
     }
 
-    int64_t get_int(const script::Object& obj) {
-        if (obj.is_integer()) return obj.as_integer();
-        throw std::runtime_error(obj.print() + " was supposed to be an integer, but isn't");
-    }
-
     bool is_type(const std::string& expected, const TypeSpec& actual, TypeSystem* ts) {
-        TypeSpec* expected_spec = type_system_make_typespec(ts, expected.c_str());
-        bool result = type_system_typecheck(ts, expected_spec, &actual);
-        type_spec_destroy(expected_spec);
-        return result;
+        return ts->tc(ts->make_typespec(expected), actual);
     }
 
-    // ФИКС: Убрал взятие адреса временного объекта
-    TypeSpec* parse_typespec(TypeSystem* ts, const script::Object& src) {
+    TypeSpec parse_typespec(TypeSystem* ts, const script::Object& src) {
         if (src.is_symbol()) {
-            return type_system_make_typespec(ts, symbol_string(src).c_str());
+            return ts->make_typespec(symbol_string(src));
         }
         else if (src.is_pair()) {
-            TypeSpec* tspec = type_system_make_typespec(ts, symbol_string(car(&src)).c_str());
-            const auto* rest = cdr(&src);
+            TypeSpec tspec = ts->make_typespec(symbol_string(src.as_pair()->car));
+            const auto* rest = &src.as_pair()->cdr;
 
             while (rest->is_pair()) {
                 auto& it = rest->as_pair()->car;
-                TypeSpec* arg_spec = parse_typespec(ts, it); // Уже возвращает указатель
-                type_spec_add_arg(tspec, arg_spec);
+                TypeSpec arg_spec = parse_typespec(ts, it);
+                tspec.add_arg(arg_spec);
                 rest = &rest->as_pair()->cdr;
             }
             return tspec;
@@ -57,8 +37,7 @@ namespace {
         }
     }
 
-    // ФИКС: Убрал конфликт имен - переименовал функцию
-    bool integer_fits_in_type(int64_t value, int size, bool is_signed) {
+    bool local_integer_fits(int64_t value, int size, bool is_signed) {
         if (is_signed) {
             switch (size) {
             case 1: return value >= -128 && value <= 127;
@@ -80,264 +59,190 @@ namespace {
         }
     }
 
-    // В реальной реализации эти функции должны быть в type_system
-    EnumType* try_enum_lookup(TypeSystem* ts, TypeSpec* spec) {
-        Type* type = type_system_lookup(ts, spec->base_type);
-        type_spec_destroy(spec);
-        return type ? (EnumType*)type : nullptr;
-    }
-
-    ValueType* get_type_of_type(TypeSystem* ts, const char* type_name) {
-        Type* type = type_system_lookup(ts, type_name);
-        return type ? (ValueType*)type : nullptr;
-    }
-
 } // namespace
 
 EnumType* parse_defenum(const script::Object& defenum,
     TypeSystem* ts,
     DefinitionMetadata* symbol_metadata) {
-    // Базовая валидация - defenum должен быть списком (defenum name ...)
-    if (!defenum.is_pair()) throw std::runtime_error("defenum must be list");
+    // Базовая валидация - defenum должен быть списком
+    if (!defenum.is_list()) {
+        throw std::runtime_error("defenum must be list, got: " + defenum.print());
+    }
 
-    // Пропускаем символ 'defenum' и берем имя
-    const auto* iter = &defenum;
-    if (!iter->is_pair() || !iter->as_pair()->car.is_symbol() ||
-        std::string(iter->as_pair()->car.as_symbol().name_ptr) != "defenum") {
+    const script::Object* iter = &defenum;
+
+    // Проверяем первый элемент - должен быть 'defenum'
+    if (!iter->is_pair()) {
+        throw std::runtime_error("invalid defenum form");
+    }
+
+    auto& first = iter->as_pair()->car;
+    if (!first.is_symbol() || symbol_string(first) != "defenum") {
         throw std::runtime_error("defenum must start with 'defenum' symbol");
     }
 
-    iter = &iter->as_pair()->cdr; // переходим к имени
+    // Переходим к имени enum
+    iter = &iter->as_pair()->cdr;
 
-    // Получаем имя enum
-    if (!iter->is_pair() || !iter->as_pair()->car.is_symbol()) {
+    // Проверяем что есть имя enum
+    if (iter->is_empty_list()) {
+        throw std::runtime_error("defenum must have a name");
+    }
+    if (!iter->is_pair()) {
+        throw std::runtime_error("invalid defenum form");
+    }
+
+    auto& name_obj = iter->as_pair()->car;
+    if (!name_obj.is_symbol()) {
         throw std::runtime_error("defenum name must be a symbol");
     }
-    std::string name = iter->as_pair()->car.as_symbol().name_ptr;
-    fmt::print("DEBUG: Enum name: '{}'\n", name);
 
-    iter = &iter->as_pair()->cdr; // переходим к опциям/entries
+    std::string name = symbol_string(name_obj);
+    iter = &iter->as_pair()->cdr;
 
-    TypeSpec* base_type = type_system_make_typespec(ts, "int64");
+    TypeSpec base_type = ts->make_typespec("int64");
     bool is_bitfield = false;
     std::unordered_map<std::string, int64_t> entries;
 
-    // Пропускаем docstring если есть
-    if (iter->is_pair() && iter->as_pair()->car.is_string()) {
+    // Проверяем docstring
+    std::optional<std::string> maybe_docstring;
+    if (!iter->is_empty_list() && iter->is_pair() && iter->as_pair()->car.is_string()) {
         if (symbol_metadata) {
-            symbol_metadata->docstring = iter->as_pair()->car.as_string();
+            maybe_docstring = iter->as_pair()->car.as_string();
+            symbol_metadata->docstring = *maybe_docstring;
         }
         iter = &iter->as_pair()->cdr;
     }
 
-    // ОБЪЯВЛЯЕМ base_type_obj ЗДЕСЬ
-    Type* base_type_obj = type_system_lookup(ts, base_type->base_type);
-    if (!base_type_obj) {
-        type_spec_destroy(base_type);
-        throw std::runtime_error("Base type not found: " + std::string(base_type->base_type));
-    }
-    // Парсим опции
-    while (iter->is_pair() && iter->as_pair()->car.is_symbol()) {
-        const auto& option = iter->as_pair()->car;
-        std::string opt_name = option.as_symbol().name_ptr;
+    // Парсим опции (начинаются с :)
+    while (!iter->is_empty_list() && iter->is_pair()) {
+        auto& current = iter->as_pair()->car;
 
-        // ПРОВЕРЯЕМ ТОЛЬКО ИЗВЕСТНЫЕ ОПЦИИ
-        if (opt_name == ":bitfield" || opt_name == ":type" || opt_name == ":copy-entries") {
-            iter = &iter->as_pair()->cdr;
-            if (!iter->is_pair()) {
-                type_spec_destroy(base_type);
-                throw std::runtime_error("Option " + opt_name + " needs value");
+        if (!current.is_symbol() || !current.as_symbol().starts_with_colon()) {
+            break; // не опция, переходим к entries
+        }
+
+        auto option_name = symbol_string(current);
+        iter = &iter->as_pair()->cdr;
+
+        if (iter->is_empty_list() || !iter->is_pair()) {
+            throw std::runtime_error("Option " + option_name + " needs value");
+        }
+
+        auto& option_value = iter->as_pair()->car;
+        iter = &iter->as_pair()->cdr;
+
+        if (option_name == ":type") {
+            base_type = parse_typespec(ts, option_value);
+        }
+        else if (option_name == ":bitfield") {
+            if (option_value.is_symbol() && option_value.is_boolean()) {
+                is_bitfield = option_value.is_true();
             }
-
-            const auto& value = iter->as_pair()->car;
-
-            if (opt_name == ":bitfield") {
-                if (!value.is_symbol()) {
-                    type_spec_destroy(base_type);
-                    throw std::runtime_error(":bitfield value must be symbol");
-                }
-
-                std::string bitfield_val = value.as_symbol().name_ptr;
-                if (bitfield_val != "#t" && bitfield_val != "#f") {
-                    type_spec_destroy(base_type);
-                    throw std::runtime_error(":bitfield value must be #t or #f, got: " + bitfield_val);
-                }
-
-                is_bitfield = (bitfield_val == "#t");
+            else {
+                throw std::runtime_error(":bitfield value must be #t or #f, got: " + option_value.print());
             }
-            else if (opt_name == ":type") {
-                TypeSpec* old_base_type = base_type; // сохраняем старый
-
-                if (value.is_symbol()) {
-                    base_type = type_system_make_typespec(ts, value.as_symbol().name_ptr);
-                    if (!base_type) {
-                        // Если не удалось создать typespec, восстанавливаем старый
-                        base_type = old_base_type;
-                        throw std::runtime_error("Failed to create typespec for: " + std::string(value.as_symbol().name_ptr));
-                    }
-                    type_spec_destroy(old_base_type); // освобождаем старый только после успеха
-                }
-                else {
-                    throw std::runtime_error("Complex typespec not yet supported");
-                }
-
-                // ОБНОВЛЯЕМ base_type_obj после изменения типа
-                base_type_obj = type_system_lookup(ts, base_type->base_type);
-                if (!base_type_obj) {
-                    throw std::runtime_error("Base type not found: " + std::string(base_type->base_type));
-                }
+        }
+        else if (option_name == ":copy-entries") {
+            auto other_info = ts->try_enum_lookup(parse_typespec(ts, option_value));
+            if (!other_info) {
+                throw std::runtime_error("Cannot copy entries from " + option_value.print() + ", it is not a valid enum type");
             }
-            // TODO: :copy-entries
-
-            iter = &iter->as_pair()->cdr;
+            for (auto& e : other_info->entries()) {
+                if (entries.find(e.first) != entries.end()) {
+                    throw std::runtime_error("Entry " + e.first + " appears multiple times");
+                }
+                entries[e.first] = e.second;
+            }
         }
         else {
-            // ЕСЛИ это НЕ известная опция - значит это entry, выходим из цикла опций
-            break;
+            throw std::runtime_error("Unknown option " + option_name + " for defenum");
         }
     }
 
-
-    // Отладочный вывод
-    fmt::print("DEBUG: After options parsing, remaining items:\n");
-    const auto* debug_iter = iter;
-    int count = 0;
-    while (debug_iter->is_pair()) {
-        fmt::print("  [{}] {}\n", count, debug_iter->as_pair()->car.print());
-        debug_iter = &debug_iter->as_pair()->cdr;
-        count++;
-    }
-
-    // Парсим entries - УПРОЩЕННАЯ ЛОГИКА
+    // Парсим entries
+    auto type = ts->lookup_type(base_type);
     int64_t highest = -1;
-    while (iter->is_pair()) {
+
+    while (!iter->is_empty_list()) {
+        if (!iter->is_pair()) {
+            throw std::runtime_error("invalid list structure in defenum entries");
+        }
+
         auto& field = iter->as_pair()->car;
 
         if (field.is_symbol()) {
-            std::string entry_name = field.as_symbol().name_ptr;
-
-            // Проверяем следующий элемент - может быть значение?
-            const auto* next_iter = &iter->as_pair()->cdr;
-            if (next_iter->is_pair() && next_iter->as_pair()->car.is_integer()) {
-                // Формат: :name value
-                int64_t entry_val = next_iter->as_pair()->car.as_integer();
-
-                if (entries.find(entry_name) != entries.end()) {
-                    type_spec_destroy(base_type);
-                    throw std::runtime_error("Entry " + entry_name + " appears multiple times");
-                }
-
-                if (!integer_fits_in_type(entry_val, base_type_obj->get_load_size(base_type_obj),
-                    base_type_obj->get_load_signed(base_type_obj))) {
-                    fmt::print("Warning: Integer {} does not fit in {}\n", entry_val, base_type_obj->name);
-                }
-
-                if (entries.empty()) highest = entry_val;
-                highest = std::max(highest, entry_val);
-                entries[entry_name] = entry_val;
-                fmt::print("DEBUG: Added entry {} = {} (sequential)\n", entry_name, entry_val);
-
-                iter = &next_iter->as_pair()->cdr; // пропускаем значение
-            }
-            else {
-                // Простой символ - авто-инкремент
-                if (entries.find(entry_name) != entries.end()) {
-                    type_spec_destroy(base_type);
-                    throw std::runtime_error("Entry " + entry_name + " appears multiple times");
-                }
-
-                entries[entry_name] = ++highest;
-                fmt::print("DEBUG: Added entry {} = {} (auto)\n", entry_name, highest);
-                iter = &iter->as_pair()->cdr;
-            }
+            // Простой символ: name
+            //auto entry_name = symbol_string(field);
+            //
+            //if (entries.find(entry_name) != entries.end()) {
+            //    throw std::runtime_error("Entry " + entry_name + " appears multiple times");
+            //}
+            //
+            //entries[entry_name] = ++highest;
+            throw std::runtime_error("Enum entry name must be pair, got: " + field.print());
         }
         else if (field.is_pair()) {
-            // Пара (name value)
-            auto& entry_name_obj = field.as_pair()->car;
-            auto& value_rest = field.as_pair()->cdr;
+            // Пара: (name value)
+            auto& field_pair = *field.as_pair();
 
-            if (!entry_name_obj.is_symbol()) {
-                type_spec_destroy(base_type);
-                throw std::runtime_error("Enum entry name must be symbol");
+            if (!field_pair.car.is_symbol()) {
+                throw std::runtime_error("Enum entry name must be symbol, got: " + field_pair.car.print());
             }
 
-            std::string entry_name = entry_name_obj.as_symbol().name_ptr;
+            auto entry_name = symbol_string(field_pair.car);
 
             if (entries.find(entry_name) != entries.end()) {
-                type_spec_destroy(base_type);
                 throw std::runtime_error("Entry " + entry_name + " appears multiple times");
             }
 
-            if (value_rest.is_pair()) {
-                // Есть значение: (name value)
-                auto& value_obj = value_rest.as_pair()->car;
+            // Получаем значение
+            if (field_pair.cdr.is_empty_list()) {
+                // Авто-инкремент: (name)
+                entries[entry_name] = ++highest;
+            }
+            else if (field_pair.cdr.is_pair()) {
+                // Явное значение: (name value)
+                auto& value_obj = field_pair.cdr.as_pair()->car;
 
-                // ПРОВЕРЯЕМ что значение - integer
                 if (!value_obj.is_integer()) {
-                    type_spec_destroy(base_type);
                     throw std::runtime_error("Expected integer for enum value, got: " + value_obj.print());
                 }
 
-                int64_t entry_val = value_obj.as_integer();
-                if (!integer_fits_in_type(entry_val, base_type_obj->get_load_size(base_type_obj),
-                    base_type_obj->get_load_signed(base_type_obj))) {
-                    fmt::print("Warning: Integer {} does not fit in {}\n", entry_val, base_type_obj->name);
+                auto entry_val = value_obj.as_integer();
+                if (!integer_fits(static_cast<int64_t>(entry_val), type->get_load_size(), type->get_load_signed())) {
+                    fmt::print("Warning: Integer {} does not fit inside a {}\n", entry_val, type->get_name());
                 }
 
-                if (entries.empty()) highest = entry_val;
+                if (entries.empty()) {
+                    highest = entry_val;
+                }
                 highest = std::max(highest, entry_val);
                 entries[entry_name] = entry_val;
-                fmt::print("DEBUG: Added entry {} = {} (explicit)\n", entry_name, entry_val);
             }
             else {
-                // Авто-инкремент: (name)
-                entries[entry_name] = ++highest;
-                fmt::print("DEBUG: Added entry {} = {} (auto pair)\n", entry_name, highest);
+                throw std::runtime_error("Invalid enum entry format: " + field.print());
             }
 
-            iter = &iter->as_pair()->cdr;
-        }
-        else if (field.is_integer()) {
-            // Число как entry - это ошибка
-            type_spec_destroy(base_type);
-            throw std::runtime_error("Enum entry cannot be a number: " + field.print());
         }
         else {
-            type_spec_destroy(base_type);
             throw std::runtime_error("Enum entry must be symbol or list, got: " + field.print());
         }
+
+        iter = &iter->as_pair()->cdr;
     }
 
-
-    // Проверяем что базовый тип - integer
-    bool is_integer_type = false;
-    Type* current = base_type_obj;
-    while (current) {
-        if (strcmp(current->name, "integer") == 0 ||
-            strcmp(current->name, "sinteger") == 0 ||
-            strcmp(current->name, "uinteger") == 0 ||
-            strcmp(current->name, "int") == 0 ||
-            strcmp(current->name, "int32") == 0 ||
-            strcmp(current->name, "int64") == 0) {
-            is_integer_type = true;
-            break;
+    // Создаем enum type
+    if (is_type("integer", base_type, ts)) {
+        auto parent = ts->get_type_of_type<ValueType>(base_type.base_type());
+        auto new_type = std::make_unique<EnumType>(parent, name, is_bitfield, entries);
+        if (maybe_docstring) {
+            new_type->get_metadata().docstring = *maybe_docstring;
         }
-        if (!current->parent) break;
-        current = type_system_lookup(ts, current->parent);
-    }
-
-    if (is_integer_type) {
-        // Создаем enum
-        EnumType* enum_type = type_system_create_enumtype(ts, name.c_str(), base_type->base_type, is_bitfield);
-        type_spec_destroy(base_type);
-        if (!enum_type) throw std::runtime_error("Failed to create enum");
-
-        // TODO: Сохранить entries в enum_type
-
-        return enum_type;
+        new_type->set_runtime_name(parent->get_runtime_name());
+        return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));
     }
     else {
-        type_spec_destroy(base_type);
-        throw std::runtime_error("Enum base type must be integer type");
+        throw std::runtime_error("Creating an enum with type " + base_type.print() + " is not allowed or not supported yet.");
     }
 }

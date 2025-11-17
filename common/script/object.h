@@ -50,6 +50,12 @@ namespace script
             }
         };
 
+        bool starts_with_colon() const {
+            return name_ptr && name_ptr[0] != '\0' && name_ptr[0] == ':';
+        }
+
+        const char* c_str() const { return name_ptr; }
+
         bool operator==(const char* msg) const { return strcmp(msg, name_ptr) == 0; }
         bool operator!=(const char* msg) const { return strcmp(msg, name_ptr) != 0; }
         bool operator==(const std::string& str) const { return str == name_ptr; }
@@ -170,6 +176,8 @@ namespace script
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
+        bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
+        bool is_false() const { return is_symbol() && (as_symbol() == "#f"); }
 
         // Value access with type checking
         IntType as_integer() const;
@@ -184,13 +192,15 @@ namespace script
         EnvironmentObject* as_env() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
         bool as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
-        
+        const IntegerObject& as_integer_obj() const {
+            if (!is_integer()) throw_type_error("integer");
+            return integer_obj;
+        }
+
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
 
         // For pair access
-        Object car() const;
-        Object cdr() const;
         PairObject* as_pair() const;
 
         bool operator==(const Object& other) const;

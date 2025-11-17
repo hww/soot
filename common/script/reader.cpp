@@ -200,9 +200,9 @@ namespace script
         }
 
         //std::cout << "DEBUG read_list: elements count: " << elements.size() << std::endl;
-        for (size_t i = 0; i < elements.size(); i++) {
-            std::cout << "  [" << i << "] = " << elements[i].print() << std::endl;
-        }
+        //for (size_t i = 0; i < elements.size(); i++) {
+        //    std::cout <<  elements[i].print() << " ";
+        // }
 
         // Build proper list from elements
         Object result = Object::make_empty_list();

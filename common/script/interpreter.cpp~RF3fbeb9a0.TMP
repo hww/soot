@@ -301,8 +301,8 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
     Object current = list;
 
     while (current.is_pair()) {
-        result.push_back(eval_with_rewind(current.as_pair()->car, env));
-        current = current.as_pair()->cdr;
+        result.push_back(eval_with_rewind(current.car, env));
+        current = current.cdr;
     }
 
     if (!current.is_empty_list()) {
@@ -405,8 +405,8 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         Object current = lam->body;
 
         while (current.is_pair()) {
-            result = eval_with_rewind(current.as_pair()->car, lam_env);
-            current = current.as_pair()->cdr;
+            result = eval_with_rewind(current.car(), lam_env);
+            current = current.cdr();
         }
 
         // Если тело не список (одно выражение) - обработать этот случай
@@ -426,7 +426,7 @@ Object Interpreter::eval_quote(const Object& form, const Object& rest, const std
     if (!rest.is_pair()) {
         throw_eval_error(form, "quote requires one argument");
     }
-    return rest.as_pair()->car;
+    return rest.car();
 }
 
 Object Interpreter::eval_define(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -434,17 +434,17 @@ Object Interpreter::eval_define(const Object& form, const Object& rest, const st
         throw_eval_error(form, "define requires arguments");
     }
 
-    Object name_obj = rest.as_pair()->car;
+    Object name_obj = rest.car();
     if (!name_obj.is_symbol()) {
         throw_eval_error(form, "define name must be a symbol");
     }
 
-    Object value_part = rest.as_pair()->cdr;
+    Object value_part = rest.cdr();
     if (!value_part.is_pair()) {
         throw_eval_error(form, "define must have a value");
     }
 
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
+    Object value = eval_with_rewind(value_part.car(), env);
 
     // Сохраняем в ПЕРЕДАННЫЙ environment
     env->vars.set(name_obj.as_symbol(), value);
@@ -455,8 +455,8 @@ Object Interpreter::eval_define(const Object& form, const Object& rest, const st
 Object Interpreter::eval_lambda(const Object& form, const Object& rest,
     const std::shared_ptr<EnvironmentObject>& env) {
     // ...
-    Object params_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;  // ВСЁ тело после параметров
+    Object params_obj = rest.car();
+    Object body_obj = rest.cdr();  // ВСЁ тело после параметров
 
     if (!params_obj.is_list()) {
         throw_eval_error(form, "lambda: parameter list must be a list");
@@ -471,7 +471,7 @@ Object Interpreter::eval_lambda(const Object& form, const Object& rest,
     Object lambda_obj = LambdaObject::make_new();
     auto lambda = lambda_obj.as_lambda();
     lambda->args = args;
-    lambda->body = body_obj;  // ← ВСЁ тело, а не только .as_pair()->car!
+    lambda->body = body_obj;  // ← ВСЁ тело, а не только car()!
     lambda->parent_env = env;
 
     return lambda_obj;
@@ -482,8 +482,8 @@ Object Interpreter::eval_begin(const Object& form, const Object& rest, const std
     Object result = Object::make_empty_list();
 
     while (current.is_pair()) {
-        result = eval_with_rewind(current.as_pair()->car, env);
-        current = current.as_pair()->cdr;
+        result = eval_with_rewind(current.car(), env);
+        current = current.cdr();
     }
 
     return result;
@@ -495,8 +495,8 @@ Object Interpreter::eval_if(const Object& form, const Object& rest, const std::s
         throw_eval_error(form, "if requires condition and branches");
     }
 
-    Object condition_obj = rest.as_pair()->car;
-    Object then_part_obj = rest.as_pair()->cdr;
+    Object condition_obj = rest.car();
+    Object then_part_obj = rest.cdr();
 
     if (!then_part_obj.is_pair()) {
         throw_eval_error(form, "if requires then branch");
@@ -505,12 +505,12 @@ Object Interpreter::eval_if(const Object& form, const Object& rest, const std::s
     Object condition_result = eval_with_rewind(condition_obj, env);
 
     if (truthy(condition_result)) {
-        return eval_with_rewind(then_part_obj.as_pair()->car, env);
+        return eval_with_rewind(then_part_obj.car(), env);
     }
     else {
-        Object else_part = then_part_obj.as_pair()->cdr;
+        Object else_part = then_part_obj.cdr();
         if (else_part.is_pair()) {
-            return eval_with_rewind(else_part.as_pair()->car, env);
+            return eval_with_rewind(else_part.car(), env);
         }
         else {
             return Object::make_empty_list();
@@ -522,14 +522,14 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest, const std:
     Object current_clause = rest;
 
     while (current_clause.is_pair()) {
-        Object clause = current_clause.as_pair()->car;
+        Object clause = current_clause.car();
 
         if (!clause.is_pair()) {
             throw_eval_error(form, "cond clause must be a pair");
         }
 
-        Object condition = clause.as_pair()->car;
-        Object body = clause.as_pair()->cdr;
+        Object condition = clause.car();
+        Object body = clause.cdr();
 
         // Особый случай: (else ...)
         if (condition.is_symbol() && condition.as_symbol().name_ptr &&
@@ -537,21 +537,21 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest, const std:
             if (!body.is_pair()) {
                 throw_eval_error(form, "cond else clause must have body");
             }
-            return eval_with_rewind(body.as_pair()->car, env);
+            return eval_with_rewind(body.car(), env);
         }
 
         Object condition_result = eval_with_rewind(condition, env);
 
         if (truthy(condition_result)) {
             if (body.is_pair()) {
-                return eval_with_rewind(body.as_pair()->car, env);
+                return eval_with_rewind(body.car(), env);
             }
             else {
                 return condition_result;
             }
         }
 
-        current_clause = current_clause.as_pair()->cdr;
+        current_clause = current_clause.cdr();
     }
 
     return Object::make_empty_list();
@@ -562,11 +562,11 @@ Object Interpreter::eval_and(const Object& form, const Object& rest, const std::
     Object result = m_true_object;
 
     while (current.is_pair()) {
-        result = eval_with_rewind(current.as_pair()->car, env);
+        result = eval_with_rewind(current.car(), env);
         if (!truthy(result)) {
             return result;
         }
-        current = current.as_pair()->cdr;
+        current = current.cdr();
     }
 
     return result;
@@ -576,11 +576,11 @@ Object Interpreter::eval_or(const Object& form, const Object& rest, const std::s
     Object current = rest;
 
     while (current.is_pair()) {
-        Object result = eval_with_rewind(current.as_pair()->car, env);
+        Object result = eval_with_rewind(current.car(), env);
         if (truthy(result)) {
             return result;
         }
-        current = current.as_pair()->cdr;
+        current = current.cdr();
     }
 
     return m_false_object;
@@ -591,8 +591,8 @@ Object Interpreter::eval_set(const Object& form, const Object& rest, const std::
         throw_eval_error(form, "set! requires variable and value");
     }
 
-    Object name_obj = rest.as_pair()->car;
-    Object value_part = rest.as_pair()->cdr;
+    Object name_obj = rest.car();
+    Object value_part = rest.cdr();
 
     if (!name_obj.is_symbol()) {
         throw_eval_error(form, "set! variable must be a symbol");
@@ -602,7 +602,7 @@ Object Interpreter::eval_set(const Object& form, const Object& rest, const std::
         throw_eval_error(form, "set! requires a value");
     }
 
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
+    Object value = eval_with_rewind(value_part.car(), env);
 
     if (env) {
         env->vars.set(name_obj.as_symbol(), value);
@@ -617,8 +617,8 @@ Object Interpreter::eval_let(const Object& form, const Object& rest, const std::
         throw_eval_error(form, "let requires bindings and body");
     }
 
-    Object bindings_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
+    Object bindings_obj = rest.car();
+    Object body_obj = rest.cdr();
 
     if (!bindings_obj.is_list()) {
         throw_eval_error(form, "let bindings must be a list");
@@ -628,14 +628,14 @@ Object Interpreter::eval_let(const Object& form, const Object& rest, const std::
 
     Object current_binding = bindings_obj;
     while (current_binding.is_pair()) {
-        Object binding = current_binding.as_pair()->car;
+        Object binding = current_binding.car();
 
         if (!binding.is_pair()) {
             throw_eval_error(form, "let binding must be a pair (name value)");
         }
 
-        Object name_obj = binding.as_pair()->car;
-        Object value_part = binding.as_pair()->cdr;
+        Object name_obj = binding.car();
+        Object value_part = binding.cdr();
 
         if (!name_obj.is_symbol()) {
             throw_eval_error(form, "let binding name must be a symbol");
@@ -645,18 +645,18 @@ Object Interpreter::eval_let(const Object& form, const Object& rest, const std::
             throw_eval_error(form, "let binding must have a value");
         }
 
-        Object value = eval_with_rewind(value_part.as_pair()->car, env);
+        Object value = eval_with_rewind(value_part.car(), env);
         let_env->vars.set(name_obj.as_symbol(), value);
 
-        current_binding = current_binding.as_pair()->cdr;
+        current_binding = current_binding.cdr();
     }
 
     Object result = Object::make_empty_list();
     Object current_body = body_obj;
 
     while (current_body.is_pair()) {
-        result = eval_with_rewind(current_body.as_pair()->car, let_env);
-        current_body = current_body.as_pair()->cdr;
+        result = eval_with_rewind(current_body.car(), let_env);
+        current_body = current_body.cdr();
     }
     return result;
 }
@@ -666,8 +666,8 @@ Object Interpreter::eval_while(const Object& form, const Object& rest, const std
         throw_eval_error(form, "while requires condition and body");
     }
 
-    Object condition_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
+    Object condition_obj = rest.car();
+    Object body_obj = rest.cdr();
 
     if (!body_obj.is_pair()) {
         throw_eval_error(form, "while requires a body");
@@ -685,8 +685,8 @@ Object Interpreter::eval_while(const Object& form, const Object& rest, const std
 
         Object current_body = body_obj;
         while (current_body.is_pair()) {
-            result = eval_with_rewind(current_body.as_pair()->car, env);
-            current_body = current_body.as_pair()->cdr;
+            result = eval_with_rewind(current_body.car(), env);
+            current_body = current_body.cdr();
         }
     }
 
@@ -698,18 +698,18 @@ Object Interpreter::eval_macro(const Object& form, const Object& rest, const std
         throw_eval_error(form, "macro: expected name, parameter list and body");
     }
 
-    Object name_obj = rest.as_pair()->car;
+    Object name_obj = rest.car();
     if (!name_obj.is_symbol()) {
         throw_eval_error(form, "macro: name must be a symbol");
     }
 
-    Object rrest = rest.as_pair()->cdr;
+    Object rrest = rest.cdr();
     if (rrest.is_empty_list()) {
         throw_eval_error(form, "macro: expected parameter list after name");
     }
 
-    Object params_obj = rrest.as_pair()->car;
-    Object body_obj = rrest.as_pair()->cdr;
+    Object params_obj = rrest.car();
+    Object body_obj = rrest.cdr();
 
     if (!params_obj.is_list()) {
         throw_eval_error(form, "macro: parameter list must be a list");
@@ -725,7 +725,7 @@ Object Interpreter::eval_macro(const Object& form, const Object& rest, const std
     auto macro = macro_obj.as_macro();
     macro->name = name_obj.as_symbol().name_ptr;
     macro->args = args;
-    macro->body = body_obj.as_pair()->car;
+    macro->body = body_obj.car();
     macro->parent_env = env;
 
     env->vars.set(name_obj.as_symbol(), macro_obj);
@@ -738,8 +738,8 @@ Object Interpreter::eval_let_star(const Object& form, const Object& rest, const 
         throw_eval_error(form, "let* requires bindings and body");
     }
 
-    Object bindings_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
+    Object bindings_obj = rest.car();
+    Object body_obj = rest.cdr();
 
     if (!bindings_obj.is_list()) {
         throw_eval_error(form, "let* bindings must be a list");
@@ -749,14 +749,14 @@ Object Interpreter::eval_let_star(const Object& form, const Object& rest, const 
 
     Object current_binding = bindings_obj;
     while (current_binding.is_pair()) {
-        Object binding = current_binding.as_pair()->car;
+        Object binding = current_binding.car();
 
         if (!binding.is_pair()) {
             throw_eval_error(form, "let* binding must be a pair (name value)");
         }
 
-        Object name_obj = binding.as_pair()->car;
-        Object value_part = binding.as_pair()->cdr;
+        Object name_obj = binding.car();
+        Object value_part = binding.cdr();
 
         if (!name_obj.is_symbol()) {
             throw_eval_error(form, "let* binding name must be a symbol");
@@ -768,18 +768,18 @@ Object Interpreter::eval_let_star(const Object& form, const Object& rest, const 
 
         auto new_env = std::make_shared<EnvironmentObject>(current_env);
 
-        Object value = eval_with_rewind(value_part.as_pair()->car, current_env);
+        Object value = eval_with_rewind(value_part.car(), current_env);
         new_env->vars.set(name_obj.as_symbol(), value);
 
         current_env = new_env;
-        current_binding = current_binding.as_pair()->cdr;
+        current_binding = current_binding.cdr();
     }
 
     Object result = Object::make_empty_list();
     Object current_body = body_obj;
     while (current_body.is_pair()) {
-        result = eval_with_rewind(current_body.as_pair()->car, current_env);
-        current_body = current_body.as_pair()->cdr;
+        result = eval_with_rewind(current_body.car(), current_env);
+        current_body = current_body.cdr();
     }
     return result;
 }
@@ -1587,7 +1587,7 @@ Object Interpreter::eval_car_builtin(const Object& form, Arguments& args, const 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "car requires a pair argument");
     }
-    return args.unnamed[0].as_pair()->car;
+    return args.unnamed[0].car();
 }
 
 Object Interpreter::eval_cdr_builtin(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1597,7 +1597,7 @@ Object Interpreter::eval_cdr_builtin(const Object& form, Arguments& args, const 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "cdr requires a pair argument");
     }
-    return args.unnamed[0].as_pair()->cdr;
+    return args.unnamed[0].cdr();
 }
 
 Object Interpreter::eval_list_func(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1620,7 +1620,7 @@ Object Interpreter::eval_length(const Object& form, Arguments& args, const std::
 
     while (lst.is_pair()) {
         count++;
-        lst = lst.as_pair()->cdr;
+        lst = lst.cdr();
     }
 
     if (!lst.is_empty_list()) {
@@ -1644,13 +1644,13 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
 
         Object reversed = Object::make_empty_list();
         while (current.is_pair()) {
-            reversed = Object::make_pair(current.as_pair()->car, reversed);
-            current = current.as_pair()->cdr;
+            reversed = Object::make_pair(current.car(), reversed);
+            current = current.cdr();
         }
 
         while (reversed.is_pair()) {
-            result = Object::make_pair(reversed.as_pair()->car, result);
-            reversed = reversed.as_pair()->cdr;
+            result = Object::make_pair(reversed.car(), result);
+            reversed = reversed.cdr();
         }
     }
 

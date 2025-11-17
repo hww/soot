@@ -9,7 +9,7 @@ include_directories(common/script)
 # Type System
 # ==============================================================
 add_executable(type_system_tests
-    # tests/type_system/test_defenum.cpp
+    tests/type_system/test_defenum.cpp
     tests/type_system/test_type_system.cpp
 )
 # Тестовый исполняемый файл

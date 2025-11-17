@@ -255,25 +255,13 @@ namespace script
         std::vector<Object> result;
         Object current = *this;
         while (current.is_pair()) {
-            result.push_back(current.car());
-            current = current.cdr();
+            result.push_back(current.as_pair()->car);
+            current = current.as_pair()->cdr;
         }
         return result;
     }
 
     // Pair accessors
-    Object Object::car() const {
-        if (type != ObjectType::PAIR) throw_type_error("pair");
-        auto pair = dynamic_cast<PairObject*>(heap_obj.get());
-        return pair ? pair->car : Object::make_empty_list();
-    }
-
-    Object Object::cdr() const {
-        if (type != ObjectType::PAIR) throw_type_error("pair");
-        auto pair = dynamic_cast<PairObject*>(heap_obj.get());
-        return pair ? pair->cdr : Object::make_empty_list();
-    }
-
     PairObject* Object::as_pair() const {
         if (type != ObjectType::PAIR) throw_type_error("pair");
         return dynamic_cast<PairObject*>(heap_obj.get());
@@ -297,7 +285,7 @@ namespace script
         case ObjectType::STRING:
             return as_string() == other.as_string();
         case ObjectType::PAIR:
-            return car() == other.car() && cdr() == other.cdr();
+            return as_pair()->car == other.as_pair()->car && as_pair()->cdr == other.as_pair()->cdr;
         case ObjectType::ARRAY: {
             auto this_arr = dynamic_cast<ArrayObject*>(heap_obj.get());
             auto other_arr = dynamic_cast<ArrayObject*>(other.heap_obj.get());
@@ -316,8 +304,8 @@ namespace script
 
         Object current = cdr;
         while (current.is_pair()) {
-            ss << " " << current.car().print();
-            current = current.cdr();
+            ss << " " << current.as_pair()->car.print();
+            current = current.as_pair()->cdr;
         }
 
         if (!current.is_empty_list()) {

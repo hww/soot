@@ -761,6 +761,26 @@ ValueType* TypeSystem::add_builtin_value_type(const std::string& parent,
     return get_type_of_type<ValueType>(type_name);
 }
 
+// object
+// ├── number
+// │   ├── integer
+// │   │   ├── sinteger
+// │   │   │   ├── int8
+// │   │   │   ├── int16
+// │   │   │   ├── int32
+// │   │   │   └── int64
+// │   │   ├── uinteger
+// │   │   │   ├── uint8
+// │   │   │   ├── uint16
+// │   │   │   ├── uint32
+// │   │   │   └── uint64
+// │   │   ├── int(псевдоним)
+// │   │   └── uint(псевдоним)
+// │   └── float
+// ├── structure
+// ├── basic
+// └── ...
+
 void TypeSystem::add_builtin_types() {
     // Базовые null типы
     add_type("none", std::make_unique<NullType>("none"));
@@ -780,17 +800,33 @@ void TypeSystem::add_builtin_types() {
     auto structure_type = add_builtin_structure("object", "structure");
     auto basic_type = add_builtin_basic("structure", "basic");
 
-    // УПРОЩЕННАЯ числовая иерархия - все от object
+    // ПРАВИЛЬНАЯ числовая иерархия как в OpenGOAL:
+    // object -> number -> integer -> sinteger -> int32/int64
     add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
-    add_builtin_value_type("object", "integer", 8, false, true, RegClass::GPR_64);
-    add_builtin_value_type("object", "float", 4, false, false, RegClass::FPR);
+    add_builtin_value_type("number", "integer", 8, false, false);   // sign extend?
+    add_builtin_value_type("integer", "sinteger", 8, false, true);  // signed integer
+    add_builtin_value_type("integer", "uinteger", 8, false, false); // unsigned integer
 
-    // Целочисленные типы наследуют от object (для простоты)
-    add_builtin_value_type("object", "int32", 4, false, true, RegClass::GPR_64);
-    add_builtin_value_type("object", "int64", 8, false, true, RegClass::GPR_64);
+    // Конкретные целочисленные типы
+    add_builtin_value_type("sinteger", "int8", 1, false, true);
+    add_builtin_value_type("sinteger", "int16", 2, false, true);
+    add_builtin_value_type("sinteger", "int32", 4, false, true);
+    add_builtin_value_type("sinteger", "int64", 8, false, true);
+
+    add_builtin_value_type("uinteger", "uint8", 1, false, false);
+    add_builtin_value_type("uinteger", "uint16", 2, false, false);
+    add_builtin_value_type("uinteger", "uint32", 4, false, false);
+    add_builtin_value_type("uinteger", "uint64", 8, false, false);
+
+    // Float types
+    add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
 
     // Псевдонимы
-    add_builtin_value_type("object", "int", 4, false, true, RegClass::GPR_64);
+    auto int_type = add_builtin_value_type("integer", "int", 8, false, true);
+    int_type->disallow_in_runtime(); // как в оригинале
+
+    auto uint_type = add_builtin_value_type("uinteger", "uint", 8, false, false);
+    uint_type->disallow_in_runtime();
 
     // Битфилд тип
     add_type("bitfield", std::make_unique<BitFieldType>("object", "bitfield", 4, false));

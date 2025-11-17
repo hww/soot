@@ -22,10 +22,10 @@ protected:
 TEST_F(ListTest, PairCreation) {
     Object obj = eval("(cons 1 2)");
     EXPECT_TRUE(obj.is_pair());
-    EXPECT_TRUE(obj.car().is_integer());
-    EXPECT_EQ(obj.car().as_integer(), 1);
-    EXPECT_TRUE(obj.cdr().is_integer());
-    EXPECT_EQ(obj.cdr().as_integer(), 2);
+    EXPECT_TRUE(obj.as_pair()->car.is_integer());
+    EXPECT_EQ(obj.as_pair()->car.as_integer(), 1);
+    EXPECT_TRUE(obj.as_pair()->cdr.is_integer());
+    EXPECT_EQ(obj.as_pair()->cdr.as_integer(), 2);
 }
 
 // Тест car и cdr
@@ -45,19 +45,19 @@ TEST_F(ListTest, ListOperations) {
     EXPECT_TRUE(obj.is_pair());
 
     // Проверяем структуру списка (1 2 3)
-    Object first = obj.car();
+    Object first = obj.as_pair()->car;
     EXPECT_TRUE(first.is_integer());
     EXPECT_EQ(first.as_integer(), 1);
 
-    Object second = obj.cdr().car();
+    Object second = obj.as_pair()->cdr.as_pair()->car;
     EXPECT_TRUE(second.is_integer());
     EXPECT_EQ(second.as_integer(), 2);
 
-    Object third = obj.cdr().cdr().car();
+    Object third = obj.as_pair()->cdr.as_pair()->cdr.as_pair()->car;
     EXPECT_TRUE(third.is_integer());
     EXPECT_EQ(third.as_integer(), 3);
 
-    Object end = obj.cdr().cdr().cdr();
+    Object end = obj.as_pair()->cdr.as_pair()->cdr.as_pair()->cdr;
     EXPECT_TRUE(end.is_empty_list());
 }
 
@@ -78,8 +78,8 @@ TEST_F(ListTest, ListAppend) {
     EXPECT_TRUE(obj.is_pair());
 
     // Должен получиться список (1 2 3 4)
-    EXPECT_EQ(obj.car().as_integer(), 1);
-    EXPECT_EQ(obj.cdr().car().as_integer(), 2);
-    EXPECT_EQ(obj.cdr().cdr().car().as_integer(), 3);
-    EXPECT_EQ(obj.cdr().cdr().cdr().car().as_integer(), 4);
+    EXPECT_EQ(obj.as_pair()->car.as_integer(), 1);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->car.as_integer(), 2);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 3);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 4);
 }

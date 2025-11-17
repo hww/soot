@@ -2,7 +2,6 @@
 
 #include "type_system.h"
 #include "object.h"
-#include "type.h"
 
 EnumType* parse_defenum(const script::Object& defenum,
     TypeSystem* ts,

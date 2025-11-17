@@ -25,9 +25,9 @@ TEST_F(QuasiquoteTest, QuasiquoteWithUnquote) {
     EXPECT_TRUE(obj.is_pair());
 
     // Должен получиться список (1 5 3)
-    EXPECT_EQ(obj.car().as_integer(), 1);
-    EXPECT_EQ(obj.cdr().car().as_integer(), 5);
-    EXPECT_EQ(obj.cdr().cdr().car().as_integer(), 3);
+    EXPECT_EQ(obj.as_pair()->car.as_integer(), 1);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->car.as_integer(), 5);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 3);
 }
 
 // Тест quasiquote с unquote-splicing
@@ -37,8 +37,8 @@ TEST_F(QuasiquoteTest, QuasiquoteWithUnquoteSplicing) {
     EXPECT_TRUE(obj.is_pair());
 
     // Должен получиться список (1 2 3 4)
-    EXPECT_EQ(obj.car().as_integer(), 1);
-    EXPECT_EQ(obj.cdr().car().as_integer(), 2);
-    EXPECT_EQ(obj.cdr().cdr().car().as_integer(), 3);
-    EXPECT_EQ(obj.cdr().cdr().cdr().car().as_integer(), 4);
+    EXPECT_EQ(obj.as_pair()->car.as_integer(), 1);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->car.as_integer(), 2);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 3);
+    EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 4);
 }

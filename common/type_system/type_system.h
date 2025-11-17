@@ -378,12 +378,12 @@ public:
     // Template Helpers for Type Casting
     // ========================================================================
 
-    template <typename T>
+    template<typename T>
     T* get_type_of_type(const std::string& type_name) const {
-        auto x = lookup_type(type_name);
-        T* result = dynamic_cast<T*>(x);
+        auto type = lookup_type(type_name);
+        auto result = dynamic_cast<T*>(type);
         if (!result) {
-            throw std::runtime_error("Failed to get " + type_name + " as the right type");
+            throw std::runtime_error("Type " + type_name + " is not of expected kind");
         }
         return result;
     }

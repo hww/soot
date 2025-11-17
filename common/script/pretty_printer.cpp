@@ -2,8 +2,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace script {
-    namespace pretty_print {
+namespace script::pretty_print {
 
 
 
@@ -70,38 +69,38 @@ namespace script {
 
             case ObjectType::PAIR: {
                 // Проверяем quoted формы
-                auto first = obj.car();
+                auto first = obj.as_pair()->car;
                 if (first.is_symbol() && first.as_symbol().name_ptr) {
                     std::string first_str = first.as_symbol().name_ptr;
 
                     if (first_str == "quote") {
-                        auto second = obj.cdr();
-                        if (second.is_pair() && second.cdr().is_empty_list()) {
-                            Node result = to_node(second.car());
+                        auto second = obj.as_pair()->cdr;
+                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                            Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::QUOTE);
                             return result;
                         }
                     }
                     else if (first_str == "unquote") {
-                        auto second = obj.cdr();
-                        if (second.is_pair() && second.cdr().is_empty_list()) {
-                            Node result = to_node(second.car());
+                        auto second = obj.as_pair()->cdr;
+                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                            Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::UNQUOTE);
                             return result;
                         }
                     }
                     else if (first_str == "quasiquote") {
-                        auto second = obj.cdr();
-                        if (second.is_pair() && second.cdr().is_empty_list()) {
-                            Node result = to_node(second.car());
+                        auto second = obj.as_pair()->cdr;
+                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                            Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::QUASIQUOTE);
                             return result;
                         }
                     }
                     else if (first_str == "unquote-splicing") {
-                        auto second = obj.cdr();
-                        if (second.is_pair() && second.cdr().is_empty_list()) {
-                            Node result = to_node(second.car());
+                        auto second = obj.as_pair()->cdr;
+                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                            Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::UNQUOTE_SPLICING);
                             return result;
                         }
@@ -114,8 +113,8 @@ namespace script {
 
                 while (true) {
                     if (to_print.is_pair()) {
-                        children.push_back(to_node(to_print.car()));
-                        to_print = to_print.cdr();
+                        children.push_back(to_node(to_print.as_pair()->car));
+                        to_print = to_print.as_pair()->cdr;
                         if (to_print.is_empty_list()) {
                             return Node(std::move(children), true);
                         }
@@ -495,5 +494,4 @@ namespace script {
             return node_to_string(&root);
         }
 
-    } // namespace pretty_print
-} // namespace script
+} // namespace script::pretty_print

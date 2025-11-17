@@ -1,0 +1,4602 @@
+# —ÓÁ‰‡ÂÏ Ì‡¯Û ·Ë·ÎËÓÚÂÍÛ ¡≈« replxx Ù‡ÈÎÓ‚
+add_library(type_system_lib 
+    common/type_system/type.cpp
+    common/type_system/type_system.cpp
+    common/type_system/type_spec.cpp
+    ##common/type_system/defenum.cpp
+    common/util/bit_utils.cpp
+    common/util/string_util.cpp
+)
+
+# ÀËÌÍÛÂÏ fmt ÂÒÎË ÌÛÊÌÓ
+target_link_libraries(type_system_lib PRIVATE fmt::fmt)
+
+# ƒÎˇ ÚÂÒÚ‡
+add_executable(type_system common/type_system/main.cpp)
+target_link_libraries(type_system PRIVATE type_system_lib fmt::fmt)#include "defenum.h"
+#include "common/util/bit_utils.h"
+#include "common/util/string_util.h"
+#include "fmt/format.h"
+
+namespace {
+
+    // ¬ÒÔÓÏÓ„‡ÚÂÎ¸Ì˚Â ÙÛÌÍˆËË ‰Îˇ ‡·ÓÚ˚ Ò Object
+    const script::Object& car(const script::Object* x) {
+        if (!x->is_pair()) 
+            throw std::runtime_error("invalid defenum form");
+        return x->as_pair()->car;
+    }
+
+    const script::Object* cdr(const script::Object* x) {
+        if (!x->is_pair()) 
+            throw std::runtime_error("invalid defenum form");
+        return &x->as_pair()->cdr;
+    }
+
+    std::string symbol_string(const script::Object& obj) {
+        if (obj.is_symbol()) return obj.as_symbol().name_ptr;
+        throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
+    }
+
+    int64_t get_int(const script::Object& obj) {
+        if (obj.is_integer()) return obj.as_integer();
+        throw std::runtime_error(obj.print() + " was supposed to be an integer, but isn't");
+    }
+
+    bool is_type(const std::string& expected, const TypeSpec& actual, TypeSystem* ts) {
+        TypeSpec* expected_spec = type_system_make_typespec(ts, expected.c_str());
+        bool result = type_system_typecheck(ts, expected_spec, &actual);
+        type_spec_destroy(expected_spec);
+        return result;
+    }
+
+    // ‘» —: ”·‡Î ‚ÁˇÚËÂ ‡‰ÂÒ‡ ‚ÂÏÂÌÌÓ„Ó Ó·˙ÂÍÚ‡
+    TypeSpec* parse_typespec(TypeSystem* ts, const script::Object& src) {
+        if (src.is_symbol()) {
+            return type_system_make_typespec(ts, symbol_string(src).c_str());
+        }
+        else if (src.is_pair()) {
+            TypeSpec* tspec = type_system_make_typespec(ts, symbol_string(car(&src)).c_str());
+            const auto* rest = cdr(&src);
+
+            while (rest->is_pair()) {
+                auto& it = rest->as_pair()->car;
+                TypeSpec* arg_spec = parse_typespec(ts, it); // ”ÊÂ ‚ÓÁ‚‡˘‡ÂÚ ÛÍ‡Á‡ÚÂÎ¸
+                type_spec_add_arg(tspec, arg_spec);
+                rest = &rest->as_pair()->cdr;
+            }
+            return tspec;
+        }
+        else {
+            throw std::runtime_error("invalid typespec: " + src.print());
+        }
+    }
+
+    // ‘» —: ”·‡Î ÍÓÌÙÎËÍÚ ËÏÂÌ - ÔÂÂËÏÂÌÓ‚‡Î ÙÛÌÍˆË˛
+    bool integer_fits_in_type(int64_t value, int size, bool is_signed) {
+        if (is_signed) {
+            switch (size) {
+            case 1: return value >= -128 && value <= 127;
+            case 2: return value >= -32768 && value <= 32767;
+            case 4: return value >= -2147483648LL && value <= 2147483647LL;
+            case 8: return true;
+            default: return false;
+            }
+        }
+        else {
+            if (value < 0) return false;
+            switch (size) {
+            case 1: return value <= 255;
+            case 2: return value <= 65535;
+            case 4: return value <= 4294967295LL;
+            case 8: return value <= 18446744073709551615ULL;
+            default: return false;
+            }
+        }
+    }
+
+    // ¬ Â‡Î¸ÌÓÈ Â‡ÎËÁ‡ˆËË ˝ÚË ÙÛÌÍˆËË ‰ÓÎÊÌ˚ ·˚Ú¸ ‚ type_system
+    EnumType* try_enum_lookup(TypeSystem* ts, TypeSpec* spec) {
+        Type* type = type_system_lookup(ts, spec->base_type);
+        type_spec_destroy(spec);
+        return type ? (EnumType*)type : nullptr;
+    }
+
+    ValueType* get_type_of_type(TypeSystem* ts, const char* type_name) {
+        Type* type = type_system_lookup(ts, type_name);
+        return type ? (ValueType*)type : nullptr;
+    }
+
+} // namespace
+
+EnumType* parse_defenum(const script::Object& defenum,
+    TypeSystem* ts,
+    DefinitionMetadata* symbol_metadata) {
+    // ¡‡ÁÓ‚‡ˇ ‚‡ÎË‰‡ˆËˇ - defenum ‰ÓÎÊÂÌ ·˚Ú¸ ÒÔËÒÍÓÏ (defenum name ...)
+    if (!defenum.is_pair()) throw std::runtime_error("defenum must be list");
+
+    // œÓÔÛÒÍ‡ÂÏ ÒËÏ‚ÓÎ 'defenum' Ë ·ÂÂÏ ËÏˇ
+    const auto* iter = &defenum;
+    if (!iter->is_pair() || !iter->as_pair()->car.is_symbol() ||
+        std::string(iter->as_pair()->car.as_symbol().name_ptr) != "defenum") {
+        throw std::runtime_error("defenum must start with 'defenum' symbol");
+    }
+
+    iter = &iter->as_pair()->cdr; // ÔÂÂıÓ‰ËÏ Í ËÏÂÌË
+
+    // œÓÎÛ˜‡ÂÏ ËÏˇ enum
+    if (!iter->is_pair() || !iter->as_pair()->car.is_symbol()) {
+        throw std::runtime_error("defenum name must be a symbol");
+    }
+    std::string name = iter->as_pair()->car.as_symbol().name_ptr;
+    fmt::print("DEBUG: Enum name: '{}'\n", name);
+
+    iter = &iter->as_pair()->cdr; // ÔÂÂıÓ‰ËÏ Í ÓÔˆËˇÏ/entries
+
+    TypeSpec* base_type = type_system_make_typespec(ts, "int64");
+    bool is_bitfield = false;
+    std::unordered_map<std::string, int64_t> entries;
+
+    // œÓÔÛÒÍ‡ÂÏ docstring ÂÒÎË ÂÒÚ¸
+    if (iter->is_pair() && iter->as_pair()->car.is_string()) {
+        if (symbol_metadata) {
+            symbol_metadata->docstring = iter->as_pair()->car.as_string();
+        }
+        iter = &iter->as_pair()->cdr;
+    }
+
+    // Œ¡⁄ﬂ¬Àﬂ≈Ã base_type_obj «ƒ≈—‹
+    Type* base_type_obj = type_system_lookup(ts, base_type->base_type);
+    if (!base_type_obj) {
+        type_spec_destroy(base_type);
+        throw std::runtime_error("Base type not found: " + std::string(base_type->base_type));
+    }
+    // œ‡ÒËÏ ÓÔˆËË
+    while (iter->is_pair() && iter->as_pair()->car.is_symbol()) {
+        const auto& option = iter->as_pair()->car;
+        std::string opt_name = option.as_symbol().name_ptr;
+
+        // œ–Œ¬≈–ﬂ≈Ã “ŒÀ‹ Œ »«¬≈—“Õ€≈ Œœ÷»»
+        if (opt_name == ":bitfield" || opt_name == ":type" || opt_name == ":copy-entries") {
+            iter = &iter->as_pair()->cdr;
+            if (!iter->is_pair()) {
+                type_spec_destroy(base_type);
+                throw std::runtime_error("Option " + opt_name + " needs value");
+            }
+
+            const auto& value = iter->as_pair()->car;
+
+            if (opt_name == ":bitfield") {
+                if (!value.is_symbol()) {
+                    type_spec_destroy(base_type);
+                    throw std::runtime_error(":bitfield value must be symbol");
+                }
+
+                std::string bitfield_val = value.as_symbol().name_ptr;
+                if (bitfield_val != "#t" && bitfield_val != "#f") {
+                    type_spec_destroy(base_type);
+                    throw std::runtime_error(":bitfield value must be #t or #f, got: " + bitfield_val);
+                }
+
+                is_bitfield = (bitfield_val == "#t");
+            }
+            else if (opt_name == ":type") {
+                TypeSpec* old_base_type = base_type; // ÒÓı‡ÌˇÂÏ ÒÚ‡˚È
+
+                if (value.is_symbol()) {
+                    base_type = type_system_make_typespec(ts, value.as_symbol().name_ptr);
+                    if (!base_type) {
+                        // ≈ÒÎË ÌÂ Û‰‡ÎÓÒ¸ ÒÓÁ‰‡Ú¸ typespec, ‚ÓÒÒÚ‡Ì‡‚ÎË‚‡ÂÏ ÒÚ‡˚È
+                        base_type = old_base_type;
+                        throw std::runtime_error("Failed to create typespec for: " + std::string(value.as_symbol().name_ptr));
+                    }
+                    type_spec_destroy(old_base_type); // ÓÒ‚Ó·ÓÊ‰‡ÂÏ ÒÚ‡˚È ÚÓÎ¸ÍÓ ÔÓÒÎÂ ÛÒÔÂı‡
+                }
+                else {
+                    throw std::runtime_error("Complex typespec not yet supported");
+                }
+
+                // Œ¡ÕŒ¬Àﬂ≈Ã base_type_obj ÔÓÒÎÂ ËÁÏÂÌÂÌËˇ ÚËÔ‡
+                base_type_obj = type_system_lookup(ts, base_type->base_type);
+                if (!base_type_obj) {
+                    throw std::runtime_error("Base type not found: " + std::string(base_type->base_type));
+                }
+            }
+            // TODO: :copy-entries
+
+            iter = &iter->as_pair()->cdr;
+        }
+        else {
+            // ≈—À» ˝ÚÓ Õ≈ ËÁ‚ÂÒÚÌ‡ˇ ÓÔˆËˇ - ÁÌ‡˜ËÚ ˝ÚÓ entry, ‚˚ıÓ‰ËÏ ËÁ ˆËÍÎ‡ ÓÔˆËÈ
+            break;
+        }
+    }
+
+
+    // ŒÚÎ‡‰Ó˜Ì˚È ‚˚‚Ó‰
+    fmt::print("DEBUG: After options parsing, remaining items:\n");
+    const auto* debug_iter = iter;
+    int count = 0;
+    while (debug_iter->is_pair()) {
+        fmt::print("  [{}] {}\n", count, debug_iter->as_pair()->car.print());
+        debug_iter = &debug_iter->as_pair()->cdr;
+        count++;
+    }
+
+    // œ‡ÒËÏ entries - ”œ–ŒŸ≈ÕÕ¿ﬂ ÀŒ√» ¿
+    int64_t highest = -1;
+    while (iter->is_pair()) {
+        auto& field = iter->as_pair()->car;
+
+        if (field.is_symbol()) {
+            std::string entry_name = field.as_symbol().name_ptr;
+
+            // œÓ‚ÂˇÂÏ ÒÎÂ‰Û˛˘ËÈ ˝ÎÂÏÂÌÚ - ÏÓÊÂÚ ·˚Ú¸ ÁÌ‡˜ÂÌËÂ?
+            const auto* next_iter = &iter->as_pair()->cdr;
+            if (next_iter->is_pair() && next_iter->as_pair()->car.is_integer()) {
+                // ‘ÓÏ‡Ú: :name value
+                int64_t entry_val = next_iter->as_pair()->car.as_integer();
+
+                if (entries.find(entry_name) != entries.end()) {
+                    type_spec_destroy(base_type);
+                    throw std::runtime_error("Entry " + entry_name + " appears multiple times");
+                }
+
+                if (!integer_fits_in_type(entry_val, base_type_obj->get_load_size(base_type_obj),
+                    base_type_obj->get_load_signed(base_type_obj))) {
+                    fmt::print("Warning: Integer {} does not fit in {}\n", entry_val, base_type_obj->name);
+                }
+
+                if (entries.empty()) highest = entry_val;
+                highest = std::max(highest, entry_val);
+                entries[entry_name] = entry_val;
+                fmt::print("DEBUG: Added entry {} = {} (sequential)\n", entry_name, entry_val);
+
+                iter = &next_iter->as_pair()->cdr; // ÔÓÔÛÒÍ‡ÂÏ ÁÌ‡˜ÂÌËÂ
+            }
+            else {
+                // œÓÒÚÓÈ ÒËÏ‚ÓÎ - ‡‚ÚÓ-ËÌÍÂÏÂÌÚ
+                if (entries.find(entry_name) != entries.end()) {
+                    type_spec_destroy(base_type);
+                    throw std::runtime_error("Entry " + entry_name + " appears multiple times");
+                }
+
+                entries[entry_name] = ++highest;
+                fmt::print("DEBUG: Added entry {} = {} (auto)\n", entry_name, highest);
+                iter = &iter->as_pair()->cdr;
+            }
+        }
+        else if (field.is_pair()) {
+            // œ‡‡ (name value)
+            auto& entry_name_obj = field.as_pair()->car;
+            auto& value_rest = field.as_pair()->cdr;
+
+            if (!entry_name_obj.is_symbol()) {
+                type_spec_destroy(base_type);
+                throw std::runtime_error("Enum entry name must be symbol");
+            }
+
+            std::string entry_name = entry_name_obj.as_symbol().name_ptr;
+
+            if (entries.find(entry_name) != entries.end()) {
+                type_spec_destroy(base_type);
+                throw std::runtime_error("Entry " + entry_name + " appears multiple times");
+            }
+
+            if (value_rest.is_pair()) {
+                // ≈ÒÚ¸ ÁÌ‡˜ÂÌËÂ: (name value)
+                auto& value_obj = value_rest.as_pair()->car;
+
+                // œ–Œ¬≈–ﬂ≈Ã ˜ÚÓ ÁÌ‡˜ÂÌËÂ - integer
+                if (!value_obj.is_integer()) {
+                    type_spec_destroy(base_type);
+                    throw std::runtime_error("Expected integer for enum value, got: " + value_obj.print());
+                }
+
+                int64_t entry_val = value_obj.as_integer();
+                if (!integer_fits_in_type(entry_val, base_type_obj->get_load_size(base_type_obj),
+                    base_type_obj->get_load_signed(base_type_obj))) {
+                    fmt::print("Warning: Integer {} does not fit in {}\n", entry_val, base_type_obj->name);
+                }
+
+                if (entries.empty()) highest = entry_val;
+                highest = std::max(highest, entry_val);
+                entries[entry_name] = entry_val;
+                fmt::print("DEBUG: Added entry {} = {} (explicit)\n", entry_name, entry_val);
+            }
+            else {
+                // ¿‚ÚÓ-ËÌÍÂÏÂÌÚ: (name)
+                entries[entry_name] = ++highest;
+                fmt::print("DEBUG: Added entry {} = {} (auto pair)\n", entry_name, highest);
+            }
+
+            iter = &iter->as_pair()->cdr;
+        }
+        else if (field.is_integer()) {
+            // ◊ËÒÎÓ Í‡Í entry - ˝ÚÓ Ó¯Ë·Í‡
+            type_spec_destroy(base_type);
+            throw std::runtime_error("Enum entry cannot be a number: " + field.print());
+        }
+        else {
+            type_spec_destroy(base_type);
+            throw std::runtime_error("Enum entry must be symbol or list, got: " + field.print());
+        }
+    }
+
+
+    // œÓ‚ÂˇÂÏ ˜ÚÓ ·‡ÁÓ‚˚È ÚËÔ - integer
+    bool is_integer_type = false;
+    Type* current = base_type_obj;
+    while (current) {
+        if (strcmp(current->name, "integer") == 0 ||
+            strcmp(current->name, "sinteger") == 0 ||
+            strcmp(current->name, "uinteger") == 0 ||
+            strcmp(current->name, "int") == 0 ||
+            strcmp(current->name, "int32") == 0 ||
+            strcmp(current->name, "int64") == 0) {
+            is_integer_type = true;
+            break;
+        }
+        if (!current->parent) break;
+        current = type_system_lookup(ts, current->parent);
+    }
+
+    if (is_integer_type) {
+        // —ÓÁ‰‡ÂÏ enum
+        EnumType* enum_type = type_system_create_enumtype(ts, name.c_str(), base_type->base_type, is_bitfield);
+        type_spec_destroy(base_type);
+        if (!enum_type) throw std::runtime_error("Failed to create enum");
+
+        // TODO: —Óı‡ÌËÚ¸ entries ‚ enum_type
+
+        return enum_type;
+    }
+    else {
+        type_spec_destroy(base_type);
+        throw std::runtime_error("Enum base type must be integer type");
+    }
+}#pragma once
+
+#include "type_system.h"
+#include "object.h"
+#include "type.h"
+
+EnumType* parse_defenum(const script::Object& defenum,
+    TypeSystem* ts,
+    DefinitionMetadata* symbol_metadata = nullptr);// test_parsers.h
+#pragma once
+#include "type_system/type_system.h"
+#include "type_system/type.h"
+#include "type_system/type_spec.h"
+#include "type_system/defenum.h"
+Ôªø#include "fmt/format.h"
+#include "type.h"
+#include "type_system.h"
+#include "type_spec.h"
+
+// gogle test instead of main
+int main() {
+	return 0;
+}#include "type.h"
+#include "common/util/assert.h"
+#include "fmt/format.h"
+
+#include <stdexcept>
+#include <algorithm>
+
+namespace {
+
+    std::string reg_kind_to_string(RegClass kind) {
+        switch (kind) {
+        case RegClass::GPR_64:
+            return "gpr64";
+        case RegClass::FPR:
+            return "float";
+        case RegClass::INVALID:
+        default:
+            return "invalid";
+        }
+    }
+
+}  // namespace
+
+// ============================================================================
+// MethodInfo Implementation
+// ============================================================================
+
+bool MethodInfo::operator==(const MethodInfo& other) const {
+    return id == other.id &&
+        name == other.name &&
+        type == other.type &&
+        defined_in_type == other.defined_in_type &&
+        no_virtual == other.no_virtual &&
+        overrides_parent == other.overrides_parent &&
+        only_overrides_docstring == other.only_overrides_docstring;
+}
+
+std::string MethodInfo::print_one_line() const {
+    return fmt::format("Method {:3d}: {:20} {}", id, name, type.print());
+}
+
+bool MethodInfo::operator!=(const MethodInfo& other) const {
+    return !(*this == other);
+}
+
+// ============================================================================
+// Field Implementation  
+// ============================================================================
+
+Field::Field(std::string name, TypeSpec ts)
+    : m_name(std::move(name)), m_type(std::move(ts)) {
+}
+
+Field::Field(std::string name, TypeSpec ts, int offset)
+    : m_name(std::move(name)), m_type(std::move(ts)), m_offset(offset) {
+}
+
+std::string Field::print() const {
+    return fmt::format(
+        "Field: ({} {} :offset {}) inline: {:5}, dynamic: {:5}, array: {:5}, array size {:3}, align {:2}, skip {}",
+        m_name, m_type.print(), m_offset, m_inline, m_dynamic, m_array, m_array_size, m_alignment,
+        m_skip_in_static_decomp);
+}
+
+void Field::set_dynamic() {
+    m_dynamic = true;
+    m_array = true;
+}
+
+void Field::set_array(int size) {
+    m_array_size = size;
+    m_array = true;
+}
+
+void Field::set_inline() {
+    m_inline = true;
+}
+
+bool Field::operator==(const Field& other) const {
+    return m_name == other.m_name &&
+        m_type == other.m_type &&
+        m_offset == other.m_offset &&
+        m_inline == other.m_inline &&
+        m_dynamic == other.m_dynamic &&
+        m_array == other.m_array &&
+        m_array_size == other.m_array_size &&
+        m_alignment == other.m_alignment;
+}
+
+void Field::set_override_type(const TypeSpec& new_type) {
+    m_type = new_type;
+    m_override_type = true;
+}
+
+void Field::mark_as_user_placed() {
+    m_placed_by_user = true;
+}
+
+bool Field::operator!=(const Field& other) const {
+    return !(*this == other);
+}
+
+// ============================================================================
+// Type Base Implementation
+// ============================================================================
+
+Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
+    : m_parent(std::move(parent)),
+    m_name(std::move(name)),
+    m_is_boxed(is_boxed),
+    m_heap_base(heap_base) {
+    m_runtime_name = m_name;
+}
+
+
+bool Type::get_my_method(const std::string& name, MethodInfo* out) const {
+    for (const auto& method : m_methods) {
+        if (method.name == name) {
+            if (out) *out = method;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Type::get_my_method(int id, MethodInfo* out) const {
+    ASSERT(id > 0);
+    for (const auto& method : m_methods) {
+        if (method.id == id) {
+            if (out) *out = method;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Type::get_my_last_method(MethodInfo* out) const {
+    for (auto it = m_methods.rbegin(); it != m_methods.rend(); ++it) {
+        if (!it->overrides_parent && !it->only_overrides_docstring) {
+            if (out) *out = *it;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Type::get_my_new_method(MethodInfo* out) const {
+    if (m_new_method_info_defined) {
+        if (out) *out = m_new_method_info;
+        return true;
+    }
+    return false;
+}
+
+int Type::get_num_methods() const {
+    int count = 0;
+    for (const auto& method : m_methods) {
+        if (!method.only_overrides_docstring) {
+            count++;
+        }
+    }
+    return count;
+}
+
+const MethodInfo& Type::add_method(const MethodInfo& info) {
+    if (!info.overrides_parent) {
+        // Verify method ID ordering
+        for (auto it = m_methods.rbegin(); it != m_methods.rend(); ++it) {
+            if (!it->overrides_parent && !it->only_overrides_docstring) {
+                ASSERT(it->id + 1 == info.id);
+                break;
+            }
+        }
+    }
+
+    m_methods.push_back(info);
+    return m_methods.back();
+}
+
+const MethodInfo& Type::add_new_method(const MethodInfo& info) {
+    ASSERT(info.name == "new");
+    m_new_method_info_defined = true;
+    m_new_method_info = info;
+    return m_new_method_info;
+}
+
+std::string Type::print_method_info() const {
+    std::string result;
+    if (m_new_method_info_defined) {
+        result += "  " + m_new_method_info.print_one_line() + "\n";
+    }
+
+    for (const auto& method : m_methods) {
+        result += "  " + method.print_one_line() + "\n";
+    }
+
+    return result;
+}
+
+void Type::add_state(const std::string& name, const TypeSpec& type) {
+    auto result = m_states.insert({ name, type });
+    if (!result.second) {
+        throw std::runtime_error(fmt::format("State {} is already defined in type", name));
+    }
+}
+
+std::string Type::diff(const Type& other) const {
+    return common_type_info_diff(other) + diff_impl(other);
+}
+
+bool Type::common_type_info_equal(const Type& other) const {
+    // Check methods (ignoring docstring-only overrides)
+    bool methods_equal = true;
+    for (const auto& method : m_methods) {
+        if (method.only_overrides_docstring) continue;
+
+        bool found = false;
+        for (const auto& other_method : other.m_methods) {
+            if (method.id == other_method.id) {
+                if (method == other_method) {
+                    found = true;
+                    break;
+                }
+                else {
+                    methods_equal = false;
+                    break;
+                }
+            }
+        }
+        if (!methods_equal || !found) {
+            methods_equal = false;
+            break;
+        }
+    }
+
+    return methods_equal &&
+        m_states == other.m_states &&
+        m_new_method_info == other.m_new_method_info &&
+        m_new_method_info_defined == other.m_new_method_info_defined &&
+        m_parent == other.m_parent &&
+        m_name == other.m_name &&
+        m_allow_in_runtime == other.m_allow_in_runtime &&
+        m_runtime_name == other.m_runtime_name &&
+        m_is_boxed == other.m_is_boxed &&
+        m_generate_inspect == other.m_generate_inspect &&
+        m_heap_base == other.m_heap_base;
+}
+
+std::string Type::common_type_info_diff(const Type& other) const {
+    std::string result;
+
+    // Compare methods
+    if (m_methods.size() != other.m_methods.size()) {
+        result += fmt::format("Method count: {} vs {}\n", m_methods.size(), other.m_methods.size());
+    }
+
+    for (size_t i = 0; i < std::min(m_methods.size(), other.m_methods.size()); ++i) {
+        if (m_methods[i] != other.m_methods[i]) {
+            result += fmt::format("Method {} differs\n", i);
+            // TODO: Add detailed method diff
+        }
+    }
+
+    // Compare other common fields
+    if (m_parent != other.m_parent) {
+        result += fmt::format("Parent: {} vs {}\n", m_parent, other.m_parent);
+    }
+    if (m_name != other.m_name) {
+        result += fmt::format("Name: {} vs {}\n", m_name, other.m_name);
+    }
+    if (m_is_boxed != other.m_is_boxed) {
+        result += fmt::format("Is boxed: {} vs {}\n", m_is_boxed, other.m_is_boxed);
+    }
+
+    return result;
+}
+
+std::string Type::incompatible_diff(const Type& other) const {
+    return fmt::format("Cannot compare {} with {}\n", typeid(*this).name(), typeid(other).name());
+}
+
+std::string Type::get_runtime_name() const {
+    if (!m_allow_in_runtime) {
+        throw std::runtime_error(fmt::format("Type {} is not allowed in runtime", get_name()));
+    }
+    return m_runtime_name;
+}
+
+// ============================================================================
+// NullType Implementation
+// ============================================================================
+
+NullType::NullType(std::string name)
+    : Type("object", std::move(name), false, 0) {
+}
+
+bool NullType::is_reference() const {
+    throw std::runtime_error("is_reference called on NullType");
+}
+
+int NullType::get_load_size() const {
+    throw std::runtime_error("get_load_size called on NullType");
+}
+
+bool NullType::get_load_signed() const {
+    throw std::runtime_error("get_load_signed called on NullType");
+}
+
+int NullType::get_size_in_memory() const {
+    throw std::runtime_error("get_size_in_memory called on NullType");
+}
+
+RegClass NullType::get_preferred_reg_class() const {
+    throw std::runtime_error("get_preferred_reg_class called on NullType");
+}
+
+int NullType::get_offset() const {
+    throw std::runtime_error("get_offset called on NullType");
+}
+
+int NullType::get_in_memory_alignment() const {
+    throw std::runtime_error("get_in_memory_alignment called on NullType");
+}
+
+int NullType::get_inline_array_stride_alignment() const {
+    throw std::runtime_error("get_inline_array_stride_alignment called on NullType");
+}
+
+int NullType::get_inline_array_start_alignment() const {
+    throw std::runtime_error("get_inline_array_start_alignment called on NullType");
+}
+
+std::string NullType::print() const {
+    return m_name;
+}
+
+bool NullType::operator==(const Type& other) const {
+    return this == &other; // Only equal to itself
+}
+
+std::string NullType::diff_impl(const Type& other) const {
+    return (*this == other) ? "" : "NullType comparison failed";
+}
+
+// ============================================================================
+// ValueType Implementation  
+// ============================================================================
+
+ValueType::ValueType(std::string parent, std::string name, bool is_boxed,
+    int size, bool sign_extend, RegClass reg)
+    : Type(std::move(parent), std::move(name), is_boxed, 0),
+    m_size(size),
+    m_sign_extend(sign_extend),
+    m_reg_kind(reg) {
+}
+
+
+int ValueType::get_offset() const {
+    return m_offset;
+}
+
+int ValueType::get_in_memory_alignment() const {
+    return m_size;
+}
+
+int ValueType::get_inline_array_stride_alignment() const {
+    return m_size;
+}
+
+int ValueType::get_inline_array_start_alignment() const {
+    return m_size;
+}
+
+void ValueType::inherit(const ValueType* parent) {
+    m_sign_extend = parent->m_sign_extend;
+    m_size = parent->m_size;
+    m_offset = parent->m_offset;
+    m_reg_kind = parent->m_reg_kind;
+}
+
+std::string ValueType::print() const {
+    return fmt::format(
+        "[ValueType] {}\n parent: {}\n boxed: {}\n size: {}\n sext: {}\n register: {}\n{}",
+        m_name, m_parent, m_is_boxed, m_size, m_sign_extend, reg_kind_to_string(m_reg_kind),
+        print_method_info());
+}
+
+bool ValueType::operator==(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return false;
+    }
+
+    const ValueType* other_value = dynamic_cast<const ValueType*>(&other);
+    return common_type_info_equal(other) &&
+        m_size == other_value->m_size &&
+        m_sign_extend == other_value->m_sign_extend &&
+        m_reg_kind == other_value->m_reg_kind &&
+        m_offset == other_value->m_offset;
+}
+
+std::string ValueType::diff_impl(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return incompatible_diff(other);
+    }
+
+    const ValueType* other_value = dynamic_cast<const ValueType*>(&other);
+    std::string result;
+
+    if (m_size != other_value->m_size) {
+        result += fmt::format("Size: {} vs {}\n", m_size, other_value->m_size);
+    }
+    if (m_sign_extend != other_value->m_sign_extend) {
+        result += fmt::format("Sign extend: {} vs {}\n", m_sign_extend, other_value->m_sign_extend);
+    }
+    if (m_reg_kind != other_value->m_reg_kind) {
+        result += fmt::format("Register kind: {} vs {}\n",
+            static_cast<int>(m_reg_kind),
+            static_cast<int>(other_value->m_reg_kind));
+    }
+    if (m_offset != other_value->m_offset) {
+        result += fmt::format("Offset: {} vs {}\n", m_offset, other_value->m_offset);
+    }
+
+    return result;
+}
+
+
+bool ValueType::is_reference() const {
+    return false;
+}
+
+int ValueType::get_load_size() const {
+    return m_size;
+}
+
+bool ValueType::get_load_signed() const {
+    return m_sign_extend;
+}
+
+int ValueType::get_size_in_memory() const {
+    return m_size;
+}
+
+RegClass ValueType::get_preferred_reg_class() const {
+    return m_reg_kind;
+}
+
+// ============================================================================
+// ReferenceType Implementation
+// ============================================================================
+
+ReferenceType::ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base)
+    : Type(std::move(parent), std::move(name), is_boxed, heap_base) {
+}
+
+std::string ReferenceType::print() const {
+    return fmt::format("[ReferenceType] {}\n parent: {}\n boxed: {}\n{}",
+        m_name, m_parent, m_is_boxed, print_method_info());
+}
+
+// ============================================================================
+// StructureType Implementation
+// ============================================================================
+
+StructureType::StructureType(std::string parent, std::string name,
+    bool boxed, bool dynamic, bool pack, int heap_base)
+    : ReferenceType(std::move(parent), std::move(name), boxed, heap_base),
+    m_dynamic(dynamic),
+    m_pack(pack) {
+}
+
+std::string StructureType::print() const {
+    std::string result = fmt::format(
+        "[StructureType] {}\n parent: {}\n boxed: {}\n dynamic: {}\n size: {}\n pack: {}\n fields:\n",
+        m_name, m_parent, m_is_boxed, m_dynamic, m_size_in_mem, m_pack);
+
+    for (const auto& field : m_fields) {
+        result += "   " + field.print() + "\n";
+    }
+    result += " methods:\n" + print_method_info();
+    return result;
+}
+
+void StructureType::inherit(StructureType* parent) {
+    if (!parent) return;
+
+    fmt::print("DEBUG: Inheriting from {} to {}\n", parent->get_name(), get_name());
+    fmt::print("DEBUG: Parent has {} fields, size: {}\n",
+        parent->fields().size(), parent->get_size_in_memory());
+
+    //  ÓÔËÛÂÏ ¬—≈ ÔÓÎˇ Ó‰ËÚÂÎˇ
+    m_fields = parent->fields(); //  ÓÔËÛÂÏ ÔÓÎˇ
+    m_size_in_mem = parent->get_size_in_memory(); // Õ‡ÒÎÂ‰ÛÂÏ ‡ÁÏÂ
+    m_dynamic = parent->is_dynamic();
+    m_idx_of_first_unique_field = m_fields.size();
+
+    fmt::print("DEBUG: After inheritance - {} has {} fields, size: {}\n",
+        get_name(), m_fields.size(), m_size_in_mem);
+}
+
+bool StructureType::operator==(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return false;
+    }
+
+    const StructureType* other_struct = dynamic_cast<const StructureType*>(&other);
+    return common_type_info_equal(other) &&
+        m_fields == other_struct->m_fields &&
+        m_dynamic == other_struct->m_dynamic &&
+        m_size_in_mem == other_struct->m_size_in_mem &&
+        m_pack == other_struct->m_pack &&
+        m_allow_misalign == other_struct->m_allow_misalign &&
+        m_offset == other_struct->m_offset &&
+        m_always_stack_singleton == other_struct->m_always_stack_singleton;
+}
+
+std::string StructureType::diff_impl(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return incompatible_diff(other);
+    }
+
+    const StructureType* other_struct = dynamic_cast<const StructureType*>(&other);
+    return diff_structure_common(*other_struct);
+}
+
+std::string StructureType::diff_structure_common(const StructureType& other) const {
+    std::string result;
+
+    if (m_fields != other.m_fields) {
+        result += "Fields differ\n";
+        // TODO: Add detailed field comparison
+    }
+    if (m_dynamic != other.m_dynamic) {
+        result += fmt::format("Dynamic: {} vs {}\n", m_dynamic, other.m_dynamic);
+    }
+    if (m_size_in_mem != other.m_size_in_mem) {
+        result += fmt::format("Size in memory: {} vs {}\n", m_size_in_mem, other.m_size_in_mem);
+    }
+    if (m_pack != other.m_pack) {
+        result += fmt::format("Pack: {} vs {}\n", m_pack, other.m_pack);
+    }
+
+    return result;
+}
+
+bool StructureType::lookup_field(const std::string& name, Field* out) {
+    for (auto& field : m_fields) {
+        if (field.name() == name) {
+            if (out) *out = field;
+            return true;
+        }
+    }
+    return false;
+}
+
+void StructureType::override_field_type(const std::string& field_name, const TypeSpec& new_type) {
+    for (auto& field : m_fields) {
+        if (field.name() == field_name) {
+            field.set_override_type(new_type);
+            break;
+        }
+    }
+}
+
+// ============================================================================
+// BasicType Implementation
+// ============================================================================
+
+BasicType::BasicType(std::string parent, std::string name, bool dynamic, int heap_base)
+    : StructureType(std::move(parent), std::move(name), true, dynamic, false, heap_base) {
+}
+
+std::string BasicType::print() const {
+    std::string result = fmt::format(
+        "[BasicType] {}\n parent: {}\n dynamic: {}\n size: {}\n heap-base: {}\n fields:\n",
+        m_name, m_parent, m_dynamic, m_size_in_mem, m_heap_base);
+
+    for (const auto& field : m_fields) {
+        result += "   " + field.print() + "\n";
+    }
+    result += " methods:\n" + print_method_info();
+    return result;
+}
+
+
+bool BasicType::operator==(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return false;
+    }
+
+    const BasicType* other_basic = dynamic_cast<const BasicType*>(&other);
+    return StructureType::operator==(other) &&
+        m_final == other_basic->m_final;
+}
+
+std::string BasicType::diff_impl(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return incompatible_diff(other);
+    }
+
+    const BasicType* other_basic = dynamic_cast<const BasicType*>(&other);
+    std::string result = diff_structure_common(*other_basic);
+
+    if (m_final != other_basic->m_final) {
+        result += fmt::format("Final: {} vs {}\n", m_final, other_basic->m_final);
+    }
+
+    return result;
+}
+
+// ============================================================================
+// BitField Implementation
+// ============================================================================
+
+BitField::BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp)
+    : m_type(std::move(type)),
+    m_name(std::move(name)),
+    m_offset(offset),
+    m_size(size),
+    m_skip_in_static_decomp(skip_in_decomp) {
+}
+
+bool BitField::operator==(const BitField& other) const {
+    return m_type == other.m_type &&
+        m_name == other.m_name &&
+        m_offset == other.m_offset &&
+        m_size == other.m_size;
+}
+
+std::string BitField::print() const {
+    return fmt::format("[{} {}] sz {} off {}", m_name, m_type.print(), m_size, m_offset);
+}
+
+bool BitField::operator!=(const BitField& other) const {
+    return !(*this == other);
+}
+
+// ============================================================================
+// BitFieldType Implementation  
+// ============================================================================
+
+BitFieldType::BitFieldType(std::string parent, std::string name, int size, bool sign_extend)
+    : ValueType(std::move(parent), std::move(name), false, size, sign_extend, RegClass::GPR_64) {
+}
+
+bool BitFieldType::lookup_field(const std::string& name, BitField* out) const {
+    for (const auto& field : m_fields) {
+        if (field.name() == name) {
+            if (out) *out = field;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string BitFieldType::print() const {
+    std::string result = fmt::format("[BitFieldType] {}\nFields:\n", m_name);
+    for (const auto& field : m_fields) {
+        result += "  " + field.print() + "\n";
+    }
+    return result;
+}
+
+bool BitFieldType::operator==(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return false;
+    }
+
+    const BitFieldType* other_bitfield = dynamic_cast<const BitFieldType*>(&other);
+    return common_type_info_equal(other) &&
+        m_fields == other_bitfield->m_fields;
+}
+
+std::string BitFieldType::diff_impl(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return incompatible_diff(other);
+    }
+
+    const BitFieldType* other_bitfield = dynamic_cast<const BitFieldType*>(&other);
+    std::string result;
+
+    if (m_fields != other_bitfield->m_fields) {
+        result += "Bitfield fields differ\n";
+    }
+
+    return result;
+}
+
+// ============================================================================
+// EnumType Implementation
+// ============================================================================
+
+EnumType::EnumType(const ValueType* parent, std::string name, bool is_bitfield,
+    const std::unordered_map<std::string, int64_t>& entries)
+    : ValueType(parent->get_parent(), std::move(name), parent->is_boxed(),
+        parent->get_load_size(), parent->get_load_signed(),
+        parent->get_preferred_reg_class()),
+    m_is_bitfield(is_bitfield),
+    m_entries(entries) {
+}
+
+std::string EnumType::print() const {
+    return fmt::format("[EnumType] {}", m_name);
+}
+
+bool EnumType::operator==(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return false;
+    }
+
+    const EnumType* other_enum = dynamic_cast<const EnumType*>(&other);
+    return common_type_info_equal(other) &&
+        m_entries == other_enum->m_entries &&
+        m_is_bitfield == other_enum->m_is_bitfield;
+}
+
+std::string EnumType::diff_impl(const Type& other) const {
+    if (typeid(*this) != typeid(other)) {
+        return incompatible_diff(other);
+    }
+
+    const EnumType* other_enum = dynamic_cast<const EnumType*>(&other);
+    std::string result;
+
+    if (m_is_bitfield != other_enum->m_is_bitfield) {
+        result += fmt::format("Is bitfield: {} vs {}\n", m_is_bitfield, other_enum->m_is_bitfield);
+    }
+
+    if (m_entries != other_enum->m_entries) {
+        result += "Enum entries differ\n";
+    }
+
+    return result;
+}
+
+// ============================================================================
+// MethodInfo full implementation
+// ============================================================================
+
+std::string MethodInfo::diff(const MethodInfo& other) const {
+    std::string result;
+    if (id != other.id) {
+        result += fmt::format("id: {} vs. {}\n", id, other.id);
+    }
+    if (name != other.name) {
+        result += fmt::format("name: {} vs. {}\n", name, other.name);
+    }
+    if (type != other.type) {
+        result += fmt::format("type: {} vs. {}\n", type.print(), other.type.print());
+    }
+    if (defined_in_type != other.defined_in_type) {
+        result += fmt::format("defined_in_type: {} vs. {}\n", defined_in_type, other.defined_in_type);
+    }
+    if (no_virtual != other.no_virtual) {
+        result += fmt::format("no_virtual: {} vs. {}\n", no_virtual, other.no_virtual);
+    }
+    if (overrides_parent != other.overrides_parent) {
+        result += fmt::format("overrides_parent: {} vs. {}\n", overrides_parent, other.overrides_parent);
+    }
+    if (only_overrides_docstring != other.only_overrides_docstring) {
+        result += fmt::format("only_overrides_docstring: {} vs. {}\n",
+            only_overrides_docstring, other.only_overrides_docstring);
+    }
+    return result;
+}
+
+// ============================================================================
+// Field full implementation  
+// ============================================================================
+
+std::string Field::diff(const Field& other) const {
+    std::string result;
+    if (m_name != other.m_name) {
+        result += fmt::format("name: {} vs. {}\n", m_name, other.m_name);
+    }
+    if (m_type != other.m_type) {
+        result += fmt::format("type: {} vs. {}\n", m_type.print(), other.m_type.print());
+    }
+    if (m_offset != other.m_offset) {
+        result += fmt::format("offset: {} vs. {}\n", m_offset, other.m_offset);
+    }
+    if (m_inline != other.m_inline) {
+        result += fmt::format("inline: {} vs. {}\n", m_inline, other.m_inline);
+    }
+    if (m_dynamic != other.m_dynamic) {
+        result += fmt::format("dynamic: {} vs. {}\n", m_dynamic, other.m_dynamic);
+    }
+    if (m_array != other.m_array) {
+        result += fmt::format("array: {} vs. {}\n", m_array, other.m_array);
+    }
+    if (m_array_size != other.m_array_size) {
+        result += fmt::format("array_size: {} vs. {}\n", m_array_size, other.m_array_size);
+    }
+    if (m_alignment != other.m_alignment) {
+        result += fmt::format("alignment: {} vs. {}\n", m_alignment, other.m_alignment);
+    }
+    if (m_skip_in_static_decomp != other.m_skip_in_static_decomp) {
+        result += fmt::format("skip_in_static_decomp: {} vs. {}\n",
+            m_skip_in_static_decomp, other.m_skip_in_static_decomp);
+    }
+    return result;
+}
+#pragma once
+
+/*!
+ * @file Type.h
+ * Representation of a GOAL type in the type system.
+ */
+
+#include <string>
+#include <vector>
+#include <map>
+#include <unordered_map>
+#include <memory>
+#include <cstdint>
+#include <optional>
+#include "type_spec.h"
+
+// Forward declarations
+class Type;
+class ValueType;
+class ReferenceType;
+class StructureType;
+class BasicType;
+class BitFieldType;
+class EnumType;
+class Field;
+class BitField;
+class MethodInfo;
+class TypeSpec;
+
+// ============================================================================
+// Common Constants
+// ============================================================================
+
+enum class RegClass {
+    GPR_64,
+    FPR,
+    INVALID
+};
+
+// ============================================================================
+// Definition Metadata
+// ============================================================================
+
+struct DefinitionMetadata {
+    // ¡ÎËÁÍÓ Í ÓË„ËÌ‡ÎÛ, ÌÓ Ò Û‰Ó·Ì˚ÏË ÏÂÚÓ‰‡ÏË
+    std::optional<std::string> definition_info;
+    std::optional<std::string> docstring;
+
+    // ƒÓ·‡‚ÎˇÂÏ ÚÓÎ¸ÍÓ convenience ÏÂÚÓ‰˚ ·ÂÁ ËÁÏÂÌÂÌËˇ ÒÚÛÍÚÛ˚ ‰‡ÌÌ˚ı
+    bool has_location() const { return definition_info.has_value(); }
+    bool has_docstring() const { return docstring.has_value(); }
+    std::string get_docstring_or_empty() const { return docstring.value_or(""); }
+
+    // ƒÎˇ ÒÓ‚ÏÂÒÚËÏÓÒÚË Ò ÚÂÒÚ‡ÏË
+    bool operator==(const DefinitionMetadata& other) const {
+        return definition_info == other.definition_info && docstring == other.docstring;
+    }
+    bool operator!=(const DefinitionMetadata& other) const { return !(*this == other); }
+};
+
+// ============================================================================
+// Method Information
+// ============================================================================
+
+class MethodInfo {
+public:
+    int id = -1;
+    std::string name;
+    TypeSpec type;
+    std::string defined_in_type;
+    std::string type_name;
+    bool no_virtual = false;
+    bool overrides_parent = false;
+    bool only_overrides_docstring = false;
+    std::optional<std::string> docstring;  
+    std::optional<std::string> overlay_name; 
+
+    bool operator==(const MethodInfo& other) const;
+    bool operator!=(const MethodInfo& other) const;
+    std::string print_one_line() const;
+    std::string diff(const MethodInfo& other) const;
+};
+
+// ============================================================================
+// Field Definition
+// ============================================================================
+
+class Field {
+public:
+    Field() = default;
+    Field(std::string name, TypeSpec type);
+    Field(std::string name, TypeSpec type, int offset);
+
+    void set_dynamic();
+    void set_array(int size);
+    void set_inline();
+    void set_override_type(const TypeSpec& new_type);
+    void mark_as_user_placed();
+
+    std::string print() const;
+    const TypeSpec& type() const { return m_type; }
+    TypeSpec& type() { return m_type; }
+    bool is_inline() const { return m_inline; }
+    bool is_array() const { return m_array; }
+    bool is_dynamic() const { return m_dynamic; }
+    const std::string& name() const { return m_name; }
+    int offset() const { return m_offset; }
+    bool skip_in_decomp() const { return m_skip_in_static_decomp; }
+    bool user_placed() const { return m_placed_by_user; }
+    const std::optional<TypeSpec> decomp_as_type() const { return m_decomp_as_ts; }
+
+    void set_comment(const std::string& comment) { m_comment = comment; }
+    const std::string& comment() const { return m_comment; }
+    bool has_comment() const { return !m_comment.empty(); }
+
+    bool operator==(const Field& other) const;
+    bool operator!=(const Field& other) const;
+    std::string diff(const Field& other) const;
+
+    int alignment() const {
+        // ASSERT(m_alignment != -1); // –‡ÒÍÓÏÏÂÌÚËÓ‚‡Ú¸ ÍÓ„‰‡ ·Û‰ÂÚ ASSERT
+        return m_alignment;
+    }
+
+    int array_size() const {
+        // ASSERT(is_array() && !is_dynamic());
+        return m_array_size;
+    }
+
+    double field_score() const { return m_field_score; }
+    void set_field_score(double value) { m_field_score = value; }
+    void set_decomp_as_ts(const TypeSpec& ts) { m_decomp_as_ts = ts; }
+
+private:
+    friend class TypeSystem;
+    void set_alignment(int alignment) { m_alignment = alignment; }
+    void set_offset(int offset) { m_offset = offset; }
+    void set_skip_in_static_decomp() { m_skip_in_static_decomp = true; }
+
+    std::string m_name;
+    TypeSpec m_type;
+    bool m_override_type = false;
+    int m_offset = -1;
+    bool m_inline = false;
+    bool m_dynamic = false;
+    bool m_array = false;
+    int m_array_size = 0;
+    int m_alignment = -1;
+    bool m_skip_in_static_decomp = false;
+    bool m_placed_by_user = false;
+    std::string m_comment;
+    double m_field_score = 0.0;
+    std::optional<TypeSpec> m_decomp_as_ts = std::nullopt;
+};
+
+// ============================================================================
+// BitField Definition
+// ============================================================================
+
+class BitField {
+public:
+    BitField() = default;
+    BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
+
+    const std::string name() const { return m_name; }
+    int offset() const { return m_offset; }
+    int size() const { return m_size; }
+    const TypeSpec& type() const { return m_type; }
+    bool skip_in_decomp() const { return m_skip_in_static_decomp; }
+
+    bool operator==(const BitField& other) const;
+    bool operator!=(const BitField& other) const;
+    std::string print() const;
+    std::string diff(const BitField& other) const;
+
+private:
+    TypeSpec m_type;
+    std::string m_name;
+    int m_offset = -1;
+    int m_size = -1;
+    bool m_skip_in_static_decomp = false;
+};
+
+// ============================================================================
+// Base Type Definition
+// ============================================================================
+
+class Type {
+public:
+    Type(std::string parent, std::string name, bool is_boxed, int heap_base);
+    virtual ~Type() = default;
+
+    // Core type properties - PURE VIRTUAL
+    virtual bool is_reference() const = 0;
+    virtual int get_load_size() const = 0;
+    virtual bool get_load_signed() const = 0;
+    virtual int get_size_in_memory() const = 0;
+    virtual RegClass get_preferred_reg_class() const = 0;
+    virtual int get_offset() const = 0;
+    virtual int get_in_memory_alignment() const = 0;
+    virtual int get_inline_array_stride_alignment() const = 0;
+    virtual int get_inline_array_start_alignment() const = 0;
+
+    // Comparison
+    virtual bool operator==(const Type& other) const = 0;
+    bool operator!=(const Type& other) const { return !(*this == other); }
+
+    // Printing and debugging
+    virtual std::string print() const = 0;
+    std::string diff(const Type& other) const;
+
+    // Method system
+    bool get_my_method(const std::string& name, MethodInfo* out) const;
+    bool get_my_method(int id, MethodInfo* out) const;
+    bool get_my_last_method(MethodInfo* out) const;
+    bool get_my_new_method(MethodInfo* out) const;
+    int get_num_methods() const;
+    const MethodInfo& add_method(const MethodInfo& info);
+    const MethodInfo& add_new_method(const MethodInfo& info);
+    std::string print_method_info() const;
+
+    // New method access
+    const MethodInfo* get_new_method_defined_for_type() const {
+        if (m_new_method_info_defined) {
+            return &m_new_method_info;
+        }
+        else {
+            return nullptr;
+        }
+    }
+
+    bool has_new_method() const { return m_new_method_info_defined; }
+
+    // State system
+    void add_state(const std::string& name, const TypeSpec& type);
+    const std::vector<MethodInfo>& get_methods_defined_for_type() const { return m_methods; }
+    const std::map<std::string, TypeSpec>& get_states_declared_for_type() const { return m_states; }
+
+    // Accessors
+    std::string get_name() const { return m_name; }
+    std::string get_runtime_name() const;
+    std::string get_parent() const { return m_parent; }
+    void set_runtime_name(std::string name) { m_runtime_name = std::move(name); }
+    bool has_parent() const { return !m_parent.empty() && m_name != "object"; }
+
+    bool is_boxed() const { return m_is_boxed; }
+    int heap_base() const { return m_heap_base; }
+    bool gen_inspect() const { return m_generate_inspect; }
+
+    void disallow_in_runtime() { m_allow_in_runtime = false; }
+
+    // Metadata
+    const DefinitionMetadata& get_metadata() const { return m_metadata; }
+    DefinitionMetadata& get_metadata() { return m_metadata; }
+
+    // Virtual state metadata
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>&
+        get_virtual_state_definition_meta() { return m_virtual_state_definition_meta; }
+
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>&
+        get_state_definition_meta() { return m_state_definition_meta; }
+
+protected:
+    virtual std::string diff_impl(const Type& other) const = 0;
+    std::string incompatible_diff(const Type& other) const;
+    bool common_type_info_equal(const Type& other) const;
+    std::string common_type_info_diff(const Type& other) const;
+
+    std::string m_parent;
+    std::string m_name;
+    std::string m_runtime_name;
+    bool m_allow_in_runtime = true;
+    bool m_is_boxed = false;
+    int m_heap_base = 0;
+    bool m_generate_inspect = true;
+
+    // Method system
+    std::vector<MethodInfo> m_methods;
+    MethodInfo m_new_method_info;
+    bool m_new_method_info_defined = false;
+
+    // State system
+    std::map<std::string, TypeSpec> m_states;
+
+    // Metadata
+    DefinitionMetadata m_metadata;
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
+        m_virtual_state_definition_meta = {};
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
+        m_state_definition_meta = {};
+};
+
+// ============================================================================
+// Null Type
+// ============================================================================
+
+class NullType : public Type {
+public:
+    NullType(std::string name);
+
+    bool is_reference() const override;
+    int get_load_size() const override;
+    bool get_load_signed() const override;
+    int get_size_in_memory() const override;
+    RegClass get_preferred_reg_class() const override;
+    int get_offset() const override;
+    int get_in_memory_alignment() const override;
+    int get_inline_array_stride_alignment() const override;
+    int get_inline_array_start_alignment() const override;
+
+    std::string print() const override;
+    bool operator==(const Type& other) const override;
+
+protected:
+    std::string diff_impl(const Type& other) const override;
+};
+
+// ============================================================================
+// Value Types
+// ============================================================================
+
+class ValueType : public Type {
+public:
+    ValueType(std::string parent, std::string name, bool is_boxed, int size, bool sign_extend, RegClass reg);
+
+    bool is_reference() const override;
+    int get_load_size() const override;
+    bool get_load_signed() const override;
+    int get_size_in_memory() const override;
+    RegClass get_preferred_reg_class() const override;
+    int get_offset() const override;
+    int get_in_memory_alignment() const override;
+    int get_inline_array_stride_alignment() const override;
+    int get_inline_array_start_alignment() const override;
+
+    std::string print() const override;
+    bool operator==(const Type& other) const override;
+
+    void inherit(const ValueType* parent);
+
+protected:
+    friend class TypeSystem;
+    void set_offset(int offset) { m_offset = offset; }
+    std::string diff_impl(const Type& other) const override;
+
+    int m_size = -1;
+    int m_offset = 0;
+    bool m_sign_extend = false;
+    RegClass m_reg_kind = RegClass::INVALID;
+};
+
+// ============================================================================
+// Reference Types
+// ============================================================================
+
+class ReferenceType : public Type {
+public:
+    ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base);
+
+    bool is_reference() const override { return true; }
+    int get_load_size() const override { return 4; } // pointers are 4 bytes
+    bool get_load_signed() const override { return false; }
+    RegClass get_preferred_reg_class() const override { return RegClass::GPR_64; }
+
+    std::string print() const override;
+
+    // These remain pure virtual - must be implemented by derived classes
+    int get_size_in_memory() const override = 0;
+    int get_offset() const override = 0;
+    int get_in_memory_alignment() const override = 0;
+    int get_inline_array_stride_alignment() const override = 0;
+    int get_inline_array_start_alignment() const override = 0;
+};
+
+// ============================================================================
+// Structure Types
+// ============================================================================
+
+class StructureType : public ReferenceType {
+public:
+    StructureType(std::string parent, std::string name, bool boxed, bool dynamic, bool pack, int heap_base);
+
+    std::string print() const override;
+    void inherit(StructureType* parent);
+    bool operator==(const Type& other) const override;
+
+    int get_size_in_memory() const override { return m_size_in_mem; }
+    int get_offset() const override { return m_offset; }
+    int get_in_memory_alignment() const override { return 16; } // STRUCTURE_ALIGNMENT
+    int get_inline_array_stride_alignment() const override { return m_pack ? 1 : 16; }
+    int get_inline_array_start_alignment() const override { return (m_pack || m_allow_misalign) ? 1 : 16; }
+
+    bool lookup_field(const std::string& name, Field* out);
+    bool is_dynamic() const { return m_dynamic; }
+
+    const std::vector<Field>& fields() const { return m_fields; }
+    bool is_packed() const { return m_pack; }
+    bool is_allowed_misalign() const { return m_allow_misalign; }
+    bool is_always_stack_singleton() const { return m_always_stack_singleton; }
+
+    void set_pack(bool pack) { m_pack = pack; }
+    void set_always_stack_singleton() { m_always_stack_singleton = true; }
+    void set_heap_base(int hb) { m_heap_base = hb; }
+    void set_allow_misalign(bool misalign) { m_allow_misalign = misalign; }
+    void set_gen_inspect(bool gen_inspect) { m_generate_inspect = gen_inspect; }
+    int size() const { return m_size_in_mem; }
+    void override_field_type(const std::string& field_name, const TypeSpec& new_type);
+
+protected:
+    friend class TypeSystem;
+    void override_offset(int offset) { m_offset = offset; }
+    void override_size_in_memory(int size) { m_size_in_mem = size; }
+    void add_field(const Field& f, int new_size_in_mem) {
+        m_fields.push_back(f);
+        m_size_in_mem = new_size_in_mem;
+    }
+    void set_dynamic() { m_dynamic = true; }
+    size_t first_unique_field_idx() const { return m_idx_of_first_unique_field; }
+    std::string diff_impl(const Type& other) const override;
+    std::string diff_structure_common(const StructureType& other) const;
+
+    std::vector<Field> m_fields;
+    std::vector<int> m_overriden_fields;
+    bool m_dynamic = false;
+    int m_size_in_mem = 0;
+    bool m_pack = false;
+    bool m_allow_misalign = false;
+    int m_offset = 0;
+    bool m_always_stack_singleton = false;
+    size_t m_idx_of_first_unique_field = 0;
+};
+
+// ============================================================================
+// Basic Types
+// ============================================================================
+
+class BasicType : public StructureType {
+public:
+    BasicType(std::string parent, std::string name, bool dynamic, int heap_base);
+
+    int get_offset() const override { return 0; } // BASIC_OFFSET
+    int get_inline_array_start_alignment() const override { return 16; }
+    std::string print() const override;
+    bool operator==(const Type& other) const override;
+
+    bool final() const { return m_final; }
+    void set_final() { m_final = true; }
+
+protected:
+    std::string diff_impl(const Type& other) const override;
+
+    bool m_final = false;
+};
+
+// ============================================================================
+// BitField Types
+// ============================================================================
+
+class BitFieldType : public ValueType {
+public:
+    BitFieldType(std::string parent, std::string name, int size, bool sign_extend);
+
+    bool lookup_field(const std::string& name, BitField* out) const;
+    std::string print() const override;
+    bool operator==(const Type& other) const override;
+
+    const std::vector<BitField>& fields() const { return m_fields; }
+    void set_gen_inspect(bool gen_inspect) { m_generate_inspect = gen_inspect; }
+
+protected:
+    friend class TypeSystem;
+    std::string diff_impl(const Type& other) const override;
+
+    std::vector<BitField> m_fields;
+};
+
+// ============================================================================
+// Enum Types
+// ============================================================================
+
+class EnumType : public ValueType {
+public:
+    EnumType(const ValueType* parent, std::string name, bool is_bitfield,
+        const std::unordered_map<std::string, int64_t>& entries);
+
+    std::string print() const override;
+    bool operator==(const Type& other) const override;
+
+    const std::unordered_map<std::string, int64_t>& entries() const { return m_entries; }
+    bool is_bitfield() const { return m_is_bitfield; }
+
+protected:
+    friend class TypeSystem;
+    std::string diff_impl(const Type& other) const override;
+
+    bool m_is_bitfield = false;
+    std::unordered_map<std::string, int64_t> m_entries;
+};#include "type_spec.h"
+#include "common/util/assert.h"
+#include "fmt/format.h"
+
+#include <stdexcept>
+#include <algorithm>
+
+// ============================================================================
+// TypeSpec constructors
+// ============================================================================
+
+TypeSpec::TypeSpec(std::string type) : m_type(std::move(type)) {}
+
+TypeSpec::TypeSpec(std::string type, std::vector<TypeSpec> arguments)
+    : m_type(std::move(type))
+    , m_arguments(std::make_unique<std::vector<TypeSpec>>(std::move(arguments))) {
+}
+
+// Rule of Five
+TypeSpec::TypeSpec(const TypeSpec& other)
+    : m_type(other.m_type)
+    , m_tags(other.m_tags) {
+    if (other.m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>(*other.m_arguments);
+    }
+}
+
+TypeSpec::TypeSpec(TypeSpec&& other) noexcept = default;
+
+TypeSpec& TypeSpec::operator=(const TypeSpec& other) {
+    if (this != &other) {
+        m_type = other.m_type;
+        m_tags = other.m_tags;
+        if (other.m_arguments) {
+            m_arguments = std::make_unique<std::vector<TypeSpec>>(*other.m_arguments);
+        }
+        else {
+            m_arguments.reset();
+        }
+    }
+    return *this;
+}
+
+TypeSpec& TypeSpec::operator=(TypeSpec&& other) noexcept = default;
+
+// ============================================================================
+// TypeSpec argument management
+// ============================================================================
+
+void TypeSpec::add_arg(const TypeSpec& ts) {
+    if (!m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>();
+    }
+    m_arguments->push_back(ts);
+}
+
+void TypeSpec::add_arg(TypeSpec&& ts) {
+    if (!m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>();
+    }
+    m_arguments->push_back(std::move(ts));
+}
+
+bool TypeSpec::has_single_arg() const {
+    return m_arguments && m_arguments->size() == 1;
+}
+
+const TypeSpec& TypeSpec::get_single_arg() const {
+    // ASSERT(m_arguments);
+    // ASSERT(m_arguments->size() == 1);
+    return m_arguments->front();
+}
+
+TypeSpec& TypeSpec::get_single_arg() {
+    // ASSERT(m_arguments);
+    // ASSERT(m_arguments->size() == 1);
+    return m_arguments->front();
+}
+
+size_t TypeSpec::arg_count() const {
+    return m_arguments ? m_arguments->size() : 0;
+}
+
+const TypeSpec& TypeSpec::get_arg(int idx) const {
+    // ASSERT(m_arguments);
+    return m_arguments->at(idx);
+}
+
+TypeSpec& TypeSpec::get_arg(int idx) {
+    // ASSERT(m_arguments);
+    return m_arguments->at(idx);
+}
+
+const TypeSpec& TypeSpec::last_arg() const {
+    // ASSERT(m_arguments);
+    // ASSERT(!m_arguments->empty());
+    return m_arguments->back();
+}
+
+TypeSpec& TypeSpec::last_arg() {
+    // ASSERT(m_arguments);
+    // ASSERT(!m_arguments->empty());
+    return m_arguments->back();
+}
+
+bool TypeSpec::empty() const {
+    return !m_arguments || m_arguments->empty();
+}
+
+
+// ============================================================================
+// TypeTag Implementation
+// ============================================================================
+
+TypeTag::TypeTag(std::string name, std::string value)
+    : name(std::move(name)), value(std::move(value)) {
+}
+
+bool TypeTag::operator==(const TypeTag& other) const {
+    return name == other.name && value == other.value;
+}
+
+bool TypeTag::operator!=(const TypeTag& other) const {
+    return !(*this == other);
+}
+
+
+// ============================================================================
+// TypeSpec Implementation
+// ============================================================================
+
+std::string TypeSpec::print() const {
+    // Simple case: no arguments and no tags
+    if ((!m_arguments || m_arguments->empty()) && m_tags.empty()) {
+        return m_type;
+    }
+
+    // Complex case: with arguments and/or tags
+    std::string result = "(" + m_type;
+
+    // Print arguments
+    if (m_arguments) {
+        for (const auto& arg : *m_arguments) {
+            result += " " + arg.print();
+        }
+    }
+
+    // Print tags
+    for (const auto& tag : m_tags) {
+        result += fmt::format(" :{} {}", tag.name, tag.value);
+    }
+
+    return result + ")";
+}
+
+bool TypeSpec::operator==(const TypeSpec& other) const {
+    // Compare base type
+    if (m_type != other.m_type) {
+        return false;
+    }
+
+    // Compare tags
+    if (m_tags != other.m_tags) {
+        return false;
+    }
+
+    // Compare arguments
+    if (m_arguments && other.m_arguments) {
+        return *m_arguments == *other.m_arguments;
+    }
+    else if (m_arguments || other.m_arguments) {
+        // One has arguments, the other doesn't
+        return false;
+    }
+
+    return true;
+}
+
+bool TypeSpec::operator!=(const TypeSpec& other) const {
+    return !(*this == other);
+}
+
+TypeSpec TypeSpec::substitute_for_method_call(const std::string& method_type) const {
+    TypeSpec result;
+    result.m_type = (m_type == "_type_") ? method_type : m_type;
+
+    // Recursively substitute arguments
+    if (m_arguments) {
+        result.m_arguments = std::make_unique<std::vector<TypeSpec>>();
+        for (const auto& arg : *m_arguments) {
+            result.m_arguments->push_back(arg.substitute_for_method_call(method_type));
+        }
+    }
+
+    // Copy tags
+    result.m_tags = m_tags;
+
+    return result;
+}
+
+bool TypeSpec::is_compatible_child_method(const TypeSpec& implementation,
+    const std::string& child_type,
+    int* bad_arg_idx_out) const {
+    // Check if base types are compatible
+    bool base_type_ok = implementation.m_type == m_type ||
+        (m_type == "_type_" && implementation.m_type == child_type);
+
+    if (!base_type_ok) {
+        if (bad_arg_idx_out) *bad_arg_idx_out = -1;
+        return false;
+    }
+
+    // Check argument count
+    if (implementation.arg_count() != arg_count()) {
+        if (bad_arg_idx_out) *bad_arg_idx_out = -1;
+        return false;
+    }
+
+    // Check each argument for compatibility
+    for (size_t i = 0; i < arg_count(); i++) {
+        if (!get_arg(i).is_compatible_child_method(implementation.get_arg(i), child_type)) {
+            if (bad_arg_idx_out) *bad_arg_idx_out = i;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void TypeSpec::add_new_tag(const std::string& tag_name, const std::string& tag_value) {
+    // Check for duplicate tag
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            throw std::runtime_error(
+                fmt::format("Attempted to add duplicate tag '{}' to TypeSpec", tag_name));
+        }
+    }
+
+    m_tags.emplace_back(tag_name, tag_value);
+}
+
+void TypeSpec::add_new_tag(std::string tag_name, std::string tag_value) {
+    // Check for duplicate tag
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            throw std::runtime_error(
+                fmt::format("Attempted to add duplicate tag '{}' to TypeSpec", tag_name));
+        }
+    }
+
+    m_tags.emplace_back(std::move(tag_name), std::move(tag_value));
+}
+
+std::optional<std::string> TypeSpec::try_get_tag(const std::string& tag_name) const {
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            return tag.value;
+        }
+    }
+    return std::nullopt;
+}
+
+const std::string& TypeSpec::get_tag(const std::string& tag_name) const {
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            return tag.value;
+        }
+    }
+    throw std::runtime_error(fmt::format("TypeSpec doesn't have tag '{}'", tag_name));
+}
+
+void TypeSpec::modify_tag(const std::string& tag_name, const std::string& tag_value) {
+    for (auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            tag.value = tag_value;
+            return;
+        }
+    }
+    throw std::runtime_error(fmt::format("TypeSpec doesn't have tag '{}'", tag_name));
+}
+
+void TypeSpec::add_or_modify_tag(const std::string& tag_name, const std::string& tag_value) {
+    for (auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            tag.value = tag_value;
+            return;
+        }
+    }
+    m_tags.emplace_back(tag_name, tag_value);
+}
+
+void TypeSpec::delete_tag(const std::string& tag_name) {
+    for (auto it = m_tags.begin(); it != m_tags.end(); ++it) {
+        if (it->name == tag_name) {
+            m_tags.erase(it);
+            return;
+        }
+    }
+}
+
+// ============================================================================
+// Utility Functions Implementation
+// ============================================================================
+//
+//TypeSpec coerce_to_reg_type(const TypeSpec& in) {
+//    // For now, just return the input type unchanged
+//    // In the original implementation, this would handle type coercion logic
+//    return in;
+//}
+
+// ============================================================================
+// typespec namespace Implementation
+// ============================================================================
+
+namespace typespec {
+
+    TypeSpec object() { return TypeSpec("object"); }
+    TypeSpec int32() { return TypeSpec("int32"); }
+    TypeSpec int64() { return TypeSpec("int64"); }
+    TypeSpec float_() { return TypeSpec("float"); }
+    TypeSpec string() { return TypeSpec("string"); }
+    TypeSpec symbol() { return TypeSpec("symbol"); }
+    TypeSpec function() { return TypeSpec("function"); }
+
+    TypeSpec pointer(const TypeSpec& element) {
+        return TypeSpec("pointer", { element });
+    }
+
+    TypeSpec inline_array(const TypeSpec& element) {
+        return TypeSpec("inline-array", { element });
+    }
+
+} // namespace typespec#pragma once
+
+/*!
+ * @file TypeSpec.h
+ * A GOAL TypeSpec is a reference to a type or compound type.
+ */
+
+#include <string>
+#include <vector>
+#include <optional>
+#include <memory>
+
+ // ============================================================================
+ // Type Tag
+ // ============================================================================
+
+struct TypeTag {
+    std::string name;
+    std::string value;
+
+    TypeTag() = default;
+    TypeTag(std::string name, std::string value);
+
+    bool operator==(const TypeTag& other) const;
+    bool operator!=(const TypeTag& other) const;
+};
+
+// ============================================================================
+// TypeSpec
+// ============================================================================
+
+class TypeSpec {
+public:
+    // Constructors
+    TypeSpec() = default;
+    explicit TypeSpec(std::string type);
+    TypeSpec(std::string type, std::vector<TypeSpec> arguments);
+
+    // Rule of Five
+    TypeSpec(const TypeSpec& other);
+    TypeSpec(TypeSpec&& other) noexcept;
+    TypeSpec& operator=(const TypeSpec& other);
+    TypeSpec& operator=(TypeSpec&& other) noexcept;
+    ~TypeSpec() = default;
+
+    // Comparison
+    bool operator==(const TypeSpec& other) const;
+    bool operator!=(const TypeSpec& other) const;
+
+    // Method compatibility checking
+    bool is_compatible_child_method(const TypeSpec& implementation,
+        const std::string& child_type,
+        int* bad_arg_idx_out = nullptr) const;
+
+    // Printing
+    std::string print() const;
+
+    // Argument management
+    void add_arg(const TypeSpec& ts);
+    void add_arg(TypeSpec&& ts);
+
+    // Tag management
+    void add_new_tag(const std::string& tag_name, const std::string& tag_value);
+    void add_new_tag(std::string tag_name, std::string tag_value);
+    std::optional<std::string> try_get_tag(const std::string& tag_name) const;
+    const std::string& get_tag(const std::string& tag_name) const;
+    void modify_tag(const std::string& tag_name, const std::string& tag_value);
+    void add_or_modify_tag(const std::string& tag_name, const std::string& tag_value);
+    void delete_tag(const std::string& tag_name);
+
+    // Type substitution for method calls
+    TypeSpec substitute_for_method_call(const std::string& method_type) const;
+
+    // Accessors
+    const std::string& base_type() const { return m_type; }
+    bool has_single_arg() const;
+    const TypeSpec& get_single_arg() const;
+    TypeSpec& get_single_arg();
+    size_t arg_count() const;
+    const TypeSpec& get_arg(int idx) const;
+    TypeSpec& get_arg(int idx);
+    const TypeSpec& last_arg() const;
+    TypeSpec& last_arg();
+    bool empty() const;
+    const std::vector<TypeTag>& tags() const { return m_tags; }
+    std::vector<TypeTag>& tags() { return m_tags; }
+
+private:
+    std::string m_type;
+    std::unique_ptr<std::vector<TypeSpec>> m_arguments;
+    std::vector<TypeTag> m_tags;
+};
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+//extern TypeSpec coerce_to_reg_type(const TypeSpec& in);
+
+// ============================================================================
+// Common TypeSpec Constants
+// ============================================================================
+
+namespace typespec {
+    TypeSpec object();
+    TypeSpec int32();
+    TypeSpec int64();
+    TypeSpec float_();
+    TypeSpec string();
+    TypeSpec symbol();
+    TypeSpec function();
+    TypeSpec pointer(const TypeSpec& element);
+    TypeSpec inline_array(const TypeSpec& element);
+}Ôªø#include "type_system.h"
+#include "common/util/assert.h"
+#include "fmt/format.h"
+
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+    template <typename... Args>
+    [[noreturn]] void throw_typesystem_error(const std::string& str, Args&&... args) {
+        throw std::runtime_error(
+            fmt::format("Type Error: {}", fmt::format(fmt::runtime(str), std::forward<Args>(args)...)));
+    }
+
+}  // namespace
+
+// ============================================================================
+// TypeSystem Constructor
+// ============================================================================
+
+TypeSystem::TypeSystem() {
+    // Add basic null types
+    //add_type("none", std::make_unique<NullType>("none"));
+    //add_type("_type_", std::make_unique<NullType>("_type_"));
+    //add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
+}
+
+// ============================================================================
+// Type Management
+// ============================================================================
+
+Type* TypeSystem::add_type(const std::string& name, std::unique_ptr<Type> type) {
+    // Check forward declared method counts
+    auto method_kv = m_forward_declared_method_counts.find(name);
+    if (method_kv != m_forward_declared_method_counts.end()) {
+        int method_count = get_next_method_id(type.get());
+        if (method_count != method_kv->second) {
+            throw_typesystem_error(
+                "Type {} was defined with {} methods, but was forward declared with {}",
+                name, method_count, method_kv->second);
+        }
+    }
+
+    auto kv = m_types.find(name);
+    if (kv != m_types.end()) {
+        // Type already exists
+        if (*kv->second != *type) {
+            // Type is being redefined differently
+            if (m_allow_redefinition ||
+                std::find(m_types_allowed_to_be_redefined.begin(),
+                    m_types_allowed_to_be_redefined.end(), name) !=
+                m_types_allowed_to_be_redefined.end()) {
+
+                // Keep old type for reference
+                m_old_types.push_back(std::move(m_types[name]));
+                // Update with new type
+                m_types[name] = std::move(type);
+            }
+            else {
+                throw_typesystem_error(
+                    "Inconsistent type definition. Type {} was originally:\n{}\n"
+                    "and is redefined as:\n{}\nDiff:\n{}",
+                    kv->second->get_name(), kv->second->print(), type->print(),
+                    kv->second->diff(*type));
+            }
+        }
+    }
+    else {
+        // New type
+        if (name != "object" && name != "none" && name != "_type_" && name != "_varargs_") {
+            if (m_forward_declared_types.find(type->get_parent()) != m_forward_declared_types.end()) {
+                throw_typesystem_error(
+                    "Cannot create new type {}. The parent type {} is not fully defined.",
+                    type->get_name(), type->get_parent());
+            }
+
+            if (m_types.find(type->get_parent()) == m_types.end()) {
+                throw_typesystem_error(
+                    "Cannot create new type {}. The parent type {} is not defined.",
+                    type->get_name(), type->get_parent());
+            }
+        }
+
+        m_types[name] = std::move(type);
+
+        // Check forward declarations
+        auto fwd_it = m_forward_declared_types.find(name);
+        if (fwd_it != m_forward_declared_types.end()) {
+            if (!tc(TypeSpec(fwd_it->second), TypeSpec(name))) {
+                throw_typesystem_error(
+                    "Type {} was originally declared as a child of {}, but is not.",
+                    name, fwd_it->second);
+            }
+        }
+        m_forward_declared_types.erase(name);
+    }
+
+    return m_types[name].get();
+}
+
+void TypeSystem::forward_declare_type_as_type(const std::string& name) {
+    if (m_types.find(name) != m_types.end()) {
+        return; // Already fully defined
+    }
+
+    auto it = m_forward_declared_types.find(name);
+    if (it == m_forward_declared_types.end()) {
+        m_forward_declared_types[name] = "object";
+    }
+    else {
+        throw_typesystem_error(
+            "Tried to forward declare {} as a type multiple times. Previous: {} Current: object",
+            name, it->second);
+    }
+}
+
+void TypeSystem::forward_declare_type_as(const std::string& new_type,
+    const std::string& parent_type) {
+    auto type_it = m_types.find(new_type);
+    if (type_it != m_types.end()) {
+        // Type already exists, verify parent
+        if (!tc(TypeSpec(parent_type), TypeSpec(new_type))) {
+            throw_typesystem_error(
+                "Forward declaration that type {} is a {} disagrees with existing definition",
+                new_type, parent_type);
+        }
+        return;
+    }
+
+    auto fwd_it = m_forward_declared_types.find(new_type);
+    if (fwd_it == m_forward_declared_types.end()) {
+        m_forward_declared_types[new_type] = parent_type;
+    }
+    else {
+        if (fwd_it->second != parent_type) {
+            throw_typesystem_error(
+                "Got forward declaration that type {} is a {}, which disagrees with "
+                "previous forward declaration that it was a {}",
+                new_type, parent_type, fwd_it->second);
+        }
+    }
+}
+
+// ============================================================================
+// Type Lookup
+// ============================================================================
+
+Type* TypeSystem::lookup_type(const std::string& name) const {
+    auto kv = m_types.find(name);
+    if (kv != m_types.end()) {
+        return kv->second.get();
+    }
+
+    auto fd = m_forward_declared_types.find(name);
+    if (fd != m_forward_declared_types.end()) {
+        throw_typesystem_error("Type {} is not fully defined", name);
+    }
+    else {
+        throw_typesystem_error("Type {} is not defined", name);
+    }
+
+    return nullptr;
+}
+
+Type* TypeSystem::lookup_type(const TypeSpec& ts) const {
+    return lookup_type(ts.base_type());
+}
+
+Type* TypeSystem::lookup_type_no_throw(const std::string& name) const {
+    auto kv = m_types.find(name);
+    return (kv != m_types.end()) ? kv->second.get() : nullptr;
+}
+
+Type* TypeSystem::lookup_type_no_throw(const TypeSpec& ts) const {
+    return lookup_type_no_throw(ts.base_type());
+}
+
+Type* TypeSystem::lookup_type_allow_partial_def(const std::string& name) const {
+    // Try fully defined types first
+    auto kv = m_types.find(name);
+    if (kv != m_types.end()) {
+        return kv->second.get();
+    }
+
+    // Follow forward declaration chain
+    std::string current_name = name;
+    while (true) {
+        auto fwd_dec = m_forward_declared_types.find(current_name);
+        if (fwd_dec == m_forward_declared_types.end()) {
+            throw_typesystem_error("Type '{}' is unknown", name);
+        }
+
+        current_name = fwd_dec->second;
+        auto type_lookup = m_types.find(current_name);
+        if (type_lookup != m_types.end()) {
+            return type_lookup->second.get();
+        }
+    }
+}
+
+Type* TypeSystem::lookup_type_allow_partial_def(const TypeSpec& ts) const {
+    return lookup_type_allow_partial_def(ts.base_type());
+}
+
+// ============================================================================
+// TypeSpec Creation
+// ============================================================================
+
+TypeSpec TypeSystem::make_typespec(const std::string& name) const {
+    if (m_types.find(name) != m_types.end() ||
+        m_forward_declared_types.find(name) != m_forward_declared_types.end()) {
+        return TypeSpec(name);
+    }
+    else {
+        throw_typesystem_error("Type {} is unknown", name);
+    }
+}
+
+TypeSpec TypeSystem::make_pointer_typespec(const std::string& type) const {
+    return make_pointer_typespec(make_typespec(type));
+}
+
+TypeSpec TypeSystem::make_pointer_typespec(const TypeSpec& type) const {
+    return TypeSpec("pointer", { type });
+}
+
+TypeSpec TypeSystem::make_inline_array_typespec(const std::string& type) const {
+    return make_inline_array_typespec(make_typespec(type));
+}
+
+TypeSpec TypeSystem::make_inline_array_typespec(const TypeSpec& type) const {
+    return TypeSpec("inline-array", { type });
+}
+
+TypeSpec TypeSystem::make_array_typespec(const std::string& array_type,
+    const TypeSpec& element_type) const {
+    return TypeSpec(array_type, { element_type });
+}
+
+TypeSpec TypeSystem::make_function_typespec(const std::vector<std::string>& arg_types,
+    const std::string& return_type) const {
+    auto result = make_typespec("function");
+    for (const auto& arg_type : arg_types) {
+        result.add_arg(make_typespec(arg_type));
+    }
+    result.add_arg(make_typespec(return_type));
+    return result;
+}
+
+// ============================================================================
+// Type Checking
+// ============================================================================
+
+bool TypeSystem::typecheck_and_throw(const TypeSpec& expected,
+    const TypeSpec& actual,
+    const std::string& error_source_name,
+    bool print_on_error,
+    bool throw_on_error,
+    bool allow_type_alias) const {
+    bool success = true;
+
+    // Check base types
+    if (!typecheck_base_types(expected.base_type(), actual.base_type(), allow_type_alias)) {
+        success = false;
+    }
+
+    // Check arguments
+    if (expected.arg_count() == actual.arg_count()) {
+        for (size_t i = 0; i < expected.arg_count(); i++) {
+            if (!tc(expected.get_arg(i), actual.get_arg(i))) {
+                success = false;
+                break;
+            }
+        }
+    }
+    else if (expected.arg_count() != 0) {
+        // Different sizes and we expected arguments
+        success = false;
+    }
+
+    // Check tags - –ö–ê–ö –£ –û–†–ò–ì–ò–ù–ê–õ–ê
+    for (const auto& tag : expected.tags()) {
+        if (tag.name == "behavior") {
+            auto got = actual.try_get_tag(tag.name);
+            if (!got) {
+                success = false;
+            }
+            else {
+                // –ò—Å–ø–æ–ª—å–∑—É–µ–º TypeSpec –¥–ª—è –∑–Ω–∞—á–µ–Ω–∏–π —Ç–µ–≥–∞ behavior
+                TypeSpec expected_behavior(tag.value);
+                TypeSpec actual_behavior(*got);
+                if (!tc(expected_behavior, actual_behavior)) {
+                    success = false;
+                }
+            }
+        }
+        else {
+            throw_typesystem_error("Unknown tag {}", tag.name);
+        }
+    }
+
+    if (!success) {
+        if (print_on_error) {
+            if (error_source_name.empty()) {
+                fmt::print("[TypeSystem] Got type \"{}\" when expecting \"{}\"\n",
+                    actual.print(), expected.print());
+            }
+            else {
+                fmt::print("[TypeSystem] For {}, got type \"{}\" when expecting \"{}\"\n",
+                    error_source_name, actual.print(), expected.print());
+            }
+        }
+
+        if (throw_on_error) {
+            throw std::runtime_error("typecheck failed");
+        }
+    }
+
+    return success;
+}
+
+bool TypeSystem::tc(const TypeSpec& less_specific, const TypeSpec& more_specific) const {
+    return typecheck_and_throw(less_specific, more_specific, "", false, false);
+}
+
+bool TypeSystem::typecheck_base_types(const std::string& expected,
+    const std::string& actual,
+    bool allow_alias) const {
+    std::string exp = expected;
+    std::string act = actual;
+
+    // Handle unit types
+    if (exp == "meters" || exp == "degrees") exp = "float";
+    if (act == "meters" || act == "degrees") act = "float";
+
+    if (allow_alias) {
+        if (exp == "time-frame") exp = "int";
+        if (act == "time-frame") act = "int";
+    }
+
+    // Make sure types exist
+    lookup_type_allow_partial_def(exp);
+
+    if (exp == act || exp == lookup_type_allow_partial_def(act)->get_name()) {
+        return true;
+    }
+
+    // Check inheritance
+    std::string current_actual = act;
+    auto current_type = lookup_type_allow_partial_def(current_actual);
+
+    while (current_type->has_parent()) {
+        current_actual = current_type->get_parent();
+        current_type = lookup_type_allow_partial_def(current_actual);
+
+        if (exp == current_actual) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// ============================================================================
+// Method System
+// ============================================================================
+
+int TypeSystem::get_next_method_id(const Type* type) const {
+    MethodInfo info;
+
+    while (true) {
+        if (type->get_my_last_method(&info)) {
+            return info.id + 1;
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        }
+        else {
+            // No methods defined yet, start after new method
+            return 1;
+        }
+    }
+}
+
+MethodInfo TypeSystem::declare_method(Type* type,
+    const std::string& method_name,
+    const std::optional<std::string>& docstring,
+    bool no_virtual,
+    const TypeSpec& ts,
+    bool override_type) {
+    if (method_name == "new") {
+        if (override_type) {
+            throw_typesystem_error("Cannot use :replace option with a new method");
+        }
+        return add_new_method(type, ts, docstring);
+    }
+
+    // Look for existing method
+    MethodInfo existing_info;
+    bool got_existing = try_lookup_method(type, method_name, &existing_info);
+
+    if (override_type) {
+        if (!got_existing) {
+            throw_typesystem_error(
+                "Cannot use :replace on method {} of {} because this method was not "
+                "previously declared in a parent", method_name, type->get_name());
+        }
+
+        return type->add_method({ existing_info.id,
+                                method_name,
+                                ts,
+                                type->get_name(),
+                                type->get_name(),
+                                no_virtual,
+                                true,
+                                false,
+                                docstring.value_or(""),
+                                {} });
+    }
+    else {
+        if (got_existing) {
+            // Verify compatibility
+            if (!existing_info.type.is_compatible_child_method(ts, type->get_name())) {
+                throw_typesystem_error(
+                    "The method {} of type {} was originally declared as {}, but has been "
+                    "redeclared as {}. Originally declared in {}",
+                    method_name, type->get_name(), existing_info.type.print(), ts.print(),
+                    existing_info.defined_in_type);
+            }
+
+            return existing_info;
+        }
+        else {
+            // Add new method
+            return type->add_method({ get_next_method_id(type),
+                                    method_name,
+                                    ts,
+                                    type->get_name(),
+                                    type->get_name(),
+                                    no_virtual,
+                                    false,
+                                    false,
+                                    docstring.value_or(""),
+                                    {} });
+        }
+    }
+}
+
+MethodInfo TypeSystem::add_new_method(Type* type,
+    const TypeSpec& ts,
+    const std::optional<std::string>& docstring) {
+    MethodInfo existing;
+    if (type->get_my_new_method(&existing)) {
+        // Verify compatibility
+        if (!existing.type.is_compatible_child_method(ts, type->get_name())) {
+            throw_typesystem_error(
+                "Cannot add new method. Type does not match declaration. The new method of {} "
+                "was originally defined as {}, but has been redefined as {}",
+                type->get_name(), existing.type.print(), ts.print());
+        }
+        return existing;
+    }
+    else {
+        return type->add_new_method(
+            { 0, "new", ts, type->get_name(), type->get_name(), false, false, false,
+            docstring.value_or(""), 
+            {} });
+    }
+}
+
+bool TypeSystem::try_lookup_method(const Type* type,
+    const std::string& method_name,
+    MethodInfo* info) const {
+    while (true) {
+        if (method_name == "new") {
+            if (type->get_my_new_method(info)) {
+                return true;
+            }
+        }
+        else {
+            if (type->get_my_method(method_name, info)) {
+                return true;
+            }
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        }
+        else {
+            break;
+        }
+    }
+    return false;
+}
+
+MethodInfo TypeSystem::lookup_method(const std::string& type_name,
+    const std::string& method_name) const {
+    if (method_name == "new") {
+        return lookup_new_method(type_name);
+    }
+
+    MethodInfo info;
+    auto* type = lookup_type(type_name);
+
+    while (true) {
+        if (type->get_my_method(method_name, &info)) {
+            return info;
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        }
+        else {
+            break;
+        }
+    }
+
+    throw_typesystem_error("The method {} of type {} could not be found", method_name, type_name);
+}
+
+MethodInfo TypeSystem::lookup_new_method(const std::string& type_name) const {
+    MethodInfo info;
+    auto* type = lookup_type(type_name);
+
+    while (true) {
+        if (type->get_my_new_method(&info)) {
+            return info;
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        }
+        else {
+            break;
+        }
+    }
+
+    throw_typesystem_error("The new method of type {} could not be found", type_name);
+}
+
+// ============================================================================
+// Field System
+// ============================================================================
+
+Field TypeSystem::lookup_field(const std::string& type_name,
+    const std::string& field_name) const {
+    auto type = get_type_of_type<StructureType>(type_name);
+    Field field;
+    if (!type->lookup_field(field_name, &field)) {
+        throw_typesystem_error("Type {} has no field named {}", type_name, field_name);
+    }
+    return field;
+}
+
+FieldLookupInfo TypeSystem::lookup_field_info(const std::string& type_name,
+    const std::string& field_name) const {
+    FieldLookupInfo info;
+    info.field = lookup_field(type_name, field_name);
+
+    // Get array size for bounds checking
+    if (info.field.is_array() && !info.field.is_dynamic()) {
+        info.array_size = info.field.array_size();
+    }
+
+    auto base_type = lookup_type_allow_partial_def(info.field.type());
+    if (base_type->is_reference()) {
+        if (info.field.is_inline()) {
+            if (info.field.is_array()) {
+                // Inline array of reference types
+                info.needs_deref = false;
+                info.type = make_inline_array_typespec(info.field.type());
+            }
+            else {
+                // Inline object
+                info.needs_deref = false;
+                info.type = info.field.type();
+            }
+        }
+        else {
+            if (info.field.is_array()) {
+                info.needs_deref = false;
+                info.type = make_pointer_typespec(info.field.type());
+            }
+            else {
+                info.needs_deref = true;
+                info.type = info.field.type();
+            }
+        }
+    }
+    else {
+        // Value types
+        if (info.field.is_array()) {
+            info.needs_deref = false;
+            info.type = make_pointer_typespec(info.field.type());
+        }
+        else {
+            info.needs_deref = true;
+            info.type = info.field.type();
+        }
+    }
+
+    return info;
+}
+
+// –í TypeSystem.cpp, –≤ add_field_to_type
+int TypeSystem::add_field_to_type(StructureType* type,
+    const std::string& field_name,
+    const TypeSpec& field_type,
+    bool is_inline,
+    bool is_dynamic,
+    int array_size,
+    int offset_override,
+    bool skip_in_static_decomp,
+    double score,
+    const std::optional<TypeSpec> decomp_as_ts) {
+
+    // –ü—Ä–æ–≤–µ—Ä—è–µ–º —Å—É—â–µ—Å—Ç–≤–æ–≤–∞–Ω–∏–µ –ø–æ–ª—è
+    Field existing_field;
+    if (type->lookup_field(field_name, &existing_field)) {
+        throw_typesystem_error("Type {} already has a field named {}",
+            type->get_name(), field_name);
+    }
+
+    // –°–æ–∑–¥–∞–µ–º –ø–æ–ª–µ
+    Field field(field_name, field_type);
+    if (is_inline) field.set_inline();
+    if (is_dynamic) {
+        field.set_dynamic();
+        type->set_dynamic();
+    }
+    if (array_size != -1) field.set_array(array_size);
+
+    // –í–´–ß–ò–°–õ–Ø–ï–ú –°–ú–ï–©–ï–ù–ò–ï —Å —É—á–µ—Ç–æ–º –≤—ã—Ä–∞–≤–Ω–∏–≤–∞–Ω–∏—è
+    int offset = offset_override;
+    if (offset == -1) {
+        // –ê–≤—Ç–æ–º–∞—Ç–∏—á–µ—Å–∫–æ–µ —Ä–∞–∑–º–µ—â–µ–Ω–∏–µ
+        offset = type->get_size_in_memory();
+        int alignment = get_alignment_in_type(field);
+
+        // –í–´–†–ê–í–ù–ò–í–ê–ï–ú offset
+        if (offset % alignment != 0) {
+            offset = (offset + alignment - 1) & ~(alignment - 1);
+        }
+    }
+
+    field.set_offset(offset);
+    field.set_alignment(get_alignment_in_type(field));
+
+    // –í–´–ß–ò–°–õ–Ø–ï–ú –†–ê–ó–ú–ï–† –ü–û–õ–Ø
+    int field_size = get_size_in_type(field);
+
+    // –î–õ–Ø INLINE STRUCTURES: —É—á–∏—Ç—ã–≤–∞–µ–º –≤—ã—Ä–∞–≤–Ω–∏–≤–∞–Ω–∏–µ —Å–∞–º–æ–π —Å—Ç—Ä—É–∫—Ç—É—Ä—ã
+    if (field.is_inline() && !field.is_array()) {
+        auto field_type_obj = lookup_type_allow_partial_def(field.type());
+        if (auto field_struct = dynamic_cast<StructureType*>(field_type_obj)) {
+            int struct_alignment = field_struct->get_in_memory_alignment();
+            int struct_size = field_struct->get_size_in_memory();
+
+            // –í—ã—Ä–∞–≤–Ω–∏–≤–∞–µ–º —Ä–∞–∑–º–µ—Ä —Å—Ç—Ä—É–∫—Ç—É—Ä—ã
+            if (struct_size % struct_alignment != 0) {
+                struct_size = (struct_size + struct_alignment - 1) & ~(struct_alignment - 1);
+            }
+
+            // –û–±–Ω–æ–≤–ª—è–µ–º field_size –µ—Å–ª–∏ –Ω—É–∂–Ω–æ
+            if (field_size != struct_size) {
+                field_size = struct_size;
+            }
+        }
+    }
+
+    if (skip_in_static_decomp) {
+        field.set_skip_in_static_decomp();
+    }
+
+    field.set_field_score(score);
+    if (decomp_as_ts) {
+        field.set_decomp_as_ts(*decomp_as_ts);
+    }
+
+    // –û–ë–ù–û–í–õ–Ø–ï–ú –†–ê–ó–ú–ï–† –°–¢–†–£–ö–¢–£–†–´
+    int after_field = offset + field_size;
+    if (type->get_size_in_memory() < after_field) {
+        type->override_size_in_memory(after_field);
+    }
+
+    // –î–û–ë–ê–í–õ–Ø–ï–ú –ü–û–õ–ï –í –°–¢–†–£–ö–¢–£–†–£
+    type->m_fields.push_back(field);
+
+    fmt::print("DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {}\n",
+        field_name, type->get_name(), offset, field_size, is_inline, array_size);
+
+    return offset;
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+bool TypeSystem::fully_defined_type_exists(const std::string& name) const {
+    return m_types.find(name) != m_types.end();
+}
+
+bool TypeSystem::fully_defined_type_exists(const TypeSpec& type) const {
+    return fully_defined_type_exists(type.base_type());
+}
+
+bool TypeSystem::partially_defined_type_exists(const std::string& name) const {
+    return m_forward_declared_types.find(name) != m_forward_declared_types.end();
+}
+
+std::string TypeSystem::get_runtime_type(const TypeSpec& ts) {
+    return lookup_type(ts)->get_runtime_name();
+}
+
+std::string TypeSystem::print_all_type_information() const {
+    std::string result;
+    for (const auto& kv : m_types) {
+        result += kv.second->print() + "\n";
+    }
+    return result;
+}
+
+// ============================================================================
+// Built-in Type Factories (Simplified)
+// ============================================================================
+
+StructureType* TypeSystem::add_builtin_structure(const std::string& parent,
+    const std::string& type_name,
+    bool boxed) {
+
+    auto structure = std::make_unique<StructureType>(parent, type_name, boxed, false, false, 0);
+    StructureType* result = structure.get();
+    add_type(type_name, std::move(structure));
+
+    // –í–´–ó–´–í–ê–ï–ú –ù–ê–°–õ–ï–î–û–í–ê–ù–ò–ï –µ—Å–ª–∏ —Ä–æ–¥–∏—Ç–µ–ª—å —Å—É—â–µ—Å—Ç–≤—É–µ—Ç
+    if (parent != "object" && fully_defined_type_exists(parent)) {
+        StructureType* parent_type = get_type_of_type<StructureType>(parent);
+        result->inherit(parent_type);
+    }
+
+    return result;
+}
+
+BasicType* TypeSystem::add_builtin_basic(const std::string& parent,
+    const std::string& type_name) {
+    add_type(type_name, std::make_unique<BasicType>(parent, type_name, false, 0));
+    return get_type_of_type<BasicType>(type_name);
+}
+
+ValueType* TypeSystem::add_builtin_value_type(const std::string& parent,
+    const std::string& type_name,
+    int size,
+    bool boxed,
+    bool sign_extend,
+    RegClass reg) {
+    add_type(type_name,
+        std::make_unique<ValueType>(parent, type_name, boxed, size, sign_extend, reg));
+    return get_type_of_type<ValueType>(type_name);
+}
+
+void TypeSystem::add_builtin_types() {
+    // –ë–∞–∑–æ–≤—ã–µ null —Ç–∏–ø—ã
+    add_type("none", std::make_unique<NullType>("none"));
+    add_type("_type_", std::make_unique<NullType>("_type_"));
+    add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
+
+    // –û—Å–Ω–æ–≤–Ω–æ–π —Ç–∏–ø object
+    add_type("object", std::make_unique<ValueType>("object", "object", false, 4, true, RegClass::GPR_64));
+
+    // –°–∏—Å—Ç–µ–º–Ω—ã–µ —Ç–∏–ø—ã
+    add_type("type", std::make_unique<ValueType>("object", "type", false, 4, false, RegClass::GPR_64));
+    add_type("function", std::make_unique<ValueType>("object", "function", false, 4, false, RegClass::GPR_64));
+    add_type("symbol", std::make_unique<ValueType>("object", "symbol", false, 4, false, RegClass::GPR_64));
+    add_type("string", std::make_unique<ValueType>("object", "string", false, 4, false, RegClass::GPR_64));
+
+    // –ò–µ—Ä–∞—Ä—Ö–∏—è —Å—Ç—Ä—É–∫—Ç—É—Ä
+    auto structure_type = add_builtin_structure("object", "structure");
+    auto basic_type = add_builtin_basic("structure", "basic");
+
+    // –£–ü–†–û–©–ï–ù–ù–ê–Ø —á–∏—Å–ª–æ–≤–∞—è –∏–µ—Ä–∞—Ä—Ö–∏—è - –≤—Å–µ –æ—Ç object
+    add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
+    add_builtin_value_type("object", "integer", 8, false, true, RegClass::GPR_64);
+    add_builtin_value_type("object", "float", 4, false, false, RegClass::FPR);
+
+    // –¶–µ–ª–æ—á–∏—Å–ª–µ–Ω–Ω—ã–µ —Ç–∏–ø—ã –Ω–∞—Å–ª–µ–¥—É—é—Ç –æ—Ç object (–¥–ª—è –ø—Ä–æ—Å—Ç–æ—Ç—ã)
+    add_builtin_value_type("object", "int32", 4, false, true, RegClass::GPR_64);
+    add_builtin_value_type("object", "int64", 8, false, true, RegClass::GPR_64);
+
+    // –ü—Å–µ–≤–¥–æ–Ω–∏–º—ã
+    add_builtin_value_type("object", "int", 4, false, true, RegClass::GPR_64);
+
+    // –ë–∏—Ç—Ñ–∏–ª–¥ —Ç–∏–ø
+    add_type("bitfield", std::make_unique<BitFieldType>("object", "bitfield", 4, false));
+
+    // –î–æ–±–∞–≤–ª—è–µ–º –æ–±—ä—è–≤–ª–µ–Ω–∏—è –º–µ—Ç–æ–¥–æ–≤ –¥–ª—è object
+    auto obj_type = lookup_type("object");
+    declare_method(obj_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
+    declare_method(obj_type, "print", {}, false,
+        make_function_typespec({ "_type_" }, "_type_"), false);
+}
+
+// ============================================================================
+// TypeSpec Coercion
+// ============================================================================
+
+TypeSpec coerce_to_reg_type(const TypeSpec& in) {
+    // Simplified implementation - in real system this would handle type promotions
+    return in;
+}
+
+// ============================================================================
+// Inheritance and Type Hierarchy
+// ============================================================================
+
+std::vector<std::string> TypeSystem::get_path_up_tree(const std::string& type) const {
+    std::vector<std::string> path;
+    std::string current = type;
+
+    while (true) {
+        path.push_back(current);
+        auto current_type = lookup_type_allow_partial_def(current);
+        if (!current_type->has_parent()) {
+            break;
+        }
+        current = current_type->get_parent();
+    }
+
+    return path;
+}
+
+std::string TypeSystem::lca_base(const std::string& a, const std::string& b) const {
+    if (a == b) {
+        return a;
+    }
+
+    auto a_path = get_path_up_tree(a);
+    auto b_path = get_path_up_tree(b);
+
+    // Find common ancestor by comparing paths from root down
+    int a_idx = a_path.size() - 1;
+    int b_idx = b_path.size() - 1;
+
+    std::string result = "object"; // fallback
+
+    while (a_idx >= 0 && b_idx >= 0) {
+        if (a_path[a_idx] == b_path[b_idx]) {
+            result = a_path[a_idx];
+            a_idx--;
+            b_idx--;
+        }
+        else {
+            break;
+        }
+    }
+
+    return result;
+}
+
+TypeSpec TypeSystem::lowest_common_ancestor(const TypeSpec& a, const TypeSpec& b) const {
+    // Handle base types
+    auto result = make_typespec(lca_base(a.base_type(), b.base_type()));
+
+    // Handle arguments recursively if compatible
+    if (!a.empty() && !b.empty() && a.arg_count() == b.arg_count()) {
+        for (size_t i = 0; i < a.arg_count(); i++) {
+            result.add_arg(lowest_common_ancestor(a.get_arg(i), b.get_arg(i)));
+        }
+    }
+
+    return result;
+}
+
+TypeSpec TypeSystem::lowest_common_ancestor(const std::vector<TypeSpec>& types) const {
+    ASSERT(!types.empty());
+    if (types.size() == 1) {
+        return types.front();
+    }
+
+    auto result = lowest_common_ancestor(types[0], types[1]);
+    for (size_t i = 2; i < types.size(); i++) {
+        result = lowest_common_ancestor(result, types[i]);
+    }
+    return result;
+}
+
+TypeSpec TypeSystem::lowest_common_ancestor_reg(const TypeSpec& a, const TypeSpec& b) const {
+    return coerce_to_reg_type(lowest_common_ancestor(a, b));
+}
+
+// ============================================================================
+// Memory Access and Dereferencing
+// ============================================================================
+
+DerefInfo TypeSystem::get_deref_info(const TypeSpec& ts) const {
+    DerefInfo info;
+
+    if (!ts.has_single_arg()) {
+        info.can_deref = false;
+        return info;
+    }
+
+    // Default to GPR
+    info.reg = RegClass::GPR_64;
+    info.mem_deref = true;
+
+    if (ts.base_type() == "pointer") {
+        info.can_deref = true;
+        info.result_type = ts.get_single_arg();
+        auto result_type = lookup_type_allow_partial_def(info.result_type);
+
+        if (result_type->is_reference()) {
+            // Array of pointers
+            info.stride = 4; // POINTER_SIZE
+            info.sign_extend = false;
+            info.load_size = 4;
+        }
+        else {
+            // Array of values
+            info.stride = result_type->get_size_in_memory();
+            info.sign_extend = result_type->get_load_signed();
+            info.reg = result_type->get_preferred_reg_class();
+            info.load_size = result_type->get_load_size();
+        }
+    }
+    else if (ts.base_type() == "inline-array") {
+        auto result_type = lookup_type_allow_partial_def(ts.get_single_arg());
+        auto result_structure = dynamic_cast<StructureType*>(result_type);
+
+        if (!result_structure || result_structure->is_dynamic()) {
+            info.can_deref = false;
+        }
+        else {
+            info.can_deref = true;
+            info.mem_deref = false; // Don't actually dereference, just add stride*idx
+            info.result_type = ts.get_single_arg();
+            info.sign_extend = false;
+
+            if (result_type->is_reference()) {
+                info.stride = result_type->get_size_in_memory(); // Simplified
+            }
+        }
+    }
+    else {
+        info.can_deref = false;
+    }
+
+    return info;
+}
+
+// ============================================================================
+// BitField Support
+// ============================================================================
+
+bool TypeSystem::is_bitfield_type(const std::string& type_name) const {
+    return dynamic_cast<BitFieldType*>(lookup_type(type_name)) != nullptr;
+}
+
+BitfieldLookupInfo TypeSystem::lookup_bitfield_info(const std::string& type_name,
+    const std::string& field_name) const {
+    auto type = get_type_of_type<BitFieldType>(type_name);
+    BitField field;
+
+    if (!type->lookup_field(field_name, &field)) {
+        throw_typesystem_error("Type {} has no bitfield named {}", type_name, field_name);
+    }
+
+    BitfieldLookupInfo info;
+    info.result_type = field.type();
+    info.offset = field.offset();
+    info.size = field.size();
+    info.sign_extend = lookup_type(info.result_type)->get_load_signed();
+
+    return info;
+}
+
+void TypeSystem::add_field_to_bitfield(BitFieldType* type,
+    const std::string& field_name,
+    const TypeSpec& field_type,
+    int offset,
+    int field_size,
+    bool skip_in_decomp) {
+    // Calculate load size in bits
+    auto load_size = lookup_type(field_type)->get_load_size() * 8;
+
+    if (field_size == -1) {
+        field_size = load_size;
+    }
+
+    if (field_size > load_size) {
+        throw_typesystem_error(
+            "Type {}'s bitfield {}'s set size is {}, which is larger than the actual type: {}",
+            type->get_name(), field_name, field_size, load_size);
+    }
+
+    if (field_size + offset > type->get_load_size() * 8) {
+        throw_typesystem_error(
+            "Type {}'s bitfield {} will run off the end of the type (ends at {} bits, type is {} bits)",
+            type->get_name(), field_name, field_size + offset, type->get_load_size() * 8);
+    }
+
+    BitField field(field_type, field_name, offset, field_size, skip_in_decomp);
+    type->m_fields.push_back(field);
+}
+
+// ============================================================================
+// Code Generation
+// ============================================================================
+
+std::string TypeSystem::generate_deftype_footer(const Type* type) const {
+    std::string result;
+
+    // Handle structure-specific flags
+    auto as_structure = dynamic_cast<const StructureType*>(type);
+    if (as_structure) {
+        if (as_structure->is_packed()) {
+            result.append("  :pack-me\n");
+        }
+        if (as_structure->is_allowed_misalign()) {
+            result.append("  :allow-misaligned\n");
+        }
+        if (as_structure->is_always_stack_singleton()) {
+            result.append("  :always-stack-singleton\n");
+        }
+    }
+
+    // Handle heap base
+    if (type->heap_base() != 0) {
+        result.append(fmt::format("  :heap-base #x{:x}\n", type->heap_base()));
+    }
+
+    // Handle inspect generation
+    if (!type->gen_inspect()) {
+        result.append("  :no-inspect\n");
+    }
+
+    // Generate methods section
+    std::string methods_string;
+
+    // New method
+    auto new_info = type->get_new_method_defined_for_type();
+    if (new_info) {
+        methods_string.append("    (new (");
+        for (size_t i = 0; i < new_info->type.arg_count() - 1; i++) {
+            methods_string.append(new_info->type.get_arg(i).print());
+            if (i != new_info->type.arg_count() - 2) {
+                methods_string.push_back(' ');
+            }
+        }
+        methods_string.append(
+            fmt::format(") {})", new_info->type.last_arg().print()));
+
+        // Add behavior tag if present
+        auto behavior = new_info->type.try_get_tag("behavior");
+        if (behavior) {
+            methods_string.append(fmt::format(" :behavior {}", *behavior));
+        }
+
+        methods_string.append("\n");
+    }
+
+    // Other methods
+    for (const auto& method : type->get_methods_defined_for_type()) {
+        if (method.only_overrides_docstring) {
+            continue;
+        }
+
+        methods_string.append(fmt::format("    ({} (", method.name));
+        for (size_t i = 0; i < method.type.arg_count() - 1; i++) {
+            methods_string.append(method.type.get_arg(i).print());
+            if (i != method.type.arg_count() - 2) {
+                methods_string.push_back(' ');
+            }
+        }
+        methods_string.append(fmt::format(") {})", method.type.last_arg().print()));
+
+        // Add method modifiers
+        if (method.no_virtual) {
+            methods_string.append(" :no-virtual");
+        }
+        if (method.overrides_parent) {
+            methods_string.append(" :replace");
+        }
+
+        methods_string.append("\n");
+    }
+
+    if (!methods_string.empty()) {
+        result.append("  (:methods\n");
+        result.append(methods_string);
+        result.append("    )\n");
+    }
+
+    result.append("  )\n");
+    return result;
+}
+
+std::string TypeSystem::generate_deftype_for_structure(const StructureType* st) const {
+    std::string result;
+    result += fmt::format("(deftype {} ({})\n", st->get_name(), st->get_parent());
+
+    // Add docstring if present
+    if (st->m_metadata.docstring) {
+        result += fmt::format("  \"{}\"\n", st->m_metadata.docstring.value());
+    }
+
+    result += "  (";
+
+    // Calculate field formatting
+    int longest_field_name = 0;
+    int longest_type_name = 0;
+
+    for (size_t i = st->first_unique_field_idx(); i < st->fields().size(); i++) {
+        const auto& field = st->fields()[i];
+        longest_field_name = std::max(longest_field_name, (int)field.name().size());
+        longest_type_name = std::max(longest_type_name, (int)field.type().print().size());
+    }
+
+    // Generate fields
+    for (size_t i = st->first_unique_field_idx(); i < st->fields().size(); i++) {
+        const auto& field = st->fields()[i];
+        result += "(";
+        result += field.name();
+        result.append(2 + (longest_field_name - (int)field.name().size()), ' ');
+        result += field.type().print();
+
+        // Add field modifiers
+        std::string mods;
+        if (field.is_array() && !field.is_dynamic()) {
+            mods += " ";
+            mods += std::to_string(field.array_size());
+        }
+        if (field.is_inline()) {
+            mods += " :inline";
+        }
+        if (field.is_dynamic()) {
+            mods += " :dynamic";
+        }
+
+        if (!mods.empty()) {
+            result.append(1 + longest_type_name - (int)field.type().print().size(), ' ');
+        }
+        result.append(mods);
+
+        // Handle user-placed fields
+        if (field.user_placed()) {
+            result.append(fmt::format(" :offset {:3d}", field.offset()));
+        }
+
+        result.append(")\n   ");
+    }
+
+    result.append(")\n");
+    result.append(generate_deftype_footer(st));
+
+    return result;
+}
+
+std::string TypeSystem::generate_deftype_for_bitfield(const BitFieldType* type) const {
+    std::string result;
+    result += fmt::format("(deftype {} ({})\n", type->get_name(), type->get_parent());
+
+    if (type->m_metadata.docstring) {
+        result += fmt::format("  \"{}\"\n", type->m_metadata.docstring.value());
+    }
+
+    result += "  (";
+
+    // Calculate field formatting
+    int longest_field_name = 0;
+    int longest_type_name = 0;
+
+    for (const auto& field : type->fields()) {
+        longest_field_name = std::max(longest_field_name, (int)field.name().size());
+        longest_type_name = std::max(longest_type_name, (int)field.type().print().size());
+    }
+
+    // Generate bitfield entries
+    for (const auto& field : type->fields()) {
+        result += "(";
+        result += field.name();
+        result.append(1 + (longest_field_name - (int)field.name().size()), ' ');
+        result += field.type().print();
+        result.append(1 + (longest_type_name - (int)field.type().print().size()), ' ');
+
+        result.append(fmt::format(":offset {:3d} :size {:3d}", field.offset(), field.size()));
+        result.append(")\n   ");
+    }
+
+    result.append(")\n");
+    result.append(generate_deftype_footer(type));
+
+    return result;
+}
+
+std::string TypeSystem::generate_deftype(const Type* type) const {
+    auto st = dynamic_cast<const StructureType*>(type);
+    if (st) {
+        return generate_deftype_for_structure(st);
+    }
+
+    auto bf = dynamic_cast<const BitFieldType*>(type);
+    if (bf) {
+        return generate_deftype_for_bitfield(bf);
+    }
+
+    return fmt::format(
+        ";; cannot generate deftype for {}, it is not a structure or bitfield (parent {})\n",
+        type->get_name(), type->get_parent());
+}
+
+// ============================================================================
+// Virtual Method Handling
+// ============================================================================
+
+bool TypeSystem::should_use_virtual_methods(const Type* type, int method_id) const {
+    auto as_basic = dynamic_cast<const BasicType*>(type);
+    if (as_basic && !as_basic->final()) {
+        auto method_info = lookup_method(type->get_name(), method_id);
+        return !method_info.no_virtual;
+    }
+    return false;
+}
+
+bool TypeSystem::should_use_virtual_methods(const TypeSpec& type, int method_id) const {
+    auto it = m_types.find(type.base_type());
+    if (it != m_types.end()) {
+        return should_use_virtual_methods(it->second.get(), method_id);
+    }
+    else {
+        // For partially defined types, be conservative
+        auto fwd_dec_type = lookup_type_allow_partial_def(type);
+        if (fwd_dec_type->get_name() == "structure") {
+            return false; // Structures don't use virtual methods
+        }
+        else {
+            return should_use_virtual_methods(fwd_dec_type, method_id);
+        }
+    }
+}
+
+// ============================================================================
+// Type Search and Queries
+// ============================================================================
+
+std::vector<std::string> TypeSystem::get_all_type_names() {
+    std::vector<std::string> results;
+    for (const auto& [name, type] : m_types) {
+        results.push_back(name);
+    }
+    return results;
+}
+
+std::vector<std::string> TypeSystem::search_types_by_parent_type(
+    const std::string& parent_type,
+    const std::optional<std::vector<std::string>>& existing_matches) {
+
+    std::vector<std::string> results;
+    const auto& search_space = existing_matches ? *existing_matches : get_all_type_names();
+
+    for (const auto& type_name : search_space) {
+        if (typecheck_base_types(parent_type, type_name, false)) {
+            results.push_back(type_name);
+        }
+    }
+
+    return results;
+}
+
+std::vector<std::string> TypeSystem::search_types_by_parent_type_strict(
+    const std::string& parent_type) {
+
+    std::vector<std::string> results;
+    for (const auto& [type_name, type_info] : m_types) {
+        if (type_info->has_parent() && type_info->get_parent() == parent_type) {
+            results.push_back(type_name);
+        }
+    }
+    return results;
+}
+
+std::vector<std::string> TypeSystem::search_types_by_minimum_method_id(
+    const int minimum_method_id,
+    const std::optional<std::vector<std::string>>& existing_matches) {
+
+    std::vector<std::string> results;
+    const auto& search_space = existing_matches ? *existing_matches : get_all_type_names();
+
+    for (const auto& type_name : search_space) {
+        if (get_type_method_count(type_name) >= minimum_method_id) {
+            results.push_back(type_name);
+        }
+    }
+
+    return results;
+}
+
+std::vector<std::string> TypeSystem::search_types_by_size(
+    const int min_size,
+    const std::optional<int> max_size,
+    const std::optional<std::vector<std::string>>& existing_matches) {
+
+    std::vector<std::string> results;
+    const auto& search_space = existing_matches ? *existing_matches : get_all_type_names();
+
+    for (const auto& type_name : search_space) {
+        if (dynamic_cast<NullType*>(m_types.at(type_name).get())) {
+            continue; // Skip null types
+        }
+
+        const auto size = m_types.at(type_name)->get_size_in_memory();
+        if (max_size) {
+            if (size >= min_size && size <= *max_size) {
+                results.push_back(type_name);
+            }
+        }
+        else {
+            if (size == min_size) {
+                results.push_back(type_name);
+            }
+        }
+    }
+
+    return results;
+}
+
+std::vector<std::string> TypeSystem::search_types_by_fields(
+    const std::vector<TypeSearchFieldInput>& search_fields,
+    const std::optional<std::vector<std::string>>& existing_matches) {
+
+    std::vector<std::string> results;
+    const auto& search_space = existing_matches ? *existing_matches : get_all_type_names();
+
+    for (const auto& type_name : search_space) {
+        auto structure = dynamic_cast<StructureType*>(m_types.at(type_name).get());
+        if (!structure) {
+            continue;
+        }
+
+        bool type_valid = true;
+        for (const auto& req_field : search_fields) {
+            bool field_found = false;
+            for (const auto& type_field : structure->fields()) {
+                if (type_field.offset() == req_field.field_offset &&
+                    type_field.type().base_type() == req_field.field_type_name) {
+                    field_found = true;
+                    break;
+                }
+            }
+
+            if (!field_found) {
+                type_valid = false;
+                break;
+            }
+        }
+
+        if (type_valid) {
+            results.push_back(type_name);
+        }
+    }
+
+    return results;
+}
+
+// ============================================================================
+// Enum Support
+// ============================================================================
+
+EnumType* TypeSystem::try_enum_lookup(const std::string& type_name) const {
+    auto it = m_types.find(type_name);
+    if (it != m_types.end()) {
+        return dynamic_cast<EnumType*>(it->second.get());
+    }
+    return nullptr;
+}
+
+EnumType* TypeSystem::try_enum_lookup(const TypeSpec& type) const {
+    return try_enum_lookup(type.base_type());
+}
+
+// ============================================================================
+// Forward Declaration Support
+// ============================================================================
+
+void TypeSystem::forward_declare_type_method_count(const std::string& name, int num_methods) {
+    auto existing_fwd = m_forward_declared_method_counts.find(name);
+    if (existing_fwd != m_forward_declared_method_counts.end() &&
+        existing_fwd->second != num_methods) {
+        throw_typesystem_error(
+            "Type {} was originally forward declared with {} methods and is now being "
+            "forward declared with {} methods", name, existing_fwd->second, num_methods);
+    }
+
+    auto existing_type = m_types.find(name);
+    if (existing_type != m_types.end()) {
+        int existing_count = get_next_method_id(existing_type->second.get());
+        if (existing_count != num_methods) {
+            throw_typesystem_error(
+                "Type {} was defined with {} methods and is now being forward declared with {} methods",
+                name, existing_count, num_methods);
+        }
+    }
+
+    m_forward_declared_method_counts[name] = num_methods;
+}
+
+int TypeSystem::get_type_method_count(const std::string& name) const {
+    auto result = try_get_type_method_count(name);
+    if (result) {
+        return *result;
+    }
+    throw_typesystem_error("Tried to find the number of methods on type {}, but it is not defined.", name);
+    return -1;
+}
+
+std::optional<int> TypeSystem::try_get_type_method_count(const std::string& name) const {
+    auto type_it = m_types.find(name);
+    if (type_it != m_types.end()) {
+        return get_next_method_id(type_it->second.get());
+    }
+
+    auto fwd_it = m_forward_declared_method_counts.find(name);
+    if (fwd_it != m_forward_declared_method_counts.end()) {
+        return fwd_it->second;
+    }
+
+    return std::nullopt;
+}
+
+// ============================================================================
+// Method declaration variants
+// ============================================================================
+
+MethodInfo TypeSystem::declare_method(const std::string& type_name,
+    const std::string& method_name,
+    const std::optional<std::string>& docstring,
+    bool no_virtual,
+    const TypeSpec& ts,
+    bool override_type) {
+    return declare_method(lookup_type(make_typespec(type_name)), method_name,
+        docstring, no_virtual, ts, override_type);
+}
+
+MethodInfo TypeSystem::define_method(const std::string& type_name,
+    const std::string& method_name,
+    const TypeSpec& ts,
+    const std::optional<std::string>& docstring) {
+    return define_method(lookup_type(make_typespec(type_name)), method_name, ts, docstring);
+}
+
+MethodInfo TypeSystem::define_method(Type* type,
+    const std::string& method_name,
+    const TypeSpec& ts,
+    const std::optional<std::string>& docstring) {
+    if (method_name == "new") {
+        return add_new_method(type, ts, docstring);
+    }
+
+    MethodInfo existing_info;
+    bool got_existing = try_lookup_method(type, method_name, &existing_info);
+
+    if (got_existing) {
+        // Update docstring and verify compatibility
+        existing_info.docstring = *docstring;
+
+        int bad_arg_idx = -1;
+        if (!existing_info.type.is_compatible_child_method(ts, type->get_name(), &bad_arg_idx)) {
+            throw_typesystem_error(
+                "The method {} of type {} was originally defined as {}, but has been "
+                "redefined as {} (see argument index {})",
+                method_name, type->get_name(), existing_info.type.print(), ts.print(), bad_arg_idx);
+        }
+
+        return existing_info;
+    }
+    else {
+        throw_typesystem_error("Cannot add method {} to type {} because it was not declared",
+            method_name, type->get_name());
+    }
+}
+
+MethodInfo TypeSystem::overlay_method(Type* type,
+    const std::string& method_name,
+    const std::string& method_overlay_name,
+    const std::optional<std::string>& docstring,
+    const TypeSpec& ts) {
+    MethodInfo existing_info;
+    bool got_existing = try_lookup_method(type, method_overlay_name, &existing_info);
+
+    if (!got_existing) {
+        throw_typesystem_error(
+            "Cannot use :overlay-at on method {} of {} because this method was not previously "
+            "declared in a parent", method_overlay_name, type->get_name());
+    }
+
+    return type->add_method({ existing_info.id, method_name, ts, type->get_name(),
+                            type->get_name(), false, true, false, 
+                            docstring.value_or(""),
+                            std::make_optional(method_overlay_name) });
+}
+
+MethodInfo TypeSystem::override_method(Type* type,
+    const std::string& method_name,
+    const std::optional<std::string>& docstring) {
+    MethodInfo existing_info;
+    bool exists = try_lookup_method(type->get_parent(), method_name, &existing_info);
+
+    if (!exists) {
+        throw_typesystem_error("Trying to override a method that has no parent declaration");
+    }
+
+    // –°–æ–∑–¥–∞–µ–º –∫–æ–ø–∏—é —Å—É—â–µ—Å—Ç–≤—É—é—â–µ–≥–æ –º–µ—Ç–æ–¥–∞ —Å –æ–±–Ω–æ–≤–ª–µ–Ω–Ω—ã–º–∏ –ø–æ–ª—è–º–∏
+    MethodInfo new_method = existing_info;
+    new_method.defined_in_type = type->get_name();
+    new_method.type_name = type->get_name();
+    new_method.overrides_parent = false;
+    new_method.only_overrides_docstring = true;
+
+    // –ü—Ä–µ–æ–±—Ä–∞–∑—É–µ–º optional<string> –≤ string
+    if (docstring) {
+        new_method.docstring = *docstring;
+    }
+    else {
+        new_method.docstring = "";
+    }
+
+    new_method.overlay_name = "";
+
+    return type->add_method(new_method);
+}
+
+// ============================================================================
+// Field offset assertion
+// ============================================================================
+
+void TypeSystem::assert_field_offset(const std::string& type_name,
+    const std::string& field_name,
+    int offset) {
+    Field field = lookup_field(type_name, field_name);
+    if (field.offset() != offset) {
+        throw_typesystem_error("assert_field_offset({}, {}, {}) failed - got {}",
+            type_name, field_name, offset, field.offset());
+    }
+}
+
+// ============================================================================
+// Load size with partial definition support
+// ============================================================================
+
+int TypeSystem::get_load_size_allow_partial_def(const TypeSpec& ts) const {
+    auto fully_defined_it = m_types.find(ts.base_type());
+    if (fully_defined_it != m_types.end()) {
+        return fully_defined_it->second->get_load_size();
+    }
+
+    auto partial_def = lookup_type_allow_partial_def(ts);
+    if (!tc(TypeSpec("structure"), ts)) {
+        throw_typesystem_error("Cannot perform a load or store from partially defined type {}",
+            ts.print());
+    }
+
+    return partial_def->get_load_size(); // Should be 4 for structures
+}
+
+// ============================================================================
+// Method lookup by ID
+// ============================================================================
+
+bool TypeSystem::try_lookup_method(const std::string& type_name,
+    int method_id,
+    MethodInfo* info) const {
+    auto kv = m_types.find(type_name);
+    if (kv == m_types.end()) {
+        return false;
+    }
+
+    auto* iter_type = kv->second.get();
+    while (true) {
+        if (method_id == 0) { // GOAL_NEW_METHOD
+            if (iter_type->get_my_new_method(info)) {
+                return true;
+            }
+        }
+        else {
+            if (iter_type->get_my_method(method_id, info)) {
+                return true;
+            }
+        }
+
+        if (iter_type->has_parent()) {
+            iter_type = lookup_type(iter_type->get_parent());
+        }
+        else {
+            break;
+        }
+    }
+    return false;
+}
+
+MethodInfo TypeSystem::lookup_method(const std::string& type_name, int method_id) const {
+    if (method_id == 0) { // GOAL_NEW_METHOD
+        return lookup_new_method(type_name);
+    }
+
+    MethodInfo info;
+    auto* type = lookup_type(type_name);
+    auto* iter_type = type;
+
+    while (true) {
+        if (iter_type->get_my_method(method_id, &info)) {
+            return info;
+        }
+
+        if (iter_type->has_parent()) {
+            iter_type = lookup_type(iter_type->get_parent());
+        }
+        else {
+            break;
+        }
+    }
+
+    throw_typesystem_error("The method with id {} of type {} could not be found",
+        method_id, type_name);
+}
+
+// ============================================================================
+// Method ID assertion
+// ============================================================================
+
+void TypeSystem::assert_method_id(const std::string& type_name,
+    const std::string& method_name,
+    int id) {
+    auto info = lookup_method(type_name, method_name);
+    if (info.id != id) {
+        throw_typesystem_error("Method ID assertion failed: type {}, method {} id was {}, expected {}",
+            type_name, method_name, info.id, id);
+    }
+}
+
+// ============================================================================
+// Forward declaration with multiple of 4
+// ============================================================================
+
+void TypeSystem::forward_declare_type_method_count_multiple_of_4(const std::string& name, int num_methods) {
+    auto existing_fwd = m_forward_declared_method_counts.find(name);
+    if (existing_fwd != m_forward_declared_method_counts.end() &&
+        existing_fwd->second + 3 < num_methods) {
+        throw_typesystem_error(
+            "Type {} was originally forward declared with {} methods and is now being "
+            "forward declared with {} methods", name, existing_fwd->second, num_methods);
+    }
+
+    auto existing_type = m_types.find(name);
+    if (existing_type != m_types.end()) {
+        int existing_count = get_next_method_id(existing_type->second.get());
+        if (existing_count + 3 < num_methods) {
+            throw_typesystem_error(
+                "Type {} was defined with {} methods and is now being forward declared with {} methods",
+                name, existing_count, num_methods);
+        }
+    }
+
+    m_forward_declared_method_counts[name] = num_methods;
+}
+
+// ============================================================================
+// Method lookup
+// ============================================================================
+
+bool TypeSystem::try_lookup_method(const std::string& type_name,
+    const std::string& method_name,
+    MethodInfo* info) const {
+    auto kv = m_types.find(type_name);
+    if (kv == m_types.end()) {
+        // Try to look up a forward declared type
+        auto fwd_dec_type = lookup_type_allow_partial_def(type_name);
+        if (tc(TypeSpec("basic"), TypeSpec(fwd_dec_type->get_name()))) {
+            return try_lookup_method(fwd_dec_type, method_name, info);
+        }
+        return false;
+    }
+
+    return try_lookup_method(kv->second.get(), method_name, info);
+}
+
+// ============================================================================
+// Field alignment and size calculations (—É–ø—Ä–æ—â–µ–Ω–Ω—ã–µ –≤–µ—Ä—Å–∏–∏)
+// ============================================================================
+
+int TypeSystem::get_alignment_in_type(const Field& field) {
+    auto field_type = lookup_type_allow_partial_def(field.type());
+
+    if (field.is_inline()) {
+        if (field.is_array()) {
+            // –í—ã—Ä–∞–≤–Ω–∏–≤–∞–Ω–∏–µ –¥–ª—è inline –º–∞—Å—Å–∏–≤–æ–≤
+            return field_type->get_inline_array_start_alignment();
+        }
+        else {
+            // –í—ã—Ä–∞–≤–Ω–∏–≤–∞–Ω–∏–µ –¥–ª—è inline –æ–±—ä–µ–∫—Ç–æ–≤
+            return field_type->get_in_memory_alignment();
+        }
+    }
+
+    if (!field_type->is_reference()) {
+        return field_type->get_in_memory_alignment();
+    }
+
+    return 4; // POINTER_SIZE
+}
+
+int TypeSystem::get_size_in_type(const Field& field) const {
+    if (field.is_dynamic()) {
+        return 0;
+    }
+
+    auto field_type = lookup_type_allow_partial_def(field.type());
+
+    if (field.is_array()) {
+        if (field.is_inline()) {
+            // INLINE ARRAY: —ç–ª–µ–º–µ–Ω—Ç—ã —Ö—Ä–∞–Ω—è—Ç—Å—è –Ω–µ–ø–æ—Å—Ä–µ–¥—Å—Ç–≤–µ–Ω–Ω–æ –≤ —Å—Ç—Ä—É–∫—Ç—É—Ä–µ
+            // –ù–ï –î–û–ë–ê–í–õ–Ø–ï–ú –í–´–†–ê–í–ù–ò–í–ê–ù–ò–ï - –∏—Å–ø–æ–ª—å–∑—É–µ–º —Ä–µ–∞–ª—å–Ω—ã–π —Ä–∞–∑–º–µ—Ä!
+            int element_size = field_type->get_size_in_memory();
+
+            fmt::print("DEBUG: Inline array element_size: {} (type: {})\n",
+                element_size, field_type->get_name());
+
+            return field.array_size() * element_size;
+        }
+        else {
+            // –û–±—ã—á–Ω—ã–µ –º–∞—Å—Å–∏–≤—ã (—É–∫–∞–∑–∞—Ç–µ–ª–∏)
+            if (field_type->is_reference()) {
+                return field.array_size() * 4; // POINTER_SIZE
+            }
+            else {
+                return field.array_size() * field_type->get_size_in_memory();
+            }
+        }
+    }
+    else {
+        // –ù–µ –º–∞—Å—Å–∏–≤
+        if (field.is_inline()) {
+            // INLINE OBJECT: –æ–±—ä–µ–∫—Ç —Ö—Ä–∞–Ω–∏—Ç—Å—è –Ω–µ–ø–æ—Å—Ä–µ–¥—Å—Ç–≤–µ–Ω–Ω–æ
+            // –ù–ï –î–û–ë–ê–í–õ–Ø–ï–ú –í–´–†–ê–í–ù–ò–í–ê–ù–ò–ï - –∏—Å–ø–æ–ª—å–∑—É–µ–º —Ä–µ–∞–ª—å–Ω—ã–π —Ä–∞–∑–º–µ—Ä!
+            return field_type->get_size_in_memory();
+        }
+        else {
+            // –û–±—ã—á–Ω–æ–µ –ø–æ–ª–µ (—É–∫–∞–∑–∞—Ç–µ–ª—å)
+            if (field_type->is_reference()) {
+                return 4; // POINTER_SIZE
+            }
+            else {
+                return field_type->get_size_in_memory();
+            }
+        }
+    }
+}
+// ============================================================================
+// Structure inheritance helper
+// ============================================================================
+
+void TypeSystem::builtin_structure_inherit(StructureType* st) {
+    st->inherit(get_type_of_type<StructureType>(st->get_parent()));
+}
+
+// ============================================================================
+// Reverse field lookup (—É–ø—Ä–æ—â–µ–Ω–Ω—ã–µ –∑–∞–≥–ª—É—à–∫–∏)
+// ============================================================================
+
+// –í—Å–ø–æ–º–æ–≥–∞—Ç–µ–ª—å–Ω–∞—è —Ñ—É–Ω–∫—Ü–∏—è –¥–ª—è —Ä–µ–∫—É—Ä—Å–∏–≤–Ω–æ–≥–æ –ø–æ–∏—Å–∫–∞
+namespace {
+
+    void find_field_access_paths(const TypeSystem* ts,
+        const StructureType* type,
+        int target_offset,
+        const ReverseLookupNode* current_path,
+        std::vector<FieldReverseLookupOutput>& results,
+        int depth = 0) {
+
+        if (depth > 10) return;
+
+        // –ò—â–µ–º –ø–æ–ª—è –≤ —Ç–µ–∫—É—â–µ–º —Ç–∏–ø–µ
+        for (const auto& field : type->fields()) {
+            int field_offset = field.offset();
+            int field_size = ts->get_size_in_type(field);
+
+            fmt::print("DEBUG: Checking field '{}' at offset {}, size: {}, target: {}\n",
+                field.name(), field_offset, field_size, target_offset);
+
+            // –¢–æ—á–Ω–æ–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ —Å –ø–æ–ª–µ–º
+            if (field_offset == target_offset && !field.is_array()) {
+                ReverseLookupNode new_node{ current_path,
+                    {FieldReverseLookupOutput::Token::Kind::FIELD,
+                     field.name(), -1, field.field_score()} };
+
+                results.emplace_back(false, field.type(), new_node.to_vector());
+                continue;
+            }
+
+            // –ü–æ–ª–µ —è–≤–ª—è–µ—Ç—Å—è –º–∞—Å—Å–∏–≤–æ–º
+            if (field.is_array() && !field.is_dynamic()) {
+                if (target_offset >= field_offset && target_offset < field_offset + field_size) {
+                    fmt::print("DEBUG: Inside array '{}', calculating index...\n", field.name());
+
+                    // –í–´–ß–ò–°–õ–Ø–ï–ú –†–ê–ó–ú–ï–† –≠–õ–ï–ú–ï–ù–¢–ê –ü–†–ê–í–ò–õ–¨–ù–û
+                    int element_size;
+                    if (field.is_inline()) {
+                        // –î–ª—è inline arrays - —Ä–µ–∞–ª—å–Ω—ã–π —Ä–∞–∑–º–µ—Ä —ç–ª–µ–º–µ–Ω—Ç–∞
+                        auto element_type = ts->lookup_type_allow_partial_def(field.type());
+                        element_size = element_type->get_size_in_memory();
+                    }
+                    else {
+                        // –î–ª—è –æ–±—ã—á–Ω—ã—Ö –º–∞—Å—Å–∏–≤–æ–≤ - —Ä–∞–∑–º–µ—Ä —É–∫–∞–∑–∞—Ç–µ–ª—è –∏–ª–∏ –∑–Ω–∞—á–µ–Ω–∏—è
+                        element_size = field_size / field.array_size();
+                    }
+
+                    fmt::print("DEBUG: Element size: {}, array_size: {}\n", element_size, field.array_size());
+
+                    int index = (target_offset - field_offset) / element_size;
+                    int remainder = (target_offset - field_offset) % element_size;
+
+                    fmt::print("DEBUG: Index: {}, remainder: {}\n", index, remainder);
+
+                    ReverseLookupNode array_node{ current_path,
+                        {FieldReverseLookupOutput::Token::Kind::FIELD,
+                         field.name(), -1, field.field_score()} };
+
+                    ReverseLookupNode index_node{ &array_node,
+                        {FieldReverseLookupOutput::Token::Kind::CONSTANT_IDX,
+                         "", index, 0.0} };
+
+                    // –ï—Å–ª–∏ —ç—Ç–æ inline –º–∞—Å—Å–∏–≤ –ò –µ—Å—Ç—å remainder - –∏—â–µ–º –≤–Ω—É—Ç—Ä–∏ —ç–ª–µ–º–µ–Ω—Ç–∞
+                    if (field.is_inline() && remainder > 0) {
+                        auto element_type = ts->lookup_type_allow_partial_def(field.type());
+                        if (auto element_struct = dynamic_cast<const StructureType*>(element_type)) {
+                            fmt::print("DEBUG: Recursing into inline array element at offset {}\n", remainder);
+                            find_field_access_paths(ts, element_struct, remainder, &index_node, results, depth + 1);
+                        }
+                        else {
+                            // –ü—Ä–æ—Å—Ç–æ–π —Ç–∏–ø, –Ω–æ –µ—Å—Ç—å remainder - —ç—Ç–æ –æ—à–∏–±–∫–∞?
+                            fmt::print("DEBUG: Simple type with remainder - skipping\n");
+                        }
+                    }
+                    else {
+                        // –ù–µ—Ç remainder –∏–ª–∏ –Ω–µ inline - –ø—Ä–æ—Å—Ç–æ –¥–æ—Å—Ç—É–ø –∫ —ç–ª–µ–º–µ–Ω—Ç—É
+                        results.emplace_back(false, field.type(), index_node.to_vector());
+                    }
+                }
+            }
+
+            // Inline —Å—Ç—Ä—É–∫—Ç—É—Ä–∞ (–Ω–µ –º–∞—Å—Å–∏–≤)
+            if (field.is_inline() && !field.is_array()) {
+                auto field_type = ts->lookup_type_allow_partial_def(field.type());
+                if (auto field_struct = dynamic_cast<const StructureType*>(field_type)) {
+                    if (target_offset >= field_offset && target_offset < field_offset + field_size) {
+                        ReverseLookupNode inline_node{ current_path,
+                            {FieldReverseLookupOutput::Token::Kind::FIELD,
+                             field.name(), -1, field.field_score()} };
+
+                        // –†–µ–∫—É—Ä—Å–∏–≤–Ω–æ –∏—â–µ–º –≤–æ inline —Å—Ç—Ä—É–∫—Ç—É—Ä–µ
+                        int inner_offset = target_offset - field_offset;
+                        find_field_access_paths(ts, field_struct, inner_offset,
+                            &inline_node, results, depth + 1);
+                    }
+                }
+            }
+        }
+
+        // –ò—â–µ–º –≤ —Ä–æ–¥–∏—Ç–µ–ª—å—Å–∫–∏—Ö —Ç–∏–ø–∞—Ö
+        if (type->has_parent()) {
+            auto parent_type = ts->lookup_type_allow_partial_def(type->get_parent());
+            if (auto parent_struct = dynamic_cast<const StructureType*>(parent_type)) {
+                find_field_access_paths(ts, parent_struct, target_offset, current_path, results, depth + 1);
+            }
+        }
+    }
+
+} // namespace
+
+FieldReverseLookupOutput TypeSystem::reverse_field_lookup(const FieldReverseLookupInput& input) const {
+    FieldReverseLookupOutput result;
+
+    fmt::print("=== REVERSE LOOKUP START ===\n");
+    fmt::print("DEBUG: Reverse lookup for type {} at offset {}\n",
+        input.base_type.print(), input.offset);
+
+    Type* base_type = lookup_type_allow_partial_def(input.base_type);
+    if (!base_type) {
+        fmt::print("DEBUG: Base type not found\n");
+        result.success = false;
+        return result;
+    }
+
+    // –ü—Ä–∏–º–µ–Ω—è–µ–º stride –µ—Å–ª–∏ –µ—Å—Ç—å
+    int effective_offset = input.offset;
+    if (input.stride != 0) {
+        // –î–ª—è –ø—Ä–æ—Å—Ç–æ—Ç—ã —Å—á–∏—Ç–∞–µ–º —á—Ç–æ stride —É–∂–µ –ø—Ä–∏–º–µ–Ω–µ–Ω
+    }
+
+    fmt::print("DEBUG: Base type: {}, kind: {}\n",
+        base_type->get_name(), typeid(*base_type).name());
+
+    // –û–±—Ä–∞–±–∞—Ç—ã–≤–∞–µ–º StructureType
+    if (auto structure = dynamic_cast<StructureType*>(base_type)) {
+        fmt::print("DEBUG: Processing structure '{}' with {} fields, total size: {}\n",
+            structure->get_name(), structure->fields().size(),
+            structure->get_size_in_memory());
+
+        // –í—ã–≤–æ–¥–∏–º –∏–Ω—Ñ–æ—Ä–º–∞—Ü–∏—é –æ –≤—Å–µ—Ö –ø–æ–ª—è—Ö –¥–ª—è –æ—Ç–ª–∞–¥–∫–∏
+        for (const auto& field : structure->fields()) {
+            int field_size = get_size_in_type(field);
+            fmt::print("DEBUG:   Field '{}' at offset {}, size: {}, inline: {}, array: {}, array_size: {}\n",
+                field.name(), field.offset(), field_size,
+                field.is_inline(), field.is_array(), field.array_size());
+        }
+
+        std::vector<FieldReverseLookupOutput> all_results;
+
+        // –ù–∞—Ö–æ–¥–∏–º –≤—Å–µ –≤–æ–∑–º–æ–∂–Ω—ã–µ –ø—É—Ç–∏ –¥–æ—Å—Ç—É–ø–∞
+        find_field_access_paths(this, structure, effective_offset, nullptr, all_results);
+
+        fmt::print("DEBUG: Found {} possible access paths\n", all_results.size());
+
+        if (!all_results.empty()) {
+            // –í—ã–±–∏—Ä–∞–µ–º —Ä–µ–∑—É–ª—å—Ç–∞—Ç —Å –Ω–∞–∏–≤—ã—Å—à–∏–º score
+            auto best_result = std::max_element(all_results.begin(), all_results.end(),
+                [](const auto& a, const auto& b) {
+                    return a.total_score < b.total_score;
+                });
+
+            // –í—ã—á–∏—Å–ª—è–µ–º –æ–±—â–∏–π score
+            best_result->total_score = 0.0;
+            for (const auto& token : best_result->tokens) {
+                best_result->total_score += token.score();
+            }
+
+            fmt::print("DEBUG: Best result: {} tokens, score: {}\n",
+                best_result->tokens.size(), best_result->total_score);
+            for (const auto& token : best_result->tokens) {
+                fmt::print("DEBUG:   Token: {} (kind: {})\n",
+                    token.print(), static_cast<int>(token.kind));
+            }
+
+            return *best_result;
+        }
+        else {
+            fmt::print("DEBUG: No access paths found for offset {}\n", effective_offset);
+        }
+    }
+    else if (auto bitfield = dynamic_cast<BitFieldType*>(base_type)) {
+        fmt::print("DEBUG: Processing bitfield '{}'\n", bitfield->get_name());
+
+        for (const auto& field : bitfield->fields()) {
+            fmt::print("DEBUG:   BitField '{}' at bit offset {}, size: {} bits\n",
+                field.name(), field.offset(), field.size());
+
+            if (effective_offset >= field.offset() &&
+                effective_offset < field.offset() + field.size()) {
+                // –î–ª—è –±–∏—Ç–æ–≤—ã—Ö –ø–æ–ª–µ–π offset –¥–æ–ª–∂–µ–Ω —Ç–æ—á–Ω–æ —Å–æ–≤–ø–∞–¥–∞—Ç—å
+                if (effective_offset == field.offset()) {
+                    result.success = true;
+                    result.result_type = field.type();
+                    result.tokens.push_back({
+                        FieldReverseLookupOutput::Token::Kind::FIELD,
+                        field.name(),
+                        -1,
+                        1.0  // –í—ã—Å–æ–∫–∏–π score –¥–ª—è —Ç–æ—á–Ω–æ–≥–æ —Å–æ–≤–ø–∞–¥–µ–Ω–∏—è
+                        });
+
+                    fmt::print("DEBUG: Found bitfield match: {}\n", field.name());
+                    return result;
+                }
+            }
+        }
+    }
+    else {
+        fmt::print("DEBUG: Unsupported type kind for reverse lookup: {}\n",
+            typeid(*base_type).name());
+    }
+
+    fmt::print("DEBUG: Reverse lookup FAILED\n");
+    result.success = false;
+    return result;
+}
+
+FieldReverseMultiLookupOutput TypeSystem::reverse_field_multi_lookup(const FieldReverseLookupInput& input,
+    int max_count) const {
+    FieldReverseMultiLookupOutput result;
+
+    Type* base_type = lookup_type_allow_partial_def(input.base_type);
+    if (!base_type) {
+        result.success = false;
+        return result;
+    }
+
+    if (auto structure = dynamic_cast<StructureType*>(base_type)) {
+        find_field_access_paths(this, structure, input.offset, nullptr, result.results);
+
+        // –°–æ—Ä—Ç–∏—Ä—É–µ–º –ø–æ score –∏ –æ–≥—Ä–∞–Ω–∏—á–∏–≤–∞–µ–º –∫–æ–ª–∏—á–µ—Å—Ç–≤–æ
+        std::sort(result.results.begin(), result.results.end(),
+            [](const auto& a, const auto& b) {
+                return a.total_score > b.total_score;
+            });
+
+        if (result.results.size() > max_count) {
+            result.results.resize(max_count);
+        }
+
+        result.success = !result.results.empty();
+    }
+    else {
+        result.success = false;
+    }
+
+    return result;
+}
+
+// –†–µ–∞–ª–∏–∑–∞—Ü–∏—è Token::print()
+std::string FieldReverseLookupOutput::Token::print() const {
+    switch (kind) {
+    case Kind::FIELD:
+        return name;
+    case Kind::CONSTANT_IDX:
+        return fmt::format("[{}]", idx);
+    case Kind::VAR_IDX:
+        return "[*]";
+    default:
+        return "?";
+    }
+}#pragma once
+
+/*!
+ * @file TypeSystem.h
+ * The GOAL Type System.
+ * Stores types, symbol types, methods, etc, and does typechecking,
+ * lowest-common-ancestor, field access types, and reverse type lookups.
+ */
+
+#include "type.h"
+#include "type_spec.h"
+
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+
+ // ============================================================================
+ // Forward Declarations and Common Structures
+ // ============================================================================
+
+struct ReverseLookupNode;
+
+struct TypeFlags {
+    union {
+        uint64_t flag = 0;
+        struct {
+            uint16_t size;
+            uint16_t heap_base;
+            uint16_t methods;
+            uint16_t pad;
+        };
+    };
+};
+
+struct FieldLookupInfo {
+    Field field;
+    TypeSpec type;
+    bool needs_deref = true;
+    int array_size = -1;
+};
+
+struct BitfieldLookupInfo {
+    TypeSpec result_type;
+    int offset = -1;
+    int size = -1;
+    bool sign_extend = false;
+};
+
+struct DerefInfo {
+    bool can_deref = false;
+    bool mem_deref = false;
+    bool sign_extend = false;
+    RegClass reg = RegClass::INVALID;
+    int stride = -1;
+    int load_size = -1;
+    TypeSpec result_type;
+};
+
+struct DerefKind {
+    bool is_store = false;
+    int size = -1;
+    bool sign_extend = false;
+    RegClass reg_kind = RegClass::INVALID;
+};
+
+struct FieldReverseLookupInput {
+    std::optional<DerefKind> deref = std::nullopt;
+    int offset = 0;
+    int stride = 0;
+    TypeSpec base_type;
+};
+
+
+struct FieldReverseLookupOutput {
+    struct Token {
+        enum class Kind { FIELD, CONSTANT_IDX, VAR_IDX } kind;
+        std::string name;
+        int idx = -1;
+        double field_score = 0.0;
+
+        double score() const {
+            switch (kind) {
+            case Kind::FIELD:
+                return field_score;
+            case Kind::CONSTANT_IDX:
+                return -10.0; // CONSTANT_INDEX_SCORE
+            case Kind::VAR_IDX:
+            default:
+                return 0.;
+            }
+        }
+
+        std::string print() const;
+    };
+
+    FieldReverseLookupOutput() = default;
+    FieldReverseLookupOutput(bool addr, TypeSpec type, std::vector<Token> tok)
+        : success(true), addr_of(addr), result_type(std::move(type)), tokens(std::move(tok)) {
+    }
+
+    bool success = false;
+    bool addr_of = false;
+    double total_score = 0.;
+    TypeSpec result_type;
+    std::vector<Token> tokens;
+
+    bool has_variable_token() const {
+        for (const auto& token : tokens) {
+            if (token.kind == Token::Kind::VAR_IDX) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+struct ReverseLookupNode {
+    const ReverseLookupNode* prev = nullptr;
+    FieldReverseLookupOutput::Token token;
+
+    std::vector<FieldReverseLookupOutput::Token> to_vector() const {
+        std::vector<FieldReverseLookupOutput::Token> result;
+        const ReverseLookupNode* current = this;
+        while (current) {
+            result.push_back(current->token);
+            current = current->prev;
+        }
+        std::reverse(result.begin(), result.end());
+        return result;
+    }
+};
+
+
+struct FieldReverseMultiLookupOutput {
+    std::vector<FieldReverseLookupOutput> results;
+    bool success = false;
+};
+
+struct TypeSearchFieldInput {
+    std::string field_type_name;
+    int field_offset;
+};
+
+// ============================================================================
+// Main TypeSystem Class
+// ============================================================================
+
+class TypeSystem {
+public:
+    TypeSystem();
+    ~TypeSystem() = default;
+
+    // ========================================================================
+    // Type Management
+    // ========================================================================
+
+    Type* add_type(const std::string& name, std::unique_ptr<Type> type);
+
+    void forward_declare_type_as_type(const std::string& name);
+    void forward_declare_type_as(const std::string& new_type, const std::string& parent_type);
+    void forward_declare_type_method_count(const std::string& name, int num_methods);
+    void forward_declare_type_method_count_multiple_of_4(const std::string& name, int num_methods);
+
+    int get_type_method_count(const std::string& name) const;
+    std::optional<int> try_get_type_method_count(const std::string& name) const;
+    std::string get_runtime_type(const TypeSpec& ts);
+
+    // ========================================================================
+    // Type Lookup and Information
+    // ========================================================================
+
+    bool fully_defined_type_exists(const std::string& name) const;
+    bool fully_defined_type_exists(const TypeSpec& type) const;
+    bool partially_defined_type_exists(const std::string& name) const;
+
+    TypeSpec make_typespec(const std::string& name) const;
+    TypeSpec make_array_typespec(const std::string& array_type, const TypeSpec& element_type) const;
+    TypeSpec make_function_typespec(const std::vector<std::string>& arg_types,
+        const std::string& return_type) const;
+
+    TypeSpec make_pointer_typespec(const std::string& type) const;
+    TypeSpec make_pointer_typespec(const TypeSpec& type) const;
+    TypeSpec make_inline_array_typespec(const std::string& type) const;
+    TypeSpec make_inline_array_typespec(const TypeSpec& type) const;
+
+    Type* lookup_type(const TypeSpec& ts) const;
+    Type* lookup_type(const std::string& name) const;
+
+    Type* lookup_type_no_throw(const TypeSpec& ts) const;
+    Type* lookup_type_no_throw(const std::string& name) const;
+
+    Type* lookup_type_allow_partial_def(const TypeSpec& ts) const;
+    Type* lookup_type_allow_partial_def(const std::string& name) const;
+
+    int get_load_size_allow_partial_def(const TypeSpec& ts) const;
+
+    // ========================================================================
+    // Method System
+    // ========================================================================
+
+    MethodInfo override_method(Type* type,
+        const std::string& method_name,
+        const std::optional<std::string>& docstring);
+
+    MethodInfo declare_method(const std::string& type_name,
+        const std::string& method_name,
+        const std::optional<std::string>& docstring,
+        bool no_virtual,
+        const TypeSpec& ts,
+        bool override_type);
+
+    MethodInfo declare_method(Type* type,
+        const std::string& method_name,
+        const std::optional<std::string>& docstring,
+        bool no_virtual,
+        const TypeSpec& ts,
+        bool override_type);
+
+    MethodInfo overlay_method(Type* type,
+        const std::string& method_name,
+        const std::string& method_overlay_name,
+        const std::optional<std::string>& docstring,
+        const TypeSpec& ts);
+
+    MethodInfo define_method(const std::string& type_name,
+        const std::string& method_name,
+        const TypeSpec& ts,
+        const std::optional<std::string>& docstring);
+
+    MethodInfo define_method(Type* type,
+        const std::string& method_name,
+        const TypeSpec& ts,
+        const std::optional<std::string>& docstring);
+
+    MethodInfo add_new_method(Type* type,
+        const TypeSpec& ts,
+        const std::optional<std::string>& docstring);
+
+    MethodInfo lookup_method(const std::string& type_name, const std::string& method_name) const;
+    MethodInfo lookup_method(const std::string& type_name, int method_id) const;
+
+    bool try_lookup_method(const Type* type, const std::string& method_name, MethodInfo* info) const;
+    bool try_lookup_method(const std::string& type_name,
+        const std::string& method_name,
+        MethodInfo* info) const;
+    bool try_lookup_method(const std::string& type_name, int method_id, MethodInfo* info) const;
+
+    MethodInfo lookup_new_method(const std::string& type_name) const;
+    void assert_method_id(const std::string& type_name, const std::string& method_name, int id);
+
+    // ========================================================================
+    // Field System
+    // ========================================================================
+
+    FieldLookupInfo lookup_field_info(const std::string& type_name,
+        const std::string& field_name) const;
+
+    BitfieldLookupInfo lookup_bitfield_info(const std::string& type_name,
+        const std::string& field_name) const;
+
+    void assert_field_offset(const std::string& type_name,
+        const std::string& field_name,
+        int offset);
+
+    int add_field_to_type(StructureType* type,
+        const std::string& field_name,
+        const TypeSpec& field_type,
+        bool is_inline = false,
+        bool is_dynamic = false,
+        int array_size = -1,
+        int offset_override = -1,
+        bool skip_in_static_decomp = false,
+        double score = 0.0,
+        const std::optional<TypeSpec> decomp_as_ts = std::nullopt);
+
+    // ========================================================================
+    // BitField System
+    // ========================================================================
+
+    bool is_bitfield_type(const std::string& type_name) const;
+    void add_field_to_bitfield(BitFieldType* type,
+        const std::string& field_name,
+        const TypeSpec& field_type,
+        int offset,
+        int field_size,
+        bool skip_in_decomp);
+
+    // ========================================================================
+    // Memory Access and Dereferencing
+    // ========================================================================
+
+    DerefInfo get_deref_info(const TypeSpec& ts) const;
+    FieldReverseLookupOutput reverse_field_lookup(const FieldReverseLookupInput& input) const;
+    FieldReverseMultiLookupOutput reverse_field_multi_lookup(const FieldReverseLookupInput& input,
+        int max_count = 100) const;
+
+    // ========================================================================
+    // Virtual Method Handling
+    // ========================================================================
+
+    bool should_use_virtual_methods(const Type* type, int method_id) const;
+    bool should_use_virtual_methods(const TypeSpec& type, int method_id) const;
+
+    // ========================================================================
+    // Type Checking and Inheritance
+    // ========================================================================
+
+    bool typecheck_and_throw(const TypeSpec& expected,
+        const TypeSpec& actual,
+        const std::string& error_source_name = "",
+        bool print_on_error = true,
+        bool throw_on_error = true,
+        bool allow_type_alias = false) const;
+
+    bool tc(const TypeSpec& less_specific, const TypeSpec& more_specific) const;
+
+    TypeSpec lowest_common_ancestor(const TypeSpec& a, const TypeSpec& b) const;
+    TypeSpec lowest_common_ancestor_reg(const TypeSpec& a, const TypeSpec& b) const;
+    TypeSpec lowest_common_ancestor(const std::vector<TypeSpec>& types) const;
+
+    // ========================================================================
+    // Code Generation
+    // ========================================================================
+
+    std::string generate_deftype(const Type* type) const;
+    std::string generate_deftype_for_structure(const StructureType* type) const;
+    std::string generate_deftype_for_bitfield(const BitFieldType* type) const;
+    std::string generate_deftype_footer(const Type* type) const;
+
+    // ========================================================================
+    // Built-in Types
+    // ========================================================================
+
+    void add_builtin_types();
+
+    // ========================================================================
+    // Debugging and Inspection
+    // ========================================================================
+
+    std::string print_all_type_information() const;
+    std::vector<std::string> get_path_up_tree(const std::string& type) const;
+    int get_next_method_id(const Type* type) const;
+
+    // ========================================================================
+    // Type Search and Queries
+    // ========================================================================
+
+    void add_type_to_allowed_redefinition_list(const std::string& type_name) {
+        m_types_allowed_to_be_redefined.push_back(type_name);
+    }
+
+    std::vector<std::string> get_all_type_names();
+    std::vector<std::string> search_types_by_parent_type(
+        const std::string& parent_type,
+        const std::optional<std::vector<std::string>>& existing_matches = {});
+
+    std::vector<std::string> search_types_by_parent_type_strict(const std::string& parent_type);
+
+    std::vector<std::string> search_types_by_minimum_method_id(
+        const int minimum_method_id,
+        const std::optional<std::vector<std::string>>& existing_matches = {});
+
+    std::vector<std::string> search_types_by_size(
+        const int min_size,
+        const std::optional<int> max_size,
+        const std::optional<std::vector<std::string>>& existing_matches = {});
+
+    std::vector<std::string> search_types_by_fields(
+        const std::vector<TypeSearchFieldInput>& search_fields,
+        const std::optional<std::vector<std::string>>& existing_matches = {});
+
+    // ========================================================================
+    // Template Helpers for Type Casting
+    // ========================================================================
+
+    template <typename T>
+    T* get_type_of_type(const std::string& type_name) const {
+        auto x = lookup_type(type_name);
+        T* result = dynamic_cast<T*>(x);
+        if (!result) {
+            throw std::runtime_error("Failed to get " + type_name + " as the right type");
+        }
+        return result;
+    }
+
+    EnumType* try_enum_lookup(const std::string& type_name) const;
+    EnumType* try_enum_lookup(const TypeSpec& type) const;
+
+    // ========================================================================
+    // Utility Functions
+    // ========================================================================
+
+    int get_size_in_type(const Field& field) const;
+
+    BasicType* add_builtin_basic(const std::string& parent, const std::string& type_name);
+
+    ValueType* add_builtin_value_type(const std::string& parent,
+        const std::string& type_name,
+        int size,
+        bool boxed = false,
+        bool sign_extend = false,
+        RegClass reg = RegClass::GPR_64);
+
+    // Built-in type factories
+    StructureType* add_builtin_structure(const std::string& parent,
+        const std::string& type_name,
+        bool boxed = false);
+
+    Field lookup_field(const std::string& type_name, const std::string& field_name) const;
+
+private:
+    // ========================================================================
+    // Private Implementation
+    // ========================================================================
+
+    std::string lca_base(const std::string& a, const std::string& b) const;
+    bool typecheck_base_types(const std::string& expected,
+        const std::string& actual,
+        bool allow_alias) const;
+    int get_alignment_in_type(const Field& field);
+
+
+
+    void builtin_structure_inherit(StructureType* st);
+
+    // ========================================================================
+    // Private Data Members
+    // ========================================================================
+
+    std::unordered_map<std::string, std::unique_ptr<Type>> m_types;
+    std::unordered_map<std::string, std::string> m_forward_declared_types;
+    std::unordered_map<std::string, int> m_forward_declared_method_counts;
+
+    std::vector<std::unique_ptr<Type>> m_old_types;
+    std::vector<std::string> m_types_allowed_to_be_redefined;
+    bool m_allow_redefinition = false;
+};
+
+// ============================================================================
+// Global Utility Functions
+// ============================================================================
+
+TypeSpec coerce_to_reg_type(const TypeSpec& in);

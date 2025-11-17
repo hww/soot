@@ -9,8 +9,7 @@
 #include "object.h"
 #include "reader.h"
 
-namespace script {
-    namespace pretty_print {
+namespace script::pretty_print {
 
         // main pretty print function
         std::string to_string(const Object& obj, int line_length = 110);
@@ -49,5 +48,4 @@ namespace script {
         int run_algorithm(const std::vector<Node*>& bfs_order, int line_length);
         std::string node_to_string(const Node* node);
 
-    } // namespace pretty_print
-} // namespace script
+} // namespace script::pretty_print
