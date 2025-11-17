@@ -1,5 +1,6 @@
 #pragma once
 
+#include "type_spec.h"
 #include <cstdbool>
 #include <cstddef>
 
@@ -14,6 +15,20 @@ struct EnumType;
 struct Field;
 struct MethodInfo;
 
+// MethodInfo (пока минимальная)
+struct MethodInfo {
+    int id;
+    const char* name;
+    TypeSpec* type;
+    const char* defined_in_type;
+    const char* type_name;
+    bool no_virtual;
+    bool overrides_parent;
+    bool only_overrides_docstring;
+    const char* docstring;
+    const char* overlay_name;
+};
+
 // Базовый тип - максимально минималистичный
 struct Type {
     const char* name;
@@ -23,11 +38,19 @@ struct Type {
     bool allow_in_runtime;
     const char* runtime_name;
 
+    // Существующие виртуальные методы
     bool (*is_reference)(const Type* self);
     int (*get_size_in_memory)(const Type* self);
     int (*get_load_size)(const Type* self);
     bool (*get_load_signed)(const Type* self);
     const char* (*print)(const Type* self);
+
+    // НОВОЕ: Система методов 
+    MethodInfo* methods;        // массив методов этого типа
+    int method_count;           // количество методов
+    MethodInfo new_method;      // специальный метод "new"
+    bool new_method_defined;    // определен ли метод "new"
+
 };
 
 // Value types (int, float, etc)
@@ -76,16 +99,6 @@ struct Field {
     int array_size;
     int alignment;
     bool skip_in_static_decomp;
-};
-
-// MethodInfo (пока минимальная)
-struct MethodInfo {
-    int id;
-    const char* name;
-    // TypeSpec type; // позже
-    const char* defined_in_type;
-    bool no_virtual;
-    bool overrides_parent;
 };
 
 

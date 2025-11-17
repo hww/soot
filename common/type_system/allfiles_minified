@@ -1,0 +1,915 @@
+add_library(type_system_lib
+common/type_system/type_system.cpp
+common/type_system/type_spec.cpp)
+target_link_libraries(type_system_lib PRIVATE fmt::fmt)
+add_executable(type_system common/type_system/main.cpp)
+target_link_libraries(type_system PRIVATE type_system_lib fmt::fmt)﻿#include "fmt/format.h"
+#include "type.h"
+#include "type_system.h"
+#include "type_spec.h"
+int main() {
+fmt::print("=== НАЧАЛО ТЕСТА МЕТОДОВ ===\n");
+TypeSystem* ts = type_system_create();
+type_system_initialize_builtin_types(ts);
+ValueType* test_type = type_system_create_valuetype(ts, "test-type", "object", 4, false);
+TypeSpec* method_spec = type_spec_create("function");
+MethodInfo* method = type_system_declare_method(ts, (Type*)test_type, "test-method", method_spec, false);
+if (method) {
+fmt::print("✓ МЕТОД РАБОТАЕТ: {} id: {}\n", method->name, method->id);
+}
+type_spec_destroy(method_spec);
+fmt::print("=== КОНЕЦ НАЧАЛЬНОГО ТЕСТА ===\n\n");
+fmt::print("=== Тестируем систему полей ===\n");
+StructureType* vector_type = type_system_create_structuretype(ts, "vector", "structure", false, false, false, 0);
+fmt::print("\n=== ТЕСТ МЕТОДОВ ШАГ 2 ===\n");
+TypeSpec* update_method_type = type_spec_create("function");
+type_spec_add_arg(update_method_type, type_system_make_typespec(ts, "vector"));
+type_spec_add_arg(update_method_type, type_system_make_typespec(ts, "float"));
+type_spec_add_arg(update_method_type, type_system_make_typespec(ts, "none"));
+MethodInfo* update_method = type_system_declare_method(ts, (Type*)vector_type, "update", update_method_type, false);
+if (update_method) {
+fmt::print("✓ Метод объявлен: {} id: {}\n", update_method->name, update_method->id);
+}
+fmt::print("\n=== Тестируем наследование полей ===\n");
+TypeSpec* int_spec = type_system_make_typespec(ts, "int");
+StructureType* game_object_type = type_system_create_structuretype(ts, "game-object", "structure", false, false, false, 0);
+type_system_add_field_to_structure(ts, game_object_type, "id", int_spec, false, false, -1, 0);
+type_system_add_field_to_structure(ts, game_object_type, "name", type_system_make_typespec(ts, "string"), false, false, -1, 4);
+fmt::print("✓ Родитель 'game-object' создан с {} полями\n", game_object_type->field_count);
+fmt::print("✓ Размер родителя: {} байт\n", game_object_type->size_in_mem);
+StructureType* player_type = type_system_create_structuretype(ts, "player", "game-object", false, false, false, 0);
+type_system_add_field_to_structure(ts, player_type, "health", int_spec, false, false, -1, -1);
+type_system_add_field_to_structure(ts, player_type, "score", int_spec, false, false, -1, -1);
+fmt::print("✓ Дочерний 'player' создан с {} полями\n", player_type->field_count);
+fmt::print("✓ Размер дочернего: {} байт\n", player_type->size_in_mem);
+fmt::print("✓ Все поля 'player':\n");
+for (int i = 0; i < player_type->field_count; i++) {
+Field* field = &player_type->fields[i];
+const char* source = (i < player_type->idx_of_first_unique_field) ? "наследовано" : "уникальное";
+fmt::print(" - {} (смещение: {}) [{}]\n", field->name, field->offset, source);
+}
+Field* inherited_field = type_system_lookup_field(ts, "player", "id");
+if (inherited_field) {
+fmt::print("✓ Найдено унаследованное поле: {} (смещение: {})\n", inherited_field->name, inherited_field->offset);
+}
+type_spec_destroy(update_method_type);
+fmt::print("\n=== Тестируем Type Checking ===\n");
+TypeSpec* object_spec = type_system_make_typespec(ts, "object");
+TypeSpec* int_spec2 = type_system_make_typespec(ts, "int");
+TypeSpec* float_spec2 = type_system_make_typespec(ts, "float");
+TypeSpec* vector_spec2 = type_system_make_typespec(ts, "vector");
+fmt::print("✓ int <: object = {}\n", type_system_typecheck(ts, object_spec, int_spec2));
+fmt::print("✓ vector <: object = {}\n", type_system_typecheck(ts, object_spec, vector_spec2));
+fmt::print("✓ int <: int = {}\n", type_system_typecheck(ts, int_spec2, int_spec2));
+fmt::print("✓ int <: float = {}\n", type_system_typecheck(ts, int_spec2, float_spec2));
+TypeSpec* lca1 = type_system_lowest_common_ancestor(ts, int_spec2, float_spec2);
+fmt::print("✓ LCA(int, float) = {}\n", lca1->base_type);
+TypeSpec* lca2 = type_system_lowest_common_ancestor(ts, int_spec2, int_spec2);
+fmt::print("✓ LCA(int, int) = {}\n", lca2->base_type);
+type_spec_destroy(object_spec);
+type_spec_destroy(int_spec2);
+type_spec_destroy(float_spec2);
+type_spec_destroy(vector_spec2);
+type_spec_destroy(lca1);
+type_spec_destroy(lca2);
+}
+int aaa(){
+fmt::print("=== Тестируем систему полей ===\n");
+TypeSystem* ts = type_system_create();
+type_system_initialize_builtin_types(ts);
+StructureType* vector_type = type_system_create_structuretype(ts, "vector", "structure", false, false, false, 0);
+TypeSpec* float_spec = type_system_make_typespec(ts, "float");
+type_system_add_field_to_structure(ts, vector_type, "x", float_spec, false, false, -1, 0);
+type_system_add_field_to_structure(ts, vector_type, "y", float_spec, false, false, -1, 4);
+type_system_add_field_to_structure(ts, vector_type, "z", float_spec, false, false, -1, 8);
+fmt::print("✓ Структура 'vector' создана с {} полями\n", vector_type->field_count);
+fmt::print("✓ Размер структуры: {} байт\n", vector_type->size_in_mem);
+for (int i = 0; i < vector_type->field_count; i++) {
+Field* field = &vector_type->fields[i];
+fmt::print(" - Поле: {} (смещение: {})\n", field->name, field->offset);
+}
+Field* found_field = type_system_lookup_field(ts, "vector", "y");
+if (found_field) {
+fmt::print("✓ Найдено поле: {} (смещение: {})\n", found_field->name, found_field->offset);
+}
+fmt::print("=== Тестируем виртуальные методы ===\n");
+Type* int_type = type_system_lookup(ts, "int");
+if (int_type) {
+fmt::print("✓ int.is_reference() = {}\n", int_type->is_reference(int_type));
+fmt::print("✓ int.get_size_in_memory() = {}\n", int_type->get_size_in_memory(int_type));
+}
+Type* vector_type_obj = type_system_lookup(ts, "vector");
+if (vector_type_obj) {
+fmt::print("✓ int.is_reference() = {}\n", int_type->is_reference(int_type));
+fmt::print("✓ int.get_size_in_memory() = {}\n", int_type->get_size_in_memory(int_type));
+if (vector_type_obj && vector_type_obj->is_reference) {
+fmt::print("✓ vector.is_reference() = {}\n", vector_type_obj->is_reference(vector_type_obj));
+}
+if (vector_type_obj && vector_type_obj->get_size_in_memory) {
+fmt::print("✓ vector.get_size_in_memory() = {}\n", vector_type_obj->get_size_in_memory(vector_type_obj));
+}
+if (vector_type_obj && vector_type_obj->print) {
+fmt::print("✓ vector.print() = {}\n", vector_type_obj->print(vector_type_obj));
+}
+}
+StructureType* array_type = type_system_create_structuretype(ts, "float-array", "structure", false, false, false, 0);
+type_system_add_field_to_structure(ts, array_type, "data", float_spec, false, false, 10, 0);
+fmt::print("✓ Массив создан с полем data[10] (размер: {} байт)\n", array_type->size_in_mem);
+fmt::print("\n=== Тестируем BitField и Enum ===\n");
+BitFieldType* flags_type = type_system_create_bitfieldtype(ts, "flags", "bitfield", 4, false);
+TypeSpec* int_spec = type_system_make_typespec(ts, "int");
+type_system_add_field_to_bitfield(ts, flags_type, "is_visible", int_spec, 0, 1);
+type_system_add_field_to_bitfield(ts, flags_type, "is_active", int_spec, 1, 1);
+type_system_add_field_to_bitfield(ts, flags_type, "type", int_spec, 2, 3);
+type_system_add_field_to_bitfield(ts, flags_type, "reserved", int_spec, 5, 27);
+fmt::print("✓ BitField 'flags' создан с {} полями\n", flags_type->field_count);
+for (int i = 0; i < flags_type->field_count; i++) {
+BitField* field = &flags_type->fields[i];
+fmt::print(" - Бит поле: {} (смещение: {} бит, размер: {} бит)\n",
+field->name, field->offset, field->size);
+}
+Type* flags_type_obj = type_system_lookup(ts, "flags");
+if (flags_type_obj && flags_type_obj->print) {
+fmt::print("✓ flags.print() = {}\n", flags_type_obj->print(flags_type_obj));
+}
+EnumType* color_enum = type_system_create_enumtype(ts, "color", "int", false);
+Type* color_enum_obj = type_system_lookup(ts, "color");
+if (color_enum_obj && color_enum_obj->print) {
+fmt::print("✓ color.print() = {}\n", color_enum_obj->print(color_enum_obj));
+}
+EnumType* permission_enum = type_system_create_enumtype(ts, "permission", "int", true);
+Type* permission_enum_obj = type_system_lookup(ts, "permission");
+if (permission_enum_obj && permission_enum_obj->print) {
+fmt::print("✓ permission.print() = {}\n", permission_enum_obj->print(permission_enum_obj));
+}
+fmt::print("\n=== МИНИМАЛЬНЫЙ ТЕСТ МЕТОДОВ ===\n");
+Type* test_type_obj = type_system_lookup(ts, "vector");
+if (test_type_obj) {
+fmt::print("✓ Vector type найден\n");
+fmt::print(" - method_count: {}\n", test_type_obj->method_count);
+fmt::print(" - methods pointer: {}\n", (void*)test_type_obj->methods);
+}
+else {
+fmt::print("✗ Vector type НЕ найден\n");
+}
+TypeSpec* func_type = type_spec_create("function");
+if (func_type) {
+fmt::print("✓ TypeSpec создан\n");
+type_spec_destroy(func_type);
+}
+else {
+fmt::print("✗ TypeSpec НЕ создан\n");
+}
+fmt::print("=== КОНЕЦ МИНИМАЛЬНОГО ТЕСТА ===\n");
+type_spec_destroy(int_spec);
+type_spec_destroy(float_spec);
+type_system_destroy(ts);
+fmt::print("=== Система полей готова ===\n");
+return 0;
+}#include "type.h"
+#include "type_spec.h"
+#include <cstdbool>
+#include <cstddef>
+struct Type;
+struct ValueType;
+struct ReferenceType;
+struct StructureType;
+struct BasicType;
+struct BitFieldType;
+struct EnumType;
+struct Field;
+struct MethodInfo;
+struct MethodInfo {
+int id;
+const char* name;
+TypeSpec* type;
+const char* defined_in_type;
+const char* type_name;
+bool no_virtual;
+bool overrides_parent;
+bool only_overrides_docstring;
+const char* docstring;
+const char* overlay_name;
+};
+struct Type {
+const char* name;
+const char* parent;
+bool is_boxed;
+int heap_base;
+bool allow_in_runtime;
+const char* runtime_name;
+bool (*is_reference)(const Type* self);
+int (*get_size_in_memory)(const Type* self);
+int (*get_load_size)(const Type* self);
+bool (*get_load_signed)(const Type* self);
+const char* (*print)(const Type* self);
+};
+struct ValueType {
+Type base;
+int size;
+int offset;
+bool sign_extend;
+};
+struct ReferenceType {
+Type base;
+};
+struct StructureType {
+ReferenceType base;
+Field* fields;
+int field_count;
+int size_in_mem;
+bool dynamic;
+bool pack;
+bool allow_misalign;
+int offset;
+bool always_stack_singleton;
+size_t idx_of_first_unique_field;
+};
+struct BasicType {
+StructureType base;
+bool final;
+};
+struct Field {
+const char* name;
+int offset;
+bool inline_;
+bool dynamic;
+bool array;
+int array_size;
+int alignment;
+bool skip_in_static_decomp;
+};
+struct BitField {
+const char* name;
+bool skip_in_static_decomp;
+};
+struct BitFieldType {
+ValueType base;
+BitField* fields;
+int field_count;
+};
+struct EnumType {
+ValueType base;
+bool is_bitfield;
+};#include "type_spec.h"
+#include <cstdlib>
+#include <cstring>
+TypeSpec* type_spec_create(const char* base_type) {
+TypeSpec* ts = new TypeSpec();
+ts->base_type = base_type;
+ts->arguments = nullptr;
+ts->arg_count = 0;
+ts->tags = nullptr;
+ts->tag_count = 0;
+return ts;
+}
+TypeSpec* type_spec_clone(const TypeSpec* src) {
+if (!src) return nullptr;
+TypeSpec* clone = type_spec_create(src->base_type);
+for (size_t i = 0; i < src->arg_count; i++) {
+type_spec_add_arg(clone, type_spec_clone(src->arguments[i]));
+}
+for (size_t i = 0; i < src->tag_count; i++) {
+type_spec_add_tag(clone, src->tags[i].name, src->tags[i].value);
+}
+return clone;
+}
+void type_spec_destroy(TypeSpec* ts) {
+if (!ts) return;
+for (size_t i = 0; i < ts->arg_count; i++) {
+type_spec_destroy(ts->arguments[i]);
+}
+delete[] ts->arguments;
+delete[] ts->tags;
+delete ts;
+}
+void type_spec_add_arg(TypeSpec* ts, TypeSpec* arg) {
+TypeSpec** new_args = new TypeSpec * [ts->arg_count + 1];
+for (size_t i = 0; i < ts->arg_count; i++) {
+new_args[i] = ts->arguments[i];
+}
+new_args[ts->arg_count] = arg;
+delete[] ts->arguments;
+ts->arguments = new_args;
+ts->arg_count++;
+}
+void type_spec_add_tag(TypeSpec* ts, const char* name, const char* value) {
+TypeTag* new_tags = new TypeTag[ts->tag_count + 1];
+for (size_t i = 0; i < ts->tag_count; i++) {
+new_tags[i] = ts->tags[i];
+}
+new_tags[ts->tag_count].name = name;
+new_tags[ts->tag_count].value = value;
+delete[] ts->tags;
+ts->tags = new_tags;
+ts->tag_count++;
+}
+bool type_spec_has_single_arg(const TypeSpec* ts) {
+return ts->arg_count == 1;
+}
+const TypeSpec* type_spec_get_single_arg(const TypeSpec* ts) {
+if (ts->arg_count != 1) return nullptr;
+return ts->arguments[0];
+}
+bool type_spec_is_empty(const TypeSpec* ts) {
+return ts->arg_count == 0 && ts->tag_count == 0;
+}#pragma once
+#include <cstddef>
+struct TypeTag {
+const char* name;
+const char* value;
+};
+struct TypeSpec {
+const char* base_type;
+TypeSpec** arguments;
+size_t arg_count;
+TypeTag* tags;
+size_t tag_count;
+};
+TypeSpec* type_spec_create(const char* base_type);
+void type_spec_destroy(TypeSpec* ts);
+void type_spec_add_arg(TypeSpec* ts, TypeSpec* arg);
+void type_spec_add_tag(TypeSpec* ts, const char* name, const char* value);
+bool type_spec_has_single_arg(const TypeSpec* ts);
+const TypeSpec* type_spec_get_single_arg(const TypeSpec* ts);
+bool type_spec_is_empty(const TypeSpec* ts);
+TypeSpec* type_spec_clone(const TypeSpec* src);#include "type_system.h"
+#include "fmt/format.h"
+#include <cstdlib>
+#include <cstring>
+#include <stdio.h>
+TypeSystem* type_system_create() {
+TypeSystem* ts = new TypeSystem();
+ts->type_count = 0;
+for (int i = 0; i < MAX_TYPES; i++) {
+ts->types[i] = nullptr;
+}
+return ts;
+}
+void type_system_destroy(TypeSystem* ts) {
+delete ts;
+}
+Type* type_system_add_type(TypeSystem* ts, Type* type) {
+if (ts->type_count >= MAX_TYPES) return nullptr;
+for (int i = 0; i < ts->type_count; i++) {
+if (std::strcmp(ts->types[i]->name, type->name) == 0) {
+}
+}
+ts->types[ts->type_count++] = type;
+return type;
+}
+Type* type_system_lookup(TypeSystem* ts, const char* name) {
+for (int i = 0; i < ts->type_count; i++) {
+if (std::strcmp(ts->types[i]->name, name) == 0) {
+return ts->types[i];
+}
+}
+return nullptr;
+}
+bool type_system_has_type(TypeSystem* ts, const char* name) {
+return type_system_lookup(ts, name) != nullptr;
+}
+TypeSpec* type_system_make_typespec(TypeSystem* ts, const char* name) {
+if (!type_system_has_type(ts, name)) {
+}
+return type_spec_create(name);
+}
+TypeSpec* type_system_make_pointer_typespec(TypeSystem* ts, TypeSpec* element_type) {
+TypeSpec* pointer_ts = type_spec_create("pointer");
+return pointer_ts;
+}
+TypeSpec* type_system_make_inline_array_typespec(TypeSystem* ts, TypeSpec* element_type) {
+TypeSpec* array_ts = type_spec_create("inline-array");
+return array_ts;
+}
+bool value_type_is_reference(const Type* self) {
+return false;
+}
+int value_type_get_size_in_memory(const Type* self) {
+const ValueType* value_type = (const ValueType*)self;
+return value_type->size;
+}
+int value_type_get_load_size(const Type* self) {
+const ValueType* value_type = (const ValueType*)self;
+return value_type->size;
+}
+bool value_type_get_load_signed(const Type* self) {
+const ValueType* value_type = (const ValueType*)self;
+return value_type->sign_extend;
+}
+const char* value_type_print(const Type* self) {
+static char buffer[256];
+const ValueType* value_type = (const ValueType*)self;
+snprintf(buffer, sizeof(buffer), "[ValueType] %s (size: %d, signed: %s)",
+self->name, value_type->size, value_type->sign_extend ? "true" : "false");
+return buffer;
+}
+bool basic_type_is_reference(const Type* self) {
+return true;
+}
+int basic_type_get_size_in_memory(const Type* self) {
+const BasicType* basic_type = (const BasicType*)self;
+return basic_type->base.size_in_mem;
+}
+int basic_type_get_load_size(const Type* self) {
+return 4;
+}
+bool basic_type_get_load_signed(const Type* self) {
+return false;
+}
+const char* basic_type_print(const Type* self) {
+const BasicType* basic_type = (const BasicType*)self;
+static char buffer[256];
+snprintf(buffer, sizeof(buffer), "[BasicType] %s (size: %d, final: %s)",
+self->name, basic_type->base.size_in_mem, basic_type->final ? "true" : "false");
+return buffer;
+}
+bool structure_type_is_reference(const Type* self) {
+return true;
+}
+int structure_type_get_size_in_memory(const Type* self) {
+const StructureType* structure_type = (const StructureType*)self;
+return structure_type->size_in_mem;
+}
+int structure_type_get_load_size(const Type* self) {
+return 4;
+}
+bool structure_type_get_load_signed(const Type* self) {
+return false;
+}
+const char* structure_type_print(const Type* self) {
+const StructureType* structure_type = (const StructureType*)self;
+static char buffer[256];
+snprintf(buffer, sizeof(buffer), "[StructureType] %s (size: %d, fields: %d)",
+self->name, structure_type->size_in_mem, structure_type->field_count);
+return buffer;
+}
+bool bitfield_type_is_reference(const Type* self) {
+return false;
+}
+int bitfield_type_get_size_in_memory(const Type* self) {
+const BitFieldType* bitfield_type = (const BitFieldType*)self;
+}
+int bitfield_type_get_load_size(const Type* self) {
+const BitFieldType* bitfield_type = (const BitFieldType*)self;
+return bitfield_type->base.size;
+}
+bool bitfield_type_get_load_signed(const Type* self) {
+const BitFieldType* bitfield_type = (const BitFieldType*)self;
+return bitfield_type->base.sign_extend;
+}
+const char* bitfield_type_print(const Type* self) {
+const BitFieldType* bitfield_type = (const BitFieldType*)self;
+static char buffer[256];
+snprintf(buffer, sizeof(buffer), "[BitFieldType] %s (size: %d bytes, fields: %d)",
+self->name, bitfield_type->base.size, bitfield_type->field_count);
+return buffer;
+}
+bool enum_type_is_reference(const Type* self) {
+return false;
+}
+int enum_type_get_size_in_memory(const Type* self) {
+const EnumType* enum_type = (const EnumType*)self;
+return enum_type->base.size;
+}
+int enum_type_get_load_size(const Type* self) {
+const EnumType* enum_type = (const EnumType*)self;
+return enum_type->base.size;
+}
+bool enum_type_get_load_signed(const Type* self) {
+const EnumType* enum_type = (const EnumType*)self;
+return enum_type->base.sign_extend;
+}
+const char* enum_type_print(const Type* self) {
+const EnumType* enum_type = (const EnumType*)self;
+static char buffer[256];
+snprintf(buffer, sizeof(buffer), "[EnumType] %s (size: %d, bitfield: %s)",
+self->name, enum_type->base.size, enum_type->is_bitfield ? "true" : "false");
+return buffer;
+}
+ValueType* type_system_create_valuetype(TypeSystem* ts,
+const char* name,
+const char* parent,
+int size,
+bool sign_extend) {
+ValueType* type = new ValueType();
+type->base.name = name;
+type->base.parent = parent;
+type->base.is_boxed = false;
+type->base.heap_base = 0;
+type->base.allow_in_runtime = true;
+type->base.runtime_name = name;
+type->size = size;
+type->offset = 0;
+type->sign_extend = sign_extend;
+type->base.methods = nullptr;
+type->base.method_count = 0;
+type->base.new_method_defined = false;
+type->base.is_reference = value_type_is_reference;
+type->base.get_size_in_memory = value_type_get_size_in_memory;
+type->base.get_load_size = value_type_get_load_size;
+type->base.get_load_signed = value_type_get_load_signed;
+type->base.print = value_type_print;
+type_system_add_type(ts, (Type*)type);
+return type;
+}
+StructureType* type_system_create_structuretype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool is_boxed,
+bool dynamic,
+bool pack,
+int heap_base) {
+StructureType* type = new StructureType();
+type->base.base.name = name;
+type->base.base.parent = parent;
+type->base.base.is_boxed = is_boxed;
+type->base.base.heap_base = heap_base;
+type->base.base.allow_in_runtime = true;
+type->base.base.runtime_name = name;
+type->fields = nullptr;
+type->field_count = 0;
+type->size_in_mem = 0;
+type->dynamic = dynamic;
+type->pack = pack;
+type->allow_misalign = false;
+type->offset = 0;
+type->always_stack_singleton = false;
+type->idx_of_first_unique_field = 0;
+type->base.base.methods = nullptr;
+type->base.base.method_count = 0;
+type->base.base.new_method_defined = false;
+type->base.base.is_reference = structure_type_is_reference;
+type->base.base.get_size_in_memory = structure_type_get_size_in_memory;
+type->base.base.get_load_size = structure_type_get_load_size;
+type->base.base.get_load_signed = structure_type_get_load_signed;
+type->base.base.print = structure_type_print;
+if (parent && strlen(parent) > 0) {
+Type* parent_type = type_system_lookup(ts, parent);
+if (parent_type) {
+StructureType* parent_structure = (StructureType*)parent_type;
+type_system_inherit_fields(type, parent_structure);
+}
+}
+type_system_add_type(ts, (Type*)type);
+return type;
+}
+BasicType* type_system_create_basictype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool dynamic,
+int heap_base) {
+BasicType* type = new BasicType();
+type->base.base.base.name = name;
+type->base.base.base.parent = parent;
+type->base.base.base.is_boxed = true;
+type->base.base.base.heap_base = heap_base;
+type->base.base.base.allow_in_runtime = true;
+type->base.base.base.runtime_name = name;
+type->base.fields = nullptr;
+type->base.field_count = 0;
+type->base.size_in_mem = 0;
+type->base.dynamic = dynamic;
+type->base.pack = false;
+type->base.allow_misalign = false;
+type->base.offset = 0;
+type->base.always_stack_singleton = false;
+type->base.idx_of_first_unique_field = 0;
+type->final = false;
+type->base.base.base.methods = nullptr;
+type->base.base.base.method_count = 0;
+type->base.base.base.new_method_defined = false;
+type->base.base.base.is_reference = basic_type_is_reference;
+type->base.base.base.get_size_in_memory = basic_type_get_size_in_memory;
+type->base.base.base.get_load_size = basic_type_get_load_size;
+type->base.base.base.get_load_signed = basic_type_get_load_signed;
+type->base.base.base.print = basic_type_print;
+type_system_add_type(ts, (Type*)type);
+return type;
+}
+BitFieldType* type_system_create_bitfieldtype(TypeSystem* ts,
+const char* name,
+const char* parent,
+int size,
+bool sign_extend) {
+BitFieldType* type = new BitFieldType();
+type->base.base.name = name;
+type->base.base.parent = parent;
+type->base.base.is_boxed = false;
+type->base.base.heap_base = 0;
+type->base.base.allow_in_runtime = true;
+type->base.base.runtime_name = name;
+type->base.size = size;
+type->base.offset = 0;
+type->base.sign_extend = sign_extend;
+type->fields = nullptr;
+type->field_count = 0;
+type->base.base.methods = nullptr;
+type->base.base.method_count = 0;
+type->base.base.new_method_defined = false;
+type->base.base.is_reference = bitfield_type_is_reference;
+type->base.base.get_size_in_memory = bitfield_type_get_size_in_memory;
+type->base.base.get_load_size = bitfield_type_get_load_size;
+type->base.base.get_load_signed = bitfield_type_get_load_signed;
+type->base.base.print = bitfield_type_print;
+type_system_add_type(ts, (Type*)type);
+return type;
+}
+EnumType* type_system_create_enumtype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool is_bitfield) {
+EnumType* type = new EnumType();
+Type* parent_type = type_system_lookup(ts, parent);
+if (!parent_type) {
+delete type;
+return nullptr;
+}
+ValueType* parent_value_type = (ValueType*)parent_type;
+type->base.base.name = name;
+type->base.base.parent = parent;
+type->base.base.is_boxed = false;
+type->base.base.heap_base = 0;
+type->base.base.allow_in_runtime = true;
+type->base.base.runtime_name = name;
+type->base.size = parent_value_type->size;
+type->base.offset = 0;
+type->base.sign_extend = parent_value_type->sign_extend;
+type->is_bitfield = is_bitfield;
+type->base.base.methods = nullptr;
+type->base.base.method_count = 0;
+type->base.base.new_method_defined = false;
+type->base.base.is_reference = enum_type_is_reference;
+type->base.base.get_size_in_memory = enum_type_get_size_in_memory;
+type->base.base.get_load_size = enum_type_get_load_size;
+type->base.base.get_load_signed = enum_type_get_load_signed;
+type->base.base.print = enum_type_print;
+type_system_add_type(ts, (Type*)type);
+return type;
+}
+void type_system_add_field_to_bitfield(TypeSystem* ts,
+BitFieldType* bitfield,
+const char* field_name,
+TypeSpec* field_type,
+BitField field;
+field.name = field_name;
+field.offset = offset;
+field.size = size;
+field.skip_in_static_decomp = false;
+BitField* new_fields = new BitField[bitfield->field_count + 1];
+for (int i = 0; i < bitfield->field_count; i++) {
+new_fields[i] = bitfield->fields[i];
+}
+new_fields[bitfield->field_count] = field;
+delete[] bitfield->fields;
+bitfield->fields = new_fields;
+bitfield->field_count++;
+}
+void type_system_add_field_to_structure(TypeSystem* ts,
+StructureType* structure,
+const char* field_name,
+TypeSpec* field_type,
+bool is_inline,
+bool is_dynamic,
+int array_size,
+int offset_override) {
+int offset = offset_override;
+if (offset == -1) {
+offset = structure->size_in_mem;
+}
+Field field;
+field.name = field_name;
+field.offset = offset;
+field.inline_ = is_inline;
+field.dynamic = is_dynamic;
+field.array = (array_size != -1);
+field.array_size = array_size;
+field.alignment = 4;
+field.skip_in_static_decomp = false;
+if (array_size != -1) {
+field_size = array_size * 4;
+}
+structure->size_in_mem = offset + field_size;
+Field* new_fields = new Field[structure->field_count + 1];
+for (int i = 0; i < structure->field_count; i++) {
+}
+delete[] structure->fields;
+structure->fields = new_fields;
+structure->field_count++;
+}
+Field* type_system_lookup_field(TypeSystem* ts,
+const char* type_name,
+const char* field_name) {
+Type* type = type_system_lookup(ts, type_name);
+if (!type) return nullptr;
+StructureType* structure = (StructureType*)type;
+for (int i = 0; i < structure->field_count; i++) {
+if (strcmp(structure->fields[i].name, field_name) == 0) {
+return &structure->fields[i];
+}
+}
+return nullptr;
+}
+int type_system_get_next_method_id(TypeSystem* ts, const Type* type) {
+return type->method_count + 1;
+}
+MethodInfo* type_system_declare_method(TypeSystem* ts,
+Type* type,
+const char* method_name,
+TypeSpec* method_type,
+bool no_virtual) {
+MethodInfo existing;
+if (type_system_get_my_method(type, method_name, &existing)) {
+return &type->methods[existing.id - 1];
+}
+MethodInfo new_method;
+new_method.id = type_system_get_next_method_id(ts, type);
+new_method.name = method_name;
+new_method.type = method_type;
+new_method.defined_in_type = type->name;
+new_method.type_name = type->name;
+new_method.no_virtual = no_virtual;
+new_method.overrides_parent = false;
+new_method.only_overrides_docstring = false;
+new_method.docstring = nullptr;
+new_method.overlay_name = nullptr;
+MethodInfo* new_methods = new MethodInfo[type->method_count + 1];
+for (int i = 0; i < type->method_count; i++) {
+new_methods[i] = type->methods[i];
+}
+new_methods[type->method_count] = new_method;
+delete[] type->methods;
+type->methods = new_methods;
+type->method_count++;
+return &type->methods[type->method_count - 1];
+}
+bool type_system_get_my_method(const Type* type,
+const char* method_name,
+MethodInfo* out) {
+for (int i = 0; i < type->method_count; i++) {
+if (strcmp(type->methods[i].name, method_name) == 0) {
+if (out) *out = type->methods[i];
+return true;
+}
+}
+return false;
+}
+bool type_system_lookup_method(TypeSystem* ts,
+const char* type_name,
+const char* method_name,
+MethodInfo* out) {
+Type* type = type_system_lookup(ts, type_name);
+if (!type) return false;
+if (type_system_get_my_method(type, method_name, out)) {
+return true;
+}
+if (type->parent && strlen(type->parent) > 0) {
+return type_system_lookup_method(ts, type->parent, method_name, out);
+}
+return false;
+}
+MethodInfo* type_system_add_new_method(TypeSystem* ts,
+Type* type,
+TypeSpec* method_type,
+const char* docstring) {
+type->new_method_defined = true;
+type->new_method.name = "new";
+type->new_method.type = method_type;
+type->new_method.defined_in_type = type->name;
+type->new_method.type_name = type->name;
+type->new_method.no_virtual = false;
+type->new_method.overrides_parent = false;
+type->new_method.only_overrides_docstring = false;
+type->new_method.docstring = docstring;
+type->new_method.overlay_name = nullptr;
+return &type->new_method;
+}
+void type_system_inherit_fields(StructureType* child, StructureType* parent) {
+if (!parent || parent->field_count == 0) {
+return;
+}
+int total_fields = parent->field_count + child->field_count;
+Field* inherited_fields = new Field[total_fields];
+for (int i = 0; i < parent->field_count; i++) {
+inherited_fields[i] = parent->fields[i];
+}
+for (int i = 0; i < child->field_count; i++) {
+inherited_fields[parent->field_count + i] = child->fields[i];
+inherited_fields[parent->field_count + i].offset += parent->size_in_mem;
+}
+delete[] child->fields;
+child->fields = inherited_fields;
+child->field_count = total_fields;
+child->size_in_mem = parent->size_in_mem + child->size_in_mem;
+child->idx_of_first_unique_field = parent->field_count;
+}
+bool type_system_typecheck(TypeSystem* ts, const TypeSpec* expected, const TypeSpec* actual) {
+if (strcmp(expected->base_type, actual->base_type) == 0) {
+return true;
+}
+Type* actual_type = type_system_lookup(ts, actual->base_type);
+while (actual_type && actual_type->parent) {
+if (strcmp(actual_type->parent, expected->base_type) == 0) {
+return true;
+}
+actual_type = type_system_lookup(ts, actual_type->parent);
+}
+return false;
+}
+TypeSpec* type_system_lowest_common_ancestor(TypeSystem* ts, const TypeSpec* a, const TypeSpec* b) {
+if (strcmp(a->base_type, b->base_type) == 0) {
+return type_spec_clone(a);
+}
+return type_system_make_typespec(ts, "object");
+}
+void type_system_initialize_builtin_types(TypeSystem* ts) {
+type_system_create_valuetype(ts, "object", "", 4, false);
+type_system_create_valuetype(ts, "int", "object", 4, true);
+type_system_create_valuetype(ts, "float", "object", 4, false);
+type_system_create_structuretype(ts, "structure", "object", false, false, false, 0);
+type_system_create_basictype(ts, "basic", "structure", false, 0);
+type_system_create_bitfieldtype(ts, "bitfield", "object", 4, false);
+type_system_create_enumtype(ts, "enum", "int", false);
+}
+#pragma once
+#include "type.h"
+#include "type_spec.h"
+#define MAX_TYPES 256
+typedef struct TypeSystem TypeSystem;
+struct TypeSystem {
+Type* types[MAX_TYPES];
+int type_count;
+};
+TypeSystem* type_system_create();
+void type_system_destroy(TypeSystem* ts);
+Type* type_system_add_type(TypeSystem* ts, Type* type);
+Type* type_system_lookup(TypeSystem* ts, const char* name);
+bool type_system_has_type(TypeSystem* ts, const char* name);
+TypeSpec* type_system_make_typespec(TypeSystem* ts, const char* name);
+TypeSpec* type_system_make_pointer_typespec(TypeSystem* ts, TypeSpec* element_type);
+TypeSpec* type_system_make_inline_array_typespec(TypeSystem* ts, TypeSpec* element_type);
+ValueType* type_system_create_valuetype(TypeSystem* ts,
+const char* name,
+const char* parent,
+int size,
+bool sign_extend);
+StructureType* type_system_create_structuretype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool is_boxed,
+bool dynamic,
+bool pack,
+int heap_base);
+BasicType* type_system_create_basictype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool dynamic,
+int heap_base);
+void type_system_initialize_builtin_types(TypeSystem* ts);
+BitFieldType* type_system_create_bitfieldtype(TypeSystem* ts,
+const char* name,
+const char* parent,
+int size,
+bool sign_extend);
+EnumType* type_system_create_enumtype(TypeSystem* ts,
+const char* name,
+const char* parent,
+bool is_bitfield);
+void type_system_add_field_to_bitfield(TypeSystem* ts,
+BitFieldType* bitfield,
+const char* field_name,
+TypeSpec* field_type,
+Field* field_create(const char* name, TypeSpec* type, int offset);
+void field_destroy(Field* field);
+void type_system_add_field_to_structure(TypeSystem* ts,
+StructureType* structure,
+const char* field_name,
+TypeSpec* field_type,
+bool is_inline,
+bool is_dynamic,
+int array_size,
+int offset_override);
+Field* type_system_lookup_field(TypeSystem* ts,
+const char* type_name,
+const char* field_name);
+MethodInfo* type_system_declare_method(TypeSystem* ts,
+Type* type,
+const char* method_name,
+TypeSpec* method_type,
+bool no_virtual);
+bool type_system_get_my_method(const Type* type,
+const char* method_name,
+MethodInfo* out);
+bool type_system_lookup_method(TypeSystem* ts,
+const char* type_name,
+const char* method_name,
+MethodInfo* out);
+int type_system_get_next_method_id(TypeSystem* ts, const Type* type);
+MethodInfo* type_system_add_new_method(TypeSystem* ts,
+Type* type,
+TypeSpec* method_type,
+const char* docstring);
+void type_system_inherit_fields(StructureType* child, StructureType* parent);
+bool type_system_typecheck(TypeSystem* ts, const TypeSpec* expected, const TypeSpec* actual);
+TypeSpec* type_system_lowest_common_ancestor(TypeSystem* ts, const TypeSpec* a, const TypeSpec* b);
+Binary file (standard input) matches

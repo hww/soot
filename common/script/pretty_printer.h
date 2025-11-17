@@ -8,6 +8,7 @@
 
 #include "object.h"
 #include "reader.h"
+
 namespace script {
     namespace pretty_print {
 

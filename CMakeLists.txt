@@ -82,7 +82,7 @@ add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 # Include subdirectories
 include(common/cross_sockets/CMakeLists.txt)
 include(common/script/CMakeLists.txt)
-#include(common/type_system/CMakeLists.txt)
+include(common/type_system/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
 
 # Installation (optional)
@@ -112,5 +112,6 @@ if(BUILD_TESTS)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
     enable_testing()
-    include(tests/CMakeLists.txt)
+    include(tests/script/CMakeLists.txt)
+    include(tests/type_system/CMakeLists.txt)
 endif()

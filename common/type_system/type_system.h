@@ -103,7 +103,70 @@ Field* type_system_lookup_field(TypeSystem* ts,
     const char* field_name);
 
 
+
 // ============================================================================
-//  полей
+// Система методов
 // ============================================================================
 
+MethodInfo* type_system_declare_method(TypeSystem* ts,
+    Type* type,
+    const char* method_name,
+    TypeSpec* method_type,
+    bool no_virtual);
+
+bool type_system_get_my_method(const Type* type,
+    const char* method_name,
+    MethodInfo* out);
+
+bool type_system_lookup_method(TypeSystem* ts,
+    const char* type_name,
+    const char* method_name,
+    MethodInfo* out);
+
+int type_system_get_next_method_id(TypeSystem* ts, const Type* type);
+
+// Вспомогательные функции для методов
+MethodInfo* type_system_add_new_method(TypeSystem* ts,
+    Type* type,
+    TypeSpec* method_type,
+    const char* docstring);
+
+// ============================================================================
+// Наследование полей
+// ============================================================================
+void type_system_inherit_fields(StructureType* child, StructureType* parent);
+
+
+// ============================================================================
+// Type Checking
+// ============================================================================
+bool type_system_typecheck(TypeSystem* ts, const TypeSpec* expected, const TypeSpec* actual);
+TypeSpec* type_system_lowest_common_ancestor(TypeSystem* ts, const TypeSpec* a, const TypeSpec* b);
+
+// ============================================================================
+// Reverse Field Lookup
+// ============================================================================
+struct FieldReverseLookupOutput {
+    const char* field_name;
+    TypeSpec* field_type;
+    int offset;
+    bool is_array;
+    bool success;
+};
+
+struct FieldReverseLookupInput {
+    int offset;           // смещение для поиска
+    TypeSpec* base_type;  // базовый тип
+    bool include_parents; // искать в родительских типах
+};
+
+FieldReverseLookupOutput type_system_reverse_lookup_field(TypeSystem* ts,
+    FieldReverseLookupInput input);
+
+// ============================================================================
+// Create enum type
+// ============================================================================
+EnumType* type_system_create_enumtype(TypeSystem* ts,
+    const char* name,
+    const char* parent,
+    bool is_bitfield);
