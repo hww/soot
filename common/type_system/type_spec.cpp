@@ -1,95 +1,333 @@
 #include "type_spec.h"
-#include <cstdlib>
-#include <cstring>
+#include "common/util/assert.h"
+#include "fmt/format.h"
 
-TypeSpec* type_spec_create(const char* base_type) {
-    TypeSpec* ts = new TypeSpec();
-    ts->base_type = base_type;
-    ts->arguments = nullptr;
-    ts->arg_count = 0;
-    ts->tags = nullptr;
-    ts->tag_count = 0;
-    return ts;
+#include <stdexcept>
+#include <algorithm>
+
+// ============================================================================
+// TypeSpec constructors
+// ============================================================================
+
+TypeSpec::TypeSpec(std::string type) : m_type(std::move(type)) {}
+
+TypeSpec::TypeSpec(std::string type, std::vector<TypeSpec> arguments)
+    : m_type(std::move(type))
+    , m_arguments(std::make_unique<std::vector<TypeSpec>>(std::move(arguments))) {
 }
 
-TypeSpec* type_spec_clone(const TypeSpec* src) {
-    if (!src) return nullptr;
+// Rule of Five
+TypeSpec::TypeSpec(const TypeSpec& other)
+    : m_type(other.m_type)
+    , m_tags(other.m_tags) {
+    if (other.m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>(*other.m_arguments);
+    }
+}
 
-    TypeSpec* clone = type_spec_create(src->base_type);
+TypeSpec::TypeSpec(TypeSpec&& other) noexcept = default;
 
-    // Клонируем аргументы
-    for (size_t i = 0; i < src->arg_count; i++) {
-        type_spec_add_arg(clone, type_spec_clone(src->arguments[i]));
+TypeSpec& TypeSpec::operator=(const TypeSpec& other) {
+    if (this != &other) {
+        m_type = other.m_type;
+        m_tags = other.m_tags;
+        if (other.m_arguments) {
+            m_arguments = std::make_unique<std::vector<TypeSpec>>(*other.m_arguments);
+        }
+        else {
+            m_arguments.reset();
+        }
+    }
+    return *this;
+}
+
+TypeSpec& TypeSpec::operator=(TypeSpec&& other) noexcept = default;
+
+// ============================================================================
+// TypeSpec argument management
+// ============================================================================
+
+void TypeSpec::add_arg(const TypeSpec& ts) {
+    if (!m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>();
+    }
+    m_arguments->push_back(ts);
+}
+
+void TypeSpec::add_arg(TypeSpec&& ts) {
+    if (!m_arguments) {
+        m_arguments = std::make_unique<std::vector<TypeSpec>>();
+    }
+    m_arguments->push_back(std::move(ts));
+}
+
+bool TypeSpec::has_single_arg() const {
+    return m_arguments && m_arguments->size() == 1;
+}
+
+const TypeSpec& TypeSpec::get_single_arg() const {
+    // ASSERT(m_arguments);
+    // ASSERT(m_arguments->size() == 1);
+    return m_arguments->front();
+}
+
+TypeSpec& TypeSpec::get_single_arg() {
+    // ASSERT(m_arguments);
+    // ASSERT(m_arguments->size() == 1);
+    return m_arguments->front();
+}
+
+size_t TypeSpec::arg_count() const {
+    return m_arguments ? m_arguments->size() : 0;
+}
+
+const TypeSpec& TypeSpec::get_arg(int idx) const {
+    // ASSERT(m_arguments);
+    return m_arguments->at(idx);
+}
+
+TypeSpec& TypeSpec::get_arg(int idx) {
+    // ASSERT(m_arguments);
+    return m_arguments->at(idx);
+}
+
+const TypeSpec& TypeSpec::last_arg() const {
+    // ASSERT(m_arguments);
+    // ASSERT(!m_arguments->empty());
+    return m_arguments->back();
+}
+
+TypeSpec& TypeSpec::last_arg() {
+    // ASSERT(m_arguments);
+    // ASSERT(!m_arguments->empty());
+    return m_arguments->back();
+}
+
+bool TypeSpec::empty() const {
+    return !m_arguments || m_arguments->empty();
+}
+
+
+// ============================================================================
+// TypeTag Implementation
+// ============================================================================
+
+TypeTag::TypeTag(std::string name, std::string value)
+    : name(std::move(name)), value(std::move(value)) {
+}
+
+bool TypeTag::operator==(const TypeTag& other) const {
+    return name == other.name && value == other.value;
+}
+
+bool TypeTag::operator!=(const TypeTag& other) const {
+    return !(*this == other);
+}
+
+
+// ============================================================================
+// TypeSpec Implementation
+// ============================================================================
+
+std::string TypeSpec::print() const {
+    // Simple case: no arguments and no tags
+    if ((!m_arguments || m_arguments->empty()) && m_tags.empty()) {
+        return m_type;
     }
 
-    // Клонируем теги
-    for (size_t i = 0; i < src->tag_count; i++) {
-        type_spec_add_tag(clone, src->tags[i].name, src->tags[i].value);
+    // Complex case: with arguments and/or tags
+    std::string result = "(" + m_type;
+
+    // Print arguments
+    if (m_arguments) {
+        for (const auto& arg : *m_arguments) {
+            result += " " + arg.print();
+        }
     }
 
-    return clone;
-}
-
-void type_spec_destroy(TypeSpec* ts) {
-    if (!ts) return;
-
-    // Освобождаем аргументы
-    for (size_t i = 0; i < ts->arg_count; i++) {
-        type_spec_destroy(ts->arguments[i]);
-    }
-    delete[] ts->arguments;
-
-    // Освобождаем теги
-    delete[] ts->tags;
-
-    delete ts;
-}
-
-void type_spec_add_arg(TypeSpec* ts, TypeSpec* arg) {
-    // Простейшая реализация - переаллокация массива
-    TypeSpec** new_args = new TypeSpec * [ts->arg_count + 1];
-
-    // Копируем старые аргументы
-    for (size_t i = 0; i < ts->arg_count; i++) {
-        new_args[i] = ts->arguments[i];
+    // Print tags
+    for (const auto& tag : m_tags) {
+        result += fmt::format(" :{} {}", tag.name, tag.value);
     }
 
-    // Добавляем новый
-    new_args[ts->arg_count] = arg;
-
-    // Заменяем массив
-    delete[] ts->arguments;
-    ts->arguments = new_args;
-    ts->arg_count++;
+    return result + ")";
 }
 
-void type_spec_add_tag(TypeSpec* ts, const char* name, const char* value) {
-    TypeTag* new_tags = new TypeTag[ts->tag_count + 1];
-
-    // Копируем старые теги
-    for (size_t i = 0; i < ts->tag_count; i++) {
-        new_tags[i] = ts->tags[i];
+bool TypeSpec::operator==(const TypeSpec& other) const {
+    // Compare base type
+    if (m_type != other.m_type) {
+        return false;
     }
 
-    // Добавляем новый тег
-    new_tags[ts->tag_count].name = name;
-    new_tags[ts->tag_count].value = value;
+    // Compare tags
+    if (m_tags != other.m_tags) {
+        return false;
+    }
 
-    // Заменяем массив
-    delete[] ts->tags;
-    ts->tags = new_tags;
-    ts->tag_count++;
+    // Compare arguments
+    if (m_arguments && other.m_arguments) {
+        return *m_arguments == *other.m_arguments;
+    }
+    else if (m_arguments || other.m_arguments) {
+        // One has arguments, the other doesn't
+        return false;
+    }
+
+    return true;
 }
 
-bool type_spec_has_single_arg(const TypeSpec* ts) {
-    return ts->arg_count == 1;
+bool TypeSpec::operator!=(const TypeSpec& other) const {
+    return !(*this == other);
 }
 
-const TypeSpec* type_spec_get_single_arg(const TypeSpec* ts) {
-    if (ts->arg_count != 1) return nullptr;
-    return ts->arguments[0];
+TypeSpec TypeSpec::substitute_for_method_call(const std::string& method_type) const {
+    TypeSpec result;
+    result.m_type = (m_type == "_type_") ? method_type : m_type;
+
+    // Recursively substitute arguments
+    if (m_arguments) {
+        result.m_arguments = std::make_unique<std::vector<TypeSpec>>();
+        for (const auto& arg : *m_arguments) {
+            result.m_arguments->push_back(arg.substitute_for_method_call(method_type));
+        }
+    }
+
+    // Copy tags
+    result.m_tags = m_tags;
+
+    return result;
 }
 
-bool type_spec_is_empty(const TypeSpec* ts) {
-    return ts->arg_count == 0 && ts->tag_count == 0;
+bool TypeSpec::is_compatible_child_method(const TypeSpec& implementation,
+    const std::string& child_type,
+    int* bad_arg_idx_out) const {
+    // Check if base types are compatible
+    bool base_type_ok = implementation.m_type == m_type ||
+        (m_type == "_type_" && implementation.m_type == child_type);
+
+    if (!base_type_ok) {
+        if (bad_arg_idx_out) *bad_arg_idx_out = -1;
+        return false;
+    }
+
+    // Check argument count
+    if (implementation.arg_count() != arg_count()) {
+        if (bad_arg_idx_out) *bad_arg_idx_out = -1;
+        return false;
+    }
+
+    // Check each argument for compatibility
+    for (size_t i = 0; i < arg_count(); i++) {
+        if (!get_arg(i).is_compatible_child_method(implementation.get_arg(i), child_type)) {
+            if (bad_arg_idx_out) *bad_arg_idx_out = i;
+            return false;
+        }
+    }
+
+    return true;
 }
+
+void TypeSpec::add_new_tag(const std::string& tag_name, const std::string& tag_value) {
+    // Check for duplicate tag
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            throw std::runtime_error(
+                fmt::format("Attempted to add duplicate tag '{}' to TypeSpec", tag_name));
+        }
+    }
+
+    m_tags.emplace_back(tag_name, tag_value);
+}
+
+void TypeSpec::add_new_tag(std::string tag_name, std::string tag_value) {
+    // Check for duplicate tag
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            throw std::runtime_error(
+                fmt::format("Attempted to add duplicate tag '{}' to TypeSpec", tag_name));
+        }
+    }
+
+    m_tags.emplace_back(std::move(tag_name), std::move(tag_value));
+}
+
+std::optional<std::string> TypeSpec::try_get_tag(const std::string& tag_name) const {
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            return tag.value;
+        }
+    }
+    return std::nullopt;
+}
+
+const std::string& TypeSpec::get_tag(const std::string& tag_name) const {
+    for (const auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            return tag.value;
+        }
+    }
+    throw std::runtime_error(fmt::format("TypeSpec doesn't have tag '{}'", tag_name));
+}
+
+void TypeSpec::modify_tag(const std::string& tag_name, const std::string& tag_value) {
+    for (auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            tag.value = tag_value;
+            return;
+        }
+    }
+    throw std::runtime_error(fmt::format("TypeSpec doesn't have tag '{}'", tag_name));
+}
+
+void TypeSpec::add_or_modify_tag(const std::string& tag_name, const std::string& tag_value) {
+    for (auto& tag : m_tags) {
+        if (tag.name == tag_name) {
+            tag.value = tag_value;
+            return;
+        }
+    }
+    m_tags.emplace_back(tag_name, tag_value);
+}
+
+void TypeSpec::delete_tag(const std::string& tag_name) {
+    for (auto it = m_tags.begin(); it != m_tags.end(); ++it) {
+        if (it->name == tag_name) {
+            m_tags.erase(it);
+            return;
+        }
+    }
+}
+
+// ============================================================================
+// Utility Functions Implementation
+// ============================================================================
+//
+//TypeSpec coerce_to_reg_type(const TypeSpec& in) {
+//    // For now, just return the input type unchanged
+//    // In the original implementation, this would handle type coercion logic
+//    return in;
+//}
+
+// ============================================================================
+// typespec namespace Implementation
+// ============================================================================
+
+namespace typespec {
+
+    TypeSpec object() { return TypeSpec("object"); }
+    TypeSpec int32() { return TypeSpec("int32"); }
+    TypeSpec int64() { return TypeSpec("int64"); }
+    TypeSpec float_() { return TypeSpec("float"); }
+    TypeSpec string() { return TypeSpec("string"); }
+    TypeSpec symbol() { return TypeSpec("symbol"); }
+    TypeSpec function() { return TypeSpec("function"); }
+
+    TypeSpec pointer(const TypeSpec& element) {
+        return TypeSpec("pointer", { element });
+    }
+
+    TypeSpec inline_array(const TypeSpec& element) {
+        return TypeSpec("inline-array", { element });
+    }
+
+} // namespace typespec
