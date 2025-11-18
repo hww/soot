@@ -38,6 +38,7 @@ namespace script
     class HashTableObject;
     class FilePortObject;
     class SymbolTable;
+    class StringObject;
     struct ArgumentSpec;
 
     // InternedSymbolPtr как в OpenGOAL
@@ -221,11 +222,16 @@ namespace script
         std::string print() const override;
         std::string inspect() const override;
     };
-
     class StringObject : public HeapObject {
     public:
         std::string text;
         explicit StringObject(std::string text) : text(std::move(text)) {}
+
+        int length() const { return text.length(); }
+
+        char at(const int index) {
+            return text[index];
+        }
 
         std::string print() const override {
             return "\"" + text + "\"";
@@ -233,6 +239,16 @@ namespace script
 
         std::string inspect() const override {
             return "[string] \"" + text + "\"";
+        }
+
+        // Неявное преобразование в std::string
+        operator std::string() const {
+            return text;
+        }
+
+        // Дополнительно: можно добавить преобразование в const char*
+        const char* c_str() const {
+            return text.c_str();
         }
     };
 

@@ -5,8 +5,10 @@ add_library(type_system_lib
     common/type_system/type_spec.cpp
     common/type_system/defenum.cpp
     common/type_system/deftype.cpp
+    common/type_system/state.cpp
     common/util/bit_utils.cpp
     common/util/string_util.cpp
+    common/log/log.cpp
 )
 
 # Линкуем fmt если нужно

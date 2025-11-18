@@ -84,7 +84,7 @@ namespace script
         }
 
         std::ostringstream oss;
-        oss << short_info->description;
+        oss << short_info->filename;
         if (short_info->line != -1) {
             oss << ":" << (short_info->line + 1); // Convert to 1-based line numbers
             if (short_info->column != -1) {
@@ -130,7 +130,7 @@ namespace script
         if (!loc.source) return std::nullopt;
 
         ShortInfo info;
-        info.description = loc.source->get_description();
+        info.filename = loc.source->get_description();
         info.line = loc.source->get_line_number(loc.offset);
         info.column = loc.source->get_column_number(loc.offset);
 

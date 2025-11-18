@@ -18,7 +18,7 @@ protected:
     // Хелпер для парсинга как в оригинале
     DeftypeResult parse_deftype_string(const std::string& code) {
         auto obj = reader.read_from_string(code, "test");
-        fmt::print("Parsed: {}\n", script::pretty_print::to_string(obj));
+        fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
 
         // Извлекаем форму deftype: (top-level (deftype name ...))
         // в просто (name ...) 
@@ -97,8 +97,8 @@ TEST_F(DefTypeTest, WithDocstring) {
     EXPECT_EQ(result.type_info->get_name(), "documented-type");
 
     // Проверяем что докстринг сохранился
-    EXPECT_TRUE(result.type_info->get_metadata().has_docstring());
-    EXPECT_EQ(result.type_info->get_metadata().get_docstring_or_empty(),
+    EXPECT_TRUE(result.type_info->m_metadata.has_docstring());
+    EXPECT_EQ(result.type_info->m_metadata.get_docstring_or_empty(),
         "This is a test type with documentation");
 }
 
@@ -252,7 +252,7 @@ TEST_F(DefTypeTest, WithStates) {
           (:states
             idle
             running
-            (finished "Final state")))
+            (finished float)))
     )";
     DeftypeResult result = parse_deftype_string(code);
 

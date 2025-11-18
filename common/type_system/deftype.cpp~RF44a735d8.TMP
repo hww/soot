@@ -314,25 +314,25 @@ namespace {
 
         std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
             virtual_state_definitions;
-        std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
+        std::unordered_map<std::string, std::unordered_map<StateHandler, DefinitionMetadata>>
             state_definitions;
 
         void append_virtual_state_def(const std::string& state_name,
-            const StateHandler handler,
+            const std::string& handler,
             DefinitionMetadata data) {
             if (virtual_state_definitions.count(state_name) == 0) {
                 virtual_state_definitions[state_name] = std::unordered_map<std::string, DefinitionMetadata>();
             }
-            virtual_state_definitions[state_name][handler_kind_to_name(handler)] = data;
+            virtual_state_definitions[state_name][handler] = data;
         }
 
         void append_state_def(const std::string& state_name,
             const StateHandler handler,
             DefinitionMetadata data) {
             if (state_definitions.count(state_name) == 0) {
-                state_definitions[state_name] = std::unordered_map<std::string, DefinitionMetadata>();
+                state_definitions[state_name] = std::unordered_map<StateHandler, DefinitionMetadata>();
             }
-            state_definitions[state_name][handler_kind_to_name(handler)] = data;
+            state_definitions[state_name][handler] = data;
         }
     };
 
@@ -991,7 +991,7 @@ DeftypeResult parse_deftype(const script::Object& deftype,
     if (is_type("basic", parent_type, ts)) {
         auto basic_type = std::make_unique<BasicType>(parent_type_name, name, false, 0);
         if (maybe_docstring) {
-            basic_type->m_metadata.docstring = *maybe_docstring;
+            basic_type->get_metadata().docstring = *maybe_docstring;
         }
 
         // Inherit from parent
@@ -1031,7 +1031,7 @@ DeftypeResult parse_deftype(const script::Object& deftype,
     else if (is_type("structure", parent_type, ts)) {
         auto structure_type = std::make_unique<StructureType>(parent_type_name, name, false, false, false, 0);
         if (maybe_docstring) {
-            structure_type->m_metadata.docstring = *maybe_docstring;
+            structure_type->get_metadata().docstring = *maybe_docstring;
         }
 
         // Inherit from parent
@@ -1071,7 +1071,7 @@ DeftypeResult parse_deftype(const script::Object& deftype,
             parent_type_name, name, parent_int->get_size_in_memory(), parent_int->get_load_signed());
 
         if (maybe_docstring) {
-            bitfield_type->m_metadata.docstring = *maybe_docstring;
+            bitfield_type->get_metadata().docstring = *maybe_docstring;
         }
 
         // Inherit from parent

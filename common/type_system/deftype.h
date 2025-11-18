@@ -6,6 +6,8 @@
  * This is used both in the compiler and in the decompiler for the type definition file.
  */
 
+#include "state.h"
+#include "type_spec.h"
 #include "type_system.h"
 #include "script/object.h"
 

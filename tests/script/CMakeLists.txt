@@ -11,7 +11,7 @@ include_directories(common/script)
 
 # Создаем тестовый исполняемый файл
 add_executable(script_test
-    tests/script/test_main.cpp
+    tests/script/main_script_test.cpp
     tests/script/test_basic_types.cpp
     tests/script/test_arithmetic.cpp
     tests/script/test_lists.cpp

@@ -69,10 +69,26 @@ namespace script {
     class SourceManager {
     public:
         struct ShortInfo {
-            std::string description;
+            std::string filename;
             int line = -1;
             int column = -1;
             std::string line_text;
+            // Операторы сравнения
+            bool operator==(const ShortInfo& other) const {
+                return line == other.line &&
+                    column == other.column &&
+                    filename == other.filename;
+            }
+
+            bool operator!=(const ShortInfo& other) const {
+                return !(*this == other);
+            }
+
+            bool operator<(const ShortInfo& other) const {
+                if (filename != other.filename) return filename < other.filename;
+                if (line != other.line) return line < other.line;
+                return column < other.column;
+            }
         };
 
         // Регистрация исходников

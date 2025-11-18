@@ -222,7 +222,7 @@ EnumType* parse_defenum(const script::Object& defenum,
         if (auto parent_value = dynamic_cast<ValueType*>(parent_type)) {
             auto new_type = std::make_unique<EnumType>(parent_value, name, is_bitfield, entries);
             if (maybe_docstring) {
-                new_type->get_metadata().docstring = *maybe_docstring;
+                new_type->m_metadata.docstring = *maybe_docstring;
             }
             new_type->set_runtime_name(parent_value->get_runtime_name());
             return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));

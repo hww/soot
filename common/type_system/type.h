@@ -14,6 +14,7 @@
 #include <optional>
 #include "type_spec.h"
 #include "common_types.h"
+#include "script/export.h"
 
 // Forward declarations
 class Type;
@@ -57,7 +58,7 @@ constexpr int ARRAY_DATA_OFFSET = 16;    // как в оригинале
 
 struct DefinitionMetadata {
     // Близко к оригиналу, но с удобными методами
-    std::optional<std::string> definition_info;
+    std::optional<script::SourceManager::ShortInfo> definition_info;
     std::optional<std::string> docstring;
 
     // Добавляем только convenience методы без изменения структуры данных
@@ -265,8 +266,6 @@ public:
     void disallow_in_runtime() { m_allow_in_runtime = false; }
 
     // Metadata
-    const DefinitionMetadata& get_metadata() const { return m_metadata; }
-    DefinitionMetadata& get_metadata() { return m_metadata; }
 
     // Virtual state metadata
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>&
@@ -279,6 +278,10 @@ public:
         m_virtual_state_definition_meta = {};
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
         m_state_definition_meta = {};
+
+    // Metadata
+    DefinitionMetadata m_metadata;
+
 protected:
     virtual std::string diff_impl(const Type& other) const = 0;
     std::string incompatible_diff(const Type& other) const;
@@ -301,8 +304,6 @@ protected:
     // State system
     std::map<std::string, TypeSpec> m_states;
 
-    // Metadata
-    DefinitionMetadata m_metadata;
 
 };
 
