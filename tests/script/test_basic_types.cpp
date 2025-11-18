@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+Ôªø#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// “ÂÒÚ 1: ÷ÂÎ˚Â ˜ËÒÎ‡
+// –¢–µ—Å—Ç 1: –¶–µ–ª—ã–µ —á–∏—Å–ª–∞
 TEST_F(BasicTypesTest, IntegerLiterals) {
     Object obj = eval("42");
     EXPECT_TRUE(obj.is_integer());
@@ -29,7 +29,7 @@ TEST_F(BasicTypesTest, IntegerLiterals) {
     EXPECT_EQ(obj.as_integer(), -123);
 }
 
-// “ÂÒÚ 2: ¬Â˘ÂÒÚ‚ÂÌÌ˚Â ˜ËÒÎ‡
+// –¢–µ—Å—Ç 2: –í–µ—â–µ—Å—Ç–≤–µ–Ω–Ω—ã–µ —á–∏—Å–ª–∞
 TEST_F(BasicTypesTest, FloatLiterals) {
     Object obj = eval("3.14");
     EXPECT_TRUE(obj.is_float());
@@ -40,7 +40,7 @@ TEST_F(BasicTypesTest, FloatLiterals) {
     EXPECT_DOUBLE_EQ(obj.as_float(), -2.718);
 }
 
-// “ÂÒÚ 3: ¡ÛÎÂ‚˚ ÁÌ‡˜ÂÌËˇ
+// –¢–µ—Å—Ç 3: –ë—É–ª–µ–≤—ã –∑–Ω–∞—á–µ–Ω–∏—è
 TEST_F(BasicTypesTest, BooleanLiterals) {
     Object obj_true = eval("#t");
     Object obj_false = eval("#f");
@@ -51,7 +51,7 @@ TEST_F(BasicTypesTest, BooleanLiterals) {
     EXPECT_FALSE(obj_false.as_boolean());
 }
 
-// “ÂÒÚ 4: —ËÏ‚ÓÎ˚
+// –¢–µ—Å—Ç 4: –°–∏–º–≤–æ–ª—ã
 TEST_F(BasicTypesTest, CharLiterals) {
     Object obj = eval("#\\a");
     EXPECT_TRUE(obj.is_char());
@@ -62,13 +62,13 @@ TEST_F(BasicTypesTest, CharLiterals) {
     EXPECT_EQ(obj.as_char(), '\n');
 }
 
-// “ÂÒÚ 5: œÛÒÚÓÈ ÒÔËÒÓÍ
+// –¢–µ—Å—Ç 5: –ü—É—Å—Ç–æ–π —Å–ø–∏—Å–æ–∫
 TEST_F(BasicTypesTest, EmptyList) {
     Object obj = eval("()");
     EXPECT_TRUE(obj.is_empty_list());
 }
 
-// “ÂÒÚ 6: —ÚÓÍË
+// –¢–µ—Å—Ç 6: –°—Ç—Ä–æ–∫–∏
 TEST_F(BasicTypesTest, StringLiterals) {
     Object obj = eval("\"hello\"");
     EXPECT_TRUE(obj.is_string());
@@ -79,18 +79,25 @@ TEST_F(BasicTypesTest, StringLiterals) {
     EXPECT_EQ(obj.as_string(), "test with spaces");
 }
 
-// “ÂÒÚ 7: —ËÏ‚ÓÎ˚ (Ë‰ÂÌÚËÙËÍ‡ÚÓ˚)
+// –¢–µ—Å—Ç 7: –°–∏–º–≤–æ–ª—ã (–∏–¥–µ–Ω—Ç–∏—Ñ–∏–∫–∞—Ç–æ—Ä—ã)
 TEST_F(BasicTypesTest, SymbolLiterals) {
-    // —ËÏ‚ÓÎ˚ Í‡Í ÎËÚÂ‡Î˚ (·ÂÁ ‚˚˜ËÒÎÂÌËˇ) - ËÒÔÓÎ¸ÁÛÂÏ reader ËÁ interpreter
-    Object obj = interp.get_reader().read_from_string("x", "test");
-    EXPECT_TRUE(obj.is_symbol());
-    EXPECT_EQ(obj.as_symbol(), "x");
+    // –°–∏–º–≤–æ–ª—ã –∫–∞–∫ –ª–∏—Ç–µ—Ä–∞–ª—ã (–±–µ–∑ –≤—ã—á–∏—Å–ª–µ–Ω–∏—è) - –∏—Å–ø–æ–ª—å–∑—É–µ–º reader –∏–∑ interpreter
 
-    obj = interp.get_reader().read_from_string("variable-name", "test");
-    EXPECT_TRUE(obj.is_symbol());
-    EXPECT_EQ(obj.as_symbol(), "variable-name");
+    Object obj1 = interp.get_reader().read_from_string("x", "test");
+    auto& expressions1 = obj1.as_pair()->cdr;  // (x)
+    auto& symbol_obj1 = expressions1.as_pair()->car;  // x
+    EXPECT_TRUE(symbol_obj1.is_symbol());
+    EXPECT_STREQ(symbol_obj1.as_symbol().name_ptr, "x");  // ‚Üê –∏—Å–ø–æ–ª—å–∑—É–µ–º STREQ –¥–ª—è C-—Å—Ç—Ä–æ–∫
 
-    obj = interp.get_reader().read_from_string("+", "test");
-    EXPECT_TRUE(obj.is_symbol());
-    EXPECT_EQ(obj.as_symbol(), "+");
+    Object obj2 = interp.get_reader().read_from_string("variable-name", "test");
+    auto& expressions2 = obj2.as_pair()->cdr;  // (variable-name)
+    auto& symbol_obj2 = expressions2.as_pair()->car;  // variable-name
+    EXPECT_TRUE(symbol_obj2.is_symbol());
+    EXPECT_STREQ(symbol_obj2.as_symbol().name_ptr, "variable-name");  // ‚Üê STREQ
+
+    Object obj3 = interp.get_reader().read_from_string("+", "test");
+    auto& expressions3 = obj3.as_pair()->cdr;  // (+)
+    auto& symbol_obj3 = expressions3.as_pair()->car;  // +
+    EXPECT_TRUE(symbol_obj3.is_symbol());
+    EXPECT_STREQ(symbol_obj3.as_symbol().name_ptr, "+");  // ‚Üê STREQ
 }

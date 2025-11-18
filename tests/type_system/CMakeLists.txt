@@ -11,6 +11,8 @@ include_directories(common/script)
 add_executable(type_system_tests
     tests/type_system/test_defenum.cpp
     tests/type_system/test_type_system.cpp
+    tests/type_system/test_deftype.cpp
+    #tests/type_system/test_goos_ts.cpp
 )
 # Тестовый исполняемый файл
 target_link_libraries(type_system_tests type_system_lib script_lib gtest_main fmt)

@@ -62,7 +62,7 @@ namespace script
     private:
         Object read(TokenStream& tokens);
         Object read_impl(std::shared_ptr<SourceText> source);
-        Object read_list(TokenStream& tokens);
+        Object read_list(TokenStream& tokens, bool expect_close_paren = true);
         Object read_atom(const Token& token);
 
         // Tockens

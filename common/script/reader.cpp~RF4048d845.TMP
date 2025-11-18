@@ -117,18 +117,15 @@ namespace script
     Object Reader::read_impl(std::shared_ptr<SourceText> source) {
         TokenStream tokens(std::move(source));
         tokens.skip_whitespace_and_comments();
-
         if (!tokens.has_more()) {
             return Object::make_empty_list();
         }
 
-        // Читаем все выражения без ожидания закрывающей скобки
-        Object result = read_list(tokens, false);  // ← вот это важно!
-
-        return Object::make_pair(
+        Object result = read_list(tokens);
+        return  Object::make_pair(
             Object::make_symbol(&m_symbols, "top-level"),
             result
-        );
+        );;
     }
 
     Object Reader::read(TokenStream& tokens) {
@@ -185,35 +182,38 @@ namespace script
         }
     }
 
-    Object Reader::read_list(TokenStream& tokens, bool expect_close_paren) {
+    Object Reader::read_list(TokenStream& tokens) {
         std::vector<Object> elements;
 
         while (tokens.has_more()) {
             tokens.skip_whitespace_and_comments();
 
             if (!tokens.has_more()) {
-                if (expect_close_paren) {
-                    throw_reader_error(tokens, "Unclosed list - missing ')'");
-                }
-                else {
-                    break;  // конец файла - нормально
-                }
+                throw_reader_error(tokens, "Unclosed list - missing ')'");
             }
 
-            if (expect_close_paren && tokens.peek() == ')') {
+            if (tokens.peek() == ')') {
                 tokens.read(); // consume ")"
                 break;
             }
 
             Object element = read(tokens);
+            //std::cout << "DEBUG read_list: read element: " << element.print() << std::endl;
             elements.push_back(element);
         }
+
+        //std::cout << "DEBUG read_list: elements count: " << elements.size() << std::endl;
+        //for (size_t i = 0; i < elements.size(); i++) {
+        //    std::cout <<  elements[i].print() << " ";
+        // }
 
         // Build proper list from elements
         Object result = Object::make_empty_list();
         for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
             result = Object::make_pair(*it, result);
         }
+
+        //std::cout << "DEBUG read_list: final list: " << result.print() << std::endl;
 
         return result;
     }

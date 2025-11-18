@@ -18,14 +18,23 @@ protected:
 
 // Базовые тесты системы типов
 TEST_F(TypeSystemTest, BasicTypeCreation) {
-    EXPECT_TRUE(ts->fully_defined_type_exists("object"));
-    EXPECT_TRUE(ts->fully_defined_type_exists("int32"));
-    EXPECT_TRUE(ts->fully_defined_type_exists("float"));
+    ts->add_builtin_types();
 
-    Type* int_type = ts->lookup_type("int32");
-    ASSERT_NE(int_type, nullptr);
-    EXPECT_EQ(int_type->get_name(), "int32");
-    EXPECT_EQ(int_type->get_parent(), "object");
+    // Проверяем иерархию КАК В ОРИГИНАЛЕ
+    Type* int_type = ts->lookup_type("int");
+    EXPECT_EQ(int_type->get_parent(), "integer");  // int -> integer
+
+    Type* int32_type = ts->lookup_type("int32");
+    EXPECT_EQ(int32_type->get_parent(), "sinteger");  // int32 -> sinteger
+
+    Type* sinteger_type = ts->lookup_type("sinteger");
+    EXPECT_EQ(sinteger_type->get_parent(), "integer");  // sinteger -> integer
+
+    Type* integer_type = ts->lookup_type("integer");
+    EXPECT_EQ(integer_type->get_parent(), "number");  // integer -> number
+
+    Type* number_type = ts->lookup_type("number");
+    EXPECT_EQ(number_type->get_parent(), "object");  // number -> object
 }
 
 TEST_F(TypeSystemTest, ValueTypeOperations) {
@@ -140,16 +149,57 @@ TEST_F(TypeSystemTest, TypeChecking) {
 }
 
 TEST_F(TypeSystemTest, LowestCommonAncestor) {
+    ts->add_builtin_types();
+
     TypeSpec int_spec = ts->make_typespec("int32");
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // LCA int и int = int
+    // LCA int32 и int32 = int32
     TypeSpec lca_same = ts->lowest_common_ancestor(int_spec, int_spec);
     EXPECT_EQ(lca_same.base_type(), "int32");
 
-    // LCA int и float = object
+    // LCA int32 и float = number (а не object!)
+    // Потому что: int32 -> sinteger -> integer -> number <- float
     TypeSpec lca_diff = ts->lowest_common_ancestor(int_spec, float_spec);
-    EXPECT_EQ(lca_diff.base_type(), "object");
+    EXPECT_EQ(lca_diff.base_type(), "number");
+
+    // LCA int32 и object = object  
+    TypeSpec object_spec = ts->make_typespec("object");
+    TypeSpec lca_object = ts->lowest_common_ancestor(int_spec, object_spec);
+    EXPECT_EQ(lca_object.base_type(), "object");
+}
+
+TEST_F(TypeSystemTest, TypeHierarchy) {
+    ts->add_builtin_types();
+
+    // Проверяем полную цепочку наследования для int32
+    Type* type = ts->lookup_type("int32");
+    std::vector<std::string> path;
+
+    while (type && type->has_parent()) {
+        path.push_back(type->get_name());
+        type = ts->lookup_type(type->get_parent());
+    }
+    path.push_back("object");
+
+    // Должно быть: int32 -> sinteger -> integer -> number -> object
+    std::vector<std::string> expected = { "int32", "sinteger", "integer", "number", "object" };
+    EXPECT_EQ(path, expected);
+}
+
+TEST_F(TypeSystemTest, MethodConstantsUsage) {
+    ts->add_builtin_types();
+
+    // Проверяем, что методы имеют правильные ID
+    MethodInfo new_method = ts->lookup_method("object", "new");
+    EXPECT_EQ(new_method.id, GOAL_NEW_METHOD);
+
+    MethodInfo print_method = ts->lookup_method("object", "print");
+    EXPECT_EQ(print_method.id, GOAL_PRINT_METHOD);
+
+    // Проверяем поиск по ID с константами
+    MethodInfo method_by_id = ts->lookup_method("object", GOAL_NEW_METHOD);
+    EXPECT_EQ(method_by_id.name, "new");
 }
 
 TEST_F(TypeSystemTest, BitFieldType) {

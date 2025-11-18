@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <optional>
 #include "type_spec.h"
+#include "common_types.h"
 
 // Forward declarations
 class Type;
@@ -36,6 +37,19 @@ enum class RegClass {
     FPR,
     INVALID
 };
+
+constexpr u32 GOAL_NEW_METHOD = 0;       // method ID of GOAL new
+constexpr u32 GOAL_DEL_METHOD = 1;       // method ID of GOAL delete
+constexpr u32 GOAL_PRINT_METHOD = 2;     // method ID of GOAL print
+constexpr u32 GOAL_INSPECT_METHOD = 3;   // method ID of GOAL inspect
+constexpr u32 GOAL_LENGTH_METHOD = 4;    // method ID of GOAL length
+constexpr u32 GOAL_ASIZE_METHOD = 5;     // method ID of GOAL size
+constexpr u32 GOAL_COPY_METHOD = 6;      // method ID of GOAL copy
+constexpr u32 GOAL_RELOC_METHOD = 7;     // method ID of GOAL relocate
+constexpr u32 GOAL_MEMUSAGE_METHOD = 8;  // method ID of GOAL mem-usage
+
+constexpr int POINTER_SIZE = 4;
+constexpr int ARRAY_DATA_OFFSET = 16;    // как в оригинале
 
 // ============================================================================
 // Definition Metadata
@@ -237,6 +251,7 @@ public:
     const std::map<std::string, TypeSpec>& get_states_declared_for_type() const { return m_states; }
 
     // Accessors
+    void Type::set_runtime_type(std::string name) { m_runtime_name = std::move(name); }
     std::string get_name() const { return m_name; }
     std::string get_runtime_name() const;
     std::string get_parent() const { return m_parent; }
@@ -260,6 +275,10 @@ public:
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>&
         get_state_definition_meta() { return m_state_definition_meta; }
 
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
+        m_virtual_state_definition_meta = {};
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
+        m_state_definition_meta = {};
 protected:
     virtual std::string diff_impl(const Type& other) const = 0;
     std::string incompatible_diff(const Type& other) const;
@@ -284,10 +303,7 @@ protected:
 
     // Metadata
     DefinitionMetadata m_metadata;
-    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
-        m_virtual_state_definition_meta = {};
-    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
-        m_state_definition_meta = {};
+
 };
 
 // ============================================================================

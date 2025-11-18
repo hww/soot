@@ -117,6 +117,7 @@ struct FieldReverseLookupOutput {
         }
         return false;
     }
+
 };
 
 struct ReverseLookupNode {
@@ -165,7 +166,6 @@ public:
     void forward_declare_type_as(const std::string& new_type, const std::string& parent_type);
     void forward_declare_type_method_count(const std::string& name, int num_methods);
     void forward_declare_type_method_count_multiple_of_4(const std::string& name, int num_methods);
-
     int get_type_method_count(const std::string& name) const;
     std::optional<int> try_get_type_method_count(const std::string& name) const;
     std::string get_runtime_type(const TypeSpec& ts);
@@ -199,6 +199,20 @@ public:
 
     int get_load_size_allow_partial_def(const TypeSpec& ts) const;
 
+    bool is_array_data_access(const TypeSpec& array_type, int offset) const {
+        if (array_type.base_type() == "array" && array_type.has_single_arg()) {
+            return offset >= ARRAY_DATA_OFFSET;
+        }
+        return false;
+    }
+
+    int get_array_data_offset() const {
+        return ARRAY_DATA_OFFSET;
+    }
+
+    int get_pointer_size() const {
+        return POINTER_SIZE;
+    }
     // ========================================================================
     // Method System
     // ========================================================================

@@ -239,17 +239,6 @@ void TypeSpec::add_new_tag(const std::string& tag_name, const std::string& tag_v
     m_tags.emplace_back(tag_name, tag_value);
 }
 
-void TypeSpec::add_new_tag(std::string tag_name, std::string tag_value) {
-    // Check for duplicate tag
-    for (const auto& tag : m_tags) {
-        if (tag.name == tag_name) {
-            throw std::runtime_error(
-                fmt::format("Attempted to add duplicate tag '{}' to TypeSpec", tag_name));
-        }
-    }
-
-    m_tags.emplace_back(std::move(tag_name), std::move(tag_value));
-}
 
 std::optional<std::string> TypeSpec::try_get_tag(const std::string& tag_name) const {
     for (const auto& tag : m_tags) {

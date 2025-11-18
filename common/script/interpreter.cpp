@@ -40,6 +40,7 @@ Interpreter::Interpreter(const std::string& username) {
         {"quote", &Interpreter::eval_quote},
         {"define", &Interpreter::eval_define},
         {"lambda", &Interpreter::eval_lambda},
+        {"top-level", &Interpreter::eval_begin}, // top level evaluation
         {"begin", &Interpreter::eval_begin},
         {"set!", &Interpreter::eval_set},
         {"let", &Interpreter::eval_let},
@@ -270,6 +271,7 @@ void Interpreter::execute_repl() {
         try {
             // read something from the user
             Object code = reader.read_from_string(input, "repl");
+            fmt::print("Reader Returned: {}\n", pretty_print::to_string(code));
             // evaluate
             Object result = eval_with_rewind(code, global_environment.as_env_ptr());
             // Print

@@ -61,52 +61,36 @@ namespace {
 
 } // namespace
 
+// The form is 
+// (defenum simple (entry1) (entry2) (entry3))
+// but this method invoked with
+// (simple (entry1) (entry2) (entry3))
 EnumType* parse_defenum(const script::Object& defenum,
     TypeSystem* ts,
     DefinitionMetadata* symbol_metadata) {
     // Базовая валидация - defenum должен быть списком
-    if (!defenum.is_list()) {
+    if (!defenum.is_pair()) {
         throw std::runtime_error("defenum must be list, got: " + defenum.print());
     }
-
-    const script::Object* iter = &defenum;
-
-    // Проверяем первый элемент - должен быть 'defenum'
-    if (!iter->is_pair()) {
-        throw std::runtime_error("invalid defenum form");
-    }
-
-    auto& first = iter->as_pair()->car;
-    if (!first.is_symbol() || symbol_string(first) != "defenum") {
-        throw std::runtime_error("defenum must start with 'defenum' symbol");
-    }
-
-    // Переходим к имени enum
-    iter = &iter->as_pair()->cdr;
-
-    // Проверяем что есть имя enum
-    if (iter->is_empty_list()) {
-        throw std::runtime_error("defenum must have a name");
-    }
-    if (!iter->is_pair()) {
-        throw std::runtime_error("invalid defenum form");
-    }
-
-    auto& name_obj = iter->as_pair()->car;
-    if (!name_obj.is_symbol()) {
-        throw std::runtime_error("defenum name must be a symbol");
-    }
-
-    std::string name = symbol_string(name_obj);
-    iter = &iter->as_pair()->cdr;
 
     TypeSpec base_type = ts->make_typespec("int64");
     bool is_bitfield = false;
     std::unordered_map<std::string, int64_t> entries;
 
+    const script::Object* iter = &defenum;
+
+    // Проверяем первый элемент - должен быть именем
+    auto& name_obj = iter->as_pair()->car;
+    iter = &iter->as_pair()->cdr;
+    if (!name_obj.is_symbol()) {
+        throw std::runtime_error("defenum name must be a symbol");
+    }
+
+    std::string name = symbol_string(name_obj);
+
     // Проверяем docstring
     std::optional<std::string> maybe_docstring;
-    if (!iter->is_empty_list() && iter->is_pair() && iter->as_pair()->car.is_string()) {
+    if (iter->is_pair() && iter->as_pair()->car.is_string()) {
         if (symbol_metadata) {
             maybe_docstring = iter->as_pair()->car.as_string();
             symbol_metadata->docstring = *maybe_docstring;
@@ -234,15 +218,17 @@ EnumType* parse_defenum(const script::Object& defenum,
 
     // Создаем enum type
     if (is_type("integer", base_type, ts)) {
-        auto parent = ts->get_type_of_type<ValueType>(base_type.base_type());
-        auto new_type = std::make_unique<EnumType>(parent, name, is_bitfield, entries);
-        if (maybe_docstring) {
-            new_type->get_metadata().docstring = *maybe_docstring;
+        auto parent_type = ts->lookup_type(base_type.base_type());
+        if (auto parent_value = dynamic_cast<ValueType*>(parent_type)) {
+            auto new_type = std::make_unique<EnumType>(parent_value, name, is_bitfield, entries);
+            if (maybe_docstring) {
+                new_type->get_metadata().docstring = *maybe_docstring;
+            }
+            new_type->set_runtime_name(parent_value->get_runtime_name());
+            return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));
         }
-        new_type->set_runtime_name(parent->get_runtime_name());
-        return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));
-    }
-    else {
-        throw std::runtime_error("Creating an enum with type " + base_type.print() + " is not allowed or not supported yet.");
+        else {
+            throw std::runtime_error("Parent type " + base_type.print() + " is not a ValueType");
+        }
     }
 }

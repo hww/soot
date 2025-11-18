@@ -14,12 +14,7 @@ namespace {
         throw std::runtime_error(
             fmt::format("Type Error: {}", fmt::format(fmt::runtime(str), std::forward<Args>(args)...)));
     }
-    std::vector<FieldReverseLookupOutput::Token> parent_to_vector(const ReverseLookupNode* parent) {
-        if (!parent) {
-            return {};
-        }
-        return parent->to_vector();
-    }
+
 }  // namespace
 
 // ============================================================================
@@ -28,9 +23,9 @@ namespace {
 
 TypeSystem::TypeSystem() {
     // Add basic null types
-    // add_type("none", std::make_unique<NullType>("none"));
-    // add_type("_type_", std::make_unique<NullType>("_type_"));
-    // add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
+    //add_type("none", std::make_unique<NullType>("none"));
+    //add_type("_type_", std::make_unique<NullType>("_type_"));
+    //add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
 }
 
 // ============================================================================
@@ -54,12 +49,6 @@ Type* TypeSystem::add_type(const std::string& name, std::unique_ptr<Type> type) 
         // Type already exists
         if (*kv->second != *type) {
             // Type is being redefined differently
-            // ДОБАВЛЕНО: Разрешаем переопределение null типов и идентичных типов
-            if (dynamic_cast<NullType*>(type.get()) && dynamic_cast<NullType*>(kv->second.get())) {
-                // Null types are always compatible, allow redefinition
-                return kv->second.get();
-            }
-
             if (m_allow_redefinition ||
                 std::find(m_types_allowed_to_be_redefined.begin(),
                     m_types_allowed_to_be_redefined.end(), name) !=
@@ -74,34 +63,24 @@ Type* TypeSystem::add_type(const std::string& name, std::unique_ptr<Type> type) 
                 throw_typesystem_error(
                     "Inconsistent type definition. Type {} was originally:\n{}\n"
                     "and is redefined as:\n{}\nDiff:\n{}",
-                    name, kv->second->print(), type->print(),
+                    kv->second->get_name(), kv->second->print(), type->print(),
                     kv->second->diff(*type));
             }
-        }
-        else {
-            // Types are identical, return existing
-            return kv->second.get();
         }
     }
     else {
         // New type
         if (name != "object" && name != "none" && name != "_type_" && name != "_varargs_") {
-            // ДОБАВЛЕНО: Проверяем forward declared types более аккуратно
-            auto fwd_parent_it = m_forward_declared_types.find(type->get_parent());
-            if (fwd_parent_it != m_forward_declared_types.end()) {
+            if (m_forward_declared_types.find(type->get_parent()) != m_forward_declared_types.end()) {
                 throw_typesystem_error(
                     "Cannot create new type {}. The parent type {} is not fully defined.",
-                    name, type->get_parent());
+                    type->get_name(), type->get_parent());
             }
 
-            auto parent_it = m_types.find(type->get_parent());
-            if (parent_it == m_types.end()) {
-                // ДОБАВЛЕНО: Для bitfield разрешаем создание без родителя
-                if (type->get_parent() != "bitfield") {
-                    throw_typesystem_error(
-                        "Cannot create new type {}. The parent type {} is not defined.",
-                        name, type->get_parent());
-                }
+            if (m_types.find(type->get_parent()) == m_types.end()) {
+                throw_typesystem_error(
+                    "Cannot create new type {}. The parent type {} is not defined.",
+                    type->get_name(), type->get_parent());
             }
         }
 
@@ -420,10 +399,6 @@ MethodInfo TypeSystem::declare_method(Type* type,
         return add_new_method(type, ts, docstring);
     }
 
-    if (method_name == "delete" && !override_type) {
-        // Можно добавить специальную логику для delete
-        fmt::print("DEBUG: Declaring delete method for type {}\n", type->get_name());
-    }
     // Look for existing method
     MethodInfo existing_info;
     bool got_existing = try_lookup_method(type, method_name, &existing_info);
@@ -524,7 +499,6 @@ bool TypeSystem::try_lookup_method(const Type* type,
 
 MethodInfo TypeSystem::lookup_method(const std::string& type_name,
     const std::string& method_name) const {
-
     if (method_name == "new") {
         return lookup_new_method(type_name);
     }
@@ -788,8 +762,6 @@ ValueType* TypeSystem::add_builtin_value_type(const std::string& parent,
     return get_type_of_type<ValueType>(type_name);
 }
 
-// ============================================================================
-// Builting Types Tree
 // object
 // ├── number
 // │   ├── integer
@@ -809,84 +781,63 @@ ValueType* TypeSystem::add_builtin_value_type(const std::string& parent,
 // ├── structure
 // ├── basic
 // └── ...
-// ============================================================================
-void TypeSystem::add_builtin_types() {
-    // Проверяем что базовые типы еще не инициализированы
-    if (!m_types.empty() && m_types.find("object") != m_types.end()) {
-        return; // Уже инициализированы
-    }
 
+void TypeSystem::add_builtin_types() {
     // Базовые null типы
     add_type("none", std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));
     add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
 
-    // OBJECT - корневой тип
-    auto obj_type = add_type(
-        "object", std::make_unique<ValueType>("object", "object", false, 4, true, RegClass::GPR_64));
+    // Основной тип object
+    add_type("object", std::make_unique<ValueType>("object", "object", false, 4, true, RegClass::GPR_64));
 
-    // Базовые структурные типы
+    // Системные типы
+    add_type("type", std::make_unique<ValueType>("object", "type", false, 4, false, RegClass::GPR_64));
+    add_type("function", std::make_unique<ValueType>("object", "function", false, 4, false, RegClass::GPR_64));
+    add_type("symbol", std::make_unique<ValueType>("object", "symbol", false, 4, false, RegClass::GPR_64));
+    add_type("string", std::make_unique<ValueType>("object", "string", false, 4, false, RegClass::GPR_64));
+
+    // Иерархия структур
     auto structure_type = add_builtin_structure("object", "structure");
     auto basic_type = add_builtin_basic("structure", "basic");
 
-    // BitFieldType должен быть создан ПЕРЕД другими типами, так как они могут на него ссылаться
-    // Создаем BitFieldType как ValueType с правильными параметрами
-    auto bitfield_type = add_type("bitfield",
-        std::make_unique<ValueType>("object", "bitfield", false, 4, false, RegClass::GPR_64));
-
-    // Базовые типы
-    auto symbol_type = add_builtin_basic("basic", "symbol");
-    auto type_type = add_builtin_basic("basic", "type");
-    auto string_type = add_builtin_basic("basic", "string");
-    auto function_type = add_builtin_basic("basic", "function");
-
-    // Матричный тип для тестов
-    auto matrix_type = add_builtin_structure("structure", "matrix");
-
     // ПРАВИЛЬНАЯ числовая иерархия как в OpenGOAL:
     // object -> number -> integer -> sinteger -> int32/int64
-    auto number_type = add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
+    add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
+    add_builtin_value_type("number", "integer", 8, false, false);   // sign extend?
+    add_builtin_value_type("integer", "sinteger", 8, false, true);  // signed integer
+    add_builtin_value_type("integer", "uinteger", 8, false, false); // unsigned integer
 
-    // float
-    auto float_type = add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
+    // Конкретные целочисленные типы
+    add_builtin_value_type("sinteger", "int8", 1, false, true);
+    add_builtin_value_type("sinteger", "int16", 2, false, true);
+    add_builtin_value_type("sinteger", "int32", 4, false, true);
+    add_builtin_value_type("sinteger", "int64", 8, false, true);
 
-    // integer
-    auto integer_type = add_builtin_value_type("number", "integer", 8, false, false, RegClass::GPR_64);
+    add_builtin_value_type("uinteger", "uint8", 1, false, false);
+    add_builtin_value_type("uinteger", "uint16", 2, false, false);
+    add_builtin_value_type("uinteger", "uint32", 4, false, false);
+    add_builtin_value_type("uinteger", "uint64", 8, false, false);
 
-    // signed integers
-    auto sinteger_type = add_builtin_value_type("integer", "sinteger", 8, false, true, RegClass::GPR_64);
-    auto int8_type = add_builtin_value_type("sinteger", "int8", 1, false, true);
-    auto int16_type = add_builtin_value_type("sinteger", "int16", 2, false, true);
-    auto int32_type = add_builtin_value_type("sinteger", "int32", 4, false, true);
-    auto int64_type = add_builtin_value_type("sinteger", "int64", 8, false, true);
+    // Float types
+    add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
 
-    // unsigned integers
-    auto uinteger_type = add_builtin_value_type("integer", "uinteger", 8, false, false, RegClass::GPR_64);
-    auto uint8_type = add_builtin_value_type("uinteger", "uint8", 1, false, false);
-    auto uint16_type = add_builtin_value_type("uinteger", "uint16", 2, false, false);
-    auto uint32_type = add_builtin_value_type("uinteger", "uint32", 4, false, false);
-    auto uint64_type = add_builtin_value_type("uinteger", "uint64", 8, false, false);
+    // Псевдонимы
+    auto int_type = add_builtin_value_type("integer", "int", 8, false, true);
+    int_type->disallow_in_runtime(); // как в оригинале
 
-    // Псевдонимы как в оригинале
-    auto int_type = add_builtin_value_type("integer", "int", 8, false, true, RegClass::GPR_64);
-    int_type->disallow_in_runtime();
-
-    auto uint_type = add_builtin_value_type("uinteger", "uint", 8, false, false, RegClass::GPR_64);
+    auto uint_type = add_builtin_value_type("uinteger", "uint", 8, false, false);
     uint_type->disallow_in_runtime();
 
-    // Добавляем методы object
+    // Битфилд тип
+    add_type("bitfield", std::make_unique<BitFieldType>("object", "bitfield", 4, false));
+
+    // Добавляем объявления методов для object
+    auto obj_type = lookup_type("object");
     declare_method(obj_type, "new", {}, false,
         make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
-    declare_method(obj_type, "delete", {}, false,
-        make_function_typespec({ "_type_" }, "none"), false);
     declare_method(obj_type, "print", {}, false,
         make_function_typespec({ "_type_" }, "_type_"), false);
-    declare_method(obj_type, "inspect", {}, false,
-        make_function_typespec({ "_type_" }, "_type_"), false);
-    declare_method(obj_type, "length", {}, false,
-        make_function_typespec({ "_type_" }, "int"), false);
-
-    fmt::print("DEBUG: Builtin types initialized successfully\n");
 }
 
 // ============================================================================
@@ -1009,10 +960,10 @@ DerefInfo TypeSystem::get_deref_info(const TypeSpec& ts) const {
         auto result_type = lookup_type_allow_partial_def(info.result_type);
 
         if (result_type->is_reference()) {
-            // Array of pointers - ИСПОЛЬЗУЕМ POINTER_SIZE
-            info.stride = POINTER_SIZE;
+            // Array of pointers
+            info.stride = 4; // POINTER_SIZE
             info.sign_extend = false;
-            info.load_size = POINTER_SIZE;
+            info.load_size = 4;
         }
         else {
             // Array of values
@@ -1036,7 +987,7 @@ DerefInfo TypeSystem::get_deref_info(const TypeSpec& ts) const {
             info.sign_extend = false;
 
             if (result_type->is_reference()) {
-                info.stride = result_type->get_size_in_memory();
+                info.stride = result_type->get_size_in_memory(); // Simplified
             }
         }
     }
@@ -1592,17 +1543,10 @@ MethodInfo TypeSystem::overlay_method(Type* type,
             "declared in a parent", method_overlay_name, type->get_name());
     }
 
-    // CORRECTED: Proper construction
-    return type->add_method({ existing_info.id,
-                           method_name,
-                           ts,
-                           type->get_name(),
-                           type->get_name(),
-                           false,
-                           true,
-                           false,
-                           docstring,
-                           std::make_optional(method_overlay_name) });
+    return type->add_method({ existing_info.id, method_name, ts, type->get_name(),
+                            type->get_name(), false, true, false, 
+                            docstring.value_or(""),
+                            std::make_optional(method_overlay_name) });
 }
 
 MethodInfo TypeSystem::override_method(Type* type,
@@ -1675,8 +1619,7 @@ bool TypeSystem::try_lookup_method(const std::string& type_name,
 
     auto* iter_type = kv->second.get();
     while (true) {
-        // РЕАЛЬНОЕ ИСПОЛЬЗОВАНИЕ КОНСТАНТ МЕТОДОВ
-        if (method_id == GOAL_NEW_METHOD) {
+        if (method_id == 0) { // GOAL_NEW_METHOD
             if (iter_type->get_my_new_method(info)) {
                 return true;
             }
@@ -1698,8 +1641,7 @@ bool TypeSystem::try_lookup_method(const std::string& type_name,
 }
 
 MethodInfo TypeSystem::lookup_method(const std::string& type_name, int method_id) const {
-    // РЕАЛЬНОЕ ИСПОЛЬЗОВАНИЕ КОНСТАНТ МЕТОДОВ
-    if (method_id == GOAL_NEW_METHOD) {
+    if (method_id == 0) { // GOAL_NEW_METHOD
         return lookup_new_method(type_name);
     }
 
@@ -1723,6 +1665,7 @@ MethodInfo TypeSystem::lookup_method(const std::string& type_name, int method_id
     throw_typesystem_error("The method with id {} of type {} could not be found",
         method_id, type_name);
 }
+
 // ============================================================================
 // Method ID assertion
 // ============================================================================
@@ -1792,9 +1735,11 @@ int TypeSystem::get_alignment_in_type(const Field& field) {
 
     if (field.is_inline()) {
         if (field.is_array()) {
+            // Выравнивание для inline массивов
             return field_type->get_inline_array_start_alignment();
         }
         else {
+            // Выравнивание для inline объектов
             return field_type->get_in_memory_alignment();
         }
     }
@@ -1803,8 +1748,7 @@ int TypeSystem::get_alignment_in_type(const Field& field) {
         return field_type->get_in_memory_alignment();
     }
 
-    // Reference type - ИСПОЛЬЗУЕМ POINTER_SIZE
-    return POINTER_SIZE;
+    return 4; // POINTER_SIZE
 }
 
 int TypeSystem::get_size_in_type(const Field& field) const {
@@ -1817,13 +1761,18 @@ int TypeSystem::get_size_in_type(const Field& field) const {
     if (field.is_array()) {
         if (field.is_inline()) {
             // INLINE ARRAY: элементы хранятся непосредственно в структуре
+            // НЕ ДОБАВЛЯЕМ ВЫРАВНИВАНИЕ - используем реальный размер!
             int element_size = field_type->get_size_in_memory();
+
+            fmt::print("DEBUG: Inline array element_size: {} (type: {})\n",
+                element_size, field_type->get_name());
+
             return field.array_size() * element_size;
         }
         else {
-            // Обычные массивы (указатели) - ИСПОЛЬЗУЕМ POINTER_SIZE
+            // Обычные массивы (указатели)
             if (field_type->is_reference()) {
-                return field.array_size() * POINTER_SIZE;
+                return field.array_size() * 4; // POINTER_SIZE
             }
             else {
                 return field.array_size() * field_type->get_size_in_memory();
@@ -1834,12 +1783,13 @@ int TypeSystem::get_size_in_type(const Field& field) const {
         // Не массив
         if (field.is_inline()) {
             // INLINE OBJECT: объект хранится непосредственно
+            // НЕ ДОБАВЛЯЕМ ВЫРАВНИВАНИЕ - используем реальный размер!
             return field_type->get_size_in_memory();
         }
         else {
-            // Обычное поле (указатель) - ИСПОЛЬЗУЕМ POINTER_SIZE
+            // Обычное поле (указатель)
             if (field_type->is_reference()) {
-                return POINTER_SIZE;
+                return 4; // POINTER_SIZE
             }
             else {
                 return field_type->get_size_in_memory();
@@ -1847,7 +1797,6 @@ int TypeSystem::get_size_in_type(const Field& field) const {
         }
     }
 }
-
 // ============================================================================
 // Structure inheritance helper
 // ============================================================================
@@ -1974,8 +1923,8 @@ FieldReverseLookupOutput TypeSystem::reverse_field_lookup(const FieldReverseLook
     FieldReverseLookupOutput result;
 
     fmt::print("=== REVERSE LOOKUP START ===\n");
-    fmt::print("DEBUG: Reverse lookup for type {} at offset {}, stride: {}, pointer_size: {}\n",
-        input.base_type.print(), input.offset, input.stride, POINTER_SIZE);
+    fmt::print("DEBUG: Reverse lookup for type {} at offset {}\n",
+        input.base_type.print(), input.offset);
 
     Type* base_type = lookup_type_allow_partial_def(input.base_type);
     if (!base_type) {
@@ -2114,9 +2063,9 @@ std::string FieldReverseLookupOutput::Token::print() const {
     case Kind::FIELD:
         return name;
     case Kind::CONSTANT_IDX:
-        return std::to_string(idx);  
+        return fmt::format("[{}]", idx);
     case Kind::VAR_IDX:
-        return "__VAR__"; 
+        return "[*]";
     default:
         return "?";
     }

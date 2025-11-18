@@ -61,12 +61,13 @@ public:
 
     // Tag management
     void add_new_tag(const std::string& tag_name, const std::string& tag_value);
-    void add_new_tag(std::string tag_name, std::string tag_value);
     std::optional<std::string> try_get_tag(const std::string& tag_name) const;
     const std::string& get_tag(const std::string& tag_name) const;
     void modify_tag(const std::string& tag_name, const std::string& tag_value);
     void add_or_modify_tag(const std::string& tag_name, const std::string& tag_value);
     void delete_tag(const std::string& tag_name);
+    const std::vector<TypeTag>& get_tags() const { return m_tags; }
+    bool has_tag(const std::string& tag_name) const { return try_get_tag(tag_name).has_value(); }
 
     // Type substitution for method calls
     TypeSpec substitute_for_method_call(const std::string& method_type) const;
