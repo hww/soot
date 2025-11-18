@@ -1,37 +1,57 @@
 #include "deftype.h"
-#include "common/util/bit_utils.h"
+
+#include <unordered_map>
+
+#include "common/script/export.h"
+#include "state.h"
+#include "common/log/log.h"
 #include "common/util/string_util.h"
-#include "common/util/assert.h"
 #include "fmt/format.h"
-#include "script/export.h"
 
-template<typename F>
-void for_each_in_list(const script::Object& list, F func) {
-    const script::Object* iter = &list;
-    while (iter->is_pair()) {
-        func(car(iter));  // Передаем КАР объекта, а не весь элемент!
-        iter = cdr(iter);
-    }
-
-    if (!iter->is_empty_list()) {
-        throw std::runtime_error("expected proper list, got: " + list.print());
-    }
-}
+/*!
+ * Missing Features
+ * - Int128 children
+ * - Refer to yourself (structure/basic only)
+ * - Method List
+ */
 
 namespace {
-
     const script::Object& car(const script::Object* x) {
         if (!x->is_pair()) {
-            throw std::runtime_error("invalid deftype form - expected pair, got: " + x->print());
+            throw std::runtime_error("invalid deftype form");
         }
+
         return x->as_pair()->car;
     }
 
     const script::Object* cdr(const script::Object* x) {
         if (!x->is_pair()) {
-            throw std::runtime_error("invalid deftype form - expected pair, got: " + x->print());
+            throw std::runtime_error("invalid deftype form");
         }
+
         return &x->as_pair()->cdr;
+    }
+
+    std::string deftype_parent_list(const script::Object& list) {
+        if (!list.is_pair()) {
+            throw std::runtime_error("invalid parent list in deftype: " + list.print());
+        }
+
+        auto parent = list.as_pair()->car;
+        auto rest = list.as_pair()->cdr;
+        if (!rest.is_empty_list()) {
+            throw std::runtime_error("invalid parent list in deftype - can only have one parent");
+        }
+
+        if (!parent.is_symbol()) {
+            throw std::runtime_error("invalid parent in deftype parent list");
+        }
+
+        return parent.as_symbol().name_ptr;
+    }
+
+    bool is_type(const std::string& expected, const TypeSpec& actual, const TypeSystem* ts) {
+        return ts->tc(ts->make_typespec(expected), actual);
     }
 
     std::string symbol_string(const script::Object& obj) {
@@ -55,106 +75,45 @@ namespace {
         else if (obj.is_float()) {
             return obj.as_float();
         }
-        throw std::runtime_error(obj.print() + " was supposed to be a number, but isn't");
+        throw std::runtime_error(obj.print() + " was supposed to be an number, but isn't");
     }
 
-    bool is_type(const std::string& expected, const TypeSpec& actual, TypeSystem* ts) {
-        return ts->tc(ts->make_typespec(expected), actual);
-    }
+    void add_field(StructureType* structure,
+        TypeSystem* ts,
+        const script::Object& def,
+        script::EnvironmentMap* constants) {
+        auto rest = &def;
 
-    StateHandler handler_name_to_kind(const std::string& name) {
-        if (name == "enter") {
-            return StateHandler::ENTER;
-        }
-        else if (name == "exit") {
-            return StateHandler::EXIT;
-        }
-        else if (name == "code") {
-            return StateHandler::CODE;
-        }
-        else if (name == "event") {
-            return StateHandler::EVENT;
-        }
-        else if (name == "trans") {
-            return StateHandler::TRANS;
-        }
-        else if (name == "post") {
-            return StateHandler::POST;
-        }
-        else {
-            ASSERT(false);
-        }
-    }
-
-    std::string deftype_parent(const script::Object& parent_obj) {
-        if (parent_obj.is_symbol()) {
-            return symbol_string(parent_obj);
-        }
-        else if (parent_obj.is_pair()) {
-            auto& parent = car(&parent_obj);
-            auto* rest = cdr(&parent_obj);
-            if (!rest->is_empty_list()) {
-                throw std::runtime_error("invalid parent list in deftype - can only have one parent");
-            }
-            if (!parent.is_symbol()) {
-                throw std::runtime_error("invalid parent in deftype parent list");
-            }
-            return symbol_string(parent);
-        }
-        else {
-            throw std::runtime_error("invalid parent in deftype: " + parent_obj.print());
-        }
-    }
-
-    void add_field(StructureType* structure, TypeSystem* ts, const script::Object& def) {
-        if (!def.is_pair()) {
-            throw std::runtime_error("field definition must be a list");
-        }
-
-        auto& name_obj = car(&def);
-        auto* rest = cdr(&def);
-
-        if (!name_obj.is_symbol()) {
-            throw std::runtime_error("field name must be a symbol");
-        }
-
-        std::string name = symbol_string(name_obj);
-
-        if (rest->is_empty_list()) {
-            throw std::runtime_error("field definition missing type");
-        }
-
-        auto& type_obj = car(rest);
+        auto name = symbol_string(car(rest));
         rest = cdr(rest);
 
-        TypeSpec type = parse_typespec(ts, type_obj);
+        auto type = parse_typespec(ts, car(rest));
+        rest = cdr(rest);
 
         int array_size = -1;
         bool is_inline = false;
         bool is_dynamic = false;
         int offset_override = -1;
         int offset_assert = -1;
+        double score = 0;
         bool skip_in_decomp = false;
-        double score = 0.0;
         std::optional<TypeSpec> decomp_as_ts = std::nullopt;
         Field override_field;
         bool override = false;
 
         if (!rest->is_empty_list()) {
-            if (rest->is_pair() && car(rest).is_integer()) {
-                array_size = get_int(car(rest));
+            if (car(rest).is_integer()) {
+                array_size = car(rest).as_integer();
+                rest = cdr(rest);
+            }
+            else if (car(rest).is_symbol() && constants && constants->lookup((car(rest)).as_symbol())) {
+                array_size = get_int(*constants->lookup((car(rest)).as_symbol()));
                 rest = cdr(rest);
             }
 
-            while (!rest->is_empty_list() && rest->is_pair()) {
-                auto& opt_name_obj = car(rest);
+            while (!rest->is_empty_list()) {
+                auto opt_name = symbol_string(car(rest));
                 rest = cdr(rest);
-
-                if (!opt_name_obj.is_symbol()) {
-                    throw std::runtime_error("field option must be a symbol");
-                }
-
-                std::string opt_name = symbol_string(opt_name_obj);
 
                 if (opt_name == ":inline") {
                     is_inline = true;
@@ -163,9 +122,6 @@ namespace {
                     is_dynamic = true;
                 }
                 else if (opt_name == ":offset") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":offset requires a value");
-                    }
                     offset_override = get_int(car(rest));
                     rest = cdr(rest);
                 }
@@ -175,24 +131,81 @@ namespace {
                         throw std::runtime_error(fmt::format("Field {} not found to override", name));
                     }
                 }
-                else if (opt_name == ":score") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":score requires a value");
+                else if (opt_name == ":overlay-at") {
+                    const auto& param = car(rest);
+                    rest = cdr(rest);
+                    Field overlay_field;
+                    if (param.is_symbol()) {
+                        auto field_name = symbol_string(param);
+                        if (!structure->lookup_field(field_name, &overlay_field)) {
+                            throw std::runtime_error(
+                                fmt::format("Field {} not found to overlay for {}", field_name, name));
+                        }
+                        offset_override = overlay_field.offset();
                     }
+                    else if (param.is_pair() && car(&param).is_symbol("->")) {
+                        auto name_it = cdr(&param);
+                        if (name_it->is_empty_list()) {
+                            throw std::runtime_error(
+                                fmt::format("Field list for overlay-at in {} was empty", name));
+                        }
+                        auto type_to_use = structure;
+                        offset_override = 0;
+                        while (!name_it->is_empty_list()) {
+                            const auto& deref_field = car(name_it);
+                            if (deref_field.is_integer()) {
+                                auto ref_array_field = !type_to_use && !overlay_field.is_inline()
+                                    ? ts->lookup_type_allow_partial_def(overlay_field.type())
+                                    : nullptr;
+                                if (ref_array_field) {
+                                    // we can have an array of references (non-inline) to a forward-declared type
+                                    offset_override += ref_array_field->get_load_size() * deref_field.as_integer();
+                                }
+                                else {
+                                    auto type_to_deref = type_to_use && overlay_field.is_inline()
+                                        ? TypeSpec("inline-array")
+                                        : TypeSpec("pointer");
+                                    type_to_deref.add_arg(overlay_field.type());
+                                    auto deref_info = ts->get_deref_info(type_to_deref);
+                                    if (!deref_info.can_deref) {
+                                        throw std::runtime_error(
+                                            fmt::format("Array could not be dereferenced for overlay-at in {}", name));
+                                    }
+                                    // overlay_field.type() = deref_info.result_type;
+                                    offset_override += deref_info.stride * deref_field.as_integer();
+                                }
+                            }
+                            else {
+                                if (!type_to_use) {
+                                    throw std::runtime_error(
+                                        fmt::format("Field {} not inside a structure for overlay-at in {}",
+                                            overlay_field.name(), name));
+                                }
+                                auto field_name = symbol_string(car(name_it));
+                                if (!type_to_use->lookup_field(field_name, &overlay_field)) {
+                                    throw std::runtime_error(
+                                        fmt::format("Field {} not found to overlay for {}", field_name, name));
+                                }
+                                type_to_use =
+                                    dynamic_cast<StructureType*>(ts->lookup_type_no_throw(overlay_field.type()));
+                                offset_override += overlay_field.offset();
+                            }
+                            name_it = cdr(name_it);
+                        }
+                    }
+                    else {
+                        throw std::runtime_error(fmt::format("Unknown parameter for overlay-at in {}", name));
+                    }
+                }
+                else if (opt_name == ":score") {
                     score = get_float(car(rest));
                     rest = cdr(rest);
                 }
                 else if (opt_name == ":decomp-as") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":decomp-as requires a value");
-                    }
-                    decomp_as_ts = ts->make_typespec(symbol_string(car(rest)));
+                    decomp_as_ts = TypeSpec(symbol_string(car(rest)));
                     rest = cdr(rest);
                 }
                 else if (opt_name == ":offset-assert") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":offset-assert requires a value");
-                    }
                     offset_assert = get_int(car(rest));
                     if (offset_assert == -1) {
                         throw std::runtime_error("Cannot use -1 as offset-assert");
@@ -237,54 +250,28 @@ namespace {
     }
 
     void add_bitfield(BitFieldType* bitfield_type, TypeSystem* ts, const script::Object& def) {
-        if (!def.is_pair()) {
-            throw std::runtime_error("bitfield definition must be a list");
-        }
+        auto rest = &def;
 
-        auto& name_obj = car(&def);
-        auto* rest = cdr(&def);
-
-        if (!name_obj.is_symbol()) {
-            throw std::runtime_error("bitfield name must be a symbol");
-        }
-
-        std::string name = symbol_string(name_obj);
-
-        if (rest->is_empty_list()) {
-            throw std::runtime_error("bitfield definition missing type");
-        }
-
-        auto& type_obj = car(rest);
+        auto name = symbol_string(car(rest));
         rest = cdr(rest);
 
-        TypeSpec type = parse_typespec(ts, type_obj);
+        auto type = parse_typespec(ts, car(rest));
+        rest = cdr(rest);
 
         int offset_override = -1;
         int size_override = -1;
         bool skip_in_decomp = false;
 
-        if (!rest->is_empty_list() && rest->is_pair()) {
-            while (!rest->is_empty_list() && rest->is_pair()) {
-                auto& opt_name_obj = car(rest);
+        if (!rest->is_empty_list()) {
+            while (!rest->is_empty_list()) {
+                auto opt_name = symbol_string(car(rest));
                 rest = cdr(rest);
 
-                if (!opt_name_obj.is_symbol()) {
-                    throw std::runtime_error("bitfield option must be a symbol");
-                }
-
-                std::string opt_name = symbol_string(opt_name_obj);
-
                 if (opt_name == ":offset") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":offset requires a value");
-                    }
                     offset_override = get_int(car(rest));
                     rest = cdr(rest);
                 }
                 else if (opt_name == ":size") {
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(":size requires a value");
-                    }
                     size_override = get_int(car(rest));
                     rest = cdr(rest);
                 }
@@ -292,16 +279,18 @@ namespace {
                     skip_in_decomp = true;
                 }
                 else {
-                    throw std::runtime_error("Invalid option in bitfield specification: " + opt_name);
+                    throw std::runtime_error("Invalid option in field specification: " + opt_name);
                 }
             }
         }
 
         if (offset_override == -1) {
-            throw std::runtime_error("Bitfield type must manually specify offsets");
+            throw std::runtime_error("Bitfield type must manually specify offsets always");
         }
 
-        ts->add_field_to_bitfield(bitfield_type, name, type, offset_override, size_override, skip_in_decomp);
+        // it's fine if the size is -1, that means it'll just use the type's size.
+        ts->add_field_to_bitfield(bitfield_type, name, type, offset_override, size_override,
+            skip_in_decomp);
     }
 
     struct StructureDefResult {
@@ -336,37 +325,63 @@ namespace {
         }
     };
 
+    StateHandler handler_keyword_to_kind(const std::string& name) {
+        if (name == ":enter") {
+            return StateHandler::ENTER;
+        }
+        else if (name == ":exit") {
+            return StateHandler::EXIT;
+        }
+        else if (name == ":code") {
+            return StateHandler::CODE;
+        }
+        else if (name == ":event") {
+            return StateHandler::EVENT;
+        }
+        else if (name == ":trans") {
+            return StateHandler::TRANS;
+        }
+        else if (name == ":post") {
+            return StateHandler::POST;
+        }
+        else {
+            throw std::runtime_error("Unknown handler keyword: " + name);
+        }
+    }
+
+    std::string handler_kind_to_name(StateHandler kind) {
+        switch (kind) {
+        case StateHandler::ENTER: return "enter";
+        case StateHandler::EXIT: return "exit";
+        case StateHandler::CODE: return "code";
+        case StateHandler::EVENT: return "event";
+        case StateHandler::TRANS: return "trans";
+        case StateHandler::POST: return "post";
+        default: ASSERT(false); return "";
+        }
+    }
+
     void declare_method(Type* type,
         TypeSystem* type_system,
         const script::Object& def,
         StructureDefResult& struct_def) {
-
-        const script::Object* method_iter = &def;
-        while (!method_iter->is_empty_list()) {
-            if (!method_iter->is_pair()) {
-                throw std::runtime_error("invalid methods list structure");
-            }
-
-            auto& method_obj = car(method_iter);
-            method_iter = cdr(method_iter);
-
-
-            // В :methods ВСЕ элементы должны быть списками
-            if (!method_obj.is_pair()) {
-                throw std::runtime_error("Method definition must be list: " + method_obj.print());
-            }
-
+        for_each_in_list(def, [&](const script::Object& _obj) {
+            auto obj = &_obj;
             // (name args return-type [:no-virtual] [:replace] [:state] [:behavior] [id])
+            // or alternatively
+            // (:override-doc "new-docstring" [id])
+            // - this effectively does a :replace without having to re-define the name and signature and
+            // keep that in-sync
             std::string method_name;
             std::string method_overlay_name;
             TypeSpec function_typespec("function");
             std::optional<std::string> docstring;
+            script::Object args;
+            script::Object return_type;
             bool no_virtual = false;
             bool replace_method = false;
             bool overlay_method = false;
             bool overriding_doc = false;
-
-            auto obj = &method_obj;
 
             // name
             method_name = symbol_string(car(obj));
@@ -375,7 +390,7 @@ namespace {
             if (!obj->is_empty_list() && car(obj).is_symbol(":override-doc")) {
                 obj = cdr(obj);
                 if (car(obj).is_string()) {
-                    docstring = car(obj).as_string();
+                    docstring = str_util::trim_newline_indents(car(obj).as_string());
                     overriding_doc = true;
                     obj = cdr(obj);
                 }
@@ -387,80 +402,87 @@ namespace {
             if (!overriding_doc) {
                 // docstring
                 if (obj->is_pair() && car(obj).is_string()) {
-                    docstring = car(obj).as_string();
+                    docstring = str_util::trim_newline_indents(car(obj).as_string());
                     obj = cdr(obj);
                 }
 
                 // args
-                if (obj->is_empty_list()) {
-                    throw std::runtime_error("method missing arguments");
-                }
-                auto& args_obj = car(obj);
+                args = car(obj);
                 obj = cdr(obj);
 
                 // return type
-                if (obj->is_empty_list()) {
-                    throw std::runtime_error("method missing return type");
-                }
-                auto& return_type_obj = car(obj);
+                return_type = car(obj);
                 obj = cdr(obj);
 
-                // Iterate through options
-                while (!obj->is_empty_list() && obj->is_pair() && car(obj).is_symbol()) {
-                    auto& keyword = car(obj);
-                    std::string keyword_str = symbol_string(keyword);
-
-                    if (keyword_str == ":no-virtual") {
+                // Iterate through the remainder of the form's supported keywords
+                // this int is assumed to be the id, and always at the end!
+                //
+                // Doing it like this makes the ordering not critical
+                while (!obj->is_empty_list() && car(obj).is_symbol()) {
+                    const auto& keyword = car(obj).as_symbol();
+                    if (keyword.name_ptr == ":no-virtual") {
                         no_virtual = true;
-                        obj = cdr(obj);
                     }
-                    else if (keyword_str == ":replace") {
+                    else if (keyword.name_ptr == ":replace") {
                         replace_method = true;
-                        obj = cdr(obj);
                     }
-                    else if (keyword_str == ":state") {
+                    else if (keyword.name_ptr == ":state") {
                         function_typespec = TypeSpec("state");
-                        obj = cdr(obj);
-                    }
-                    else if (keyword_str == ":behavior") {
-                        obj = cdr(obj);
-                        if (obj->is_pair() && car(obj).is_symbol()) {
-                            function_typespec.add_new_tag("behavior", symbol_string(car(obj)));
+                        // parse state docstrings if available
+                        if (!cdr(obj)->is_empty_list() && car(cdr(obj)).is_list()) {
                             obj = cdr(obj);
+                            auto docstring_list = &car(obj);
+                            auto elem = docstring_list;
+                            while (!elem->is_empty_list() && car(elem).is_symbol()) {
+                                const auto& handler = car(elem).as_symbol();
+                                const auto handler_kind = handler_keyword_to_kind(handler.name_ptr);
+
+                                // Get the docstring
+                                elem = cdr(elem);
+                                if (!car(elem).is_string()) {
+                                    throw std::runtime_error("Missing a docstring for a state handler!");
+                                }
+                                DefinitionMetadata def_meta;
+                                // TODO - definition location info
+                                def_meta.docstring = car(elem).as_string();
+                                struct_def.append_virtual_state_def(method_name, handler_kind, def_meta);
+
+                                elem = cdr(elem);
+                            }
                         }
-                        else {
+                    }
+                    else if (keyword.name_ptr == ":behavior") {
+                        obj = cdr(obj);
+                        if (!car(obj).is_symbol()) {
+                            lg::print(
+                                ":behavior tag used without providing the process type name in a method "
+                                "declaration. {}::{}\n",
+                                type->get_name(), method_name.c_str());
                             throw std::runtime_error("Bad usage of :behavior in a method declaration");
                         }
+                        function_typespec.add_new_tag("behavior", symbol_string(obj->as_pair()->car));
                     }
-                    else if (keyword_str == ":overlay-at") {
+                    else if (keyword.name_ptr == ":overlay-at") {
                         obj = cdr(obj);
-                        if (obj->is_pair() && car(obj).is_symbol()) {
-                            method_overlay_name = symbol_string(car(obj));
-                            overlay_method = true;
-                            obj = cdr(obj);
-                        }
-                        else {
+                        if (!car(obj).is_symbol()) {
                             throw std::runtime_error("Invalid parameter to method overlay-at");
                         }
+                        method_overlay_name = symbol_string(car(obj));
+                        overlay_method = true;
                     }
-                    else {
-                        // Неизвестная опция
-                        obj = cdr(obj);
-                    }
+                    obj = cdr(obj);
                 }
 
                 // fill in args now that we've finalized the function spec
-                const script::Object* arg_iter = &args_obj;
-                while (!arg_iter->is_empty_list() && arg_iter->is_pair()) {
-                    function_typespec.add_arg(parse_typespec(type_system, car(arg_iter)));
-                    arg_iter = cdr(arg_iter);
-                }
-                function_typespec.add_arg(parse_typespec(type_system, return_type_obj));
+                for_each_in_list(args, [&](const script::Object& o) {
+                    function_typespec.add_arg(parse_typespec(type_system, o));
+                    });
+                function_typespec.add_arg(parse_typespec(type_system, return_type));
             }
 
             if (!obj->is_empty_list()) {
                 throw std::runtime_error(fmt::format("found unknown data in a method declaration:\n{}\n\n{}",
-                    obj->print(), method_obj.print()));
+                    obj->print(), _obj.print()));
             }
 
             if (overlay_method && (no_virtual || replace_method)) {
@@ -481,15 +503,13 @@ namespace {
                 info = type_system->declare_method(type, method_name, docstring, no_virtual,
                     function_typespec, replace_method);
             }
-        }
+            });
     }
 
     void declare_state_methods(Type* type,
         TypeSystem* type_system,
         const script::Object& def,
-        StructureDefResult& /*struct_def*/) 
-    {
-        // either (state-name1 (state-name2 args...) (state-name3 "docstring" args...))
+        StructureDefResult& /*struct_def*/) {
         for_each_in_list(def, [&](const script::Object& _obj) {
             auto obj = &_obj;
             // either state-name or (state-name args...) or (state-name "docstring" args...)
@@ -498,32 +518,28 @@ namespace {
             std::optional<std::string> docstring;
 
             if (obj->is_symbol()) {
-                method_name = symbol_string(*obj);
+                method_name = obj->as_symbol().name_ptr;
             }
-            else if (obj->is_pair()) {
+            else if (obj->is_list()) {
                 if (!car(obj).is_symbol()) {
                     throw std::runtime_error(
                         fmt::format("{} is not a valid name for a state-method", obj->print()));
                 }
-                method_name = symbol_string(car(obj));
-                auto args = cdr(obj);
-
-                if (car(args).is_string()) {
+                method_name = car(obj).as_symbol().name_ptr;
+                auto& args = *cdr(obj);
+                if (car(&args).is_string()) {
                     // docstring first
-                    docstring = car(args).as_string();
-                    args = cdr(args);
+                    docstring = car(&args).as_string();
+                    obj = cdr(&args);
                 }
-
-                const script::Object* arg_iter = args;
-                while (!arg_iter->is_empty_list() && arg_iter->is_pair()) {
-                    function_typespec.add_arg(parse_typespec(type_system, car(arg_iter)));
-                    arg_iter = cdr(arg_iter);
-                }
+                for_each_in_list(args, [&](const script::Object& o) {
+                    function_typespec.add_arg(parse_typespec(type_system, o));
+                    });
             }
             function_typespec.add_arg(TypeSpec("_type_"));
 
             type_system->declare_method(type, method_name, docstring, false, function_typespec, false);
-        });
+            });
     }
 
     void declare_state(Type* type,
@@ -584,42 +600,24 @@ namespace {
     StructureDefResult parse_structure_def(StructureType* type,
         TypeSystem* ts,
         const script::Object& fields,
-        const script::Object& options) {
+        const script::Object& options,
+        script::EnvironmentMap* constants) {
         StructureDefResult result;
-        fmt::print("DEBUG(parse_structure_def): Invoked: with fields {} with options {}\n", 
-            script::pretty_print::to_string(fields),
-            script::pretty_print::to_string(options));
-        // Parse fields
-        const script::Object* field_iter = &fields;
-        while (!field_iter->is_empty_list()) {
-            if (!field_iter->is_pair()) {
-                throw std::runtime_error("invalid field list structure");
-            }
-            auto& field = car(field_iter);
-            add_field(type, ts, field);
-            field_iter = cdr(field_iter);
-        }
-
+        for_each_in_list(fields, [&](const script::Object& o) { add_field(type, ts, o, constants); });
         TypeFlags flags;
         flags.heap_base = 0;
+
         flags.size = type->get_size_in_memory();
         flags.pad = 0;
 
-        // Parse options - ИСПРАВЛЕННАЯ ЛОГИКА
-        const script::Object* rest = &options;
+        auto* rest = &options;
         int size_assert = -1;
         int method_count_assert = -1;
         uint64_t flag_assert = 0;
         bool flag_assert_set = false;
         bool set_heapbase = false;
-
-        fmt::print("DEBUG(parse_structure_def): Options: {}\n", options.print());
-
         while (!rest->is_empty_list()) {
-            auto& option = car(rest);
-            fmt::print("DEBUG(parse_structure_def): Single option: {}\n", option.print());
-
-            if (option.is_pair()) {
+            if (car(rest).is_pair()) {
                 auto opt_list = &car(rest);
                 auto& first = car(opt_list);
                 opt_list = cdr(opt_list);
@@ -627,105 +625,97 @@ namespace {
                 auto list_name = symbol_string(first);
                 if (list_name == ":methods") {
                     declare_method(type, ts, *opt_list, result);
-                } else if (list_name == ":states") {
-                    declare_state(type, ts, *opt_list, result);
-                } else if (list_name == ":state-methods") {
-                    declare_state_methods(type, ts, *opt_list, result);
-                } else {
-                    throw std::runtime_error("Invalid option list: " + list_name);
                 }
-                rest = cdr(rest);
-            } else if (option.is_symbol()) {
-                std::string opt_name = symbol_string(option);
-
-                // Проверяем опции, требующие значения
-                bool requires_value = (opt_name == ":size-assert" || opt_name == ":method-count-assert" ||
-                    opt_name == ":flag-assert" || opt_name == ":heap-base");
-
-                if (requires_value) {
-                    rest = cdr(rest);
-                    if (rest->is_empty_list() || !rest->is_pair()) {
-                        throw std::runtime_error(opt_name + " requires a value");
-                    }
-
-                    auto& value_obj = car(rest);
-
-                    // Обработка значений
-                    if (opt_name == ":size-assert") {
-                        size_assert = get_int(value_obj);
-                        if (size_assert == -1) {
-                            throw std::runtime_error("Cannot use -1 as size-assert");
-                        }
-                    }
-                    else if (opt_name == ":method-count-assert") {
-                        method_count_assert = get_int(value_obj);
-                        if (method_count_assert == -1) {
-                            throw std::runtime_error("Cannot use -1 as method-count-assert");
-                        }
-                    }
-                    else if (opt_name == ":flag-assert") {
-                        flag_assert = get_int(value_obj);
-                        flag_assert_set = true;
-                    }
-                    else if (opt_name == ":heap-base") {
-                        uint16_t hb = get_int(value_obj);
-                        if ((hb % 0x10) != 0) {
-                            throw std::runtime_error("heap-base is not 16-byte aligned");
-                        }
-                        flags.heap_base = hb;
-                        set_heapbase = true;
-                    }
-
-                    rest = cdr(rest);
+                else if (list_name == ":states") {
+                    declare_state(type, ts, *opt_list, result);
+                }
+                else if (list_name == ":state-methods") {
+                    declare_state_methods(type, ts, *opt_list, result);
                 }
                 else {
-                    // Простые опции без значений
-                    if (opt_name == ":no-runtime-type") {
-                        result.generate_runtime_type = false;
-                    }
-                    else if (opt_name == ":no-inspect") {
-                        type->set_gen_inspect(false);
-                    }
-                    else if (opt_name == ":pack-me") {
-                        result.pack_me = true;
-                    }
-                    else if (opt_name == ":allow-misaligned") {
-                        result.allow_misaligned = true;
-                    }
-                    else if (opt_name == ":final") {
-                        result.final = true;
-                    }
-                    else if (opt_name == ":always-stack-singleton") {
-                        result.always_stack_singleton = true;
-                    }
-                    else {
-                        throw std::runtime_error("Invalid option: " + opt_name);
-                    }
-
-                    rest = cdr(rest);
+                    throw std::runtime_error("Invalid option list in field specification: " +
+                        car(rest).print());
                 }
+
+                rest = cdr(rest);
             }
             else {
-                throw std::runtime_error("Option must be a symbol or list: " + option.print());
+                auto opt_name = symbol_string(car(rest));
+                rest = cdr(rest);
+
+                if (opt_name == ":size-assert") {
+                    size_assert = get_int(car(rest));
+                    if (size_assert == -1) {
+                        throw std::runtime_error("Cannot use -1 as size-assert");
+                    }
+                    rest = cdr(rest);
+                }
+                else if (opt_name == ":method-count-assert") {
+                    method_count_assert = get_int(car(rest));
+                    if (method_count_assert == -1) {
+                        throw std::runtime_error("Cannot use -1 as method-count-assert");
+                    }
+                    rest = cdr(rest);
+                }
+                else if (opt_name == ":flag-assert") {
+                    flag_assert = get_int(car(rest));
+                    flag_assert_set = true;
+                    rest = cdr(rest);
+                }
+                else if (opt_name == ":no-runtime-type") {
+                    result.generate_runtime_type = false;
+                }
+                else if (opt_name == ":no-inspect") {
+                    type->set_gen_inspect(false);
+                }
+                else if (opt_name == ":pack-me") {
+                    result.pack_me = true;
+                }
+                else if (opt_name == ":heap-base") {
+                    u16 hb = get_int(car(rest));
+                    if ((hb % 0x10) != 0) {
+                        throw std::runtime_error("heap-base is not 16-byte aligned");
+                    }
+                    rest = cdr(rest);
+                    flags.heap_base = hb;
+                    set_heapbase = true;
+                }
+                else if (opt_name == ":allow-misaligned") {
+                    result.allow_misaligned = true;
+                }
+                else if (opt_name == ":final") {
+                    result.final = true;
+                }
+                else if (opt_name == ":always-stack-singleton") {
+                    result.always_stack_singleton = true;
+                }
+                else {
+                    throw std::runtime_error("Invalid option in field specification: " + opt_name);
+                }
             }
         }
 
-        // Остальная логика проверок
         if (ts->fully_defined_type_exists(TypeSpec("process")) &&
             ts->tc(TypeSpec("process"), TypeSpec(type->get_parent()))) {
+            // check heap-base if this is a child of process.
             auto process_type = ts->get_type_of_type<BasicType>("process");
             auto auto_hb = (flags.size - process_type->size() + 0xf) & ~0xf;
             if (!set_heapbase) {
+                // wasnt set manually so set automatically.
                 flags.heap_base = auto_hb;
             }
             else if (flags.heap_base < auto_hb) {
+                // was set manually so verify if that's correct.
                 throw std::runtime_error(
                     fmt::format("Process heap underflow in type {}: heap-base is {} vs. auto-detected {}",
                         type->get_name(), flags.heap_base, auto_hb));
+                //} else if (flags.heap_base != auto_hb) {
+                //  lg::print("Type {} has manual heap-base ({} vs {}). This is fine. \n", type->get_name(),
+                //             flags.heap_base, auto_hb);
             }
         }
 
-        if (size_assert != -1 && flags.size != uint16_t(size_assert)) {
+        if (size_assert != -1 && flags.size != u16(size_assert)) {
             throw std::runtime_error(
                 fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
                     type->get_name(), int(flags.size), int(flags.size), size_assert));
@@ -733,7 +723,7 @@ namespace {
 
         flags.methods = ts->get_next_method_id(type);
 
-        if (method_count_assert != -1 && flags.methods != uint16_t(method_count_assert)) {
+        if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
             throw std::runtime_error(
                 "Type " + type->get_name() + " has " + std::to_string(int(flags.methods)) +
                 " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
@@ -759,41 +749,20 @@ namespace {
         const script::Object& fields,
         const script::Object& options) {
         BitFieldTypeDefResult result;
-
-        // Parse bitfield fields
-        const script::Object* field_iter = &fields;
-        while (!field_iter->is_empty_list()) {
-            if (!field_iter->is_pair()) {
-                throw std::runtime_error("invalid bitfield field list structure");
-            }
-
-            auto& field = car(field_iter);
-            add_bitfield(type, ts, field);
-            field_iter = cdr(field_iter);
-        }
-
+        for_each_in_list(fields, [&](const script::Object& o) { add_bitfield(type, ts, o); });
         TypeFlags flags;
         flags.heap_base = 0;
         flags.size = type->get_size_in_memory();
         flags.pad = 0;
 
-        // Parse options
-        const script::Object* opt_iter = &options;
+        auto* rest = &options;
         int size_assert = -1;
         int method_count_assert = -1;
         uint64_t flag_assert = 0;
         bool flag_assert_set = false;
-
-        while (!opt_iter->is_empty_list()) {
-            if (!opt_iter->is_pair()) {
-                throw std::runtime_error("invalid option list structure");
-            }
-            fmt::print("DEBUG opt_iter {}", script::pretty_print::to_string(*opt_iter));
-
-            auto& option = car(opt_iter);
-
-            if (option.is_pair()) {
-                auto opt_list = &option;
+        while (!rest->is_empty_list()) {
+            if (car(rest).is_pair()) {
+                auto opt_list = &car(rest);
                 auto& first = car(opt_list);
                 opt_list = cdr(opt_list);
 
@@ -803,42 +772,33 @@ namespace {
                 }
                 else {
                     throw std::runtime_error("Invalid option list in field specification: " +
-                        option.print());
+                        car(rest).print());
                 }
 
-                opt_iter = cdr(opt_iter);
+                rest = cdr(rest);
             }
-            else if (option.is_symbol()) {
-                std::string opt_name = symbol_string(option);
-                opt_iter = cdr(opt_iter);
+            else {
+                auto opt_name = symbol_string(car(rest));
+                rest = cdr(rest);
 
                 if (opt_name == ":size-assert") {
-                    if (opt_iter->is_empty_list() || !opt_iter->is_pair()) {
-                        throw std::runtime_error(":size-assert requires a value");
-                    }
-                    size_assert = get_int(car(opt_iter));
+                    size_assert = get_int(car(rest));
                     if (size_assert == -1) {
                         throw std::runtime_error("Cannot use -1 as size-assert");
                     }
-                    opt_iter = cdr(opt_iter);
+                    rest = cdr(rest);
                 }
                 else if (opt_name == ":method-count-assert") {
-                    if (opt_iter->is_empty_list() || !opt_iter->is_pair()) {
-                        throw std::runtime_error(":method-count-assert requires a value");
-                    }
-                    method_count_assert = get_int(car(opt_iter));
+                    method_count_assert = get_int(car(rest));
                     if (method_count_assert == -1) {
-                        throw std::runtime_error("Cannot use -1 as method-count-assert");
+                        throw std::runtime_error("Cannot use -1 as method_count_assert");
                     }
-                    opt_iter = cdr(opt_iter);
+                    rest = cdr(rest);
                 }
                 else if (opt_name == ":flag-assert") {
-                    if (opt_iter->is_empty_list() || !opt_iter->is_pair()) {
-                        throw std::runtime_error(":flag-assert requires a value");
-                    }
-                    flag_assert = get_int(car(opt_iter));
+                    flag_assert = get_int(car(rest));
                     flag_assert_set = true;
-                    opt_iter = cdr(opt_iter);
+                    rest = cdr(rest);
                 }
                 else if (opt_name == ":no-runtime-type") {
                     result.generate_runtime_type = false;
@@ -847,15 +807,12 @@ namespace {
                     type->set_gen_inspect(false);
                 }
                 else {
-                    throw std::runtime_error("Invalid option: " + opt_name);
+                    throw std::runtime_error("Invalid option in field specification: " + opt_name);
                 }
-            }
-            else {
-                throw std::runtime_error("Option must be a symbol or list: " + option.print());
             }
         }
 
-        if (size_assert != -1 && flags.size != uint16_t(size_assert)) {
+        if (size_assert != -1 && flags.size != u16(size_assert)) {
             throw std::runtime_error(
                 fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
                     type->get_name(), int(flags.size), int(flags.size), size_assert));
@@ -863,7 +820,7 @@ namespace {
 
         flags.methods = ts->get_next_method_id(type);
 
-        if (method_count_assert != -1 && flags.methods != uint16_t(method_count_assert)) {
+        if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
             throw std::runtime_error(
                 "Type " + type->get_name() + " has " + std::to_string(int(flags.methods)) +
                 " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
@@ -879,7 +836,7 @@ namespace {
         return result;
     }
 
-} // namespace
+}  // namespace
 
 TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src) {
     if (src.is_symbol()) {
@@ -887,28 +844,28 @@ TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src) {
     }
     else if (src.is_pair()) {
         TypeSpec ts = type_system->make_typespec(symbol_string(car(&src)));
-        const script::Object* rest = cdr(&src);
+        const auto* rest = cdr(&src);
 
         while (rest->is_pair()) {
-            auto& it = car(rest);
+            auto& it = rest->as_pair()->car;
 
             if (it.is_symbol() && it.as_symbol().name_ptr[0] == ':') {
                 auto tag_name = it.as_symbol().name_ptr + 1;
-                rest = cdr(rest);
+                rest = &rest->as_pair()->cdr;
 
                 if (!rest->is_pair()) {
                     throw std::runtime_error("TypeSpec missing tag value");
                 }
 
-                auto& tag_val = car(rest);
+                auto& tag_val = rest->as_pair()->car;
 
                 if (std::string_view(tag_name) == "behavior") {
-                    if (!type_system->fully_defined_type_exists(symbol_string(tag_val)) &&
-                        !type_system->partially_defined_type_exists(symbol_string(tag_val))) {
+                    if (!type_system->fully_defined_type_exists(tag_val.as_symbol().name_ptr) &&
+                        !type_system->partially_defined_type_exists(tag_val.as_symbol().name_ptr)) {
                         throw std::runtime_error(
-                            fmt::format("Behavior tag uses an unknown type {}", symbol_string(tag_val)));
+                            fmt::format("Behavior tag uses an unknown type {}", tag_val.as_symbol().name_ptr));
                     }
-                    ts.add_new_tag(tag_name, symbol_string(tag_val));
+                    ts.add_new_tag(tag_name, tag_val.as_symbol().name_ptr);
                 }
                 else {
                     throw std::runtime_error(fmt::format("Type tag {} is unknown", tag_name));
@@ -920,7 +877,7 @@ TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src) {
                 ts.add_arg(parse_typespec(type_system, it));
             }
 
-            rest = cdr(rest);
+            rest = &rest->as_pair()->cdr;
         }
 
         return ts;
@@ -932,171 +889,122 @@ TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src) {
     return {};
 }
 
-// For example the form is
-// (deftype test-structure structure ((x int32)))
-// But this method will be invoked with
-// (test-structure structure ((x int32)))
 DeftypeResult parse_deftype(const script::Object& deftype,
     TypeSystem* ts,
-    DefinitionMetadata* symbol_metadata) {
-    // Basic validation
-    if (!deftype.is_list()) {
-        throw std::runtime_error("deftype must be a list");
-    }
+    script::EnvironmentMap* constants) {
+    DefinitionMetadata symbol_metadata;
+    script::EnvironmentMap no_consts;
 
-    const script::Object* iter = &deftype;
+    auto iter = &deftype;
 
-    // Get type name
     auto& type_name_obj = car(iter);
     iter = cdr(iter);
+    auto& parent_list_obj = car(iter);
+    iter = cdr(iter);
+    // check for docstring
+    if (iter->is_pair() && car(iter).is_string()) {
+        symbol_metadata.docstring = str_util::trim_newline_indents(car(iter).as_string());
+        iter = cdr(iter);
+    }
+    auto& field_list_obj = car(iter);
+    iter = cdr(iter);
+    auto& options_obj = *iter;
 
     if (!type_name_obj.is_symbol()) {
         throw std::runtime_error("deftype must be given a symbol as the type name");
     }
-    std::string name = symbol_string(type_name_obj);
 
-    // Get parent
-    auto& parent_obj = car(iter);
-    iter = cdr(iter);
-
-    std::string parent_type_name = deftype_parent(parent_obj);
-    TypeSpec parent_type = ts->make_typespec(parent_type_name);
-
-    // Check for docstring
-    std::optional<std::string> maybe_docstring;
-    if (!iter->is_empty_list() && car(iter).is_string()) {
-        maybe_docstring = car(iter).as_string();
-        if (symbol_metadata) {
-            symbol_metadata->docstring = *maybe_docstring;
-        }
-        iter = cdr(iter);
-    }
-
-    // Get field list
-    if (iter->is_empty_list()) {
-        throw std::runtime_error("deftype missing field list");
-    }
-    auto& field_list_obj = car(iter);
-    iter = cdr(iter);
-
-    // Get options
-    fmt::print("DEBUG(parse_deftype): Iterator before options {}\n", script::pretty_print::to_string(*iter));
-    auto& options_obj = *iter;
-    fmt::print("DEBUG(parse_deftype): options {}\n", script::pretty_print::to_string(options_obj));
-
+    auto& name = type_name_obj.as_symbol().name_ptr;
+    auto parent_type_name = deftype_parent_list(parent_list_obj);
+    auto parent_type = ts->make_typespec(parent_type_name);
     DeftypeResult result;
-    std::unique_ptr<Type> new_type;
     std::optional<StructureDefResult> structure_result;
 
     if (is_type("basic", parent_type, ts)) {
-        auto basic_type = std::make_unique<BasicType>(parent_type_name, name, false, 0);
-        if (maybe_docstring) {
-            basic_type->m_metadata.docstring = *maybe_docstring;
-        }
-
-        // Inherit from parent
-        auto parent_basic = ts->get_type_of_type<BasicType>(parent_type_name);
-        ASSERT(parent_basic);
-        if (parent_basic->final()) {
+        auto new_type = std::make_unique<BasicType>(parent_type_name, name, false, 0);
+        new_type->m_metadata = symbol_metadata;
+        auto pto = dynamic_cast<BasicType*>(ts->lookup_type(parent_type));
+        ASSERT(pto);
+        if (pto->final()) {
             throw std::runtime_error(
                 fmt::format("[TypeSystem] Cannot make a child type {} of final basic type {}", name,
                     parent_type_name));
         }
-        basic_type->inherit(parent_basic);
-
-        // Forward declare before parsing structure
-        ts->forward_declare_type_as(name, parent_basic->get_name());
-
-        auto sr = parse_structure_def(basic_type.get(), ts, field_list_obj, options_obj);
+        new_type->inherit(pto);
+        ts->forward_declare_type_as(name, pto->get_name());
+        auto sr = parse_structure_def(new_type.get(), ts, field_list_obj, options_obj, constants);
         result.flags = sr.flags;
         result.create_runtime_type = sr.generate_runtime_type;
         structure_result = sr;
-
-        if (sr.final) {
-            basic_type->set_final();
-        }
         if (sr.pack_me) {
-            basic_type->set_pack(true);
+            new_type->set_pack(true);
         }
         if (sr.allow_misaligned) {
-            basic_type->set_allow_misalign(true);
+            new_type->set_allow_misalign(true);
         }
         if (sr.always_stack_singleton) {
+            lg::print(
+                "[TypeSystem] :always-stack-singleton was set on {}, which is a basic and cannot "
+                "be a stack singleton\n",
+                name);
             throw std::runtime_error("invalid stack singleton option on basic");
         }
-        basic_type->set_heap_base(result.flags.heap_base);
-
-        new_type = std::move(basic_type);
+        new_type->set_heap_base(result.flags.heap_base);
+        if (sr.final) {
+            new_type->set_final();
+        }
+        ts->add_type(name, std::move(new_type));
     }
     else if (is_type("structure", parent_type, ts)) {
-        auto structure_type = std::make_unique<StructureType>(parent_type_name, name, false, false, false, 0);
-        if (maybe_docstring) {
-            structure_type->m_metadata.docstring = *maybe_docstring;
-        }
-
-        // Inherit from parent
-        auto parent_structure = ts->get_type_of_type<StructureType>(parent_type_name);
-        ASSERT(parent_structure);
-        structure_type->inherit(parent_structure);
-
-        // Forward declare before parsing structure
-        ts->forward_declare_type_as(name, parent_structure->get_name());
-
-        auto sr = parse_structure_def(structure_type.get(), ts, field_list_obj, options_obj);
+        auto new_type = std::make_unique<StructureType>(parent_type_name, name, false, false, false, 0);
+        new_type->m_metadata = symbol_metadata;
+        auto pto = dynamic_cast<StructureType*>(ts->lookup_type(parent_type));
+        ASSERT(pto);
+        new_type->inherit(pto);
+        ts->forward_declare_type_as(name, pto->get_name());
+        auto sr = parse_structure_def(new_type.get(), ts, field_list_obj, options_obj, constants);
         result.flags = sr.flags;
         result.create_runtime_type = sr.generate_runtime_type;
         structure_result = sr;
-
         if (sr.pack_me) {
-            structure_type->set_pack(true);
+            new_type->set_pack(true);
         }
         if (sr.allow_misaligned) {
-            structure_type->set_allow_misalign(true);
+            new_type->set_allow_misalign(true);
         }
         if (sr.always_stack_singleton) {
-            structure_type->set_always_stack_singleton();
+            new_type->set_always_stack_singleton();
         }
         if (sr.final) {
             throw std::runtime_error(
                 fmt::format("[TypeSystem] :final option cannot be used on structure type {}", name));
         }
-        structure_type->set_heap_base(result.flags.heap_base);
-
-        new_type = std::move(structure_type);
+        new_type->set_heap_base(result.flags.heap_base);
+        ts->add_type(name, std::move(new_type));
     }
     else if (is_type("integer", parent_type, ts)) {
-        auto parent_int = ts->lookup_type(parent_type);
-        ASSERT(parent_int);
-        auto bitfield_type = std::make_unique<BitFieldType>(
-            parent_type_name, name, parent_int->get_size_in_memory(), parent_int->get_load_signed());
-
-        if (maybe_docstring) {
-            bitfield_type->m_metadata.docstring = *maybe_docstring;
-        }
-
-        // Inherit from parent
-        auto parent_value = dynamic_cast<ValueType*>(parent_int);
+        auto pto = ts->lookup_type(parent_type);
+        ASSERT(pto);
+        auto new_type = std::make_unique<BitFieldType>(
+            parent_type_name, name, pto->get_size_in_memory(), pto->get_load_signed());
+        new_type->m_metadata = symbol_metadata;
+        auto parent_value = dynamic_cast<ValueType*>(pto);
         ASSERT(parent_value);
-        bitfield_type->inherit(parent_value);
-        bitfield_type->set_runtime_type(parent_int->get_runtime_name());
-
-        auto sr = parse_bitfield_type_def(bitfield_type.get(), ts, field_list_obj, options_obj);
+        new_type->inherit(parent_value);
+        new_type->set_runtime_type(pto->get_runtime_name());
+        auto sr = parse_bitfield_type_def(new_type.get(), ts, field_list_obj, options_obj);
         result.flags = sr.flags;
         result.create_runtime_type = sr.generate_runtime_type;
-
-        new_type = std::move(bitfield_type);
+        ts->add_type(name, std::move(new_type));
     }
     else {
         throw std::runtime_error("Creating a child type from " + parent_type.print() +
             " is not allowed or not supported yet.");
     }
 
-    // Add the type to the type system
-    Type* added_type = ts->add_type(name, std::move(new_type));
     result.type = ts->make_typespec(name);
-    result.type_info = added_type;
+    result.type_info = ts->lookup_type(result.type);
 
-    // Set state definition metadata if available
     if (structure_result) {
         result.type_info->m_state_definition_meta = structure_result->state_definitions;
         result.type_info->m_virtual_state_definition_meta = structure_result->virtual_state_definitions;

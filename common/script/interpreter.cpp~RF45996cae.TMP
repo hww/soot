@@ -129,7 +129,7 @@ Interpreter::Interpreter(const std::string& username) {
         {"read-file", &Interpreter::eval_read_file},
         {"file-exists?", &Interpreter::eval_file_exists_p},
         {"read-data-file", &Interpreter::eval_read_data_file},
-        {"try-load-file",& Interpreter::eval_try_load_file},
+        { "try-load-file",& Interpreter::eval_try_load_file },
        
         // System
         {"system", &Interpreter::eval_system},
@@ -1553,27 +1553,6 @@ Object Interpreter::eval_sqrt(const Object& form, Arguments& args, const std::sh
     return Object::make_float(std::sqrt(val));
 }
 
-
-Object Interpreter::eval_ash(const Object& form,
-    Arguments& args,
-    const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, { {}, {} }, {});
-    auto val = number_to_integer(args.unnamed.at(0));
-    auto sa = number_to_integer(args.unnamed.at(1));
-    if (sa >= 0 && sa < 64) {
-        return Object::make_integer(val << sa);
-    }
-    else if (sa > -64) {
-        return Object::make_integer(val >> -sa);
-    }
-    else {
-        throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
-        return Object::make_empty_list();
-    }
-}
-
-
 // ==============================================
 // Функции сравнения с проверками
 // ==============================================
@@ -2064,39 +2043,6 @@ Object Interpreter::eval_read_file(const Object& form, Arguments& args, const st
     return reader.read_from_string(content, filename);
 }
 
-/*!
- * Combines read-file and eval to load in a file. Return #f if it doesn't exist.
- */
-Object Interpreter::eval_try_load_file(const Object& form,
-    Arguments& args,
-    const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {});
-
-    auto path = args.unnamed.at(0).as_string();
-    std::ifstream file(path);
-    bool exists = file.good();
-    if (!exists) {
-        return m_false_object;
-    }
-
-    Object o;
-    try {
-        o = reader.read_from_file(path);
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("reader error inside of try-load-file:\n") + e.what());
-    }
-
-    try {
-        return eval_with_rewind(o, global_environment.as_env_ptr());
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("eval error inside of try-load-file:\n") + e.what());
-    }
-    return m_true_object;
-}
-
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
@@ -2108,49 +2054,6 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
 
     return make_bool(exists);
 }
-
-//  Reads list data from a file, returns the pair.Not a lot of safety here!
-Object Interpreter::eval_read_data_file(const Object & form,
-    Arguments & args,
-    const std::shared_ptr<EnvironmentObject>&env) {
-    (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {});
-
-    try {
-        return reader.read_from_file({ args.unnamed.at(0).as_string()}).as_pair()->cdr;
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("reader error inside of read-file:\n") + e.what());
-    }
-    return Object::make_empty_list();
-}
-
-
-Object Interpreter::eval_current_directory(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, {}, {}); // Без аргументов
-
-    try {
-        std::string cwd = std::filesystem::current_path().string();
-        return Object::make_string(cwd);
-    }
-    catch (const std::exception& e) {
-        throw_eval_error(form, "cannot get current directory");
-    }
-}
-
-std::string Interpreter::read_entire_file(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file) {
-        throw std::runtime_error("Cannot open file: " + filename);
-    }
-    return std::string((std::istreambuf_iterator<char>(file)),
-        std::istreambuf_iterator<char>());
-}
-
-// ==============================================
-// Системные методы
-// ==============================================
 
 Object Interpreter::eval_get_environment_variable(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -2177,11 +2080,32 @@ Object Interpreter::eval_system(const Object& form, Arguments& args, const std::
     return Object::make_integer(result);
 }
 
+Object Interpreter::eval_current_directory(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, {}, {}); // Без аргументов
+
+    try {
+        std::string cwd = std::filesystem::current_path().string();
+        return Object::make_string(cwd);
+    }
+    catch (const std::exception& e) {
+        throw_eval_error(form, "cannot get current directory");
+    }
+}
 
 Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form; (void)args; (void)env;
     want_exit = true;
     return Object::make_empty_list();
+}
+
+std::string Interpreter::read_entire_file(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file) {
+        throw std::runtime_error("Cannot open file: " + filename);
+    }
+    return std::string((std::istreambuf_iterator<char>(file)),
+        std::istreambuf_iterator<char>());
 }
 
 

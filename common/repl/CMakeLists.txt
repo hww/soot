@@ -21,3 +21,4 @@ endif()
 add_executable(repl common/repl/main.cpp)
 # Исправлено: добавляем связывание с repl_lib
 target_link_libraries(repl PRIVATE repl_lib)
+set_target_properties(repl PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

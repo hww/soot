@@ -50,8 +50,7 @@ TEST(TypeSystemReverse, NestedInlineWeird) {
     auto add_type = [&](const std::string& str) {
         auto exp = reader.read_from_string(str);
         auto& in = exp.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
-        fmt::print("DEBUG NestedInlineWeird {} {} ", script::pretty_print::to_string(exp),
-            script::pretty_print::to_string(in));
+        fmt::print("DEBUG NestedInlineWeird {}", script::pretty_print::node_to_string(*exp));
         parse_deftype(in, &ts);
         };
 

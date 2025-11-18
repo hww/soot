@@ -5,6 +5,27 @@
 #include "fmt/format.h"
 #include "script/export.h"
 
+#define EXPECT_DEFTYPE_THROW(statement) \
+    try { \
+        statement; \
+        FAIL() << "Expected exception but none was thrown"; \
+    } catch (const std::exception& e) { \
+        SUCCEED() << "Caught expected exception: " << typeid(e).name() << " - " << e.what(); \
+    } catch (...) { \
+        SUCCEED() << "Caught expected exception of unknown type"; \
+    }
+void expect_deftype_throws(const std::function<void()>& func) {
+    try {
+        func();
+        FAIL() << "Expected exception but none was thrown";
+    }
+    catch (const std::exception& e) {
+        SUCCEED() << "Caught expected exception: " << typeid(e).name() << " - " << e.what();
+    }
+    catch (...) {
+        SUCCEED() << "Caught expected exception of unknown type";
+    }
+}
 class DefTypeTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -23,7 +44,7 @@ protected:
         // Извлекаем форму deftype: (top-level (deftype name ...))
         // в просто (name ...) 
         auto& deftype_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
-        return parse_deftype(deftype_form, ts);
+        return parse_deftype(deftype_form, ts, nullptr);
     }
 
     TypeSystem* ts;
@@ -33,7 +54,7 @@ protected:
 TEST_F(DefTypeTest, BasicStructure) {
     std::string code = R"(
         (deftype test-structure
-          structure
+          (structure)
           ((x int32)
            (y int32)
            (z int32)))
@@ -52,7 +73,7 @@ TEST_F(DefTypeTest, BasicStructure) {
 TEST_F(DefTypeTest, BasicType) {
     std::string code = R"(
         (deftype test-basic
-          basic
+          (basic)
           ((id int32)
            (name string)))
     )";
@@ -69,7 +90,7 @@ TEST_F(DefTypeTest, BasicType) {
 TEST_F(DefTypeTest, BitfieldType) {
     std::string code = R"(
         (deftype test-bitfield
-          integer
+          (integer)
           ((flag1 uint8 :offset 0 :size 1)
            (flag2 uint8 :offset 1 :size 2)))
     )";
@@ -86,7 +107,7 @@ TEST_F(DefTypeTest, BitfieldType) {
 TEST_F(DefTypeTest, WithDocstring) {
     std::string code = R"(
         (deftype documented-type
-          structure
+          (structure)
           "This is a test type with documentation"
           ((data int32)
            (value float)))
@@ -105,7 +126,7 @@ TEST_F(DefTypeTest, WithDocstring) {
 TEST_F(DefTypeTest, WithMethods) {
     std::string code = R"(
         (deftype method-type
-          structure
+          (structure)
           ((x int32)
            (y int32))
           (:methods
@@ -123,7 +144,7 @@ TEST_F(DefTypeTest, WithMethods) {
 TEST_F(DefTypeTest, ArrayField) {
     std::string code = R"(
         (deftype array-type
-          structure
+          (structure)
           ((count int32)
            (data int32 10 :dynamic)))
     )";
@@ -144,7 +165,7 @@ TEST_F(DefTypeTest, ArrayField) {
 TEST_F(DefTypeTest, InlineField) {
     std::string code = R"(
         (deftype inline-type
-          structure
+          (structure)
           ((transform matrix :inline)
            (id int32)))
     )";
@@ -164,7 +185,7 @@ TEST_F(DefTypeTest, InlineField) {
 TEST_F(DefTypeTest, ComplexOptions) {
     std::string code = R"(
         (deftype complex-type
-          structure
+          (structure)
           ((a int32)
            (b float))
           :pack-me
@@ -186,41 +207,35 @@ TEST_F(DefTypeTest, ComplexOptions) {
 TEST_F(DefTypeTest, InvalidParent) {
     std::string code = R"(
         (deftype invalid-type
-          non-existent-parent
+          (non-existent-parent)
           ((field int32)))
     )";
-    DeftypeResult result = parse_deftype_string(code);
-
-    EXPECT_THROW(result, std::runtime_error);
+    EXPECT_ANY_THROW(parse_deftype_string(code));
 }
 
 TEST_F(DefTypeTest, DuplicateFields) {
     std::string code = R"(
         (deftype duplicate-fields
-          structure
+          (structure)
           ((field int32)
            (field float)))
     )";
-    DeftypeResult result = parse_deftype_string(code);
-
-    EXPECT_THROW(result, std::runtime_error);
+    EXPECT_ANY_THROW(parse_deftype_string(code));
 }
 
 TEST_F(DefTypeTest, InvalidFieldType) {
     std::string code = R"(
         (deftype invalid-field
-          structure
+          (structure)
           ((field non-existent-type)))
     )";
-    DeftypeResult result = parse_deftype_string(code);
-
-    EXPECT_THROW(result, std::runtime_error);
+    EXPECT_ANY_THROW(parse_deftype_string(code));
 }
 
 TEST_F(DefTypeTest, SizeAssert) {
     std::string code = R"(
         (deftype sized-type
-          structure
+          (structure)
           ((a int32)
            (b int32))
           :size-assert 8)
@@ -234,20 +249,19 @@ TEST_F(DefTypeTest, SizeAssert) {
 TEST_F(DefTypeTest, FailedSizeAssert) {
     std::string code = R"(
         (deftype wrong-sized-type
-          structure
+          (structure)
           ((a int32)
            (b int32))
-          :size-assert 4)  ; Ожидаем 4, но будет 8
+          :size-assert 4)
     )";
-    DeftypeResult result = parse_deftype_string(code);
-
-    EXPECT_THROW(result, std::runtime_error);
+    EXPECT_ANY_THROW(parse_deftype_string(code));
 }
+
 
 TEST_F(DefTypeTest, WithStates) {
     std::string code = R"(
         (deftype stateful-type
-          structure
+          (structure)
           ((value int32))
           (:states
             idle
@@ -267,7 +281,7 @@ TEST_F(DefTypeTest, Inheritance) {
     // Сначала создаем родительский тип
     std::string code1 = R"(
         (deftype parent-type
-          structure
+          (structure)
           ((parent-field int32)))
     )";
     DeftypeResult parent_result = parse_deftype_string(code1); // Сохраняем результат родителя
@@ -275,7 +289,7 @@ TEST_F(DefTypeTest, Inheritance) {
     // Затем дочерний тип  
     std::string code2 = R"(
         (deftype child-type
-          parent-type
+          (parent-type)
           ((child-field float)))
     )";
     DeftypeResult child_result = parse_deftype_string(code2); // Сохраняем результат ребенка

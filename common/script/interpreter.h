@@ -126,15 +126,25 @@ namespace script
         Object eval_hash_table_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_hash_table_try_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Системные и ввод-вывод
         Object eval_print(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_error(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_format(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+
+        // файлы
         Object eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_data_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_try_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Система
         Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_environment_variable(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_current_directory(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -158,6 +168,7 @@ namespace script
         Object eval_min(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_expt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_sqrt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ash(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Quasiquote helpers
         Object quasiquote_helper(const Object& form, const std::shared_ptr<EnvironmentObject>& env);

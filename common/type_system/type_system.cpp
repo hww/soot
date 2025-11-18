@@ -236,7 +236,7 @@ TypeSpec TypeSystem::make_typespec(const std::string& name) const {
         return TypeSpec(name);
     }
     else {
-        throw_typesystem_error("Type {} is unknown", name);
+        throw_typesystem_error("Can't make typespec for unknow type `{}`", name);
     }
 }
 
@@ -874,6 +874,9 @@ void TypeSystem::add_builtin_types() {
     auto uint_type = add_builtin_value_type("uinteger", "uint", 8, false, false, RegClass::GPR_64);
     uint_type->disallow_in_runtime();
 
+    // Предеклорация
+    forward_declare_type_as("memory-usage-block", "basic");
+
     // Добавляем методы object
     declare_method(obj_type, "new", {}, false,
         make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
@@ -885,6 +888,28 @@ void TypeSystem::add_builtin_types() {
         make_function_typespec({ "_type_" }, "_type_"), false);
     declare_method(obj_type, "length", {}, false,
         make_function_typespec({ "_type_" }, "int"), false);
+    declare_method(obj_type, "asize-of", {}, false,
+        make_function_typespec({ "_type_" }, "int"), false);
+    declare_method(obj_type, "copy", {}, false,
+        make_function_typespec({ "_type_", "symbol" }, "_type_"), false);
+    declare_method(obj_type, "relocate", {}, false,
+        make_function_typespec({ "_type_", "int" }, "_type_"), false);
+    declare_method(obj_type, "mem-usage", {}, false,
+        make_function_typespec({ "_type_", "memory-usage-block", "int" }, "_type_"), false);
+
+    // Добавлегте полей
+    add_field_to_type(basic_type, "type", make_typespec("type"));
+
+    // TYPE
+    builtin_structure_inherit(type_type);
+    declare_method(type_type, "new", {}, false, make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
+    add_field_to_type(type_type, "symbol", make_typespec("symbol"));
+    add_field_to_type(type_type, "parent", make_typespec("type"));
+    add_field_to_type(type_type, "size",  make_typespec("uint16"));  // actually u16
+    add_field_to_type(type_type, "psize", make_typespec("uint16"));  // todo, u16 or s16. what really is this?
+    add_field_to_type(type_type, "heap-base", make_typespec("uint16"));         // todo
+    add_field_to_type(type_type, "allocated-length", make_typespec("uint16"));  // todo
+    add_field_to_type(type_type, "method-table", make_typespec("function"), false, true);
 
     fmt::print("DEBUG: Builtin types initialized successfully\n");
 }
@@ -1787,24 +1812,33 @@ bool TypeSystem::try_lookup_method(const std::string& type_name,
 // Field alignment and size calculations (упрощенные версии)
 // ============================================================================
 
+int align(int value, int alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
 int TypeSystem::get_alignment_in_type(const Field& field) {
     auto field_type = lookup_type_allow_partial_def(field.type());
 
+    int alignment = POINTER_SIZE;
+
     if (field.is_inline()) {
         if (field.is_array()) {
-            return field_type->get_inline_array_start_alignment();
+            alignment = field_type->get_inline_array_start_alignment();
         }
         else {
-            return field_type->get_in_memory_alignment();
+            alignment = field_type->get_in_memory_alignment();
         }
     }
 
     if (!field_type->is_reference()) {
-        return field_type->get_in_memory_alignment();
+        alignment = field_type->get_in_memory_alignment();
     }
 
+    fmt::print("DEBUG: Field {} type {} alignment: {}\n",
+        field.name(), field_type->get_name(), alignment);
+
     // Reference type - ИСПОЛЬЗУЕМ POINTER_SIZE
-    return POINTER_SIZE;
+    return alignment;
 }
 
 int TypeSystem::get_size_in_type(const Field& field) const {
@@ -1821,12 +1855,14 @@ int TypeSystem::get_size_in_type(const Field& field) const {
             return field.array_size() * element_size;
         }
         else {
-            // Обычные массивы (указатели) - ИСПОЛЬЗУЕМ POINTER_SIZE
+            // Обычные массивы (указатели)
             if (field_type->is_reference()) {
                 return field.array_size() * POINTER_SIZE;
             }
             else {
-                return field.array_size() * field_type->get_size_in_memory();
+                // ВАЖНО: выравниваем каждый элемент!
+                int aligned_element_size = align(field_type->get_size_in_memory(), field_type->get_in_memory_alignment());
+                return field.array_size() * aligned_element_size;
             }
         }
     }
@@ -1837,12 +1873,13 @@ int TypeSystem::get_size_in_type(const Field& field) const {
             return field_type->get_size_in_memory();
         }
         else {
-            // Обычное поле (указатель) - ИСПОЛЬЗУЕМ POINTER_SIZE
+            // Обычное поле
             if (field_type->is_reference()) {
                 return POINTER_SIZE;
             }
             else {
-                return field_type->get_size_in_memory();
+                // ВАЖНО: выравниваем размер поля!
+                return align(field_type->get_size_in_memory(), field_type->get_in_memory_alignment());
             }
         }
     }

@@ -52,6 +52,7 @@ namespace script
         Reader();
 
         Object read_from_string(const std::string& code, const std::string& source_name = "string");
+        Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding);
         Object read_from_file(const std::string& filename);
 
         SymbolTable& get_symbol_table() { return m_symbols; }

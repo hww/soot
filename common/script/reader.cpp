@@ -3,6 +3,8 @@
 #include <sstream>
 #include <cctype>
 #include <iostream>
+#include "fmt/format.h"
+#include "fmt/ranges.h"
 
 namespace script
 {
@@ -97,6 +99,23 @@ namespace script
         auto source = std::make_shared<StringSource>(code, source_name);
         m_sources.register_source(source);
         return read_impl(std::move(source));
+    }
+
+    Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding) {
+        std::string joined_file_path = fmt::format("{}", fmt::join(file_path, "/"));
+        std::ifstream file(joined_file_path);
+        bool exists = file.good();
+
+        if (!exists) {
+            throw std::runtime_error(fmt::format("Cannot read {}, file doesn't exist", joined_file_path));
+        }
+
+        auto textFrag = std::make_shared<FileSource>(joined_file_path, file_descriptor);
+        db.insert(textFrag);
+
+        auto result = internal_read(textFrag, check_encoding);
+        db.link(result, textFrag, 0);
+        return result;
     }
 
     Object Reader::read_from_file(const std::string& filename) {

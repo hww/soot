@@ -8,6 +8,7 @@ add_library(type_system_lib
     common/type_system/state.cpp
     common/util/bit_utils.cpp
     common/util/string_util.cpp
+    common/util/diff.cpp
     common/log/log.cpp
 )
 

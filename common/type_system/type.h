@@ -303,8 +303,6 @@ protected:
 
     // State system
     std::map<std::string, TypeSpec> m_states;
-
-
 };
 
 // ============================================================================
