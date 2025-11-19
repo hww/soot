@@ -8,7 +8,7 @@ project(repl
 )
 
 # C++ Modern CMake policies
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -39,6 +39,7 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /utf-8 /W4")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2")
+    add_compile_options(/diagnostics:caret)  # Показывать конкретные строки
 else()
     # GCC/Clang flags
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
@@ -80,10 +81,9 @@ add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 
 
 # Include subdirectories
-include(common/cross_sockets/CMakeLists.txt)
 include(common/script/CMakeLists.txt)
-include(common/type_system/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
+include(common/type_system/CMakeLists.txt)
 
 # Installation (optional)
 install(TARGETS lisp

@@ -6,7 +6,7 @@
 #include "script/reader.h"
 #include "script/object.h"
 #include "script/interpreter.h"
-#include "script/source_info.h"
+#include "script/text_db.h"
 
 using namespace script;
 

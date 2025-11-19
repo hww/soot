@@ -5,6 +5,10 @@
 #include "fmt/base.h"
 #include "fmt/format.h"
 #include "log/log.h"
+#include "util/crc32.h"
+#include "util/file_util.h"
+#include "util/string_util.h"
+#include "util/unicode_util.h"
 
 #include <sstream>
 #include <filesystem>
@@ -13,14 +17,15 @@ namespace script
 {
 Interpreter::Interpreter(const std::string& username) {
     // Инициализируем boolean объекты как символы
-    m_true_object = Object::make_symbol(&reader.m_symbols, "#t");
-    m_false_object = Object::make_symbol(&reader.m_symbols, "#f");
+    auto& symbols = reader.get_symbol_table();
+    m_true_object = Object::make_symbol(&symbols, "#t");
+    m_false_object = Object::make_symbol(&symbols, "#f");
 
     // Создаем глобальное окружение
     global_environment = EnvironmentObject::make_new("global");
     define_var_in_env(global_environment, global_environment, "*global*");
 
-    auto user = Object::make_symbol(&reader.m_symbols, username.c_str());
+    auto user = Object::make_symbol(&symbols, username.c_str());
     define_var_in_env(global_environment, user, "*user*");
 
     // Инициализация string_to_type для type?
@@ -247,7 +252,7 @@ void Interpreter::define_var_in_env(const Object& env, const Object& var, const 
 // ==============================================
 
 Object Interpreter::intern(const std::string& name) {
-    return Object::make_symbol(&reader.m_symbols, name.c_str());
+    return Object::make_symbol(&reader.get_symbol_table(), name.c_str());
 }
 
 void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
@@ -255,7 +260,7 @@ void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
-    return reader.m_symbols.intern(name.c_str());
+    return reader.get_symbol_table().intern(name.c_str());
 }
 
 // ==============================================
@@ -302,7 +307,7 @@ void Interpreter::execute_repl() {
 Object Interpreter::eval_string(const std::string& expression, const std::string& filename)
 {
     // read something from the user
-    Object code = reader.read_from_string(expression, filename);
+    Object code = reader.read_from_string(expression, true, filename);
     // evaluate
     return eval_with_rewind(code, global_environment.as_env_ptr());
 }
@@ -352,7 +357,7 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
     catch (std::runtime_error& e) {
         if (!disable_printing) {
             printf("-----------------------------------------\n");
-            printf("From object %s\nat %s\n", obj.inspect().c_str(), reader.m_sources.get_info_for(obj).c_str());
+            printf("From object %s\nat %s\n", obj.inspect().c_str(), reader.get_db().get_info_for(obj).c_str());
         }
         throw;
     }
@@ -495,6 +500,7 @@ Object Interpreter::eval_lambda(const Object& form, const Object& rest,
 }
 
 Object Interpreter::eval_begin(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form;
     Object current = rest;
     Object result = Object::make_empty_list();
 
@@ -575,6 +581,7 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest, const std:
 }
 
 Object Interpreter::eval_and(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form;
     Object current = rest;
     Object result = m_true_object;
 
@@ -590,6 +597,7 @@ Object Interpreter::eval_and(const Object& form, const Object& rest, const std::
 }
 
 Object Interpreter::eval_or(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form;
     Object current = rest;
 
     while (current.is_pair()) {
@@ -926,6 +934,7 @@ double Interpreter::number_to_float(const Object& obj) {
     else {
         throw_eval_error(obj, "object cannot be converted to float");
     }
+    return 0;
 }
 
 bool Interpreter::is_number(const Object& obj) {
@@ -1275,14 +1284,14 @@ Object Interpreter::eval_format(const Object& form,
     fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
     for (size_t i = 2; i < args.unnamed.size(); i++) {
         if (args.unnamed.at(i).is_string()) {
-            arg_store.push_back(args.unnamed.at(i).as_string());
+            arg_store.push_back(args.unnamed.at(i).as_string()->data);
         }
         else {
             arg_store.push_back(args.unnamed.at(i).print());
         }
     }
 
-    auto formatted = fmt::vformat(format_str.as_string(), arg_store);
+    auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
     if (truthy(dest)) {
         lg::print("{}", formatted.c_str());
     }
@@ -1295,7 +1304,7 @@ Object Interpreter::eval_error(const Object& form,
     const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {});
-    throw_eval_error(form, "Error: " + args.unnamed.at(0).as_string());
+    throw_eval_error(form, "Error: " + args.unnamed.at(0).as_string()->data);
     return Object::make_empty_list();
 }
 
@@ -1711,7 +1720,7 @@ Object Interpreter::eval_length(const Object& form, Arguments& args, const std::
 
 Object Interpreter::eval_append(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-
+    (void)form;
     if (args.unnamed.empty()) {
         return Object::make_empty_list();
     }
@@ -1828,14 +1837,14 @@ Object Interpreter::eval_eqv(const Object& form, Arguments& args, const std::sha
 Object Interpreter::eval_string_length(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
-    return Object::make_integer(args.unnamed[0].as_string().length());
+    return Object::make_integer(args.unnamed[0].as_string()->length());
 }
 
 Object Interpreter::eval_string_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING, ObjectType::INTEGER }, {}); // Строка и индекс
 
-    const std::string& str = args.unnamed[0].as_string();
+    const std::string& str = args.unnamed[0].as_string()->data;
     int64_t index = args.unnamed[1].as_integer();
 
     if (index < 0 || index >= static_cast<int64_t>(str.length())) {
@@ -1854,7 +1863,7 @@ Object Interpreter::eval_string_append(const Object& form, Arguments& args, cons
         if (!arg.is_string()) {
             throw_eval_error(form, "string-append requires string arguments");
         }
-        result += arg.as_string();
+        result += arg.as_string()->data;
     }
     return Object::make_string(result);
 }
@@ -1863,7 +1872,7 @@ Object Interpreter::eval_substring(const Object& form, Arguments& args, const st
     (void)env;
     vararg_check(form, args, { ObjectType::STRING, ObjectType::INTEGER, ObjectType::INTEGER }, {}); // Строка, начало, конец
 
-    const std::string& str = args.unnamed[0].as_string();
+    const std::string& str = args.unnamed[0].as_string()->data;
     int64_t start = args.unnamed[1].as_integer();
     int64_t end = args.unnamed[2].as_integer();
 
@@ -1877,7 +1886,7 @@ Object Interpreter::eval_substring(const Object& form, Arguments& args, const st
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
-    return Object::make_symbol(&reader.m_symbols, args.unnamed[0].as_string().c_str());
+    return Object::make_symbol(&reader.get_symbol_table(), args.unnamed[0].as_string()->c_str());
 }
 
 Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1902,14 +1911,14 @@ Object Interpreter::eval_vector_ref(const Object& form, Arguments& args, const s
     (void)env;
     vararg_check(form, args, { ObjectType::ARRAY, ObjectType::INTEGER }, {}); // Вектор и индекс
 
-    auto elements = args.unnamed[0].as_vector();
+    auto elements = args.unnamed[0].as_array();
     int64_t index = args.unnamed[1].as_integer();
 
-    if (index < 0 || index >= static_cast<int64_t>(elements.size())) {
+    if (index < 0 || index >= static_cast<int64_t>(elements->size())) {
         throw_eval_error(form, "vector-ref: index out of range");
     }
 
-    return elements[index];
+    return elements->at(index);
 }
 
 Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1922,18 +1931,18 @@ Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const s
     }
 
     int64_t index = args.unnamed[1].as_integer();
-    if (index < 0 || index >= static_cast<int64_t>(vec_ptr->elements.size())) {
+    if (index < 0 || index >= static_cast<int64_t>(vec_ptr->data.size())) {
         throw_eval_error(form, "vector-set!: index out of range");
     }
 
-    vec_ptr->elements[index] = args.unnamed[2];
+    vec_ptr->data[index] = args.unnamed[2];
     return args.unnamed[2];
 }
 
 Object Interpreter::eval_vector_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::ARRAY }, {}); // Один вектор
-    return Object::make_integer(args.unnamed[0].as_vector().size());
+    return Object::make_integer(args.unnamed[0].as_array()->size());
 }
 
 // ==============================================
@@ -1956,7 +1965,7 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     std::string key;
 
     if (args.unnamed[1].is_string()) {
-        key = args.unnamed[1].as_string();
+        key = args.unnamed[1].as_string()->data;
     }
     else if (args.unnamed[1].is_symbol()) {
         key = args.unnamed[1].as_symbol().name_ptr ? args.unnamed[1].as_symbol().name_ptr : "";
@@ -1977,7 +1986,7 @@ Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, con
     std::string key;
 
     if (args.unnamed[1].is_string()) {
-        key = args.unnamed[1].as_string();
+        key = args.unnamed[1].as_string()->data;
     }
     else if (args.unnamed[1].is_symbol()) {
         key = args.unnamed[1].as_symbol().name_ptr ? args.unnamed[1].as_symbol().name_ptr : "";
@@ -2006,7 +2015,7 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form,
         str = args.unnamed.at(1).as_symbol().name_ptr;
     }
     else if (args.unnamed.at(1).is_string()) {
-        str = args.unnamed.at(1).as_string().c_str();
+        str = args.unnamed.at(1).as_string()->c_str();
     }
     else {
         throw_eval_error(form, "Hash table must use symbol or string as the key.");
@@ -2036,32 +2045,34 @@ Object Interpreter::eval_read(const Object & form, Arguments & args, const std::
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
 
     try {
-        return reader.read_from_string(args.unnamed[0].as_string(), "read input");
+        return reader.read_from_string(args.unnamed[0].as_string()->data, "read input");
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("read error: ") + e.what());
     }
+    return m_false_object;
 }
 
 Object Interpreter::eval_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
     try {
-        Object code = reader.read_from_file(args.unnamed[0].as_string());
+        Object code = reader.read_from_file({ args.unnamed[0].as_string()->data }, true);
         return eval_with_rewind(code, env);
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("load-file error: ") + e.what());
     }
+    return m_false_object;
 }
 
 Object Interpreter::eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
-    std::string filename = args.unnamed[0].as_string();
+    std::string filename = args.unnamed[0].as_string()->data;
     std::string content = read_entire_file(filename);
-    return reader.read_from_string(content, filename);
+    return reader.read_from_string(content, true, filename);
 }
 
 /*!
@@ -2073,7 +2084,7 @@ Object Interpreter::eval_try_load_file(const Object& form,
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {});
 
-    auto path = args.unnamed.at(0).as_string();
+    auto path = args.unnamed.at(0).as_string()->data;
     std::ifstream file(path);
     bool exists = file.good();
     if (!exists) {
@@ -2082,7 +2093,7 @@ Object Interpreter::eval_try_load_file(const Object& form,
 
     Object o;
     try {
-        o = reader.read_from_file(path);
+        o = reader.read_from_file({ path });
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("reader error inside of try-load-file:\n") + e.what());
@@ -2101,7 +2112,7 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
-    std::string filename = args.unnamed[0].as_string();
+    std::string filename = args.unnamed[0].as_string()->data;
     std::ifstream file(filename);
     bool exists = file.good();
     file.close();
@@ -2117,7 +2128,7 @@ Object Interpreter::eval_read_data_file(const Object & form,
     vararg_check(form, args, { ObjectType::STRING }, {});
 
     try {
-        return reader.read_from_file({ args.unnamed.at(0).as_string()}).as_pair()->cdr;
+        return reader.read_from_file({ args.unnamed.at(0).as_string()->data}).as_pair()->cdr;
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("reader error inside of read-file:\n") + e.what());
@@ -2137,6 +2148,7 @@ Object Interpreter::eval_current_directory(const Object& form, Arguments& args, 
     catch (const std::exception& e) {
         throw_eval_error(form, "cannot get current directory");
     }
+    return m_false_object;
 }
 
 std::string Interpreter::read_entire_file(const std::string& filename) {
@@ -2156,7 +2168,7 @@ Object Interpreter::eval_get_environment_variable(const Object& form, Arguments&
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя переменной)
 
-    std::string var_name = args.unnamed[0].as_string();
+    std::string var_name = args.unnamed[0].as_string()->data;
     const char* value = std::getenv(var_name.c_str());
 
     if (value) {
@@ -2171,7 +2183,7 @@ Object Interpreter::eval_system(const Object& form, Arguments& args, const std::
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (команда)
 
-    std::string command = args.unnamed[0].as_string();
+    std::string command = args.unnamed[0].as_string()->data;
     int result = std::system(command.c_str());
 
     return Object::make_integer(result);
@@ -2194,7 +2206,7 @@ Object Interpreter::eval_gensym(const Object & form, Arguments & args, const std
     vararg_check(form, args, {}, {}); // Без аргументов
 
     std::string name = "gensym" + std::to_string(gensym_id++);
-    return Object::make_symbol(&reader.m_symbols, name.c_str());
+    return Object::make_symbol(&reader.get_symbol_table(), name.c_str());
 }
 
 Object Interpreter::eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2259,7 +2271,7 @@ Object Interpreter::eval_string_to_number(const Object& form, Arguments& args, c
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, { {"base", {false, ObjectType::INTEGER}} }); // Строка и опционально основание
 
-    std::string str = args.unnamed[0].as_string();
+    std::string str = args.unnamed[0].as_string()->data;
     int base = 10;
 
     if (args.has_named("base")) {

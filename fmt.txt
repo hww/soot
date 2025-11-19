@@ -1,0 +1,2 @@
+common/old/repl/nrepl/ReplServer.cpp:  std::string msg = fmt::format("[ERROR]: {}", error);
+common/old/repl/nrepl/ReplServer.cpp:  std::string ping = fmt::format("Connected to OpenGOAL v{}.{} nREPL!",

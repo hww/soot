@@ -1,3 +1,5 @@
+include(common/cross_sockets/CMakeLists.txt)
+
 add_library(repl_lib
     common/repl/config.cpp
     common/repl/repl_wrapper.cpp

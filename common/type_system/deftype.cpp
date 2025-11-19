@@ -390,7 +390,7 @@ namespace {
             if (!obj->is_empty_list() && car(obj).is_symbol(":override-doc")) {
                 obj = cdr(obj);
                 if (car(obj).is_string()) {
-                    docstring = str_util::trim_newline_indents(car(obj).as_string());
+                    docstring = str_util::trim_newline_indents(car(obj).as_string()->data);
                     overriding_doc = true;
                     obj = cdr(obj);
                 }
@@ -402,7 +402,7 @@ namespace {
             if (!overriding_doc) {
                 // docstring
                 if (obj->is_pair() && car(obj).is_string()) {
-                    docstring = str_util::trim_newline_indents(car(obj).as_string());
+                    docstring = str_util::trim_newline_indents(car(obj).as_string()->data);
                     obj = cdr(obj);
                 }
 
@@ -444,7 +444,7 @@ namespace {
                                 }
                                 DefinitionMetadata def_meta;
                                 // TODO - definition location info
-                                def_meta.docstring = car(elem).as_string();
+                                def_meta.docstring = car(elem).as_string()->data;
                                 struct_def.append_virtual_state_def(method_name, handler_kind, def_meta);
 
                                 elem = cdr(elem);
@@ -529,7 +529,7 @@ namespace {
                 auto& args = *cdr(obj);
                 if (car(&args).is_string()) {
                     // docstring first
-                    docstring = car(&args).as_string();
+                    docstring = car(&args).as_string()->data;
                     obj = cdr(&args);
                 }
                 for_each_in_list(args, [&](const script::Object& o) {
@@ -567,7 +567,7 @@ namespace {
                         }
                         DefinitionMetadata def_meta;
                         // TODO - definition location info
-                        def_meta.docstring = car(elem).as_string();
+                        def_meta.docstring = car(elem).as_string()->data;
                         struct_def.append_state_def(state_name, handler_kind, def_meta);
 
                         elem = cdr(elem);
@@ -903,7 +903,7 @@ DeftypeResult parse_deftype(const script::Object& deftype,
     iter = cdr(iter);
     // check for docstring
     if (iter->is_pair() && car(iter).is_string()) {
-        symbol_metadata.docstring = str_util::trim_newline_indents(car(iter).as_string());
+        symbol_metadata.docstring = str_util::trim_newline_indents(car(iter).as_string()->data);
         iter = cdr(iter);
     }
     auto& field_list_obj = car(iter);

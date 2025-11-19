@@ -128,8 +128,8 @@ namespace script::pretty_print {
 
             case ObjectType::ARRAY: {
                 std::vector<Node> children;
-                auto elements = obj.as_vector();
-                for (auto& elt : elements) {
+                auto elements = obj.as_array();
+                for (auto& elt : elements->data) {
                     children.push_back(to_node(elt));
                 }
                 return Node(std::move(children), true);

@@ -36,7 +36,7 @@ TEST_F(HashTableTest, HashTableSetAndRef) {
     // Теперь ht определен в окружении env
     Object obj = eval("(hash-table-ref ht \"key1\")");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "value1");
+    EXPECT_EQ(obj.as_string()->data, "value1");
 
     obj = eval("(hash-table-ref ht 'key2)");
     EXPECT_TRUE(obj.is_integer());

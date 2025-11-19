@@ -30,5 +30,5 @@ TEST_F(SystemTest, CurrentDirectory) {
     Object obj = eval("(current-directory)");
     EXPECT_TRUE(obj.is_string());
     // Не можем проверить точное значение, но можем проверить что это не пустая строка
-    EXPECT_FALSE(obj.as_string().empty());
+    EXPECT_FALSE(obj.as_string()->empty());
 }

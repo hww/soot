@@ -1,5 +1,5 @@
 ﻿#include "object.h"
-#include "crc32.h"
+#include "util/crc32.h"
 #include <sstream>
 #include <iostream>
 #include <cstring>
@@ -190,55 +190,17 @@ namespace script
     }
 
     // Value accessors
-    IntType Object::as_integer() const {
-        if (type != ObjectType::INTEGER) throw_type_error("integer");
-        return integer_obj.value;
-    }
-
-    FloatType Object::as_float() const {
-        if (type != ObjectType::FLOAT) throw_type_error("float");
-        return float_obj.value;
-    }
-
-    char Object::as_char() const {
-        if (type != ObjectType::CHAR) throw_type_error("char");
-        return char_obj.value;
-    }
-
-    const InternedSymbolPtr& Object::as_symbol() const {
-        if (type != ObjectType::SYMBOL) throw_type_error("symbol");
-        return symbol_obj.value;
-    }
-
-    std::string Object::as_string() const {
-        if (type != ObjectType::STRING) throw_type_error("string");
-        auto str = dynamic_cast<StringObject*>(heap_obj.get());
-        return str ? str->text : "";
-    }
-
-    std::vector<Object> Object::as_vector() const {
-        if (type != ObjectType::ARRAY) throw_type_error("vector");
-        auto arr = dynamic_cast<ArrayObject*>(heap_obj.get());
-        return arr ? arr->elements : std::vector<Object>();
-    }
-
-    HashTableObject* Object::as_hash_table() const {
-        if (!is_hash_table()) throw_type_error("hash-table");
-        return dynamic_cast<HashTableObject*>(heap_obj.get());
-    }
-
-    MacroObject* Object::as_macro() const {
-        if (type != ObjectType::MACRO) throw_type_error("macro");
-        return static_cast<MacroObject*>(heap_obj.get());
-    }
-
-    LambdaObject* Object::as_lambda() const {
-        if (type != ObjectType::LAMBDA) throw_type_error("lambda");
-        return static_cast<LambdaObject*>(heap_obj.get());
+    PairObject* Object::as_pair() const {
+        if (type != ObjectType::PAIR) {
+            throw std::runtime_error("as_pair called on a " + object_type_to_string(type) + " " + print());
+        }
+        return dynamic_cast<PairObject*>(heap_obj.get());
     }
 
     EnvironmentObject* Object::as_env() const {
-        if (type != ObjectType::ENVIRONMENT) throw_type_error("environment");
+        if (type != ObjectType::ENVIRONMENT) {
+            throw std::runtime_error("as_env called on a " + object_type_to_string(type) + " " + print());
+        }
         return static_cast<EnvironmentObject*>(heap_obj.get());
     }
 
@@ -247,6 +209,77 @@ namespace script
             throw std::runtime_error("as_env called on a " + object_type_to_string(type) + " " + print());
         }
         return std::dynamic_pointer_cast<EnvironmentObject>(heap_obj);
+    }
+
+    StringObject* Object::as_string() const {
+        if (type != ObjectType::STRING) {
+            throw std::runtime_error("as_string called on a " + object_type_to_string(type) + " " +
+                print());
+        }
+        return static_cast<StringObject*>(heap_obj.get());
+    }
+
+
+    LambdaObject* Object::as_lambda() const {
+        if (type != ObjectType::LAMBDA) {
+            throw std::runtime_error("as_lambda called on a " + object_type_to_string(type) + " " +
+                print());
+        }
+        return static_cast<LambdaObject*>(heap_obj.get());
+    }
+
+    MacroObject* Object::as_macro() const {
+        if (type != ObjectType::MACRO) {
+            throw std::runtime_error("as_macro called on a " + object_type_to_string(type) + " " + print());
+        }
+        return static_cast<MacroObject*>(heap_obj.get());
+    }
+
+    IntType Object::as_integer() const {
+        if (type != ObjectType::INTEGER) {
+            throw std::runtime_error("as_integer called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return integer_obj.value;
+    }
+
+    FloatType Object::as_float() const {
+        if (type != ObjectType::FLOAT) {
+            throw std::runtime_error("as_float called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return float_obj.value;
+    }
+
+    char Object::as_char() const {
+        if (type != ObjectType::CHAR) {
+            throw std::runtime_error("as_char called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return char_obj.value;
+    }
+
+    const InternedSymbolPtr& Object::as_symbol() const {
+        if (type != ObjectType::SYMBOL) {
+            throw std::runtime_error("as_symbol called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return symbol_obj.value;
+    }
+
+    ArrayObject* Object::as_array() const {
+        if (type != ObjectType::ARRAY) {
+            throw std::runtime_error("as_array called on a " + object_type_to_string(type) + " " + print());
+        }
+        return static_cast<ArrayObject*>(heap_obj.get());
+    }
+
+    HashTableObject* Object::as_hash_table() const {
+        if (type != ObjectType::STRING_HASH_TABLE) {
+            throw std::runtime_error("as_string_hash_table called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<HashTableObject*>(heap_obj.get());
     }
 
     std::vector<Object> Object::as_c_vector() const {
@@ -259,12 +292,6 @@ namespace script
             current = current.as_pair()->cdr;
         }
         return result;
-    }
-
-    // Pair accessors
-    PairObject* Object::as_pair() const {
-        if (type != ObjectType::PAIR) throw_type_error("pair");
-        return dynamic_cast<PairObject*>(heap_obj.get());
     }
 
     // Comparison
@@ -290,7 +317,7 @@ namespace script
             auto this_arr = dynamic_cast<ArrayObject*>(heap_obj.get());
             auto other_arr = dynamic_cast<ArrayObject*>(other.heap_obj.get());
             if (!this_arr || !other_arr) return false;
-            return this_arr->elements == other_arr->elements;
+            return this_arr->data == other_arr->data;
         }
         default:
             return heap_obj.get() == other.heap_obj.get();

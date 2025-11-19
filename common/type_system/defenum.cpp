@@ -92,7 +92,7 @@ EnumType* parse_defenum(const script::Object& defenum,
     std::optional<std::string> maybe_docstring;
     if (iter->is_pair() && iter->as_pair()->car.is_string()) {
         if (symbol_metadata) {
-            maybe_docstring = iter->as_pair()->car.as_string();
+            maybe_docstring = iter->as_pair()->car.as_string()->data;
             symbol_metadata->docstring = *maybe_docstring;
         }
         iter = &iter->as_pair()->cdr;

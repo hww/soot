@@ -187,6 +187,7 @@ namespace script
         char as_char() const;
         const InternedSymbolPtr& as_symbol() const;
         StringObject* as_string() const;
+        const char* as_c_string() const;
         ArrayObject* as_array() const;
         HashTableObject* as_hash_table() const;
         MacroObject* as_macro() const;

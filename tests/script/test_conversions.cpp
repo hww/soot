@@ -22,7 +22,7 @@ protected:
 TEST_F(ConversionTest, NumberToString) {
     Object obj = eval("(number->string 42)");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "42");
+    EXPECT_EQ(obj.as_string()->data, "42");
 
     obj = eval("(number->string 3.14)");
     EXPECT_TRUE(obj.is_string());

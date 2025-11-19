@@ -1,83 +1,55 @@
+// FileHub.h - ÷èñòûå îáúÿâëåíèÿ
 #pragma once
 
-/*!
- * @file FileUtil.h
- * Utility functions for reading and writing files.
- */
-
-#ifdef _WIN32
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-#include "third-party/filesystem.hpp"
-
-#ifdef _WIN32
-#undef FALSE
-#endif
-
-#include <optional>
-#include <regex>
-#include <string>
+#include <filesystem>
 #include <vector>
-
-#include "common/common_types.h"
-#include "common/versions/versions.h"
-
-namespace fs = ghc::filesystem;
+#include <string>
+#include <cstdint>
+#include <regex>
 
 namespace file_util {
-fs::path get_user_home_dir();
-fs::path get_user_config_dir();
-fs::path get_user_settings_dir(GameVersion game_version);
-fs::path get_user_memcard_dir(GameVersion game_version);
-fs::path get_user_screenshots_dir(GameVersion game_version);
-fs::path get_user_misc_dir(GameVersion game_version);
-fs::path get_user_features_dir(GameVersion game_version);
-fs::path get_jak_project_dir();
-fs::path get_iso_dir_for_game(GameVersion game_version);
-void set_iso_data_dir(const fs::path& directory);
 
-bool create_dir_if_needed(const fs::path& path);
-bool create_dir_if_needed_for_file(const std::string& path);
-bool create_dir_if_needed_for_file(const fs::path& path);
-std::string get_current_executable_path();
-std::optional<std::string> try_get_project_path_from_path(const std::string& path);
-bool setup_project_path(std::optional<fs::path> project_path_override, bool skip_logs = false);
-void override_user_config_dir(fs::path user_config_dir_override,
-                              bool use_overridden_config_dir_for_saves);
-std::string get_file_path(const std::vector<std::string>& path);
-void write_binary_file(const std::string& name, const void* data, size_t size);
-void write_binary_file(const fs::path& name, const void* data, size_t size);
-void write_rgba_png(const fs::path& name, void* data, int w, int h);
-void write_text_file(const std::string& file_name, const std::string& text);
-void write_text_file(const fs::path& file_name, const std::string& text);
-std::vector<uint8_t> read_binary_file(const std::string& filename);
-std::vector<uint8_t> read_binary_file(const fs::path& filename);
-std::string read_text_file(const std::string& path);
-std::string read_text_file(const fs::path& path);
-bool is_printable_char(char c);
-std::string combine_path(const std::string& parent, const std::string& child);
-bool file_exists(const std::string& path);
-std::string base_name(const std::string& filename);
-std::string base_name_no_ext(const std::string& filename);
-std::string split_path_at(const fs::path& path, const std::vector<std::string>& folders);
-std::string convert_to_unix_path_separators(const std::string& path);
-void MakeISOName(char* dst, const char* src);
-void ISONameFromAnimationName(char* dst, const char* src);
-void assert_file_exists(const char* path, const char* error_message);
-bool dgo_header_is_compressed(const std::vector<u8>& data);
-std::vector<u8> decompress_dgo(const std::vector<u8>& data_in);
-FILE* open_file(const fs::path& path, const std::string& mode);
-std::vector<fs::path> find_files_in_dir(const fs::path& dir, const std::regex& pattern);
-std::vector<fs::path> find_files_recursively(const fs::path& base_dir, const std::regex& pattern);
-std::vector<fs::path> find_directories_in_dir(const fs::path& base_dir);
-std::vector<fs::path> sort_filepaths(const std::vector<fs::path>& paths, const bool aescending);
-/// Will overwrite the destination if it exists
-void copy_file(const fs::path& src, const fs::path& dst);
-std::string make_screenshot_filepath(const GameVersion game_version, const std::string& name = "");
-std::string get_majority_file_line_endings(const std::string& file_contents);
-std::pair<int, std::string> get_majority_file_line_endings_and_count(
-    const std::string& file_contents);
-bool is_dir_in_dir(const fs::path& parent, const fs::path& child);
-}  // namespace file_util
+	namespace fs = std::filesystem;
+
+	// ==================== ÎÑÍÎÂÍÛÅ ÓÒÈËÈÒÛ ====================
+	std::string read_text(const fs::path& path);
+	void write_text(const fs::path& path, const std::string& content);
+	std::vector<uint8_t> read_binary(const fs::path& path);
+	void write_binary(const fs::path& path, const std::vector<uint8_t>& data);
+
+	// ==================== ĞÀÁÎÒÀ Ñ ÏÓÒßÌÈ ====================
+	std::string get_filename(const fs::path& path);
+	std::string get_stem(const fs::path& path);
+	std::string get_extension(const fs::path& path);
+	fs::path join_paths(const fs::path& a, const fs::path& b);
+	//fs::path make_path(std::string path) { return fs::path(path); }
+
+	// ==================== ĞÀÁÎÒÀ Ñ ÄÈĞÅÊÒÎĞÈßÌÈ ====================
+	bool create_dirs(const fs::path& path);
+	bool create_dirs_for_file(const fs::path& file_path);
+	std::vector<fs::path> list_files(const fs::path& dir);
+	std::vector<fs::path> list_dirs(const fs::path& dir);
+
+	// ==================== ÏÎÈÑÊ ÔÀÉËÎÂ ====================
+	std::vector<fs::path> find_by_extension(const fs::path& dir, const std::string& ext);
+	std::vector<fs::path> find_by_extension_recursive(const fs::path& dir, const std::string& ext);
+	std::vector<fs::path> find_by_pattern(const fs::path& dir, const std::regex& pattern);
+
+	// ==================== ÏĞÎÂÅĞÊÈ È ÈÍÔÎĞÌÀÖÈß ====================
+	// Ïğîñòûå îá¸ğòêè - ìîæíî inline
+	inline bool exists(const fs::path& path) { return fs::exists(path); }
+	inline bool is_file(const fs::path& path) { return fs::is_regular_file(path); }
+	inline bool is_dir(const fs::path& path) { return fs::is_directory(path); }
+
+	uintmax_t get_size(const fs::path& path);
+
+	// ==================== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ====================
+	void copy_file(const fs::path& from, const fs::path& to);
+	void move_file(const fs::path& from, const fs::path& to);
+	bool remove_file(const fs::path& path);
+	uintmax_t remove_dir(const fs::path& path);
+
+	// ========== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ÄËß İÒÎÃÎ ÏĞÎÅÊÒÀ ============
+	fs::path get_project_dir();
+	std::string get_file_path(const std::vector<std::string>& input);
+} // namespace filehub

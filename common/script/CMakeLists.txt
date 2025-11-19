@@ -1,15 +1,19 @@
 
 # Создаем нашу библиотеку БЕЗ replxx файлов
 add_library(script_lib 
+    common/util/crc32.cpp
+    common/util/assert.cpp
+    common/util/file_util.cpp
+    common/util/print_float.cpp
+    common/log/log.cpp
+    common/script/text_db.cpp
     common/script/object.cpp
     common/script/reader.cpp
     common/script/interpreter.cpp
-    common/script/source_info.cpp
-    common/script/crc32.cpp
+    common/script/printer.cpp
     common/script/pretty_printer.cpp
     common/script/parse_helpers.cpp
-    common/util/assert.cpp
-    common/log/log.cpp)
+)
 
 # Исполняемый файл
 add_executable(lisp common/script/main.cpp)

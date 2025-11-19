@@ -23,7 +23,7 @@ TEST_F(VectorTest, VectorCreation) {
     Object obj = eval("(vector 1 2 3)");
     EXPECT_TRUE(obj.is_vector());
 
-    auto elements = obj.as_vector();
+    auto elements = *obj.as_array();
     EXPECT_EQ(elements.size(), 3);
     EXPECT_EQ(elements[0].as_integer(), 1);
     EXPECT_EQ(elements[1].as_integer(), 2);

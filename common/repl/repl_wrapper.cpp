@@ -417,7 +417,7 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
 
 void ReplWrapper::load_config(const std::string& filename) {
     try {
-        auto config_data = reader.read_from_file(filename);
+        auto config_data = reader.read_from_file({ filename });
         parse_config_data(config_data);
         fmt::print("Loaded config from {}\n", filename);
     }
@@ -431,23 +431,23 @@ void ReplWrapper::parse_config_data(const script::Object& config_list) {
 
     for (const auto& command : commands) {
         if (command.is_pair()) {
-            auto args = command.as_vector(); // ← И ВЛОЖЕННЫЕ ТОЖЕ!
+            auto args = command.as_array(); // ← И ВЛОЖЕННЫЕ ТОЖЕ!
+            auto size = args->size();
+            if (size >= 1 && args->at(0).is_symbol()) {
+                std::string cmd_name = args->at(0).as_symbol().name_ptr;
 
-            if (args.size() >= 1 && args[0].is_symbol()) {
-                std::string cmd_name = args[0].as_symbol().name_ptr;
-
-                if (cmd_name == "nrepl-port" && args.size() >= 2) {
-                    config_.nrepl_port = args[1].as_integer();
+                if (cmd_name == "nrepl-port" && size >= 2) {
+                    config_.nrepl_port = args->at(1).as_integer();
                 }
-                else if (cmd_name == "prompt" && args.size() >= 2) {
-                    config_.prompt = args[1].as_string();
+                else if (cmd_name == "prompt" && size >= 2) {
+                    config_.prompt = args->at(1).as_string()->data;
                 }
-                else if (cmd_name == "keybind" && args.size() >= 5) {
+                else if (cmd_name == "keybind" && size >= 5) {
                     KeyBind bind;
-                    bind.modifier = parse_modifier(args[1].as_symbol().name_ptr);
-                    bind.key = args[2].as_string();
-                    bind.description = args[3].as_string();
-                    bind.command = args[4].as_string();
+                    bind.modifier = parse_modifier(args->at(1).as_symbol().name_ptr);
+                    bind.key = args->at(2).as_string()->data;
+                    bind.description = args->at(3).as_string()->data;
+                    bind.command = args->at(4).as_string()->data;
                     config_.keybinds.push_back(bind);
                 }
             }

@@ -72,11 +72,11 @@ TEST_F(BasicTypesTest, EmptyList) {
 TEST_F(BasicTypesTest, StringLiterals) {
     Object obj = eval("\"hello\"");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "hello");
+    EXPECT_EQ(obj.as_string()->data, "hello");
 
     obj = eval("\"test with spaces\"");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "test with spaces");
+    EXPECT_EQ(obj.as_string()->data, "test with spaces");
 }
 
 // Тест 7: Символы (идентификаторы)

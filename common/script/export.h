@@ -1,7 +1,9 @@
 // test_parsers.h
 #pragma once
-#include "object.h"
-#include "interpreter.h"
-#include "reader.h"
-#include "pretty_printer.h"
-#include "parse_helpers.h"
+#include "common/script/object.h"
+#include "common/script/interpreter.h"
+#include "common/script/reader.h"
+#include "common/script/pretty_printer.h"
+#include "common/script/parse_helpers.h"
+#include "common/script/text_db.h"
+#include "common/script/printer.h"

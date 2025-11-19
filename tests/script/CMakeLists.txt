@@ -26,7 +26,8 @@ add_executable(script_test
     tests/script/test_loops.cpp
     tests/script/test_conversions.cpp
     tests/script/test_math.cpp
-    tests/script/test_system.cpp)
+    tests/script/test_system.cpp
+)
 
 # Линкуем с нашей библиотекой и gtest
 target_link_libraries(script_test script_lib gtest_main fmt)

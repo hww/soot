@@ -44,18 +44,18 @@ TEST_F(StringTest, StringRef) {
 TEST_F(StringTest, StringAppend) {
     Object obj = eval("(string-append \"hello\" \" \" \"world\")");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "hello world");
+    EXPECT_EQ(obj.as_string()->data, "hello world");
 }
 
 // Тест substring
 TEST_F(StringTest, Substring) {
-    Object obj = eval("(substring \"hello world\" 0 5)");
+    Object obj = eval("(string-substr \"hello world\" 0 5)");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "hello");
+    EXPECT_EQ(obj.as_string()->data, "hello");
 
-    obj = eval("(substring \"hello world\" 6 11)");
+    obj = eval("(string-substr \"hello world\" 6 11)");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "world");
+    EXPECT_EQ(obj.as_string()->data, "world");
 }
 
 // Тест преобразований string <-> symbol
@@ -65,5 +65,5 @@ TEST_F(StringTest, StringSymbolConversions) {
 
     obj = eval("(symbol->string 'world)");
     EXPECT_TRUE(obj.is_string());
-    EXPECT_EQ(obj.as_string(), "world");
+    EXPECT_EQ(obj.as_string()->data, "world");
 }
