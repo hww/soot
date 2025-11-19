@@ -40,23 +40,25 @@ namespace script
     class SymbolTable;
     class StringObject;
     class ArrayObject;
+
+
     struct ArgumentSpec;
 
     // InternedSymbolPtr как в OpenGOAL
     struct InternedSymbolPtr {
         const char* name_ptr;
 
-        struct hash {
-            auto operator()(const InternedSymbolPtr& x) const {
-                return std::hash<const void*>()((const void*)x.name_ptr);
-            }
-        };
-
         bool starts_with_colon() const {
             return name_ptr && name_ptr[0] != '\0' && name_ptr[0] == ':';
         }
 
         const char* c_str() const { return name_ptr; }
+        
+        struct hash {
+            auto operator()(const InternedSymbolPtr& x) const {
+                return std::hash<const void*>()((const void*)x.name_ptr);
+            }
+        };
 
         bool operator==(const char* msg) const { return strcmp(msg, name_ptr) == 0; }
         bool operator!=(const char* msg) const { return strcmp(msg, name_ptr) != 0; }
@@ -129,6 +131,7 @@ namespace script
 
     // Main Object class
     class Object {
+        friend class EnvironmentPrettyPrinter;
     public:
         ObjectType type = ObjectType::INVALID;
 
@@ -176,6 +179,7 @@ namespace script
         bool is_macro() const { return type == ObjectType::MACRO; }
         bool is_vector() const { return type == ObjectType::ARRAY; }
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
+        bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
         bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
@@ -217,7 +221,7 @@ namespace script
     public:
         Object car;
         Object cdr;
-
+        PairObject() = default;
         PairObject(const Object& car, const Object& cdr) : car(car), cdr(cdr) {}
 
         std::string print() const override;
@@ -303,6 +307,7 @@ namespace script
 
     template <typename T>
     class InternedPtrMap {
+        friend class EnvironmentPrettyPrinter;
     public:
 
         InternedPtrMap(const InternedPtrMap&) = delete;
@@ -615,5 +620,8 @@ namespace script
             return "[hash-table size=" + std::to_string(data.size()) + "]";
         }
     };
+
+    Object build_list(std::vector<Object>&& objects);
+    Object build_list(const std::vector<Object>& objects);
 
 } // namespace script

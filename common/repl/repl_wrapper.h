@@ -4,6 +4,7 @@
 #include "keybinds.h"
 #include "../script/interpreter.h"
 #include "../script/reader.h"
+#include "../script/printer_env.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/fmt/include/fmt/color.h"
 #include "third_party/replxx/include/replxx.hxx"
@@ -55,6 +56,8 @@ private:
     void load_startup_files();
     void execute_startup_commands(const std::vector<std::string>& commands);
     void show_history();
+    void inspect_top_env();
+
     replxx::Replxx::completions_t get_completions(const std::string& input, int& context_len);
     replxx::Replxx::hints_t get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color);
     

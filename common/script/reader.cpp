@@ -6,604 +6,763 @@
 #include "oaidl.h"
 #include <cctype>
 
-
 namespace script {
-
-    // ==================== TextStream ====================
-
-    void TextStream::seek_past_whitespace_and_comments() {
-        while (text_remains()) {
-            char c = peek();
-            switch (c) {
-            case ' ':
-            case '\t':
-            case '\n':
-            case '\r':
-                read();
-                break;
-
-            case ';':
-                while (text_remains() && read() != '\n') {}
-                break;
-
-            case '#':
-                if (text_remains(1) && peek(1) == '|') {
-                    read(); // '#'
-                    read(); // '|'
-
-                    bool found_end = false;
-                    while (text_remains() && !found_end) {
-                        while (text_remains() && read() != '|') {}
-                        if (text_remains() && read() == '#') {
-                            found_end = true;
-                        }
-                    }
-                    continue;
-                }
-                else {
-                    return;
-                }
-                break;
-
-            default:
-                return;
-            }
-        }
-    }
-
-    void TextStream::read_utf8_encoding(bool throw_on_error) {
-        if (text_remains(2)) {
-            if ((uint8_t)peek(0) == 0xEF && (uint8_t)peek(1) == 0xBB && (uint8_t)peek(2) == 0xBF) {
-                read(); read(); read();
-                return;
-            }
-        }
-
-        if (throw_on_error) {
-            throw std::runtime_error(
-                fmt::format("UTF-8 encoding not detected in {}", text->get_description()));
-        }
-    }
-
-    // ==================== Reader ====================
-
-    Reader::Reader() {
-        // add default macros
-        add_reader_macro("'", "quote");
-        add_reader_macro("`", "quasiquote");
-        add_reader_macro(",", "unquote");
-        add_reader_macro(",@", "unquote-splicing");
-
-        // setup table of which characters are valid for starting a symbol
-        for (auto& x : m_valid_symbols_chars) {
-            x = false;
-        }
-
-        for (char x = 'a'; x <= 'z'; x++) {
-            m_valid_symbols_chars[(int)x] = true;
-        }
-
-        for (char x = 'A'; x <= 'Z'; x++) {
-            m_valid_symbols_chars[(int)x] = true;
-        }
-
-        for (char x = '0'; x <= '9'; x++) {
-            m_valid_symbols_chars[(int)x] = true;
-        }
-
-        const char bonus[] = "!$%&*+-/\\.,@^_-;:<>?~=#";
-        for (const char* c = bonus; *c; c++) {
-            m_valid_symbols_chars[(int)*c] = true;
-        }
-    }
-
-    void Reader::add_reader_macro(const std::string& shortcut, std::string replacement) {
-        m_reader_macros[shortcut] = std::move(replacement);
-    }
-
-    Object Reader::read_from_string(const std::string& str,
-        bool add_top_level,
-        const std::optional<std::string>& string_name)
-    {
-        auto textFrag = std::make_shared<ProgramString>(str, string_name.value_or("Program string"));
-        db.insert(textFrag);
-
-        auto result = internal_read(textFrag, false, add_top_level);
-        db.link(result, textFrag, 0);
-        return result;
-    }
-
-    Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding) {
-        std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
-        const auto joined_file_path = file_util::get_file_path(file_path);
-
-        if (!file_util::exists(joined_file_path)) {
-            throw std::runtime_error(fmt::format("Cannot read {}, file doesn't exist", joined_file_path));
-        }
-
-        auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
-        db.insert(textFrag);
-
-        auto result = internal_read(textFrag, check_encoding);
-        db.link(result, textFrag, 0);
-        return result;
-    }
-
-    Object Reader::internal_read(std::shared_ptr<SourceText> text,
-        bool check_encoding,
-        bool add_top_level) {
-        if (check_encoding && (text->get_size() < 3 ||
-            (uint8_t)text->get_text()[0] != 0xEF ||
-            (uint8_t)text->get_text()[1] != 0xBB ||
-            (uint8_t)text->get_text()[2] != 0xBF)) {
-            throw std::runtime_error(
-                fmt::format("Text file {} has invalid encoding", text->get_description()));
-        }
-
-        TextStream ts(text);
-
-        if (check_encoding) {
-            ts.read_utf8_encoding(true);
-        }
-
-        ts.seek_past_whitespace_and_comments();
-
-        try {
-            auto objs = read_list(ts, false);
-            if (add_top_level) {
-                return Object::make_pair(Object::make_symbol(&symbolTable, "top-level"), objs);
-            }
-            else {
-                return objs;
-            }
-        }
-        catch (std::exception& e) {
-            throw;
-        }
-    }
-
-    // ==================== Token Reading ====================
-
-    Token Reader::get_next_token(TextStream& stream) {
-        ASSERT(stream.text_remains());
-        Token t;
-        t.source_line = stream.line_count;
-        t.source_offset = stream.seek;
-        t.source_text = stream.text;
-
-        char first = stream.read();
-        t.text.push_back(first);
-
-        // Special tokens
-        if (first == '(' || first == ')' || first == '"' || first == '\'' || first == '`')
-            return t;
-
-        // ",@" token
-        if (first == ',' && stream.text_remains() && stream.peek() == '@') {
-            t.text.push_back(stream.read());
-            return t;
-        }
-        else if (first == ',') {
-            return t;
-        }
-        else if (first == '#' && stream.text_remains() && stream.peek() == '(') {
-            t.text.push_back(stream.read());
-            return t;
-        }
-
-        // Read until token end
-        while (stream.text_remains()) {
-            char next = stream.peek();
-            if (next == ' ' || next == '\n' || next == '\t' || next == '\r' || next == ')' ||
-                next == ';' || next == '(') {
-                return t;
-            }
-            else {
-                t.text.push_back(stream.read());
-            }
-        }
-
-        return t;
-    }
-
-    // ==================== List Reading ====================
-
-    Object Reader::read_list(TextStream& ts, bool expect_close_paren) {
-        ts.seek_past_whitespace_and_comments();
-
-        ListBuilder list_builder;
-        bool got_close_paren = false;
-        bool got_dot = false;
-        bool got_thing_after_dot = false;
-        int start_offset = ts.seek;
-
-        while (ts.text_remains()) {
-            auto tok = get_next_token(ts);
-
-            // Reader macros
-            std::vector<std::string> reader_macro_string_stack;
-            auto kv = m_reader_macros.find(tok.text);
-            if (kv != m_reader_macros.end()) {
-                while (kv != m_reader_macros.end()) {
-                    reader_macro_string_stack.push_back(kv->second);
-                    if (!ts.text_remains()) {
-                        throw_reader_error(ts, "Something must follow a reader macro", 0);
-                    }
-                    tok = get_next_token(ts);
-                    kv = m_reader_macros.find(tok.text);
-                }
-            }
-            else {
-                if (tok.text == ".") {
-                    if (got_dot) {
-                        throw_reader_error(ts, "A list cannot have multiple dots.", -1);
-                    }
-                    ts.seek_past_whitespace_and_comments();
-                    if (!ts.text_remains()) {
-                        throw_reader_error(ts, "A list cannot end in a dot", -1);
-                    }
-                    tok = get_next_token(ts);
-                    got_dot = true;
-                }
-            }
-
-            auto insert_object = [&](Object&& o) {
-                if (got_thing_after_dot) {
-                    throw_reader_error(ts, "A list cannot have multiple entries after the dot", -1);
-                }
-
-                if (reader_macro_string_stack.empty()) {
-                    list_builder.push_back(std::move(o));
-                }
-                else {
-                    Object to_push_back = std::move(o);
-                    while (!reader_macro_string_stack.empty()) {
-                        to_push_back = script::pretty_print::build_list(
-                            { Object::make_symbol(&symbolTable, reader_macro_string_stack.back().c_str()),
-                             to_push_back });
-                        reader_macro_string_stack.pop_back();
-                    }
-                    list_builder.push_back(std::move(to_push_back));
-                }
-
-                if (got_dot) {
-                    got_thing_after_dot = true;
-                }
-                };
-
-            if (tok.text.empty()) {
-                break;
-            }
-            else if (tok.text[0] == '(') {
-                insert_object(read_list(ts, true));
-                ts.seek_past_whitespace_and_comments();
-                continue;
-            }
-            else if (tok.text[0] == ')') {
-                got_close_paren = true;
-                break;
-            }
-            else {
-                Object obj;
-                if (read_object(tok, ts, obj)) {
-                    ts.seek_past_whitespace_and_comments();
-                    insert_object(std::move(obj));
-                }
-                else {
-                    throw_reader_error(ts, "invalid token encountered in reader: " + tok.text,
-                        -int(tok.text.size()));
-                }
-            }
-        }
-
-        if (expect_close_paren && !got_close_paren) {
-            throw_reader_error(ts, "failed to find close paren", -1);
-        }
-
-        if (got_close_paren && !expect_close_paren) {
-            throw_reader_error(ts, "found an unexpected close paren", -1);
-        }
-
-        if (got_dot && !got_thing_after_dot) {
-            throw_reader_error(ts, "A list must have an entry after the dot", -1);
-        }
-
-        if (got_thing_after_dot) {
-            if (list_builder.size < 2) {
-                throw_reader_error(ts, "A list with a dot must have at least one thing before the dot", -1);
-            }
-            auto back = list_builder.pop_back();
-            list_builder.finalize();
-            auto rv = list_builder.head;
-
-            auto lst = rv;
-            while (true) {
-                if (lst.as_pair()->cdr.is_empty_list()) {
-                    lst.as_pair()->cdr = back;
-                    break;
-                }
-                else {
-                    lst = lst.as_pair()->cdr;
-                }
-            }
-            db.link(rv, ts.text, start_offset);
-            return rv;
-        }
-        else {
-            list_builder.finalize();
-            auto rv = list_builder.head;
-            db.link(rv, ts.text, start_offset);
-            return rv;
-        }
-    }
-
-    // ==================== Object Reading ====================
-
-    bool Reader::read_object(Token& tok, TextStream& ts, Object& obj) {
-        try {
-            if (try_token_as_integer(tok, obj)) return true;
-            if (try_token_as_hex(tok, obj)) return true;
-            if (try_token_as_binary(tok, obj)) return true;
-            if (try_token_as_float(tok, obj)) return true;
-
-            if (tok.text[0] == '"') {
-                if (read_string(ts, obj)) return true;
-                throw_reader_error(ts, "failed to read string, close quote not found", -1);
-            }
-
-            if (tok.text[0] == '#' && tok.text.size() >= 2 && tok.text[1] == '(') {
-                if (read_array(ts, obj)) return true;
-            }
-
-            if (try_token_as_char(tok, obj)) return true;
-            if (try_token_as_symbol(tok, obj)) return true;
-
-        }
-        catch (std::exception& e) {
-            throw_reader_error(ts, "parsing token " + tok.text + " failed: " + e.what(), -1);
-        }
-
-        return false;
-    }
-
-    bool Reader::read_array(TextStream& stream, Object& o) {
-        stream.seek_past_whitespace_and_comments();
-        std::vector<Object> objects;
-
-        bool got_close_paren = false;
-        while (stream.text_remains()) {
-            auto tok = get_next_token(stream);
-            ASSERT(!tok.text.empty());
-
-            if (tok.text[0] == '(') {
-                objects.push_back(read_list(stream, true));
-                stream.seek_past_whitespace_and_comments();
-                continue;
-            }
-            else if (tok.text[0] == ')') {
-                got_close_paren = true;
-                break;
-            }
-            else {
-                Object next_obj;
-                if (read_object(tok, stream, next_obj)) {
-                    stream.seek_past_whitespace_and_comments();
-                    objects.push_back(next_obj);
-                }
-                else {
-                    throw_reader_error(stream, "invalid token encountered in array reader: " + tok.text,
-                        -int(tok.text.size()));
-                }
-            }
-        }
-
-        if (!got_close_paren) {
-            throw_reader_error(stream, "An array must end in a close parenthesis", -1);
-        }
-
-        o = Object::make_array(objects);
-        return true;
-    }
-
-    bool Reader::read_string(TextStream& stream, Object& obj) {
-        bool got_close_quote = false;
-        std::string str;
-
-        while (stream.text_remains()) {
-            char c = stream.read();
-            if (c == '"') {
-                obj = Object::make_string(str);
-                got_close_quote = true;
-                break;
-            }
-
-            if (c == '\\') {
-                if (!stream.text_remains()) {
-                    throw_reader_error(stream, "incomplete string escape code", -1);
-                }
-                if (stream.peek() == 'n') {
-                    stream.read();
-                    str.push_back('\n');
-                }
-                else if (stream.peek() == 't') {
-                    stream.read();
-                    str.push_back('\t');
-                }
-                else if (stream.peek() == '\\') {
-                    stream.read();
-                    str.push_back('\\');
-                }
-                else if (stream.peek() == '"') {
-                    stream.read();
-                    str.push_back('"');
-                }
-                else if (stream.peek() == 'c') {
-                    stream.read();
-                    if (!stream.text_remains(2)) {
-                        throw_reader_error(stream, "incomplete string escape code", -1);
-                    }
-                    auto first = stream.read();
-                    auto second = stream.read();
-                    if (!isxdigit(first) || !isxdigit(second)) {
-                        throw_reader_error(stream, "invalid character escape hex number", -3);
-                    }
-                    char hex_num[3] = { first, second, '\0' };
-                    auto value = std::stoul(hex_num, nullptr, 16);
-                    if (value >= 256) {
-                        throw_reader_error(stream, "invalid character escape", -2);
-                    }
-                    str.push_back(char(value));
-                }
-                else {
-                    throw_reader_error(stream, "unknown string escape code", -1);
-                }
-            }
-            else {
-                str.push_back(c);
-            }
-        }
-
-        return got_close_quote;
-    }
-
-    // ==================== Number Parsers ====================
-
-    bool Reader::try_token_as_integer(const Token& tok, Object& obj) {
-        if (tok.text.empty()) return false;
-
-        bool has_minus = (tok.text[0] == '-');
-        if ((has_minus && tok.text.size() == 1) ||
-            (!has_minus && tok.text[0] == '+')) {
-            return false;
-        }
-
-        size_t start = has_minus ? 1 : 0;
-        for (size_t i = start; i < tok.text.size(); i++) {
-            if (tok.text[i] < '0' || tok.text[i] > '9') {
-                return false;
-            }
-        }
-
-        try {
-            int64_t value = std::stoll(tok.text);
-            obj = Object::make_integer(value);
-            return true;
-        }
-        catch (const std::exception&) {
-            throw std::runtime_error("The number " + tok.text + " cannot be an integer constant");
-        }
-    }
-
-    bool Reader::try_token_as_hex(const Token& tok, Object& obj) {
-        if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == 'x') {
-            for (size_t i = 2; i < tok.text.size(); i++) {
-                char c = tok.text[i];
-                if (!isxdigit(c)) {
-                    return false;
-                }
-            }
-
-            try {
-                uint64_t value = std::stoull(tok.text.substr(2), nullptr, 16);
-                obj = Object::make_integer(static_cast<int64_t>(value));
-                return true;
-            }
-            catch (const std::exception&) {
-                throw std::runtime_error("The number " + tok.text + " cannot be a hexadecimal constant");
-            }
-        }
-        return false;
-    }
-
-    bool Reader::try_token_as_binary(const Token& tok, Object& obj) {
-        if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == 'b') {
-            for (size_t i = 2; i < tok.text.size(); i++) {
-                char c = tok.text[i];
-                if (c != '0' && c != '1') {
-                    return false;
-                }
-            }
-
-            uint64_t value = 0;
-            for (size_t i = 2; i < tok.text.size(); i++) {
-                if (value & (1ULL << 63)) {
-                    throw std::runtime_error("overflow in binary constant: " + tok.text);
-                }
-                value = (value << 1) | (tok.text[i] == '1' ? 1 : 0);
-            }
-
-            obj = Object::make_integer(static_cast<int64_t>(value));
-            return true;
-        }
-        return false;
-    }
-
-    bool Reader::try_token_as_float(const Token& tok, Object& obj) {
-        if (tok.text.empty()) return false;
-
-        // Check for . or scientific notation
-        bool has_dot = false;
-        bool has_e = false;
-
-        for (char c : tok.text) {
-            if (c == '.') has_dot = true;
-            if (c == 'e' || c == 'E') has_e = true;
-        }
-
-        if (!has_dot && !has_e) return false;
-
-        try {
-            double value = std::stod(tok.text);
-            obj = Object::make_float(value);
-            return true;
-        }
-        catch (const std::exception&) {
-            return false;
-        }
-    }
-
-    bool Reader::try_token_as_char(const Token& tok, Object& obj) {
-        if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == '\\') {
-            if (tok.text.size() == 3) {
-                obj = Object::make_char(tok.text[2]);
-                return true;
-            }
-            else if (tok.text == "#\\space") {
-                obj = Object::make_char(' ');
-                return true;
-            }
-            else if (tok.text == "#\\newline") {
-                obj = Object::make_char('\n');
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool Reader::try_token_as_symbol(const Token& tok, Object& obj) {
-        if (tok.text.empty()) return false;
-
-        char first = tok.text[0];
-        if (!m_valid_symbols_chars[(int)first]) {
-            return false;
-        }
-
-        for (size_t i = 1; i < tok.text.size(); i++) {
-            char c = tok.text[i];
-            if (!m_valid_symbols_chars[(int)c]) {
-                return false;
-            }
-        }
-
-        obj = Object::make_symbol(&symbolTable, tok.text.c_str());
-        return true;
-    }
-
-    // ==================== Error Handling ====================
-
-    void Reader::throw_reader_error(TextStream& here, const std::string& err, int seek_offset) {
-        throw std::runtime_error("Reader error:\n" + err + "\nat " +
-            db.get_info_for(here.text, here.seek + seek_offset));
-    }
-
-} // namespace script
+	namespace {
+		/*!
+		 * Is this a valid character to start a decimal integer number?
+		 */
+		bool decimal_start(char c) {
+			return (c >= '0' && c <= '9') || c == '-';
+		}
+
+		/*!
+		 * Is this a valid character to start a floating point number?
+		 */
+		bool float_start(char c) {
+			return (c >= '0' && c <= '9') || c == '-' || c == '.';
+		}
+
+		/*!
+		 * Is this a valid character for a hex number?
+		 */
+		bool hex_char(char c) {
+			return !((c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F'));
+		}
+
+		/*!
+		 * Does the given string contain c?
+		 */
+		bool str_contains(const std::string& str, char c) {
+			for (auto& x : str) {
+				if (x == c) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+
+		bool is_printable_char(char c) {
+			return c >= ' ' && c <= '~';
+		}
+	}  // namespace
+
+
+		// ==================== TextStream ====================
+
+	/*!
+	 * Advance a TextStream through any comments or whitespace.
+	 * This will leave the stream at the next non-whitespace character (or at the end)
+	 */
+	void TextStream::seek_past_whitespace_and_comments() {
+		while (text_remains()) {
+			char c = peek();
+			switch (c) {
+			case ' ':
+			case '\t':
+			case '\n':
+			case '\r':
+				read();
+				break;
+
+			case ';':
+				while (text_remains() && read() != '\n') {}
+				break;
+
+			case '#':
+				if (text_remains(1) && peek(1) == '|') {
+					ASSERT(read() == '#');  // #
+					ASSERT(read() == '|');  // |
+
+					bool found_end = false;
+					while (text_remains() && !found_end) {
+						while (text_remains() && read() != '|') {}
+						if (text_remains() && read() == '#') {
+							found_end = true;
+						}
+					}
+					continue;
+				}
+				else {
+					return;
+				}
+				break;
+
+			default:
+				return;
+			}
+		}
+	}
+
+	/*!
+	 * Read encoding bytes on a TextStream and check if it's UTF-8.
+	 * If it's not, you can choose to throw or not.
+	 * If UTF-8 encoding is not detected, the stream is not advanced.
+	 */
+	void TextStream::read_utf8_encoding(bool throw_on_error) {
+		if (text_remains(2)) {
+			if ((uint8_t)peek(0) == 0xEF && (uint8_t)peek(1) == 0xBB && (uint8_t)peek(2) == 0xBF) {
+				read(); read(); read();
+				return;
+			}
+		}
+
+		if (throw_on_error) {
+			throw std::runtime_error(
+				fmt::format("UTF-8 encoding not detected in {}", text->get_description()));
+		}
+	}
+
+	// ==================== Reader ====================
+
+	Reader::Reader() {
+		// add default macros
+		add_reader_macro("'", "quote");
+		add_reader_macro("`", "quasiquote");
+		add_reader_macro(",", "unquote");
+		add_reader_macro(",@", "unquote-splicing");
+
+		// setup table of which characters are valid for starting a symbol
+		for (auto& x : m_valid_symbols_chars) {
+			x = false;
+		}
+
+		for (char x = 'a'; x <= 'z'; x++) {
+			m_valid_symbols_chars[(int)x] = true;
+		}
+
+		for (char x = 'A'; x <= 'Z'; x++) {
+			m_valid_symbols_chars[(int)x] = true;
+		}
+
+		for (char x = '0'; x <= '9'; x++) {
+			m_valid_symbols_chars[(int)x] = true;
+		}
+
+		const char bonus[] = "!$%&*+-/\\.,@^_-;:<>?~=#";
+		for (const char* c = bonus; *c; c++) {
+			m_valid_symbols_chars[(int)*c] = true;
+		}
+	}
+
+
+	/*!
+	 * Read a string.
+	 */
+	Object Reader::read_from_string(const std::string& str,
+		bool add_top_level,
+		const std::optional<std::string>& string_name)
+	{
+		auto textFrag = std::make_shared<ProgramString>(str, string_name.value_or("Program string"));
+		db.insert(textFrag);
+
+		auto result = internal_read(textFrag, false, add_top_level);
+		db.link(result, textFrag, 0);
+		return result;
+	}
+
+	Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding) {
+		std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
+		const auto joined_file_path = file_util::get_file_path(file_path);
+
+		if (!file_util::exists(joined_file_path)) {
+			throw std::runtime_error(fmt::format("Cannot read {}, file doesn't exist", joined_file_path));
+		}
+
+		auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
+		db.insert(textFrag);
+
+		auto result = internal_read(textFrag, check_encoding);
+		db.link(result, textFrag, 0);
+		return result;
+	}
+
+	/*!
+	 * Common read for a SourceText
+	 */
+	Object Reader::internal_read(std::shared_ptr<SourceText> text,
+		bool check_encoding,
+		bool add_top_level) {
+		if (check_encoding && (text->get_size() < 3 ||
+			(uint8_t)text->get_text()[0] != 0xEF ||
+			(uint8_t)text->get_text()[1] != 0xBB ||
+			(uint8_t)text->get_text()[2] != 0xBF)) {
+			throw std::runtime_error(
+				fmt::format("Text file {} has invalid encoding", text->get_description()));
+		}
+
+		// first create stream
+		TextStream ts(text);
+
+		if (check_encoding) {
+			// discard the UTF-8 encoding bytes
+			ts.read_utf8_encoding(true);
+		}
+		// clean up first whitespace
+		ts.seek_past_whitespace_and_comments();
+
+		// read list!
+		try {
+			auto objs = read_list(ts, false);
+			if (add_top_level) {
+				return Object::make_pair(Object::make_symbol(&symbolTable, "top-level"), objs);
+			}
+			else {
+				return objs;
+			}
+		}
+		catch (std::exception& e) {
+			throw;
+		}
+	}
+
+	// ==================== Token Reading ====================
+
+/*!
+ * Given a stream starting at the first character of a token, get the token. Doesn't consume
+ * whitespace at the end and leaves the stream on the first character after the token.
+ */
+	Token Reader::get_next_token(TextStream& stream) {
+		ASSERT(stream.text_remains());
+		Token t;
+		t.source_line = stream.line_count;
+		t.source_offset = stream.seek;
+		t.source_text = stream.text;
+
+		char first = stream.read();
+		t.text.push_back(first);
+
+		// Special tokens
+		if (first == '(' || first == ')' || first == '"' || first == '\'' || first == '`')
+			return t;
+
+		// ",@" token
+		if (first == ',' && stream.text_remains() && stream.peek() == '@') {
+			t.text.push_back(stream.read());
+			return t;
+		}
+		else if (first == ',') {
+			return t;
+		}
+		else if (first == '#' && stream.text_remains() && stream.peek() == '(') {
+			t.text.push_back(stream.read());
+			return t;
+		}
+
+		// Read until token end
+		while (stream.text_remains()) {
+			char next = stream.peek();
+			if (next == ' ' || next == '\n' || next == '\t' || next == '\r' || next == ')' ||
+				next == ';' || next == '(') {
+				return t;
+			}
+			else {
+				t.text.push_back(stream.read());
+			}
+		}
+
+		return t;
+	}
+	/*!
+ * Add a macro that replaces the sequence of [shortcut, other_token] with
+ * (replacement other_token) <- a list with two objects, replacement is a symbol.
+ * These are used to make 'x turn into (quote x) and similar.
+ */
+	void Reader::add_reader_macro(const std::string& shortcut, std::string replacement) {
+		m_reader_macros[shortcut] = std::move(replacement);
+	}
+
+	// ==================== Object Reading ====================
+
+	bool Reader::read_object(Token& tok, TextStream& ts, Object& obj) {
+		try {
+			if (try_token_as_integer(tok, obj)) return true;
+			if (try_token_as_hex(tok, obj)) return true;
+			if (try_token_as_binary(tok, obj)) return true;
+			if (try_token_as_float(tok, obj)) return true;
+
+			// try as string
+			if (tok.text[0] == '"') {
+				ASSERT(tok.text.length() == 1);
+				if (read_string(ts, obj)) return true;
+				throw_reader_error(ts, "failed to read string, close quote not found", -1);
+				return false;
+			}
+
+			if (tok.text[0] == '#' && tok.text.size() >= 2 && tok.text[1] == '(') {
+				if (read_array(ts, obj)) return true;
+			}
+
+			if (try_token_as_char(tok, obj)) return true;
+			if (try_token_as_symbol(tok, obj)) return true;
+
+		}
+		catch (std::exception& e) {
+			throw_reader_error(ts, "parsing token " + tok.text + " failed: " + e.what(), -1);
+		}
+
+		return false;
+	}
+
+
+	bool Reader::read_array(TextStream& stream, Object& o) {
+		stream.seek_past_whitespace_and_comments();
+		std::vector<Object> objects;
+
+		bool got_close_paren = false;
+		while (stream.text_remains()) {
+			auto tok = get_next_token(stream);
+			ASSERT(!tok.text.empty());
+
+			if (tok.text[0] == '(') {
+				ASSERT(tok.text.length() == 1);
+				objects.push_back(read_list(stream, true));
+				stream.seek_past_whitespace_and_comments();
+				continue;
+			}
+			else if (tok.text[0] == ')') {
+				ASSERT(tok.text.length() == 1);
+				got_close_paren = true;
+				break;
+			}
+			else {
+				Object next_obj;
+				if (read_object(tok, stream, next_obj)) {
+					stream.seek_past_whitespace_and_comments();
+					objects.push_back(next_obj);
+				}
+				else {
+					throw_reader_error(stream, "invalid token encountered in array reader: " + tok.text,
+						-int(tok.text.size()));
+				}
+			}
+		}
+
+		if (!got_close_paren) {
+			throw_reader_error(stream, "An array must end in a close parenthesis", -1);
+			return false;
+		}
+
+		o = Object::make_array(objects);
+		return true;
+	}
+
+	bool Reader::try_token_as_symbol(const Token& tok, Object& obj) {
+		if (tok.text.empty()) return false;
+
+		char first = tok.text[0];
+		if (!m_valid_symbols_chars[(int)first]) {
+			return false;
+		}
+
+		for (size_t i = 1; i < tok.text.size(); i++) {
+			char c = tok.text[i];
+			if (!m_valid_symbols_chars[(int)c]) {
+				return false;
+			}
+		}
+
+		obj = Object::make_symbol(&symbolTable, tok.text.c_str());
+		return true;
+	}
+	// ==================== List Reading ====================
+	/*!
+	 * Call this on the character after the open paren.
+	 */
+	Object Reader::read_list(TextStream& ts, bool expect_close_paren) {
+		ts.seek_past_whitespace_and_comments();
+
+		ListBuilder list_builder;
+		bool got_close_paren = false;
+		bool got_dot = false;
+		bool got_thing_after_dot = false;
+		int start_offset = ts.seek;
+
+		while (ts.text_remains()) {
+			auto tok = get_next_token(ts);
+
+			// Reader macros
+			std::vector<std::string> reader_macro_string_stack;
+			auto kv = m_reader_macros.find(tok.text);
+			if (kv != m_reader_macros.end()) {
+				while (kv != m_reader_macros.end()) {
+					reader_macro_string_stack.push_back(kv->second);
+					if (!ts.text_remains()) {
+						throw_reader_error(ts, "Something must follow a reader macro", 0);
+					}
+					tok = get_next_token(ts);
+					kv = m_reader_macros.find(tok.text);
+				}
+			}
+			else {
+				if (tok.text == ".") {
+					if (got_dot) {
+						throw_reader_error(ts, "A list cannot have multiple dots.", -1);
+					}
+					ts.seek_past_whitespace_and_comments();
+					if (!ts.text_remains()) {
+						throw_reader_error(ts, "A list cannot end in a dot", -1);
+					}
+					tok = get_next_token(ts);
+					got_dot = true;
+				}
+			}
+
+			auto insert_object = [&](Object&& o) {
+				if (got_thing_after_dot) {
+					throw_reader_error(ts, "A list cannot have multiple entries after the dot", -1);
+				}
+
+				if (reader_macro_string_stack.empty()) {
+					list_builder.push_back(std::move(o));
+				}
+				else {
+					Object to_push_back = std::move(o);
+					while (!reader_macro_string_stack.empty()) {
+						to_push_back = script::build_list(
+							{ Object::make_symbol(&symbolTable, reader_macro_string_stack.back().c_str()),
+							 to_push_back });
+						reader_macro_string_stack.pop_back();
+					}
+					list_builder.push_back(std::move(to_push_back));
+				}
+
+				if (got_dot) {
+					got_thing_after_dot = true;
+				}
+				};
+
+			if (tok.text.empty()) {
+				break;
+			}
+			else if (tok.text[0] == '(') {
+				insert_object(read_list(ts, true));
+				ts.seek_past_whitespace_and_comments();
+				continue;
+			}
+			else if (tok.text[0] == ')') {
+				got_close_paren = true;
+				break;
+			}
+			else {
+				Object obj;
+				if (read_object(tok, ts, obj)) {
+					ts.seek_past_whitespace_and_comments();
+					insert_object(std::move(obj));
+				}
+				else {
+					throw_reader_error(ts, "invalid token encountered in reader: " + tok.text,
+						-int(tok.text.size()));
+				}
+			}
+		}
+
+		if (expect_close_paren && !got_close_paren) {
+			throw_reader_error(ts, "failed to find close paren", -1);
+		}
+
+		if (got_close_paren && !expect_close_paren) {
+			throw_reader_error(ts, "found an unexpected close paren", -1);
+		}
+
+		if (got_dot && !got_thing_after_dot) {
+			throw_reader_error(ts, "A list must have an entry after the dot", -1);
+		}
+
+		if (got_thing_after_dot) {
+			if (list_builder.size < 2) {
+				throw_reader_error(ts, "A list with a dot must have at least one thing before the dot", -1);
+			}
+			auto back = list_builder.pop_back();
+			list_builder.finalize();
+			auto rv = list_builder.head;
+
+			auto lst = rv;
+			while (true) {
+				if (lst.as_pair()->cdr.is_empty_list()) {
+					lst.as_pair()->cdr = back;
+					break;
+				}
+				else {
+					lst = lst.as_pair()->cdr;
+				}
+			}
+			db.link(rv, ts.text, start_offset);
+			return rv;
+		}
+		else {
+			list_builder.finalize();
+			auto rv = list_builder.head;
+			db.link(rv, ts.text, start_offset);
+			return rv;
+		}
+	}
+
+	/*!
+	 * Read a string and escape. Start on the first char after the first double quote.
+	 * Supported escapes are \n, \t, \\ and work like they do in C.
+	 * An arbitrary character can be entered as \c12 where the "12" is hexadecimal.
+	 */
+	bool Reader::read_string(TextStream& stream, Object& obj) {
+		bool got_close_quote = false;
+		std::string str;
+
+		while (stream.text_remains()) {
+			char c = stream.read();
+			if (c == '"') {
+				obj = Object::make_string(str);
+				got_close_quote = true;
+				break;
+			}
+
+			if (c == '\\') {
+				if (!stream.text_remains()) {
+					throw_reader_error(stream, "incomplete string escape code", -1);
+				}
+				if (stream.peek() == 'n') {
+					stream.read();
+					str.push_back('\n');
+				}
+				else if (stream.peek() == 't') {
+					stream.read();
+					str.push_back('\t');
+				}
+				else if (stream.peek() == '\\') {
+					stream.read();
+					str.push_back('\\');
+				}
+				else if (stream.peek() == '"') {
+					stream.read();
+					str.push_back('"');
+				}
+				else if (stream.peek() == 'c') {
+					stream.read();
+					if (!stream.text_remains(2)) {
+						throw_reader_error(stream, "incomplete string escape code", -1);
+					}
+					auto first = stream.read();
+					auto second = stream.read();
+					if (!hex_char(first) || !hex_char(second)) {
+						throw_reader_error(stream, "invalid character escape hex number", -3);
+					}
+					char hex_num[3] = { first, second, '\0' };
+					auto value = std::stoul(hex_num, nullptr, 16);
+					if (value >= 256) {
+						throw_reader_error(stream, "invalid character escape", -2);
+					}
+					ASSERT(value < 256);
+					str.push_back(char(value));
+				}
+				else {
+					throw_reader_error(stream, "unknown string escape code", -1);
+				}
+			}
+			else {
+				str.push_back(c);
+			}
+		}
+
+		return got_close_quote;
+	}
+
+	// ==================== Number Parsers ====================
+
+/*!
+ * Try decoding as a float.  Must have a "." in it.
+ * Otherwise all combinations of leading zeros, "."'s, negative signs, etc are ok.
+ * Trailing zeros not required.
+ */
+	bool Reader::try_token_as_float(const Token& tok, Object& obj) {
+		if (float_start(tok.text[0]) && str_contains(tok.text, '.')) {
+			size_t offset = tok.text[0] == '-' ? 1 : 0;
+			for (; offset < tok.text.size(); offset++) {
+				char c = tok.text.at(offset);
+				if ((c < '0' || c > '9') && (c != '.')) {
+					return false;
+				}
+			}
+
+			try {
+				std::size_t end = 0;
+				double v = std::stod(tok.text, &end);
+				if (end != tok.text.size())
+					return false;
+				obj = Object::make_float(v);
+				return true;
+			}
+			catch (std::exception& e) {
+				return false;
+			}
+		}
+		return false;
+	}
+
+	/*!
+	 * Try decoding as binary. Looks like #b101010 ...
+	 * 64-bit unsigned
+	 */
+	bool Reader::try_token_as_binary(const Token& tok, Object& obj) {
+		if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == 'b') {
+			for (size_t offset = 2; offset < tok.text.size(); offset++) {
+				char c = tok.text.at(offset);
+				if (c != '0' && c != '1') {
+					return false;
+				}
+			}
+
+			uint64_t value = 0;
+
+			for (uint32_t i = 2; i < tok.text.size(); i++) {
+				if (value & (0x8000000000000000)) {
+					throw std::runtime_error("overflow in binary constant: " + tok.text);
+				}
+
+				value <<= 1u;
+				if (tok.text[i] == '1') {
+					value++;
+				}
+				else if (tok.text[i] != '0') {
+					return false;
+				}
+			}
+			obj = Object::make_integer((int64_t)value);
+			return true;
+		}
+		return false;
+	}
+	bool Reader::try_token_as_hex(const Token& tok, Object& obj) {
+		if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == 'x') {
+			// determine if we look like a number or not. If we look like a number, but stoll fails,
+			// it means that the number is too big or too small, and we should error
+			for (size_t offset = 2; offset < tok.text.size(); offset++) {
+				char c = tok.text.at(offset);
+				if (!hex_char(c)) {
+					return false;
+				}
+			}
+
+			uint64_t v = 0;
+			try {
+				std::size_t end = 0;
+				v = std::stoull(tok.text.substr(2), &end, 16);
+				if (end + 2 != tok.text.size())
+					return false;
+				obj = Object::make_integer(v);
+				return true;
+			}
+			catch (std::exception& e) {
+				throw std::runtime_error("The number " + tok.text + " cannot be a hexadecimal constant");
+			}
+		}
+		return false;
+	}
+	/*!
+	 * Try decoding as integer. No decimals points allowed.
+	 * 64-bit signed. Won't accept values between INT64_MAX and UINT64_MAX.
+	 */
+	bool Reader::try_token_as_integer(const Token& tok, Object& obj) {
+		if (decimal_start(tok.text[0]) && !str_contains(tok.text, '.')) {
+			// determine if we look like a number or not. If we look like a number, but stoll fails,
+			// it means that the number is too big or too small, and we should error
+			size_t offset = tok.text[0] == '-' ? 1 : 0;
+			if (offset == 1 && tok.text.size() == 1) {
+				return false;  // - by itself is not a number!
+			}
+			for (; offset < tok.text.size(); offset++) {
+				char c = tok.text.at(offset);
+				if (c < '0' || c > '9') {
+					return false;
+				}
+			}
+			uint64_t v = 0;
+			try {
+				std::size_t end = 0;
+				v = std::stoll(tok.text, &end);
+				if (end != tok.text.size()) {
+					return false;
+				}
+				obj = Object::make_integer(v);
+				return true;
+			}
+			catch (std::exception& e) {
+				throw std::runtime_error("The number " + tok.text + " cannot be an integer constant");
+			}
+		}
+		return false;
+	}
+
+
+	bool Reader::try_token_as_char(const Token& tok, Object& obj) {
+		if (tok.text.size() >= 3 && tok.text[0] == '#' && tok.text[1] == '\\') {
+			if (tok.text.size() == 3 && is_printable_char(tok.text[2]) && tok.text[2] != ' ') {
+				obj = Object::make_char(tok.text[2]);
+				return true;
+			}
+
+			if (tok.text.size() == 4 && tok.text[2] == '\\') {
+				switch (tok.text[3]) {
+				case 'n':
+					obj = Object::make_char('\n');
+					return true;
+				case 's':
+					obj = Object::make_char(' ');
+					return true;
+				case 't':
+					obj = Object::make_char('\t');
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+
+	// ==================== Error Handling ====================
+
+	/*!
+	 * Throw an exception with useful information because of an error in the text stream.
+	 * Used for reader errors, like "missing close paren" or similar.
+	 */
+	void Reader::throw_reader_error(TextStream& here, const std::string& err, int seek_offset) {
+		throw std::runtime_error("Reader error:\n" + err + "\nat " +
+			db.get_info_for(here.text, here.seek + seek_offset));
+	}
+	/*!
+	 * Convert any string into one that can be read.
+	 * Unprintable characters become escape sequences, including tab and newline.
+	 */
+	std::string get_readable_string(const char* in) {
+		std::string result;
+		while (*in) {
+			if (is_printable_char(*in) && *in != '\\' && *in != '"') {
+				result.push_back(*in);
+			}
+			else if (*in == '\n') {
+				result += "\\n";
+			}
+			else if (*in == '\t') {
+				result += "\\t";
+			}
+			else if (*in == '\\') {
+				result += "\\\\";
+			}
+			else if (*in == '"') {
+				result += "\\\"";
+			}
+			else {
+				result += fmt::format("\\c{:02x}", uint8_t(*in));
+			}
+			in++;
+		}
+		return result;
+	}
+
+	std::string get_byte_string(const char* in) {
+		std::string result;
+		while (*in) {
+			result += fmt::format("\\c{:02x}", uint8_t(*in));
+			in++;
+		}
+		return result;
+	}
+}

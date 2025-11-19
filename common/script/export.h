@@ -7,3 +7,4 @@
 #include "common/script/parse_helpers.h"
 #include "common/script/text_db.h"
 #include "common/script/printer.h"
+#include "common/script/printer_env.h"

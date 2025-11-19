@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cstring>
 #include <util/assert.h>
+#include <common_types.h>
+
 
 namespace script
 {
@@ -451,5 +453,66 @@ namespace script
 
         m_entries = std::move(new_entries);
         m_next_resize = kMaxUsed * m_entries.size();
+    }
+
+    /*!
+     * Build a list of objects from a vector of objects.
+     */
+    Object build_list(const std::vector<Object>& objects) {
+        if (objects.empty()) {
+            return Object::make_empty_list();
+        }
+
+        // this is by far the most expensive part of parsing, so this is done a bit carefully.
+        // we maintain a std::shared_ptr<PairObject> that represents the list, built from back to front.
+        std::shared_ptr<PairObject> head =
+            std::make_shared<PairObject>(objects.back(), Object::make_empty_list());
+
+        s64 idx = ((s64)objects.size()) - 2;
+        while (idx >= 0) {
+            Object next;
+            next.type = ObjectType::PAIR;
+            next.heap_obj = std::move(head);
+
+            head = std::make_shared<PairObject>();
+            head->car = objects[idx];
+            head->cdr = std::move(next);
+
+            idx--;
+        }
+
+        Object result;
+        result.type = ObjectType::PAIR;
+        result.heap_obj = head;
+        return result;
+    }
+
+    Object build_list(std::vector<Object>&& objects) {
+        if (objects.empty()) {
+            return Object::make_empty_list();
+        }
+
+        // this is by far the most expensive part of parsing, so this is done a bit carefully.
+        // we maintain a std::shared_ptr<PairObject> that represents the list, built from back to front.
+        std::shared_ptr<PairObject> head =
+            std::make_shared<PairObject>(objects.back(), Object::make_empty_list());
+
+        s64 idx = ((s64)objects.size()) - 2;
+        while (idx >= 0) {
+            Object next;
+            next.type = ObjectType::PAIR;
+            next.heap_obj = std::move(head);
+
+            head = std::make_shared<PairObject>();
+            head->car = std::move(objects[idx]);
+            head->cdr = std::move(next);
+
+            idx--;
+        }
+
+        Object result;
+        result.type = ObjectType::PAIR;
+        result.heap_obj = std::move(head);
+        return result;
     }
 } // namespace script

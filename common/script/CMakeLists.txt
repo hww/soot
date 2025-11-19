@@ -5,12 +5,14 @@ add_library(script_lib
     common/util/assert.cpp
     common/util/file_util.cpp
     common/util/print_float.cpp
+
     common/log/log.cpp
     common/script/text_db.cpp
     common/script/object.cpp
     common/script/reader.cpp
     common/script/interpreter.cpp
     common/script/printer.cpp
+    common/script/printer_env.cpp
     common/script/pretty_printer.cpp
     common/script/parse_helpers.cpp
 )

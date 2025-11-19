@@ -5,6 +5,14 @@
 #include <fstream>
 
 
+void ReplWrapper::inspect_top_env()
+{
+    script::Object obj = interpreter_.get_global_environmet();
+    fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
+}
+
+
+
 ReplWrapper::ReplWrapper(const std::string& username)
     : username(username), interpreter_(username), reader() {
     init_settings();
@@ -68,6 +76,10 @@ void ReplWrapper::execute_line(const std::string& line) {
     }
     if (line == "(history)" || line == "history") {
         show_history();
+        return;
+    }
+    if (line == "(ee)") {
+        inspect_top_env();
         return;
     }
 
