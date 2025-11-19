@@ -5,3 +5,8 @@
 /.vs
 /out
 /enc_temp_folder
+*.tmp
+*.temp
+*.TMP
+*.TEMP
+
