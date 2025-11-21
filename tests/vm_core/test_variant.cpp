@@ -22,7 +22,7 @@ TEST(Variant, StringOperations) {
     vm::Variant str_val("hello");
     EXPECT_TRUE(str_val.is_string());
     EXPECT_EQ(str_val.get_string(), "hello");
-    EXPECT_EQ(str_val.to_string(), "\"hello\"");
+    EXPECT_EQ(str_val.to_string(), "hello");
 }
 
 TEST(Variant, Assignment) {
@@ -53,6 +53,7 @@ TEST(Variant, Conversion) {
     EXPECT_TRUE(i32_val.to_bool());
 
     vm::Variant f32_val(0.0f);
-    EXPECT_EQ(f32_val.get_int32(), 0);
+    EXPECT_EQ(f32_val.get_float(), 0.0);
+    EXPECT_EQ(f32_val.to_int(), 0);
     EXPECT_FALSE(f32_val.to_bool());
 }

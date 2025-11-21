@@ -11,16 +11,15 @@ include_directories(common/vm_core)
 
 # Создаем тестовый исполняемый файл
 add_executable(vm_core_types_test
-    #tests/vm_core/types_test.cpp
-    #tests/vm_core/string_id_test.cpp
-    #tests/vm_core/variant_test.cpp
-    #tests/vm_core/instructions_test.cpp
-    #tests/vm_core/stack_frame_test.cpp
-    #tests/vm_core/bytecode_test.cpp
-    #tests/vm_core/virtual_machine_test.cpp
+    tests/vm_core/test_types.cpp
+    tests/vm_core/test_string_id.cpp
+    tests/vm_core/test_variant.cpp
+    tests/vm_core/test_instructions.cpp
+    tests/vm_core/test_stack_frame.cpp
+    tests/vm_core/test_bytecode.cpp
     tests/vm_core/test_script_object.cpp
-
     tests/vm_core/test_native_functions.cpp
+    tests/vm_core/test_virtual_machine.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest
