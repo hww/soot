@@ -10,7 +10,7 @@ add_library(type_system_lib
     common/util/string_util.cpp
     common/util/diff.cpp
     common/util/file_util.cpp
-    common/log/log.cpp
+    common/util/log.cpp
 )
 
 # Линкуем fmt если нужно

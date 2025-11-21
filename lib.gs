@@ -3,21 +3,19 @@
 ;; THE GOOS COMMON LIBRARY
 
 ;; goos macro to define a new goos macro
-;;(define defsmacro (macro (name args &rest body) `(define ,name (macro ,args ,@body)) ))
 (define defsmacro (macro (name args &rest body)
 		    `(define ,name (macro ,args ,@body))
 		    )
   )
 
 ;; macro to define a new goos function
-;; (defsmacro desfun (name args &rest body) `(define ,name (lambda ,args ,@body)) )
 (defsmacro desfun (name args &rest body)
   `(define ,name (lambda ,args ,@body))
   )
 
 ;; goos macro to let us define goal macros from goos:
 (defsmacro defgmacro (name args &rest body)
-  `(define :env *goal-env* ,name (macro ,args ,@body))
+  `(define :env *comp-env* ,name (macro ,args ,@body))
   )
 
 
@@ -28,6 +26,7 @@
 (defsmacro when (clause &rest body)
   `(if ,clause (begin ,@body) #f)
   )
+
 ;; (defsmacro not (x) `(if ,x #f #t) )
 (defsmacro not (x)
   `(if ,x #f #t)
@@ -39,7 +38,6 @@
 
 (defsmacro aif (condition true false)
   "Anaphoric if, similar to Common Lisp"
-
   `(let ((it ,condition))
       (if it
           ,true
@@ -47,6 +45,7 @@
           )
       )
   )
+
 (desfun factorial (x) (if (= x 1) 1 (* x (factorial (- x 1)))))
 
 (desfun factorial (x)
@@ -494,13 +493,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; a map for art definitions used by art loading code.
-(define *art-info* (make-string-hash-table))
+(define *art-info* (make-hash-table))
 
 ;; a map for joint node names used by art loading code.
-(define *jg-info* (make-string-hash-table))
+(define *jg-info* (make-hash-table))
 
 ;; a map for tpages used by texture macros.
-(define *tpage-info* (make-string-hash-table))
+(define *tpage-info* (make-hash-table))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;  build system      ;;

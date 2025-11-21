@@ -323,7 +323,7 @@ namespace script
                 }
                 return nullptr;
             }
-            uint32_t hash = compute_crc32(str.name_ptr, sizeof(const char*));  // ← Используем name_ptr
+            uint32_t hash = util::compute_crc32(str.name_ptr, sizeof(const char*));  // ← Используем name_ptr
 
             // probe
             for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -343,7 +343,7 @@ namespace script
         }
 
         void set(InternedSymbolPtr ptr, const T& obj) {
-            uint32_t hash = compute_crc32(ptr.name_ptr, sizeof(const char*));  // ← Используем name_ptr
+            uint32_t hash = util::compute_crc32(ptr.name_ptr, sizeof(const char*));  // ← Используем name_ptr
 
             // probe
             for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -393,7 +393,7 @@ namespace script
             for (const auto& old_entry : m_entries) {
                 if (old_entry.key) {
                     bool done = false;
-                    uint32_t hash = compute_crc32(old_entry.key, sizeof(const char*));
+                    uint32_t hash = util::compute_crc32(old_entry.key, sizeof(const char*));
                     for (uint32_t i = 0; i < new_entries.size(); i++) {
                         uint32_t slot_addr = (hash + i) & m_mask;
                         auto& slot = new_entries[slot_addr];
@@ -427,6 +427,17 @@ namespace script
 
         InternedSymbolPtr intern(const char* str);
 
+        // Метод для итерации по символам
+        template<typename F>
+        void for_each_symbol(F func) const {
+            for (const auto& entry : m_entries) {
+                if (entry.name) {
+                    func(InternedSymbolPtr{ entry.name });
+                }
+            }
+        }
+
+        size_t get_symbol_count() const { return m_used_entries; }
     private:
         void resize();
         int m_power_of_two_size = 0;

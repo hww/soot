@@ -161,7 +161,7 @@ namespace script {
 		return result;
 	}
 
-	Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding) {
+	Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding, bool add_top_level) {
 		std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
 		const auto joined_file_path = file_util::get_file_path(file_path);
 
@@ -172,7 +172,7 @@ namespace script {
 		auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
 		db.insert(textFrag);
 
-		auto result = internal_read(textFrag, check_encoding);
+		auto result = internal_read(textFrag, check_encoding, add_top_level);
 		db.link(result, textFrag, 0);
 		return result;
 	}
@@ -764,5 +764,91 @@ namespace script {
 			in++;
 		}
 		return result;
+	}
+
+	// ================== Test completitopn ===================
+	// 
+	// Реализация в reader.cpp
+	bool Reader::is_expression_complete(const std::string& code) {
+		auto text = std::make_shared<ReplText>(code);
+		TextStream ts(text);
+
+		try {
+			return is_expression_complete_impl(ts);
+		}
+		catch (...) {
+			// Если произошла ошибка парсинга, считаем выражение неполным
+			return false;
+		}
+	}
+
+	bool Reader::is_expression_complete_impl(TextStream& ts) {
+		int paren_balance = 0;
+		int bracket_balance = 0;
+		int brace_balance = 0;
+		bool in_string = false;
+		bool in_comment = false;
+		bool escape_next = false;
+
+		while (ts.text_remains()) {
+			char c = ts.read();
+
+			if (escape_next) {
+				escape_next = false;
+				continue;
+			}
+
+			if (in_comment) {
+				if (c == '\n') {
+					in_comment = false;
+				}
+				continue;
+			}
+
+			if (in_string) {
+				if (c == '\\') {
+					escape_next = true;
+				}
+				else if (c == '"') {
+					in_string = false;
+				}
+				continue;
+			}
+
+			switch (c) {
+			case ';':
+				in_comment = true;
+				break;
+			case '"':
+				in_string = true;
+				break;
+			case '(':
+				paren_balance++;
+				break;
+			case ')':
+				paren_balance--;
+				break;
+			case '[':
+				bracket_balance++;
+				break;
+			case ']':
+				bracket_balance--;
+				break;
+			case '{':
+				brace_balance++;
+				break;
+			case '}':
+				brace_balance--;
+				break;
+			}
+
+			// Если баланс скобок стал отрицательным - ошибка
+			if (paren_balance < 0 || bracket_balance < 0 || brace_balance < 0) {
+				return true; // Завершено, но с ошибкой
+			}
+		}
+
+		// Выражение завершено, если все скобки сбалансированы и мы не в строке/комментарии
+		return paren_balance == 0 && bracket_balance == 0 && brace_balance == 0 && !in_string;
 	}
 }

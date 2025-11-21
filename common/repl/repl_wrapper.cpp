@@ -1,22 +1,18 @@
 ﻿#include "repl_wrapper.h"
-#include "common/log/log.h"
+#include "common/util/log.h"
 #include "common/versions/revision.h"
+#include "common/script/object.h"
 #include <iostream>
 #include <fstream>
-
-
-void ReplWrapper::inspect_top_env()
-{
-    script::Object obj = interpreter_.get_global_environmet();
-    fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
-}
+#include "fmt/format.h"
+#include "fmt/color.h"
 
 
 
 ReplWrapper::ReplWrapper(const std::string& username)
     : username(username), interpreter_(username), reader() {
     init_settings();
-    load_config();  // ДОБАВЛЯЕМ ЭТУ СТРОКУ
+    load_config("config.gs");  // ДОБАВЛЯЕМ ЭТУ СТРОКУ
     load_startup_files();  // Добавляем загрузку startup файлов
 }
 
@@ -30,24 +26,20 @@ void ReplWrapper::run_interactive() {
     print_welcome({ "core", "stdlib" });
 
     while (true) {
-        const char* input = repl.input("aleste> ");
+        // Читаем многострочное выражение
+        std::string code = read_multiline_expression("");
 
-        // Различаем EOF (Ctrl+D) и пустую строку
-        if (!input) {
-            // input == nullptr - это EOF (Ctrl+D)
-            break;
-        }
-
-        std::string line(input);
-        if (line.empty()) {
-            // Пустая строка - просто продолжаем цикл
+        // Проверяем EOF
+        if (code.empty()) {
+            // Это может быть EOF или просто пустой ввод
+            // Проверяем, был ли это реально EOF
+            if (should_exit_) break;
             continue;
         }
 
-        execute_line(line);
-        add_to_history(line);
+        execute_line(code);
+        add_to_history(code);
 
-        // Проверяем флаг выхода ПОСЛЕ выполнения команды
         if (should_exit_) {
             break;
         }
@@ -80,6 +72,39 @@ void ReplWrapper::execute_line(const std::string& line) {
     }
     if (line == "(ee)") {
         inspect_top_env();
+        return;
+    }
+    if (line == "(edb)") {
+        inspect_text_db();
+        return;
+    }
+    if (line == "(esym)") {
+        inspect_symbol_table();
+        return;
+    }
+    if (line == ":multi on") {
+        set_multi_line_enabled(true);
+        fmt::print("Multi-line mode enabled\n");
+        return;
+    }
+    if (line == ":multi off") {
+        set_multi_line_enabled(false);
+        fmt::print("Multi-line mode disabled\n");
+        return;
+    }
+    if (line == ":check on") {
+        set_check_completion(true);
+        fmt::print("Completion checking enabled\n");
+        return;
+    }
+    if (line == ":check off") {
+        set_check_completion(false);
+        fmt::print("Completion checking disabled\n");
+        return;
+    }
+    if (line == ":modes") {
+        fmt::print("Multi-line: {}\n", multi_line_enabled_ ? "ON" : "OFF");
+        fmt::print("Completion check: {}\n", check_completion_ ? "ON" : "OFF");
         return;
     }
 
@@ -118,6 +143,9 @@ void ReplWrapper::print_help() {
     fmt::print(fg(fmt::color::cyan), "  (clear)             {} Clear screen\n", "→");
     fmt::print(fg(fmt::color::cyan), "  (history)           {} Show command history\n", "→");
     fmt::print(fg(fmt::color::cyan), "  (quit)              {} Exit REPL\n", "→");
+    fmt::print(fg(fmt::color::cyan), "  (ee)                {} Inspect environment\n", "→");
+    fmt::print(fg(fmt::color::cyan), "  (edb)               {} Inspect text DB\n", "→");
+    fmt::print(fg(fmt::color::cyan), "  (esym)              {} Inspect symbol table\n", "→");
 
     fmt::print(fg(fmt::color::gold) | fmt::emphasis::bold, "\nStartup Files:\n");
     fmt::print("  startup-pre.gc       {} Run before network\n", "→");
@@ -429,39 +457,64 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
 
 void ReplWrapper::load_config(const std::string& filename) {
     try {
-        auto config_data = reader.read_from_file({ filename });
+        auto config_data = reader.read_from_file({ filename }, true, false);
         parse_config_data(config_data);
         fmt::print("Loaded config from {}\n", filename);
     }
     catch (const std::exception& e) {
-        fmt::print("Config file not found, using defaults: {}\n", e.what());
+        fmt::print("Error in config file: {}\n", e.what());
     }
 }
 
 void ReplWrapper::parse_config_data(const script::Object& config_list) {
-    auto commands = config_list.as_c_vector(); // ← ПРОСТО И УДОБНО!
+    // Рекурсивно разыменовываем quote формы
+    script::Object data = config_list;
+
+    while (data.is_pair() &&
+        data.as_pair()->car.is_symbol() &&
+        data.as_pair()->car.as_symbol().name_ptr == "quote") {
+        data = data.as_pair()->cdr;
+        if (data.is_pair()) {
+            data = data.as_pair()->car;
+        }
+    }
+
+    auto commands = data.as_c_vector();
 
     for (const auto& command : commands) {
         if (command.is_pair()) {
-            auto args = command.as_array(); // ← И ВЛОЖЕННЫЕ ТОЖЕ!
-            auto size = args->size();
-            if (size >= 1 && args->at(0).is_symbol()) {
-                std::string cmd_name = args->at(0).as_symbol().name_ptr;
+            auto pair = command.as_pair();
+            if (pair->car.is_symbol()) {
+                std::string cmd_name = pair->car.as_symbol().name_ptr;
 
-                if (cmd_name == "nrepl-port" && size >= 2) {
-                    config_.nrepl_port = args->at(1).as_integer();
+                // Обрабатываем как связанный список
+                if (cmd_name == "nrepl-port") {
+                    config_.nrepl_port = pair->cdr.as_pair()->car.as_integer();
                 }
-                else if (cmd_name == "prompt" && size >= 2) {
-                    config_.prompt = args->at(1).as_string()->data;
+                else if (cmd_name == "prompt") {
+                    config_.prompt = pair->cdr.as_pair()->car.as_string()->data;
                 }
-                else if (cmd_name == "keybind" && size >= 5) {
-                    KeyBind bind;
-                    bind.modifier = parse_modifier(args->at(1).as_symbol().name_ptr);
-                    bind.key = args->at(2).as_string()->data;
-                    bind.description = args->at(3).as_string()->data;
-                    bind.command = args->at(4).as_string()->data;
-                    config_.keybinds.push_back(bind);
+                else if (cmd_name == "keybind") {
+                    auto rest = pair->cdr;
+                    if (rest.is_pair()) {
+                        KeyBind bind;
+                        bind.modifier = parse_modifier(rest.as_pair()->car.as_symbol().name_ptr);
+                        rest = rest.as_pair()->cdr;
+                        if (rest.is_pair()) {
+                            bind.key = rest.as_pair()->car.as_string()->data;
+                            rest = rest.as_pair()->cdr;
+                            if (rest.is_pair()) {
+                                bind.description = rest.as_pair()->car.as_string()->data;
+                                rest = rest.as_pair()->cdr;
+                                if (rest.is_pair()) {
+                                    bind.command = rest.as_pair()->car.as_string()->data;
+                                    config_.keybinds.push_back(bind);
+                                }
+                            }
+                        }
+                    }
                 }
+                // Аналогично для других параметров...
             }
         }
     }
@@ -472,4 +525,170 @@ KeyBind::Modifier ReplWrapper::parse_modifier(const std::string& mod_str) {
     if (mod_str == "shift") return KeyBind::Modifier::SHIFT;
     if (mod_str == "meta") return KeyBind::Modifier::META;
     return KeyBind::Modifier::CTRL;
+}
+
+
+void ReplWrapper::inspect_top_env()
+{
+    script::Object obj = interpreter_.get_global_environmet();
+    fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
+}
+
+std::string ReplWrapper::read_multiline_expression(const std::string& first_line) {
+    if (!multi_line_enabled_) {
+        return first_line;
+    }
+
+    if (check_completion_) {
+        return read_multiline_with_check();
+    }
+    else {
+        return read_multiline_simple();
+    }
+}
+
+// Режим БЕЗ проверки - просто ждем пустую строку
+std::string ReplWrapper::read_multiline_simple() {
+    std::string result;
+    bool first_line = true;
+
+    while (true) {
+        const char* input;
+        if (first_line) {
+            input = repl.input("aleste> ");
+            first_line = false;
+        }
+        else {
+            input = repl.input("... ");
+        }
+
+        if (!input) break; // EOF
+
+        std::string line(input);
+
+        // Пустая строка завершает ввод
+        if (line.empty() && !result.empty()) {
+            break;
+        }
+
+        if (!result.empty()) {
+            result += "\n";
+        }
+        result += line;
+
+        // Если отключена проверка и введена пустая строка - завершаем
+        if (line.empty()) {
+            break;
+        }
+    }
+
+    return result;
+}
+
+// Режим С проверкой - проверяем завершенность выражения
+std::string ReplWrapper::read_multiline_with_check() {
+    std::string result;
+    bool first_line = true;
+
+    while (true) {
+        const char* input;
+        if (first_line) {
+            input = repl.input("aleste> ");
+            first_line = false;
+        }
+        else {
+            input = repl.input("... ");
+        }
+
+        if (!input) break; // EOF
+
+        std::string line(input);
+
+        // Добавляем к результату
+        if (!result.empty()) {
+            result += "\n";
+        }
+        result += line;
+
+        // Проверяем, завершено ли выражение
+        if (reader.is_expression_complete(result)) {
+            break;
+        }
+
+        // Если введена пустая строка и выражение не завершено, все равно продолжаем
+        // Пользователь может ввести пустую строку внутри строкового литерала и т.д.
+    }
+
+    return result;
+}
+
+void ReplWrapper::inspect_text_db() {
+    auto& db = reader.get_db();
+
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold,
+        "=== Text Database ===\n");
+
+    fmt::print("Fragments: {}\n", db.get_fragment_count());
+    fmt::print("Objects with source info: {}\n", db.get_object_count());
+
+    if (db.get_fragment_count() > 0) {
+        fmt::print("\n");
+        fmt::print(fg(fmt::color::yellow), "Source fragments:\n");
+        fmt::print(fg(fmt::color::white), ""); // Сбрасываем цвет
+
+        int i = 0;
+        for (const auto& desc : db.get_fragment_descriptions()) {
+            fmt::print("  {:2d}: {}\n", i++, desc);
+        }
+    }
+}
+
+void ReplWrapper::inspect_symbol_table() {
+    auto& st = reader.get_symbol_table();
+
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold,
+        "=== Symbol Table ===\n");
+
+    fmt::print("Total symbols: {}\n", st.get_symbol_count());
+
+    if (st.get_symbol_count() > 0) {
+        // Группируем символы по типам
+        std::vector<std::string> regular_symbols;
+        std::vector<std::string> keyword_symbols;
+
+        st.for_each_symbol([&](const script::InternedSymbolPtr & sym) {
+            if (sym.starts_with_colon()) {
+                keyword_symbols.push_back(sym.name_ptr);
+            }
+            else {
+                regular_symbols.push_back(sym.name_ptr);
+            }
+            });
+
+        if (!regular_symbols.empty()) {
+            fmt::print("\n");
+            fmt::print(fg(fmt::color::green), "Regular symbols: ({})\n", regular_symbols.size());
+            fmt::print(fg(fmt::color::white), ""); // Сбрасываем цвет
+            for (const auto& sym : regular_symbols) {
+                fmt::print("  {}\n", sym);
+            }
+        }
+
+        if (!keyword_symbols.empty()) {
+            fmt::print("\n");
+            fmt::print(fg(fmt::color::blue), "Keyword symbols: ({})\n", keyword_symbols.size());
+            fmt::print(fg(fmt::color::white), ""); // Сбрасываем цвет
+            for (const auto& sym : keyword_symbols) {
+                fmt::print("  {}\n", sym);
+            }
+        }
+
+        // Статистика
+        fmt::print("\n");
+        fmt::print(fg(fmt::color::yellow), "Statistics:\n");
+        fmt::print(fg(fmt::color::white), "");
+        fmt::print("  Regular symbols: {}\n", regular_symbols.size());
+        fmt::print("  Keyword symbols: {}\n", keyword_symbols.size());
+        fmt::print("  Memory efficiency: pointer-based comparison\n");
+    }
 }

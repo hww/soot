@@ -1,6 +1,6 @@
 #include "crc32.h"
 
-namespace script
+namespace util
 {
     uint32_t compute_crc32(const std::string& str) {
         return compute_crc32(str.c_str(), str.length());

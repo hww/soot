@@ -1,5 +1,5 @@
 #include "repl_client.h"
-#include "common/log/log.h"
+#include "common/util/log.h"
 #include "third_party/fmt/include/fmt/format.h"
 
 ReplClient::ReplClient(int port) : XSocketClient(port) {

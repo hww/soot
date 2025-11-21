@@ -640,7 +640,7 @@ class ReplClient : public XSocketClient {
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/log/log.h"
+#include "common/util/log.h"
 // clang-format on
 
 // TODO - The server also needs to eventually return the result of the evaluation
@@ -864,7 +864,7 @@ class ReplServer : public XSocketServer {
 #include <string.h>
 
 #include "fmt/format.h"
-#include "common/log/log.h"
+#include "common/util/log.h"
 // clang-format on
 
 int open_socket(int af, int type, int protocol) {
@@ -1085,7 +1085,7 @@ std::string address_to_string(const sockaddr_in& addr);
 #include <string>
 
 #include "common/cross_sockets/XSocket.h"
-#include "common/log/log.h"
+#include "common/util/log.h"
 
 #include "fmt/format.h"
 
@@ -1184,7 +1184,7 @@ class XSocketClient {
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/log/log.h"
+#include "common/util/log.h"
 // clang-format on
 
 XSocketServer::XSocketServer(std::function<bool()> shutdown_callback,

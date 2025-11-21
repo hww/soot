@@ -4,7 +4,7 @@
 #include "fmt/args.h"
 #include "fmt/base.h"
 #include "fmt/format.h"
-#include "log/log.h"
+#include "util/log.h"
 #include "util/crc32.h"
 #include "util/file_util.h"
 #include "util/string_util.h"
@@ -24,7 +24,14 @@ namespace script
 
         // Создаем глобальное окружение
         global_environment = EnvironmentObject::make_new("global");
-        define_var_in_env(global_environment, global_environment, "*global*");
+
+        // create the environment which is be visible from GOAL
+        comp_env = EnvironmentObject::make_new("goal");
+
+        define_var_in_env(global_environment, global_environment, "*global-env*");
+        define_var_in_env(global_environment, comp_env, "*comp-env*");
+        define_var_in_env(comp_env, comp_env, "*comp-env*");
+        define_var_in_env(comp_env, global_environment, "*global-env*");
 
         auto user = Object::make_symbol(&symbols, username.c_str());
         define_var_in_env(global_environment, user, "*user*");
@@ -164,7 +171,7 @@ namespace script
             {"ash", &Interpreter::eval_ash},
         } });
     // load the standard library
-    //load_library();
+    load_library();
 }
 
 void Interpreter::load_library() {
@@ -278,7 +285,8 @@ Object Interpreter::intern(const std::string& name) {
 }
 
 void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
-    throw std::runtime_error("[Z80-Lisp] Evaluation error on " + o.print() + ": " + err);
+    throw std::runtime_error("Evaluation error on `" + o.print() + "`: " + err + "\n" +
+        reader.get_db().get_info_for(o));
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
@@ -2094,7 +2102,7 @@ Object Interpreter::eval_load_file(const Object& form, Arguments& args, const st
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
     try {
-        Object code = reader.read_from_file({ args.unnamed[0].as_string()->data }, true);
+        Object code = reader.read_from_file({ args.unnamed[0].as_string()->data }, true, true);
         return eval_with_rewind(code, env);
     }
     catch (std::runtime_error& e) {
@@ -2130,7 +2138,7 @@ Object Interpreter::eval_try_load_file(const Object& form,
 
     Object o;
     try {
-        o = reader.read_from_file({ path });
+        o = reader.read_from_file({ path }, true, true);
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("reader error inside of try-load-file:\n") + e.what());
@@ -2165,7 +2173,7 @@ Object Interpreter::eval_read_data_file(const Object & form,
     vararg_check(form, args, { ObjectType::STRING }, {});
 
     try {
-        return reader.read_from_file({ args.unnamed.at(0).as_string()->data}).as_pair()->cdr;
+        return reader.read_from_file({ args.unnamed.at(0).as_string()->data}, true, false).as_pair()->cdr;
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("reader error inside of read-file:\n") + e.what());

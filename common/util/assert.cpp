@@ -6,8 +6,9 @@
 #include <cstdlib>
 #include <string_view>
 
-#include "log/log.h"
+#include "util/log.h"
 
+#ifdef ASSET_WITH_TERMINATE
 
 void private_assert_failed(const char* expr,
     const char* file,
@@ -40,5 +41,29 @@ void private_assert_failed(const char* expr,
         private_assert_failed(expr, file, line, function, msg.data());
     }
 }
+
+#else // ifdef ASSET_WITH_TERMINATE
+
+[[noreturn]] void private_assert_failed(const char* expr,
+    const char* file,
+    int line,
+    const char* function,
+    const char* msg) {
+    std::string message = fmt::format("Assertion failed: '{}'\n\tMessage: {}\n\tSource: {}:{}\n\tFunction: {}",
+        expr, msg, file, line, function);
+
+    lg::error("{}", message);
+    throw AssertionException(message);
+}
+
+[[noreturn]] void private_assert_failed(const char* expr,
+    const char* file,
+    int line,
+    const char* function,
+    const std::string_view& msg) {
+    private_assert_failed(expr, file, line, function, std::string(msg).c_str());
+}
+
+#endif // ifdef ASSET_WITH_TERMINATE
 
 #endif

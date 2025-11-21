@@ -13,7 +13,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/log/log.h"
+#include "common/util/log.h"
 // clang-format on
 
 // TODO - The server also needs to eventually return the result of the evaluation

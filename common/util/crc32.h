@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace script {
+namespace util {
 	uint32_t compute_crc32(const std::string& str);
 	uint32_t compute_crc32(const char* data, size_t length);
 } // namespace script

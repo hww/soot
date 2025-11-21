@@ -13,7 +13,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/log/log.h"
+#include "common/util/log.h"
 // clang-format on
 
 XSocketServer::XSocketServer(std::function<bool()> shutdown_callback,

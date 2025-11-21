@@ -108,6 +108,20 @@ namespace script {
         void inherit_info(const Object& parent, const Object& child);
         void clear_info();
 
+        // Добавляем методы для инспекции
+        size_t get_fragment_count() const { return m_fragments.size(); }
+        size_t get_object_count() const { return m_map.size(); }
+
+        const auto& get_fragments() const { return m_fragments; }
+        const auto& get_mapping() const { return m_map; }
+
+        std::vector<std::string> get_fragment_descriptions() const {
+            std::vector<std::string> result;
+            for (const auto& frag : m_fragments) {
+                result.push_back(frag->get_description());
+            }
+            return result;
+        }
     private:
         std::vector<std::shared_ptr<SourceText>> m_fragments;
         std::unordered_map<std::shared_ptr<HeapObject>, TextRef> m_map;

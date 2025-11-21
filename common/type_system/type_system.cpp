@@ -1,7 +1,7 @@
 ﻿#include "type_system.h"
 #include "common/util/assert.h"
 #include "fmt/format.h"
-#include "common/log/log.h"  
+#include "common/util/log.h"  
 
 #include <algorithm>
 #include <stdexcept>

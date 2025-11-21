@@ -1,4 +1,4 @@
-'(
+﻿'(
   (nrepl-port 8181)
   (prompt "aleste> ")
   (history-size 1000)

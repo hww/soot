@@ -1,5 +1,5 @@
 ﻿# Верхний уровень
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.8)
 
 project(repl
     VERSION 1.0.0
@@ -78,12 +78,11 @@ add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 include_directories(third_party/replxx/include)
 add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 
-
-
 # Include subdirectories
 include(common/script/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
+include(common/vm_core/CMakeLists.txt)
 
 # Installation (optional)
 install(TARGETS lisp
@@ -114,4 +113,5 @@ if(BUILD_TESTS)
     enable_testing()
     include(tests/script/CMakeLists.txt)
     include(tests/type_system/CMakeLists.txt)
+    include(tests/vm_core/CMakeLists.txt)
 endif()

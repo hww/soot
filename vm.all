@@ -1,0 +1,5950 @@
+#include <fstream>
+#include "assembler.hpp"
+#include "string_id.hpp"
+#include "assembler_opcodes.hpp"
+#include "syntax_tools.hpp"
+
+namespace vm::assembler
+{
+	/**
+	 * There are two ways to get register number: by number or by the name
+	 */
+	s8 GetRegNum(const FCodeBuilder& builder, const FListStx& list, const size_t argNum) {
+		const auto argStx = list.get_item(argNum);
+		if (argStx->is_number())
+		{
+			const auto stx = argStx->get_number_stx();
+			if (stx == nullptr)
+				throw FSyntaxError(list.loc, GetArgException(list, argNum, "int"));
+			const auto regNum = stx->get_int();
+			if (regNum < std::numeric_limits<s8>::min() || regNum > std::numeric_limits<s8>::max())
+				throw FSyntaxError(GetArgException(list, argNum, "s8 with range -128..127"));
+			return static_cast<s8>(regNum);
+
+		}
+		if (argStx->is_symbol())
+		{
+			const auto stx = argStx->get_symbol_stx();
+			if (stx == nullptr)
+				throw FSyntaxError(list.loc, GetArgException(list, argNum, "symbol"));
+			const auto regName = stx->get_string_id();
+			const auto regNum = builder.GetGegNumber(regName);
+			if (regNum < 0)
+				throw FSyntaxError(stx->loc,"The variable is not found", stx->to_string());
+			if (regNum >static_cast<s32>(std::numeric_limits<s8>::max()))
+				throw FSyntaxError(GetArgException(list, argNum, "s8 with range -128..127"));
+			return static_cast<s8>(regNum);
+		}
+		throw FSyntaxError(GetArgException(list, argNum, "Expected number or register name, found"));
+	}
+	void CompileLineA(FCodeBuilder& builder, const FListStx& list, const EOpcode op) {
+		verify_min_max_arguments(list, 2, 2);
+		const auto a = GetRegNum(builder, list, 1);
+		builder.Code.add(FInstr(op, a, 0, 0));
+	}
+	void CompileLineAB(FCodeBuilder& builder, const FListStx& list, const EOpcode op) {
+		verify_min_max_arguments(list, 3, 3);
+		const auto a = GetRegNum(builder, list, 1);
+		const auto b = GetRegNum(builder, list, 2);
+		builder.Code.add(FInstr(op, a, b, 0));
+	}
+	void CompileLineABC(FCodeBuilder& builder, const FListStx& list, const EOpcode op) {
+		verify_min_max_arguments(list, 4, 4);
+		const auto a = GetRegNum(builder, list, 1);
+		const auto b = GetRegNum(builder, list, 2);
+		const auto c = GetRegNum(builder, list, 3);
+		builder.Code.add(FInstr(op, a, b, c));
+	}
+	void CompileLineBranch(FCodeBuilder& builder, const FListStx& list, const EOpcode op) {
+		verify_min_max_arguments(list, 3, 3);
+		const auto a = GetRegNum(builder, list, 1);
+		const auto constant = list.get_item(2);
+		if (constant->is_number()) {
+			auto address = get_int16(list, 2);
+			// The address should be divided by four
+			address = address >> 2;
+			builder.Code.add(FInstr(op, a, address));
+		}
+		else if (constant->is_symbol()) {
+			const auto labelName = get_string_id(list, 2);
+			if (!builder.Code.has_label(labelName))
+				throw FSyntaxError(list.loc, "Label is not defined", lookup_string_safe(labelName));
+			auto labelAddress = builder.Code.get_label(labelName);
+			// The address should be divided by four
+			labelAddress = labelAddress >> 2;
+			if (labelAddress > std::numeric_limits<u16>::max())
+				throw FSyntaxError(list.loc, "Label index is overflow", lookup_string_safe(labelName));
+			builder.Code.add(FInstr(op, a, static_cast<u16>(labelAddress)));
+		}
+		else {
+			throw FSyntaxError(GetArgException(list, 2, "string_id or int16"));
+		}
+	}
+	void CompileLineLoadImm(FCodeBuilder& builder, const FListStx& list, const EOpcode op) {
+		verify_min_max_arguments(list, 3, 3);
+		const auto a = GetRegNum(builder, list, 1);
+		const auto k = get_int16(list, 2);
+		builder.Code.add(FInstr(op, a, k));
+	}
+	void CompileLineLoadStatic(FCodeBuilder& builder,const FListStx& list, const EOpcode opcode) {
+		verify_min_max_arguments(list, 3, 3);
+		const auto a = GetRegNum(builder, list, 1);
+		const auto addressLarge = builder.Data.size();
+		if (addressLarge > std::numeric_limits<u16>::max())
+			throw FSyntaxError(list.loc, "Seems data table size is too large", list.to_string());
+		const auto address = static_cast<u16>(addressLarge);
+		FRecord record{};
+		switch (opcode)
+		{
+		case EOpcode::LoadStaticInt:
+			{
+				record.as_int32[0] = get_int32(list, 2);
+				builder.Data.add(record);
+			}
+			break;
+		case EOpcode::LoadStaticFloat:
+			{
+				record.as_float[0] = get_float(list, 2);
+				builder.Data.add(record);
+			}
+			break;
+		case EOpcode::LoadStaticPointer:
+			{
+				const auto str = get_string(list, 2);
+				const auto sid = define_string(str);
+				builder.Data.add_string(sid, str);
+			}
+			break;
+		case EOpcode::LookupInt:
+		case EOpcode::LookupFloat:
+		case EOpcode::LookupPointer:
+		{
+				record.as_int32[0] = get_string_id(list, 2);
+				builder.Data.add(record);
+		}
+		break;
+		default:
+			throw FSyntaxError(list.loc, "Unexpected error", list.to_string());
+		}
+		builder.Code.add(FInstr(opcode, a, address));
+	}
+	void CompileLineABK(FCodeBuilder& builder, const FListStx& list, const EOpcode opcode) {
+		verify_min_max_arguments(list, 4, 4);
+		auto a = GetRegNum(builder, list, 1);
+		auto b = GetRegNum(builder, list, 2);
+		auto k = get_int32(list, 3);
+		builder.Code.add(FInstr(opcode, a, b, k));
+	}
+
+
+	/**
+	* @brief There are several variants to define arguments
+	*		 ;; for typed value
+	*        (variable-name : variable-type)
+	*        ;; for optional value
+	*        (variable-name default-value)
+	*		  ;; for optional typed value
+	*        (variable-name default-value : variable-type)
+	*/
+	void CompileSingleArgument(FCodeBuilder& builder, const FListStx& list, FArguments& argList)
+	{
+		verify_min_arguments(list, 2);
+		verify_max_arguments(list, 4);
+		// The variable name state
+		auto varName = get_symbol_stx(list, 0);
+		// Parse rest of elements but start search def_value value
+		auto state = EArgParserState::DefaultValue;
+		// After parsing will be defined next two pointers
+		std::shared_ptr<FSyntax> defaultValue;
+		std::shared_ptr<FSymbolStx> typeName = nullptr;
+
+		for (size_t i=1; i< list.size(); i++)
+		{
+			const auto item = list.get_item(i);
+			switch (state)
+			{
+			case EArgParserState::DefaultValue:
+				{
+					if (is_symbol_equal_to(list, i, SID(":")))
+					{
+						// Switch to the typename search
+						state = EArgParserState::TypeName;
+						continue;
+					}
+	
+					// The def_value value
+					defaultValue = item;
+					state = EArgParserState::ColumnSymbol;
+				}
+				break;
+			case EArgParserState::ColumnSymbol:
+				if (is_symbol_equal_to(list, i, SID(":")))
+				{
+					// Switch to the typename search
+					state = EArgParserState::TypeName;
+					continue;
+				}
+				throw FSyntaxError(list.loc, "Expected ':' as type separator", list.to_string());
+				break;
+			case EArgParserState::TypeName:
+				typeName = get_symbol_stx(list, i);
+				state = EArgParserState::TypeName;
+				break;
+			}
+		}
+		if (typeName == nullptr && defaultValue == nullptr)
+			throw FSyntaxError(list.loc, "Expected definition of (def_value value or type) or bought", list.to_string());
+		argList.add(varName.get(), typeName.get(), defaultValue);
+	}
+
+	/**
+	 * @brief There are several variants to define arguments
+	 *        ;; for not typed value
+	 *        (function-name variable-name)
+	 *		  ;; for typed value
+	 *        (function-name (variable-name : variable-type))
+	 *		  ;; for optional typed or not value
+	 *        (function-name &optional (variable-name default-value : variable-type)) 
+	 *		  ;; for optional typed or not value
+	 *        (function-name &rest (variable-name : variable-type))
+	 */
+	void CompileArguments(FCodeBuilder& builder, const FListStx& list, FArguments& argList)
+	{
+		int itemCnt = -1;
+		const auto items = list.get_list();
+		for (auto& t : items) {
+			itemCnt++;
+			switch (itemCnt)
+			{
+			case 0:
+				// Skip the function name 
+				break;
+			default:
+				// The arguments
+				if (t->is_symbol()) {
+					const auto varName = get_string_id(list, itemCnt);
+					argList.add(t->get_symbol_stx().get(), nullptr,nullptr);
+				} else if (t->is_list()) {
+					const auto varStx = get_list_stx(list, itemCnt);
+					CompileSingleArgument(builder, *varStx, argList);
+				}
+				break;
+			}
+		}
+	}
+	
+	/**
+	 * @brief Compile single code line
+	 * @param builder - The assembly builder
+	 * @param list - The expression list
+	 */
+	void CompileCodeLine(FCodeBuilder& builder, const FListStx& list)
+	{
+		verify_min_arguments(list, 1);
+
+		switch (const auto opStringId = get_string_id(list, 0))
+		{
+		case SID("label"):
+		{
+			const auto sid = get_string_id(list, 1);
+			if (builder.Code.has_label(sid))
+				throw FSyntaxError(list.loc, "Label is already defined", list.to_string());
+			builder.Code.add_label(sid);
+		}
+		break;
+		case SID("let"):
+		{
+			CompileArguments(builder, list, builder.Locals);
+		}
+		break;
+		default:
+		{
+			FOpcodeInfo opInfo{};
+			const auto opStx = list.get_item(0);
+			if (!get_opcode_info(opStringId, opInfo))
+				throw FSyntaxError(opStx->loc, "Unexpected instruction", opStx->to_string());
+			switch (opInfo.group) {
+			case EOpcodeGroup::OperandA:
+				CompileLineA(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::OperandsAB:
+				CompileLineAB(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::OperandsABC:
+				CompileLineABC(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::OperandsABK:
+				CompileLineABK(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::LoadImm:
+				CompileLineLoadImm(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::LoadStatic:
+				CompileLineLoadStatic(builder, list, opInfo.opcode);
+				break;
+			case EOpcodeGroup::Branch:
+				CompileLineBranch(builder, list, opInfo.opcode);
+				break;
+			}
+		}
+		}
+	}
+	/**
+	 * @brief Compile the 'define' expression with the format below
+	 *			(define name (args)
+	 *			        (expression1)
+	 *			        (expression2)
+	 *					)
+	 * @param builder - The assembly builder
+	 * @param list - The definition's list
+	 */
+	void CompileDefine(FCodeBuilder& builder, const FListStx& list)
+	{
+		int itemCnt = -1;
+		const auto items = list.get_list();
+		for (auto& t : items) {
+			switch (++itemCnt)
+			{
+			case 0:
+				// Skip first item with 'define'
+				continue;
+			case 1:
+				{
+					if (t->is_symbol())
+					{
+						// The data definitions
+						verify_min_arguments(list, 3);
+						const auto name = get_string_id(list, 1);
+						const auto valStx = list.get_item(2);
+						if (valStx->is_symbol())
+						{
+							builder.Data.add_i32(name, get_string_id(list, 1));
+						}
+						else if (valStx->is_integer())
+						{
+							builder.Data.add_i32(name, get_int32(list, 1));
+						}
+						else if (valStx->is_float())
+						{
+							builder.Data.add_f32(name, get_float(list, 1));
+						}
+						else if (valStx->is_string())
+						{
+							builder.Data.add_string(name, get_string(list, 1));
+						}
+						else if (valStx->is_string())
+						{
+							throw FSyntaxError(list.loc, "Unimplemented structures", list.to_string());
+						}
+						else
+							throw FSyntaxError(list.loc, "Unexpected definition value", list.to_string());
+
+
+					}
+					else if(t->is_list())
+					{
+						// the argument's list 
+						const auto arguments = t->get_list_stx();
+						if (arguments == nullptr)
+							throw FSyntaxError(t->loc, "Expected list of arguments", t->to_string());
+						builder.Name = get_string_id(*arguments, 0);
+						CompileArguments(builder, *arguments, builder.Args);
+					}
+					else
+						throw FSyntaxError(t->loc, "Expected symbol or list", t->to_string());
+				}
+				break;
+			default:
+				{
+					// all next expressions must be as the lists 
+					const auto expression = t->get_list_stx();
+					if (expression == nullptr)
+						throw FSyntaxError(t->loc, "Expected list for instruction line", list.to_string());
+					// the body of the lambda
+					CompileCodeLine(builder, *expression);
+				}
+			}
+		}
+	}
+
+
+	void CompileTopEntry(FCodeBuilder& builder, const FListStx& stx)
+	{
+		const auto stringId = get_string_id(stx, 0);
+		const auto front = stx.front();
+		switch(stringId)
+		{
+		case SID("file"):
+			throw FSyntaxError(stx.loc, "Please Implement File header", stx.to_string());
+		case SID("define"):
+			CompileDefine(builder, stx);
+			break;
+		case SID("lambda"):
+			CompileDefine(builder, stx);
+			break;
+		default:
+			throw FSyntaxError(stx.loc, "Unexpected expression", stx.to_string());
+		}
+	}
+
+	void FArguments::add(
+		const FSymbolStx* nameStx,
+		const FSymbolStx* typeStx,
+		const std::shared_ptr<FSyntax>& defaultValue)
+	{
+		auto name = nameStx->get_string_id();
+		auto type = typeStx == nullptr ? UNDEFINED_ARG_TYPE : typeStx->get_string_id();
+
+		switch (ArgState)
+		{
+		case EArgListParserState::Arguments:
+			arg_min++;
+			arg_max++;
+			break;
+		case EArgListParserState::Optional:
+			arg_opts++;
+			arg_max++;
+			break;
+		case EArgListParserState::Rest:
+			arg_rest++;
+			arg_max++;
+			ArgState = EArgListParserState::Done;
+			break;
+		case EArgListParserState::Done:
+			throw FSyntaxError();
+		}
+
+		Arguments.push_back({.name = name, .type = type, .def_value = defaultValue });
+	}
+
+	/**
+	 * Parse the top level expression
+	 */
+	std::unique_ptr<FBinFile> Compile(std::istream& in)
+	{
+		init_opcode_table();
+			const auto stx = parse_stream(in);
+#ifdef DEBUG_PRINT_PARSED_SCRIPT
+			stx->write_indented(std::cout,4);
+			std::cout << std::endl;
+#endif
+			const auto topList = stx->get_list_stx();
+			if (topList == nullptr)
+				throw FSyntaxError(stx->loc, "Expected the list as top level object", stx->to_string());
+			// The list of code blocks will be stored in the next vector
+			std::vector<FCodeBuilder> codeList;
+			// For each element of the top level
+			for (auto& t : *topList) {
+				// Get child list. The top level contains only lists
+				const auto secondList = t->get_list_stx();
+				if (secondList == nullptr) 
+					throw FSyntaxError(t->loc, "Expected the list found", t->to_string());
+				FCodeBuilder builder;
+				CompileTopEntry(builder, *secondList);
+				codeList.push_back(builder);
+			}
+			// Collect the sizes
+			size_t codeAndDataSize = 0;
+			for (auto& asmCode : codeList)
+			{
+				codeAndDataSize += asmCode.GetRequiredSize();
+			}
+			auto defNum = safe_cast_u_int32(codeList.size());
+			// Make a bin file. Start with formatting the file to required size
+			auto binFile = std::make_unique<FBinFile>();
+			binFile->initialize(defNum, codeAndDataSize);
+			for (auto& asmCode : codeList)
+			{
+#ifdef DEBUG_PRINT_ASSEMBLED_LAMBDA
+				std::cout << ToString(asmCode.Name) << std::endl;
+#endif
+				// Make definition but do not copy data for it
+				const auto byteCode = binFile->define<FByteCode>(asmCode.Name, SID("lambda"));
+				binFile->get_file_header()->initialize(
+					byteCode,
+					asmCode.Code.Data,
+					asmCode.Data.Data);
+#ifdef DEBUG_PRINT_ASSEMBLED_LAMBDA
+				decompile_bytecode(byteCode);
+#endif
+			}
+			return  std::move(binFile);
+	}
+}
+#pragma once
+
+#include <vector>
+#include <string>
+#include <map>
+
+#include "parser.hpp"
+#include "module_bin.hpp"
+#include "errors.hpp"
+#include "vm.hpp"
+
+using namespace vm::parser;
+
+namespace vm::assembler {
+
+	template<class T>
+	struct TAsmBuilder
+	{
+		void add(T data) {
+			Data.push_back(data);
+		}
+
+		/**
+		 * Add the label for current counter position
+		 */
+		u16 add_label(StringId sid) {
+			const size_t address = sizeof(T) * Data.size();
+			if (address > std::numeric_limits<s16>::max())
+				throw std::exception("Too large address for the label");
+			Labels[sid] = address;
+			return static_cast<u16>(address);
+		}
+
+		u16 add_i32(const StringId name, const s32 data)
+		{
+			const auto address = add_label(name);
+			FRecord record{};
+			record.as_int32[0] = data;
+			Data.push_back(record);
+			return address;
+		}
+		u16 add_f32(const StringId name, const float data)
+		{
+			const auto address = add_label(name);
+			FRecord record{};
+			record.as_float[0] = data;
+			Data.push_back(record);
+			return address;
+		}
+		u16 add_string(const StringId name, const std::string& str)
+		{
+			const auto address = add_label(name);
+			FRecord data{};
+			size_t i = 0;
+			for (;i<str.size();i++)
+			{
+				data.as_uint64 = (data.as_uint64 << sizeof(char)) | str[i];
+				if (i % (sizeof(FRecord)) == 0)
+				{
+					Data.push_back(data);
+					data.as_uint64 = 0;
+				}
+			}
+			if (i% sizeof(FRecord) != 0)
+				Data.push_back(data);
+
+			return address;
+		}
+
+		/**
+		 * Get the label for given SID
+		 */
+		size_t get_label(StringId sid) const {
+			return Labels.at(sid);
+		}
+		bool has_label(StringId sid) const
+		{
+			return Labels.contains(sid);
+		}
+		T Get(u32 idx) const { return Data[idx]; }
+		/** Get the size of data in the structure */
+		size_t size() const
+		{
+			return Data.size();
+		}
+		/** The data container */
+		std::vector<T> Data;
+		/** The list of labels and their offsets from begin */
+		std::map<StringId, size_t> Labels;
+	};
+
+	/**
+	 * @brief Single argument info. Can include name type and default value
+	 */
+	struct FArgument
+	{
+		StringId name;
+		StringId type;
+		/** \brief The syntax object with default value*/
+		std::shared_ptr<FSyntax> def_value;
+	};
+
+	enum class EArgParserState { DefaultValue, ColumnSymbol, TypeName };
+	enum class EArgListParserState { Arguments, Optional, Rest, Done };
+
+	struct FArguments
+	{
+		static constexpr StringId UNDEFINED_ARG_TYPE = SID("nil");
+
+		std::vector<FArgument> Arguments;
+		u32 arg_min;
+		u32 arg_max;
+		u32 arg_opts;
+		u32 arg_rest;
+		EArgListParserState ArgState;
+
+		/**
+		 * @brief Add new argument to the list
+		 * @param nameStx - syntax with argument name
+		 * @param typeStx - syntax with argument type or null for undefined
+		 * @param defaultValue - syntax with argument default value or null for undefined
+		 */
+		void add(
+			const FSymbolStx* nameStx,
+			const FSymbolStx* typeStx,
+			const std::shared_ptr<FSyntax>& defaultValue);
+
+		size_t size() const { return Arguments.size(); }
+
+		s32 get_index_of(StringId name) const
+		{
+			assert(Arguments.size() < static_cast<size_t>(std::numeric_limits<s32>::min()));
+			for (u32 i=0; i<Arguments.size(); i++)
+			{
+				if (Arguments[i].name == name)
+					return static_cast<s32>(i);
+			}
+			return INDEX_NONE;
+		}
+	};
+
+	
+	struct FCodeBuilder {
+
+
+
+		StringId Name;
+		TAsmBuilder<FInstr> Code;
+		TAsmBuilder<FRecord> Data;
+		FArguments Args;
+		FArguments Locals;
+
+		size_t GetRequiredFrameSize() const
+		{
+			return Args.size() + Locals.size();
+		}
+
+		size_t GetRequiredSize() const
+		{
+			return ALIGN_SIZE(sizeof(FByteCode) + sizeof(FInstr) * Code.size() + sizeof(FRecord) * Data.size());
+		}
+
+		s32 GetGegNumber(StringId name) const
+		{
+			const auto arg = Args.get_index_of(name);
+			if (arg >= 0)
+				return arg + ARGUMENT_REGISTERS_OFFSET;
+			const auto loc = Locals.get_index_of(name);
+			if (loc >= 0)
+				return loc + LOCAL_REGISTERS_OFFSET;
+			return INDEX_NONE;
+		}
+	};
+	std::unique_ptr<FBinFile> Compile(std::istream& in);
+}
+#include <map>
+#include "assembler_opcodes.hpp"
+
+#include <iostream>
+
+#include "string_id.hpp"
+
+namespace vm::assembler
+{
+	bool g_is_opcode_table_initialized = false;
+	std::map<StringId, FOpcodeInfo> gNameToInfoTable;
+	std::map<EOpcode, FOpcodeInfo> gOpcodeToInfoTable;
+
+	void DefineOpcodeName(const char* name, EOpcode op, EOpcodeGroup type)
+	{
+		FOpcodeInfo info{};
+		info.opcode = op;
+		info.name = define_string(name);
+		info.group = type;
+		gNameToInfoTable[info.name] = info;
+		gOpcodeToInfoTable[op] = info;
+	}
+
+	bool get_opcode_info(const EOpcode op, FOpcodeInfo& info)
+	{
+		if (const auto res = gOpcodeToInfoTable.find(op); res != gOpcodeToInfoTable.end())
+		{
+			info = res->second;
+			return true;
+		}
+		return false;
+	}
+
+	bool get_opcode_info(const StringId sid, FOpcodeInfo& info)
+	{
+		if (const auto res = gNameToInfoTable.find(sid); res != gNameToInfoTable.end())
+		{
+			info = res->second;
+			return true;
+		}
+		return false;
+	}
+
+	void init_opcode_table()
+	{
+		if (g_is_opcode_table_initialized)
+			return;
+		/** The program flow */
+		DefineOpcodeName("ret", EOpcode::Return, EOpcodeGroup::OperandA);
+		DefineOpcodeName("move", EOpcode::Move, EOpcodeGroup::OperandsAB);
+		DefineOpcodeName("call", EOpcode::Call, EOpcodeGroup::OperandsABK);
+		DefineOpcodeName("calln", EOpcode::CallNat, EOpcodeGroup::OperandsABK);
+		DefineOpcodeName("br", EOpcode::Branch, EOpcodeGroup::Branch);
+		DefineOpcodeName("brif", EOpcode::BranchIf, EOpcodeGroup::Branch);
+		DefineOpcodeName("brno", EOpcode::BranchIfNot, EOpcodeGroup::Branch);
+		/** Integer */
+		DefineOpcodeName("add", EOpcode::AddInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("sub", EOpcode::SubInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("mul", EOpcode::MulInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("div", EOpcode::DivInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("mod", EOpcode::ModInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("abs", EOpcode::AbsInt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("neg", EOpcode::NegInt, EOpcodeGroup::OperandA);
+                DefineOpcodeName("ash", EOpcode::AshInt, EOpcodeGroup::OperandsAB);
+                DefineOpcodeName("ldk", EOpcode::LoadImediateInt, EOpcodeGroup::LoadImm);
+		DefineOpcodeName("addk", EOpcode::AddImm, EOpcodeGroup::OperandsABK);
+		DefineOpcodeName("subk", EOpcode::SubImm, EOpcodeGroup::OperandsABK);
+		DefineOpcodeName("mulk", EOpcode::MulImm, EOpcodeGroup::OperandsABK);
+		DefineOpcodeName("divk", EOpcode::DivImm, EOpcodeGroup::OperandsABK);
+		/** Floting point */
+		DefineOpcodeName("fadd", EOpcode::AddFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fsub", EOpcode::SubFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fmul", EOpcode::MulFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fdiv", EOpcode::DivFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fmod", EOpcode::ModFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fabs", EOpcode::AbsFloat, EOpcodeGroup::OperandA);
+		DefineOpcodeName("fneg", EOpcode::NegFloat, EOpcodeGroup::OperandA);
+		/** Type Casting */
+		DefineOpcodeName("tof", EOpcode::ToFloat, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("toi", EOpcode::ToInt, EOpcodeGroup::OperandsAB);
+		/** Comparisong */
+		DefineOpcodeName("cpeq", EOpcode::CmpEqual, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("cpgt", EOpcode::CmpGt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("cpge", EOpcode::CmpGtEqual, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("cplt", EOpcode::CmpLt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("cple", EOpcode::CmpLtEqual, EOpcodeGroup::OperandsABC);
+		/** Comparisong floating point */
+		DefineOpcodeName("fcpeq", EOpcode::CmpFloatEqual, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fcpgt", EOpcode::CmpFloatGt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fcpge", EOpcode::CmpFloatGtEqual, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fcplt", EOpcode::CmpFloatLt, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("fcple", EOpcode::CmpFloatLtEqual, EOpcodeGroup::OperandsABC);
+		/** Logic oprations */
+		DefineOpcodeName("and", EOpcode::LogAnd, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("or", EOpcode::LogOr, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("not", EOpcode::LogNot, EOpcodeGroup::OperandsABC);
+		/** Bit oprations */
+		DefineOpcodeName("band", EOpcode::BitAnd, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("bnot", EOpcode::BitNot, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("bor", EOpcode::BitOr, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("bxor", EOpcode::BitXor, EOpcodeGroup::OperandsABC);
+		DefineOpcodeName("bnor", EOpcode::BitNor, EOpcodeGroup::OperandsABC);
+		/** Utilities */
+		DefineOpcodeName("argc", EOpcode::LocadArgc, EOpcodeGroup::OperandA);
+		DefineOpcodeName("gsid", EOpcode::GetSidStr, EOpcodeGroup::OperandsAB);
+		/** Find object */
+		DefineOpcodeName("looki", EOpcode::LookupPointer, EOpcodeGroup::LoadStatic);
+		DefineOpcodeName("lookf", EOpcode::LookupPointer, EOpcodeGroup::LoadStatic);
+		DefineOpcodeName("lookp", EOpcode::LookupPointer, EOpcodeGroup::LoadStatic);
+		/** Indirrect access */
+		DefineOpcodeName("ldri", EOpcode::LoadIndInt, EOpcodeGroup::OperandA);
+		DefineOpcodeName("ldrf", EOpcode::LoadIndFloat, EOpcodeGroup::OperandA);
+		DefineOpcodeName("ldrp", EOpcode::LoadIndPointer, EOpcodeGroup::OperandA);
+		DefineOpcodeName("stri", EOpcode::StoreIndInt, EOpcodeGroup::OperandsAB);
+		DefineOpcodeName("strf", EOpcode::StoreIndFloat, EOpcodeGroup::OperandsAB);
+		DefineOpcodeName("strp", EOpcode::StoreIndPointer, EOpcodeGroup::OperandsAB);
+		/** Constants */
+		DefineOpcodeName("ldsi", EOpcode::LoadStaticInt, EOpcodeGroup::LoadStatic);
+		DefineOpcodeName("ldsf", EOpcode::LoadStaticFloat, EOpcodeGroup::LoadStatic);
+		DefineOpcodeName("ldsp", EOpcode::LoadStaticPointer, EOpcodeGroup::LoadStatic);
+		g_is_opcode_table_initialized = true;
+	}
+
+	std::string decompile_load_static(FInstr inst, FRecord* data = nullptr)
+	{
+		if (!g_is_opcode_table_initialized)
+			init_opcode_table();
+		auto opcode = inst.opcode;
+
+		auto& info = gOpcodeToInfoTable[opcode];
+		FVariant value;
+		const auto imm = inst.k;
+		if (data == nullptr)
+			return std::format("{0:08X}  {1} {2},data[#{3}]", inst.as_uint32, to_str(info.name), inst.a, inst.k);
+
+
+		switch (opcode)
+		{
+		case EOpcode::LoadStaticInt:
+			value = ((s32*)data)[imm];
+			break;
+		case EOpcode::LoadStaticFloat:
+			value = ((float*)data)[imm];
+			break;
+		case EOpcode::LoadIndPointer:
+			value = (PTRINT)(char*)&data[imm];
+			break;
+		case EOpcode::LookupInt:
+		case EOpcode::LookupFloat:
+		case EOpcode::LookupPointer:
+			// Load StringId of the lockup method
+			value = ((s32*)data)[imm];
+		}
+
+		if (value.is_null())
+			return std::format("{0:08X}  {1:12} {2},data[#{3}]", inst.as_uint32, to_str(info.name), inst.a, inst.k);
+
+		if (value.is_i32())
+		{
+			const auto str = lookup_string(value.get_as_s32());
+			return std::format("{0:08X}  {1:12} {2},data[#{3}] ; {3}", inst.as_uint32, to_str(info.name), inst.a,
+			                   inst.k, str);
+		}
+
+		return std::format("{0:08X}  {1:12} {2},data[#{3}] ; {4}", inst.as_uint32, to_str(info.name), inst.a, inst.k,
+		                   value.to_c_string());
+	}
+
+	std::string decompile_instruction(FInstr inst, FRecord* data)
+	{
+		if (!g_is_opcode_table_initialized)
+			init_opcode_table();
+		auto opcode = inst.opcode;
+		auto& info = gOpcodeToInfoTable[opcode];
+		switch (info.group)
+		{
+		case EOpcodeGroup::OperandA:
+			return std::format("{0:08X}  {1:12} {2}", inst.as_uint32, to_str(info.name), inst.a);
+		case EOpcodeGroup::OperandsAB:
+			return std::format("{0:08X}  {1:12} {2},{3}", inst.as_uint32, to_str(info.name), inst.a, inst.b);
+		case EOpcodeGroup::OperandsABC:
+			return std::format("{0:08X}  {1:12} {2},{3},{4}", inst.as_uint32, to_str(info.name), inst.a, inst.b,
+			                   inst.c);
+		case EOpcodeGroup::OperandsABK:
+			return std::format("{0:08X}  {1:12} {2},{3},#{4}", inst.as_uint32, to_str(info.name), inst.a, inst.b,
+			                   inst.c);
+		case EOpcodeGroup::LoadImm:
+			return std::format("{0:08X}  {1:12} {2},#{3}", inst.as_uint32, to_str(info.name), inst.a, inst.k);
+		case EOpcodeGroup::LoadStatic:
+			return decompile_load_static(inst, data);
+		case EOpcodeGroup::Branch:
+			return std::format("{0:08X}  {1:12} {2},{3},{4}", inst.as_uint32, to_str(info.name), inst.a, inst.b,
+			                   inst.c);
+		default:
+			return "undefined disassemble code";
+		}
+	}
+
+	void decompile_bytecode(FByteCode* code)
+	{
+		if (!g_is_opcode_table_initialized)
+			init_opcode_table();
+		const auto code_ptr = code->get_code_ptr();
+		const auto data_ptr = code->get_data_ptr();
+		const auto code_size = code->get_code_size();
+		std::cout << std::format("{0:08X} : code[0]\n", (u32)(PTRINT)code_ptr, code_size);
+		for (u32 i = 0; i < code_size; i++)
+		{
+			std::cout << std::format("{0:08X} : {1}", code->file_offs + sizeof(FInstr) * i,
+			                         decompile_instruction(code_ptr[i], data_ptr));
+			std::cout << std::endl;
+		}
+
+		const auto data_size = code->get_data_size();
+		std::cout << std::format("{0:08X} : data[0]\n", (u32)(PTRINT)data_ptr, data_size);
+		for (u32 i = 0; i < data_size; i++)
+		{
+			const auto val = data_ptr[i];
+			const u32 address = code->data_offs + sizeof(FRecord) * i;
+			std::cout << std::format("{0:08X} : {1:08X} {2:08X}",
+			                         address, val.as_int32[0], val.as_int32[1]);
+			std::cout << std::endl;
+		}
+	}
+}
+#pragma once
+#include "module_bin.hpp"
+
+namespace vm::assembler {
+
+	/** The opcode group separated by operands */
+	enum class EOpcodeGroup {
+		/** Single operand */
+		OperandA,
+		/** Two operands */
+		OperandsAB,
+		/** Three operands */
+		OperandsABC,	
+		/** Two operands and one immediate */
+		OperandsABK,
+		/** One operand and large immediate */
+		LoadImm,
+		/** One operand and loading data[immediate] */
+		LoadStatic,
+		/** Branch with one operand and immediate address */
+		Branch			
+	};
+
+	struct FOpcodeInfo {
+		/** The opcode */
+		EOpcode opcode;
+		/** The opcode group separated by operands */
+		EOpcodeGroup group;
+		/** The opcode name for the assembly code */
+		StringId name;
+	};
+
+	/**
+	 * @brief Find the op-code info by the op-code
+	 * @param op - the op-code
+	 * @param info - return value as op-code info
+	 * @return - return TRUE when success
+	 */
+	bool get_opcode_info(EOpcode op, FOpcodeInfo& info);
+	/**
+	 * @brief Find the opcode info by the op-code
+	 * @param sid - the opcode name
+	 * @param info - return value as opcode info
+	 * @return - return TRUE when success
+	 */
+	bool get_opcode_info(StringId sid, FOpcodeInfo& info);
+	/**
+	 * @brief Initialize the op-code table
+	 */
+	void init_opcode_table();
+	/**
+	 * @brief Convert the instruction to string
+	 * @param inst - instruction
+	 * @param data - data segment
+	 * @return the disassemble text
+	*/
+	std::string decompile_instruction(FInstr inst, FRecord* data = nullptr);
+
+	/**
+	 * \brief Disassemble code 
+	 * \param code - the pointer to code
+	 */
+	void decompile_bytecode(FByteCode* code);
+}#pragma once
+
+
+/**
+ * \brief  After assembly print the lambda on screen
+ */
+//#define DEBUG_PRINT_ASSEMBLED_LAMBDA
+/**
+ * \brief Execution will print the parser's output
+ */
+//#define DEBUG_PRINT_PARSED_SCRIPT
+/**
+ * \brief Execution will print every line
+ */
+//#define DEBUG_PRINT_EXECUTED_INSTRUCTION
+/**
+ * \brief Place native functions to the global namespace
+ */
+#define USE_GLOBAL_NATIVE_DEFINITIONS#include "context.hpp"
+
+namespace vm
+{
+	Context g_script_context{};
+
+	PTRINT Context::lookup(StringId name) const
+	{
+		assert(process != nullptr && process->env != nullptr);
+		const auto def = process->env->lookup(name);
+		if (def != nullptr)
+			return def->ptr;
+		const auto global = g_environment.lookup(name);
+		if (def != nullptr)
+			return global->is_valid() ? global->ptr : 0;
+		return 0;
+	}
+	PTRINT Context::lookup(StringId name, StringId type) const
+	{
+		assert(process != nullptr && process->env!=nullptr);
+		const auto def = process->env->lookup(name);
+		if (def != nullptr)
+		{
+			if (def->type != type)
+				throw FTypeError(g_script_context, name, type, def->type);
+			return def->ptr;
+		}
+		const auto global = g_environment.lookup(name);
+		if (def != nullptr && global->is_valid())
+		{
+			if (def->type != type)
+				throw FTypeError(g_script_context, name, type, def->type);
+			return def->ptr;
+		}
+		return 0;
+	}
+
+	FByteCode* Context::lookup_byte_code(StringId name) const
+	{
+		const auto ptr = lookup(name,SID("lambda"));
+		return ptr != 0 ? (FByteCode*)ptr : nullptr;
+	}
+
+	s32* Context::lookup_int(StringId name) const
+	{
+		const auto ptr = lookup(name, SID("s32"));
+		return ptr != 0 ? (s32*)ptr : nullptr;
+	}
+
+	float* Context::lookup_float(StringId name) const
+	{
+		const auto ptr = lookup(name, SID("float"));
+		return ptr != 0 ? (float*)ptr : nullptr;
+	}
+
+	StringId* Context::lookup_string_id(StringId name) const
+	{
+		const auto ptr = lookup(name, SID("string-id"));
+		return ptr != 0 ? (StringId*)ptr : nullptr;
+	}
+
+}#pragma once
+
+#include <string>
+#include <format>
+#include "environment.hpp"
+#include "vm.hpp"
+#include "printer.hpp"
+
+namespace vm
+{
+	enum class EScriptState
+	{
+		Suspend = 1 << 0,
+		Complete = 1 << 2,
+		Error = 1 << 3,
+	};
+	ENUM_FLAG_OPERATORS(EScriptState);
+
+	struct FScriptProcess
+	{
+		PTRINT self;
+		EScriptState state;
+		FStackFrame* frame;
+		FLocalEnvironment* env;
+
+		void exit() { state &= ~EScriptState::Complete; }
+		void suspend() { state |= EScriptState::Suspend; }
+		void resume() { state &= ~EScriptState::Suspend; }
+		void error() { state &= ~EScriptState::Error; }
+
+		/**
+		 * @brief Convert to string this thread
+		 * @return string value for this process
+		 */
+		std::string to_string() const
+		{
+			return std::format("#FScriptProcess <self: {0} frame: {1} env: {2}>",
+				to_str(self), to_str(frame), to_str(env));
+		}
+	};
+
+
+
+	/**
+	 * @brief Global object for manipulating by the current script thread
+	 */
+	struct Context
+	{
+		Context() : process(nullptr) {}
+
+
+		void exit() const { if (process!=nullptr) process->exit(); }
+		void suspend() { if (process != nullptr) process->suspend(); }
+		void resume() { if (process != nullptr) process->resume(); }
+		void error() { if (process != nullptr) process->error(); }
+
+		PTRINT lookup(StringId name) const;
+		/**
+		 * @brief Look up bytecode by name
+		 * @param name - the name of bytecode
+		 * @return The pointer to object or nullptr
+		 */
+		PTRINT lookup(StringId name, StringId type) const;
+		/**
+		 * @brief Look up bytecode by name
+		 * @param name - the name of bytecode
+		 * @return The pointer to the bytecode pointer or nullptr
+		 */
+		FByteCode* lookup_byte_code(StringId name) const;
+		/**
+		 * \brief Find the integer value
+		 * \param name - the name
+		 * \return The pointer to integer or null
+		 */
+		s32* lookup_int(StringId name) const;
+		/**
+		 * \brief Find the float value
+		 * \param name - the name
+		 * \return The pointer to floating point value or null
+		 */
+		float* lookup_float(StringId name) const;
+		/**
+		 * \brief Find the string id
+		 * \param name - the name
+		 * \return The pointer to string id or null
+		 */
+		StringId* lookup_string_id(StringId name) const;
+		/**/
+		std::string to_string() const { return std::format("#s-process <{0:X}>", (PTRINT)process); }
+		/**
+		 * @brief The pointer to current process
+		 */
+		FScriptProcess* process;
+	};
+	/**
+	 * @brief The global variable for access to the script environment
+	*/
+	extern Context g_script_context;
+
+}
+#include <format>
+#include "crc32.hpp"
+
+namespace vm
+{
+	/** The CRC32 table for the runtime */
+	static unsigned long crc32_table[] = {
+#include "crc32_tab.hpp"
+	};
+
+	u32 crc32(const char* str, const size_t len)
+	{
+		unsigned long crc = 0;
+		if (len == 0)
+			return crc;
+		for (size_t i = 0; i < len; i++) {
+			const char c = str[i];
+			crc = (crc32_table[((crc >> 24) ^ static_cast<int>(c)) & 0xff] ^ (crc << 8)) & 0xffffffff;
+		}
+		return crc;
+	}
+}#pragma once
+
+#include <string>
+#include "platform.hpp"
+
+namespace vm
+{
+	/** Define the table for const expression */
+	static constexpr unsigned long const_crc32_table[] = {
+#include "crc32_tab.hpp"
+	};
+
+
+	/**
+	 * Compile time function
+	 * Return a 32-bit CRC of the c string and the lenght.
+	 * @param str - Any std::string value.
+	 * @param len - The string's lenght.
+	 * @warning - Use for constants in the C source only
+	 */
+	constexpr unsigned int const_crc32(const char* str, size_t len) {
+		unsigned long crc = 0;
+		if (len == 0)
+			return crc;
+		for (size_t i = 0; i < len; i++) {
+			const char c = str[i];
+			crc = (const_crc32_table[((crc >> 24) ^ static_cast<int>(c)) & 0xff] ^ (crc << 8)) & 0xffffffff;
+		}
+		return crc;
+	}
+
+
+
+	/**
+	 * Return a 32-bit CRC of the c string and the length.
+	 * @param str - Any std::string value.
+	 * @param len - The string's length.
+	 */
+	u32 crc32(const char* str, size_t len);
+
+	/**
+	 * Return a 32-bit CRC of the c.
+	 * @param str - Any std::string value.
+	 */
+	inline u32 crc32(const char* str)
+	{
+		return crc32(str, strlen(str));
+	}
+
+	/**
+	 * Return a 32-bit CRC of the std::string.
+	 * @param str - Any std::string value.
+	 */
+	inline u32 crc32(const std::string& str)
+	{
+		return crc32(str.c_str(), str.size());
+	}
+}
+0x00000000L, 0x04c11db7L, 0x09823b6eL, 0x0d4326d9L, 0x130476dcL, 0x17c56b6bL, 0x1a864db2L, 0x1e475005L, 0x2608edb8L, 0x22c9f00fL, 0x2f8ad6d6L, 0x2b4bcb61L, 0x350c9b64L, 0x31cd86d3L, 0x3c8ea00aL, 0x384fbdbdL,
+0x4c11db70L, 0x48d0c6c7L, 0x4593e01eL, 0x4152fda9L, 0x5f15adacL, 0x5bd4b01bL, 0x569796c2L, 0x52568b75L, 0x6a1936c8L, 0x6ed82b7fL, 0x639b0da6L, 0x675a1011L, 0x791d4014L, 0x7ddc5da3L, 0x709f7b7aL, 0x745e66cdL,
+0x9823b6e0L, 0x9ce2ab57L, 0x91a18d8eL, 0x95609039L, 0x8b27c03cL, 0x8fe6dd8bL, 0x82a5fb52L, 0x8664e6e5L, 0xbe2b5b58L, 0xbaea46efL, 0xb7a96036L, 0xb3687d81L, 0xad2f2d84L, 0xa9ee3033L, 0xa4ad16eaL, 0xa06c0b5dL,
+0xd4326d90L, 0xd0f37027L, 0xddb056feL, 0xd9714b49L, 0xc7361b4cL, 0xc3f706fbL, 0xceb42022L, 0xca753d95L, 0xf23a8028L, 0xf6fb9d9fL, 0xfbb8bb46L, 0xff79a6f1L, 0xe13ef6f4L, 0xe5ffeb43L, 0xe8bccd9aL, 0xec7dd02dL,
+0x34867077L, 0x30476dc0L, 0x3d044b19L, 0x39c556aeL, 0x278206abL, 0x23431b1cL, 0x2e003dc5L, 0x2ac12072L, 0x128e9dcfL, 0x164f8078L, 0x1b0ca6a1L, 0x1fcdbb16L, 0x018aeb13L, 0x054bf6a4L, 0x0808d07dL, 0x0cc9cdcaL,
+0x7897ab07L, 0x7c56b6b0L, 0x71159069L, 0x75d48ddeL, 0x6b93dddbL, 0x6f52c06cL, 0x6211e6b5L, 0x66d0fb02L, 0x5e9f46bfL, 0x5a5e5b08L, 0x571d7dd1L, 0x53dc6066L, 0x4d9b3063L, 0x495a2dd4L, 0x44190b0dL, 0x40d816baL,
+0xaca5c697L, 0xa864db20L, 0xa527fdf9L, 0xa1e6e04eL, 0xbfa1b04bL, 0xbb60adfcL, 0xb6238b25L, 0xb2e29692L, 0x8aad2b2fL, 0x8e6c3698L, 0x832f1041L, 0x87ee0df6L, 0x99a95df3L, 0x9d684044L, 0x902b669dL, 0x94ea7b2aL,
+0xe0b41de7L, 0xe4750050L, 0xe9362689L, 0xedf73b3eL, 0xf3b06b3bL, 0xf771768cL, 0xfa325055L, 0xfef34de2L, 0xc6bcf05fL, 0xc27dede8L, 0xcf3ecb31L, 0xcbffd686L, 0xd5b88683L, 0xd1799b34L, 0xdc3abdedL, 0xd8fba05aL,
+0x690ce0eeL, 0x6dcdfd59L, 0x608edb80L, 0x644fc637L, 0x7a089632L, 0x7ec98b85L, 0x738aad5cL, 0x774bb0ebL, 0x4f040d56L, 0x4bc510e1L, 0x46863638L, 0x42472b8fL, 0x5c007b8aL, 0x58c1663dL, 0x558240e4L, 0x51435d53L,
+0x251d3b9eL, 0x21dc2629L, 0x2c9f00f0L, 0x285e1d47L, 0x36194d42L, 0x32d850f5L, 0x3f9b762cL, 0x3b5a6b9bL, 0x0315d626L, 0x07d4cb91L, 0x0a97ed48L, 0x0e56f0ffL, 0x1011a0faL, 0x14d0bd4dL, 0x19939b94L, 0x1d528623L,
+0xf12f560eL, 0xf5ee4bb9L, 0xf8ad6d60L, 0xfc6c70d7L, 0xe22b20d2L, 0xe6ea3d65L, 0xeba91bbcL, 0xef68060bL, 0xd727bbb6L, 0xd3e6a601L, 0xdea580d8L, 0xda649d6fL, 0xc423cd6aL, 0xc0e2d0ddL, 0xcda1f604L, 0xc960ebb3L,
+0xbd3e8d7eL, 0xb9ff90c9L, 0xb4bcb610L, 0xb07daba7L, 0xae3afba2L, 0xaafbe615L, 0xa7b8c0ccL, 0xa379dd7bL, 0x9b3660c6L, 0x9ff77d71L, 0x92b45ba8L, 0x9675461fL, 0x8832161aL, 0x8cf30badL, 0x81b02d74L, 0x857130c3L,
+0x5d8a9099L, 0x594b8d2eL, 0x5408abf7L, 0x50c9b640L, 0x4e8ee645L, 0x4a4ffbf2L, 0x470cdd2bL, 0x43cdc09cL, 0x7b827d21L, 0x7f436096L, 0x7200464fL, 0x76c15bf8L, 0x68860bfdL, 0x6c47164aL, 0x61043093L, 0x65c52d24L,
+0x119b4be9L, 0x155a565eL, 0x18197087L, 0x1cd86d30L, 0x029f3d35L, 0x065e2082L, 0x0b1d065bL, 0x0fdc1becL, 0x3793a651L, 0x3352bbe6L, 0x3e119d3fL, 0x3ad08088L, 0x2497d08dL, 0x2056cd3aL, 0x2d15ebe3L, 0x29d4f654L,
+0xc5a92679L, 0xc1683bceL, 0xcc2b1d17L, 0xc8ea00a0L, 0xd6ad50a5L, 0xd26c4d12L, 0xdf2f6bcbL, 0xdbee767cL, 0xe3a1cbc1L, 0xe760d676L, 0xea23f0afL, 0xeee2ed18L, 0xf0a5bd1dL, 0xf464a0aaL, 0xf9278673L, 0xfde69bc4L,
+0x89b8fd09L, 0x8d79e0beL, 0x803ac667L, 0x84fbdbd0L, 0x9abc8bd5L, 0x9e7d9662L, 0x933eb0bbL, 0x97ffad0cL, 0xafb010b1L, 0xab710d06L, 0xa6322bdfL, 0xa2f33668L, 0xbcb4666dL, 0xb8757bdaL, 0xb5365d03L, 0xb1f740b4L,
+#include <format>
+#include "environment.hpp"
+#include "context.hpp"
+#include "module.hpp"
+#include "native_func.hpp"
+
+namespace vm
+{
+	//--------------------------------------------------------------------------
+	// The global environment 
+	//--------------------------------------------------------------------------
+
+	FGlobalEnvironment g_environment{};
+
+	/**
+	 * \brief Constructor for the global definition
+	 * \param type - type of definition
+	 * \param ptr - pointer of definition
+	 */
+	FGlobalDefinition::FGlobalDefinition(const StringId type, const FNativeFunctionEntry& ptr)
+		: FLocalDefinition(type, (PTRINT)ptr.func)
+	{}
+	/**
+	 * \brief Constructor for the global definition
+	 * \param type - type of definition
+	 * \param ptr - pointer of definition
+	 * \param moduleRef - reference to the module
+	 */
+	FGlobalDefinition::FGlobalDefinition(const StringId type, const PTRINT ptr, const ModuleRef* moduleRef)
+		: FLocalDefinition(type, ptr)
+		, module_ref(moduleRef)
+		, generation(moduleRef->generation)
+	{}
+
+	bool FGlobalDefinition::is_valid() const
+	{
+		if (type == SID("native"))
+			return true;
+		return module_ref == nullptr ? false : generation == module_ref->generation;
+	}
+
+	FGlobalDefinition& FGlobalDefinition::operator=(const FGlobalDefinition& other) = default;
+
+	std::string FGlobalDefinition::to_string() const
+	{
+		return std::format("#FGlobalDefinition <this: {0} ptr: {1} type: {2} module: {3} generation: {4}>",
+			to_str((PTRINT)this), to_str(ptr), to_str(type), to_str((PTRINT)module_ref), generation);
+	}
+
+	FGlobalDefinition* FGlobalEnvironment::lookup(const StringId name)
+	{
+		const auto definition = table.find(name);
+		if (definition != table.end() && definition->second.is_valid())
+			return &definition->second;
+		return nullptr;
+	}
+
+	FGlobalDefinition* FGlobalEnvironment::lookup(const StringId name, const StringId type)
+	{
+		const auto definition = lookup(name);
+		if (definition == nullptr)
+			return nullptr;
+		if (definition->type == type)
+			return definition;
+		throw FTypeError(g_script_context, name, type, definition->type);
+	}
+	//--------------------------------------------------------------------------
+	// The local environment 
+	//--------------------------------------------------------------------------
+
+
+	FLocalDefinition* FLocalEnvironment::lookup(const StringId name, bool recursive)
+	{
+		const auto definition = table.find(name);
+		if (definition != table.end())
+			return &definition->second;
+		if (recursive)
+			return g_environment.lookup(name);
+		return nullptr;
+	}
+
+	FLocalDefinition* FLocalEnvironment::lookup(const StringId name, const StringId type, bool recursive)
+	{
+		const auto definition = lookup(name, recursive);
+		if (definition == nullptr)
+			return nullptr;
+		if (definition->type == type)
+			return definition;
+		throw FTypeError(g_script_context, name, type, definition->type);
+	}
+
+	FLocalDefinition& FLocalDefinition::operator=(const FLocalDefinition& other) = default;
+
+	std::string FLocalDefinition::to_string() const
+	{
+		return std::format("#FLocalDefinition <ptr: {0} type: {1}>",
+		                   to_str(ptr), to_str(type));
+	}
+
+}
+
+#pragma once
+
+#include <iostream>
+#include <map>
+
+#include "platform.hpp"
+#include "string_id.hpp"
+#include "printer.hpp"
+
+
+namespace vm
+{
+    struct FLocalDefinition;
+    struct ModuleRef;
+    struct FBinFileHeader;
+    struct FNativeFunctionEntry;
+
+    /**
+	 * @brief The single record in the global definition table
+	 */
+    struct FLocalDefinition
+    {
+        FLocalDefinition() = default;
+        FLocalDefinition(const FLocalDefinition& other) = default;
+        FLocalDefinition(StringId type, PTRINT ptr) : ptr(ptr), type(type) {}
+
+        virtual bool is_global() { return false; }
+        /**
+	     * @brief Check if the definition of given type
+	     * @param type - the type's string id
+	     * @return True if type is matched
+	     */
+        bool is_type(StringId type) const { return type == type; }
+
+        bool is_integer() const { return type == SID("int32"); }
+        bool is_float() const { return type == SID("float"); }
+        bool is_string_id() const { return type == SID("StringId"); }
+        bool is_lambda() const { return type == SID("lambda"); }
+
+        /** Assign another FLocalDefinition */
+        FLocalDefinition& operator=(const FLocalDefinition& other);
+
+        std::string to_string() const;
+
+        /** The pointer to definition */
+        PTRINT ptr;
+        /** The type of definition */
+        StringId type;
+    };
+    //--------------------------------------------------------------------------
+	// The global environment 
+	//--------------------------------------------------------------------------
+
+    /**
+     * @brief The single record in the global definition table
+     */
+    struct FGlobalDefinition :  FLocalDefinition
+    {
+        FGlobalDefinition() = default;
+        FGlobalDefinition(const FGlobalDefinition& other) = default;
+        FGlobalDefinition(const StringId type, const FNativeFunctionEntry& ptr);
+        FGlobalDefinition(const StringId type, const PTRINT ptr, const ModuleRef* moduleRef);
+
+        bool is_global() override { return true; }
+
+        /**
+    	 * @brief Verify if the definition is still available
+    	 * @return True for valid definition
+    	 */
+    	bool is_valid() const;
+
+        /**
+         * @brief Assign another FLocalDefinition 
+         * @param other - right side variable 
+         * @return the result 
+         */
+        FGlobalDefinition& operator=(const FGlobalDefinition& other);
+
+        /**
+         * @brief Convert to the string
+         * @return the string value
+         */
+        std::string to_string() const;
+
+        /** Reference to the file definition */
+        const ModuleRef* module_ref{};
+
+        /** generation number */
+        u32 generation{};
+    };
+
+
+    /**
+     * @brief The pointer in the local environment
+     */
+    struct FGlobalEnvironment 
+    {
+        /**
+         * @brief Find the element in the environment
+         * @param name - the element name
+         * @return The pointer or null
+         */
+        FGlobalDefinition* lookup(const StringId name);
+        /**
+		 * @brief Find the element in the environment
+		 * @param name - the element name
+		 * @param type - the type of expected object
+		 * @return The pointer or null
+		 */
+        FGlobalDefinition* lookup(const StringId name, const StringId type);
+
+        /**
+         * @brief Define the element in the environment
+         * @param name - The name of element
+         * @param data - The data for element
+         */
+        void define(const StringId name, const FGlobalDefinition& data)
+        {
+            table[name] = data;
+        }
+
+        void dump() const
+        {
+            std::cout << to_string() << std::endl;
+            for (auto& t : table)
+                std::cout << t.second.to_string() << std::endl; 
+        }
+
+
+        std::string to_string() const
+        {
+            return std::format("#TEnvironment <size: {0}>",
+                table.size());
+        }
+
+    private:
+
+        /**
+         * @brief The table of elements in the environment
+         */
+        std::map<StringId, FGlobalDefinition> table;
+    };
+
+    //--------------------------------------------------------------------------
+	// The local environment 
+	//--------------------------------------------------------------------------
+
+    /**
+	 * @brief The pointer in the local environment
+	 */
+    struct FLocalEnvironment  {
+        /**
+         * @brief Find the element in the environment
+         * @param name - the element name
+         * @param recursive - search in the global environment
+         * @return The pointer or null
+         */
+        FLocalDefinition* lookup(const StringId name, bool recursive = false);
+        /**
+         * @brief Find the element in the environment
+         * @param name - the element name
+         * @param type - the type of definition
+         * @param recursive - look at global environment too
+         * @return The pointer or null
+         */
+        FLocalDefinition* lookup(const StringId name, const StringId type, bool recursive = false);
+        /**
+         * @brief Define the element in the environment
+         * @param name - The name of element
+         * @param data - The data for element
+         */
+        void define(const StringId name, const FLocalDefinition& data)
+        {
+            table[name] = data;
+        }
+
+        void dump() const
+        {
+            std::cout << "Dump environment..." << std::endl;
+            std::cout << to_string() << std::endl;
+            for (auto& t : table)
+                std::cout << t.second.to_string() << std::endl;
+        }
+
+        std::string to_string() const
+        {
+            return std::format("#TEnvironment <size: {0}>",
+                table.size());
+        }
+
+    private:
+
+        /**
+         * @brief The table of elements in the environment
+         */
+        std::map<StringId, FLocalDefinition> table;
+    };
+
+    /**
+     * @brief There is the global environment 
+     */
+	extern 	FGlobalEnvironment g_environment;
+
+}
+#include "errors.hpp"
+#include "vm.hpp"
+#include "context.hpp"
+
+namespace vm
+{
+	FRuntimeError::FRuntimeError(const Context& context, const std::string& msg) : FException()
+	{
+		message = std::format("{0} : {1}", context.to_string(), msg);
+	}
+
+	FRuntimeError::FRuntimeError(const Context& context, const std::string& msg1, const std::string& msg2) : FException()
+	{
+		message = std::format("{0} : {1} : {2}", context.to_string(), msg1, msg2);
+	}
+
+	FRuntimeError::FRuntimeError(const Context& context, const std::string& msg1, const std::string& msg2,
+		const std::string& msg3) : FException()
+	{
+		message = std::format("{0} : {1} : {2} : {3}", context.to_string(), msg1, msg2, msg3);
+	}
+
+
+	FTypeError::FTypeError(const Context& context, const StringId def_name, const StringId type_name,
+		const StringId found_type_name)
+	{
+		message = std::format("{0} : Definition {1} expected type {2} found {3}",
+			context.to_string(),
+			lookup_string_safe(def_name),
+			lookup_string_safe(type_name),
+			lookup_string_safe(found_type_name));
+	}
+
+	FTypeError::FTypeError(const Context& context, const StringId def_name, const StringId type_name,
+		const StringId found_type_name, const std::string& msg)
+	{
+		message = std::format("{0} : Definition {1} expected type {2} found {3} : {4}", 
+			context.to_string(), 
+			lookup_string_safe(def_name), 
+			lookup_string_safe(type_name), 
+			lookup_string_safe(found_type_name), 
+			msg);
+	}
+}
+#pragma once
+
+#include <string>
+#include <exception>
+#include <format>
+
+#include "platform.hpp"
+#include "string_id.hpp"
+
+namespace vm
+{
+	class FException : public std::exception {
+	public:
+		FException()
+			: std::exception()
+		{
+		}
+		FException(const std::string& msg)
+			: std::exception()
+		{
+			message = std::format("{0} : {1}", msg, std::exception::what());
+		}
+
+
+		virtual const char* what() const {
+			return message.c_str();
+		}
+	protected:
+		std::string message;
+	};
+
+	class FStringCollisionException final : public FException {
+
+	public:
+		FStringCollisionException(std::string str1, std::string str2)
+			: FException()
+		{
+			message = std::format("StringId found collision of strings '{0}' and '{1}' : {2}\n",
+				str1, str2, FException::what());
+		}
+		const char* what() const override
+		{
+			return message.c_str();
+		}
+	};
+
+	struct Location
+	{
+		u32 line;
+		u32 pos;
+
+		Location() : line(0), pos(0) { }
+
+		std::string to_str() const {
+			return std::format("{0} : {1}", line, pos);
+		}
+	};
+
+	class FSyntaxError : public FException {
+	public:
+		FSyntaxError() : FException()
+		{ }
+
+		FSyntaxError(const std::string& msg)
+			: FException(msg)
+		{
+		}
+		FSyntaxError(const Location& loc, const std::string& msg)
+			: FException()
+		{
+			message = std::format("{0} : {1} : {2}", loc.line, loc.pos, msg);
+		}
+		FSyntaxError(const Location& loc, const std::string& msg1, const std::string& msg2)
+			: FException()
+		{
+			message = std::format("{0} : {1} : {2} : {3}", loc.line, loc.pos, msg1, msg2);
+		}
+		FSyntaxError(const Location& loc, const std::string& msg1, const std::string& msg2, const std::string& msg3)
+			: FException()
+		{
+			message = std::format("{0} : {1} : {2} : {3} : {4}", loc.line, loc.pos, msg1, msg2, msg3);
+		}
+	};
+
+	struct Context;
+
+	class FRuntimeError : public FException {
+	public:
+		FRuntimeError() : FException()
+		{ }
+
+		FRuntimeError(const Context& context, const std::string& msg);
+
+		FRuntimeError(const Context& context, const std::string& msg1, const std::string& msg2);
+
+		FRuntimeError(const Context& context, const std::string& msg1, const std::string& msg2, const std::string& msg3);
+
+	};
+
+	class FTypeError : public FException {
+	public:
+		FTypeError() : FException()
+		{ }
+		FTypeError(const Context& context, const StringId def_name, const StringId type_name, const StringId found_type_name);
+
+		FTypeError(const Context& context, const StringId def_name, const StringId type_name, const StringId found_type_name, const std::string& msg);
+
+	};
+
+
+
+
+}
+#pragma once
+#include <cmath>
+
+namespace vm
+{
+	inline bool compare_float(float f1, float f2) 
+	{
+		static constexpr auto epsilon = 1.0e-05f;
+		if (fabs(f1 - f2) <= epsilon)
+			return true;
+		return fabs(f1 - f2) <= epsilon * fmax(fabs(f1), fabs(f2));
+	}
+}
+#include "module.hpp"
+#include "context.hpp"
+#include "environment.hpp"
+#include <filesystem>
+#include <fstream>
+
+namespace vm
+{
+	//--------------------------------------------------------------------------
+	// Search files in the folders
+	//--------------------------------------------------------------------------
+
+	std::vector<std::filesystem::path> Module::search_path_{"." };
+
+	void Module::add_search_path(std::filesystem::path path)
+	{
+		search_path_.push_back(path);
+	}
+
+	void Module::remove_search_path(std::filesystem::path path)
+	{
+		std::vector<std::filesystem::path>::iterator new_end;
+		new_end = std::remove(search_path_.begin(), search_path_.end(), path);
+	}
+
+	bool Module::find_file(const std::string name, std::filesystem::path& resultPath)
+	{
+		std::filesystem::path filePath(name);
+		// The file checking function
+		auto exists_test = [](const std::string& name) {
+			struct stat buffer {};
+			return (stat(name.c_str(), &buffer) == 0);
+		};
+		const auto dciPath = filePath.replace_extension("dci");
+		const auto binPath = filePath.replace_extension("bin");
+		for (auto& t : search_path_)
+		{
+			// Verify the existence of DCI file
+			if (!exists_test((t/dciPath).generic_string())) 
+				continue;
+			if (!exists_test((t/binPath).generic_string()))
+				continue;
+			resultPath = t;
+			return true;
+		}
+		return false;
+	}
+
+	//--------------------------------------------------------------------------
+	// The file constructor/destructor
+	//--------------------------------------------------------------------------
+
+	Module::~Module()
+	{
+		undef_file();
+	}
+
+	//--------------------------------------------------------------------------
+	// The file constructor/destructor
+	//--------------------------------------------------------------------------
+
+	std::map<StringId, ModuleRef> Module::sFilesTable{};
+
+	ModuleRef* Module::define_file()
+	{
+		sFilesTable[name] = ModuleRef(this, GetNextGeneration());
+		return &sFilesTable[name];
+	}
+
+	void Module::undef_file() const
+	{
+		sFilesTable[name] = ModuleRef(nullptr, GetNextGeneration());
+	}
+
+	//--------------------------------------------------------------------------
+	// The file constructor/destructor
+	//--------------------------------------------------------------------------
+
+	void Module::import(const std::string& name)
+	{
+		const auto definition = g_environment.lookup(define_string(name));
+		if (definition == nullptr)
+			LoadFile(name);
+	}
+
+	u32 Module::sScriptFileGeneration = 1;
+
+	constexpr u32 Module::GetNextGeneration()
+	{
+		return ++sScriptFileGeneration;
+	}
+
+	void Module::LoadFile(const std::string& _name, EScriptLoadOptions options)
+	{
+		std::filesystem::path dir;
+		if (!find_file(_name, dir))
+			throw FRuntimeError(g_script_context, "LoadFile : The .bin and .dci files found", _name);
+
+		auto binFile = dir / _name;
+		auto dciFile = dir / _name;
+		binFile = binFile.replace_extension("bin");
+		dciFile = dciFile.replace_extension("dci");
+
+		// Read and parse the source file
+		std::ifstream dciStream(dciFile);
+		info.load_file(dciStream);
+		name = info.name;
+
+		// Read all imported files
+		if (options | EScriptImport)
+		{
+			for (auto& t : info.imports)
+			{
+				const auto importName = lookup_string(t);
+				if (importName == NULL_STRING)
+					throw FRuntimeError(g_script_context, "LoadFile : Can't find file", lookup_string_safe(t));
+				import(importName);
+			}
+		}
+
+		// Read and parse the bin file
+		std::ifstream binStream(binFile, std::ios::binary | std::ios::in);
+		bin.load_file(binStream);
+
+		// Initialize local environment
+		auto header = bin.get_file_header();
+		assert(header != nullptr);
+		for (size_t i = 0; i < header->defs_num; i++) {
+			const auto definition = header->get_definition(i);
+			const auto pointer = header->get_definition_ptr(i);
+			env.define(definition->Name, FLocalDefinition{ definition->Type, pointer });
+		}
+
+		// Define the file 
+		auto fileRef = define_file();
+
+		// Read all imported files
+		if (options | EScriptExport) {
+			for (auto& exportName : info.exports)
+			{
+				auto definition = env.lookup(exportName);
+				if (definition == nullptr)
+					throw FRuntimeError(g_script_context, "Exported definition is not found", to_str(exportName));
+				g_environment.define(exportName, FGlobalDefinition(definition->type, definition->ptr, fileRef));
+			}
+		}
+
+	}
+
+	std::string Module::to_string() const
+	{
+		return std::format("#ScriptFile <{0}>", to_str(name));
+	}
+
+
+}
+#pragma once
+
+#include <filesystem>
+#include "module_bin.hpp"
+#include "module_info.hpp"
+#include "string_id.hpp"
+#include "platform.hpp"
+#include "environment.hpp"
+
+namespace vm
+{
+	enum  EScriptLoadOptions { EScriptImport = 1 << 0, EScriptExport = 1 << 1 };
+
+	ENUM_FLAG_OPERATORS(EScriptLoadOptions);
+
+	class Module;
+
+
+	struct ModuleRef
+	{
+		ModuleRef() = default;
+		ModuleRef(Module* _module, u32 _generation) : module_ref(_module), generation(_generation){}
+
+		ModuleRef& operator=(const ModuleRef& other) = default;
+		std::string ToString() const { return std::format("#ModuleRef <this: {0:X} module: {1:X} generation: {2}>", (PTRINT)this, (PTRINT)module_ref,generation); }
+
+		Module* module_ref;
+		u32 generation;
+	};
+
+	std::string to_str(const Module* obj);
+
+	class Module
+	{
+	public:
+		/**/
+		Module() : name(), bin(), info() {}
+		/**/
+		~Module();
+		/**
+		 * @brief Define all file content
+		 * @return The pointer to the module
+		*/
+		ModuleRef* define_file();
+		/**
+		 * @brief Undefine the file content
+		*/
+		void undef_file() const;
+		/**
+		 * @brief Import file in two steps, find in memory and then
+		 * if the file is not found search on the disk
+		 * @param name - The definition name (file name)
+		 */
+		void import(const std::string& name);
+		/**
+		 * @brief Load the script file by name
+		 * @param name - The definition name (file name)
+		 * @param options - The loading mode
+		 */
+		void LoadFile(const std::string& name, EScriptLoadOptions options = EScriptImport | EScriptExport);
+		/**
+		 * @brief  Convert to a string
+		 * @return String value
+	  	 */
+		std::string to_string() const;
+		/**
+		 * @brief Add search path to the system
+		 * @param path - Path to the folder
+		 */
+		static void add_search_path(std::filesystem::path path);
+		/**
+		 * @brief Remove search path to the system
+		 * @param path - Path to the folder
+		 */
+		static void remove_search_path(std::filesystem::path path);
+
+		StringId name;
+		FBinFile bin;
+		FModuleInfo info;
+		FLocalEnvironment env;
+
+	private:
+		bool find_file(std::string name, std::filesystem::path& resultPath);
+		static std::vector<std::filesystem::path> search_path_;
+
+		static std::map<StringId, ModuleRef> sFilesTable;
+		static u32 sScriptFileGeneration;
+		static constexpr u32 GetNextGeneration();
+	};
+
+
+}
+#include <map>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <exception>
+
+#include "module_bin.hpp"
+#include "variant.hpp"
+#include "string_id.hpp"
+namespace vm
+{
+
+	void FBinFile::load_file(std::ifstream& stream)
+	{
+		if (is_loaded)
+			throw std::exception("Do not call it twice");
+		if (!stream.is_open()) 
+			throw std::exception("Do not call it twice");
+
+		stream.seekg(0, std::ios::end);
+		const auto fileSize = stream.tellg();
+		stream.seekg(0, std::ios::beg);
+
+		const auto buff = new char[fileSize];
+		stream.read(buff, fileSize);
+		file = reinterpret_cast<FBinFileHeader*>(buff);
+
+		if (!file->is_valid_magic())
+			throw FException("The file is invalid");
+		is_loaded = true;
+	}
+	void FBinFile::save_file(std::ofstream& out) const
+	{
+		out.write(reinterpret_cast<char*>(file), safe_cast_to_int32(file->used_size));
+	}
+
+
+	void FDefinition::Define(const StringId name, const StringId type, u32  offset)
+	{
+		Name = name;
+		Type = type;
+		Offset = offset;
+	}
+
+
+
+}
+
+
+#pragma once
+
+#include <string>
+#include <cassert>
+#include <vector>
+#include <format>
+#include "errors.hpp"
+#include "printer.hpp"
+#include "variant.hpp"
+
+namespace vm
+{
+	struct FBinFile;
+	struct FBinFileHeader;
+
+	/**
+	 * Align the size of object to the biggies rounded value
+	 */
+	#define ALIGN_SIZE(n) ((n+3)&~3)
+
+#undef REGISTER_OPCODE
+#include "vm_opcodes.hpp"
+
+	/** The virtual machine instruction. */
+	__declspec(align(4))
+		struct FInstr
+	{
+		union
+		{
+			u32 as_uint32;
+			struct
+			{
+				/** The operation code */
+				EOpcode opcode;
+				/** Operand a */
+				u8 a;
+				/** Operand b */
+				u8 b;
+				/** Operand c */
+				u8 c;
+			};
+			struct
+			{
+				/** The operation code */
+				u8 skip[2];
+				s16 k;
+			};
+		};
+
+		FInstr(EOpcode op, s8 a, s8 b, s8 c) : opcode(op), a(a), b(b), c(c) {}
+		FInstr(EOpcode op, s8 a, u16 k) : opcode(op), a(a), b(k & 0xFF), c(k >> 8) {}
+		FInstr(EOpcode op, s8 a, s16 k) : opcode(op), a(a), b(k & 0xFF), c(k >> 8) {}
+
+
+	};
+
+	/** Single record in the data block */
+	struct  FRecord
+	{
+		union
+		{
+			u64 as_uint64;
+			u32 as_int32[2];
+			f32 as_float[2];
+			char as_char[4];
+		};
+	};
+
+	/** The virtual machine byte code. */
+	__declspec(align(8))
+	struct  FByteCode  {
+
+		void Initialize(FBinFileHeader* filePtr, const std::vector<FInstr>& code, const std::vector<FRecord>& data) {
+			// Compute data needed for the all data
+			constexpr auto headSize = sizeof(FByteCode);
+			const auto codeSize = safe_cast_u_int32(sizeof(FInstr) * code.size());
+			const auto dataSize = safe_cast_u_int32(sizeof(FRecord) * data.size());
+			const auto totalSize = safe_cast_u_int32(headSize + codeSize + dataSize);
+			// Get the offset form begin of file, the byte code address minus the file start address
+			file_offs = safe_cast_to_int32(reinterpret_cast<PTRINT>(this) - reinterpret_cast<PTRINT>(filePtr));
+			desc_size = totalSize;
+			code_offs = file_offs + headSize;
+			data_offs = code_offs + codeSize;
+			// Copy code
+			auto code_ptr = get_code_ptr();
+			auto data_ptr = get_data_ptr();
+			for (size_t i = 0; i < code.size(); i++)
+				code_ptr[i] = code[i];
+			for (size_t i = 0; i < data.size(); i++)
+				data_ptr[i] = data[i];
+		}
+
+
+
+		FInstr* get_code_ptr()
+		{
+			return (FInstr*)((PTRINT)this + (code_offs - file_offs));
+		}
+		FRecord* get_data_ptr()
+		{
+			return (FRecord*)((PTRINT)this + (data_offs - file_offs));
+		}
+		u32 get_code_size() const
+		{
+			return (data_offs - code_offs) / sizeof(FInstr);
+		}
+		u32 get_data_size() const
+		{
+			return (desc_size - (data_offs - file_offs)) / sizeof(FInstr);
+		}
+
+		/**
+		 * @brief Convert to string this file
+		 * @return string value for this file
+		 */
+		std::string to_string() const
+		{
+			return std::format("#FByteCode <size: {0} offset: {1} code: {2} data: {3}>",
+				desc_size, file_offs, code_offs, data_offs);
+		}
+
+		/* DescSize of the data and code */
+		u32 desc_size;
+		u32 file_offs;
+		u32 code_offs;
+		u32 data_offs;
+	};
+
+	/** The virtual machine definition. */
+	__declspec(align(4))
+		struct FDefinition {
+		/** The definition's name */
+		StringId Name;
+		/** The definition's type */
+		StringId Type;
+		/** The definition's offset from begin of file */
+		u32 Offset;
+
+		/**
+		 * @brief Initialize the definition, aka set 'name, 'type and offset from begin gile
+		 * @param name - definition name
+		 * @param type - definition type as StringId
+		 * @param offset - definition offset from begin of file
+		 */
+		void Define(const StringId name, const StringId type, u32 offset);
+
+	};
+
+	/** The magic number in the file header */
+	constexpr u32 DC_MAGIC('D' | 'X' << 8 | '0' << 16 | '0' << 24);
+
+	/** The header of the binary file */
+	__declspec(align(8))
+		struct FBinFileHeader
+	{
+
+		FBinFileHeader(StringId id)
+			: magic_num(DC_MAGIC)
+			, file_size(0), used_size(sizeof(FBinFileHeader)), offset(0), defs_max(0), defs_num(0), defs_offs(0)
+		{
+		}
+
+		/** Verify if the header is valid */
+		bool is_valid_magic() const { return magic_num == DC_MAGIC; }
+
+		/** Get a free size of the file */
+		size_t get_free_size() const { return file_size - used_size; }
+		/**
+		 * Initialize the file header
+		 * @params maxDefinitions - The maximum number of definitions in the file
+		 */
+		void init_definitions_table(u32 maxDefinitions, u32 fileSize)
+		{
+			magic_num = DC_MAGIC;
+			defs_num = 0;
+			offset = 0;
+			defs_max = maxDefinitions;
+			file_size = fileSize;
+			defs_offs = sizeof(FBinFileHeader);
+			used_size = defs_offs + sizeof(FDefinition) * maxDefinitions;
+		}
+
+		/**
+		 * @brief Get reference to the definition
+		 * @param idx - Index of the definition
+		 * @return - Reference to the definition
+		 */
+		FDefinition* get_definition(size_t idx) const {
+			if (idx >= defs_max)
+				throw std::exception("The index of definition is overflow.");
+			//const auto ptr1 = (FDefinition*)((const char*)this + DefsOffs);
+			const auto ptr = reinterpret_cast<FDefinition*>(reinterpret_cast<PTRINT>(this) + defs_offs);
+			return &ptr[idx];
+		}
+
+
+		template<class T>
+		T* Define(const StringId name, const StringId type) {
+			return static_cast<T*>(define(name, type));
+		}
+
+		PTRINT define(const StringId name, const StringId type) {
+
+			if (defs_num >= defs_max)
+				throw std::exception("The number of definition is overflow.");
+
+			// Get free definition
+			const auto definition = get_definition(defs_num);
+			definition->Define(name, type, safe_cast_u_int32(used_size));
+			defs_num++;
+			return reinterpret_cast<PTRINT>(this) + used_size;
+		}
+		/**
+		 * @brief Get definitions pointer aka pointer to int32, bool, lambda, ...
+		 * @tparam T - type of returned pointer
+		 * @param idx - index of definition
+		 * @return pointer to int32, bool, lambda, ...
+		 */
+		template <typename T>
+		T* get_definition_ptr(size_t idx) const
+		{
+			return (T*)get_definition_ptr(idx);
+		}
+		/**
+		 * @brief Get definitions pointer aka pointer to int32, bool, lambda, ...
+		 * @param idx - index of definition
+		 * @return pointer to int32, bool, lambda, ...
+		 */
+		PTRINT get_definition_ptr(size_t idx) const
+		{
+			const auto defOffset = get_definition(idx)->Offset;
+			return reinterpret_cast<PTRINT>(this) + defOffset;
+		}
+
+		void initialize(FByteCode* byteCode, const std::vector<FInstr>& code, const std::vector<FRecord>& data)
+		{
+			byteCode->Initialize(this, code, data);
+			used_size += byteCode->desc_size;
+		}
+
+		/**
+		 * @brief Convert to string this file
+		 * @return string value for this file
+		 */
+		std::string to_string() const
+		{
+			return std::format("#FBinFileHeader <file-size: {0} used-size: {1} definitions-num: {2}>",
+				file_size, used_size, defs_num);
+		}
+
+		/** Just a constant to validate file */
+		u32 magic_num;
+		/** The data block size in memory */
+		u32 file_size;
+		/** DescSize of used data */
+		u32 used_size;
+		/** Maximum allowed definitions */
+		u32 defs_max;
+		/** Used definitions */
+		u32 defs_num;
+		/** The definitions offset */
+		u32 defs_offs;
+		/** All pointer are incremented by this value */
+		PTRINT offset;
+
+	};
+
+
+	struct FBinFile final
+	{
+
+	public:
+		FBinFile()
+			: file(nullptr), is_loaded(false)
+		{
+			
+		}
+
+		void initialize(u32 maxDefinitions, size_t dataSize)
+		{
+			assert(dataSize < std::numeric_limits<u32>::max());
+			free(file);
+			is_loaded = false;
+			const size_t fileSize = sizeof(FBinFileHeader) + sizeof(FDefinition) * maxDefinitions + dataSize;
+			file = reinterpret_cast<FBinFileHeader*>(new u8[fileSize]);
+			file->init_definitions_table(maxDefinitions, static_cast<u32>(fileSize));
+			printf("%p FBinFile with size %zx\n", static_cast<void*>(file), fileSize);
+		}
+		
+		~FBinFile() {
+			free(file);
+		}
+
+		void load_file(std::ifstream& stream);
+		void save_file(std::ofstream& out) const;
+
+		/**
+		 * @brief Define new object in the file
+		 * @tparam T - the class of the object
+		 * @param name - the name of the object
+		 * @param type - type of the object
+		 * @return - reference to the T
+		 */
+		template<class T>
+		T* define(const StringId name, const StringId type)
+		{
+			return (T*)define(name, type);
+		}
+
+		PTRINT define(const StringId name, const StringId type)
+		{
+			if (file == nullptr)
+				throw FException("Dot use destructed object");
+			return file->define(name, type);
+		}
+
+		size_t get_used_size() const { return file == nullptr ? 0 : file->used_size; }
+		size_t get_free_size() const { return file == nullptr ? 0 : file->get_free_size(); }
+
+		u32 get_def_number() const { return file->defs_num; }
+
+		FDefinition* get_definition(u32 idx) const { return file->get_definition(idx); }
+
+		FBinFileHeader* get_file_header() const { return file; }
+
+		/**
+		 * @brief Convert to string this file
+		 * @return string value for this file
+		 */
+		std::string to_string() const
+		{
+			return std::format("#FBinFile <is-loaded: {0} file-header: {1}>",
+				is_loaded, to_str(file));
+		}
+	private:
+
+		/** The data block in the memory */
+		FBinFileHeader* file;
+		/** Loading state */
+		bool is_loaded;
+	};
+
+
+
+}#include "module_info.hpp"
+
+#include <filesystem>
+#include <fstream>
+
+#include "parser.hpp"
+#include "platform.hpp"
+#include "syntax_tools.hpp"
+
+namespace vm
+{
+	void FModuleInfo::parse_import(const parser::FListStx& stx)
+	{
+		int itemCnt = -1;
+		const auto items = stx.get_list();
+		for (auto& t : items) {
+			switch (++itemCnt)
+			{
+			case 0:
+				// Skip first item with 'import'
+				continue;
+			default:
+			{
+				// all next expressions must be as the lists 
+				const auto expression = t->get_symbol_stx();
+				if (expression == nullptr)
+					throw FSyntaxError(t->loc, "Expected name of definition", t->to_string());
+				// the body of the lambda
+				auto id = define_string(expression->get_string());
+				imports.push_back(id);
+			}
+			}
+		}
+	}
+	void FModuleInfo::parse_export(const parser::FListStx& stx)
+	{
+		int itemCnt = -1;
+		const auto items = stx.get_list();
+		for (auto& t : items) {
+			switch (++itemCnt)
+			{
+				case 0:
+					// Skip first item with 'export'
+					continue;
+				default:
+				{
+					// all next expressions must be as the lists 
+					const auto expression = t->get_symbol_stx();
+					if (expression == nullptr)
+						throw FSyntaxError(t->loc, "Expected name of definition", t->to_string());
+					// the body of the lambda
+					auto id = define_string(expression->get_string());
+					exports.push_back(id);
+				}
+			}
+		}
+	}
+	void FModuleInfo::parse_list(const parser::FListStx& stx)
+	{
+		const auto stringId = get_string_id(stx, 0);
+		const auto front = stx.front();
+		switch (stringId)
+		{
+		case SID("export"):
+			parse_export(stx);
+			break;
+		case SID("import"):
+			parse_import(stx);
+			break;
+		default:
+			throw FSyntaxError(stx.loc, "Unexpected expression", stx.to_string());
+		}
+	}
+	void FModuleInfo::load_file(std::istream& in)
+	{
+		auto stx = parser::parse_stream(in);
+		const auto topList = stx->get_list_stx();
+		if (topList == nullptr)
+			throw FSyntaxError(stx->loc, "Expected the list as top level object", stx->to_string());
+		auto lineNum = -1;
+		// For each element of the top level
+		for (auto& t : *topList)
+		{
+			lineNum++;
+			switch (lineNum)
+			{
+			case 0: // file name
+				{
+					name = get_string_id(*topList, 0);
+				}
+				break;
+			case 1: // some id or tag?
+				{
+					const auto secondList = t->get_list_stx();
+					bin_size = get_int32(*secondList, 0);
+				}
+				break;
+			default: // export or import
+				{
+					// Get child list. The top level contains only lists
+					const auto secondList = t->get_list_stx();
+					parse_list(*secondList);
+				}
+				break;
+			}
+		}
+
+	}
+
+	void FModuleInfo::save_file(std::ostream& out) const
+	{
+		throw FException("Method is undefined");
+	}
+
+
+
+}
+#pragma once
+
+#include <vector>
+#include "parser.hpp"
+#include "string_id.hpp"
+
+namespace vm
+{
+	/**
+	 * @brief Load and parse dci files
+	 *
+	 * The format of file you can see below
+	 * (file-name (bin-file-size)
+	 *    (import ....)
+	 *    (export ....)
+	 *	  )
+	 */
+	class FModuleInfo
+	{
+	public:
+		FModuleInfo() = default;
+
+		void parse_import(const parser::FListStx& stx);
+		void parse_export(const parser::FListStx& stx);
+		void parse_list(const parser::FListStx& stx);
+		void load_file(std::istream& in);
+		void save_file(std::ostream& out) const;
+
+
+		StringId name;
+		u32 bin_size;
+		std::vector<StringId> imports;
+		std::vector<StringId> exports;
+	};
+
+
+
+}
+
+#include "parser.hpp"
+#include <iostream>
+#include <sstream>
+
+#include "tokenizer.hpp"
+
+namespace vm::parser {
+
+	std::shared_ptr<FSyntax> parse(FTokenizer&);
+
+	static void indent(std::ostream& out, const int level) {
+        for (int i = 0; i < level; ++i)
+            out << "   ";
+    }
+
+	//--------------------------------------------------------------------------
+	// Syntax
+	//--------------------------------------------------------------------------
+
+    void FSyntax::write(std::ostream& out) const
+    {
+        out << to_string();
+    }
+
+    void FSyntax::write_indented(std::ostream& out, int level) const
+    {
+        indent(out, level);
+        write(out);
+    }
+
+    //--------------------------------------------------------------------------
+	// List
+	//--------------------------------------------------------------------------
+
+	std::list<std::shared_ptr<FSyntax>>::const_iterator FListStx::begin() const noexcept
+	{
+		return list.begin();
+	}
+
+	std::list<std::shared_ptr<FSyntax>>::const_iterator FListStx::end() const noexcept
+	{
+		return list.end();
+	}
+
+	std::shared_ptr<FSyntax> FListStx::front() const noexcept
+	{
+		return list.front();
+	}
+
+	std::shared_ptr<FSyntax> FListStx::get_item(const size_t idx) const
+	{
+		auto it = list.begin();
+		for (u32 i = 0; i < idx; i++) {
+			++it;
+		}
+		return *it;
+	}
+
+    std::string FListStx::to_string() const {
+        std::string str{};
+    	str += "(";
+        if (!list.empty()) {
+            auto i = list.begin();
+            str += (*i)->to_string();
+            while (++i != list.end()) {
+            	str += ' ';
+                str += (*i)->to_string();
+            }
+        }
+        str += ")";
+        return str;
+    }
+
+    void FListStx::write(std::ostream& out) const {
+        out << "(";
+        if (!list.empty()) {
+            auto i = list.begin();
+            (*i)->write(out);
+            while (++i != list.end()) {
+                out << ' ';
+                (*i)->write(out);
+            }
+        }
+        out << ")";
+    }
+
+    void FListStx::write_indented(std::ostream& out, int level) const {
+        indent(out, level);
+        out << "(\n";
+        if (!list.empty()) {
+            for (auto i = list.begin(); i != list.end(); ++i) {
+                (*i)->write_indented(out, level + 1);
+                out << '\n';
+            }
+        }
+        indent(out, level);
+        out << ")";
+    }
+
+    void FListStx::append(const std::shared_ptr<FSyntax>& ptr)
+    {
+        list.push_back(ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    // value
+    //--------------------------------------------------------------------------
+
+    float FNumberStx::get_float() const
+	{
+        if (is_inexact)
+            return value.as_float;
+         throw FSyntaxError(loc, "Expected floating point number", to_string());
+	}
+
+    s32 FNumberStx::get_int() const
+    {
+		if (is_inexact)
+	        throw FSyntaxError(loc, "Expected s32 number", to_string());
+        return value.as_int32;
+    }
+
+    std::string FNumberStx::to_string() const
+    { 
+	    if (is_inexact)
+		    return std::format("{0}", value.as_float);
+	    else
+		    return std::format("{0}", value.as_uint32);
+    }
+
+    void FNumberStx::write(std::ostream& out) const
+    {
+	    if (is_inexact)
+		    out << value.as_float;
+	    else
+		    out << value.as_uint32;
+    }
+
+
+    //--------------------------------------------------------------------------
+	// Symbol
+	//--------------------------------------------------------------------------
+
+    std::string FSymbolStx::to_string() const
+    { return std::format("{0}", value); }
+
+    void FSymbolStx::write(std::ostream& out) const
+    {
+	    for (const char ch : value) {
+		    out << ch;
+	    }
+    }
+
+    //--------------------------------------------------------------------------
+	// Parser
+	//--------------------------------------------------------------------------
+
+    std::shared_ptr<FListStx> parse_list(FTokenizer& tok) {
+        std::shared_ptr<FListStx> lst = std::make_shared<FListStx>();
+        lst->loc = tok.current().location;
+        while (tok.next()) {
+            if (tok.current().type == ETokenType::RightParen)
+                return lst;
+            else
+                tok.put_back();
+            lst->append(parse(tok));
+        }
+        throw FSyntaxError(lst->loc, "parse_list", "syntax error: unclosed list", lst->to_string());
+    }
+
+    std::shared_ptr<FSyntax> parse(FTokenizer& tokenizer) {
+        if (!tokenizer.next())
+            return std::make_shared<FListStx>();
+        std::shared_ptr<FSyntax> obj;
+        const FToken& tok = tokenizer.current();
+        const Location loc = tok.location;
+        switch (tok.type) {
+        case ETokenType::String:
+            obj = std::make_shared<FStringStx>(std::get<std::string>(tok.data));
+            break;
+        case ETokenType::Symbol:
+            obj = std::make_shared<FSymbolStx>(std::get<std::string>(tok.data));
+            break;
+        case ETokenType::Number:
+            if (std::holds_alternative<double>(tok.data))
+                obj = std::make_shared<FNumberStx>(std::get<double>(tok.data));
+            else
+                obj = std::make_shared<FNumberStx>(std::get<s64>(tok.data));
+            break;
+        case ETokenType::LeftParen:
+            obj = parse_list(tokenizer);
+            break;
+        default:
+            throw FSyntaxError(loc, "parse_number : syntax_error : unexpected FToken", tok.to_string());
+        }
+        obj->loc = loc;
+        return obj;
+    }
+
+    std::shared_ptr<FSyntax> parse_stream(std::istream& in) {
+        FTokenizer tokenizer(in);
+        return parse(tokenizer);
+    }
+
+    std::shared_ptr<FSyntax> parse_string(const std::string& str) {
+        std::istringstream in(str);
+        return parse_stream(in);
+    }
+
+    void print_syntax(const std::shared_ptr<FSyntax> stx) {
+        if (stx != nullptr) {
+            stx->write_indented(std::cout, 0);
+            std::cout << '\n';
+        }
+    }
+
+} // namespace s_expr
+#pragma once
+
+#include <iomanip>
+#include <iostream>
+#include <list>
+#include <memory>
+#include <string>
+#include <format>
+
+#include "string_id.hpp"
+#include "errors.hpp"
+#include "crc32.hpp"
+
+namespace vm::parser {
+
+
+    void indent(std::ostream& out, int level);
+
+    struct FStringStx;
+    struct FSymbolStx;
+    struct FNumberStx;
+    struct FListStx;
+
+    /** The base class for all parsed objects */
+    struct FSyntax {
+        virtual ~FSyntax() = default;
+        /**/
+        virtual bool is_string() const { return false; }
+        virtual bool is_symbol() const { return false; }
+        virtual bool is_number() const { return false; }
+        virtual bool is_float() const { return false; }
+        virtual bool is_integer() const { return false; }
+        virtual bool is_list() const { return false; }
+        /**/
+        virtual std::shared_ptr<FStringStx> get_string_stx() { return nullptr; }
+        virtual std::shared_ptr<FSymbolStx> get_symbol_stx() { return nullptr; }
+        virtual std::shared_ptr<FNumberStx> get_number_stx() { return nullptr; }
+        virtual std::shared_ptr<FListStx> get_list_stx() { return nullptr; }
+        /**/
+        virtual std::string to_string() const { return "object"; }
+        virtual void write(std::ostream&) const;
+        virtual void write_indented(std::ostream& out, int level) const;
+        /** The object's Location in the file */
+        Location loc;
+    };
+
+    /** The string object */
+    struct FStringStx : FSyntax {
+        /**/
+        explicit FStringStx(const std::string& str) : value(str) {}
+    	/**/
+    	bool is_string() const override { return true; }
+        /**/
+        std::shared_ptr <FStringStx> get_string_stx() override { return std::make_shared<FStringStx>(*this); }
+        /**/
+        std::string to_string() const override { return std::format("\"{0}\"", value); }
+        void write(std::ostream& out) const override { out << std::quoted(value); }
+        /**/
+        std::string get_string() const { return value; }
+        /**/
+    private:
+        std::string value;
+    };
+
+    /** The Symbol object */
+    struct FSymbolStx : FSyntax {
+        /**/
+    	explicit FSymbolStx(const std::string& str) : value(str) {}
+        /**/
+        bool is_symbol() const override { return true; }
+        /**/
+        std::shared_ptr <FSymbolStx> get_symbol_stx() override { return std::make_shared<FSymbolStx>(*this); }
+        /**/
+        std::string to_string() const override;
+        void write(std::ostream& out) const override;
+        /**/
+    	std::string get_string() const { return value; }
+        StringId get_string_id() const { return crc32(value); }
+        /**/
+    private:
+        std::string value;
+    };
+
+    /** The number object */
+    struct FNumberStx : FSyntax {
+        /**/
+        explicit FNumberStx(double num) : is_inexact(true) { value.as_float = safe_cast_to_float(num); }
+        explicit FNumberStx(s64 num) : is_inexact(false) { value.as_int32 = safe_cast_to_int32(num); }
+    	/**/
+        bool is_number() const override { return true; }
+        bool is_float() const override { return is_inexact; }
+        bool is_integer() const override { return !is_inexact; }
+        /**/
+        std::shared_ptr <FNumberStx> get_number_stx() override { return std::make_shared<FNumberStx>(*this); }
+        /**/
+        std::string to_string() const override;
+        void write(std::ostream& out) const override;
+        /**/
+        float get_float() const;
+        s32 get_int() const;
+        /**/
+    private:
+        U32float value;
+        /**
+         * @brief Has true value for the floating point values
+         */
+        bool is_inexact;
+    };
+
+    /** The scheme list */
+    struct FListStx :  FSyntax {
+        /**/
+        FListStx() = default;
+        /**/
+        bool is_list() const override { return true; }
+        /**/
+        std::shared_ptr<FListStx>
+    	get_list_stx() override { return std::make_shared <FListStx>( *this); }
+        /**/
+    	std::string to_string() const override;
+        void write(std::ostream& out) const override;
+        void write_indented(std::ostream&, int) const override;
+    	/**/
+        void append(const std::shared_ptr<FSyntax>& ptr);
+        std::list<std::shared_ptr<FSyntax>>::const_iterator begin() const noexcept;
+        std::list<std::shared_ptr<FSyntax>>::const_iterator end() const noexcept;
+        std::shared_ptr<FSyntax> front() const noexcept;
+        /**/
+        std::list<std::shared_ptr<FSyntax>>
+		get_list() const { return list; }
+        std::shared_ptr<FSyntax> get_item(size_t idx) const;
+        size_t size() const { return list.size(); }
+        /**/
+    private:
+        std::list<std::shared_ptr<FSyntax>> list;
+    };
+
+
+    /**
+     * @brief Parse the stream to the AST structure
+     * @param in - The input stream
+     * @return - The syntax object
+     * @addindex The example using below
+     *
+     *     //  int main(int argc, char** argv) {
+     *     std::string test_string =
+     *         "((data \"quoted data\" 123 4.5)\n"
+     *         " (data (!@# (4.5) \"(more\" \"data)\")))";
+     *     if (argc == 2)
+     *         test_string = argv[1];
+     *     try {
+     *         parse_string(test_string);
+     *     }
+     *     catch (const std::exception& ex) {
+     *         std::cerr << ex.what() << '\n';
+     *     }
+     */
+    std::shared_ptr<FSyntax> parse_stream(std::istream& in);
+
+    /**
+     * @brief Parse the string to the AST structure
+     * @param str - The string with expressions
+     * @return - The syntax object
+     */
+    std::shared_ptr<FSyntax> parse_string(const std::string& str);
+
+    /**
+     * @brief Print the AST object on screen 
+     * @param stx - The syntax object
+     */
+    void print_syntax(std::shared_ptr<FSyntax> stx);
+
+}#include "platform.hpp"
+
+namespace vm
+{
+	constexpr Vector Vector::ZERO{ 0,0,0,0 };
+
+}
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <format>
+
+namespace vm
+{
+
+
+	// --------------------------------------------------------------------
+	// Basic types
+	// --------------------------------------------------------------------
+
+	typedef wchar_t TCHAR;
+	typedef uint8_t u8;
+	typedef uint16_t u16;
+	typedef uint32_t u32;
+	typedef uint64_t u64;
+	typedef int8_t s8;
+	typedef int16_t s16;
+	typedef int32_t s32;
+	typedef int64_t s64;
+	typedef float f32;
+
+	/** for an integer that may hold a pointer (NEVER assume the size of PTRINT). */
+	using PTRINT = std::uintptr_t;
+
+	struct u128 
+	{
+		union
+		{
+			u64 du64[2];
+			s64 ds64[2];
+			u32 du32[4];
+			s32 ds32[4];
+			u16 du16[8];
+			s16 ds16[8];
+			u8 du8[16];
+			s8 ds8[16];
+			float f[4];
+		};
+	};
+
+	static_assert(sizeof(u128) == 16, "u128");
+
+	// --------------------------------------------------------------------
+	// Casting structures
+	// --------------------------------------------------------------------
+
+	union U32float {
+		s32 as_int32;
+		u32 as_uint32;
+		float as_float;
+	};
+
+	union U64float {
+		s64 as_int64;
+		u64 as_uint64;
+		double as_double;
+	};
+
+	/**
+	 * @brief Swap bytes in the 16 bits word
+	 * @param value - the 16 bits value as 0x12
+	 * @return the value after bytes swapped as 0x21
+	 */
+	inline u16 swap_u16(u16 value)
+	{
+		return (value & 0x00FF) << 8 | (value & 0xFF00) >> 8;
+	}
+
+	/**
+	 * @brief Swap bytes in the 32 bits word
+	 * @param value - the 32 bits value as 0x1234
+	 * @return the value after bytes swapped as 0x4321
+	 */
+	inline u32 swap_u32(u32 value)
+	{
+		return (value & 0x000000FF) << 24 | (value & 0x0000FF00) >> 8
+		| (value & 0x00FF0000) >> 8 | (value & 0xFF000000) >> 24;
+	}
+	/**
+	 * @brief Swap bytes in the 32 bits floating point value
+	 * @param value - the 32 bits value as 0x1234
+	 * @return the value after bytes swapped as 0x4321
+	 */
+	inline float swap_f32(float value)
+	{
+		U32float u;
+		u.as_float = value;
+		u.as_uint32 = swap_u32(u.as_uint32);
+		return u.as_float;
+	}
+	// --------------------------------------------------------------------
+	// Global constants and enums
+	// --------------------------------------------------------------------
+	/**
+	 * For the index is not valid state use this value
+	 */
+	enum { INDEX_NONE = -1 };
+
+	/**
+	 * The argument used to make a constructor as lightweight
+	 * value(ENoInit);
+	 */
+	enum ENoInit { NoInit };
+
+	// --------------------------------------------------------------------
+	// Global macro definitions
+	// --------------------------------------------------------------------
+
+	#define ML(s) L#s
+    #define LOG_WARNING(...) printf(__VA_ARGS__)
+
+	// --------------------------------------------------------------------
+	// Global errors 
+	// --------------------------------------------------------------------
+
+	/**
+	 * @brief Make an exception when we cast the 64 bits values to the 32 bits
+	 */
+	class FOverflow32 final : public std::exception {
+	public:
+		FOverflow32(int64_t v) {
+			message = std::format("The value id too big for u32 '{0}' : {1}\n", v, std::exception::what());
+		}
+		FOverflow32(u64 v) {
+			message = std::format("The value id too big for s32 '{0}' : {1}\n", v, std::exception::what());
+		}
+		FOverflow32(double v) {
+			message = std::format("The value id too big for s32 '{0}' : {1}\n", v, std::exception::what());
+		}
+		const char* what() const override {
+			return message.c_str();
+		}
+		std::string message;
+	};
+
+	// --------------------------------------------------------------------
+	// Safe cast types with the exception if the value is not fit
+	// --------------------------------------------------------------------
+
+	inline u32 safe_cast_u_int32(u64 v)
+	{
+		if (v > std::numeric_limits<u32>::max())
+			throw FOverflow32(v);
+		return static_cast<u32>(v);
+	}
+	inline s32 safe_cast_to_int32(s64 v)
+	{
+		if (v > std::numeric_limits<s32>::max() || v < std::numeric_limits<s32>::min())
+			throw FOverflow32(v);
+		return static_cast<s32>(v);
+	}
+	inline float safe_cast_to_float(double v)
+	{
+		constexpr auto max = static_cast<double>(std::numeric_limits<float>::max());
+		constexpr auto min = static_cast<double>(-std::numeric_limits<float>::max());
+		if (v > max || v < min)
+			throw FOverflow32(v);
+		return static_cast<float>(v);
+	}
+	// --------------------------------------------------------------------
+	// The engine types
+	// --------------------------------------------------------------------
+
+	struct Vector
+	{
+		/** @brief zero vector */
+		static const Vector ZERO;
+		/** @brief the vector's elements */
+		float x,y,z,w;
+	};
+	struct Vector3 { float x,y,z; };
+	struct Quaternion { float x, y, z, w; };
+	struct BoundingVolume
+	{
+		Vector3 position;
+		Vector3 rotation;
+	};
+	struct Color3 { u8 r, g, b; };
+	struct Color4 { u8 r, g, b, a; };
+
+	// --------------------------------------------------------------------
+	// The enum fags
+	// --------------------------------------------------------------------
+
+/**
+ * @brief Declare methods for bitwise operations with enum type.
+ * @param T - The enum type
+ * @usage ENUM_FLAG_OPERATORS(EFileOptions);
+ */
+#define ENUM_FLAG_OPERATORS(T)                                                                                                                                            \
+    inline T operator~ (T a) { return static_cast<T>( ~static_cast<std::underlying_type<T>::type>(a) ); }                                                                       \
+    inline T operator| (T a, T b) { return static_cast<T>( static_cast<std::underlying_type<T>::type>(a) | static_cast<std::underlying_type<T>::type>(b) ); }                   \
+    inline T operator& (T a, T b) { return static_cast<T>( static_cast<std::underlying_type<T>::type>(a) & static_cast<std::underlying_type<T>::type>(b) ); }                   \
+    inline T operator^ (T a, T b) { return static_cast<T>( static_cast<std::underlying_type<T>::type>(a) ^ static_cast<std::underlying_type<T>::type>(b) ); }                   \
+    inline T& operator|= (T& a, T b) { return reinterpret_cast<T&>( reinterpret_cast<std::underlying_type<T>::type&>(a) |= static_cast<std::underlying_type<T>::type>(b) ); }   \
+    inline T& operator&= (T& a, T b) { return reinterpret_cast<T&>( reinterpret_cast<std::underlying_type<T>::type&>(a) &= static_cast<std::underlying_type<T>::type>(b) ); }   \
+    inline T& operator^= (T& a, T b) { return reinterpret_cast<T&>( reinterpret_cast<std::underlying_type<T>::type&>(a) ^= static_cast<std::underlying_type<T>::type>(b) ); }
+
+
+/**
+ * \brief Convert strong enum value to integer
+ * \tparam E - The enum type
+ * \param e - The enum value
+ * \return The integer value
+ * \udage std::cout << foo(to_underlying(b::B2)) << std::endl;
+ */
+template <typename E>
+constexpr typename std::underlying_type<E>::type to_underlying(E e) noexcept {
+	return static_cast<typename std::underlying_type<E>::type>(e);
+}
+#define ENUM_CAST_TO_INT(T) 
+
+}
+#include "printer.hpp"
+#ifdef CUSTOM_PRINT
+#include <cstdarg>
+#endif
+#include <format>
+
+#include "environment.hpp"
+#include "context.hpp"
+#include "variant.hpp"
+#include "module.hpp"
+#include "vm.hpp"
+
+namespace vm
+{
+	struct FGlobalDefinition;
+#ifdef CUSTOM_PRINT
+	void VariantPrintToFile(FILE* f, char* fmt, ...)
+	{
+		va_list lst;
+		va_start(lst, fmt);
+		while (*fmt != '\0')
+		{
+			if (*fmt != '%')
+			{
+				putchar(*fmt);
+				fmt++;
+				continue;
+			}
+
+			fmt++;
+
+			if (*fmt == '\0')
+			{
+				break;
+			}
+
+			switch (*fmt)
+			{
+			case 's': fputs(va_arg(lst, char*), f); break;
+			case 'c': fputc(va_arg(lst, int), f); break;
+			case 'v': fputs(vm::ConvertToString(va_arg(lst, FVariant)).c_str(), f); break;
+			}
+			fmt++;
+		}
+	}
+
+	void VariantPrint(char* fmt, ...)
+	{
+		va_list lst;
+		va_start(lst, fmt);
+		VariantPrintToFile(stdout, fmt, lst);
+	}
+
+	void VariantPrintError(char* fmt, ...)
+	{
+		va_list lst;
+		va_start(lst, fmt);
+		VariantPrintToFile(stderr, fmt, lst);
+	}
+#endif
+
+	//--------------------------------------------------------------------------
+	// Hex dump printer
+	//--------------------------------------------------------------------------
+
+	void PrintDump(u32 address, const u8* pSrc, size_t len)
+	{
+		for (u32 i = 0; i < len; i++)
+		{
+			if (i % 16 == 0)
+			{
+				if (i != 0)
+					printf("\n");
+				printf("0x%08x ", address + i);
+			}
+			else
+			{
+				if (i % 4 == 0)
+					printf(" | ");
+			}
+			printf("%02x ", pSrc[i]);
+		}
+		printf("\n");
+	}
+
+	//--------------------------------------------------------------------------
+	// The conversions to to the string
+	//--------------------------------------------------------------------------
+
+	DEFINE_TO_STR(FGlobalDefinition)
+	DEFINE_TO_STR(FGlobalEnvironment)
+	DEFINE_TO_STR(FLocalDefinition)
+	DEFINE_TO_STR(FLocalEnvironment)
+	DEFINE_TO_STR(FVariant)
+	DEFINE_TO_STR(FStackFrame)
+	DEFINE_TO_STR(FByteCode)
+	DEFINE_TO_STR(FBinFile)
+	DEFINE_TO_STR(FBinFileHeader)
+	DEFINE_TO_STR(FScriptProcess)
+	DEFINE_TO_STR(Module)
+
+
+		/*!
+	 * Print directly to the C stdout
+	 * The "k" parameter is ignored, so this is just like printf
+	 * DONE, EXACT
+	 */
+		void Msg(s32 k, const char* format, ...) {
+		(void)k;
+		va_list args;
+		va_start(args, format);
+		vprintf(format, args);
+		va_end(args);
+	}
+
+	/*!
+	 * Print directly to the C stdout
+	 * This is idential to Msg
+	 * DONE, EXACT
+	 */
+	void MsgWarn(const char* format, ...) {
+		va_list args;
+		va_start(args, format);
+		vprintf(format, args);
+		va_end(args);
+	}
+
+	/*!
+	 * Print directly to the C stdout
+	 * This is idential to Msg
+	 * DONE, EXACT
+	 */
+	void MsgErr(const char* format, ...) {
+		va_list args;
+		va_start(args, format);
+		vprintf(format, args);
+		va_end(args);
+	}
+}
+#pragma once
+
+#include <cstdarg>
+
+#include "platform.hpp"
+#include "string_id.hpp"
+
+namespace vm
+{
+	struct FVariant;
+	struct FLocalDefinition;
+	struct FGlobalDefinition;
+	struct FLocalEnvironment;
+	struct FGlobalEnvironment;
+	struct FStackFrame;
+	struct FByteCode;
+	struct FBinFile;
+	struct FBinFileHeader;
+	struct FScriptProcess;
+	class Module;
+
+#ifdef CUSTOM_PRINT
+	void VariantPrintToFile(FILE* f, char* fmt, ...);
+#endif
+
+	void PrintDump(u32 address, const u8* pSrc, size_t len);
+
+	// --------------------------------------------------------------------
+	// Default printers
+	// --------------------------------------------------------------------
+
+	inline std::string to_str(s32 v) { return std::format("{0}",v); }
+	inline std::string to_str(float v) { return std::format("{0}", v); }
+	inline std::string to_str(PTRINT p) { return std::format("{0:08X}", p); }
+
+
+
+	#define DECLARE_TO_STR(T) std::string to_str(const T* obj);
+	#define DEFINE_TO_STR(T) \
+	std::string to_str(const T* obj) { \
+		if (obj == nullptr) return std::format("#{0} <null>", typeid(T).name()); \
+		return obj->to_string(); }
+
+	DECLARE_TO_STR(FGlobalDefinition)
+	DECLARE_TO_STR(FGlobalEnvironment)
+	DECLARE_TO_STR(FLocalDefinition)
+	DECLARE_TO_STR(FLocalEnvironment)
+	DECLARE_TO_STR(FVariant)
+	DECLARE_TO_STR(FStackFrame)
+	DECLARE_TO_STR(FByteCode)
+	DECLARE_TO_STR(FBinFile)
+	DECLARE_TO_STR(FBinFileHeader)
+	DECLARE_TO_STR(FScriptProcess)
+	DECLARE_TO_STR(Module)
+
+	/*!
+	 * Print directly to the C stdout
+	 * The "k" parameter is ignored, so this is just like printf
+	 * DONE, EXACT
+	 */
+	void Msg(s32 k, const char* format, ...);
+
+	/*!
+	 * Print directly to the C stdout
+	 * This is idential to Msg
+	 * DONE, EXACT
+	 */
+	void MsgWarn(const char* format, ...);
+
+	/*!
+	 * Print directly to the C stdout
+	 * This is idential to Msg
+	 * DONE, EXACT
+	 */
+	void MsgErr(const char* format, ...);
+
+}
+#pragma once
+
+/**
+ * @file Ptr.h
+ * Representation of a GOAL pointer which can be converted to/from a C pointer.
+ */
+
+#include <cassert>
+#include "platform.hpp"
+
+
+namespace vm
+{
+	extern u8* g_ee_main_mem;
+
+	/**
+	 * GOAL pointer to a T.  Represented as a 32-bit unsigned offset from g_ee_main_mem.
+	 * A NULL pointer has an offset of 0.
+	 *
+	 * This doesn't have to be very efficient, as this implementation is only used in the C Kernel.
+	 * The GOAL implementation is much more efficient.
+	 *
+	 * Consider putting size checks on these?
+	 */
+	template <typename T>
+	struct Ptr
+	{
+		u32 offset;
+
+		/**
+		 * Default pointer is NULL.
+		 */
+		Ptr() { offset = 0; }
+
+		/**
+		 * Pointer from manual offset.
+		 */
+		explicit Ptr(u32 v) { offset = v; }
+
+		/**
+		 * Dereference a pointer. Will error if you do this on a null pointer.
+		 */
+		T* operator->()
+		{
+			assert(offset);
+			return (T*)(g_ee_main_mem + offset);
+		}
+
+		/**
+		 * Dereference a pointer. Will error if you do this on a null pointer.
+		 */
+		T& operator*()
+		{
+			assert(offset);
+			return *(T*)(g_ee_main_mem + offset);
+		}
+
+		// pointer math
+		Ptr operator+(s32 diff) { return Ptr(offset + diff); }
+		s32 operator-(Ptr<T> x) { return offset - x.offset; }
+		Ptr operator-(s32 diff) { return Ptr(offset - diff); }
+		bool operator==(const Ptr<T>& x) { return offset == x.offset; }
+
+		/**
+		 * Convert to a C pointer.
+		 */
+		T* c()
+		{
+			if (!offset)
+			{
+				return nullptr;
+			}
+			return (T*)(g_ee_main_mem + offset);
+		}
+
+		template <typename T2>
+		Ptr<T2> cast()
+		{
+			return Ptr<T2>(offset);
+		}
+	};
+
+	template <typename T>
+	Ptr<T> make_ptr(T* x)
+	{
+		if (!x)
+		{
+			return Ptr<T>(0);
+		}
+		return Ptr<T>((u8*)x - g_ee_main_mem);
+	}
+
+	template <typename T>
+	Ptr<u8> make_uint8_ptr(T* x)
+	{
+		if (!x)
+		{
+			return Ptr<u8>(0);
+		}
+		return Ptr<u8>((u8*)x - g_ee_main_mem);
+	}
+}
+#pragma once
+#include <cassert>
+
+#include "platform.hpp"
+
+namespace vm
+{
+	/**
+	 * @brief Base class for all classes that support reference counting
+	 * class MyClass : public RCBase
+	 * {
+	 *   public:
+	 *      ~MyClass() {cout << this << " is no longer needed" << endl;}
+	 *      	void print() {cout << "Hello" << endl;}
+	 * };
+	 * int main(void)
+	 * {
+	 *		// 1: Demonstrate RCBase class
+	 *		// Module 1 creates an object
+	 *		MyClass *a = new MyClass();
+	 *		a->grab();		// RC=1
+	 *
+	 *		// Module 2 grabs object
+	 *		MyClass* ptr = a;
+	 *		ptr->grab();    // RC=2
+	 *
+	 *		// Module 1 no longer needs object
+	 *		a->release();      		//RC=1
+	 *		a = nullptr;
+	 *
+	 *		// Module 2 no longer needs object
+	 *		ptr->release();    		//object will be destroyed here
+	 *		ptr = nullptr;
+	 * }
+	 *
+	 */
+	class RCBase
+	{
+	public:
+		RCBase() : mRefCount(0) {}
+		virtual ~RCBase() = default;
+
+		void grab() const { ++mRefCount; }
+
+		void release() const
+		{
+			assert(mRefCount > 0);
+			--mRefCount;
+
+			if (mRefCount == 0) { delete const_cast<RCBase*>(this); }
+		}
+
+	private:
+		mutable int mRefCount;
+	};
+
+	/**
+     * @brief A reference counting-managed pointer for classes derived
+     * from RCBase which can be used as C pointer
+     *
+     * @usage
+     *
+     * // Module 1 creates an object
+	 * RCPtr< MyClass > a2 = new MyClass();	// RC=1
+	 *	
+	 * // Module 2 grabs object
+	 * RCPtr< MyClass > ptr2 = a2;		// RC=2
+	 *    
+	 * // Module 2 invokes a method
+	 * ptr2->print();
+	 * (*ptr2).print();
+	 *
+	 * // Module 1 no longer needs object
+	 * a2 = NULL;      			// RC=1
+	 * 
+	 * // Module 2 no longer needs object
+	 * ptr2 = NULL;    			// object will be destroyed here
+     *
+     *
+     */
+	template < class T >
+	class RCPtr
+	{
+	public:
+		/** Construct using a c pointer e.g.RCPtr< T > x = new T(); */
+		RCPtr(T* ptr = nullptr) : mPtr(ptr)
+		{
+			if (ptr != nullptr) { ptr->grab(); }
+		}
+
+		/** Copy constructor */
+		RCPtr(const RCPtr& ptr)
+			: mPtr(ptr.mPtr)
+		{
+			if (mPtr != nullptr) { mPtr->grab(); }
+		}
+
+		~RCPtr()
+		{
+			if (mPtr != nullptr) { mPtr->release(); }
+		}
+
+		/** Assign a pointer e.g.x = new T(); */
+		RCPtr& operator=(T* ptr)
+		{
+			// The following grab and release operations have to be performed
+			// in that order to handle the case where ptr == mPtr
+			if (ptr != nullptr) { ptr->grab(); }
+			if (mPtr != nullptr) { mPtr->release(); }
+			mPtr = ptr;
+			return (*this);
+		}
+
+		/** Assign another RCPtr */
+		RCPtr& operator=(const RCPtr& ptr)
+		{
+			return (*this) = ptr.mPtr;
+		}
+
+		/** Retrieve actual pointer */
+		T* get() const
+		{
+			return mPtr;
+		}
+		/**
+		 * Some overloaded operators to facilitate dealing with an RCPtr
+		 * as a conventional c pointer.
+		 * Without these operators, one can still use the less transparent
+		 * get() method to access the pointer.
+		 */
+
+		 /** x->member */
+		T* operator->() const { return mPtr; }
+		/** *x, (*x).member */
+		T& operator*() const { return *mPtr; }
+		/** T* y = x; */
+		operator T* () const { return mPtr; }
+		/** if(x) { .... x is not nullptr .... */
+		operator bool() const { return mPtr != nullptr; }
+
+		bool operator==(const RCPtr& ptr) { return mPtr == ptr.mPtr; }
+		bool operator==(const T* ptr) { return mPtr == ptr; }
+
+	private:
+		T* mPtr;	//Actual pointer
+	};
+
+
+	/**
+     * @brief A reference counting-managed pointer for classes derived
+     * from RCBase which can be used as C pointer
+     *
+     * @usage
+     *
+     * // Module 1 creates an object
+     * RCPtr< MyClass > a2 = new MyClass();	// RC=1
+     *
+     * // Module 2 grabs object
+     * RCPtr< MyClass > ptr2 = a2;		// RC=2
+     *
+     * // Module 2 invokes a method
+     * ptr2->print();
+     * (*ptr2).print();
+     *
+     * // Module 1 no longer needs object
+     * a2 = NULL;      			// RC=1
+     *
+     * // Module 2 no longer needs object
+     * ptr2 = NULL;    			// object will be destroyed here
+     *
+     *
+     */
+	class RCRef
+	{
+		const PTRINT MASK = 0x00FFFFFFFFFFFFFF;
+	public:
+		/** Construct using a c pointer e.g.RCPtr< T > x = new T(); */
+		RCRef(RCBase* ptr = nullptr) 
+		{
+			set(ptr);
+			if (ptr != nullptr) { ptr->grab(); }
+		}
+
+		/** Copy constructor */
+		RCRef(const RCRef& ptr)
+		{
+			mPtr = set(ptr.mPtr);
+			if (ptr.mPtr != nullptr) { ptr.mPtr->grab(); }
+		}
+
+		~RCRef()
+		{
+			if (mPtr != nullptr) { get()->release(); }
+		}
+
+
+
+		/** Assign a pointer e.g.x = new T(); */
+		RCRef& operator=(RCBase* ptr)
+		{
+			// The following grab and release operations have to be performed
+			// in that order to handle the case where ptr == mPtr
+			if (ptr != nullptr) { ptr->grab(); }
+			if (get() != nullptr) { get()->release(); }
+			mPtr = ptr;
+			return (*this);
+		}
+
+		/** Assign another RCPtr */
+		RCRef& operator=(const RCRef& ptr)
+		{
+			return (*this) = ptr.mPtr;
+		}
+
+		/** Retrieve actual pointer */
+		RCBase* get() const
+		{
+			return reinterpret_cast<RCBase*>(reinterpret_cast<PTRINT>(mPtr) & MASK);
+		}
+
+		RCBase* set(RCBase* ptr)
+		{
+			mPtr = reinterpret_cast<RCBase*>((reinterpret_cast<PTRINT>(mPtr) & ~MASK) | (reinterpret_cast<PTRINT>(ptr) & MASK));
+		}
+		/**
+		 * Some overloaded operators to facilitate dealing with an RCPtr
+		 * as a conventional c pointer.
+		 * Without these operators, one can still use the less transparent
+		 * get() method to access the pointer.
+		 */
+
+		 /** x->member */
+		RCBase* operator->() const { return get(); }
+		/** *x, (*x).member */
+		RCBase& operator*() const { return *get(); }
+		/** T* y = x; */
+		operator RCBase* () const { return get(); }
+		/** if(x) { .... x is not nullptr .... */
+		operator bool() const { return get() != nullptr; }
+
+
+		bool operator==(const RCRef& other) const { return get() == other.get(); }
+		bool operator==(const RCBase* other) const { return get() == other; }
+
+	private:
+		RCBase* mPtr;	// Actual pointer
+	};
+
+}
+#pragma once
+
+#include <functional>
+#include <algorithm>
+#include <atomic>
+
+
+namespace VM {
+
+	/**
+     * \brief An implementation of a thread safe shared pointer
+     *
+     * #include "shared_ptr.h"
+	 * int main() {
+     * util::SharedPtr<int> sp(new int(10));
+     *
+     * ...
+     *
+     * return 0;
+     *
+     */
+    namespace Impl {
+
+        class DefaultDeleter {
+        public:
+            template <typename T>
+            void operator()(T* ptr) {
+                delete ptr;
+            }
+        };
+
+        class DestructorDeleter {
+        public:
+            template <typename T>
+            void operator()(T* ptr) {
+                ptr->~T();
+            }
+        };
+
+        template <typename T>
+        class SharedPtrImpl {
+        public:
+            template <typename D = DefaultDeleter>
+            SharedPtrImpl(T* ptr = nullptr, D deleter = D()) : m_ptr(ptr), m_deleter(deleter), m_counter(1) { }
+
+            template <typename D = DestructorDeleter, typename... Args>
+            SharedPtrImpl(T* ptr, D deleter, Args&&... args) : m_ptr(ptr), m_deleter(deleter), m_counter(1) {
+                new (m_ptr) T(std::forward<Args>(args)...);
+            }
+
+            ~SharedPtrImpl() {
+                m_deleter(m_ptr);
+            }
+
+            T* operator->() const {
+                return m_ptr;
+            }
+
+            T& operator*() const {
+                return *m_ptr;
+            }
+
+            T* get() const {
+                return m_ptr;
+            }
+
+            void hold() {
+                ++m_counter;
+            }
+
+            bool release() {
+                --m_counter;
+                return m_counter == 0;
+            }
+
+        private:
+            T* m_ptr = nullptr;
+            std::function<void(T*)> m_deleter;
+            std::atomic<unsigned int>  m_counter;
+        };
+
+    } // namespace impl
+
+    template <typename T>
+    class SharedPtr {
+    public:
+        explicit SharedPtr(Impl::SharedPtrImpl<T>* impl) : m_impl(impl) { }
+
+        template <typename D = Impl::DefaultDeleter>
+        explicit SharedPtr(T* ptr = nullptr, D deleter = D()) : m_impl(new Impl::SharedPtrImpl<T>(ptr, deleter)) { }
+
+        template <typename U, typename D = Impl::DefaultDeleter>
+        explicit SharedPtr(U* ptr = nullptr, D deleter = D()) : m_impl(new Impl::SharedPtrImpl<T>(ptr, deleter)) { }
+
+        ~SharedPtr() {
+            if (m_impl->release()) {
+                delete m_impl;
+            }
+        }
+
+        SharedPtr(const SharedPtr<T>& other) {
+            m_impl = other.m_impl;
+            m_impl->hold();
+        }
+
+        template <typename U>
+        SharedPtr(const SharedPtr<U>& other) {
+            m_impl = other.m_impl;
+            m_impl->hold();
+        }
+
+        SharedPtr<T>& operator=(const SharedPtr<T>& other) {
+            SharedPtr<T> tmp(other);
+            swap(tmp);
+            return *this;
+        }
+
+        template <typename U>
+        SharedPtr<T>& operator=(const SharedPtr<U>& other) {
+            SharedPtr<T> tmp(other);
+            swap(tmp);
+            return *this;
+        }
+
+        T* operator->() const {
+            return m_impl->operator->();
+        }
+
+        T& operator*() const {
+            return **m_impl;
+        }
+
+        template <typename U>
+        bool operator<(const SharedPtr<U>& other) {
+            return m_impl->get() < other.get();
+        }
+
+        T* get() const {
+            return m_impl->get();
+        }
+
+        template <typename D = Impl::DefaultDeleter>
+        void reset(T* ptr = nullptr, D deleter = D()) {
+            if (m_impl->release()) {
+                delete m_impl;
+            }
+
+            m_impl = new Impl::SharedPtrImpl<T>(ptr, deleter);
+        }
+
+        void swap(SharedPtr<T>& other) {
+            std::swap(m_impl, other.m_impl);
+        }
+
+    private:
+        Impl::SharedPtrImpl<T>* m_impl;
+    };
+
+    template <typename T>
+    void swap(SharedPtr<T>& left, SharedPtr<T>& right) {
+        left.swap(right);
+    }
+
+    /**
+     * \brief Construct shared object 
+     * \tparam T - Object's type
+     * \tparam Args - Constructor arguments
+     * \param args - Constructor arguments
+     * \return The shared pointer
+     * \usage make_shared<int>(1)
+     */
+    template <typename T, typename... Args>
+    SharedPtr<T> make_shared(Args&&... args) {
+        char* ptr = static_cast<char*>(operator new(sizeof(T) * sizeof(Impl::SharedPtrImpl<T>)));
+        if (ptr == nullptr) {
+            throw std::bad_alloc();
+        }
+
+        auto t_ptr = reinterpret_cast<T*>(ptr + sizeof(Impl::SharedPtrImpl<T>));
+
+        try {
+            auto impl = new(ptr) Impl::SharedPtrImpl<T>(t_ptr, Impl::DestructorDeleter(), std::forward<T>(args)...);
+            return SharedPtr<T>(impl);
+        }
+        catch (...) {
+            operator delete(ptr);
+            throw;
+        }
+    }
+
+} // namespace util
+#include <map>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include "string_id.hpp"
+
+#include <algorithm>
+#include <cassert>
+
+#include "crc32.hpp"
+#include "errors.hpp"
+
+namespace vm
+{
+	/**
+	 * \brief The list of all available strings
+	 */
+	static std::map<StringId, std::string> g_strings_database;
+	/**
+	 * \brief The number used for generating random unique symbols
+	 */
+	static u32 g_gen_sym_num = 0;
+
+	StringId define_string(const std::string& str) {
+		assert(!str.empty());
+		const StringId sid = crc32((const char*)str.c_str(), str.size());
+		const auto item = g_strings_database.find(sid);
+		if (item == g_strings_database.end()) {
+			g_strings_database[sid] = str;
+		}
+		else {
+			if (str.compare(item->second))
+				throw FStringCollisionException(str, item->second);
+		}
+		return sid;
+	}
+
+
+	const std::string NULL_STRING;
+
+	const std::string& lookup_string(const StringId sid) 
+	{
+		const auto item = g_strings_database.find(sid);
+		return item == g_strings_database.end() ? NULL_STRING : item->second;
+	}
+
+	std::string lookup_string_safe(const StringId sid)
+	{
+		const auto item = g_strings_database.find(sid);
+		return item == g_strings_database.end() ? std::format("StingId {:X}", sid) : item->second;
+	}
+
+	std::string to_str(const StringId obj)
+	{
+		return lookup_string_safe(obj);
+	}
+
+	void clear_strings()
+	{
+		g_strings_database.clear();
+	}
+
+	void load_strings_file(std::istream& in, std::string path)
+	{
+		size_t lineNum = 0;
+		std::string line;
+
+		while (std::getline(in, line))
+		{
+			auto idx = line.find_first_of(' ');
+			auto key = line.substr(0, idx);
+			auto val = line.substr(idx + 1);
+			auto sid = define_string(val);
+			StringId string_id_from_file = std::stoul(key, nullptr, 16);
+			if (sid != string_id_from_file)
+				throw std::exception(std::format("File: {0} The file {1:X} {2:X} {3}\n", path, string_id_from_file, sid, val).c_str());
+			lineNum++;
+		}
+	}
+
+	void load_strings_file(const std::string& path)
+	{
+		std::ifstream is(path);
+		if (is)
+		{
+			load_strings_file(is, path);
+			is.close();
+		}
+	}
+	struct FStringPair { StringId id; std::string* str; };
+
+	static void sort_database(std::vector<FStringPair>& list)
+	{
+		for (auto& t : g_strings_database)
+			list.push_back(FStringPair{ .id = t.first, .str = &t.second });
+
+		std::sort(list.begin(), list.end(),
+			[](const auto& a, const auto& b) { return *a.str < *b.str; });
+	}
+
+	void save_strings_file(const std::string& path)
+	{
+		std::ofstream os(path);
+		if (os)
+		{
+			std::vector<FStringPair> str_pair;
+			sort_database(str_pair);
+			for (auto& t : str_pair)
+			{
+				os << std::format("{0:08X} {1}\n",t.id, *t.str);
+			}
+			os.close();
+		}
+	}
+
+	void print_strings() {
+		std::vector<FStringPair> str_pair;
+		sort_database(str_pair);
+		for (auto& item : str_pair) {
+			std::cout << std::format("{0:08X} {1}\n", item.id, *item.str);
+		}
+	}
+
+	StringId get_gen_sym() {
+		const auto genName = std::format("gensym-{0}", g_gen_sym_num);
+		const auto sym = crc32(genName);
+		g_gen_sym_num++;
+		return sym;
+	}
+}#pragma once
+
+#include <string>
+#include "crc32.hpp"
+/**
+ * Making StringId from postfix to c string
+ * Example: "hello world"_id
+ */
+constexpr unsigned int operator"" _sid(const char* v, size_t C) {
+  return vm::const_crc32(v, C);
+}
+
+/**
+ * Convert the string to the string ID
+ * @params str - const char* as c string value
+ */
+#define SID(str) str##_sid
+
+
+namespace vm
+{
+	using StringId = u32;
+	/**
+	 * \brief The string will be used when the string id
+	 * does not found a record
+	 */
+	extern const std::string NULL_STRING;
+
+	std::string to_str(StringId obj);
+
+
+
+	/**
+	 * Find string in the database by the StringId
+	 * in case if there is no this string in the
+	 * database return the NULL_STRING
+	 * @params sid - The string's id
+	 */
+	const std::string& lookup_string(const StringId sid);
+	/**
+	 * Find string in the database by the StringId
+	 * but in case if it was not found return the
+	 * string with the string id in it.
+	 * @params sid - The string's id
+	 */
+	std::string lookup_string_safe(const StringId sid);
+
+	/**
+	 * @brief Define new string in the system
+	 * @param str - The string to define
+	 * @return String Id of the string
+	 */
+	StringId define_string(const std::string& str);
+	/**
+	 * Clear the DB of strings
+	 * @attention It is not destructed method
+	 * just will eliminate the strings out
+	 * of memory
+	 */
+	void clear_strings();
+	/**
+	 * Load strings file to the database
+	 * @params in - The input stream
+	 * @params path - a path to the file used for printing log only. Can be any string.
+	 */
+	void load_strings_file(std::istream& in, std::string path);
+	/**
+	 * Load strings file to the database
+	 * @params path - a path to the file
+	 */
+	void load_strings_file(const std::string& path);
+
+	/** Print strings in the database to the screen */
+	void print_strings();
+
+	/** Generate general symbol -- random unique Symbol StringId */
+	StringId get_gen_sym();
+
+	void save_strings_file(const std::string& path);
+}
+
+
+#include "syntax_tools.hpp"
+#include "parser.hpp"
+
+namespace vm::parser
+{
+
+	std::string GetArgException(const FListStx& list, const size_t argNum, const std::string& expected) {
+		return std::format("{0} : {1} : Arg({2}) expected {3} found {4}\n", 
+			list.loc.line, list.loc.pos,
+			argNum, expected, list.get_item(argNum)->to_string());
+	}
+	void verify_min_arguments(const FListStx& list, const size_t minArgs) {
+		const auto argc = list.size();
+		if (argc < minArgs)
+			throw FSyntaxError(list.loc, std::format("{0} : {1} : Expected min {2} found {3} in {4}\n",
+				list.loc.line, list.loc.pos,
+				minArgs, argc, list.to_string()));
+	}
+	void verify_max_arguments(const FListStx& list, const size_t maxArgs) {
+		const auto argc = list.size();
+		if (argc > maxArgs)
+			throw FSyntaxError(list.loc, std::format("{0} : {1} : Expected maximum {2} found {3} in {4}\n",
+				list.loc.line, list.loc.pos,
+				maxArgs, argc, list.to_string()));
+	}
+	void verify_min_max_arguments(const FListStx& list, const size_t minArgs, const size_t maxArgs) {
+		verify_min_arguments(list, minArgs);
+		verify_max_arguments(list, maxArgs);
+	}
+	std::shared_ptr<FSymbolStx> get_symbol_stx(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_symbol_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "int"));
+		return stx;
+	}
+	std::shared_ptr<FListStx> get_list_stx(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_list_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "int"));
+		return stx;
+	}
+
+	s8 get_int8(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_number_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(list.loc, GetArgException(list, argNum, "int"));
+		const auto value = stx->get_int();
+		if (value < std::numeric_limits<s8>::min() || value > std::numeric_limits<s8>::max())
+			throw FSyntaxError(GetArgException(list, argNum, "s8 with range -128..127"));
+		return static_cast<s8>(value);
+	}
+
+	s16 get_int16(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_number_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "int"));
+		const auto value = stx->get_int();
+		if (value < std::numeric_limits<s16>::min() || value > std::numeric_limits<s16>::max())
+			throw FSyntaxError(GetArgException(list, argNum, "s16 with range -32768..32767"));
+		return static_cast<s16>(value);
+	}
+
+	s32 get_int32(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_number_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "int"));
+		return stx->get_int();
+	}
+
+	float get_float(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_number_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "float"));
+		return stx->get_float();
+	}
+
+	StringId get_string_id(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_symbol_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "StringId"));
+		define_string(stx->get_string());
+		return stx->get_string_id();
+	}
+
+	std::string get_string(const FListStx& list, const size_t argNum) {
+		const auto stx = list.get_item(argNum)->get_string_stx();
+		if (stx == nullptr)
+			throw FSyntaxError(GetArgException(list, argNum, "string"));
+		return stx->get_string();
+	}
+
+	bool is_symbol_equal_to(const FListStx& list, const size_t argNum, StringId sid)
+	{
+		const auto stx = list.get_item(argNum)->get_symbol_stx();
+		if (stx == nullptr)
+			return false;
+			// Check for the ":" column symbol
+		const auto itemSid = stx->get_string_id();
+		return itemSid == sid;
+	}
+}#pragma once
+#include <string>
+#include "variant.hpp"
+#include "parser.hpp"
+
+
+namespace vm::parser
+{
+	std::string GetArgException(const FListStx& list, size_t argNum, const std::string& expected);
+
+	//--------------------------------------------------------------------------
+	// Get various types
+	//--------------------------------------------------------------------------
+
+	s8 get_int8(const FListStx& list, const size_t argNum);
+	s16 get_int16(const FListStx& list, const size_t argNum);
+	s32 get_int32(const FListStx& list, const size_t argNum);
+	float get_float(const FListStx& list, const size_t argNum);
+	StringId get_string_id(const FListStx& list, size_t argNum);
+	std::string get_string(const FListStx& list, const size_t argNum);
+	std::shared_ptr<FListStx> get_list_stx(const FListStx& list, const size_t argNum);
+	std::shared_ptr<FSymbolStx> get_symbol_stx(const FListStx& list, const size_t argNum);
+
+	//--------------------------------------------------------------------------
+	// Predicates
+	//--------------------------------------------------------------------------
+
+	void verify_min_arguments(const FListStx& list, const size_t minArgs);
+	void verify_max_arguments(const FListStx& list, const size_t maxArgs);
+	void verify_min_max_arguments(const FListStx& list, const size_t minArgs, const size_t maxArgs = -1);
+	bool is_symbol_equal_to(const FListStx& list, const size_t argNum, StringId sid);
+
+}
+
+#include "tokenizer.hpp"
+
+
+namespace vm::parser {
+
+    /**
+     * Helper type for the visitor. I got this line from the
+     * microsoft's example page
+     */
+    template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+
+    std::string to_str(const FTokenData& v)
+    {
+        return std::visit(overloaded{
+            [](std::string arg) { return arg; },
+            [](double arg) { return std::format("{0}", arg); },
+            [](s64 arg) { return std::format("{0}", arg); },
+            }, v);
+    }
+
+    ECharType FTokenizer::get_char_type(char ch) {
+	    // ReSharper disable once CppDefaultCaseNotHandledInSwitchStatement
+	    switch (ch) {
+        case '(':
+            return ECharType::LeftParen;
+        case ')':
+            return ECharType::RightParen;
+        case '"':
+            return ECharType::Quote;
+        case '\\':
+            return ECharType::Escape;
+        }
+        if (isspace(static_cast<unsigned char>(ch)) || ch == '\n')
+            return ECharType::Space;
+        return ECharType::Other;
+    }
+
+    bool FTokenizer::parse_number(const std::string& str, FToken& tok) {
+        bool isFloat = false;
+        // Check if this is a numerical value
+        // Return with false if this is not
+        // the numerical value
+        for (u32 i = 0; i < str.size(); i++)
+        {
+            const auto c = str[i];
+            if (c == '.')
+            {
+                isFloat = true;
+                continue;
+            }
+
+            if (i != 0 && (c == '-' || c == '+'))
+                return false;
+            if ((c < '0' || c > '9') && (c != '.'))
+                return false; // this is not a number
+        }
+
+        try {
+            size_t pos = 0;
+            if (isFloat) {
+                float num = std::stof(str, &pos);
+                pos_ += pos;
+                if (pos == str.size()) {
+                    tok.type = ETokenType::Number;
+                    tok.data = num;
+                    return true;
+                }
+            }
+            else {
+                s32 num = std::stol(str, &pos);
+                pos_ += pos;
+                if (pos == str.size()) {
+                    tok.type = ETokenType::Number;
+                    tok.data = num;
+                    return true;
+                }
+            }
+        }
+        catch (const std::exception&) {
+            throw FSyntaxError(tok.location, "parse_number : sytax error : expected number as the String", str);
+        }
+        return false;
+    }
+    void FTokenizer::skip_spaces(std::istream& in, FToken& tok)
+    {
+        char ch;
+		while (in.get(ch))
+		{
+            pos_++;
+            if (isspace(static_cast<unsigned char>(ch)))
+                continue;
+            if (ch == '\n') {
+                line_++;
+                pos_ = 0;
+            }
+		}
+    }
+
+    bool FTokenizer::get_token(std::istream& in, FToken& tok) {
+        char ch;
+        EParseState state = EParseState::Init;
+        bool escape = false;
+        std::string str;
+        ETokenType type = ETokenType::None;
+        bool starttok = true;
+        while (get_char(in, ch)) {
+
+            if (starttok) {
+                if (ch == ' ' || ch == '\n') {
+                    continue;
+                } else {
+		            tok.location.line = safe_cast_u_int32(line_);
+		            tok.location.pos = safe_cast_u_int32(pos_);
+		            starttok = false;
+	            }
+			}
+            ECharType ctype = get_char_type(ch);
+            if (escape) {
+                ctype = ECharType::Other;
+                escape = false;
+            }
+            else if (ctype == ECharType::Escape) {
+                escape = true;
+                continue;
+            }
+            if (state == EParseState::Quote) {
+                if (ctype == ECharType::Quote) {
+                    type = ETokenType::String;
+                    break;
+                }
+                else
+                    str += ch;
+            }
+            else if (state == EParseState::Symbol) {
+                if (ctype == ECharType::Space)
+                    break;
+                if (ctype != ECharType::Other) {
+                    in.putback(ch);
+                    break;
+                }
+                str += ch;
+            }
+            else if (ctype == ECharType::Quote) {
+                state = EParseState::Quote;
+            }
+            else if (ctype == ECharType::Other) {
+                state = EParseState::Symbol;
+                type = ETokenType::Symbol;
+                str = ch;
+            }
+            else if (ctype == ECharType::LeftParen) {
+                type = ETokenType::LeftParen;
+                break;
+            }
+            else if (ctype == ECharType::RightParen) {
+                type = ETokenType::RightParen;
+                break;
+            }
+        } 
+        if (type == ETokenType::None) {
+            if (state == EParseState::Quote)
+                throw FSyntaxError(tok.location, "get_token : syntax error : missing Quote", str);
+            return false;
+        }
+        tok.type = type;
+        if (type == ETokenType::String)
+            tok.data = str;
+        else if (type == ETokenType::Symbol) {
+            if (!parse_number(str, tok))
+                tok.data = str;
+        }
+        //printf("%s %d\n", tok.Location.ToStr().c_str(), tok.type);
+        return true;
+    }
+}#pragma once
+#include <iostream>
+#include <memory>
+#include <string>
+#include <variant>
+#include "errors.hpp"
+
+namespace vm::parser
+{
+	//--------------------------------------------------------------------------
+	// Types of the FTokenizer
+	//--------------------------------------------------------------------------
+
+	enum class ETokenType { None, LeftParen, RightParen, Symbol, String, Number };
+
+	enum class ECharType { LeftParen, RightParen, Quote, Escape, Space, Other };
+
+	enum class EParseState { Init, Quote, Symbol };
+
+	/** @brief Token contains one of the listed types */
+	using FTokenData = std::variant<std::string, double, s64>;
+
+	//--------------------------------------------------------------------------
+	// Types of the variant
+	//--------------------------------------------------------------------------
+
+	std::string to_str(const FTokenData& v);
+
+	//--------------------------------------------------------------------------
+	// Single token
+	//--------------------------------------------------------------------------
+
+	struct FToken
+	{
+		ETokenType type = ETokenType::None;
+		Location location;
+		FTokenData data;
+		std::string to_string() const { return to_str(data); }
+	};
+
+	//--------------------------------------------------------------------------
+	// The FTokenizer class
+	//--------------------------------------------------------------------------
+
+	class FTokenizer
+	{
+	public:
+		/**
+		 * Construct the FTokenizer with value stream
+		 */
+		FTokenizer(std::istream& in) : in_(in), line_(1), pos_(0)
+		{
+		}
+
+		bool next()
+		{
+			if (put_back_)
+			{
+				put_back_ = false;
+				return true;
+			}
+			return get_token(in_, current_);
+		}
+
+		/** Get current token */
+		const FToken& current() const
+		{
+			return current_;
+		}
+
+		void put_back()
+		{
+			put_back_ = true;
+		}
+
+		ECharType get_char_type(char ch);
+		bool parse_number(const std::string& str, FToken& tok);
+		bool get_token(std::istream& in, FToken& tok);
+		void skip_spaces(std::istream& in, FToken& tok);
+
+	private:
+		bool get_char(std::istream& in, char& ch)
+		{
+			in.get(ch);
+			pos_++;
+			if (ch == '\n')
+			{
+				line_++;
+				pos_ = 0;
+			}
+			return (in) ? true : false;
+		}
+
+		/** The stream to read **/
+		std::istream& in_;
+		/** */
+		bool put_back_ = false;
+		/** Current FToken */
+		FToken current_;
+		/** The line and char number in the file */
+		size_t line_;
+		size_t pos_;
+	};
+}
+#include "variant.hpp"
+
+#include <cstdarg>
+
+#include "errors.hpp"
+#include "context.hpp"
+
+namespace vm
+{
+	// --------------------------------------------------------------------
+	// Constructor
+	// --------------------------------------------------------------------
+
+	FVariant::~FVariant()
+	{
+		before_set();
+	}
+
+	// --------------------------------------------------------------------
+	// Garbage
+	// --------------------------------------------------------------------
+
+	// Check if the memory releasing 
+	inline void FVariant::before_set()
+	{
+		if (type != EType::I32 && type != EType::F32)
+		{
+			// TODO There should be code with for destroying
+			// the referenced objects in the pull
+		}
+		as_ptr = 0;
+		type = EType::NIL;
+	}
+
+	// --------------------------------------------------------------------
+	// Setters
+	// --------------------------------------------------------------------
+
+	void FVariant::set_as_null() { before_set(); type = EType::NIL; }
+	void FVariant::set_as_s32(const s32 value) { before_set(); as_s32 = value; type = EType::I32; }
+	void FVariant::set_as_f32(const float value) { before_set(); as_f32 = value; type = EType::F32; }
+	void FVariant::set_as_ptr(const PTRINT value) { before_set(); as_ptr = value; type = EType::PTR; }
+	void FVariant::set_as_ptr(const PTRINT value, StringId _type) { before_set(); as_ptr = value; type = _type; }
+	void FVariant::set(const FVariant& other) { before_set(); as_ptr = other.as_ptr; }
+
+	// --------------------------------------------------------------------
+	// Getters with casting
+	// --------------------------------------------------------------------
+
+	s32 FVariant::cast_to_s32() const
+	{
+		if (type == EType::I32)
+			return as_s32;
+		if (type == EType::F32)
+			return static_cast<int>(as_f32);
+		throw FRuntimeError(g_script_context, "cast-to-int : the value is '%s'.\n", get_type_string());
+	}
+
+	float FVariant::cast_to_f32() const
+	{
+		if (type == EType::I32)
+			return static_cast<float>(as_s32);
+		if (type == EType::F32)
+			return as_f32;
+		throw FRuntimeError(g_script_context, "cast-to-float : the value is '%s'.\n", get_type_string());
+	}
+
+	// --------------------------------------------------------------------
+	// Getters
+	// --------------------------------------------------------------------
+
+	s32 FVariant::get_as_s32() const
+	{
+		if (type == EType::I32)
+			return as_s32;
+		throw FRuntimeError(g_script_context, "get-integer: the value is '%s'.\n", get_type_string());
+	}
+
+	float FVariant::get_as_f32() const
+	{
+		if (type == EType::F32)
+			return as_f32;
+		throw FRuntimeError(g_script_context, "get-float: the value is '%s'.\n", get_type_string());
+	}
+
+	PTRINT FVariant::get_as_ptr() const
+	{
+		if (type == EType::NIL || type == EType::I32 || type == EType::F32)
+			throw FRuntimeError(g_script_context, "get-pointer: the value is '%s'.\n", get_type_string());
+		return as_ptr;
+	}
+
+
+	bool FVariant::get_as_bool() const
+	{
+		switch (type) {
+		case EType::NIL: return false;
+		case EType::I32: return as_s32 != 0;
+		case EType::F32: return as_f32 != 0;
+		default:
+			return as_ptr != 0;
+		}
+	}
+
+	// --------------------------------------------------------------------
+	// Debugging purposes
+	// --------------------------------------------------------------------
+
+	const char* FVariant::to_c_string() const
+	{
+		static char str[256];
+		switch (type)
+		{
+		case EType::NIL:
+			return "nil";
+		case EType::I32:
+			sprintf_s(str, "%i", as_s32);
+			break;
+		case EType::F32:
+			sprintf_s(str, "%f", as_f32);
+			break;
+		default:
+			sprintf_s(str, "#ptr<%p type %s>", (void*)as_ptr, to_str(type).c_str());
+		}
+		return str;
+	}
+
+	std::string FVariant::to_string() const
+	{
+		return to_c_string();
+	}
+
+	// --------------------------------------------------------------------
+	// Math
+	// --------------------------------------------------------------------
+
+
+	bool FVariant::operator ==(const FVariant& other) const
+	{
+		if (type != other.type)
+			return false;
+		return as_ptr == other.as_ptr;
+	}
+
+	bool FVariant::operator !=(const FVariant& other) const
+	{
+		return !(*this == other);
+	}
+
+	FVariant& FVariant::operator =(const FVariant& other)
+	{
+		type = other.type;
+		as_ptr = other.as_ptr;
+		return *this;
+	}
+
+	// =============================================================================
+	// Global method to produce the error
+	// =============================================================================
+
+	// return variant error and printout the message
+	// if there is active context then this method will 
+	// set the process to sleep
+	FVariant FVariant::print_error(const char* format, ...)
+	{
+		// [1] print the message to string
+		char str[256];
+		va_list arglist;
+		va_start(arglist, format);
+		vsprintf_s(str, format, arglist);
+		va_end(arglist);
+		// [2] print the message to log
+		LOG_WARNING(str);
+		// [3] make variant error
+		FVariant res(false);
+		return res;
+	};
+
+
+}
+#pragma once
+
+#include "string_id.hpp"
+
+namespace vm
+{
+
+
+	/**
+	 * @brief The Variant represent the container of for different types
+	 */
+	struct FVariant
+	{
+		//--------------------------------------------------------------------------
+		// Types of the variant
+		//--------------------------------------------------------------------------
+
+		struct EType
+		{
+			static const StringId NIL = SID("nil");
+			static const StringId I32 = SID("s32");
+			static const StringId F32 = SID("f32");
+			static const StringId PTR = SID("cstr");
+		};
+
+		//--------------------------------------------------------------------------
+		// Properties of the variant class
+		//--------------------------------------------------------------------------
+
+		StringId          type;
+		union
+		{
+			PTRINT        as_ptr;
+			s32           as_s32;
+			f32           as_f32;
+		};
+
+		//--------------------------------------------------------------------------
+		// Garbage collector helpers
+		//--------------------------------------------------------------------------
+
+		// Callback before each SetAs variable
+		inline void before_set();
+
+		//--------------------------------------------------------------------------
+		// Constructors
+		//--------------------------------------------------------------------------
+
+
+		FVariant() : type(EType::NIL), as_ptr(0) { }
+		FVariant(s32 value) : type(EType::I32), as_s32(value) { }
+		FVariant(f32 value) : type(EType::F32), as_f32(value) { }
+		FVariant(PTRINT value) : type(EType::PTR), as_ptr(value) { }
+		FVariant(PTRINT value, StringId type) : type(type), as_ptr(value) { }
+
+		/** copy constructor */
+		FVariant(const FVariant& rhs) { *this = rhs; }
+
+		~FVariant();
+
+		//--------------------------------------------------------------------------
+		// Access to the type of the variant
+		//--------------------------------------------------------------------------
+
+		/**
+		 * @brief Get type of the variant
+		 */
+		StringId get_type() const { return type; }
+
+		std::string get_type_string() const { return lookup_string_safe(type); }
+
+		// Check the type of variant 
+		bool is_a(StringId t) const { return type == t; }
+
+		// Bunch of predicates
+		bool is_null() const { return is_a(EType::NIL); }
+		bool is_i32() const { return is_a(EType::I32); }
+		bool is_f32() const { return is_a(EType::F32); }
+		bool is_ptr() const { return !(is_null() || is_i32() || is_f32()); }
+
+		//--------------------------------------------------------------------------
+		// Setters
+		//--------------------------------------------------------------------------
+
+		void set_as_null();
+		void set_as_s32(const s32 value);
+		void set_as_f32(const f32 value);
+		void set_as_ptr(const PTRINT value);
+		void set_as_ptr(const PTRINT value, StringId _type);
+		void set(const FVariant& other);
+
+		//--------------------------------------------------------------------------
+		// Cast to other type
+		//--------------------------------------------------------------------------
+
+		s32 cast_to_s32() const;
+		f32 cast_to_f32() const;
+
+		// Get the value of the variable as the string
+		const char* to_c_string() const;
+		std::string to_string() const;
+
+		//--------------------------------------------------------------------------
+		// Assignments
+		//--------------------------------------------------------------------------
+
+		FVariant& operator=(s32 val) { set_as_s32(val); return (*this); }
+		FVariant& operator=(f32 val) { set_as_f32(val); return (*this); }
+		FVariant& operator=(PTRINT val) { set_as_ptr(val); return (*this);  }
+		FVariant& operator=(const FVariant& other);
+
+		//--------------------------------------------------------------------------
+		// Getters
+		//--------------------------------------------------------------------------
+
+		s32           get_as_s32() const;
+		f32           get_as_f32() const;
+		PTRINT        get_as_ptr() const;
+		bool          get_as_bool() const;
+
+		//--------------------------------------------------------------------------
+		// Math
+		//--------------------------------------------------------------------------
+
+		bool operator ==(const FVariant& other) const;
+		bool operator !=(const FVariant& other) const;
+
+		//--------------------------------------------------------------------------
+		// Errors
+		//--------------------------------------------------------------------------
+
+		// return variant error and printout the message
+		// if there is active context then this method will 
+		// set the process to sleep
+		static FVariant print_error(const char* fmt, ...);
+
+	};
+
+	// Use this macro to make the error message variant value
+	#define VariantError(_format_, ...) FVariant::PrintError(_format_, ## __VA_ARGS__)
+
+}#include <cmath>
+#include <iostream>
+#include <variant>
+#include "string_id.hpp"
+#include "vm.hpp"
+
+#include "assembler_opcodes.hpp"
+#include "module_bin.hpp"
+#include "context.hpp"
+#include "environment.hpp"
+#include "math.hpp"
+#include "module.hpp"
+#include "native_func.hpp"
+
+namespace vm {
+
+std::vector<FStackFrame*> g_task_list;
+
+inline FVariant& GetregA(FStackFrame* frame, FInstr instr) {
+  const u32 regIdx = instr.a;
+  return frame->get_register(regIdx);
+}
+
+inline FVariant& GetregB(FStackFrame* frame, FInstr instr) {
+  const u32 regIdx = instr.b;
+  return frame->get_register(regIdx);
+}
+
+inline FVariant& GetregC(FStackFrame* frame, FInstr instr) {
+  const u32 regIdx = instr.c;
+  return frame->get_register(regIdx);
+}
+
+FStackFrame* PushStackFrame(FByteCode* pCode, FStackFrame* pParent) {
+  auto* pFrame = new FStackFrame();
+  pFrame->parent_ptr = pParent;
+  pFrame->code_ptr = pCode->get_code_ptr();
+  pFrame->data_ptr = pCode->get_data_ptr();
+  return pFrame;
+}
+
+FStackFrame* PopStackFrame(FStackFrame* pFrame) {
+  const auto pParent = pFrame->parent_ptr;
+  delete (pFrame);
+  return pParent;
+}
+
+FInstr FStackFrame::GetNextInstruction() {
+  return code_ptr[pc++];
+}
+
+FStackFrame* ExecuteScript(FStackFrame* frame, FLocalEnvironment& env) {
+  while (frame != nullptr) {
+    FInstr instr = frame->GetNextInstruction();
+#ifdef DEBUG_PRINT_EXECUTED_INSTRUCTION
+    std::cout << "Step PC=" << frame->PC << std::endl;
+    print_registers(frame->Registers, DC_FRAME_MAX_REGISTERS_NUM);
+    std::cout << assembler::decompile_instruction(instr, frame->DataPtr) << std::endl;
+#endif
+    switch (instr.opcode) {
+      case EOpcode::Return: {
+        FVariant regA = GetregA(frame, instr);
+        auto retNum = frame->ret_num;
+        frame = PopStackFrame(frame);
+        if (frame != nullptr)
+          frame->registers[retNum] = regA;
+      } break;
+      case EOpcode::Call: {
+        FVariant& regA = GetregA(frame, instr);  // Function name
+        if (!regA.is_null()) {
+          FByteCode* code = reinterpret_cast<FByteCode*>(regA.get_as_ptr());
+          auto oldFrame = frame;
+          frame = PushStackFrame(code, frame);
+          frame->ret_num = instr.b;  // Return value to this register
+          frame->argc = instr.c;     // value of arguments
+          for (size_t i = 0; i < frame->argc; i++)
+            frame->registers[ARGUMENT_REGISTERS_OFFSET + i] =
+                oldFrame->registers[ARGUMENT_REGISTERS_OFFSET + i];
+        } else {
+          throw FRuntimeError(g_script_context, "null pointer call");
+        }
+      } break;
+      case EOpcode::CallNat: {
+        FVariant& regA = GetregA(frame, instr);  // Function name
+        if (regA.is_null())
+          throw FRuntimeError(g_script_context, "null pointer call native");
+        if (regA.type != SID("native"))
+          throw FRuntimeError(g_script_context, "call-native expect 'native' pointer but found",
+                              regA.to_string());
+        const auto func = reinterpret_cast<FNativeFunction*>(regA.get_as_ptr());
+        FVariant& regB = GetregB(frame, instr);  // Function name
+        regB = func(instr.c, &frame->registers[ARGUMENT_REGISTERS_OFFSET]);
+      } break;
+      case EOpcode::Branch: {
+        frame->pc = instr.k;
+      } break;
+      case EOpcode::BranchIf: {
+        FVariant& regA = GetregA(frame, instr);
+        if (regA.get_as_bool())
+          frame->pc = instr.k;
+      } break;
+      case EOpcode::BranchIfNot: {
+        FVariant& regA = GetregA(frame, instr);
+        if (!regA.get_as_bool())
+          frame->pc = instr.k;
+      } break;
+      case EOpcode::Move: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        regA = regB;
+      } break;
+      /**
+       * Integer comparisongs
+       */
+      case EOpcode::CmpEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() == regC.get_as_s32();
+      } break;
+      case EOpcode::CmpGt: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() > regC.get_as_s32();
+      } break;
+      case EOpcode::CmpGtEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() >= regC.get_as_s32();
+      } break;
+      case EOpcode::CmpLt: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() < regC.get_as_s32();
+      } break;
+      case EOpcode::CmpLtEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() <= regC.get_as_s32();
+      } break;
+        /**
+         * Floating point comparisongs
+         */
+      case EOpcode::CmpFloatEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = compare_float(regB.get_as_f32(), regC.get_as_f32());
+      } break;
+      case EOpcode::CmpFloatGt: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() > regC.get_as_f32();
+      } break;
+      case EOpcode::CmpFloatGtEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() >= regC.get_as_f32();
+      } break;
+      case EOpcode::CmpFloatLt: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() < regC.get_as_f32();
+      } break;
+      case EOpcode::CmpFloatLtEqual: {
+        FVariant& regA = GetregA(frame, instr);
+        FVariant& regB = GetregB(frame, instr);
+        FVariant& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() <= regC.get_as_f32();
+      } break;
+        /**
+         * Load immediate integer value for different types
+         */
+      case EOpcode::LoadImediateInt: {
+        auto imm = instr.k;
+        FVariant& regA = GetregA(frame, instr);
+        regA = imm;
+      } break;
+        /**
+         * Load istatic value for different types
+         */
+      case EOpcode::LoadIndInt: {
+        FVariant& regB = GetregB(frame, instr);
+        if (regB.is_ptr()) {
+          FVariant& regA = GetregA(frame, instr);
+          s32 val = *reinterpret_cast<s32*>(regB.get_as_ptr());
+          regA = val;
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regB.to_c_string());
+      } break;
+
+      case EOpcode::LoadIndFloat: {
+        FVariant& regB = GetregB(frame, instr);
+        if (regB.is_ptr()) {
+          FVariant& regA = GetregA(frame, instr);
+          float val = *reinterpret_cast<float*>(regB.get_as_ptr());
+          regA = val;
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regB.to_c_string());
+      } break;
+
+      case EOpcode::LoadIndPointer: {
+        FVariant& regB = GetregB(frame, instr);
+        if (regB.is_ptr()) {
+          FVariant& regA = GetregA(frame, instr);
+          PTRINT val = *reinterpret_cast<PTRINT*>(regB.get_as_ptr());
+          regA = val;
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regB.to_c_string());
+      } break;
+      /**
+       * Load istatic value for different types
+       */
+      case EOpcode::StoreIndInt: {
+        FVariant& regA = GetregB(frame, instr);
+        if (regA.is_ptr()) {
+          FVariant& regB = GetregB(frame, instr);
+          *reinterpret_cast<s32*>(regA.get_as_ptr()) = regB.get_as_s32();
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regA.to_c_string());
+      } break;
+
+      case EOpcode::StoreIndFloat: {
+        FVariant& regA = GetregB(frame, instr);
+        if (regA.is_ptr()) {
+          FVariant& regB = GetregB(frame, instr);
+          *reinterpret_cast<float*>(regA.get_as_ptr()) = regB.get_as_f32();
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regA.to_c_string());
+      } break;
+
+      case EOpcode::StoreIndPointer: {
+        FVariant& regA = GetregB(frame, instr);
+        if (regA.is_ptr()) {
+          FVariant& regB = GetregB(frame, instr);
+          *reinterpret_cast<PTRINT*>(regA.get_as_ptr()) = regB.get_as_ptr();
+        } else
+          throw FRuntimeError(g_script_context, "Expected a pointer", regA.to_c_string());
+      } break;
+      /**
+       * Load istatic value for different types
+       */
+      case EOpcode::LoadStaticInt: {
+        FVariant& regA = GetregA(frame, instr);
+        regA = frame->get_static_s32(instr.k);
+      } break;
+
+      case EOpcode::LoadStaticFloat: {
+        auto& regA = GetregA(frame, instr);
+        regA = frame->get_static_f32(instr.k);
+      } break;
+
+      case EOpcode::LoadStaticPointer: {
+        auto& regA = GetregA(frame, instr);
+        regA = frame->get_static_pointer(instr.k);
+      } break;
+
+      case EOpcode::LookupInt: {
+        auto& regA = GetregA(frame, instr);
+        auto imm = instr.k;
+        auto name = frame->get_static_s32(imm);
+        auto def = env.lookup(name, SID("s32"), true);
+        if (def == nullptr)
+          throw FRuntimeError(g_script_context, "Definition is not found",
+                              lookup_string_safe(name));
+        regA = *((s32*)def->ptr);
+      } break;
+      case EOpcode::LookupFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto imm = instr.k;
+        auto name = frame->get_static_s32(imm);
+        auto def = env.lookup(name, SID("float"), true);
+        if (def == nullptr)
+          throw FRuntimeError(g_script_context, "Definition is not found",
+                              lookup_string_safe(name));
+        regA = *((float*)def->ptr);
+      } break;
+      case EOpcode::LookupPointer: {
+        auto& regA = GetregA(frame, instr);
+        auto imm = instr.k;
+        auto name = frame->get_static_s32(imm);
+        auto def = env.lookup(name, true);
+        if (def == nullptr)
+          throw FRuntimeError(g_script_context, "Definition is not found",
+                              lookup_string_safe(name));
+        regA = def->ptr;
+      } break;
+      /**
+       * Add,Sub,Mul,Div,Mod,Abs integer values
+       */
+      case EOpcode::AddInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() + regC.get_as_s32();
+      } break;
+      case EOpcode::SubInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() - regC.get_as_s32();
+      } break;
+      case EOpcode::MulInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() * regC.get_as_s32();
+      } break;
+      case EOpcode::DivInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() / regC.get_as_s32();
+      } break;
+      case EOpcode::ModInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() % regC.get_as_s32();
+      } break;
+      case EOpcode::AbsInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = abs(regB.get_as_s32());
+      } break;
+      case EOpcode::NegInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = -regB.get_as_s32();
+      } break;
+      case EOpcode::AshInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto value = regA.get_as_s32();
+        auto shift = regB.get_as_s32();
+        regA = shift >= 0 ? value << shift : value >> -shift;
+      } break;
+      case EOpcode::ToInt: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = regB.cast_to_s32();
+      } break;
+      /**
+       * Add,Sub,Mul,Div,Mod,Abs floats
+       */
+      case EOpcode::AddFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() + regC.get_as_f32();
+      } break;
+      case EOpcode::SubFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() - regC.get_as_f32();
+      } break;
+      case EOpcode::MulFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() * regC.get_as_f32();
+      } break;
+      case EOpcode::DivFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_f32() / regC.get_as_f32();
+      } break;
+      case EOpcode::ModFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = fmod(regB.get_as_f32(), regC.get_as_f32());
+      } break;
+      case EOpcode::AbsFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = fabs(regB.get_as_f32());
+      } break;
+      case EOpcode::NegFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        float A = regB.get_as_f32();
+        regA = -A;
+      } break;
+      case EOpcode::ToFloat: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = regB.cast_to_f32();
+      } break;
+      /**
+       * Add,Sub,Mul,Div integere immediate value
+       */
+      case EOpcode::AddImm: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto imm = (s32)instr.c;
+        regA = regB.get_as_s32() + imm;
+      } break;
+
+      case EOpcode::SubImm: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto imm = (s32)instr.c;
+        regA = regB.get_as_s32() - imm;
+      } break;
+
+      case EOpcode::MulImm: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto imm = (s32)instr.c;
+        regA = regB.get_as_s32() * imm;
+      } break;
+
+      case EOpcode::DivImm: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto imm = (s32)instr.c;
+        regA = regB.get_as_s32() / imm;
+      } break;
+
+      /**
+       * The logical operations
+       */
+      case EOpcode::LogAnd: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() != 0 && regC.get_as_s32() != 0;
+      } break;
+
+      case EOpcode::LogOr: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() != 0 || regC.get_as_s32() != 0;
+      } break;
+
+      case EOpcode::LogNot: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = regB.get_as_s32() == 0;
+      } break;
+#ifdef USE_BIT_OPERATIONS
+      /**
+       * The bit operations are mostly unused in the game developing
+       * they can be ommited for the low footprint
+       */
+      case EOpcode::BitAnd: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() & regC.get_as_s32();
+      } break;
+
+      case EOpcode::BitOr: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() || regC.get_as_s32();
+      } break;
+
+      case EOpcode::BitXor: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = regB.get_as_s32() ^ regC.get_as_s32();
+      } break;
+
+      case EOpcode::BitNor: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        auto& regC = GetregC(frame, instr);
+        regA = ~(regB.get_as_s32() | regC.get_as_s32());
+      } break;
+
+      case EOpcode::BitNot: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = ~regB.get_as_s32();
+      } break;
+#endif
+
+      case EOpcode::LocadArgc: {
+        auto& regA = GetregA(frame, instr);
+        regA = frame->get_argc();
+      } break;
+
+      case EOpcode::GetSidStr: {
+        auto& regA = GetregA(frame, instr);
+        auto& regB = GetregB(frame, instr);
+        regA = reinterpret_cast<PTRINT>(lookup_string_safe(regB.get_as_s32()).c_str());
+        break;
+      }
+    }
+  }
+  // The function complete
+  return nullptr;
+}
+
+/**
+ * @brief Execute the virtual machine code
+ * @param pCode - the code pointer
+ * @param pFrame - the frame pointer or null
+ * @param env - the environment to run
+ * @attention In any case will be constructed new frame
+ */
+FStackFrame* ExecuteScript(FByteCode* pCode, FStackFrame* pFrame, FLocalEnvironment& env) {
+  const auto pNewFrame = PushStackFrame(pCode, pFrame);
+  return ExecuteScript(pNewFrame, env);
+}
+
+std::string FStackFrame::to_string() const {
+  return std::format("{0} {1} {2} {3}", to_str((PTRINT)code_ptr), to_str(parent_ptr), to_str(pc),
+                     to_str(argc));
+}
+
+/**
+ * @brief Execute the virtual machine code
+ * @param name - the function name
+ * @attention In any case will be constructed new frame
+ */
+FStackFrame* ExecuteScript(const StringId name) {
+  const auto def = g_environment.lookup(name);
+  if (def == nullptr || !def->is_valid())
+    throw FRuntimeError(g_script_context, "Definition not found", to_str(name));
+  if (def->type != SID("lambda"))
+    throw FTypeError(g_script_context, name, SID("lambda"), def->type);
+  auto& env = def->module_ref->module_ref->env;
+  const auto pNewFrame = PushStackFrame((FByteCode*)def->ptr, nullptr);
+  return ExecuteScript(pNewFrame, env);
+}
+
+std::string to_str(FStackFrame* obj) {
+  if (obj == nullptr)
+    return "#FStackFrame <null>";
+  return obj->to_string();
+}
+
+}  // namespace vm
+#pragma once
+#include <string>
+#include <set>
+#include <iostream>
+#include <filesystem>
+#include <iostream>
+#include <fstream>
+#include "variant.hpp"
+#include "module_bin.hpp"
+
+namespace vm
+{
+	/**
+	 * The bit operations are mostly unused in the game developing
+	 * they can be omitted for the low footprint. So to omit the
+	 * bit operations just comment the lin below
+	 */
+	#define USE_BIT_OPERATIONS
+
+	/** @brief The default position for method arguments */
+	constexpr size_t ARGUMENT_REGISTERS_OFFSET = 24;
+
+	/** @brief The default position for locals */
+	constexpr size_t LOCAL_REGISTERS_OFFSET = 0;
+
+	/**
+	 * The def_value size of the stack frame. It should be 32 - 40
+	 * But can be much less for simple games
+	 */
+	constexpr size_t DC_FRAME_MAX_REGISTERS_NUM = 34;
+
+	struct FStackFrame;
+
+
+	/** The stack frame for the script engine */
+	__declspec(align(32))
+	struct FStackFrame
+	{
+
+		FStackFrame()
+			: code_ptr(nullptr)
+			, parent_ptr(nullptr)
+			, pc()
+			, argc()
+		{
+
+		}
+
+		/** Read the next instruction by the program counter (PC) */
+		FInstr GetNextInstruction();
+
+		s32 get_argc() const
+		{
+			return argc;
+		}
+
+		FVariant& get_register(u32 index) {
+			assert(index < DC_FRAME_MAX_REGISTERS_NUM);
+			return registers[index];
+		}
+
+		s32 get_static_s32(u32 index) const
+		{
+			return data_ptr[index].as_int32[0];
+		}
+
+		u32 get_static_u32(u32 index) const
+		{
+			return data_ptr[index].as_int32[0];
+		}
+
+		float get_static_f32(u32 index) const
+		{
+			return *(float*)&data_ptr[index];
+		}
+
+		PTRINT get_static_pointer(u32 index) const
+		{
+			return *(PTRINT*)&data_ptr[index];
+		}
+
+		std::string to_string() const;
+
+
+		/** Byte code pointer */
+		FInstr* code_ptr;
+		/** Data pointer */
+		FRecord* data_ptr;
+		/** a pointer to the parent frame */
+		FStackFrame* parent_ptr;
+		/** Program counter */
+		size_t pc;
+		/** Arguments count */
+		s32 argc;
+		/** Return reg */
+		s32 ret_num;
+		/** The registers of the frame */
+		FVariant registers[DC_FRAME_MAX_REGISTERS_NUM];
+	};
+
+	FStackFrame* ExecuteScript(const StringId name);
+
+	inline void print_registers(const FVariant* regs, u32 len)
+	{
+		for (u32 i=0; i<len; i++)
+		{
+			if (regs[i].is_null())
+				continue;
+			std::cout << "[" << i << "]" << regs[i].to_c_string() << " ";
+		}
+		std::cout << std::endl;
+	}
+}
+
+
+#pragma once
+
+#include "vm.hpp"
+#include "variant.hpp"
+#include "string_id.hpp"
+#include "module.hpp"
+#include "native_func.hpp"
+#include "assembler.hpp"
+/*!
+ * @file kmalloc.cpp
+ * GOAL Kernel memory allocator.
+ * Simple two-sided bump allocator.
+ * DONE
+ */
+
+#include "vm_malloc.hpp"
+
+#include <cstring>
+#include <cstdio>
+#include "printer.hpp"
+#include "ptr.hpp"
+
+namespace vm
+{
+	// The memory block
+	u8* g_ee_main_mem;
+
+	// global and debug heaps
+	Ptr<FHeapInfo> g_global_heap;
+	Ptr<FHeapInfo> g_debug_heap;
+
+	void vm_malloc_initialize()
+	{
+		free(g_ee_main_mem);
+		g_ee_main_mem = (u8*)malloc(TOTAL_HEAP_SIZE);
+		g_global_heap.offset = GLOBAL_HEAP_INFO_ADDR;
+		g_debug_heap.offset = DEBUG_HEAP_INFO_ADDR;
+		const Ptr<u8> glob_mem(GLOBAL_HEAP_ADDR);
+		vm_init_heap(g_global_heap, glob_mem, GLOBAL_HEAP_SIZE);
+		const Ptr<u8> debug_mem(DEBUG_HEAP_ADDR);
+		vm_init_heap(g_global_heap, debug_mem, DEBUG_HEAP_SIZE);
+	}
+
+	void vm_malloc_deinitialize()
+	{
+		free(g_ee_main_mem);
+		g_global_heap.offset = 0;
+		g_debug_heap.offset = 0;
+	}
+
+	Ptr<FHeapInfo> vm_init_heap(Ptr<FHeapInfo> heap, Ptr<u8> mem, s32 size)
+	{
+		heap->bot_base = mem;
+		heap->bot_free = mem;
+		heap->top_free = mem + size;
+		heap->top_base = heap->top_free;
+		std::memset(mem.c(), 0, size);
+		return heap;
+	}
+
+	void vm_print_heap_status(Ptr<FHeapInfo> heap)
+	{
+		Msg(6,
+		    "[%8x] vm-heap\n"
+		    "\tbase: #x%x\n"
+		    "\ttop-bot_base: #x%x\n"
+		    "\tcur: #x%x\n"
+		    "\ttop: #x%x\n",
+		    heap.offset, heap->bot_base.offset, heap->top_base.offset, heap->bot_free.offset,
+		    heap->top_free.offset);
+		Msg(6,
+		    "\t used bot: %d of %d bytes\n"
+		    "\t used top_free: %d of %d bytes\n",
+		    heap->bot_free - heap->bot_base, heap->top_base - heap->bot_base, heap->top_base - heap->top_free,
+		    heap->top_base - heap->bot_base);
+
+		if (heap == g_global_heap)
+		{
+			Msg(6, "\t %d bytes before stack\n", GLOBAL_HEAP_END - heap->bot_free.offset);
+		}
+	}
+
+	u32 vm_heap_used(Ptr<FHeapInfo> heap)
+	{
+		return heap->bot_free - heap->bot_base;
+	}
+
+	Ptr<u8> vm_malloc(Ptr<FHeapInfo> heap, u32 size, EMallocFlags flags, char const* name)
+	{
+		int32_t alignment_flag = flags & EMF_AlignMask;
+
+		// if we got a null heap, put it on the global heap, but warn about it
+		if (!heap.offset)
+		{
+			Msg(6, "-----------> vm_malloc: alloc %s,  mem %s #x%x (a:%d  %d-bytes)\n", "DEBUG", name, -1,
+			    alignment_flag, size);
+			heap = g_global_heap;
+		}
+
+		uint32_t mem_start;
+
+		if (!(flags & EMF_Top))
+		{
+			// allocate from bottom
+			if (alignment_flag == EMF_Align64)
+				mem_start = (0xffffffc0 & (heap->bot_free.offset + 0x40 - 1));
+			else if (alignment_flag == EMF_Align256)
+				mem_start = (0xffffff00 & (heap->bot_free.offset + 0x100 - 1));
+			else // includes 0x10!
+				mem_start = (0xfffffff0 & (heap->bot_free.offset + 0x10 - 1));
+
+			if (size == 0)
+			{
+				Msg(6, "[WARNING] vm_malloc : size 0 allocation from bottom.\n");
+				return Ptr<u8>(mem_start);
+			}
+
+			const uint32_t mem_end = mem_start + size;
+
+			if (heap->top_free.offset < mem_end)
+			{
+				vm_print_heap_status(heap);
+				Msg(6, "vm_malloc: !alloc mem %s (%d bytes) heap %x\n", name, size, heap.offset);
+				return Ptr<u8>(0);
+			}
+
+			heap->bot_free.offset = mem_end;
+			if (flags & EMF_MemSet)
+				std::memset(Ptr<u8>(mem_start).c(), 0, (size_t)size);
+			return Ptr<u8>(mem_start);
+		}
+		else
+		{
+			// allocate from top_free
+			if (alignment_flag == 0)
+			{
+				alignment_flag = EMF_Align16;
+			}
+
+			mem_start = (heap->top_free.offset - size) & (-alignment_flag);
+
+			if (size == 0)
+			{
+				Msg(6, "[WARNING] vm_malloc : size 0 allocation from top_free\n");
+				return Ptr<u8>(mem_start);
+			}
+
+			if (heap->bot_free.offset >= mem_start)
+			{
+				Msg(6, "vm_malloc: !alloc mem from top_free %s (%d bytes) heap %x\n", name, size, heap.offset);
+				vm_print_heap_status(heap);
+				return Ptr<u8>(0);
+			}
+
+			heap->top_free.offset = mem_start;
+
+			if (flags & EMF_MemSet)
+				std::memset(Ptr<u8>(mem_start).c(), 0, (size_t)size);
+			return Ptr<u8>(mem_start);
+		}
+	}
+
+	void vm_free(Ptr<u8> a)
+	{
+		(void)a;
+		Msg(6, "[ERROR] vm_malloc: vm_free called\n");
+	}
+}
+#pragma once
+
+/*!
+ * @file kmalloc.h
+ * Memory allocator.
+ * Simple two-sided bump allocator.
+ * DONE
+ */
+
+#include "platform.hpp"
+#include "ptr.hpp"
+
+/** The heaps size */
+#define HEAPS_QUANTITY 2 /* Global and debug */
+#define GLOBAL_HEAP_SIZE ((size_t)(4*1024*1024))
+#define DEBUG_HEAP_SIZE ((size_t)(1*1024*1024))
+#define TOTAL_HEAP_SIZE (GLOBAL_HEAP_SIZE+DEBUG_HEAP_SIZE+HEAPS_QUANTITY*sizeof(FHeapInfo))
+/** The heap location */
+#define GLOBAL_HEAP_INFO_ADDR (0)
+#define GLOBAL_HEAP_ADDR (sizeof(FHeapInfo))
+#define GLOBAL_HEAP_END (GLOBAL_HEAP_ADDR+GLOBAL_HEAP_SIZE)
+/** The heap location */
+#define DEBUG_HEAP_INFO_ADDR (GLOBAL_HEAP_END)
+#define DEBUG_HEAP_ADDR (DEBUG_HEAP_INFO_ADDR+sizeof(FHeapInfo))
+
+
+namespace vm
+{
+	/**
+	 * \brief The block of memory managed by VM
+	 */
+	extern u8* g_ee_main_mem;
+
+	/*!
+	 * A kheap has a top_free/bottom linear allocator
+	 */
+	struct FHeapInfo
+	{
+		/** beginning of heap */
+		Ptr<u8> bot_base;
+		/** bot_free - the top position of bottom allocations */
+		Ptr<u8> bot_free;
+		/** bot_free - the bottom position of allocations */
+		Ptr<u8> top_free;
+		/** end of heap */
+		Ptr<u8> top_base; 
+	};
+
+	// Kernel heaps
+	extern Ptr<FHeapInfo> g_global_heap;
+	extern Ptr<FHeapInfo> g_debug_heap;
+
+	// flags for vm_malloc/vm_malloc
+	enum EMallocFlags : u32
+	{
+		EMF_Top = 0x2000,
+		//! Flag to allocate temporary memory from heap top_free
+		EMF_MemSet = 0x1000,
+		//! Flag to clear memory
+		EMF_AlignMask = 0xfff,
+		EMF_Align256 = 0x100,
+		EMF_Align64 = 0x40,
+		EMF_Align16 = 0x10
+	};
+
+	// malloc functions
+
+	/**
+	 * \brief Allocate a memory block
+	 * \param heap - the heap 
+	 * \param size - size of memory to allocate
+	 * \param flags - additional flags for alignment, top/bottom allocation, set to zero
+	 * \param name - the name of the block
+	 * \return the pointer to the block
+	 */
+	Ptr<u8> vm_malloc(Ptr<FHeapInfo> heap, u32 size, EMallocFlags flags, char const* name);
+	/**
+	 * \brief Print the status of a heap.  This prints to stdout on the runtime,
+	 *        which will not be sent to the Listener.
+	 * \param heap - the pointer to heap
+	 */
+	void vm_print_heap_status(Ptr<FHeapInfo> heap);
+	/**
+	 * \brief Calculate the heap used space
+	 * \param heap - the pointer to heap
+	 * \return size of used space
+	 */
+	u32 vm_heap_used(Ptr<FHeapInfo> heap);
+
+	/**
+	 * \brief Release memory
+	 * \param a the pointer to a block of memory
+	 */
+	void vm_free(Ptr<u8> a);
+	/**
+	 * \brief Initialize the heap
+	 *        Initialize a FHeapInfo structure, and clear the heap's memory to 0
+	 * \param heap - pointer to the heap structure
+	 * \param mem - pointer to the memory block
+	 * \param size - the memory block size
+	 * \return - get the heap info pointer
+	 */
+	Ptr<FHeapInfo> vm_init_heap(Ptr<FHeapInfo> heap, Ptr<u8> mem, s32 size);
+	/**
+	 * \brief Initialize globals
+	 */
+	void vm_malloc_initialize();
+	/**
+	 * \brief Deinitialize globals
+	 */
+	void vm_malloc_deinitialize();
+}
+#include <iostream>
+#include "native_func.hpp"
+#include "string_id.hpp"
+#include "variant.hpp"
+#include "environment.hpp"
+
+namespace vm
+{
+	//--------------------------------------------------------------------------
+	// The native functions helpers
+	//--------------------------------------------------------------------------
+	FVariant ScriptPrint(const u32 argc, const FVariant* argv)
+	{
+		for (size_t i = 0; i < argc; i++)
+			std::cout << argv[i].to_c_string() << " ";
+		return FVariant{ true };
+	}
+	FVariant ScriptPrintLine(const u32 argc, const FVariant* argv)
+	{
+		ScriptPrint(argc, argv);
+		std::cout << std::endl;
+		return FVariant{ true };
+	}
+
+	//--------------------------------------------------------------------------
+	// The native functions 
+	//--------------------------------------------------------------------------
+
+	FNativeFunctionEntry g_NativeFunctionTable[] = {
+		{ SID("print"), ScriptPrint },
+		{ SID("println"), ScriptPrintLine }
+	};
+
+	//--------------------------------------------------------------------------
+	// The native functions 
+	//--------------------------------------------------------------------------
+
+
+#ifdef USE_GLOBAL_NATIVE_DEFINITIONS
+	// Use global table for natives
+#else 
+	std::map<StringId, FNativeFunctionEntry*> g_NativeFunctionMap;
+#endif
+
+	
+	void init_native_functions()
+	{
+#ifdef USE_GLOBAL_NATIVE_DEFINITIONS
+		for (auto& t : g_NativeFunctionTable)
+			g_environment.define(t.name, FGlobalDefinition(SID("native"), t));
+#else 
+		for (auto& t : g_NativeFunctionTable)
+			g_NativeFunctionMap[t.Name] = &t;
+#endif
+	}
+
+	FNativeFunction* lookup_native_function(StringId name) {
+#ifdef USE_GLOBAL_NATIVE_DEFINITIONS
+		auto ptr = g_environment.lookup(name);
+		if (ptr == nullptr || ptr->type != SID("native"))
+			return nullptr;
+		return (FNativeFunction*)ptr->ptr;
+#else 
+		const auto func = g_NativeFunctionMap.find(name);
+		return (func == g_NativeFunctionMap.end()) ? nullptr : func->second->Ptr;
+#endif
+	}
+	
+
+}
+#pragma once
+#include "config.hpp"
+#include "errors.hpp"
+#include "context.hpp"
+#include "variant.hpp"
+
+namespace vm
+{
+
+	/**
+	 * @brief Can be used inside a FNativeFunction function only
+	 *        The example of usage below
+	 *        StringId objName = SC_ARG(0,StringId, NULL);
+	 *        StringId animName = SC_ARG(1,StringId, NULL);
+	 * @param argNum - Argument number
+	 * @param argType - Argument type
+	 * @param defVal - Return value if there is no argument with this number
+	 */
+#define SC_ARG(arg_num, arg_type, def_val) (arg_num >= argc ? def_val :  argv[arg_num].##arg_type)
+
+	/**
+	 * @brief The native function type
+	 * @param argc - Arguments count
+	 * @param argv - Arguments list
+	 * @return The result of function as variant class
+	 */
+	using FNativeFunction = FVariant(const u32 argc, const FVariant* argv);
+
+	/**
+	 * @brief The structure contains list of native functions
+	 *		  visible for the script.
+	 */
+	struct FNativeFunctionEntry
+	{
+		/** @brief The name of the native function */
+		StringId name;
+		/** @brief The pointer to native function */
+		FNativeFunction* func;
+	};
+
+	/**
+	 * @brief Find the native function by name
+	 * @param name - the name of native function
+	 * @return A pointer to native function or nullptr
+	 */
+	FNativeFunction* lookup_native_function(StringId name);
+	/**
+	 * @brief Initialize the list of native functions
+	 */
+	void init_native_functions();
+}
+
+// Define a message as an enumeration.
+#ifndef REGISTER_NAME
+#define REGISTER_NAME(name)	name,
+#define REGISTERING_ENUM
+enum class EOpcode : u8 {
+#endif
+
+	/** Execution */
+	REGISTER_NAME(Return)
+	REGISTER_NAME(Move)
+	REGISTER_NAME(Call)
+	REGISTER_NAME(CallNat)
+	REGISTER_NAME(Branch)
+	REGISTER_NAME(BranchIf)
+	REGISTER_NAME(BranchIfNot)
+	/** The integer values operations */
+	REGISTER_NAME(AddInt)
+	REGISTER_NAME(SubInt)
+	REGISTER_NAME(MulInt)
+	REGISTER_NAME(DivInt)
+	REGISTER_NAME(ModInt)
+	REGISTER_NAME(AbsInt)
+	REGISTER_NAME(NegFloat)
+	REGISTER_NAME(NegInt)
+        REGISTER_NAME(AshInt)
+        REGISTER_NAME(ToInt)
+	/** The integer operations with immediate argument */
+	REGISTER_NAME(LoadImediateInt)
+	REGISTER_NAME(AddImm)
+	REGISTER_NAME(SubImm)
+	REGISTER_NAME(MulImm)
+	REGISTER_NAME(DivImm)
+	/** The floating point values operations */
+	REGISTER_NAME(AddFloat)
+	REGISTER_NAME(SubFloat)
+	REGISTER_NAME(MulFloat)
+	REGISTER_NAME(DivFloat)
+	REGISTER_NAME(ModFloat)
+	REGISTER_NAME(AbsFloat)
+	REGISTER_NAME(ToFloat)
+	/** Comparisong */
+	REGISTER_NAME(CmpEqual)
+	REGISTER_NAME(CmpGt)
+	REGISTER_NAME(CmpGtEqual)
+	REGISTER_NAME(CmpLt)
+	REGISTER_NAME(CmpLtEqual)
+	REGISTER_NAME(CmpFloatEqual)
+	REGISTER_NAME(CmpFloatGt)
+	REGISTER_NAME(CmpFloatGtEqual)
+	REGISTER_NAME(CmpFloatLt)
+	REGISTER_NAME(CmpFloatLtEqual)
+	/** Logical operations */
+	REGISTER_NAME(LogAnd)
+	REGISTER_NAME(LogOr)
+	REGISTER_NAME(LogNot)
+	/** Bitwise operations */
+	REGISTER_NAME(BitAnd)
+	REGISTER_NAME(BitNot)
+	REGISTER_NAME(BitOr)
+	REGISTER_NAME(BitXor)
+	REGISTER_NAME(BitNor)
+	/** Utilities */
+	REGISTER_NAME(LocadArgc)
+	REGISTER_NAME(GetSidStr)
+	/** Lookup object */
+	REGISTER_NAME(LookupInt)
+	REGISTER_NAME(LookupFloat)
+	REGISTER_NAME(LookupPointer)
+	/** Load indirect by the pointer */
+	REGISTER_NAME(LoadIndInt)
+	REGISTER_NAME(LoadIndFloat)
+	REGISTER_NAME(LoadIndPointer)
+	/** Store indirect by the pointer */
+	REGISTER_NAME(StoreIndInt)
+	REGISTER_NAME(StoreIndFloat)
+	REGISTER_NAME(StoreIndPointer)
+	/** Load static values the values are located in the data[] array */
+	REGISTER_NAME(LoadStaticInt)
+	REGISTER_NAME(LoadStaticFloat)
+	REGISTER_NAME(LoadStaticPointer)
+
+#ifdef REGISTERING_ENUM
+};
+#undef REGISTER_NAME
+#undef REGISTERING_ENUM
+#endif

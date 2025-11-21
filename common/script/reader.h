@@ -54,10 +54,10 @@ namespace script {
 
         // ТОЧНО как у них:
         Object read_from_string(const std::string& str,
-            bool add_top_level = false,
+            bool add_top_level = true,
             const std::optional<std::string>& string_name = std::nullopt);
 
-        Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true);
+        Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true, bool add_top_level = true);
 
         // REPL метод (если нужен):
         //std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
@@ -65,13 +65,15 @@ namespace script {
         SymbolTable& get_symbol_table() { return symbolTable; }
         TextDb& get_db() { return db; }
 
+        // Проверка завершения
+        bool is_expression_complete(const std::string& code);
     private:
         // Внутренние методы как у них:
         Object internal_read(std::shared_ptr<SourceText> text,
             bool check_encoding,
-            bool add_top_level = false);
+            bool add_top_level = true);
 
-        Object read_list(TextStream& ts, bool expect_close_paren);
+        Object read_list(TextStream& ts, bool expect_close_paren = true);
         Token get_next_token(TextStream& stream);
         bool read_object(Token& tok, TextStream& ts, Object& obj);
 
@@ -87,6 +89,8 @@ namespace script {
 
         void add_reader_macro(const std::string& shortcut, std::string replacement);
         void throw_reader_error(TextStream& here, const std::string& err, int seek_offset = 0);
+
+        bool is_expression_complete_impl(TextStream& ts);
 
         SymbolTable symbolTable;  // как у них - symbolTable, не m_symbols
         TextDb db;                // как у них - db, не m_db

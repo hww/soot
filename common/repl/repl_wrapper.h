@@ -47,6 +47,16 @@ public:
     void stop_network_server();
     void handle_network_message(const std::string& message, int client_socket);
 
+    // Работа в многострочном режиме
+    void set_multi_line_enabled(bool enabled) { multi_line_enabled_ = enabled; }
+    void set_check_completion(bool check) { check_completion_ = check; }
+
+    std::string read_multiline_expression(const std::string& first_line);
+    std::string read_multiline_simple();
+    std::string read_multiline_with_check();
+
+    void inspect_text_db();
+    void inspect_symbol_table();
 private:
     void init_settings();
     void execute_line(const std::string& line);
@@ -61,9 +71,8 @@ private:
     replxx::Replxx::completions_t get_completions(const std::string& input, int& context_len);
     replxx::Replxx::hints_t get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color);
     
-    void load_config(const std::string& filename = "config.lisp");
+    void load_config(const std::string& filename);
     void parse_config_data(const script::Object& config_list);
-    void parse_keybinds(const script::Object& keybinds_list);
     KeyBind::Modifier parse_modifier(const std::string& mod_str);
 
     std::unique_ptr<ReplServer> network_server_;
@@ -77,4 +86,6 @@ private:
     std::string username;
     bool nrepl_alive = false;
     std::atomic<bool> should_exit_{ false };
+    bool multi_line_enabled_ = true;  // Можно сделать настраиваемым
+    bool check_completion_ = true;    // Проверять завершенность выражений
 };

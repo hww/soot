@@ -1,0 +1,7 @@
+The file shoudl be parsed and to extract only texts: great1, great2, great3, great4
+
+Hello world
+Hello SID(beautiful) world 
+Hello SID("great1") world 
+Hello SID("great2") world 
+Hello SID ( "great3" ) world SID ( "great4" ) 

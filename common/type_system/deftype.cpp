@@ -4,7 +4,7 @@
 
 #include "common/script/export.h"
 #include "state.h"
-#include "common/log/log.h"
+#include "common/util/log.h"
 #include "common/util/string_util.h"
 #include "fmt/format.h"
 

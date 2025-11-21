@@ -8,6 +8,14 @@
 #ifndef NO_ASSERT
 
 #include <string_view>
+#include <string_view>
+#include <stdexcept>
+
+class AssertionException : public std::runtime_error {
+public:
+    AssertionException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
 
 [[noreturn]] void private_assert_failed(const char* expr,
                                         const char* file,
@@ -33,6 +41,9 @@
 
 #define ASSERT_MSG(EXPR, STR) \
   (void)((EXPR) || (private_assert_failed(#EXPR, __FILE__, __LINE__, __PRETTY_FUNCTION__, STR), 0))
+
+#define ASSERT_FORMAT(EXPR, FORMAT, ...) \
+  ASSERT_MSG(EXPR, fmt::format(FORMAT, __VA_ARGS__))
 
 #define ASSERT_NOT_REACHED_MSG(STR) \
   (void)((private_assert_failed("not reached", __FILE__, __LINE__, __PRETTY_FUNCTION__, STR), 0))

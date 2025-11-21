@@ -1,7 +1,0 @@
-; Startup commands that run before network
-(print "Loading Aleste Lisp REPL...")
-; Define useful variables
-(define debug-mode true)
-(define version "1.0.0")
-; Load core libraries
-; (load "lib/core.lisp")

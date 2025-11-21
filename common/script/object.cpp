@@ -394,7 +394,7 @@ namespace script
 
     InternedSymbolPtr SymbolTable::intern(const char* str) {
         size_t string_len = strlen(str);
-        uint32_t hash = compute_crc32(str, string_len);
+        uint32_t hash = util::compute_crc32(str, string_len);
 
         // probe
         for (uint32_t i = 0; i < m_entries.size(); i++) {

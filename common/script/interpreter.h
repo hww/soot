@@ -235,6 +235,7 @@ namespace script
         Object m_false_object;
         int gensym_id = 0;
         Object global_environment;
+        Object comp_env;
         bool disable_printing = false;
     };
 } // namespace script
