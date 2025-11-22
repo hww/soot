@@ -2,6 +2,7 @@
 #include "native_func.hpp"
 #include "variant.hpp"
 #include "string_id.hpp"
+#include "util/log.h"
 #include <chrono>
 #include <vector>
 

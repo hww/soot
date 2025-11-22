@@ -4,6 +4,7 @@
 #include "string_id.hpp"
 #include <cstdint>
 #include <format>
+#include <unordered_map>
 
 namespace vm {
 
@@ -235,7 +236,7 @@ namespace vm {
 
         std::string to_string() const {
             return std::format("{} (op:{:02x}, operands:{}, imm:{})",
-                string_id_to_string(name),
+                string_id::to_string(name),
                 static_cast<u32>(opcode),
                 operand_count,
                 has_immediate);
@@ -265,7 +266,7 @@ namespace vm {
 
         StringId get_opcode_name(Opcode opcode) const {
             auto info = get_info(opcode);
-            return info ? info->name : "unknown"_sid;
+            return info ? info->name : SID("unknown");
         }
 
     private:
@@ -275,32 +276,39 @@ namespace vm {
 
         void initialize_table() {
             // Control flow
-            add_instruction(Opcode::RETURN, "ret"_sid, 1, false);
-            add_instruction(Opcode::MOVE, "move"_sid, 2, false);
-            add_instruction(Opcode::CALL, "call"_sid, 3, false);
-            add_instruction(Opcode::CALL_NATIVE, "calln"_sid, 3, false);
-            add_instruction(Opcode::BRANCH, "br"_sid, 1, true);
-            add_instruction(Opcode::BRANCH_IF, "brif"_sid, 1, true);
-            add_instruction(Opcode::BRANCH_IF_NOT, "brno"_sid, 1, true);
+            add_instruction(Opcode::RETURN,         "ret", 1, false);
+            add_instruction(Opcode::MOVE,           "move", 2, false);
+            add_instruction(Opcode::CALL,           "call", 3, false);
+            add_instruction(Opcode::CALL_NATIVE,    "calln", 3, false);
+            add_instruction(Opcode::BRANCH,         "br", 1, true);
+            add_instruction(Opcode::BRANCH_IF,      "brif", 1, true);
+            add_instruction(Opcode::BRANCH_IF_NOT,  "brno", 1, true);
 
             // Integer operations
-            add_instruction(Opcode::ADD_INT, "add"_sid, 3, false);
-            add_instruction(Opcode::SUB_INT, "sub"_sid, 3, false);
-            add_instruction(Opcode::MUL_INT, "mul"_sid, 3, false);
-            add_instruction(Opcode::DIV_INT, "div"_sid, 3, false);
-            add_instruction(Opcode::MOD_INT, "mod"_sid, 3, false);
-            add_instruction(Opcode::ABS_INT, "abs"_sid, 2, false);
-            add_instruction(Opcode::NEG_INT, "neg"_sid, 2, false);
-            add_instruction(Opcode::ASH_INT, "ash"_sid, 2, false);
-            add_instruction(Opcode::TO_INT, "toi"_sid, 2, false);
+            add_instruction(Opcode::ADD_INT, "add", 3, false);
+            add_instruction(Opcode::SUB_INT, "sub", 3, false);
+            add_instruction(Opcode::MUL_INT, "mul", 3, false);
+            add_instruction(Opcode::DIV_INT, "div", 3, false);
+            add_instruction(Opcode::MOD_INT, "mod", 3, false);
+            add_instruction(Opcode::ABS_INT, "abs", 2, false);
+            add_instruction(Opcode::NEG_INT, "neg", 2, false);
+            add_instruction(Opcode::ASH_INT, "ash", 2, false);
+            add_instruction(Opcode::TO_INT,  "toi", 2, false);
 
             // Add more instructions as needed...
         }
 
-        void add_instruction(Opcode opcode, StringId name, u8 operand_count, bool has_immediate) {
-            InstructionInfo info{ opcode, name, operand_count, has_immediate };
+        //void add_instruction(Opcode opcode, StringId name, u8 operand_count, bool has_immediate) {
+        //    InstructionInfo info{ opcode, name, operand_count, has_immediate };
+        //    opcode_to_info_.emplace(opcode, info);
+        //    name_to_info_.emplace(name, info);
+        //}
+
+        void add_instruction(Opcode opcode, const char* name, u8 operand_count, bool has_immediate) {
+            auto name_id = string_id::register_string(name);
+            InstructionInfo info{ opcode, name_id, operand_count, has_immediate};
             opcode_to_info_.emplace(opcode, info);
-            name_to_info_.emplace(name, info);
+            name_to_info_.emplace(name_id, info);
         }
 
         std::unordered_map<Opcode, InstructionInfo> opcode_to_info_;
@@ -312,7 +320,7 @@ namespace vm {
     // ============================================================================
 
     inline std::string opcode_to_string(Opcode opcode) {
-        return string_id_to_string(InstructionTable::instance().get_opcode_name(opcode));
+        return string_id::to_string(InstructionTable::instance().get_opcode_name(opcode));
     }
 
     inline std::ostream& operator<<(std::ostream& os, const Instruction& instr) {

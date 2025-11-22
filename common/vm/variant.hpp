@@ -23,24 +23,24 @@ namespace vm {
     public:
         TypeError(const std::string& message, StringId actual_type)
             : std::runtime_error(
-                std::format("TypeError: {} (actual type: {})",
+                fmt::format("TypeError: {} (actual type: {})",
                     message,
-                    string_id_to_string(actual_type))
+                    string_id::to_string(actual_type))
             )
         {
         }
         TypeError(const std::string& message, StringId expected_type, StringId actual_type)
             : std::runtime_error(
-                std::format("TypeError: {} (expected type: {} actual type: {})",
+                fmt::format("TypeError: {} (expected type: {} actual type: {})",
                     message,
-                    string_id_to_string(expected_type),
-                    string_id_to_string(actual_type))
+                    string_id::to_string(expected_type),
+                    string_id::to_string(actual_type))
             )
         {
         }
 
         TypeError(const std::string& message)
-            : std::runtime_error(std::format("TypeError: {}", message))
+            : std::runtime_error(fmt::format("TypeError: {}", message))
         {
         }
     };
@@ -501,9 +501,9 @@ namespace vm {
             if (is_int())     return std::to_string(get_int());
             if (is_float())   return std::to_string(get_float());
             if (is_bool())    return get_bool() ? "true" : "false";
-            if (is_sid())     return std::format("sid:{}", get_sid());
+            if (is_sid())     return fmt::format("sid:{}", get_sid());
             if (is_string())  return get_string();
-            if (is_ptr())     return std::format("ptr:0x{:x}", (int)ptr_value);
+            if (is_ptr())     return fmt::format("ptr:0x{:x}", (int)ptr_value);
             if (is_lambda())  return "lambda";
             if (is_native())  return "native";
             return "unknown";

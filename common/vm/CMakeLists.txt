@@ -7,5 +7,7 @@ add_library(vm_lib
     common/util/print_float.cpp
     common/util/log.cpp
     common/vm/native_func.cpp
+    common/vm/string_id.cpp
+    
 )
 

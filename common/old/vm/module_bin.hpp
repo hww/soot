@@ -10,8 +10,8 @@
 
 namespace vm
 {
-	struct FBinFile;
-	struct FBinFileHeader;
+	struct BinaryFile;
+	struct BinFileHeader;
 
 	/**
 	 * Align the size of object to the biggies rounded value
@@ -55,7 +55,7 @@ namespace vm
 	};
 
 	/** Single record in the data block */
-	struct  FRecord
+	struct  Record
 	{
 		union
 		{
@@ -68,13 +68,13 @@ namespace vm
 
 	/** The virtual machine byte code. */
 	__declspec(align(8))
-	struct  FByteCode  {
+	struct  ByteCode  {
 
-		void Initialize(FBinFileHeader* filePtr, const std::vector<FInstr>& code, const std::vector<FRecord>& data) {
+		void Initialize(BinFileHeader* filePtr, const std::vector<FInstr>& code, const std::vector<Record>& data) {
 			// Compute data needed for the all data
-			constexpr auto headSize = sizeof(FByteCode);
+			constexpr auto headSize = sizeof(ByteCode);
 			const auto codeSize = safe_cast_u_int32(sizeof(FInstr) * code.size());
-			const auto dataSize = safe_cast_u_int32(sizeof(FRecord) * data.size());
+			const auto dataSize = safe_cast_u_int32(sizeof(Record) * data.size());
 			const auto totalSize = safe_cast_u_int32(headSize + codeSize + dataSize);
 			// Get the offset form begin of file, the byte code address minus the file start address
 			file_offs = safe_cast_to_int32(reinterpret_cast<PTRINT>(this) - reinterpret_cast<PTRINT>(filePtr));
@@ -96,9 +96,9 @@ namespace vm
 		{
 			return (FInstr*)((PTRINT)this + (code_offs - file_offs));
 		}
-		FRecord* get_data_ptr()
+		Record* get_data_ptr()
 		{
-			return (FRecord*)((PTRINT)this + (data_offs - file_offs));
+			return (Record*)((PTRINT)this + (data_offs - file_offs));
 		}
 		u32 get_code_size() const
 		{
@@ -151,12 +151,12 @@ namespace vm
 
 	/** The header of the binary file */
 	__declspec(align(8))
-		struct FBinFileHeader
+		struct BinFileHeader
 	{
 
-		FBinFileHeader(StringId id)
+		BinFileHeader(StringId id)
 			: magic_num(DC_MAGIC)
-			, file_size(0), used_size(sizeof(FBinFileHeader)), offset(0), defs_max(0), defs_num(0), defs_offs(0)
+			, file_size(0), used_size(sizeof(BinFileHeader)), offset(0), defs_max(0), defs_num(0), defs_offs(0)
 		{
 		}
 
@@ -176,7 +176,7 @@ namespace vm
 			offset = 0;
 			defs_max = maxDefinitions;
 			file_size = fileSize;
-			defs_offs = sizeof(FBinFileHeader);
+			defs_offs = sizeof(BinFileHeader);
 			used_size = defs_offs + sizeof(FDefinition) * maxDefinitions;
 		}
 
@@ -232,7 +232,7 @@ namespace vm
 			return reinterpret_cast<PTRINT>(this) + defOffset;
 		}
 
-		void initialize(FByteCode* byteCode, const std::vector<FInstr>& code, const std::vector<FRecord>& data)
+		void initialize(ByteCode* byteCode, const std::vector<FInstr>& code, const std::vector<Record>& data)
 		{
 			byteCode->Initialize(this, code, data);
 			used_size += byteCode->desc_size;
@@ -266,11 +266,11 @@ namespace vm
 	};
 
 
-	struct FBinFile final
+	struct BinaryFile final
 	{
 
 	public:
-		FBinFile()
+		BinaryFile()
 			: file(nullptr), is_loaded(false)
 		{
 			
@@ -281,13 +281,13 @@ namespace vm
 			assert(dataSize < std::numeric_limits<u32>::max());
 			free(file);
 			is_loaded = false;
-			const size_t fileSize = sizeof(FBinFileHeader) + sizeof(FDefinition) * maxDefinitions + dataSize;
-			file = reinterpret_cast<FBinFileHeader*>(new u8[fileSize]);
+			const size_t fileSize = sizeof(BinFileHeader) + sizeof(FDefinition) * maxDefinitions + dataSize;
+			file = reinterpret_cast<BinFileHeader*>(new u8[fileSize]);
 			file->init_definitions_table(maxDefinitions, static_cast<u32>(fileSize));
 			printf("%p FBinFile with size %zx\n", static_cast<void*>(file), fileSize);
 		}
 		
-		~FBinFile() {
+		~BinaryFile() {
 			free(file);
 		}
 
@@ -321,7 +321,7 @@ namespace vm
 
 		FDefinition* get_definition(u32 idx) const { return file->get_definition(idx); }
 
-		FBinFileHeader* get_file_header() const { return file; }
+		BinFileHeader* get_file_header() const { return file; }
 
 		/**
 		 * @brief Convert to string this file
@@ -335,7 +335,7 @@ namespace vm
 	private:
 
 		/** The data block in the memory */
-		FBinFileHeader* file;
+		BinFileHeader* file;
 		/** Loading state */
 		bool is_loaded;
 	};

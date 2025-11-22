@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 #include "virtual_machine.hpp"
 #include "native_func.hpp"
-#include "bytecode.hpp"
+#include "binary_file.hpp"
 #include "util/log.h"
 
 using namespace vm;

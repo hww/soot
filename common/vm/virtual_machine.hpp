@@ -4,7 +4,7 @@
 #include "variant.hpp"
 #include "instructions.hpp"
 #include "stack_frame.hpp"
-#include "bytecode.hpp"
+#include "binary_file.hpp"
 #include "native_func.hpp"
 #include "util/assert.h"
 #include "util/log.h"
@@ -66,7 +66,7 @@ namespace vm {
         Variant execute_function(StringId function_name) {
             ByteCode* bytecode = find_function(function_name);
             if (!bytecode) {
-                lg::error("Function not found: {}", string_id_to_string(function_name));
+                lg::error("Function not found: {}", string_id::to_string(function_name));
                 return Variant();
             }
 
@@ -74,7 +74,7 @@ namespace vm {
         }
 
         Variant execute_function(const std::string& function_name) {
-            return execute_function(string_id::from_string(function_name));
+            return execute_function(string_id::register_string(function_name));
         }
 
         // ------------------------------------------------------------------------
@@ -96,11 +96,10 @@ namespace vm {
             }
 
             // Создаем корневой фрейм и основной фрейм выполнения
-            StackFrame* root_frame = create_root_frame();
             StackFrame* current_frame = create_stack_frame(
                 bytecode->get_code_ptr(),
                 bytecode->get_data_ptr(),
-                root_frame
+                nullptr
             );
 
             Variant final_result;
@@ -122,10 +121,9 @@ namespace vm {
                     Variant return_value = current_frame->get_register(instr.a);
                     StackFrame* parent_frame = current_frame->parent_ptr;
 
-                    if (parent_frame == root_frame) {
+                    if (parent_frame == nullptr) {
                         // Возврат в корневой фрейм - сохраняем финальный результат
                         final_result = return_value;
-                        parent_frame->get_register(current_frame->ret_num) = return_value;
                     }
                     else if (parent_frame != nullptr) {
                         // Обычный возврат в родительскую функцию
@@ -175,7 +173,7 @@ namespace vm {
                     // Поддержка как прямых указателей, так и поиска по имени
                     NativeFunction native_func = nullptr;
 
-                    if (func_var.is_ptr() && func_var.get_type() == "native"_sid) {
+                    if (func_var.is_ptr() && func_var.get_type() == SID("native")) {
                         // Прямой указатель на функцию
                         native_func = reinterpret_cast<NativeFunction>(func_var.get_ptr());
                     }
@@ -414,9 +412,6 @@ namespace vm {
                 }
             }
 
-            // Очищаем корневой фрейм
-            destroy_stack_frame(root_frame);
-
             return final_result;
         }
 
@@ -473,14 +468,14 @@ namespace vm {
         }
 
         void initialize_native_functions() {
-            REGISTER_NATIVE_FUNCTION("print"_sid, [](u32 argc, const Variant* argv) -> Variant {
+            REGISTER_NATIVE_FUNCTION(SID("print"), [](u32 argc, const Variant* argv) -> Variant {
                 for (u32 i = 0; i < argc; i++) {
                     lg::print("{} ", argv[i].to_string());
                 }
                 return Variant(true);
                 });
 
-            REGISTER_NATIVE_FUNCTION("println"_sid, [](u32 argc, const Variant* argv) -> Variant {
+            REGISTER_NATIVE_FUNCTION(SID("println"), [](u32 argc, const Variant* argv) -> Variant {
                 for (u32 i = 0; i < argc; i++) {
                     lg::print("{} ", argv[i].to_string());
                 }

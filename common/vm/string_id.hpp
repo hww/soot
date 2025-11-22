@@ -1,154 +1,96 @@
 #pragma once
 
-#include "types.hpp"
-#include "util/assert.h"
-#include "util/log.h"
-#include "util/crc32.h"  
 #include <string>
-#include <unordered_map>
-#include <format>
-#include <mutex>
+#include <cstdint>
+#include <ostream>
+
+#include "string_id_macros.hpp"
 
 namespace vm {
 
-    // ============================================================================
-    // StringId Type
-    // ============================================================================
-
-    using StringId = u32;
-
-    // ============================================================================
-    // StringId Utilities
-    // ============================================================================
+    using StringId = uint32_t;
 
     namespace string_id {
 
-        // ----------------------------------------------------------------------------
-        // Creation Functions
-        // ----------------------------------------------------------------------------
+        // ============================================================================
+        // Runtime Interface
+        // ============================================================================
 
-        inline StringId from_string(const std::string& str) {
-            return util::compute_crc32(str);
-        }
+        /**
+         * Loads string table from file (call once at startup)
+         * Format: "HEXCRC32 string"
+         * Throws: std::runtime_error on file error
+         */
+        void load_table(const std::string& filename);
 
-        inline StringId from_cstring(const char* str) {
-            return util::compute_crc32(str);
-        }
+        /**
+         * Saves current string table to file
+         * Format: "HEXCRC32 string" sorted by string value
+         * Throws: std::runtime_error on file error
+         */
+        void save_table(const std::string& filename);
+        /**
+         * Registers a string and returns its StringId
+         * If string already exists, returns existing ID
+         * If different string with same CRC32 exists, throws std::runtime_error
+         */
+        StringId register_string(const std::string& str);
 
-        inline StringId from_literal(const char* str, size_t len) {
-            return util::compute_crc32(str, len);
-        }
+        /**
+         * Registers a C-string and returns its StringId
+         */
+        StringId register_string(const char* str);
 
-        // ----------------------------------------------------------------------------
-        // Global String Table (for debugging)
-        // ----------------------------------------------------------------------------
 
-        class StringTable {
-        public:
-            static StringTable& instance() {
-                static StringTable table;
-                return table;
-            }
+        /**
+         * Converts StringId back to string for debugging
+         * For unknown IDs returns formatted string with hex value
+         */
+        std::string to_string(StringId id);
 
-            void register_string(const std::string& str, StringId sid) {
-                std::lock_guard lock(mutex_);
-                auto [it, inserted] = hash_to_string_.emplace(sid, str);
+        /**
+         * Fast conversion to C-string (for logging)
+         * For unknown IDs returns "<unknown>"
+         */
+        const char* to_cstring(StringId id);
 
-                if (!inserted && it->second != str) {
-                    lg::error("StringId collision: '{}' and '{}' both hash to {:08x}",
-                        it->second, str, sid);
-                    ASSERT_MSG(false, "StringId collision detected");
-                }
+        /**
+         * Checks if string table is loaded
+         */
+        bool is_table_loaded();
 
-                if (inserted) {
-                    string_to_hash_.emplace(str, sid);
-                }
-            }
+        /**
+         * Gets number of strings in table
+         */
+        size_t get_string_count();
 
-            std::string get_string(StringId sid) const {
-                std::lock_guard lock(mutex_);
-                auto it = hash_to_string_.find(sid);
-                if (it != hash_to_string_.end()) {
-                    return it->second;
-                }
-                return std::format("<unknown:{:08x}>", sid);
-            }
+        /**
+         * Clears string table (mainly for tests)
+         */
+        void clear_table();
 
-            const char* get_cstring(StringId sid) const {
-                std::lock_guard lock(mutex_);
-                auto it = hash_to_string_.find(sid);
-                if (it != hash_to_string_.end()) {
-                    return it->second.c_str();
-                }
-                return "<unknown>";
-            }
-
-            bool contains(StringId sid) const {
-                std::lock_guard lock(mutex_);
-                return hash_to_string_.contains(sid);
-            }
-
-            void clear() {
-                std::lock_guard lock(mutex_);
-                hash_to_string_.clear();
-                string_to_hash_.clear();
-            }
-
-        private:
-            mutable std::mutex mutex_;
-            std::unordered_map<StringId, std::string> hash_to_string_;
-            std::unordered_map<std::string, StringId> string_to_hash_;
-        };
-
-        // ----------------------------------------------------------------------------
-        // Utility Functions
-        // ----------------------------------------------------------------------------
-
-        inline std::string to_string(StringId sid) {
-            return StringTable::instance().get_string(sid);
-        }
-
-        inline const char* to_cstring(StringId sid) {
-            return StringTable::instance().get_cstring(sid);
-        }
-
-        inline void register_string(const std::string& str, StringId sid) {
-            StringTable::instance().register_string(str, sid);
-        }
-
-        inline bool is_registered(StringId sid) {
-            return StringTable::instance().contains(sid);
-        }
-
+        /**
+         * Check the table
+         */
+        std::string inspect();
     } // namespace string_id
 
     // ============================================================================
-    // Literal Operator for StringId
+    // Debug Utilities  
     // ============================================================================
-
-    inline StringId operator"" _sid(const char* str, size_t len) {
-        StringId sid = util::compute_crc32(str, len);
-        string_id::register_string(std::string(str, len), sid);
-        return sid;
-    }
 
     /**
-     * Convert the string to the string ID
-     * @params str - const char* as c string value
+     * Convert StringId to string (global function)
      */
-#define SID(str) str##_sid
-
-    // ============================================================================
-    // Utility Functions (global scope)
-    // ============================================================================
-
-    inline std::string string_id_to_string(StringId sid) {
+    inline std::string to_string(StringId sid) {
         return string_id::to_string(sid);
     }
 
+    /**
+     * Stream output for StringId
+     */
     inline std::ostream& operator<<(std::ostream& os, StringId sid) {
-        return os << string_id_to_string(sid);
+        return os << to_string(sid);
     }
 
 } // namespace vm
-

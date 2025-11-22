@@ -13,9 +13,9 @@ namespace vm
 	struct FLocalEnvironment;
 	struct FGlobalEnvironment;
 	struct FStackFrame;
-	struct FByteCode;
-	struct FBinFile;
-	struct FBinFileHeader;
+	struct ByteCode;
+	struct BinaryFile;
+	struct BinFileHeader;
 	struct FScriptProcess;
 	class Module;
 
@@ -47,9 +47,9 @@ namespace vm
 	DECLARE_TO_STR(FLocalEnvironment)
 	DECLARE_TO_STR(FVariant)
 	DECLARE_TO_STR(FStackFrame)
-	DECLARE_TO_STR(FByteCode)
-	DECLARE_TO_STR(FBinFile)
-	DECLARE_TO_STR(FBinFileHeader)
+	DECLARE_TO_STR(ByteCode)
+	DECLARE_TO_STR(BinaryFile)
+	DECLARE_TO_STR(BinFileHeader)
 	DECLARE_TO_STR(FScriptProcess)
 	DECLARE_TO_STR(Module)
 

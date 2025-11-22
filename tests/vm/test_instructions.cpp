@@ -33,7 +33,7 @@ TEST(Instructions, InstructionTable) {
     auto info = table.get_info(Opcode::MOVE);
 
     ASSERT_NE(info, nullptr);
-    EXPECT_EQ(info->name, "move"_sid);
+    EXPECT_EQ(info->name, SID("move"));
     EXPECT_EQ(info->operand_count, 2);
 }
 

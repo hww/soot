@@ -35,7 +35,7 @@ namespace vm {
     constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET; // 10
 
     // ============================================================================
-    // Safe Casting
+    // Exceptions
     // ============================================================================
 
     class OverflowException : public std::exception {
@@ -45,6 +45,10 @@ namespace vm {
     private:
         std::string message;
     };
+
+    // ============================================================================
+    // Safe Casting
+    // ============================================================================
 
     inline u32 safe_cast_u32(u64 value) {
         if (value > std::numeric_limits<u32>::max()) {

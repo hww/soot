@@ -15,11 +15,11 @@ namespace vm {
 
     void NativeFunctionRegistry::register_function(StringId name, NativeFunction func) {
         functions_[name] = func;
-        lg::debug("Registered native function: {}", string_id_to_string(name));
+        lg::debug("Registered native function: {}", string_id::to_string(name));
     }
 
     void NativeFunctionRegistry::register_function(const std::string& name, NativeFunction func) {
-        register_function(string_id::from_string(name), func);
+        register_function(string_id::register_string(name), func);
     }
 
     NativeFunction NativeFunctionRegistry::find_function(StringId name) const {
@@ -28,7 +28,7 @@ namespace vm {
     }
 
     NativeFunction NativeFunctionRegistry::find_function(const std::string& name) const {
-        return find_function(string_id::from_string(name));
+        return find_function(string_id::register_string(name));
     }
 
     // ============================================================================
