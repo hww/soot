@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "vm_core/bytecode.hpp"
+#include "vm/bytecode.hpp"
 
 using namespace vm;
 

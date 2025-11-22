@@ -20,7 +20,7 @@ protected:
 
 // Тест простого макроса
 TEST_F(MacroTest, SimpleMacro) {
-    eval("(macro double (x) (list '+ x x))");
+    eval("(define double (macro (x) (list '+ x x)))");
     Object obj = eval("(double 5)");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 10);
@@ -28,7 +28,7 @@ TEST_F(MacroTest, SimpleMacro) {
 
 // Тест макроса с несколькими параметрами
 TEST_F(MacroTest, MultiParamMacro) {
-    eval("(macro add-two (x y) (list '+ x y))");
+    eval("(define add-two (macro (x y) (list '+ x y)))");
     Object obj = eval("(add-two 3 4)");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 7);

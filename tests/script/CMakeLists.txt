@@ -38,7 +38,10 @@ if(MSVC)
         VS_DEBUGGER_ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/Debug"
     )
 endif()
-
+set_target_properties(script_test PROPERTIES 
+    VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 # Регистрируем тесты для Test Explorer
 gtest_discover_tests(script_test)
 

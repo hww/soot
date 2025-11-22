@@ -16,7 +16,7 @@
 
 namespace script 
 {
-    Interpreter::Interpreter(const std::string& username) {
+    Interpreter::Interpreter(const std::string& username, bool load_libs) {
         // Инициализируем boolean объекты как символы
         auto& symbols = reader.get_symbol_table();
         m_true_object = Object::make_symbol(&symbols, "#t");
@@ -171,7 +171,7 @@ namespace script
             {"ash", &Interpreter::eval_ash},
         } });
     // load the standard library
-    load_library();
+    if (load_libs) load_library();
 }
 
 void Interpreter::load_library() {

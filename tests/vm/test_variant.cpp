@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "vm_core/export.hpp"
+#include "vm/export.hpp"
 
 TEST(Variant, Construction) {
     vm::Variant nil;

@@ -57,7 +57,7 @@ TEST_F(BasicTypesTest, CharLiterals) {
     EXPECT_TRUE(obj.is_char());
     EXPECT_EQ(obj.as_char(), 'a');
 
-    obj = eval("#\\newline");
+    obj = eval("#\\\\n");
     EXPECT_TRUE(obj.is_char());
     EXPECT_EQ(obj.as_char(), '\n');
 }

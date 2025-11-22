@@ -11,7 +11,7 @@ namespace script
 {
     class Interpreter {
     public:
-        Interpreter(const std::string& username = "user");
+        Interpreter(const std::string& username = "user", bool load_libs = false);
 
         void load_library();
 

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "vm_core/script_object.hpp"
+#include "vm/script_object.hpp"
 #include <string>
 
 
