@@ -1,4 +1,4 @@
-#include "module_hub.hpp"
+﻿#include "module_hub.hpp"
 #include "binary_file.hpp"
 #include "util/assert.h"
 
@@ -129,4 +129,47 @@ namespace vm {
         load_module_internal(module_name, file_path);
     }
 
+    void GlobalModuleHub::link_module(Module* module) {
+        // Предположим, что у модуля есть метод get_imported_symbols()
+        // который возвращает имена символов которые он хочет импортировать
+        auto import_requests = module->get_imported_symbols();
+
+        for (StringId import_name : import_requests) {
+            // Ищем модуль который экспортирует этот символ
+            auto target_module = find_module_that_exports(import_name);
+            if (target_module) {
+                // Линкуем: символ → модуль
+                module->add_import(import_name, target_module);
+                lg::debug("Linked import: {} -> {}",
+                    string_id::to_string(import_name),
+                    string_id::to_string(target_module->name));
+            }
+            else {
+                lg::error("Unresolved import: {}", string_id::to_string(import_name));
+            }
+        }
+    }
+
+    std::shared_ptr<Module> GlobalModuleHub::find_module_that_exports(StringId symbol_name) {
+        // Ищем во ВСЕХ загруженных модулях
+        for (auto& [module_name, module] : modules_) {
+            if (module->has_export(symbol_name)) {
+                return module;
+            }
+        }
+        return nullptr;
+    }
+
+    // Новая функция: загрузка + линковка
+    std::shared_ptr<Module> GlobalModuleHub::load_and_link_module(StringId module_name) {
+        auto module = load_module(module_name);
+        if (module) {
+            link_module(module.get());
+        }
+        return module;
+    }
+    void GlobalModuleHub::build_dependency_graph(Module* module)
+    {
+
+    }
 } // namespace vm

@@ -20,7 +20,7 @@ namespace vm {
 
         // Exports/Imports
         std::unordered_map<StringId, Definition*> exports;
-        std::unordered_map<StringId, StringId> imports; // local_name -> module_name
+        std::unordered_map<StringId, std::shared_ptr<Module>> imports; // local_name -> module_name
         std::vector<StringId> dependencies;
 
         // State
@@ -40,10 +40,16 @@ namespace vm {
 
         void add_dependency(StringId module_name) { dependencies.push_back(module_name); }
         void add_export(StringId name, Definition* def) { exports[name] = def; }
-        void add_import(StringId local_name, StringId module_name) { imports[local_name] = module_name; }
+        void add_import(StringId symbol_name, std::shared_ptr<Module> module);
 
         std::string to_string() const;
         bool is_valid() const { return binary && binary->is_loaded(); }
+
+        ByteCode* resolve_export(StringId name);
+    private:
+        ByteCode* get_bytecode_from_definition(Definition* def) {
+            return binary->get_header()->get_definition_ptr<ByteCode>(def->data_ptr.offset).c();
+        }
     };
 
 } // namespace vm

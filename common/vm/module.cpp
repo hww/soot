@@ -16,14 +16,6 @@ namespace vm {
         }
     }
 
-    ByteCode* Module::resolve_symbol(StringId name) {
-        auto it = exports.find(name);
-        if (it != exports.end()) {
-            return binary->get_header()->get_definition_ptr<ByteCode>(it->second->data_ptr.offset).c();
-        }
-        return nullptr;
-    }
-
     Definition* Module::find_export(StringId name) const {
         auto it = exports.find(name);
         return it != exports.end() ? it->second : nullptr;
@@ -47,6 +39,36 @@ namespace vm {
     std::string Module::to_string() const {
         return std::format("Module('{}', exports:{}, deps:{}, valid:{})",
             string_id::to_string(name), exports.size(), dependencies.size(), is_valid());
+    }
+
+
+    // Resolve ищет ТОЛЬКО в себе и прямых импортах
+    ByteCode* Module::resolve_symbol(StringId name) {
+        // 1. Ищем в своих экспортах
+        if (auto it = exports.find(name); it != exports.end()) {
+            return get_bytecode_from_definition(it->second);
+        }
+
+        // 2. Ищем в импортах (только прямые, без рекурсии!)
+        if (auto it = imports.find(name); it != imports.end()) {
+            // Ищем в ТОМ модуле который импортирован под этим именем
+            return it->second->resolve_export(name);  // ищем только в экспортах того модуля
+        }
+
+        return nullptr;
+    }
+
+    // Ищет ТОЛЬКО в своих экспортах (для resolve_symbol импортов)
+    ByteCode* Module::resolve_export(StringId name) {
+        if (auto it = exports.find(name); it != exports.end()) {
+            return get_bytecode_from_definition(it->second);
+        }
+        return nullptr;
+    }
+
+    // Линковка - добавляет импорт
+    void Module::add_import(StringId symbol_name, std::shared_ptr<Module> module) {
+        imports[symbol_name] = module;
     }
 
 } // namespace vm

@@ -40,7 +40,12 @@ namespace vm {
         // Utility
         void unload_module(StringId module_name);
         void reload_module(StringId module_name);
-
+        
+        // Linking
+        void link_module(Module* module);
+    private:
+        std::shared_ptr<Module> load_and_link_module(StringId module_name);
+        std::shared_ptr<Module> find_module_that_exports(StringId symbol_name);
     private:
         std::shared_ptr<Module> load_module_internal(StringId module_name, const std::filesystem::path& file_path);
         void build_dependency_graph(Module* module);
