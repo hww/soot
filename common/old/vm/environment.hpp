@@ -12,7 +12,7 @@ namespace vm
 {
     struct FLocalDefinition;
     struct ModuleRef;
-    struct BinFileHeader;
+    struct FBinFileHeader;
     struct FNativeFunctionEntry;
 
     /**

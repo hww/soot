@@ -11,7 +11,7 @@
 
 namespace vm
 {
-	extern u8* g_ee_main_mem;
+	u8* g_ee_main_mem;
 
 	/**
 	 * GOAL pointer to a T.  Represented as a 32-bit unsigned offset from g_ee_main_mem.

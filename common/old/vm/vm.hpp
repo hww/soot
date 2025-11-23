@@ -61,12 +61,12 @@ namespace vm
 
 		s32 get_static_s32(u32 index) const
 		{
-			return data_ptr[index].as_int32[0];
+			return data_ptr[index].as_int32;
 		}
 
 		u32 get_static_u32(u32 index) const
 		{
-			return data_ptr[index].as_int32[0];
+			return data_ptr[index].as_uint32;
 		}
 
 		float get_static_f32(u32 index) const

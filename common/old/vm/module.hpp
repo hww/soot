@@ -75,7 +75,7 @@ namespace vm
 		static void remove_search_path(std::filesystem::path path);
 
 		StringId name;
-		BinaryFile bin;
+		FBinFile bin;
 		FModuleInfo info;
 		FLocalEnvironment env;
 

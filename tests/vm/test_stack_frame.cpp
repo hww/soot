@@ -63,7 +63,7 @@ TEST(StackFrame, ArgumentCopying) {
 
 TEST(StackFrame, FrameManagement) {
     Instruction dummy_code[10];
-    Variant dummy_data[5];
+    Record dummy_data[5];
 
     StackFrame* parent = create_stack_frame(dummy_code, dummy_data);
     StackFrame* child = push_stack_frame(dummy_code, dummy_data, parent);

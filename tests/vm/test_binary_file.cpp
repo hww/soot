@@ -1,20 +1,15 @@
 #include "gtest/gtest.h"
 #include "vm/binary_file.hpp"
 #include "vm/instructions.hpp"
-#include "vm/ptr.hpp"
 
 using namespace vm;
 
 class BinaryFileTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Initialize global memory for Ptr tests
-        g_ee_main_mem = new u8[1024 * 1024];
     }
 
     void TearDown() override {
-        delete[] g_ee_main_mem;
-        g_ee_main_mem = nullptr;
     }
 };
 
@@ -23,7 +18,7 @@ TEST_F(BinaryFileTest, ByteCodeBasicStructure) {
 }
 
 TEST_F(BinaryFileTest, BinFileHeaderValidation) {
-    BinFileHeader header(SID("test"));
+    BinFileHeader header;  // Убрал скобки - это объявление переменной, не функции
     header.magic_num = DC_MAGIC;
 
     EXPECT_TRUE(header.is_valid_magic());
@@ -34,59 +29,59 @@ TEST_F(BinaryFileTest, BinFileHeaderValidation) {
 
 TEST_F(BinaryFileTest, BinaryFileCreation) {
     BinaryFile file;
-    file.initialize(10, 1024); // 10 definitions, 1KB data
+    file.initialize(1024); // Только data_size, без max_definitions
 
     auto header = file.get_header();
-    EXPECT_TRUE(header.valid());
     EXPECT_TRUE(header->is_valid_magic());
     EXPECT_EQ(file.get_definition_count(), 0);
-    EXPECT_GT(file.get_free_size(), 0U);
+    // get_free_size больше нет - убрать эту проверку
 }
 
-TEST_F(BinaryFileTest, AddDefinition) {
-    BinaryFile file;
-    file.initialize(10, 1024);
+TEST_F(BinaryFileTest, AddDefinitionViaBuilder) {
+    BinaryFileBuilder builder;
 
-    auto ptr = file.define(SID("test_func"), SID("function"));
-    EXPECT_TRUE(ptr.valid());
-    EXPECT_EQ(file.get_definition_count(), 1);
+    builder.add_definition(SID("test_func"), SID("function"));
+    builder.add_definition(SID("test_data"), SID("global"));
+
+    auto binary_file = builder.build_file();
+
+    EXPECT_EQ(binary_file->get_definition_count(), 2);
 
     // Verify definition was added
-    auto def = file.get_definition(0);
-    EXPECT_TRUE(def.valid());
+    auto def = binary_file->get_definition(0);
     EXPECT_EQ(def->name, SID("test_func"));
     EXPECT_EQ(def->type, SID("function"));
 }
 
 TEST_F(BinaryFileTest, DefinitionBoundsChecking) {
-    BinaryFile file;
-    file.initialize(2, 1024); // Only 2 definitions
+    BinaryFileBuilder builder;
 
-    file.define(SID("first"), SID("function"));
-    file.define(SID("second"), SID("function"));
+    builder.add_definition(SID("first"), SID("function"));
+    builder.add_definition(SID("second"), SID("function"));
 
-    // Should throw on third definition
-    EXPECT_THROW(file.define(SID("third"), SID("function")), ByteCodeError);
+    auto binary_file = builder.build_file();
+
+    // Должен нормально работать с двумя определениями
+    EXPECT_EQ(binary_file->get_definition_count(), 2);
+
+    // Попытка получить несуществующее определение должна бросать исключение
+    EXPECT_THROW(binary_file->get_definition(2), ByteCodeError);
 }
 
 TEST_F(BinaryFileTest, GetDefinitionPtr) {
-    BinaryFile file;
-    file.initialize(5, 1024);
+    BinaryFileBuilder builder;
 
-    auto def_ptr = file.define<s32>(SID("answer"), SID("int"));
-    EXPECT_TRUE(def_ptr.valid());
+    builder.add_definition(SID("answer"), SID("int"));
 
-    // Should be able to retrieve and use
-    auto retrieved = file.get_definition_ptr<s32>(0);
-    EXPECT_TRUE(retrieved.valid());
+    auto binary_file = builder.build_file();
 
-    // Can write through pointer
-    *retrieved = 42;
-    EXPECT_EQ(*def_ptr, 42);
+    // Получаем указатель на данные определения
+    auto retrieved = binary_file->get_definition_ptr<ByteCode>(0);
+    EXPECT_NE(retrieved, nullptr);
 }
 
 TEST_F(BinaryFileTest, BinaryFileBuilderBasic) {
-    BinaryFileBuilder builder(10);
+    BinaryFileBuilder builder;  // Без аргументов
 
     builder.add_definition(SID("main"), SID("function"));
     builder.add_definition(SID("data"), SID("global"));
@@ -98,7 +93,7 @@ TEST_F(BinaryFileTest, BinaryFileBuilderBasic) {
     builder.add_code(code);
 
     std::vector<Record> data = {
-        Record{.as_int32 = {42, 0} }
+        Record{.as_s32 = 42 }
     };
     builder.add_data(data);
 
@@ -111,7 +106,7 @@ TEST_F(BinaryFileTest, BinaryFileBuilderBasic) {
 }
 
 TEST_F(BinaryFileTest, LoadFromBuilderData) {
-    BinaryFileBuilder builder(5);
+    BinaryFileBuilder builder;  // Без аргументов
     builder.add_definition(SID("test"), SID("function"));
 
     auto binary_data = builder.build();
@@ -127,31 +122,30 @@ TEST_F(BinaryFileTest, LoadFromBuilderData) {
 }
 
 TEST_F(BinaryFileTest, ByteCodeDebugInfo) {
-    BinaryFileBuilder builder(5);
+    BinaryFileBuilder builder;  // Без аргументов
 
     std::vector<Instruction> code = {
         Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 100),
         Instruction::create_a(Opcode::RETURN, 1)
     };
-    builder.add_code(code);
+
+    // Use add_function which automatically adds the definition
+    builder.add_function(SID("main"), code);
 
     // Add debug information
     builder.add_debug_info(0, 15, SID("test.goal"));  // First instruction at line 15
     builder.add_debug_info(4, 16, SID("test.goal"));  // Second instruction at line 16
 
-    auto binary_data = builder.build();
-    BinaryFile file;
-    file.load(std::move(binary_data));
+    auto binary_file = builder.build_file();
 
-    auto header = file.get_header();
+    auto header = binary_file->get_header();
     auto bytecode_ptr = header->get_definition_ptr<ByteCode>(0);
-    EXPECT_TRUE(bytecode_ptr.valid());
 
     EXPECT_TRUE(bytecode_ptr->has_debug_info());
     EXPECT_EQ(bytecode_ptr->debug_count, 2);
 
     // Test debug info lookup
-    auto location = bytecode_ptr->find_source_location(header, 0);
+    auto location = bytecode_ptr->find_source_location(0);
     EXPECT_EQ(location.source_line, 15);
     EXPECT_EQ(location.source_file, SID("test.goal"));
 }
@@ -164,12 +158,16 @@ TEST_F(BinaryFileTest, InvalidFileMagic) {
 }
 
 TEST_F(BinaryFileTest, MoveSemantics) {
-    BinaryFile file1;
-    file1.initialize(5, 512);
-    file1.define(SID("test"), SID("function"));
+    BinaryFileBuilder builder;
+    builder.add_definition(SID("test"), SID("function"));
 
-    BinaryFile file2 = std::move(file1);
-    EXPECT_FALSE(file1.is_loaded()); // NOLINT
+    auto file1 = builder.build_file();
+    EXPECT_TRUE(file1->is_loaded());
+    EXPECT_EQ(file1->get_definition_count(), 1);
+
+    // Move construction
+    BinaryFile file2 = std::move(*file1);
+    EXPECT_FALSE(file1->is_loaded()); // NOLINT
     EXPECT_TRUE(file2.is_loaded());
     EXPECT_EQ(file2.get_definition_count(), 1);
 }

@@ -3,6 +3,7 @@
 #include "types.hpp"
 #include "variant.hpp"
 #include "instructions.hpp"
+#include "binary_file.hpp"
 #include "util/assert.h"
 #include "util/log.h"
 #include <vector>
@@ -27,7 +28,7 @@ namespace vm {
         // Execution State
         // ------------------------------------------------------------------------
         Instruction* code_ptr = nullptr;    // Pointer to bytecode instructions
-        Variant* data_ptr = nullptr;        // Pointer to static data
+        Record* data_ptr = nullptr;         // Pointer to static data
         StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
         u32 pc = 0;                         // Program counter
         u32 argc = 0;                       // Number of arguments
@@ -46,7 +47,7 @@ namespace vm {
             initialize_registers();
         }
 
-        StackFrame(Instruction* code, Variant* data, StackFrame* parent = nullptr)
+        StackFrame(Instruction* code, Record* data, StackFrame* parent = nullptr)
             : code_ptr(code), data_ptr(data), parent_ptr(parent), pc(0), argc(0), ret_num(0) {
             initialize_registers();
         }
@@ -121,17 +122,17 @@ namespace vm {
         s32 get_static_s32(u32 index) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             // Data is stored as Variants, so we need to extract s32
-            return data_ptr[index].get_int32();
+            return data_ptr[index].as_s32;
         }
 
         f32 get_static_f32(u32 index) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return data_ptr[index].get_float();
+            return data_ptr[index].as_f32;
         }
 
         const void* get_static_pointer(u32 index) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return data_ptr[index].get_ptr();
+            return data_ptr[index].as_ptr;
         }
 
         // ------------------------------------------------------------------------
@@ -190,7 +191,7 @@ namespace vm {
     // Stack Frame Management Functions
     // ============================================================================
 
-    inline StackFrame* create_stack_frame(Instruction* code, Variant* data, StackFrame* parent = nullptr) {
+    inline StackFrame* create_stack_frame(Instruction* code, Record* data, StackFrame* parent = nullptr) {
         return new StackFrame(code, data, parent);
     }
 
@@ -200,7 +201,7 @@ namespace vm {
         }
     }
 
-    inline StackFrame* push_stack_frame(Instruction* code, Variant* data, StackFrame* parent) {
+    inline StackFrame* push_stack_frame(Instruction* code, Record* data, StackFrame* parent) {
         return create_stack_frame(code, data, parent);
     }
 

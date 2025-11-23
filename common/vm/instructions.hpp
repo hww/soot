@@ -13,7 +13,9 @@ namespace vm {
     // ============================================================================
 
     enum class Opcode : u8 {
-        // Control flow
+        // ============================================================
+        // Control Flow Instructions
+        // ============================================================
         RETURN = 0x00,
         MOVE = 0x01,
         CALL = 0x02,
@@ -22,7 +24,9 @@ namespace vm {
         BRANCH_IF = 0x05,
         BRANCH_IF_NOT = 0x06,
 
-        // Integer operations
+        // ============================================================
+        // Integer Arithmetic Operations
+        // ============================================================
         ADD_INT = 0x10,
         SUB_INT = 0x11,
         MUL_INT = 0x12,
@@ -33,14 +37,18 @@ namespace vm {
         ASH_INT = 0x17,
         TO_INT = 0x18,
 
-        // Integer immediate operations
+        // ============================================================
+        // Integer Immediate Operations
+        // ============================================================
         LOAD_IMMEDIATE_INT = 0x20,
         ADD_IMM = 0x21,
         SUB_IMM = 0x22,
         MUL_IMM = 0x23,
         DIV_IMM = 0x24,
 
-        // Floating point operations
+        // ============================================================
+        // Floating Point Arithmetic Operations
+        // ============================================================
         ADD_FLOAT = 0x30,
         SUB_FLOAT = 0x31,
         MUL_FLOAT = 0x32,
@@ -50,53 +58,89 @@ namespace vm {
         NEG_FLOAT = 0x36,
         TO_FLOAT = 0x37,
 
-        // Comparisons
+        // ============================================================
+        // Comparison Operations
+        // ============================================================
         CMP_EQUAL = 0x40,
-        CMP_GT = 0x41,
-        CMP_GT_EQUAL = 0x42,
-        CMP_LT = 0x43,
-        CMP_LT_EQUAL = 0x44,
-        CMP_FLOAT_EQUAL = 0x45,
-        CMP_FLOAT_GT = 0x46,
-        CMP_FLOAT_GT_EQUAL = 0x47,
-        CMP_FLOAT_LT = 0x48,
-        CMP_FLOAT_LT_EQUAL = 0x49,
+        CMP_NOT_EQUAL = 0x41,
+        CMP_GT = 0x42,
+        CMP_GT_EQUAL = 0x43,
+        CMP_LT = 0x44,
+        CMP_LT_EQUAL = 0x45,
+        CMP_FLOAT_EQUAL = 0x46,
+        CMP_FLOAT_NOT_EQUAL = 0x47,
+        CMP_FLOAT_GT = 0x48,
+        CMP_FLOAT_GT_EQUAL = 0x49,
+        CMP_FLOAT_LT = 0x4A,
+        CMP_FLOAT_LT_EQUAL = 0x4B,
 
-        // Logical operations
+        // ============================================================
+        // Logical Operations
+        // ============================================================
         LOG_AND = 0x50,
         LOG_OR = 0x51,
         LOG_NOT = 0x52,
 
-        // Bit operations
+        // ============================================================
+        // Bitwise Operations
+        // ============================================================
         BIT_AND = 0x60,
-        BIT_NOT = 0x61,
-        BIT_OR = 0x62,
-        BIT_XOR = 0x63,
-        BIT_NOR = 0x64,
+        BIT_OR = 0x61,
+        BIT_XOR = 0x62,
+        BIT_NOR = 0x63,
+        BIT_NOT = 0x64,
 
-        // Utilities
+        // ============================================================
+        // Utility Operations
+        // ============================================================
         LOAD_ARGC = 0x70,
         GET_SID_STRING = 0x71,
 
-        // Lookup operations
+        // ============================================================
+        // Lookup Operations (Environment Access)
+        // ============================================================
         LOOKUP_INT = 0x80,
         LOOKUP_FLOAT = 0x81,
         LOOKUP_POINTER = 0x82,
 
-        // Indirect load operations
+        // ============================================================
+        // Indirect Load Operations (Memory Access via Pointer)
+        // ============================================================
         LOAD_IND_INT = 0x90,
         LOAD_IND_FLOAT = 0x91,
         LOAD_IND_POINTER = 0x92,
 
-        // Indirect store operations
+        // ============================================================
+        // Indirect Store Operations (Memory Access via Pointer)
+        // ============================================================
         STORE_IND_INT = 0xA0,
         STORE_IND_FLOAT = 0xA1,
         STORE_IND_POINTER = 0xA2,
 
-        // Static load operations
+        // ============================================================
+        // Static Load Operations (Data Segment Access)
+        // ============================================================
         LOAD_STATIC_INT = 0xB0,
         LOAD_STATIC_FLOAT = 0xB1,
         LOAD_STATIC_POINTER = 0xB2,
+
+        // ============================================================
+        // Immediate Value Load Operations
+        // ============================================================
+        LOAD_IMMEDIATE_FLOAT = 0xC0,
+        LOAD_IMMEDIATE_PTR = 0xC1,
+
+        // ============================================================
+        // Extended Operations (Reserved for Future Use)
+        // ============================================================
+        CALL_BY_NAME = 0xD0,  // For direct function calling by name
+        CREATE_LAMBDA = 0xD1, // For creating lambda closures
+
+        // ============================================================
+        // Debug Operations
+        // ============================================================
+        DEBUG_BREAK = 0xFE,   // For debugger breakpoints
+        NOOP = 0xFF           // No operation
     };
 
     // ============================================================================
@@ -182,6 +226,7 @@ namespace vm {
             instr.opcode = op;
             return instr;
         }
+
 
         // ------------------------------------------------------------------------
         // Utility Methods

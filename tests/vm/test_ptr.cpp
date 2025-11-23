@@ -1,227 +1,153 @@
 #include "gtest/gtest.h"
 #include "vm/ptr.hpp"
-#include "vm/types.hpp"
+#include <vector>
 
 using namespace vm;
 
-// Mock global memory for testing
-u8* vm::g_ee_main_mem = new u8[1024 * 1024]; // 1MB test memory
-
-namespace {
-    // Test structures
-    struct TestStruct {
-        s32 value;
-        f32 data;
-    };
-
-    struct DerivedStruct : TestStruct {
-        s64 extra;
-    };
-}
+// Тестовые структуры
+struct TestStruct {
+    int value;
+    char name[16];
+};
 
 class PtrTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Initialize test memory
-        std::memset(g_ee_main_mem, 0, 1024 * 1024);
+        // Создаем тестовый пул вручную для тестов Ptr
+        test_pool_base = new u8[1024];
+        g_module_pool_base = test_pool_base;
+
+        // Инициализируем тестовые данные в пуле
+        test_data_offset = 100;
+        TestStruct* data = reinterpret_cast<TestStruct*>(test_pool_base + test_data_offset);
+        data->value = 42;
+        strcpy(data->name, "test");
+
+        array_data_offset = 200;
+        for (int i = 0; i < 5; i++) {
+            TestStruct* elem = reinterpret_cast<TestStruct*>(test_pool_base + array_data_offset + i * sizeof(TestStruct));
+            elem->value = i * 10;
+            strcpy(elem->name, std::to_string(i).c_str());
+        }
     }
 
     void TearDown() override {
-        // Cleanup
-        std::memset(g_ee_main_mem, 0, 1024 * 1024);
+        delete[] test_pool_base;
+        g_module_pool_base = nullptr;
     }
+
+    u8* test_pool_base;
+    u32 test_data_offset;
+    u32 array_data_offset;
 };
 
-TEST_F(PtrTest, DefaultConstructor) {
-    Ptr<TestStruct> ptr;
-    EXPECT_TRUE(ptr.is_null());
-    EXPECT_FALSE(ptr.valid());
-    EXPECT_EQ(ptr.get_offset(), 0);
-}
 
-TEST_F(PtrTest, ExplicitOffsetConstructor) {
-    Ptr<TestStruct> ptr(100);
+TEST_F(PtrTest, BasicCreationAndDereference) {
+    // Явное создание через конструктор
+    Ptr<TestStruct> ptr = Ptr<TestStruct>(test_data_offset);
+
     EXPECT_FALSE(ptr.is_null());
-    EXPECT_EQ(ptr.get_offset(), 100);
+    EXPECT_EQ(ptr->value, 42);
+    EXPECT_STREQ(ptr->name, "test");
 }
 
-TEST_F(PtrTest, MakePtrFromPointer) {
-    TestStruct obj{ 42, 3.14f };
-    TestStruct* raw_ptr = &obj;
+TEST_F(PtrTest, NullPointer) {
+    Ptr<TestStruct> null_ptr = Ptr<TestStruct>(0);  // Явно через конструктор
 
+    EXPECT_TRUE(null_ptr.is_null());
+    EXPECT_FALSE(static_cast<bool>(null_ptr));
+    EXPECT_EQ(null_ptr.c(), nullptr);
+}
+
+TEST_F(PtrTest, PointerArithmetic) {
+    Ptr<TestStruct> base_ptr = Ptr<TestStruct>(test_data_offset);
+
+    // Арифметика указателей (уже учитывает sizeof)
+    Ptr<TestStruct> ptr2 = base_ptr + 1;
+    EXPECT_EQ(ptr2.offset, test_data_offset + sizeof(TestStruct));
+
+    Ptr<TestStruct> ptr3 = base_ptr - 1;
+    EXPECT_EQ(ptr3.offset, test_data_offset - sizeof(TestStruct));
+
+    // Разность указателей
+    EXPECT_EQ(ptr2 - base_ptr, 1);
+    EXPECT_EQ(base_ptr - ptr3, 1);
+}
+
+TEST_F(PtrTest, TypeCasting) {
+    Ptr<TestStruct> struct_ptr = Ptr<TestStruct>(test_data_offset);
+
+    // Кастинг к другому типу (теперь без static_assert)
+    Ptr<u8> byte_ptr = struct_ptr.cast<u8>();
+    EXPECT_EQ(byte_ptr.offset, test_data_offset);
+
+    // Кастинг обратно
+    Ptr<TestStruct> back_ptr = byte_ptr.cast<TestStruct>();
+    EXPECT_EQ(back_ptr.offset, test_data_offset);
+}
+
+TEST_F(PtrTest, MakePtrFromRawPointer) {
+    // Получаем сырой указатель на данные в пуле
+    TestStruct* raw_ptr = reinterpret_cast<TestStruct*>(test_pool_base + test_data_offset);
+
+    // Создаем Ptr через make_ptr
     Ptr<TestStruct> ptr = make_ptr(raw_ptr);
-    EXPECT_TRUE(ptr.valid());
-    EXPECT_EQ(ptr.get_offset(), static_cast<u32>(reinterpret_cast<u8*>(&obj) - g_ee_main_mem));
+
+    EXPECT_FALSE(ptr.is_null());
+    EXPECT_EQ(ptr.offset, test_data_offset);
+    EXPECT_EQ(ptr->value, 42);
 }
 
-TEST_F(PtrTest, MakePtrNull) {
+TEST_F(PtrTest, MakePtrFromNull) {
     Ptr<TestStruct> ptr = make_ptr<TestStruct>(nullptr);
     EXPECT_TRUE(ptr.is_null());
 }
 
-TEST_F(PtrTest, DereferenceOperator) {
-    TestStruct obj{ 123, 2.71f };
-    Ptr<TestStruct> ptr = make_ptr(&obj);
-
-    EXPECT_EQ((*ptr).value, 123);
-    EXPECT_FLOAT_EQ((*ptr).data, 2.71f);
-
-    // Modify through dereference
-    (*ptr).value = 456;
-    EXPECT_EQ(obj.value, 456);
-}
-
-TEST_F(PtrTest, ArrowOperator) {
-    TestStruct obj{ 789, 1.41f };
-    Ptr<TestStruct> ptr = make_ptr(&obj);
-
-    EXPECT_EQ(ptr->value, 789);
-    EXPECT_FLOAT_EQ(ptr->data, 1.41f);
-
-    ptr->value = 999;
-    EXPECT_EQ(obj.value, 999);
-}
-
-TEST_F(PtrTest, ConstDereference) {
-    TestStruct obj{ 111, 9.99f };
-    const Ptr<TestStruct> ptr = make_ptr(&obj);
-
-    EXPECT_EQ(ptr->value, 111);
-    EXPECT_FLOAT_EQ((*ptr).data, 9.99f);
-}
 
 TEST_F(PtrTest, ComparisonOperators) {
-    Ptr<TestStruct> ptr1(100);
-    Ptr<TestStruct> ptr2(100);
-    Ptr<TestStruct> ptr3(200);
+    Ptr<TestStruct> ptr1(test_data_offset);
+    Ptr<TestStruct> ptr2(test_data_offset + 100);
+    Ptr<TestStruct> ptr3(test_data_offset);
 
-    EXPECT_TRUE(ptr1 == ptr2);
-    EXPECT_FALSE(ptr1 == ptr3);
-    EXPECT_TRUE(ptr1 != ptr3);
-    EXPECT_TRUE(ptr1 < ptr3);
-    EXPECT_TRUE(ptr3 > ptr1);
-    EXPECT_TRUE(ptr1 <= ptr2);
-    EXPECT_TRUE(ptr1 >= ptr2);
+    EXPECT_TRUE(ptr1 == ptr3);
+    EXPECT_TRUE(ptr1 != ptr2);
+    EXPECT_TRUE(ptr1 < ptr2);
+    EXPECT_TRUE(ptr2 > ptr1);
+    EXPECT_TRUE(ptr1 <= ptr3);
+    EXPECT_TRUE(ptr1 >= ptr3);
 }
 
-TEST_F(PtrTest, PointerArithmetic) {
-    Ptr<TestStruct> ptr(100);
+TEST_F(PtrTest, ArrayAccess) {
+    Ptr<TestStruct> array_ptr(array_data_offset);
 
-    // Addition
-    Ptr<TestStruct> ptr_plus = ptr + 2;
-    EXPECT_EQ(ptr_plus.get_offset(), 100 + 2 * sizeof(TestStruct));
-
-    // Subtraction
-    Ptr<TestStruct> ptr_minus = ptr - 1;
-    EXPECT_EQ(ptr_minus.get_offset(), 100 - sizeof(TestStruct));
-
-    // Difference between pointers
-    std::ptrdiff_t diff = ptr_plus - ptr;
-    EXPECT_EQ(diff, 2);
-}
-
-TEST_F(PtrTest, IncrementDecrement) {
-    Ptr<TestStruct> ptr(100);
-
-    // Prefix increment
-    Ptr<TestStruct> pre_inc = ++ptr;
-    EXPECT_EQ(ptr.get_offset(), 100 + sizeof(TestStruct));
-    EXPECT_EQ(pre_inc.get_offset(), ptr.get_offset());
-
-    // Postfix increment
-    Ptr<TestStruct> post_inc = ptr++;
-    EXPECT_EQ(post_inc.get_offset(), 100 + sizeof(TestStruct));
-    EXPECT_EQ(ptr.get_offset(), 100 + 2 * sizeof(TestStruct));
-
-    // Prefix decrement
-    Ptr<TestStruct> pre_dec = --ptr;
-    EXPECT_EQ(ptr.get_offset(), 100 + sizeof(TestStruct));
-
-    // Postfix decrement
-    Ptr<TestStruct> post_dec = ptr--;
-    EXPECT_EQ(post_dec.get_offset(), 100 + sizeof(TestStruct));
-    EXPECT_EQ(ptr.get_offset(), 100);
-}
-
-TEST_F(PtrTest, TypeCasting) {
-    Ptr<DerivedStruct> derived_ptr(100);
-
-    // Upcast
-    Ptr<TestStruct> base_ptr = derived_ptr.template cast<TestStruct>();
-    EXPECT_EQ(base_ptr.get_offset(), 100);
-
-    // Downcast (should work for same offset)
-    Ptr<DerivedStruct> back_ptr = base_ptr.template cast<DerivedStruct>();
-    EXPECT_EQ(back_ptr.get_offset(), 100);
-}
-
-TEST_F(PtrTest, CVoidSpecialization) {
-    Ptr<void> void_ptr(150);
-    EXPECT_TRUE(void_ptr.valid());
-    EXPECT_EQ(void_ptr.get_offset(), 150);
-
-    // Can cast to typed pointer
-    Ptr<TestStruct> typed_ptr = void_ptr.cast<TestStruct>();
-    EXPECT_EQ(typed_ptr.get_offset(), 150);
-
-    // But no dereference or arithmetic
-    // void_ptr++; // This should not compile
-    // *void_ptr;  // This should not compile
-}
-
-TEST_F(PtrTest, BoolConversion) {
-    Ptr<TestStruct> null_ptr;
-    Ptr<TestStruct> valid_ptr(100);
-
-    EXPECT_FALSE(static_cast<bool>(null_ptr));
-    EXPECT_TRUE(static_cast<bool>(valid_ptr));
-
-    if (valid_ptr) {
-        SUCCEED();
-    }
-    else {
-        FAIL();
+    // Доступ к элементам массива через арифметику
+    for (int i = 0; i < 5; i++) {
+        Ptr<TestStruct> element_ptr = array_ptr + i;
+        EXPECT_EQ(element_ptr->value, i * 10);
+        EXPECT_STREQ(element_ptr->name, std::to_string(i).c_str());
     }
 }
 
-TEST_F(PtrTest, CMethod) {
-    TestStruct obj{ 42, 3.14f };
-    Ptr<TestStruct> ptr = make_ptr(&obj);
+TEST_F(PtrTest, ConstPointer) {
+    Ptr<TestStruct> mutable_ptr(test_data_offset);
+    Ptr<const TestStruct> const_ptr = mutable_ptr.cast<const TestStruct>();
 
-    TestStruct* raw_ptr = ptr.c();
-    EXPECT_EQ(raw_ptr, &obj);
-    EXPECT_EQ(raw_ptr->value, 42);
-
-    const Ptr<TestStruct> const_ptr = ptr;
-    const TestStruct* const_raw_ptr = const_ptr.c();
-    EXPECT_EQ(const_raw_ptr, &obj);
-}
-
-TEST_F(PtrTest, NullPtrCMethod) {
-    Ptr<TestStruct> null_ptr;
-    EXPECT_EQ(null_ptr.c(), nullptr);
-}
-
-TEST_F(PtrTest, ConstConversion) {
-    TestStruct obj{ 42, 3.14f };
-
-    // Non-const to const conversion should work
-    Ptr<TestStruct> non_const_ptr = make_ptr(&obj);
-    Ptr<const TestStruct> const_ptr = non_const_ptr;  // This should work now
-
+    // Можем читать через const
     EXPECT_EQ(const_ptr->value, 42);
-    EXPECT_FLOAT_EQ(const_ptr->data, 3.14f);
 
-    // Const to non-const should fail at compile time
-    // Ptr<TestStruct> bad_conversion = const_ptr; // This should still fail
+    // Изменяем через mutable
+    mutable_ptr->value = 100;
+    EXPECT_EQ(const_ptr->value, 100); // Видим изменения
 }
 
-TEST_F(PtrTest, MakePtrConst) {
-    TestStruct obj{ 123, 2.71f };
-    const TestStruct* const_ptr = &obj;
+TEST_F(PtrTest, DifferentDataTypes) {
+    // Тестируем Ptr с разными типами
+    Ptr<int> int_ptr(test_data_offset);
+    Ptr<float> float_ptr(test_data_offset);
+    Ptr<char> char_ptr(test_data_offset);
 
-    // Should work with const pointers
-    Ptr<const TestStruct> ptr = make_ptr(const_ptr);
-    EXPECT_EQ(ptr->value, 123);
-    EXPECT_FLOAT_EQ(ptr->data, 2.71f);
+    // Все должны работать со своими типами
+    EXPECT_EQ(int_ptr.c(), reinterpret_cast<int*>(test_pool_base + test_data_offset));
+    EXPECT_EQ(float_ptr.c(), reinterpret_cast<float*>(test_pool_base + test_data_offset));
+    EXPECT_EQ(char_ptr.c(), reinterpret_cast<char*>(test_pool_base + test_data_offset));
 }
