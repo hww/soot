@@ -2,6 +2,7 @@
 #include "virtual_machine.hpp"
 #include "native_func.hpp"
 #include "binary_file.hpp"
+#include "binary_file_builder.hpp"
 #include "util/log.h"
 
 using namespace vm;
@@ -42,20 +43,20 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder binary;
+    BinaryFileBuilder builder;
 
     // Простая функция: return 42
     std::vector<Instruction> code;
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 42)); // r1 = 42
     code.push_back(Instruction::create_a(Opcode::RETURN, 1)); // return r1
 
-    binary.add_function(SID("simple_answer"), code);
+    builder.add_function(SID("simple_answer"), code);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
-    auto module = std::make_shared<vm::Module>(SID("test_module"), std::move(binary.build_file()));
-    auto bytecode = module->resolve_symbol(SID("simple_answer"));
+    auto module = builder.build_and_load_to_pool();
+    auto bytecode = module->resolve_symbol(SID("simple_answer"),SID("dunction"));
 
-    Variant result = vm.execute_bytecode(bytecode);
+    Variant result = vm.execute_bytecode((ByteCode*)bytecode->data_ptr.c());
 
     EXPECT_FALSE(result.is_null());
     EXPECT_EQ(result.to_int(), 42);
@@ -78,9 +79,8 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
 
     binary.add_function(SID("calculate"), code);
 
-    auto module = std::make_shared<vm::Module>(SID("test_module"), std::move(binary.build_file()));
-    auto bytecode = module->resolve_symbol(SID("calculate"));
-
+    auto module = binary.build_and_load_to_pool();
+    auto bytecode = module->resolve_code(SID("calculate"));
     Variant result = vm.execute_bytecode(bytecode);
 
     EXPECT_EQ(result.to_int(), 16); // (5 + 3) * 2 = 16
@@ -103,8 +103,9 @@ TEST_F(VirtualMachineTest, FunctionCall) {
     builder.add_function(SID("main"), main_code);
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
-    auto module = std::make_shared<vm::Module>(SID("test_module"), std::move(builder.build_file()));
-    auto bytecode = module->resolve_symbol(SID("main"));
+
+    auto module = builder.build_and_load_to_pool();
+    auto bytecode = module->resolve_code(SID("main"));
 
     Variant result = vm.execute_bytecode(bytecode);
 
@@ -129,17 +130,17 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     REGISTER_NATIVE_FUNCTION(SID("test_add"), test_func);
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder binary;
+    BinaryFileBuilder builder;
 
     // Упрощенная функция которая просто возвращает значение
     std::vector<Instruction> code;
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 30));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    binary.add_function(SID("test_native_call"), code);
+    builder.add_function(SID("test_native_call"), code);
 
-    auto module = std::make_shared<vm::Module>(SID("test_module"), std::move(binary.build_file()));
-    auto bytecode = module->resolve_symbol(SID("test_native_call"));
+    auto module = builder.build_and_load_to_pool();
+    auto bytecode = module->resolve_code(SID("test_native_call"));
 
     // Проверяем что нативная функция работает отдельно
     Variant args[2] = { Variant(10), Variant(20) };
@@ -155,7 +156,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder binary;
+    BinaryFileBuilder builder;
 
     // Упрощенная функция с условным переходом
     std::vector<Instruction> code;
@@ -163,10 +164,10 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 10));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    binary.add_function(SID("conditional"), code);
+    builder.add_function(SID("conditional"), code);
 
-    auto module = std::make_shared<vm::Module>(SID("test_module"), std::move(binary.build_file()));
-    auto bytecode = module->resolve_symbol(SID("conditional"));
+    auto module = builder.build_and_load_to_pool();
+    auto bytecode = module->resolve_code(SID("conditional"));
 
     Variant result = vm.execute_bytecode(bytecode);
     EXPECT_EQ(result.to_int(), 10);
@@ -201,10 +202,12 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
     binary2.add_function(SID("func2"), code2);
 
-    auto module1 = std::make_shared<vm::Module>(SID("test_module1"), std::move(binary1.build_file()));
-    auto module2 = std::make_shared<vm::Module>(SID("test_module1"), std::move(binary1.build_file()));
-    auto bytecode1 = module1->resolve_symbol(SID("func1"));
-    auto bytecode2 = module2->resolve_symbol(SID("func2"));
+
+    auto module1 = binary1.build_and_load_to_pool();
+    auto module2 = binary2.build_and_load_to_pool();
+
+    auto bytecode1 = module1->resolve_code(SID("func1"));
+    auto bytecode2 = module2->resolve_code(SID("func2"));
 
     Variant result1 = vm.execute_bytecode(bytecode1);
     Variant result2 = vm.execute_bytecode(bytecode2);

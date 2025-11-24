@@ -27,8 +27,9 @@ namespace vm {
         // ------------------------------------------------------------------------
         // Execution State
         // ------------------------------------------------------------------------
+        ByteCode* byte_code = nullptr;
         Instruction* code_ptr = nullptr;    // Pointer to bytecode instructions
-        Record* data_ptr = nullptr;         // Pointer to static data
+        u8* data_ptr = nullptr;             // Pointer to static data
         StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
         u32 pc = 0;                         // Program counter
         u32 argc = 0;                       // Number of arguments
@@ -47,8 +48,9 @@ namespace vm {
             initialize_registers();
         }
 
-        StackFrame(Instruction* code, Record* data, StackFrame* parent = nullptr)
-            : code_ptr(code), data_ptr(data), parent_ptr(parent), pc(0), argc(0), ret_num(0) {
+
+        StackFrame(ByteCode* bytecode, StackFrame* parent = nullptr)
+            : byte_code(bytecode), code_ptr(bytecode->get_code_ptr()), data_ptr(bytecode->get_data_ptr()), parent_ptr(parent), pc(0), argc(0), ret_num(0) {
             initialize_registers();
         }
 
@@ -119,20 +121,20 @@ namespace vm {
         // Data Access
         // ------------------------------------------------------------------------
 
-        s32 get_static_s32(u32 index) const {
+        vm_int get_static_int(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             // Data is stored as Variants, so we need to extract s32
-            return data_ptr[index].as_s32;
+            return *((s32*)(data_ptr + offset));
         }
 
-        f32 get_static_f32(u32 index) const {
+        vm_float get_static_float(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return data_ptr[index].as_f32;
+            return *((float*)(data_ptr + offset));
         }
 
-        const void* get_static_pointer(u32 index) const {
+        const void* get_static_pointer(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return data_ptr[index].as_ptr;
+            return (void*)(data_ptr + offset);
         }
 
         // ------------------------------------------------------------------------
@@ -191,8 +193,8 @@ namespace vm {
     // Stack Frame Management Functions
     // ============================================================================
 
-    inline StackFrame* create_stack_frame(Instruction* code, Record* data, StackFrame* parent = nullptr) {
-        return new StackFrame(code, data, parent);
+    inline StackFrame* create_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
+        return new StackFrame(bytecode, parent);
     }
 
     inline void destroy_stack_frame(StackFrame* frame) {
@@ -201,8 +203,8 @@ namespace vm {
         }
     }
 
-    inline StackFrame* push_stack_frame(Instruction* code, Record* data, StackFrame* parent) {
-        return create_stack_frame(code, data, parent);
+    inline StackFrame* push_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
+        return create_stack_frame(bytecode, parent);
     }
 
     inline StackFrame* pop_stack_frame(StackFrame* frame) {

@@ -3,72 +3,68 @@
 
 namespace vm {
 
-    Module::Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file)
-        : name(module_name), binary(std::move(binary_file)) {
+    Definition* Module::get_export(StringId name) const {
+        auto it = export_table.find(name);
+        return it != export_table.end() ? it->second : nullptr;
+    }
 
-        // Build exports table from binary definitions
-        if (binary && binary->is_loaded()) {
-            auto header = binary->get_header();
-            for (u32 i = 0; i < header->defs_count; i++) {
-                auto def = header->get_definition(i);
-                exports[def->name] = def;
+    void Module::add_import(StringId symbol_name, std::shared_ptr<Module> module) {
+        import_table[symbol_name] = std::move(module);
+    }
+
+    std::shared_ptr<Module> Module::get_import(StringId symbol_name) const {
+        auto it = import_table.find(symbol_name);
+        return it != import_table.end() ? it->second : nullptr;
+    }
+
+    Definition* Module::resolve_symbol(StringId name) {
+        // 1. Ищем в своих экспортах
+        if (auto def = get_export(name)) {
+            if (binary_file && binary_file->is_valid()) {
+                // НОВЫЙ API - data_ptr уже Ptr<ByteCode>
+                return def;
             }
         }
-    }
 
-    Definition* Module::find_export(StringId name) const {
-        auto it = exports.find(name);
-        return it != exports.end() ? it->second : nullptr;
-    }
-    
-    Definition* Module::find_export(StringId name, StringId type) const {
-        auto it = exports.find(name);
-        if (it != exports.end())
-            return nullptr;
-        if (it->second->type == type)
-            return it->second;
+        // 2. Ищем в импортах
+        if (auto import_module = get_import(name)) {
+            return import_module->resolve_export(name);
+        }
+
         return nullptr;
     }
 
-    ByteCode* Module::find_function(StringId name) const {
-        auto item = find_export(name, SID("function"));
-        return (item == nullptr) ? nullptr : (ByteCode*)item->data_ptr.c();
+    Definition* Module::resolve_symbol(StringId name, StringId type) {
+        auto definition = resolve_symbol(name);
+        if (definition && definition->type == type)
+            return definition;
+        return nullptr;
     }
 
+    ByteCode* Module::resolve_code(StringId name) {
+        auto definition = resolve_symbol(name);
+        if (definition && definition->type == SID("dunction"))
+            return (ByteCode*)definition->data_ptr.c();
+        return nullptr;
+    }
+
+    Definition* Module::resolve_export(StringId name) {
+        // Ищем ТОЛЬКО в своих экспортах
+        if (auto def = get_export(name)) {
+            if (binary_file && binary_file->is_valid()) {
+                return def;
+            }
+        }
+        return nullptr;
+    }
 
     std::string Module::to_string() const {
-        return std::format("Module('{}', exports:{}, deps:{}, valid:{})",
-            string_id::to_string(name), exports.size(), dependencies.size(), is_valid());
-    }
-
-
-    // Resolve ищет ТОЛЬКО в себе и прямых импортах
-    ByteCode* Module::resolve_symbol(StringId name) {
-        // 1. Ищем в своих экспортах
-        if (auto it = exports.find(name); it != exports.end()) {
-            return get_bytecode_from_definition(it->second);
-        }
-
-        // 2. Ищем в импортах (только прямые, без рекурсии!)
-        if (auto it = imports.find(name); it != imports.end()) {
-            // Ищем в ТОМ модуле который импортирован под этим именем
-            return it->second->resolve_export(name);  // ищем только в экспортах того модуля
-        }
-
-        return nullptr;
-    }
-
-    // Ищет ТОЛЬКО в своих экспортах (для resolve_symbol импортов)
-    ByteCode* Module::resolve_export(StringId name) {
-        if (auto it = exports.find(name); it != exports.end()) {
-            return get_bytecode_from_definition(it->second);
-        }
-        return nullptr;
-    }
-
-    // Линковка - добавляет импорт
-    void Module::add_import(StringId symbol_name, std::shared_ptr<Module> module) {
-        imports[symbol_name] = module;
+        return std::format("Module('{}', state:{}, exports:{}, imports:{}, gen:{})",
+            string_id::to_string(full_name),
+            static_cast<int>(load_state),
+            export_table.size(),
+            import_table.size(),
+            generation);
     }
 
 } // namespace vm

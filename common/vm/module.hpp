@@ -1,54 +1,151 @@
-#pragma once
+﻿#pragma once
 
 #include "types.hpp"
-#include "binary_file.hpp"
-#include <unordered_map>
+#include "binary_file.hpp"  // ← ТЕПЕРЬ БЕЗОПАСНО - нет цикла
+#include "util/log.h"
 #include <memory>
+#include <unordered_map>
 #include <filesystem>
 
 namespace vm {
 
+    struct ByteCode;
+
     class Module {
     public:
+        enum class LoadState {
+            METADATA,       // Только метаданные из DCI
+            BINARY_LOADED,  // + бинарные данные в пуле  
+            LINKED          // + разрешены зависимости
+        };
+
         // Identity
-        StringId name;
-        u32 generation{ 0 };
+        StringId full_name = 0;
+        StringId short_name = 0;
         std::filesystem::path file_path;
 
-        // Core data
-        std::unique_ptr<BinaryFile> binary;
+        // Metadata
+        std::vector<StringId> imports;
+        std::vector<StringId> exports;
+        u32 binary_size = 0;
 
-        // Exports/Imports
-        std::unordered_map<StringId, Definition*> exports;
-        std::unordered_map<StringId, std::shared_ptr<Module>> imports; // local_name -> module_name
-        std::vector<StringId> dependencies;
+        // Runtime state
+        LoadState load_state = LoadState::METADATA;
+        u32 generation = 0;
+        u32 load_order = 0;
 
-        // State
-        bool is_initialized{ false };
-        u32 load_order{ 0 };
+        // Binary data - ТЕПЕРЬ СЫРОЙ УКАЗАТЕЛЬ!
+        BinaryFile* binary_file = nullptr;
+        void* pool_address = nullptr;
+
+        // Linking data
+        std::unordered_map<StringId, Definition*> export_table;
+        std::unordered_map<StringId, std::shared_ptr<Module>> import_table;
 
     public:
-        Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file);
+        Module() = default;
 
-        // Basic methods
-        ByteCode* resolve_symbol(StringId name);
-        Definition* find_export(StringId name) const;
-        Definition* find_export(StringId name, StringId type) const;
-        ByteCode* find_function(StringId name) const;
+        Module(StringId full_name, StringId short_name, std::filesystem::path file_path)
+            : full_name(full_name), short_name(short_name), file_path(std::move(file_path)) {
+        }
 
-        bool has_export(StringId name) const { return exports.count(name) > 0; }
+        // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
+        Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file)
+            : full_name(module_name), short_name(module_name) {
+            if (binary_file) {
+                // Для тестов - создаем копию в куче
+                this->binary_file = new BinaryFile(*binary_file);
+                load_state = LoadState::BINARY_LOADED;
+            }
+        }
 
-        void add_dependency(StringId module_name) { dependencies.push_back(module_name); }
-        void add_export(StringId name, Definition* def) { exports[name] = def; }
+        ~Module() {
+            // Чистим только если НЕ из пула
+            if (binary_file && pool_address == nullptr) {
+                delete binary_file;
+            }
+        }
+
+        bool is_valid_metadata() const { return full_name != 0 && !file_path.empty(); }
+        bool is_binary_loaded() const { return load_state >= LoadState::BINARY_LOADED && binary_file != nullptr; }
+        bool is_linked() const { return load_state >= LoadState::LINKED; }
+
+        // Export management
+        bool has_export(StringId name) const { return export_table.count(name) > 0; }
+        Definition* get_export(StringId name) const;
+        void add_export(StringId name, Definition* def) { export_table[name] = def; }
+
+        // Import management  
         void add_import(StringId symbol_name, std::shared_ptr<Module> module);
+        std::shared_ptr<Module> get_import(StringId symbol_name) const;
+
+        // Symbol resolution - АДАПТИРУЕМ ПОД НОВЫЙ API
+        Definition* resolve_symbol(StringId name);
+        Definition* resolve_export(StringId name);
+        Definition* resolve_symbol(StringId name, StringId type);
+        ByteCode* resolve_code(StringId name);
+
+        // Callback для пула при релокации
+        void on_pool_relocation(void* new_pool_base) {
+            if (binary_file && pool_address) {
+                binary_file->relocate_pointers(new_pool_base);
+                generation++;
+                lg::debug("Module {} relocated to new base", string_id::to_string(full_name));
+            }
+        }
 
         std::string to_string() const;
-        bool is_valid() const { return binary && binary->is_loaded(); }
 
-        ByteCode* resolve_export(StringId name);
+        std::string inspect() const {
+            std::string result = std::format("Module[{}]\n", string_id::to_string(full_name));
+            result += std::format("  Short name: {}\n", string_id::to_string(short_name));
+            result += std::format("  File: {}\n", file_path.string());
+            result += std::format("  Load state: {}\n", load_state_to_string(load_state));
+            result += std::format("  Generation: {}, Load order: {}\n", generation, load_order);
+            result += std::format("  Binary size: {} bytes\n", binary_size);
+
+
+            result += std::format("  Pool address: {}\n", pool_address ? "set" : "null");
+
+            // Импорты
+            result += std::format("  Imports: {} symbols\n", imports.size());
+            for (size_t i = 0; i < imports.size() && i < 5; i++) { // показываем первые 5
+                result += std::format("    - {}\n", string_id::to_string(imports[i]));
+            }
+            if (imports.size() > 5) {
+                result += std::format("    ... and {} more\n", imports.size() - 5);
+            }
+
+            // Экспорты
+            result += std::format("  Exports: {} symbols\n", exports.size());
+            for (size_t i = 0; i < exports.size() && i < 5; i++) {
+                result += std::format("    - {}\n", string_id::to_string(exports[i]));
+            }
+            if (exports.size() > 5) {
+                result += std::format("    ... and {} more\n", exports.size() - 5);
+            }
+
+            // Таблица экспорта
+            result += std::format("  Export table: {} entries\n", export_table.size());
+            result += std::format("  Import table: {} modules\n", import_table.size());
+
+            if (binary_file) {
+                result += std::format("  Binary: {}\n", binary_file->inspect());
+            }
+            else {
+                result += "  Binary: not loaded\n";
+            }
+
+            return result;
+        }
     private:
-        ByteCode* get_bytecode_from_definition(Definition* def) {
-            return binary->get_header()->get_definition_ptr<ByteCode>(def->data_ptr.offset).c();
+        static std::string load_state_to_string(LoadState state) {
+            switch (state) {
+            case LoadState::METADATA: return "METADATA";
+            case LoadState::BINARY_LOADED: return "BINARY_LOADED";
+            case LoadState::LINKED: return "LINKED";
+            default: return "UNKNOWN";
+            }
         }
     };
 

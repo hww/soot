@@ -21,29 +21,6 @@ namespace vm {
     }
 
     // ------------------------------------------------------------------------
-    // Binary File Management (без изменений)
-    // ------------------------------------------------------------------------
-
-    bool VirtualMachine::load_binary(std::unique_ptr<BinaryFile> binary) {
-        if (!binary || !binary->is_loaded()) {
-            lg::error("Cannot load invalid binary");
-            return false;
-        }
-
-        binaries_.push_back(std::move(binary));
-        lg::info("Loaded binary: {}", binaries_.back()->to_string());
-        return true;
-    }
-
-    bool VirtualMachine::load_binary_file(const std::string& filename) {
-        auto binary = std::make_unique<BinaryFile>();
-        if (binary->load_from_file(filename)) {
-            return load_binary(std::move(binary));
-        }
-        return false;
-    }
-
-    // ------------------------------------------------------------------------
     // Process Management (НОВОЕ - согласно нашему базису)
     // ------------------------------------------------------------------------
 

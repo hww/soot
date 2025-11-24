@@ -8,7 +8,7 @@
 #include "native_func.hpp"
 #include "util/assert.h"
 #include "util/log.h"
-#include "module_hub.hpp"
+#include "module_manager.hpp"
 #include <unordered_map>
 #include <memory>
 #include <format>
@@ -27,6 +27,44 @@ namespace vm {
     // ============================================================================
 
     using NativeFunction = Variant(*)(u32 argc, const Variant* argv);
+
+    // ============================================================================
+    // Errors
+    // ============================================================================
+
+    /* Erros */
+    class VmError : public std::exception {
+    public:
+        explicit VmError(const std::string& msg) : message(msg) {}
+        const char* what() const noexcept override { return message.c_str(); }
+    private:
+        std::string message;
+    };
+
+    class VmTypeError : public std::exception {
+    public:
+        explicit VmTypeError(const std::string& msg, StringId expected, StringId actual) : 
+            message(fmt::format("{} expected type {} actual {}", 
+                msg, string_id::to_cstring(expected), string_id::to_cstring(actual))) { }
+        explicit VmTypeError(const std::string& msg, StringId actual) :
+            message(fmt::format("{} unexpected type {}",
+                msg, string_id::to_cstring(actual))) {
+        }
+        const char* what() const noexcept override { return message.c_str(); }
+    private:
+        std::string message;
+    };
+
+    class VmResolvingError : public std::exception {
+    public:
+        explicit VmResolvingError(const std::string& msg, StringId name) :
+            message(fmt::format("{} can't resolve for name {}",
+                msg, string_id::to_cstring(name))) {
+        }
+        const char* what() const noexcept override { return message.c_str(); }
+    private:
+        std::string message;
+    };
 
     // ============================================================================
     // Virtual Machine Core
@@ -109,7 +147,7 @@ namespace vm {
                 case Opcode::CALL: {
                     Variant& func_var = current_frame->get_register(instr.a);
 
-                    if (!func_var.is_lambda()) {
+                    if (!func_var.is_function()) {
                         lg::error("Call target is not a lambda: {}", func_var.to_string());
                         current_frame = nullptr;
                         break;
@@ -550,24 +588,22 @@ namespace vm {
                 case Opcode::LOOKUP_INT: {
                     Variant& dest = current_frame->get_register(instr.a);
                     u32 name_id = instr.imm16;
-                    // TODO: Implement environment lookup
-                    lg::warn("LOOKUP_INT not implemented - needs environment access");
+                    dest = Variant(resolve_integer(current_frame, name_id));
                     break;
                 }
 
                 case Opcode::LOOKUP_FLOAT: {
                     Variant& dest = current_frame->get_register(instr.a);
                     u32 name_id = instr.imm16;
-                    // TODO: Implement environment lookup
-                    lg::warn("LOOKUP_FLOAT not implemented - needs environment access");
+                    dest = Variant(resolve_float(current_frame, name_id));
                     break;
                 }
 
                 case Opcode::LOOKUP_POINTER: {
                     Variant& dest = current_frame->get_register(instr.a);
                     u32 name_id = instr.imm16;
-                    // TODO: Implement environment lookup
-                    lg::warn("LOOKUP_POINTER not implemented - needs environment access");
+                    auto module = current_frame->byte_code->owner_module;
+                    dest = Variant(resolve_pointer(current_frame, name_id));
                     break;
                 }
 
@@ -657,25 +693,25 @@ namespace vm {
                 // ============================================================
                 case Opcode::LOAD_STATIC_INT: {
                     Variant& dest = current_frame->get_register(instr.a);
-                    u32 data_index = instr.imm16;
-                    Record* data_record = &current_frame->data_ptr[data_index];
-                    dest = Variant(data_record->as_s32);
+                    u32 offset = instr.imm16;
+                    vm_int data_record = current_frame->get_static_int(offset);
+                    dest = Variant(data_record);
                     break;
                 }
 
                 case Opcode::LOAD_STATIC_FLOAT: {
                     Variant& dest = current_frame->get_register(instr.a);
-                    u32 data_index = instr.imm16;
-                    Record* data_record = &current_frame->data_ptr[data_index];
-                    dest = Variant(data_record->as_f32);
+                    u32 offset = instr.imm16;
+                    vm_float data_record = current_frame->get_static_float(offset);
+                    dest = Variant(data_record);
                     break;
                 }
 
                 case Opcode::LOAD_STATIC_POINTER: {
                     Variant& dest = current_frame->get_register(instr.a);
-                    u32 data_index = instr.imm16;
-                    Record* data_record = &current_frame->data_ptr[data_index];
-                    dest = Variant(data_record->as_ptr);
+                    u32 offset = instr.imm16;
+                    const void* data_record = current_frame->get_static_pointer(offset);
+                    dest = Variant(data_record);
                     break;
                 }
 
@@ -699,31 +735,13 @@ namespace vm {
 
         void dump_state() const {
             lg::info("=== VM State ===");
-            lg::info("Loaded Binaries: {}", binaries_.size());
             lg::info("Native Functions: {}", native_functions_.size());
         }
 
         std::string to_string() const {
-            return std::format("VirtualMachine(binaries:{}, natives:{})",
-                binaries_.size(), native_functions_.size());
+            return std::format("VirtualMachine(natives:{})",
+                native_functions_.size());
         }
-
-        // ------------------------------------------------------------------------
-        // Модульная система
-        // ------------------------------------------------------------------------
-
-        bool use_module(const std::string& module_name);
-        bool use_module(StringId module_name);
-        void release_module(const std::string& module_name);
-        void release_module(StringId module_name);
-
-        Variant execute_exported(const std::string& module_name,
-            const std::string& function_name);
-        Variant execute_exported(StringId module_name, StringId function_name);
-
-        // Проверка поколений модулей (для Process Manager)
-        bool is_module_generation_current(StringId module_name) const;
-        std::vector<StringId> get_stale_modules() const;
 
 
     private:
@@ -731,20 +749,85 @@ namespace vm {
         // Internal Helpers
         // ------------------------------------------------------------------------
 
-        ByteCode* find_function(StringId name) {
-            for (auto& binary_ptr : binaries_) {
-                auto header = binary_ptr->get_header();
-                // ИСПРАВЛЕНИЕ: defs_count вместо defs_num
-                for (u32 i = 0; i < header->defs_count; i++) {
-                    auto def = header->get_definition(i);
-                    if (def->name == name) {
-                        // ИСПРАВЛЕНИЕ: разыменование Ptr<ByteCode>
-                        return header->get_definition_ptr<ByteCode>(i).c();
-                    }
+        vm_int resolve_integer(StackFrame* frame, StringId name) {
+            auto module = frame->byte_code->owner_module;
+            if (module) {
+                Definition* resolved = module->resolve_symbol(name);
+                if (resolved) {
+                    if (resolved->type == type::i64)
+                        return *((s64*)resolved->data_ptr.c());
+                    if (resolved->type == type::i32)
+                        return *((s32*)resolved->data_ptr.c());
+                    if (resolved->type == type::i16)
+                        return *((s16*)resolved->data_ptr.c());
+                    if (resolved->type == type::i8)
+                        return *((s8*)resolved->data_ptr.c());
+
+                    if (resolved->type == type::u64)
+                        return *((u64*)resolved->data_ptr.c());
+                    if (resolved->type == type::u32)
+                        return *((u32*)resolved->data_ptr.c());
+                    if (resolved->type == type::u16)
+                        return *((u16*)resolved->data_ptr.c());
+                    if (resolved->type == type::u8)
+                        return *((u8*)resolved->data_ptr.c());
+
+                    throw new VmTypeError("resolve_integer", resolved->type);
+                }
+                else {
+                    throw new VmResolvingError("resolve_integer", name);
                 }
             }
-            return nullptr;
         }
+
+        vm_float resolve_float(StackFrame* frame, StringId name) {
+            auto module = frame->byte_code->owner_module;
+            if (module) {
+                Definition* resolved = module->resolve_symbol(name);
+                if (resolved) {
+                    if (resolved->type == type::i64)
+                        return *((s64*)resolved->data_ptr.c());
+                    if (resolved->type == type::i32)
+                        return *((s32*)resolved->data_ptr.c());
+                    if (resolved->type == type::i16)
+                        return *((s16*)resolved->data_ptr.c());
+                    if (resolved->type == type::i8)
+                        return *((s8*)resolved->data_ptr.c());
+
+                    if (resolved->type == type::u64)
+                        return *((u64*)resolved->data_ptr.c());
+                    if (resolved->type == type::u32)
+                        return *((u32*)resolved->data_ptr.c());
+                    if (resolved->type == type::u16)
+                        return *((u16*)resolved->data_ptr.c());
+                    if (resolved->type == type::u8)
+                        return *((u8*)resolved->data_ptr.c());
+
+                    throw new VmTypeError("resolve_float", resolved->type);
+                }
+                else {
+                    throw new VmResolvingError("resolve_float", name);
+                }
+            }
+        }
+
+        void* resolve_pointer(StackFrame* frame, StringId name) {
+            auto module = frame->byte_code->owner_module;
+            if (module) {
+                Definition* resolved = module->resolve_symbol(name);
+                if (resolved) {
+                    return resolved->data_ptr.c();
+                }
+                else {
+                    throw new VmResolvingError("resolve_pointer", name);
+                }
+            }
+        }
+
+
+        // ------------------------------------------------------------------------
+        // Internal Helpers
+        // ------------------------------------------------------------------------
 
         StackFrame* create_root_frame() {
             StackFrame* frame = new StackFrame();
@@ -755,7 +838,7 @@ namespace vm {
             return frame;
         }
 
-        StackFrame* create_stack_frame(Instruction* code_ptr, Record* data_ptr, StackFrame* parent) {
+        StackFrame* create_stack_frame(Instruction* code_ptr, u8* data_ptr, StackFrame* parent) {
             StackFrame* frame = new StackFrame();
             frame->parent_ptr = parent;
             frame->code_ptr = code_ptr;
@@ -788,16 +871,13 @@ namespace vm {
         }
 
         void cleanup() {
-            binaries_.clear();
             native_functions_.clear();
         }
 
-        std::vector<std::unique_ptr<BinaryFile>> binaries_;  
         std::unordered_map<StringId, NativeFunction> native_functions_;
 
         // Модульная система
-        GlobalModuleHub& hub_ = GlobalModuleHub::instance();
-        std::unordered_map<StringId, u32> used_modules_;  // module -> generation
+        ModuleManager& modules_ = ModuleManager::instance();
 
     };
 

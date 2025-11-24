@@ -256,11 +256,11 @@ namespace vm {
 
         std::string to_string() const {
             if (has_immediate()) {
-                return std::format("{:02x} {:2d} {:4d}",
+                return std::format("({:02x} {:2d} {:4d})",
                     static_cast<u32>(opcode), a, imm16);
             }
             else {
-                return std::format("{:02x} {:2d} {:2d} {:2d}",
+                return std::format("({:02x} {:2d} {:2d} {:2d})",
                     static_cast<u32>(opcode), a, b, c);
             }
         }

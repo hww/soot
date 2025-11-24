@@ -9,10 +9,11 @@ add_library(vm_lib
     common/vm/native_func.cpp
     common/vm/string_id.cpp
     common/vm/virtual_machine.cpp
-    common/vm/module_hub.cpp
+    common/vm/module_manager.cpp
     common/vm/module.cpp
     common/vm/module_registry.cpp
     common/vm/binary_file.cpp
-    common/vm/module_pool.cpp
+    common/vm/binary_file_pool.cpp
+    common/vm/binary_file_builder.cpp
 )
 

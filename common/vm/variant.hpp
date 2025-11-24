@@ -97,26 +97,26 @@ namespace vm {
         const StringId number       = SID("number");    // Базовый
         const StringId integer      = SID("integer");   // number::integer
         const StringId sinteger     = SID("sinteger");  // integer::sinteger
-        const StringId s64          = SID("s64");       // integer::sinteger::s64
-        const StringId s32          = SID("s32");       // integer::sinteger::s32
-        const StringId s16          = SID("s16");       // integer::sinteger::s16
-        const StringId s8           = SID("s8");        // integer::sinteger::s8
+        const StringId i64          = SID("i64");       // integer::sinteger::s64
+        const StringId i32          = SID("i32");       // integer::sinteger::s32
+        const StringId i16          = SID("i16");       // integer::sinteger::s16
+        const StringId i8           = SID("i8");        // integer::sinteger::s8
         const StringId uinteger     = SID("uinteger");  // integer::uinteger
-        const StringId i64          = SID("i64");       // integer::uinteger::i64
-        const StringId i32          = SID("i32");       // integer::uinteger::i32
-        const StringId i16          = SID("i16");       // integer::uinteger::i16
-        const StringId i8           = SID("i8");        // integer::uinteger::i8
+        const StringId u64          = SID("u64");       // integer::uinteger::i64
+        const StringId u32          = SID("u32");       // integer::uinteger::i32
+        const StringId u16          = SID("u16");       // integer::uinteger::i16
+        const StringId u8           = SID("u8");        // integer::uinteger::i8
         const StringId f32          = SID("float");     // number::float
         const StringId boolean      = SID("bool");
         const StringId string_id    = SID("string_id"); // integer::sinteger::string_id
-        const StringId lambda       = SID("lambda");
         const StringId native       = SID("native");
         const StringId string       = SID("string");
+        const StringId function     = SID("function");
 #ifdef VM_INT_64_BITS
         const StringId _int_     = i64;
         const StringId _float_   = f32;
 #else
-        const StringId _int_     = i32;
+        const StringId _int_     = u32;
         const StringId _float_   = f32;
 #endif
     }
@@ -296,12 +296,12 @@ namespace vm {
         // =========================================================================
         
         void set_int(vm_int value) {
-            type_ = type::i64;
+            type_ = type::u64;
             int_value = value;
         }
 
         void set_int32(s32 value) {
-            type_ = type::i32;
+            type_ = type::u32;
             int_value = value;
         }
 
@@ -488,9 +488,9 @@ namespace vm {
 
  
         // there are possible thousands of pointer
-        bool is_lambda() const { return type_ == type::lambda; }
-        bool is_native() const { return type_ == type::native; }
-        bool is_string() const { return type_ == type::string; }
+        bool is_function() const { return type_ == type::function; }
+        bool is_native() const   { return type_ == type::native; }
+        bool is_string() const   { return type_ == type::string; }
 
         // =========================================================================
         // STRING REPRESENTATION
@@ -504,7 +504,7 @@ namespace vm {
             if (is_sid())     return fmt::format("sid:{}", get_sid());
             if (is_string())  return get_string();
             if (is_ptr())     return fmt::format("ptr:0x{:x}", (int)ptr_value);
-            if (is_lambda())  return "lambda";
+            if (is_function())  return "lambda";
             if (is_native())  return "native";
             return "unknown";
         }

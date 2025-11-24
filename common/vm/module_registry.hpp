@@ -1,20 +1,18 @@
 ﻿#pragma once
 
 #include "types.hpp"
-#include "binary_file.hpp"
-#include "util/log.h"
-#include <vector>
+#include "dci_file.hpp"
+#include "module.hpp"
 #include <filesystem>
 #include <unordered_map>
-#include <unordered_set>
+#include <memory>
 
 namespace vm {
 
     class ModuleRegistry {
     private:
         std::vector<std::filesystem::path> search_paths_;
-        std::unordered_map<StringId, std::filesystem::path> module_index_;  // module_name -> file_path
-        std::unordered_set<std::filesystem::path> scanned_paths_;
+        std::unordered_map<StringId, std::shared_ptr<Module>> module_cache_;
         bool is_index_dirty_ = true;
 
     public:
@@ -23,23 +21,21 @@ namespace vm {
             return instance;
         }
 
-        // Основной API
+        // Основной API (сохраняем старый интерфейс)
         void add_search_path(const std::filesystem::path& path);
-        std::filesystem::path find_module_file(StringId module_name);
+        std::shared_ptr<Module> find_module(StringId module_name);
         std::vector<StringId> get_available_modules();
-
-        // Сканирование и индексация
         void scan_and_index(bool force_rescan = false);
         void clear_cache();
 
-        // Утилиты
+        // Утилиты (старый API)
         bool is_module_available(StringId module_name) const;
         std::string to_string() const;
 
     private:
         void scan_directory(const std::filesystem::path& directory);
-        StringId extract_module_name_from_file(const std::filesystem::path& file_path);
-        bool is_module_file(const std::filesystem::path& file_path);
+        std::shared_ptr<Module> create_module_from_dci(const std::filesystem::path& dci_path);
+        std::filesystem::path find_dci_file(const std::filesystem::path& directory, StringId module_name);
     };
 
 } // namespace vm

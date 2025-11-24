@@ -73,6 +73,28 @@ namespace vm {
          * Check the table
          */
         std::string inspect();
+
+        static void initialize() {
+            register_string("null");
+            register_string("number");    // Базовый
+            register_string("integer");   // number::integer
+            register_string("sinteger");  // integer::sinteger
+            register_string("i64");       // integer::sinteger::s64
+            register_string("i32");       // integer::sinteger::s32
+            register_string("i16");       // integer::sinteger::s16
+            register_string("i8");        // integer::sinteger::s8
+            register_string("uinteger");  // integer::uinteger
+            register_string("u64");       // integer::uinteger::i64
+            register_string("u32");       // integer::uinteger::i32
+            register_string("u16");       // integer::uinteger::i16
+            register_string("u8");        // integer::uinteger::i8
+            register_string("float");     // number::float
+            register_string("bool");
+            register_string("string_id"); // integer::sinteger::string_id
+            register_string("native");
+            register_string("string");
+            register_string("function");
+        }
     } // namespace string_id
 
     // ============================================================================
