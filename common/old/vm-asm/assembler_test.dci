@@ -1,4 +1,0 @@
-(assembler-test (0)
-	(import)
-	(export test)
-)
