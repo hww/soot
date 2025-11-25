@@ -132,9 +132,9 @@ namespace vm {
         }
 
         virtual void relocate_pointers(intptr_t delta) {
-            code_ptr = relocate_single_ptr(code_ptr, delta);
-            data_ptr = relocate_single_ptr(data_ptr, delta);
-            debug_ptr = relocate_single_ptr(debug_ptr, delta);
+            code_ptr.offset += delta;
+            data_ptr.offset += delta;
+            debug_ptr.offset += delta;
         }
 
         std::string inspect() const {
@@ -151,11 +151,6 @@ namespace vm {
         }
 
     private:
-        template<typename T>
-        Ptr<T> relocate_single_ptr(Ptr<T> ptr, intptr_t delta) const {
-            if (ptr.offset == 0) return ptr;
-            return Ptr<T>{ static_cast<u32>(ptr.offset + delta) };
-        }
     };
 
 
@@ -225,36 +220,7 @@ namespace vm {
 
         /** Реиндексация указателей */
         void relocate_pointers(void* pool_base);
-        /*
-        {
-            if (!pool_base) return;
 
-            // Вычисляем старый базовый адрес пула
-            uintptr_t old_pool_base = reinterpret_cast<uintptr_t>(this) - base_offset;
-            uintptr_t new_pool_base_int = reinterpret_cast<uintptr_t>(pool_base);
-            intptr_t delta = new_pool_base_int - old_pool_base;
-
-            // Релоцируем указатели в заголовке
-            definitions = relocate_single_ptr(definitions, delta);
-
-            // Релоцируем указатели в определениях
-            for (u32 i = 0; i < definitions_count; i++) {
-                Definition* def = get_definition(i);
-                def->data_ptr = relocate_single_ptr(def->data_ptr, delta);
-
-                // ЕСЛИ определение - функция, релоцируем и её внутренние указатели
-                if (def->type == type::function) {
-                    Descriptor* desc = def->data_ptr.cast<Descriptor>().c();                    
-                    if (desc)
-                        desc->relocate_pointers(delta);
-                }
-            }
-
-            // Обновляем base_offset для нового положения
-            base_offset = static_cast<u32>(reinterpret_cast<uintptr_t>(this) - new_pool_base_int);
-            generation++;
-        }
-        */
         std::string to_string() const {
             return std::format("BinaryFile<gen:{}, size:{}/{}, defs:{}>",
                 generation, used_size, file_size, definitions_count);
@@ -290,12 +256,6 @@ namespace vm {
             return result;
         }
 
-    private:
-        template<typename T>
-        Ptr<T> relocate_single_ptr(Ptr<T> ptr, intptr_t delta) const {
-            if (ptr.offset == 0) return ptr;
-            return Ptr<T>{ static_cast<u32>(ptr.offset + delta) };
-        }
     };
 
 } // namespace vm

@@ -77,11 +77,11 @@ namespace vm {
             void* memory = BinaryFilePool::allocate(
                 static_cast<u32>(file_size),
                 module.get(),
-                module->full_name
+                module->name
             );
             if (!memory) {
                 lg::error("Failed to allocate memory in pool for module: {}",
-                    string_id::to_string(module->full_name));
+                    string_id::to_string(module->name));
                 return false;
             }
 
@@ -94,20 +94,19 @@ namespace vm {
 
             // 5. Сохраняем в модуле
             module->binary_file = binary_file;
-            module->pool_address = memory;
             module->load_state = Module::LoadState::BINARY_LOADED;
 
             // 6. Строим таблицу экспортов
             build_export_table(module);
 
             lg::debug("Loaded binary data for module: {} (size: {} bytes, addr: {})",
-                string_id::to_string(module->full_name), file_size, memory);
+                string_id::to_string(module->name), file_size, memory);
             return true;
 
         }
         catch (const std::exception& e) {
             lg::error("Exception loading binary data for '{}': {}",
-                string_id::to_string(module->full_name), e.what());
+                string_id::to_string(module->name), e.what());
             return false;
         }
     }
@@ -126,20 +125,20 @@ namespace vm {
         }
 
         lg::debug("Built export table for '{}': {} symbols",
-            string_id::to_string(module->full_name), module->export_table.size());
+            string_id::to_string(module->name), module->export_table.size());
     }
 
     void ModuleManager::resolve_dependencies(Module* module) {
         for (const auto& import_name : module->imports) {
             if (!is_module_loaded(import_name)) {
                 lg::debug("Loading dependency: {} -> {}",
-                    string_id::to_string(module->full_name),
+                    string_id::to_string(module->name),
                     string_id::to_string(import_name));
 
                 if (!load_module_internal(import_name)) {
                     lg::error("Failed to load dependency: {} for module: {}",
                         string_id::to_string(import_name),
-                        string_id::to_string(module->full_name));
+                        string_id::to_string(module->name));
                 }
             }
         }
@@ -152,19 +151,19 @@ namespace vm {
             if (target_module) {
                 module->add_import(import_name, target_module);
                 lg::debug("Linked import: {} -> {} ({})",
-                    string_id::to_string(module->full_name),
+                    string_id::to_string(module->name),
                     string_id::to_string(import_name),
-                    string_id::to_string(target_module->full_name));
+                    string_id::to_string(target_module->name));
             }
             else {
                 lg::error("Unresolved import: {} in module {}",
                     string_id::to_string(import_name),
-                    string_id::to_string(module->full_name));
+                    string_id::to_string(module->name));
             }
         }
 
         module->load_state = Module::LoadState::LINKED;
-        lg::debug("Successfully linked module: {}", string_id::to_string(module->full_name));
+        lg::debug("Successfully linked module: {}", string_id::to_string(module->name));
     }
 
     std::shared_ptr<Module> ModuleManager::find_module_that_exports(StringId symbol_name) {
@@ -212,7 +211,6 @@ namespace vm {
 
         // 2. Сбрасываем состояние модуля
         module->binary_file = nullptr;
-        module->pool_address = nullptr;
         module->load_state = Module::LoadState::METADATA;
         module->export_table.clear();
 

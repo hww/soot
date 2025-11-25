@@ -60,7 +60,7 @@ namespace vm {
 
     std::string Module::to_string() const {
         return std::format("Module('{}', state:{}, exports:{}, imports:{}, gen:{})",
-            string_id::to_string(full_name),
+            string_id::to_string(name),
             static_cast<int>(load_state),
             export_table.size(),
             import_table.size(),

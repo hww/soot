@@ -49,7 +49,7 @@ private:
     void setup_test_data() {
         // Выделяем память для одиночной структуры
         test_data_ptr = BinaryFilePool::allocate(
-            sizeof(TestStruct), temp_module, temp_module->full_name
+            sizeof(TestStruct), temp_module, temp_module->name
         );
         ASSERT_NE(test_data_ptr, nullptr);
 
@@ -65,7 +65,7 @@ private:
     void setup_array_data() {
         // Выделяем память для массива
         array_data_ptr = BinaryFilePool::allocate(
-            5 * sizeof(TestStruct), temp_module, temp_module->full_name
+            5 * sizeof(TestStruct), temp_module, temp_module->name
         );
         ASSERT_NE(array_data_ptr, nullptr);
 

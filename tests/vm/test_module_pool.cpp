@@ -36,7 +36,7 @@ TEST_F(BinaryFilePoolTest, AllocateSingleModule) {
     void* module_addr = BinaryFilePool::allocate(
         static_cast<u32>(module_data.size()),
         &module,
-        module.full_name
+        module.name
     );
 
     EXPECT_NE(module_addr, nullptr);
@@ -45,7 +45,6 @@ TEST_F(BinaryFilePoolTest, AllocateSingleModule) {
     EXPECT_EQ(BinaryFilePool::get_free_memory(), 1020);
 
     EXPECT_EQ(module.binary_file, reinterpret_cast<BinaryFile*>(module_addr));
-    EXPECT_EQ(module.pool_address, module_addr);
     EXPECT_EQ(module.generation, 1);
 
     std::memcpy(module_addr, module_data.data(), module_data.size());
@@ -66,9 +65,9 @@ TEST_F(BinaryFilePoolTest, AllocateMultipleModules) {
     std::vector<u8> data2 = { 0x03, 0x04, 0x05 };
 
     void* addr1 = BinaryFilePool::allocate(
-        static_cast<u32>(data1.size()), &module1, module1.full_name);
+        static_cast<u32>(data1.size()), &module1, module1.name);
     void* addr2 = BinaryFilePool::allocate(
-        static_cast<u32>(data2.size()), &module2, module2.full_name);
+        static_cast<u32>(data2.size()), &module2, module2.name);
 
     EXPECT_NE(addr1, nullptr);
     EXPECT_NE(addr2, nullptr);
@@ -90,7 +89,7 @@ TEST_F(BinaryFilePoolTest, OutOfMemory) {
     std::vector<u8> large_data(20, 0xAA);
 
     void* result = BinaryFilePool::allocate(
-        static_cast<u32>(large_data.size()), &module, module.full_name);
+        static_cast<u32>(large_data.size()), &module, module.name);
 
     EXPECT_EQ(result, nullptr);
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 0);
@@ -104,9 +103,9 @@ TEST_F(BinaryFilePoolTest, Alignment) {
     Module module2(SID("mod2"), SID("m2"), "m2.bin");
     Module module3(SID("mod3"), SID("m3"), "m3.bin");
 
-    void* addr1 = BinaryFilePool::allocate(3, &module1, module1.full_name);
-    void* addr2 = BinaryFilePool::allocate(5, &module2, module2.full_name);
-    void* addr3 = BinaryFilePool::allocate(2, &module3, module3.full_name);
+    void* addr1 = BinaryFilePool::allocate(3, &module1, module1.name);
+    void* addr2 = BinaryFilePool::allocate(5, &module2, module2.name);
+    void* addr3 = BinaryFilePool::allocate(2, &module3, module3.name);
 
     EXPECT_NE(addr1, nullptr);
     EXPECT_NE(addr2, nullptr);
@@ -130,20 +129,18 @@ TEST_F(BinaryFilePoolTest, Deallocation) {
     std::vector<u8> data = { 0x01, 0x02 };
 
     void* addr = BinaryFilePool::allocate(
-        static_cast<u32>(data.size()), &module, module.full_name);
+        static_cast<u32>(data.size()), &module, module.name);
 
     EXPECT_NE(addr, nullptr);
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 1);
 
     EXPECT_EQ(module.binary_file, reinterpret_cast<BinaryFile*>(addr));
-    EXPECT_EQ(module.pool_address, addr);
 
-    bool result = BinaryFilePool::deallocate(module.full_name);
+    bool result = BinaryFilePool::deallocate(module.name);
     EXPECT_TRUE(result);
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 0);
 
     EXPECT_EQ(module.binary_file, nullptr);
-    EXPECT_EQ(module.pool_address, nullptr);
 }
 
 TEST_F(BinaryFilePoolTest, FindAllocation) {
@@ -152,11 +149,11 @@ TEST_F(BinaryFilePoolTest, FindAllocation) {
     Module module1(SID("module1"), SID("m1"), "m1.bin");
     Module module2(SID("module2"), SID("m2"), "m2.bin");
 
-    void* addr1 = BinaryFilePool::allocate(1, &module1, module1.full_name);
-    void* addr2 = BinaryFilePool::allocate(1, &module2, module2.full_name);
+    void* addr1 = BinaryFilePool::allocate(1, &module1, module1.name);
+    void* addr2 = BinaryFilePool::allocate(1, &module2, module2.name);
 
-    EXPECT_EQ(BinaryFilePool::find_allocation(module1.full_name), addr1);
-    EXPECT_EQ(BinaryFilePool::find_allocation(module2.full_name), addr2);
+    EXPECT_EQ(BinaryFilePool::find_allocation(module1.name), addr1);
+    EXPECT_EQ(BinaryFilePool::find_allocation(module2.name), addr2);
     EXPECT_EQ(BinaryFilePool::find_allocation(SID("nonexistent")), nullptr);
 }
 
@@ -164,7 +161,7 @@ TEST_F(BinaryFilePoolTest, Utilization) {
     BinaryFilePool::initialize(100);
 
     Module module(SID("test_module"), SID("test"), "test.bin");
-    void* addr = BinaryFilePool::allocate(50, &module, module.full_name);
+    void* addr = BinaryFilePool::allocate(50, &module, module.name);
 
     EXPECT_NE(addr, nullptr);
     EXPECT_NEAR(BinaryFilePool::get_utilization(), 52.0, 0.1);
@@ -174,20 +171,18 @@ TEST_F(BinaryFilePoolTest, ShutdownAndReinitialize) {
     BinaryFilePool::initialize(100);
 
     Module module(SID("test_module"), SID("test"), "test.bin");
-    void* addr = BinaryFilePool::allocate(1, &module, module.full_name);
+    void* addr = BinaryFilePool::allocate(1, &module, module.name);
 
     EXPECT_NE(addr, nullptr);
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 1);
 
     EXPECT_EQ(module.binary_file, reinterpret_cast<BinaryFile*>(addr));
-    EXPECT_EQ(module.pool_address, addr);
 
     BinaryFilePool::shutdown();
     EXPECT_FALSE(BinaryFilePool::is_initialized());
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 0);
 
     EXPECT_EQ(module.binary_file, nullptr);
-    EXPECT_EQ(module.pool_address, nullptr);
 
     bool result = BinaryFilePool::initialize(200);
     EXPECT_TRUE(result);

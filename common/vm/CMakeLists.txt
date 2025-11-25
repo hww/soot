@@ -12,6 +12,7 @@ add_library(vm_lib
     common/vm/module_manager.cpp
     common/vm/module.cpp
     common/vm/module_registry.cpp
+    common/vm/ptr.cpp
     common/vm/binary_file.cpp
     common/vm/binary_file_pool.cpp
     common/vm/binary_file_builder.cpp

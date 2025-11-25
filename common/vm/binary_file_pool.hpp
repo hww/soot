@@ -2,15 +2,13 @@
 
 #include "types.hpp"
 #include "string_id.hpp"
+#include "ptr.hpp"
 #include <vector>
 #include <algorithm>
 #include <cstring>
 #include <format>
 
 namespace vm {
-
-    // ¬нешн€€ переменна€ - базовый адрес пула модулей
-    extern u8* g_module_pool_base;
 
     // ѕредварительное объ€вление класса Module
     class Module;

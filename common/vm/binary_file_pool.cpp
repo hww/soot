@@ -1,10 +1,10 @@
 #include "binary_file_pool.hpp"
 #include "types.hpp"
 #include "module.hpp"
+#include "ptr.hpp"
 
 namespace vm {
 
-    u8* g_module_pool_base = nullptr;
 
     // »нициализаци€ пула - внутри выдел€ем больше на INTERNAL_OFFSET
     bool BinaryFilePool::initialize(u32 total_size) {
@@ -40,14 +40,7 @@ namespace vm {
         allocations.emplace_back(addr, aligned_size, owner_module, module_name);
         current_offset += aligned_size;
         auto binary_file = reinterpret_cast<BinaryFile*>(addr);
-        binary_file->relocate_pointers(g_module_pool_base);
-        // ќЅЌќ¬Ћя≈ћ ѕќЋя ћќƒ”Ћя
-        if (owner_module) {
-            owner_module->binary_file = binary_file;
-            owner_module->pool_address = addr;
-            owner_module->generation++;
-        }
-
+        owner_module->on_pool_relocation(binary_file);
         return addr;
     }
 
@@ -60,8 +53,7 @@ namespace vm {
 
         if (it != allocations.end()) {
             if (it->owner_module) {
-                it->owner_module->binary_file = nullptr;
-                it->owner_module->pool_address = nullptr;
+                it->owner_module->on_pool_relocation(nullptr);
             }
             allocations.erase(it);
             return true;
@@ -86,12 +78,7 @@ namespace vm {
                 std::memmove(new_addr, alloc.address, alloc.size);
                 alloc.address = new_addr;
                 auto binary_file = reinterpret_cast<BinaryFile*>(new_addr);
-                binary_file->relocate_pointers(g_module_pool_base);
-                if (alloc.owner_module) {
-                    alloc.owner_module->binary_file = binary_file;
-                    alloc.owner_module->pool_address = new_addr;
-                    alloc.owner_module->generation++;
-                }
+                alloc.owner_module->on_pool_relocation(binary_file);
             }
 
             new_allocations.push_back(alloc);
@@ -108,8 +95,7 @@ namespace vm {
     void BinaryFilePool::shutdown() {
         for (auto& alloc : allocations) {
             if (alloc.owner_module) {
-                alloc.owner_module->binary_file = nullptr;
-                alloc.owner_module->pool_address = nullptr;
+                alloc.owner_module->on_pool_relocation(nullptr);
             }
         }
 

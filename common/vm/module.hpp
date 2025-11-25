@@ -20,8 +20,7 @@ namespace vm {
         };
 
         // Identity
-        StringId full_name = 0;
-        StringId short_name = 0;
+        StringId name = 0;
         std::filesystem::path file_path;
 
         // Metadata
@@ -36,7 +35,6 @@ namespace vm {
 
         // Binary data - ТЕПЕРЬ СЫРОЙ УКАЗАТЕЛЬ!
         BinaryFile* binary_file = nullptr;
-        void* pool_address = nullptr;
 
         // Linking data
         std::unordered_map<StringId, Definition*> export_table;
@@ -46,12 +44,12 @@ namespace vm {
         Module() = default;
 
         Module(StringId full_name, StringId short_name, std::filesystem::path file_path)
-            : full_name(full_name), short_name(short_name), file_path(std::move(file_path)) {
+            : name(full_name), file_path(std::move(file_path)) {
         }
 
         // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
         Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file)
-            : full_name(module_name), short_name(module_name) {
+            : name(module_name) {
             if (binary_file) {
                 // Для тестов - создаем копию в куче
                 this->binary_file = new BinaryFile(*binary_file);
@@ -61,12 +59,10 @@ namespace vm {
 
         ~Module() {
             // Чистим только если НЕ из пула
-            if (binary_file && pool_address == nullptr) {
-                delete binary_file;
-            }
+             binary_file = nullptr;
         }
 
-        bool is_valid_metadata() const { return full_name != 0 && !file_path.empty(); }
+        bool is_valid_metadata() const { return name != 0 && !file_path.empty(); }
         bool is_binary_loaded() const { return load_state >= LoadState::BINARY_LOADED && binary_file != nullptr; }
         bool is_linked() const { return load_state >= LoadState::LINKED; }
 
@@ -86,26 +82,23 @@ namespace vm {
         ByteCode* resolve_code(StringId name);
 
         // Callback для пула при релокации
-        void on_pool_relocation(void* new_pool_base) {
-            if (binary_file && pool_address) {
-                binary_file->relocate_pointers(new_pool_base);
-                generation++;
-                lg::debug("Module {} relocated to new base", string_id::to_string(full_name));
-            }
+        void on_pool_relocation(BinaryFile* file_base) {
+            binary_file = file_base;
+            generation++;
+            if (binary_file)
+                binary_file->relocate_pointers(BinaryFilePool::get_base_address());
+            lg::debug("Module {} relocated to new file base", string_id::to_string(name));
         }
 
         std::string to_string() const;
 
         std::string inspect() const {
-            std::string result = std::format("Module[{}]\n", string_id::to_string(full_name));
-            result += std::format("  Short name: {}\n", string_id::to_string(short_name));
+            std::string result = std::format("Module[{}]\n", string_id::to_string(name));
             result += std::format("  File: {}\n", file_path.string());
             result += std::format("  Load state: {}\n", load_state_to_string(load_state));
             result += std::format("  Generation: {}, Load order: {}\n", generation, load_order);
             result += std::format("  Binary size: {} bytes\n", binary_size);
 
-
-            result += std::format("  Pool address: {}\n", pool_address ? "set" : "null");
 
             // Импорты
             result += std::format("  Imports: {} symbols\n", imports.size());

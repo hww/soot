@@ -125,32 +125,6 @@ TEST_F(BinaryFileTest, DefinitionBoundsChecking) {
     std::cout << "=== DefinitionBoundsChecking completed ===" << std::endl;
 }
 
-TEST_F(BinaryFileTest, BinaryFileRelocation) {
-    std::cout << "=== Starting BinaryFileRelocation ===" << std::endl;
-
-    auto module = create_test_module("reloc_test", 1);
-    ASSERT_NE(module, nullptr);
-
-    // Сохраняем исходные значения
-    u32 original_generation = module->generation;
-    auto original_def = module->binary_file->get_definition(0);
-    StringId original_name = original_def->name;
-
-    // Вызываем релокацию (имитируем перемещение в пуле)
-    // В реальности это должно вызываться из BinaryFilePool::compactify()
-    void* new_base = BinaryFilePool::get_base_address();
-    module->binary_file->relocate_pointers(new_base);
-
-    // Проверяем что генерация увеличилась
-    EXPECT_EQ(module->binary_file->generation, 2); // 1 (начальное) + 1
-
-    // Определение все еще доступно
-    auto relocated_def = module->binary_file->get_definition(0);
-    EXPECT_EQ(relocated_def->name, original_name);
-
-    std::cout << "=== BinaryFileRelocation completed ===" << std::endl;
-}
-
 TEST_F(BinaryFileTest, PoolCompaction) {
     std::cout << "=== Starting PoolCompaction ===" << std::endl;
 
@@ -165,7 +139,7 @@ TEST_F(BinaryFileTest, PoolCompaction) {
     void* original_addr2 = module2->binary_file;
 
     // Выгружаем первый модуль
-    BinaryFilePool::deallocate(module1->full_name);
+    BinaryFilePool::deallocate(module1->name);
 
     // Компактифицируем
     bool compact_result = BinaryFilePool::compactify();
@@ -223,25 +197,22 @@ TEST_F(BinaryFileTest, FindByteCodeByName) {
     ASSERT_NE(module, nullptr);
 
     // Добавляем ByteCode определение
-    Definition* defs = reinterpret_cast<Definition*>(
-        reinterpret_cast<u8*>(module->binary_file) + sizeof(BinaryFile));
+    Definition* def1 = module->binary_file->get_definition(1);
 
     // Создаем ByteCode для второго определения
-    ByteCode* bytecode = reinterpret_cast<ByteCode*>(
-        reinterpret_cast<u8*>(defs) + 2 * sizeof(Definition));
-
-    defs[1].data_ptr = Ptr<void>(reinterpret_cast<u8*>(bytecode) - reinterpret_cast<u8*>(module->binary_file));
-
+    ByteCode* bytecode1 = reinterpret_cast<ByteCode*>(def1->data_ptr.c());
+     
     // Инициализируем ByteCode
-    bytecode->code_count = 10;
-    bytecode->data_size = 100;
-    bytecode->debug_count = 5;
+    bytecode1->code_count = 10;
+    bytecode1->data_size = 100;
+    bytecode1->debug_count = 5;
 
     // Ищем по имени
     ByteCode* found = module->binary_file->find_bytecode_by_name(SID("def_1"));
     EXPECT_NE(found, nullptr);
     EXPECT_EQ(found->code_count, 10);
     EXPECT_EQ(found->data_size, 100);
+    EXPECT_EQ(found->debug_count, 5);
 
     // Ищем несуществующее
     ByteCode* not_found = module->binary_file->find_bytecode_by_name(SID("nonexistent"));

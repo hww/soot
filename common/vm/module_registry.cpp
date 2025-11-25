@@ -84,9 +84,9 @@ namespace vm {
                 // Создаем модуль из DCI файла
                 auto module = create_module_from_dci(file_path);
                 if (module && module->is_valid_metadata()) {
-                    module_cache_[module->full_name] = module;
+                    module_cache_[module->name] = module;
                     lg::debug("Registered module: {} -> {}",
-                        string_id::to_string(module->full_name), file_path.string());
+                        string_id::to_string(module->name), file_path.string());
                 }
             }
         }
@@ -108,8 +108,7 @@ namespace vm {
             auto module = std::make_shared<Module>();
 
             // Заполняем поля напрямую
-            module->full_name = string_id::register_string(dci.logical_path.c_str());
-            module->short_name = string_id::register_string(dci.module_name.c_str());
+            module->name = string_id::register_string(dci.logical_path.c_str());
             module->file_path = dci_path;
             module->imports = std::move(dci.imports);
             module->exports = std::move(dci.exports);

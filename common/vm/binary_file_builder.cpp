@@ -18,7 +18,7 @@ namespace vm {
         void* pool_addr = BinaryFilePool::allocate(
             static_cast<u32>(data.size()),
             module.get(),
-            module->full_name
+            module->name
         );
 
         if (!pool_addr) {
