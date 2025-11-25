@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест while
+// РўРµСЃС‚ while
 TEST_F(LoopTest, WhileLoop) {
     eval("(define counter 0)");
     eval("(while (< counter 3) (set! counter (+ counter 1)))");

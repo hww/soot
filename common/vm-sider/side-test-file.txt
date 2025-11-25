@@ -1,4 +1,4 @@
-The file shoudl be parsed and to extract only texts: great1, great2, great3, great4
+﻿The file shoudl be parsed and to extract only texts: great1, great2, great3, great4
 
 Hello world
 Hello SID(beautiful) world 

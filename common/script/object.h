@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "common/util/crc32.h"
 #include "common/util/assert.h"

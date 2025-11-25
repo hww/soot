@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "type_system/type_system.h"
 #include "type_system/deftype.h"
 #include "reader.h"
@@ -36,13 +36,13 @@ protected:
     void TearDown() override {
         delete ts;
     }
-    // Хелпер для парсинга как в оригинале
+    // РҐРµР»РїРµСЂ РґР»СЏ РїР°СЂСЃРёРЅРіР° РєР°Рє РІ РѕСЂРёРіРёРЅР°Р»Рµ
     DeftypeResult parse_deftype_string(const std::string& code) {
         auto obj = reader.read_from_string(code, "test");
         fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
 
-        // Извлекаем форму deftype: (top-level (deftype name ...))
-        // в просто (name ...) 
+        // РР·РІР»РµРєР°РµРј С„РѕСЂРјСѓ deftype: (top-level (deftype name ...))
+        // РІ РїСЂРѕСЃС‚Рѕ (name ...) 
         auto& deftype_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
         return parse_deftype(deftype_form, ts, nullptr);
     }
@@ -117,7 +117,7 @@ TEST_F(DefTypeTest, WithDocstring) {
     ASSERT_NE(result.type_info, nullptr);
     EXPECT_EQ(result.type_info->get_name(), "documented-type");
 
-    // Проверяем что докстринг сохранился
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РґРѕРєСЃС‚СЂРёРЅРі СЃРѕС…СЂР°РЅРёР»СЃСЏ
     EXPECT_TRUE(result.type_info->m_metadata.has_docstring());
     EXPECT_EQ(result.type_info->m_metadata.get_docstring_or_empty(),
         "This is a test type with documentation");
@@ -137,7 +137,7 @@ TEST_F(DefTypeTest, WithMethods) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    // Проверяем что методы добавились
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РјРµС‚РѕРґС‹ РґРѕР±Р°РІРёР»РёСЃСЊ
     EXPECT_GT(result.type_info->get_num_methods(), 0);
 }
 
@@ -155,7 +155,7 @@ TEST_F(DefTypeTest, ArrayField) {
     auto structure = dynamic_cast<StructureType*>(result.type_info);
     ASSERT_NE(structure, nullptr);
 
-    // Проверяем что поле с массивом создалось
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РїРѕР»Рµ СЃ РјР°СЃСЃРёРІРѕРј СЃРѕР·РґР°Р»РѕСЃСЊ
     Field data_field;
     bool has_data = structure->lookup_field("data", &data_field);
     EXPECT_TRUE(has_data);
@@ -243,7 +243,7 @@ TEST_F(DefTypeTest, SizeAssert) {
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
-    // Должен пройти без ошибок если размер совпадает
+    // Р”РѕР»Р¶РµРЅ РїСЂРѕР№С‚Рё Р±РµР· РѕС€РёР±РѕРє РµСЃР»Рё СЂР°Р·РјРµСЂ СЃРѕРІРїР°РґР°РµС‚
 }
 
 TEST_F(DefTypeTest, FailedSizeAssert) {
@@ -272,35 +272,35 @@ TEST_F(DefTypeTest, WithStates) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    // Проверяем что states добавились
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ states РґРѕР±Р°РІРёР»РёСЃСЊ
     auto& states = result.type_info->get_states_declared_for_type();
     EXPECT_GT(states.size(), 0);
 }
 
 TEST_F(DefTypeTest, Inheritance) {
-    // Сначала создаем родительский тип
+    // РЎРЅР°С‡Р°Р»Р° СЃРѕР·РґР°РµРј СЂРѕРґРёС‚РµР»СЊСЃРєРёР№ С‚РёРї
     std::string code1 = R"(
         (deftype parent-type
           (structure)
           ((parent-field int32)))
     )";
-    DeftypeResult parent_result = parse_deftype_string(code1); // Сохраняем результат родителя
+    DeftypeResult parent_result = parse_deftype_string(code1); // РЎРѕС…СЂР°РЅСЏРµРј СЂРµР·СѓР»СЊС‚Р°С‚ СЂРѕРґРёС‚РµР»СЏ
 
-    // Затем дочерний тип  
+    // Р—Р°С‚РµРј РґРѕС‡РµСЂРЅРёР№ С‚РёРї  
     std::string code2 = R"(
         (deftype child-type
           (parent-type)
           ((child-field float)))
     )";
-    DeftypeResult child_result = parse_deftype_string(code2); // Сохраняем результат ребенка
+    DeftypeResult child_result = parse_deftype_string(code2); // РЎРѕС…СЂР°РЅСЏРµРј СЂРµР·СѓР»СЊС‚Р°С‚ СЂРµР±РµРЅРєР°
 
-    ASSERT_NE(child_result.type_info, nullptr); // Проверяем child_result
+    ASSERT_NE(child_result.type_info, nullptr); // РџСЂРѕРІРµСЂСЏРµРј child_result
 
     auto child = dynamic_cast<StructureType*>(child_result.type_info);
     ASSERT_NE(child, nullptr);
-    EXPECT_EQ(child->get_parent(), "parent-type"); // Должно работать
+    EXPECT_EQ(child->get_parent(), "parent-type"); // Р”РѕР»Р¶РЅРѕ СЂР°Р±РѕС‚Р°С‚СЊ
 
-    // Проверяем что унаследовались поля
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ СѓРЅР°СЃР»РµРґРѕРІР°Р»РёСЃСЊ РїРѕР»СЏ
     Field parent_field, child_field;
     bool has_parent = child->lookup_field("parent-field", &parent_field);
     bool has_child = child->lookup_field("child-field", &child_field);

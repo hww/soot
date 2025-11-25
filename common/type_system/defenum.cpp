@@ -1,4 +1,4 @@
-#include "defenum.h"
+п»ї#include "defenum.h"
 #include "common/util/bit_utils.h"
 #include "common/util/string_util.h"
 #include "fmt/format.h"
@@ -68,7 +68,7 @@ namespace {
 EnumType* parse_defenum(const script::Object& defenum,
     TypeSystem* ts,
     DefinitionMetadata* symbol_metadata) {
-    // Базовая валидация - defenum должен быть списком
+    // Р‘Р°Р·РѕРІР°СЏ РІР°Р»РёРґР°С†РёСЏ - defenum РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ СЃРїРёСЃРєРѕРј
     if (!defenum.is_pair()) {
         throw std::runtime_error("defenum must be list, got: " + defenum.print());
     }
@@ -79,7 +79,7 @@ EnumType* parse_defenum(const script::Object& defenum,
 
     const script::Object* iter = &defenum;
 
-    // Проверяем первый элемент - должен быть именем
+    // РџСЂРѕРІРµСЂСЏРµРј РїРµСЂРІС‹Р№ СЌР»РµРјРµРЅС‚ - РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РёРјРµРЅРµРј
     auto& name_obj = iter->as_pair()->car;
     iter = &iter->as_pair()->cdr;
     if (!name_obj.is_symbol()) {
@@ -88,7 +88,7 @@ EnumType* parse_defenum(const script::Object& defenum,
 
     std::string name = symbol_string(name_obj);
 
-    // Проверяем docstring
+    // РџСЂРѕРІРµСЂСЏРµРј docstring
     std::optional<std::string> maybe_docstring;
     if (iter->is_pair() && iter->as_pair()->car.is_string()) {
         if (symbol_metadata) {
@@ -98,12 +98,12 @@ EnumType* parse_defenum(const script::Object& defenum,
         iter = &iter->as_pair()->cdr;
     }
 
-    // Парсим опции (начинаются с :)
+    // РџР°СЂСЃРёРј РѕРїС†РёРё (РЅР°С‡РёРЅР°СЋС‚СЃСЏ СЃ :)
     while (!iter->is_empty_list() && iter->is_pair()) {
         auto& current = iter->as_pair()->car;
 
         if (!current.is_symbol() || !current.as_symbol().starts_with_colon()) {
-            break; // не опция, переходим к entries
+            break; // РЅРµ РѕРїС†РёСЏ, РїРµСЂРµС…РѕРґРёРј Рє entries
         }
 
         auto option_name = symbol_string(current);
@@ -144,7 +144,7 @@ EnumType* parse_defenum(const script::Object& defenum,
         }
     }
 
-    // Парсим entries
+    // РџР°СЂСЃРёРј entries
     auto type = ts->lookup_type(base_type);
     int64_t highest = -1;
 
@@ -156,7 +156,7 @@ EnumType* parse_defenum(const script::Object& defenum,
         auto& field = iter->as_pair()->car;
 
         if (field.is_symbol()) {
-            // Простой символ: name
+            // РџСЂРѕСЃС‚РѕР№ СЃРёРјРІРѕР»: name
             //auto entry_name = symbol_string(field);
             //
             //if (entries.find(entry_name) != entries.end()) {
@@ -167,7 +167,7 @@ EnumType* parse_defenum(const script::Object& defenum,
             throw std::runtime_error("Enum entry name must be pair, got: " + field.print());
         }
         else if (field.is_pair()) {
-            // Пара: (name value)
+            // РџР°СЂР°: (name value)
             auto& field_pair = *field.as_pair();
 
             if (!field_pair.car.is_symbol()) {
@@ -180,13 +180,13 @@ EnumType* parse_defenum(const script::Object& defenum,
                 throw std::runtime_error("Entry " + entry_name + " appears multiple times");
             }
 
-            // Получаем значение
+            // РџРѕР»СѓС‡Р°РµРј Р·РЅР°С‡РµРЅРёРµ
             if (field_pair.cdr.is_empty_list()) {
-                // Авто-инкремент: (name)
+                // РђРІС‚Рѕ-РёРЅРєСЂРµРјРµРЅС‚: (name)
                 entries[entry_name] = ++highest;
             }
             else if (field_pair.cdr.is_pair()) {
-                // Явное значение: (name value)
+                // РЇРІРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ: (name value)
                 auto& value_obj = field_pair.cdr.as_pair()->car;
 
                 if (!value_obj.is_integer()) {
@@ -216,7 +216,7 @@ EnumType* parse_defenum(const script::Object& defenum,
         iter = &iter->as_pair()->cdr;
     }
 
-    // Создаем enum type
+    // РЎРѕР·РґР°РµРј enum type
     if (is_type("integer", base_type, ts)) {
         auto parent_type = ts->lookup_type(base_type.base_type());
         if (auto parent_value = dynamic_cast<ValueType*>(parent_type)) {

@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 #include "reader.h"
 #include "string_id.hpp"
 #include "types.hpp"
@@ -7,29 +7,29 @@
 namespace vm {
 
     struct DciFile {
-        std::string logical_path;    // "math/random" - ПОЛНЫЙ логический путь
-        std::string module_name;     // "random" - только имя модуля
+        std::string logical_path;    // "math/random" - РџРћР›РќР«Р™ Р»РѕРіРёС‡РµСЃРєРёР№ РїСѓС‚СЊ
+        std::string module_name;     // "random" - С‚РѕР»СЊРєРѕ РёРјСЏ РјРѕРґСѓР»СЏ
         u32 binary_size;
-        std::vector<StringId> imports;  // логические пути импортов
-        std::vector<StringId> exports;  // имена экспортируемых функций
+        std::vector<StringId> imports;  // Р»РѕРіРёС‡РµСЃРєРёРµ РїСѓС‚Рё РёРјРїРѕСЂС‚РѕРІ
+        std::vector<StringId> exports;  // РёРјРµРЅР° СЌРєСЃРїРѕСЂС‚РёСЂСѓРµРјС‹С… С„СѓРЅРєС†РёР№
 
         bool is_valid() const {
             return !logical_path.empty() && !module_name.empty() && binary_size > 0;
         }
 
-        // Извлекаем имя модуля из логического пути
+        // РР·РІР»РµРєР°РµРј РёРјСЏ РјРѕРґСѓР»СЏ РёР· Р»РѕРіРёС‡РµСЃРєРѕРіРѕ РїСѓС‚Рё
         static std::string extract_module_name(const std::string& logical_path) {
             size_t last_slash = logical_path.find_last_of('/');
             if (last_slash != std::string::npos) {
                 return logical_path.substr(last_slash + 1);
             }
-            return logical_path; // если нет слэша, то весь путь это имя
+            return logical_path; // РµСЃР»Рё РЅРµС‚ СЃР»СЌС€Р°, С‚Рѕ РІРµСЃСЊ РїСѓС‚СЊ СЌС‚Рѕ РёРјСЏ
         }
 
         static DciFile parse(const std::string& filename) {
             script::Reader reader;
 
-            // Парсим без top-level обёртки
+            // РџР°СЂСЃРёРј Р±РµР· top-level РѕР±С‘СЂС‚РєРё
             auto obj = reader.read_from_file({ filename }, true, false);
 
             return parse_from_object(obj);
@@ -39,12 +39,12 @@ namespace vm {
         static DciFile parse_from_object(const script::Object& obj) {
             DciFile result;
 
-            // obj должен быть списком: ((math/random (324386) ...))
+            // obj РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ СЃРїРёСЃРєРѕРј: ((math/random (324386) ...))
             if (!obj.is_pair()) {
                 throw std::runtime_error("DCI file should contain a single non-empty list");
             }
 
-            // Получаем внутренний список: (math/random (324386) ...)
+            // РџРѕР»СѓС‡Р°РµРј РІРЅСѓС‚СЂРµРЅРЅРёР№ СЃРїРёСЃРѕРє: (math/random (324386) ...)
             auto iterator = obj.as_pair()->car;
 
             if (!iterator.is_pair()) {
@@ -79,7 +79,7 @@ namespace vm {
                 iterator = iterator.as_pair()->cdr;
             }
 
-            // Проверяем правильное завершение
+            // РџСЂРѕРІРµСЂСЏРµРј РїСЂР°РІРёР»СЊРЅРѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ
             if (!iterator.is_empty_list()) {
                 throw std::runtime_error("Malformed DCI file - improper list termination");
             }
@@ -88,7 +88,7 @@ namespace vm {
         }
 
         static u32 parse_binary_size(const script::Object& obj) {
-            // Ожидаем: (324386) - список с одним integer
+            // РћР¶РёРґР°РµРј: (324386) - СЃРїРёСЃРѕРє СЃ РѕРґРЅРёРј integer
             if (!obj.is_pair()) {
                 throw std::runtime_error("Expected list for binary size");
             }
@@ -96,12 +96,12 @@ namespace vm {
             auto size_list = obj;
             auto first_element = size_list.as_pair()->car;
 
-            // Проверяем что это число
+            // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ СЌС‚Рѕ С‡РёСЃР»Рѕ
             if (!first_element.is_integer()) {
                 throw std::runtime_error("Binary size should be an integer");
             }
 
-            // Проверяем что список содержит только один элемент
+            // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ СЃРїРёСЃРѕРє СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ РѕРґРёРЅ СЌР»РµРјРµРЅС‚
             auto rest = size_list.as_pair()->cdr;
             if (!rest.is_empty_list()) {
                 throw std::runtime_error("Binary size list should contain exactly one integer");
@@ -131,7 +131,7 @@ namespace vm {
                     if (!import_name_obj.is_symbol()) {
                         throw std::runtime_error("Expected symbol in import list");
                     }
-                    // Импорты - это логические пути других модулей
+                    // РРјРїРѕСЂС‚С‹ - СЌС‚Рѕ Р»РѕРіРёС‡РµСЃРєРёРµ РїСѓС‚Рё РґСЂСѓРіРёС… РјРѕРґСѓР»РµР№
                     result.imports.push_back(string_id::register_string(import_name_obj.as_symbol().c_str()));
                     list = list.as_pair()->cdr;
                 }
@@ -142,7 +142,7 @@ namespace vm {
                     if (!export_name_obj.is_symbol()) {
                         throw std::runtime_error("Expected symbol in export list");
                     }
-                    // Экспорты - это имена функций внутри модуля
+                    // Р­РєСЃРїРѕСЂС‚С‹ - СЌС‚Рѕ РёРјРµРЅР° С„СѓРЅРєС†РёР№ РІРЅСѓС‚СЂРё РјРѕРґСѓР»СЏ
                     result.exports.push_back(string_id::register_string(export_name_obj.as_symbol().c_str()));
                     list = list.as_pair()->cdr;
                 }
@@ -152,7 +152,7 @@ namespace vm {
                     std::string(keyword_obj.as_symbol().c_str()));
             }
 
-            // Проверяем правильное завершение списка
+            // РџСЂРѕРІРµСЂСЏРµРј РїСЂР°РІРёР»СЊРЅРѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ СЃРїРёСЃРєР°
             if (!list.is_empty_list()) {
                 throw std::runtime_error("Malformed import/export list");
             }

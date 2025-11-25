@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест простого макроса
+// РўРµСЃС‚ РїСЂРѕСЃС‚РѕРіРѕ РјР°РєСЂРѕСЃР°
 TEST_F(MacroTest, SimpleMacro) {
     eval("(define double (macro (x) (list '+ x x)))");
     Object obj = eval("(double 5)");
@@ -26,7 +26,7 @@ TEST_F(MacroTest, SimpleMacro) {
     EXPECT_EQ(obj.as_integer(), 10);
 }
 
-// Тест макроса с несколькими параметрами
+// РўРµСЃС‚ РјР°РєСЂРѕСЃР° СЃ РЅРµСЃРєРѕР»СЊРєРёРјРё РїР°СЂР°РјРµС‚СЂР°РјРё
 TEST_F(MacroTest, MultiParamMacro) {
     eval("(define add-two (macro (x y) (list '+ x y)))");
     Object obj = eval("(add-two 3 4)");

@@ -1,4 +1,4 @@
-/*!
+﻿/*!
  * @file test_goos.cpp
  * Tests for the GOOS macro language.
  */

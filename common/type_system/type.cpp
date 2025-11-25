@@ -1,4 +1,4 @@
-#include "type.h"
+ï»¿#include "type.h"
 #include "common/util/assert.h"
 #include "fmt/format.h"
 
@@ -488,9 +488,9 @@ void StructureType::inherit(StructureType* parent) {
     fmt::print("DEBUG: Parent has {} fields, size: {}\n",
         parent->fields().size(), parent->get_size_in_memory());
 
-    // Êîïèðóåì ÂÑÅ ïîëÿ ðîäèòåëÿ
-    m_fields = parent->fields(); // Êîïèðóåì ïîëÿ
-    m_size_in_mem = parent->get_size_in_memory(); // Íàñëåäóåì ðàçìåð
+    // ÐšÐ¾Ð¿Ð¸Ñ€ÑƒÐµÐ¼ Ð’Ð¡Ð• Ð¿Ð¾Ð»Ñ Ñ€Ð¾Ð´Ð¸Ñ‚ÐµÐ»Ñ
+    m_fields = parent->fields(); // ÐšÐ¾Ð¿Ð¸Ñ€ÑƒÐµÐ¼ Ð¿Ð¾Ð»Ñ
+    m_size_in_mem = parent->get_size_in_memory(); // ÐÐ°ÑÐ»ÐµÐ´ÑƒÐµÐ¼ Ñ€Ð°Ð·Ð¼ÐµÑ€
     m_dynamic = parent->is_dynamic();
     m_idx_of_first_unique_field = m_fields.size();
 

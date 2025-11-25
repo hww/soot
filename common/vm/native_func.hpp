@@ -23,7 +23,6 @@ namespace vm {
 
         StringId actual_type = arg.get_type();
 
-        // Автоматические преобразования для скаляров
         if constexpr (std::is_same_v<T, s32>) {
             if (actual_type == type::_int_) return arg.get_int32();
             if (actual_type == type::string_id) return arg.get_int32();
@@ -54,16 +53,16 @@ namespace vm {
             if (actual_type == type::string_id) return arg.to_string();
             if (actual_type == type::string) return arg.to_string();
         }
-        // Для указателей - безопасное преобразование
+        //   -  
         else if constexpr (std::is_pointer_v<T>) {
             if (actual_type == expected_type) {
                 return static_cast<T>(arg.get_ptr());
             }
         }
-        // Для других типов (структур и т.д.)
+        //    (  ..)
         else {
             if (actual_type == expected_type) {
-                // Здесь нужно безопасное преобразование
+                //    
                 return arg.get_ptr();
             }
         }

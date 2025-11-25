@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include <string>
 #include <cstdint>
@@ -76,7 +76,7 @@ namespace vm {
 
         static void initialize() {
             register_string("null");
-            register_string("number");    // Áàçîâûé
+            register_string("number");    // ÃÃ Ã§Ã®Ã¢Ã»Ã©
             register_string("integer");   // number::integer
             register_string("sinteger");  // integer::sinteger
             register_string("i64");       // integer::sinteger::s64

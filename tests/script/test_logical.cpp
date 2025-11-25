@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест and
+// РўРµСЃС‚ and
 TEST_F(LogicalTest, And) {
     Object obj = eval("(and #t #t)");
     EXPECT_TRUE(obj.as_boolean());
@@ -35,7 +35,7 @@ TEST_F(LogicalTest, And) {
     EXPECT_EQ(obj.as_integer(), 5);
 }
 
-// Тест or
+// РўРµСЃС‚ or
 TEST_F(LogicalTest, Or) {
     Object obj = eval("(or #f #t)");
     EXPECT_TRUE(obj.as_boolean());
@@ -52,7 +52,7 @@ TEST_F(LogicalTest, Or) {
     EXPECT_EQ(obj.as_integer(), 5);
 }
 
-// Тест not (через if)
+// РўРµСЃС‚ not (С‡РµСЂРµР· if)
 TEST_F(LogicalTest, NotViaIf) {
     Object obj = eval("(if #f #t #f)");
     EXPECT_FALSE(obj.as_boolean());
@@ -61,7 +61,7 @@ TEST_F(LogicalTest, NotViaIf) {
     EXPECT_TRUE(obj.as_boolean());
 }
 
-// Тест cond
+// РўРµСЃС‚ cond
 TEST_F(LogicalTest, Cond) {
     Object obj = eval("(cond (#t 1) (#t 2))");
     EXPECT_TRUE(obj.is_integer());

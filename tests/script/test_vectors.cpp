@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест создания векторов
+// РўРµСЃС‚ СЃРѕР·РґР°РЅРёСЏ РІРµРєС‚РѕСЂРѕРІ
 TEST_F(VectorTest, VectorCreation) {
     Object obj = eval("(vector 1 2 3)");
     EXPECT_TRUE(obj.is_vector());
@@ -30,7 +30,7 @@ TEST_F(VectorTest, VectorCreation) {
     EXPECT_EQ(elements[2].as_integer(), 3);
 }
 
-// Тест vector-ref
+// РўРµСЃС‚ vector-ref
 TEST_F(VectorTest, VectorRef) {
     Object obj = eval("(vector-ref (vector 1 2 3) 0)");
     EXPECT_TRUE(obj.is_integer());
@@ -41,7 +41,7 @@ TEST_F(VectorTest, VectorRef) {
     EXPECT_EQ(obj.as_integer(), 3);
 }
 
-// Тест vector-set!
+// РўРµСЃС‚ vector-set!
 TEST_F(VectorTest, VectorSet) {
     eval("(define v (vector 1 2 3))");
     eval("(vector-set! v 1 99)");
@@ -50,7 +50,7 @@ TEST_F(VectorTest, VectorSet) {
     EXPECT_EQ(obj.as_integer(), 99);
 }
 
-// Тест vector-length
+// РўРµСЃС‚ vector-length
 TEST_F(VectorTest, VectorLength) {
     Object obj = eval("(vector-length (vector 1 2 3))");
     EXPECT_TRUE(obj.is_integer());

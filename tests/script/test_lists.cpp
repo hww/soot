@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+ï»¿#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Òåñò ñîçäàíèÿ ïàð
+// Ð¢ÐµÑÑ‚ ÑÐ¾Ð·Ð´Ð°Ð½Ð¸Ñ Ð¿Ð°Ñ€
 TEST_F(ListTest, PairCreation) {
     Object obj = eval("(cons 1 2)");
     EXPECT_TRUE(obj.is_pair());
@@ -28,7 +28,7 @@ TEST_F(ListTest, PairCreation) {
     EXPECT_EQ(obj.as_pair()->cdr.as_integer(), 2);
 }
 
-// Òåñò car è cdr
+// Ð¢ÐµÑÑ‚ car Ð¸ cdr
 TEST_F(ListTest, CarCdrOperations) {
     Object obj = eval("(car (cons 1 2))");
     EXPECT_TRUE(obj.is_integer());
@@ -39,12 +39,12 @@ TEST_F(ListTest, CarCdrOperations) {
     EXPECT_EQ(obj.as_integer(), 2);
 }
 
-// Òåñò ñïèñêîâ
+// Ð¢ÐµÑÑ‚ ÑÐ¿Ð¸ÑÐºÐ¾Ð²
 TEST_F(ListTest, ListOperations) {
     Object obj = eval("(list 1 2 3)");
     EXPECT_TRUE(obj.is_pair());
 
-    // Ïðîâåðÿåì ñòðóêòóðó ñïèñêà (1 2 3)
+    // ÐŸÑ€Ð¾Ð²ÐµÑ€ÑÐµÐ¼ ÑÑ‚Ñ€ÑƒÐºÑ‚ÑƒÑ€Ñƒ ÑÐ¿Ð¸ÑÐºÐ° (1 2 3)
     Object first = obj.as_pair()->car;
     EXPECT_TRUE(first.is_integer());
     EXPECT_EQ(first.as_integer(), 1);
@@ -61,7 +61,7 @@ TEST_F(ListTest, ListOperations) {
     EXPECT_TRUE(end.is_empty_list());
 }
 
-// Òåñò length
+// Ð¢ÐµÑÑ‚ length
 TEST_F(ListTest, ListLength) {
     Object obj = eval("(length (list 1 2 3))");
     EXPECT_TRUE(obj.is_integer());
@@ -72,12 +72,12 @@ TEST_F(ListTest, ListLength) {
     EXPECT_EQ(obj.as_integer(), 0);
 }
 
-// Òåñò append
+// Ð¢ÐµÑÑ‚ append
 TEST_F(ListTest, ListAppend) {
     Object obj = eval("(append (list 1 2) (list 3 4))");
     EXPECT_TRUE(obj.is_pair());
 
-    // Äîëæåí ïîëó÷èòüñÿ ñïèñîê (1 2 3 4)
+    // Ð”Ð¾Ð»Ð¶ÐµÐ½ Ð¿Ð¾Ð»ÑƒÑ‡Ð¸Ñ‚ÑŒÑÑ ÑÐ¿Ð¸ÑÐ¾Ðº (1 2 3 4)
     EXPECT_EQ(obj.as_pair()->car.as_integer(), 1);
     EXPECT_EQ(obj.as_pair()->cdr.as_pair()->car.as_integer(), 2);
     EXPECT_EQ(obj.as_pair()->cdr.as_pair()->cdr.as_pair()->car.as_integer(), 3);

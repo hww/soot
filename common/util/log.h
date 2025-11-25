@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include <string>
 #include <ctime>
@@ -35,7 +35,7 @@ namespace lg {
 		void log_message(level log_level, LogTime& now, const char* message);
 	}  // namespace internal
 
-	// Возвращаем ротацию
+	// Р’РѕР·РІСЂР°С‰Р°РµРј СЂРѕС‚Р°С†РёСЋ
 	void set_file(const std::string& filename, bool should_rotate = true, bool append = false);
 	void set_stdout_level(level log_level);
 	void set_file_level(level log_level);

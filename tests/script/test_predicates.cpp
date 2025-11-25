@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест type predicates
+// РўРµСЃС‚ type predicates
 TEST_F(PredicatesTest, TypePredicates) {
     Object obj = eval("(number? 5)");
     EXPECT_TRUE(obj.as_boolean());
@@ -45,7 +45,7 @@ TEST_F(PredicatesTest, TypePredicates) {
     EXPECT_TRUE(obj.as_boolean());
 }
 
-// Тест сравнений
+// РўРµСЃС‚ СЃСЂР°РІРЅРµРЅРёР№
 TEST_F(PredicatesTest, ComparisonPredicates) {
     Object obj = eval("(= 5 5)");
     EXPECT_TRUE(obj.as_boolean());
@@ -66,7 +66,7 @@ TEST_F(PredicatesTest, ComparisonPredicates) {
     EXPECT_TRUE(obj.as_boolean());
 }
 
-// Тест eq? и eqv?
+// РўРµСЃС‚ eq? Рё eqv?
 TEST_F(PredicatesTest, EqualityPredicates) {
     Object obj = eval("(eq? 5 5)");
     EXPECT_TRUE(obj.as_boolean());

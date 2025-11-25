@@ -1,4 +1,4 @@
-#include "module.hpp"
+п»ї#include "module.hpp"
 #include "util/log.h"
 
 namespace vm {
@@ -18,20 +18,20 @@ namespace vm {
     }
 
     Definition* Module::resolve_symbol(StringId name) {
-        // 1. Ищем в бинарном файле
+        // 1. РС‰РµРј РІ Р±РёРЅР°СЂРЅРѕРј С„Р°Р№Р»Рµ
         if (binary_file) {
             binary_file->find_definition_by_name(name);
         }
 
-        // 2. Ищем в своих экспортах
+        // 2. РС‰РµРј РІ СЃРІРѕРёС… СЌРєСЃРїРѕСЂС‚Р°С…
         if (auto def = get_export(name)) {
             if (binary_file && binary_file->is_valid()) {
-                // НОВЫЙ API - data_ptr уже Ptr<ByteCode>
+                // РќРћР’Р«Р™ API - data_ptr СѓР¶Рµ Ptr<ByteCode>
                 return def;
             }
         }
 
-        // 3. Ищем в импортах
+        // 3. РС‰РµРј РІ РёРјРїРѕСЂС‚Р°С…
         if (auto import_module = get_import(name)) {
             return import_module->resolve_export(name);
         }
@@ -54,7 +54,7 @@ namespace vm {
     }
 
     Definition* Module::resolve_export(StringId name) {
-        // Ищем ТОЛЬКО в своих экспортах
+        // РС‰РµРј РўРћР›Р¬РљРћ РІ СЃРІРѕРёС… СЌРєСЃРїРѕСЂС‚Р°С…
         if (auto def = get_export(name)) {
             if (binary_file && binary_file->is_valid()) {
                 return def;

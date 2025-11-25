@@ -1,11 +1,11 @@
-// FileHub.cpp - âñå ğåàëèçàöèè
+ï»¿// FileHub.cpp - Ã¢Å„Äº Ä‘ÄºÅ•Ã«ÄÃ§Å•Ã¶ÄÄ
 #include "file_util.h"
 #include <fstream>
 #include <regex>
 
 namespace file_util {
 
-    // ==================== ÎÑÍÎÂÍÛÅ ÓÒÈËÈÒÛ ====================
+    // ==================== ÃÅƒÃÃÃ‚ÃÅ°Ä¹ Ã“Å‡ÄŒÃ‹ÄŒÅ‡Å° ====================
 
     std::string read_text(const fs::path& path) {
         std::ifstream file(path);
@@ -46,7 +46,7 @@ namespace file_util {
         file.write(reinterpret_cast<const char*>(data.data()), data.size());
     }
 
-    // ==================== ĞÀÁÎÒÀ Ñ ÏÓÒßÌÈ ====================
+    // ==================== ÄÅ”ÃÃÅ‡Å” Åƒ ÄÃ“Å‡ÃŸÄšÄŒ ====================
 
     std::string get_filename(const fs::path& path) {
         return path.filename().string();
@@ -64,7 +64,7 @@ namespace file_util {
         return a / b;
     }
 
-    // ==================== ĞÀÁÎÒÀ Ñ ÄÈĞÅÊÒÎĞÈßÌÈ ====================
+    // ==================== ÄÅ”ÃÃÅ‡Å” Åƒ Ã„ÄŒÄÄ¹Ä˜Å‡ÃÄÄŒÃŸÄšÄŒ ====================
 
     bool create_dirs(const fs::path& path) {
         std::error_code ec;
@@ -99,7 +99,7 @@ namespace file_util {
         return dirs;
     }
 
-    // ==================== ÏÎÈÑÊ ÔÀÉËÎÂ ====================
+    // ==================== ÄÃÄŒÅƒÄ˜ Ã”Å”Ã‰Ã‹ÃÃ‚ ====================
 
     std::vector<fs::path> find_by_extension(const fs::path& dir, const std::string& ext) {
         std::vector<fs::path> files;
@@ -137,13 +137,13 @@ namespace file_util {
         return files;
     }
 
-    // ==================== ÏĞÎÂÅĞÊÈ È ÈÍÔÎĞÌÀÖÈß ====================
+    // ==================== ÄÄÃÃ‚Ä¹ÄÄ˜ÄŒ ÄŒ ÄŒÃÃ”ÃÄÄšÅ”Ã–ÄŒÃŸ ====================
 
     uintmax_t get_size(const fs::path& path) {
         return fs::file_size(path);
     }
 
-    // ==================== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ====================
+    // ==================== ÃÄÄ¹ÄÅ”Ã–ÄŒÄŒ Åƒ Ã”Å”Ã‰Ã‹Å”ÄšÄŒ ====================
 
     void copy_file(const fs::path& from, const fs::path& to) {
         create_dirs_for_file(to);
@@ -163,7 +163,7 @@ namespace file_util {
         return fs::remove_all(path);
     }
 
-    // ========== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ÄËß İÒÎÃÎ ÏĞÎÅÊÒÀ ============
+    // ========== ÃÄÄ¹ÄÅ”Ã–ÄŒÄŒ Åƒ Ã”Å”Ã‰Ã‹Å”ÄšÄŒ Ã„Ã‹ÃŸ ÃÅ‡ÃÄ‚Ã ÄÄÃÄ¹Ä˜Å‡Å” ============
 
     fs::path get_project_dir()
     {

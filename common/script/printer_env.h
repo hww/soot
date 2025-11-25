@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include "object.h"
 #include <fmt/format.h>
@@ -11,12 +11,12 @@ namespace script {
 
     class EnvironmentPrettyPrinter {
     public:
-        // Основные функции вывода
+        // РћСЃРЅРѕРІРЅС‹Рµ С„СѓРЅРєС†РёРё РІС‹РІРѕРґР°
         static std::string to_string(const EnvironmentObject& env,
             bool include_parents = false,
             int max_parent_depth = -1);
 
-        // Перегрузки для указателей
+        // РџРµСЂРµРіСЂСѓР·РєРё РґР»СЏ СѓРєР°Р·Р°С‚РµР»РµР№
         static std::string to_string(const EnvironmentObject* env,
             bool include_parents = false,
             int max_parent_depth = -1);
@@ -29,7 +29,7 @@ namespace script {
             bool include_parents = false,
             int max_parent_depth = -1);
 
-        // Древовидный формат (как в Lua)
+        // Р”СЂРµРІРѕРІРёРґРЅС‹Р№ С„РѕСЂРјР°С‚ (РєР°Рє РІ Lua)
         static std::string to_tree_string(const EnvironmentObject& env,
             bool include_parents = false,
             int max_parent_depth = -1);
@@ -38,11 +38,11 @@ namespace script {
             bool include_parents = false,
             int max_parent_depth = -1);
 
-        // Компактный формат (одна строка)
+        // РљРѕРјРїР°РєС‚РЅС‹Р№ С„РѕСЂРјР°С‚ (РѕРґРЅР° СЃС‚СЂРѕРєР°)
         static std::string to_compact_string(const EnvironmentObject& env);
         static std::string to_compact_string(const EnvironmentObject* env);
 
-        // Форматированный вывод с цветами (если поддерживается)
+        // Р¤РѕСЂРјР°С‚РёСЂРѕРІР°РЅРЅС‹Р№ РІС‹РІРѕРґ СЃ С†РІРµС‚Р°РјРё (РµСЃР»Рё РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ)
         static std::string to_colored_string(const EnvironmentObject& env,
             bool include_parents = false,
             int max_parent_depth = -1);
@@ -51,7 +51,7 @@ namespace script {
             bool include_parents = false,
             int max_parent_depth = -1);
 
-        // Вывод непосредственно в консоль
+        // Р’С‹РІРѕРґ РЅРµРїРѕСЃСЂРµРґСЃС‚РІРµРЅРЅРѕ РІ РєРѕРЅСЃРѕР»СЊ
         static void print(const EnvironmentObject& env,
             bool include_parents = false,
             int max_parent_depth = -1);
@@ -69,7 +69,7 @@ namespace script {
             int max_parent_depth = -1);
 
     private:
-        // Вспомогательные функции
+        // Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ С„СѓРЅРєС†РёРё
         static void collect_environment_info(const EnvironmentObject& env,
             bool include_parents,
             int max_parent_depth,

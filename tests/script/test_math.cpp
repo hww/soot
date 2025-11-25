@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 #include <cmath>
 
@@ -19,7 +19,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест abs
+// РўРµСЃС‚ abs
 TEST_F(MathTest, Abs) {
     Object obj = eval("(abs 5)");
     EXPECT_TRUE(obj.is_integer());
@@ -34,7 +34,7 @@ TEST_F(MathTest, Abs) {
     EXPECT_DOUBLE_EQ(obj.as_float(), 3.14);
 }
 
-// Тест max и min
+// РўРµСЃС‚ max Рё min
 TEST_F(MathTest, MaxMin) {
     Object obj = eval("(max 1 3 2)");
     EXPECT_TRUE(obj.is_integer());
@@ -45,7 +45,7 @@ TEST_F(MathTest, MaxMin) {
     EXPECT_EQ(obj.as_integer(), 1);
 }
 
-// Тест expt
+// РўРµСЃС‚ expt
 TEST_F(MathTest, Expt) {
     Object obj = eval("(expt 2 3)");
     EXPECT_TRUE(obj.is_integer());
@@ -56,7 +56,7 @@ TEST_F(MathTest, Expt) {
     EXPECT_DOUBLE_EQ(obj.as_float(), 2.0);
 }
 
-// Тест sqrt
+// РўРµСЃС‚ sqrt
 TEST_F(MathTest, Sqrt) {
     Object obj = eval("(sqrt 4)");
     EXPECT_TRUE(obj.is_float());

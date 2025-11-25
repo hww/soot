@@ -1,4 +1,4 @@
-#include "image_resize.h"
+﻿#include "image_resize.h"
 
 #include <cmath>
 

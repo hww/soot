@@ -1,6 +1,6 @@
-# tests/CMakeLists.txt
+п»ї# tests/CMakeLists.txt
 
-# Добавляем эту строку в самое начало
+# Р”РѕР±Р°РІР»СЏРµРј СЌС‚Сѓ СЃС‚СЂРѕРєСѓ РІ СЃР°РјРѕРµ РЅР°С‡Р°Р»Рѕ
 include(GoogleTest)
 
 include_directories(common/script)
@@ -9,7 +9,7 @@ include_directories(common/script)
 # Script
 # ==============================================================
 
-# Создаем тестовый исполняемый файл
+# РЎРѕР·РґР°РµРј С‚РµСЃС‚РѕРІС‹Р№ РёСЃРїРѕР»РЅСЏРµРјС‹Р№ С„Р°Р№Р»
 add_executable(script_test
     tests/script/main_script_test.cpp
     tests/script/test_basic_types.cpp
@@ -29,7 +29,7 @@ add_executable(script_test
     tests/script/test_system.cpp
 )
 
-# Линкуем с нашей библиотекой и gtest
+# Р›РёРЅРєСѓРµРј СЃ РЅР°С€РµР№ Р±РёР±Р»РёРѕС‚РµРєРѕР№ Рё gtest
 target_link_libraries(script_test script_lib gtest_main fmt)
 target_include_directories(script_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
@@ -42,7 +42,7 @@ set_target_properties(script_test PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
-# Регистрируем тесты для Test Explorer
+# Р РµРіРёСЃС‚СЂРёСЂСѓРµРј С‚РµСЃС‚С‹ РґР»СЏ Test Explorer
 gtest_discover_tests(script_test)
 
 

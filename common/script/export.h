@@ -1,4 +1,4 @@
-// test_parsers.h
+﻿// test_parsers.h
 #pragma once
 #include "common/script/object.h"
 #include "common/script/interpreter.h"

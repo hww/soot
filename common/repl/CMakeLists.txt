@@ -1,4 +1,4 @@
-include(common/cross_sockets/CMakeLists.txt)
+п»їinclude(common/cross_sockets/CMakeLists.txt)
 
 add_library(repl_lib
     common/repl/config.cpp
@@ -7,7 +7,7 @@ add_library(repl_lib
     common/repl/nrepl/repl_client.cpp
 )
 
-# Исправлено: используем repl_lib вместо repl
+# РСЃРїСЂР°РІР»РµРЅРѕ: РёСЃРїРѕР»СЊР·СѓРµРј repl_lib РІРјРµСЃС‚Рѕ repl
 target_include_directories(repl_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -21,7 +21,7 @@ else()
 endif()
 
 add_executable(repl common/repl/main.cpp)
-# Исправлено: добавляем связывание с repl_lib
+# РСЃРїСЂР°РІР»РµРЅРѕ: РґРѕР±Р°РІР»СЏРµРј СЃРІСЏР·С‹РІР°РЅРёРµ СЃ repl_lib
 target_link_libraries(repl PRIVATE repl_lib)
 set_target_properties(repl PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

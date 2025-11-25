@@ -1,4 +1,4 @@
-#include "log.h"
+п»ї#include "log.h"
 #include <cstdio>
 #include <mutex>
 #include <sstream>
@@ -85,7 +85,7 @@ namespace lg {
 
     }  // namespace internal
 
-    // Упрощенная ротация логов - максимум 10 файлов
+    // РЈРїСЂРѕС‰РµРЅРЅР°СЏ СЂРѕС‚Р°С†РёСЏ Р»РѕРіРѕРІ - РјР°РєСЃРёРјСѓРј 10 С„Р°Р№Р»РѕРІ
     void set_file(const std::string& filename, bool should_rotate, bool append) {
         std::lock_guard<std::mutex> lock(gLogger.mutex);
 
@@ -97,13 +97,13 @@ namespace lg {
         std::string final_filename = filename;
 
         if (should_rotate) {
-            // Добавляем timestamp к имени файла
+            // Р”РѕР±Р°РІР»СЏРµРј timestamp Рє РёРјРµРЅРё С„Р°Р№Р»Р°
             time_t now = time(nullptr);
             char time_buffer[128];
             strftime(time_buffer, sizeof(time_buffer), "%Y%m%d_%H%M%S", localtime(&now));
             final_filename = filename + "." + time_buffer + ".log";
 
-            // Удаляем старые логи (оставляем только 10 последних)
+            // РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ Р»РѕРіРё (РѕСЃС‚Р°РІР»СЏРµРј С‚РѕР»СЊРєРѕ 10 РїРѕСЃР»РµРґРЅРёС…)
             try {
                 fs::path log_dir = fs::path(filename).parent_path();
                 if (log_dir.empty()) log_dir = ".";
@@ -111,30 +111,30 @@ namespace lg {
                 std::string base_name = fs::path(filename).stem().string();
                 std::vector<fs::path> log_files;
 
-                // Ищем все файлы логов
+                // РС‰РµРј РІСЃРµ С„Р°Р№Р»С‹ Р»РѕРіРѕРІ
                 for (const auto& entry : fs::directory_iterator(log_dir)) {
                     if (entry.is_regular_file()) {
                         std::string stem = entry.path().stem().string();
-                        if (stem.find(base_name) == 0) { // начинается с base_name
+                        if (stem.find(base_name) == 0) { // РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ base_name
                             log_files.push_back(entry.path());
                         }
                     }
                 }
 
-                // Сортируем по времени изменения (новые первыми)
+                // РЎРѕСЂС‚РёСЂСѓРµРј РїРѕ РІСЂРµРјРµРЅРё РёР·РјРµРЅРµРЅРёСЏ (РЅРѕРІС‹Рµ РїРµСЂРІС‹РјРё)
                 std::sort(log_files.begin(), log_files.end(),
                     [](const fs::path& a, const fs::path& b) {
                         return fs::last_write_time(a) > fs::last_write_time(b);
                     });
 
-                // Удаляем старые (оставляем 10 файлов)
+                // РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ (РѕСЃС‚Р°РІР»СЏРµРј 10 С„Р°Р№Р»РѕРІ)
                 for (size_t i = 10; i < log_files.size(); i++) {
                     fs::remove(log_files[i]);
                 }
 
             }
             catch (...) {
-                // Игнорируем ошибки при ротации
+                // РРіРЅРѕСЂРёСЂСѓРµРј РѕС€РёР±РєРё РїСЂРё СЂРѕС‚Р°С†РёРё
             }
         }
         else {

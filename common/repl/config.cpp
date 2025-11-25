@@ -1,4 +1,4 @@
-#include "config.h"
+п»ї#include "config.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include <fstream>
 #include <iostream>
@@ -11,7 +11,7 @@ bool Config::load_from_file(const std::string& filename) {
         return false;
     }
 
-    // TODO: JSON парсинг
+    // TODO: JSON РїР°СЂСЃРёРЅРі
     fmt::print("Loading config from {}\n", filename);
     return true;
 }
@@ -20,7 +20,7 @@ bool Config::save_to_file(const std::string& filename) {
     std::ofstream file(filename);
     if (!file) return false;
 
-    // TODO: JSON сериализация
+    // TODO: JSON СЃРµСЂРёР°Р»РёР·Р°С†РёСЏ
     fmt::print("Saving config to {}\n", filename);
     return true;
 }

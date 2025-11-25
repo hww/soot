@@ -1,4 +1,4 @@
-#include "pretty_printer.h"
+п»ї#include "pretty_printer.h"
 #include <sstream>
 #include <algorithm>
 
@@ -6,7 +6,7 @@ namespace script::pretty_print {
 
 
 
-        // Вспомогательные функции
+        // Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ С„СѓРЅРєС†РёРё
         inline const std::string quote_symbol(Node::QuoteKind kind) {
             switch (kind) {
             case Node::QuoteKind::QUOTE: return "'";
@@ -54,7 +54,7 @@ namespace script::pretty_print {
             }
         }
 
-        // Преобразование Object в Node
+        // РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ Object РІ Node
         Node to_node(const Object& obj) {
             switch (obj.type) {
             case ObjectType::EMPTY_LIST:
@@ -68,7 +68,7 @@ namespace script::pretty_print {
                 return Node(obj.print());
 
             case ObjectType::PAIR: {
-                // Проверяем quoted формы
+                // РџСЂРѕРІРµСЂСЏРµРј quoted С„РѕСЂРјС‹
                 auto first = obj.as_pair()->car;
                 if (first.is_symbol() && first.as_symbol().name_ptr) {
                     std::string first_str = first.as_symbol().name_ptr;
@@ -107,7 +107,7 @@ namespace script::pretty_print {
                     }
                 }
 
-                // Обычный список или improper list
+                // РћР±С‹С‡РЅС‹Р№ СЃРїРёСЃРѕРє РёР»Рё improper list
                 std::vector<Node> children;
                 Object to_print = obj;
 
@@ -141,7 +141,7 @@ namespace script::pretty_print {
             }
         }
 
-        // Вычисление длин поддеревьев
+        // Р’С‹С‡РёСЃР»РµРЅРёРµ РґР»РёРЅ РїРѕРґРґРµСЂРµРІСЊРµРІ
         void recompute_lengths(const std::vector<Node*>& bfs_order) {
             for (auto it = bfs_order.rbegin(); it != bfs_order.rend(); it++) {
                 Node* node = *it;
@@ -153,8 +153,8 @@ namespace script::pretty_print {
                 case Node::Kind::IMPROPER_LIST:
                 case Node::Kind::LIST: {
                     if (node->break_list) {
-                        // Специальный расчет для разбитых списков
-                        int first_line_len = 1 + node->get_quote_length(); // открывающая скобка + quotes
+                        // РЎРїРµС†РёР°Р»СЊРЅС‹Р№ СЂР°СЃС‡РµС‚ РґР»СЏ СЂР°Р·Р±РёС‚С‹С… СЃРїРёСЃРєРѕРІ
+                        int first_line_len = 1 + node->get_quote_length(); // РѕС‚РєСЂС‹РІР°СЋС‰Р°СЏ СЃРєРѕР±РєР° + quotes
                         int nodes_on_first_line = std::min(
                             static_cast<int>(node->child_nodes.size()),
                             static_cast<int>(node->top_line_count)
@@ -163,14 +163,14 @@ namespace script::pretty_print {
                         if (nodes_on_first_line > 0) {
                             for (int node_idx = 0; node_idx < nodes_on_first_line; node_idx++) {
                                 first_line_len += node->child_nodes.at(node_idx).text_len;
-                                first_line_len++; // пробел после элемента
+                                first_line_len++; // РїСЂРѕР±РµР» РїРѕСЃР»Рµ СЌР»РµРјРµРЅС‚Р°
                             }
-                            first_line_len--; // убираем последний пробел
+                            first_line_len--; // СѓР±РёСЂР°РµРј РїРѕСЃР»РµРґРЅРёР№ РїСЂРѕР±РµР»
                         }
 
                         int max_line_len = first_line_len;
 
-                        // Расчет для остальных строк
+                        // Р Р°СЃС‡РµС‚ РґР»СЏ РѕСЃС‚Р°Р»СЊРЅС‹С… СЃС‚СЂРѕРє
                         for (size_t node_idx = nodes_on_first_line; node_idx < node->child_nodes.size(); node_idx++) {
                             int line_len = node->sub_elt_indent + node->child_nodes.at(node_idx).text_len;
                             max_line_len = std::max(max_line_len, line_len);
@@ -179,10 +179,10 @@ namespace script::pretty_print {
                         node->text_len = max_line_len;
                     }
                     else {
-                        // Обычный расчет для неразбитых списков
-                        node->text_len = 1 + node->get_quote_length(); // открывающая скобка + quotes
+                        // РћР±С‹С‡РЅС‹Р№ СЂР°СЃС‡РµС‚ РґР»СЏ РЅРµСЂР°Р·Р±РёС‚С‹С… СЃРїРёСЃРєРѕРІ
+                        node->text_len = 1 + node->get_quote_length(); // РѕС‚РєСЂС‹РІР°СЋС‰Р°СЏ СЃРєРѕР±РєР° + quotes
                         for (auto& child : node->child_nodes) {
-                            node->text_len += (child.text_len + 1); // элемент + пробел/скобка
+                            node->text_len += (child.text_len + 1); // СЌР»РµРјРµРЅС‚ + РїСЂРѕР±РµР»/СЃРєРѕР±РєР°
                         }
                     }
                     break;
@@ -193,7 +193,7 @@ namespace script::pretty_print {
             }
         }
 
-        // Разбиение списка
+        // Р Р°Р·Р±РёРµРЅРёРµ СЃРїРёСЃРєР°
         void break_list(Node* node) {
             ASSERT(!node->break_list);
             node->break_list = true;
@@ -224,7 +224,7 @@ namespace script::pretty_print {
                 }
                 else if (name == "let" || name == "let*" || name == "rlet") {
                     node->top_line_count = 2;
-                    // Разбиваем определения переменных если нужно
+                    // Р Р°Р·Р±РёРІР°РµРј РѕРїСЂРµРґРµР»РµРЅРёСЏ РїРµСЂРµРјРµРЅРЅС‹С… РµСЃР»Рё РЅСѓР¶РЅРѕ
                     if (node->child_nodes.size() > 1 && node->child_nodes[1].child_nodes.size() > 1 &&
                         !node->child_nodes[1].break_list) {
                         break_list(&node->child_nodes[1]);
@@ -235,7 +235,7 @@ namespace script::pretty_print {
                     node->sub_elt_indent += name.size();
                 }
                 else if (name == "cond") {
-                    // Разбиваем все ветки cond
+                    // Р Р°Р·Р±РёРІР°РµРј РІСЃРµ РІРµС‚РєРё cond
                     for (size_t i = 1; i < node->child_nodes.size(); i++) {
                         auto& cond_body = node->child_nodes[i];
                         if (cond_body.kind == Node::Kind::LIST && !cond_body.break_list) {
@@ -245,7 +245,7 @@ namespace script::pretty_print {
                 }
                 else if (name == "case") {
                     node->top_line_count = 2;
-                    // Разбиваем все ветки case
+                    // Р Р°Р·Р±РёРІР°РµРј РІСЃРµ РІРµС‚РєРё case
                     for (size_t i = 2; i < node->child_nodes.size(); i++) {
                         auto& case_body = node->child_nodes[i];
                         if (case_body.kind == Node::Kind::LIST && !case_body.break_list) {
@@ -258,7 +258,7 @@ namespace script::pretty_print {
                 node->sub_elt_indent = 1;
             }
 
-            // Поднимаемся вверх по родителям, разбивая при необходимости
+            // РџРѕРґРЅРёРјР°РµРјСЃСЏ РІРІРµСЂС… РїРѕ СЂРѕРґРёС‚РµР»СЏРј, СЂР°Р·Р±РёРІР°СЏ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё
             Node* child = node;
             for (Node* p = node->parent; p; p = p->parent) {
                 if (!p->break_list && &p->child_nodes.back() != child) {
@@ -268,7 +268,7 @@ namespace script::pretty_print {
             }
         }
 
-        // Обязательное разбиение для определенных форм
+        // РћР±СЏР·Р°С‚РµР»СЊРЅРѕРµ СЂР°Р·Р±РёРµРЅРёРµ РґР»СЏ РѕРїСЂРµРґРµР»РµРЅРЅС‹С… С„РѕСЂРј
         void insert_required_breaks(const std::vector<Node*>& bfs_order) {
             const std::unordered_set<std::string> always_break = {
                 "when", "defun-debug", "countdown", "case", "defun", "defmethod",
@@ -286,7 +286,7 @@ namespace script::pretty_print {
             }
         }
 
-        // Основной алгоритм разбиения
+        // РћСЃРЅРѕРІРЅРѕР№ Р°Р»РіРѕСЂРёС‚Рј СЂР°Р·Р±РёРµРЅРёСЏ
         int run_algorithm(const std::vector<Node*>& bfs_order, int line_length) {
             int num_broken = 0;
             std::optional<int32_t> min_depth;
@@ -312,7 +312,7 @@ namespace script::pretty_print {
             return num_broken;
         }
 
-        // Вспомогательная функция для вычисления отступов
+        // Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ РґР»СЏ РІС‹С‡РёСЃР»РµРЅРёСЏ РѕС‚СЃС‚СѓРїРѕРІ
         int compute_extra_offset(const std::string& str, int s0, int ei) {
             ASSERT(!str.empty());
             for (size_t i = str.length(); i-- > 0;) {
@@ -326,10 +326,10 @@ namespace script::pretty_print {
             return ei + static_cast<int>(str.length()) - s0;
         }
 
-        // Рекурсивная генерация строки
+        // Р РµРєСѓСЂСЃРёРІРЅР°СЏ РіРµРЅРµСЂР°С†РёСЏ СЃС‚СЂРѕРєРё
         void append_node_to_string(const Node* node, std::string& str,
             int init_indent_level, int next_indent_level) {
-            // Начальный отступ
+            // РќР°С‡Р°Р»СЊРЅС‹Р№ РѕС‚СЃС‚СѓРї
             for (int i = 0; i < init_indent_level; i++) {
                 str.push_back(' ');
             }
@@ -359,7 +359,7 @@ namespace script::pretty_print {
                         listing_indent += (node->child_nodes.front().kind == Node::Kind::LIST) ? 1 : 2;
                     }
 
-                    // Элементы на первой строке
+                    // Р­Р»РµРјРµРЅС‚С‹ РЅР° РїРµСЂРІРѕР№ СЃС‚СЂРѕРєРµ
                     for (; node_idx < node->top_line_count && node_idx < node->child_nodes.size(); node_idx++) {
                         size_t s0 = str.length();
                         if (node->kind == Node::Kind::IMPROPER_LIST &&
@@ -378,14 +378,14 @@ namespace script::pretty_print {
                     }
 
                     if (node->top_line_count > 0 && node_idx > 0) {
-                        str.pop_back(); // убираем последний пробел
+                        str.pop_back(); // СѓР±РёСЂР°РµРј РїРѕСЃР»РµРґРЅРёР№ РїСЂРѕР±РµР»
                     }
 
                     if (node_idx < node->child_nodes.size()) {
                         str.push_back('\n');
                     }
 
-                    // Остальные элементы на новых строках
+                    // РћСЃС‚Р°Р»СЊРЅС‹Рµ СЌР»РµРјРµРЅС‚С‹ РЅР° РЅРѕРІС‹С… СЃС‚СЂРѕРєР°С…
                     bool after_key = false;
                     for (; node_idx < node->child_nodes.size(); node_idx++) {
                         if (node->kind == Node::Kind::IMPROPER_LIST &&
@@ -399,7 +399,7 @@ namespace script::pretty_print {
                         append_node_to_string(&node->child_nodes.at(node_idx), str,
                             after_key ? 0 : listing_indent, listing_indent);
 
-                        // Специальная обработка для keyword аргументов
+                        // РЎРїРµС†РёР°Р»СЊРЅР°СЏ РѕР±СЂР°Р±РѕС‚РєР° РґР»СЏ keyword Р°СЂРіСѓРјРµРЅС‚РѕРІ
                         if (node->child_nodes.at(node_idx).kind == Node::Kind::ATOM &&
                             node->child_nodes.at(node_idx).atom_str.length() > 0 &&
                             node->child_nodes.at(node_idx).atom_str[0] == ':' &&
@@ -415,7 +415,7 @@ namespace script::pretty_print {
                         }
                     }
 
-                    // Закрывающая скобка
+                    // Р—Р°РєСЂС‹РІР°СЋС‰Р°СЏ СЃРєРѕР±РєР°
                     if (!node->child_nodes.empty()) {
                         str.push_back('\n');
                         for (int i = 0; i < next_indent_level + node->get_quote_length(); i++) {
@@ -426,7 +426,7 @@ namespace script::pretty_print {
 
                 }
                 else {
-                    // Неразбитый список
+                    // РќРµСЂР°Р·Р±РёС‚С‹Р№ СЃРїРёСЃРѕРє
                     str.push_back('(');
                     ASSERT(!node->child_nodes.empty());
 
@@ -470,22 +470,22 @@ namespace script::pretty_print {
             return result;
         }
 
-        // Главная функция pretty printer'а
+        // Р“Р»Р°РІРЅР°СЏ С„СѓРЅРєС†РёСЏ pretty printer'Р°
         std::string to_string(const Object& obj, int line_length) {
-            // Строим дерево
+            // РЎС‚СЂРѕРёРј РґРµСЂРµРІРѕ
             Node root = to_node(obj);
 
-            // Создаем связи и порядок обхода
+            // РЎРѕР·РґР°РµРј СЃРІСЏР·Рё Рё РїРѕСЂСЏРґРѕРє РѕР±С…РѕРґР°
             std::vector<Node*> bfs_order;
             root.link(nullptr, &bfs_order, 0);
 
-            // Обязательное разбиение для некоторых форм
+            // РћР±СЏР·Р°С‚РµР»СЊРЅРѕРµ СЂР°Р·Р±РёРµРЅРёРµ РґР»СЏ РЅРµРєРѕС‚РѕСЂС‹С… С„РѕСЂРј
             insert_required_breaks(bfs_order);
 
-            // Вычисляем длины поддеревьев
+            // Р’С‹С‡РёСЃР»СЏРµРј РґР»РёРЅС‹ РїРѕРґРґРµСЂРµРІСЊРµРІ
             recompute_lengths(bfs_order);
 
-            // Итеративное разбиение пока нужно
+            // РС‚РµСЂР°С‚РёРІРЅРѕРµ СЂР°Р·Р±РёРµРЅРёРµ РїРѕРєР° РЅСѓР¶РЅРѕ
             int num_broken = 1;
             while (num_broken > 0) {
                 num_broken = run_algorithm(bfs_order, line_length);

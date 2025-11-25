@@ -1,19 +1,19 @@
-#include "binary_file_builder.hpp"
+п»ї#include "binary_file_builder.hpp"
 #include "fmt/format.h"
 
 namespace vm {
 
-    /** Построить и загрузить модуль в пул */
+    /** РџРѕСЃС‚СЂРѕРёС‚СЊ Рё Р·Р°РіСЂСѓР·РёС‚СЊ РјРѕРґСѓР»СЊ РІ РїСѓР» */
     std::shared_ptr<Module> BinaryFileBuilder::build_and_load_to_pool(StringId module_name) {
         std::vector<u8> data = build();
 
-        // Создаем модуль
+        // РЎРѕР·РґР°РµРј РјРѕРґСѓР»СЊ
         auto module = std::make_shared<Module>(
             module_name,
             std::filesystem::path("generated.bin")
         );
 
-        // Загружаем в BinaryFilePool
+        // Р—Р°РіСЂСѓР¶Р°РµРј РІ BinaryFilePool
         void* pool_addr = BinaryFilePool::allocate(
             static_cast<u32>(data.size()),
             module.get(),
@@ -24,14 +24,14 @@ namespace vm {
             throw std::runtime_error("Failed to allocate memory in BinaryFilePool");
         }
 
-        // Копируем данные в пул
+        // РљРѕРїРёСЂСѓРµРј РґР°РЅРЅС‹Рµ РІ РїСѓР»
         std::memcpy(pool_addr, data.data(), data.size());
 
-        // Релоцируем указатели BinaryFile
+        // Р РµР»РѕС†РёСЂСѓРµРј СѓРєР°Р·Р°С‚РµР»Рё BinaryFile
         BinaryFile* binary_file = static_cast<BinaryFile*>(pool_addr);
         binary_file->relocate_pointers(BinaryFilePool::get_base_address());
 
-        // Устанавливаем owner_module для всех ByteCode
+        // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј owner_module РґР»СЏ РІСЃРµС… ByteCode
         setup_bytecode_owners(binary_file, module.get());
 
         module->load_state = Module::LoadState::BINARY_LOADED;
@@ -40,20 +40,20 @@ namespace vm {
         return module;
     }
 
-    /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
+    /** РџРѕСЃС‚СЂРѕРёС‚СЊ Р±РёРЅР°СЂРЅРёРє - РџР РћРЎРўРћР™ Р’РђР РРђРќРў */
     std::vector<u8> BinaryFileBuilder::build() {
-        // 1. Создаем буфер начального размера (64KB)
+        // 1. РЎРѕР·РґР°РµРј Р±СѓС„РµСЂ РЅР°С‡Р°Р»СЊРЅРѕРіРѕ СЂР°Р·РјРµСЂР° (64KB)
         std::vector<u8> buffer(65536);
         u32 current_pos = 0;
 
-        // 2. Заголовок файла
+        // 2. Р—Р°РіРѕР»РѕРІРѕРє С„Р°Р№Р»Р°
         BinaryFile* header = reinterpret_cast<BinaryFile*>(buffer.data());
         new (header) BinaryFile();
         header->base_offset = 0;
 
         current_pos += sizeof(BinaryFile);
 
-        // 3. Таблица дефиниций
+        // 3. РўР°Р±Р»РёС†Р° РґРµС„РёРЅРёС†РёР№
         Definition* defs_table = reinterpret_cast<Definition*>(buffer.data() + current_pos);
         u32 defs_count = static_cast<u32>(definitions_.size());
 
@@ -67,14 +67,14 @@ namespace vm {
                 string_id::to_string(def_data.name), def_data.name,
                 string_id::to_string(def_data.type), def_data.type);
 
-            // ЯВНАЯ инициализация каждого определения
+            // РЇР’РќРђРЇ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РєР°Р¶РґРѕРіРѕ РѕРїСЂРµРґРµР»РµРЅРёСЏ
             new (&defs_table[i]) Definition{
                 def_data.name,      // StringId name
                 def_data.type,      // StringId type  
-                Ptr<void>(0)        // Временный нулевой указатель
+                Ptr<void>(0)        // Р’СЂРµРјРµРЅРЅС‹Р№ РЅСѓР»РµРІРѕР№ СѓРєР°Р·Р°С‚РµР»СЊ
             };
 
-            // Проверим что записалось
+            // РџСЂРѕРІРµСЂРёРј С‡С‚Рѕ Р·Р°РїРёСЃР°Р»РѕСЃСЊ
             lg::info("  Written: name={}, type={}, data_ptr={}",
                 defs_table[i].name, defs_table[i].type, defs_table[i].data_ptr.offset);
         }
@@ -82,23 +82,23 @@ namespace vm {
         current_pos += defs_count * sizeof(Definition);
         current_pos = align_size(current_pos);
 
-        // 4. Записываем данные дефиниций и обновляем указатели
+        // 4. Р—Р°РїРёСЃС‹РІР°РµРј РґР°РЅРЅС‹Рµ РґРµС„РёРЅРёС†РёР№ Рё РѕР±РЅРѕРІР»СЏРµРј СѓРєР°Р·Р°С‚РµР»Рё
         for (u32 i = 0; i < defs_count; i++) {
             const auto& def = definitions_[i];
 
-            // Проверяем, не вышли ли за пределы буфера
+            // РџСЂРѕРІРµСЂСЏРµРј, РЅРµ РІС‹С€Р»Рё Р»Рё Р·Р° РїСЂРµРґРµР»С‹ Р±СѓС„РµСЂР°
             ensure_capacity(buffer, current_pos + 1024);
 
-            // Обновляем указатель в таблице дефиниций
+            // РћР±РЅРѕРІР»СЏРµРј СѓРєР°Р·Р°С‚РµР»СЊ РІ С‚Р°Р±Р»РёС†Рµ РґРµС„РёРЅРёС†РёР№
             defs_table[i].data_ptr = Ptr<void>(current_pos);
             lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
             if (def.type == SID("function")) {
-                // Записываем ByteCode структуру
+                // Р—Р°РїРёСЃС‹РІР°РµРј ByteCode СЃС‚СЂСѓРєС‚СѓСЂСѓ
                 ByteCode* bc = reinterpret_cast<ByteCode*>(buffer.data() + current_pos);
-                new (bc) ByteCode();  // Явная инициализация
+                new (bc) ByteCode();  // РЇРІРЅР°СЏ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
                 current_pos += sizeof(ByteCode);
 
-                // Код
+                // РљРѕРґ
                 if (!def.code.empty()) {
                     u32 code_size = static_cast<u32>(def.code.size() * sizeof(Instruction));
                     ensure_capacity(buffer, current_pos + code_size);
@@ -112,7 +112,7 @@ namespace vm {
                     current_pos = align_size(current_pos);
                 }
 
-                // Данные
+                // Р”Р°РЅРЅС‹Рµ
                 if (!def.data.empty()) {
                     ensure_capacity(buffer, current_pos + def.data.size());
 
@@ -125,7 +125,7 @@ namespace vm {
                     current_pos = align_size(current_pos);
                 }
 
-                // Отладочная информация
+                // РћС‚Р»Р°РґРѕС‡РЅР°СЏ РёРЅС„РѕСЂРјР°С†РёСЏ
                 if (!def.debug_info.empty()) {
                     u32 debug_size = static_cast<u32>(def.debug_info.size() * sizeof(SourceLocation));
                     ensure_capacity(buffer, current_pos + debug_size);
@@ -140,7 +140,7 @@ namespace vm {
                 }
             }
             else {
-                // Простая дефиниция - просто копируем данные
+                // РџСЂРѕСЃС‚Р°СЏ РґРµС„РёРЅРёС†РёСЏ - РїСЂРѕСЃС‚Рѕ РєРѕРїРёСЂСѓРµРј РґР°РЅРЅС‹Рµ
                 ensure_capacity(buffer, current_pos + def.data.size());
 
                 u8* data_dest = buffer.data() + current_pos;
@@ -150,20 +150,20 @@ namespace vm {
             }
         }
 
-        // 5. Обновляем заголовок
+        // 5. РћР±РЅРѕРІР»СЏРµРј Р·Р°РіРѕР»РѕРІРѕРє
         header->file_size = current_pos;
         header->used_size = current_pos;
         header->definitions_count = defs_count;
         header->definitions = Ptr<Definition>(sizeof(BinaryFile));
 
-        // 6. Обрезаем буфер до реального размера
+        // 6. РћР±СЂРµР·Р°РµРј Р±СѓС„РµСЂ РґРѕ СЂРµР°Р»СЊРЅРѕРіРѕ СЂР°Р·РјРµСЂР°
         buffer.resize(current_pos);
 
         return buffer;
     }
 
 
-    /** Просмотреть входные данные которые были добавлены */
+    /** РџСЂРѕСЃРјРѕС‚СЂРµС‚СЊ РІС…РѕРґРЅС‹Рµ РґР°РЅРЅС‹Рµ РєРѕС‚РѕСЂС‹Рµ Р±С‹Р»Рё РґРѕР±Р°РІР»РµРЅС‹ */
     std::string BinaryFileBuilder::inspect_input() const {
         std::string result;
         result += fmt::format("  Total definitions: {}\n", definitions_.size());
@@ -178,7 +178,7 @@ namespace vm {
                 result += fmt::format("code:{} instructions, data:{} bytes, debug:{} entries\n",
                     def.code.size(), def.data.size(), def.debug_info.size());
 
-                // Показать первые несколько инструкций
+                // РџРѕРєР°Р·Р°С‚СЊ РїРµСЂРІС‹Рµ РЅРµСЃРєРѕР»СЊРєРѕ РёРЅСЃС‚СЂСѓРєС†РёР№
                 if (!def.code.empty()) {
                     result += "      instructions: ";
                     for (size_t j = 0; j < std::min(def.code.size(), size_t(3)); j++) {
@@ -193,7 +193,7 @@ namespace vm {
             else {
                 result += fmt::format("data:{} bytes", def.data.size());
 
-                // Показать начало данных для простых типов
+                // РџРѕРєР°Р·Р°С‚СЊ РЅР°С‡Р°Р»Рѕ РґР°РЅРЅС‹С… РґР»СЏ РїСЂРѕСЃС‚С‹С… С‚РёРїРѕРІ
                 if (!def.data.empty()) {
                     result += " [";
                     for (size_t j = 0; j < std::min(def.data.size(), size_t(8)); j++) {
@@ -211,7 +211,7 @@ namespace vm {
         return result;
     }
 
-    /** Дамп памяти полученного бинарника */
+    /** Р”Р°РјРї РїР°РјСЏС‚Рё РїРѕР»СѓС‡РµРЅРЅРѕРіРѕ Р±РёРЅР°СЂРЅРёРєР° */
     std::string BinaryFileBuilder::inspect_memory_dump(const std::vector<u8>& binary) const {
         if (binary.empty()) {
             return "Binary is empty";
@@ -221,14 +221,14 @@ namespace vm {
         const u8* data = binary.data();
         u32 size = static_cast<u32>(binary.size());
 
-        // Дамп заголовка
+        // Р”Р°РјРї Р·Р°РіРѕР»РѕРІРєР°
         if (size >= sizeof(BinaryFile)) {
             const BinaryFile* header = reinterpret_cast<const BinaryFile*>(data);
             result += fmt::format("Header: {}\n", header->to_string());
             result += fmt::format("Hex: {}\n", header->hex_dump());
         }
 
-        // Дамп первых 256 байт или всего файла если он меньше
+        // Р”Р°РјРї РїРµСЂРІС‹С… 256 Р±Р°Р№С‚ РёР»Рё РІСЃРµРіРѕ С„Р°Р№Р»Р° РµСЃР»Рё РѕРЅ РјРµРЅСЊС€Рµ
         u32 dump_size = std::min(size, 256u);
         result += fmt::format("First {} bytes:\n", dump_size);
 
@@ -269,7 +269,7 @@ namespace vm {
         return result;
     }
 
-    /** Полная инспекция - входные данные + результат сборки */
+    /** РџРѕР»РЅР°СЏ РёРЅСЃРїРµРєС†РёСЏ - РІС…РѕРґРЅС‹Рµ РґР°РЅРЅС‹Рµ + СЂРµР·СѓР»СЊС‚Р°С‚ СЃР±РѕСЂРєРё */
     std::string BinaryFileBuilder::inspect_build_result(const std::vector<u8>& binary) const {
         std::string result = "=== BUILD RESULT INSPECTION ===\n\n";
 
@@ -281,7 +281,7 @@ namespace vm {
         result += inspect_memory_dump(binary);
         result += "\n";
 
-        // Если бинарник валиден, показать его структуру
+        // Р•СЃР»Рё Р±РёРЅР°СЂРЅРёРє РІР°Р»РёРґРµРЅ, РїРѕРєР°Р·Р°С‚СЊ РµРіРѕ СЃС‚СЂСѓРєС‚СѓСЂСѓ
         if (binary.size() >= sizeof(BinaryFile)) {
             const BinaryFile* header = reinterpret_cast<const BinaryFile*>(binary.data());
             if (header->is_valid()) {
@@ -293,7 +293,7 @@ namespace vm {
         return result;
     }
 
-    // Удобные методы для быстрой отладки
+    // РЈРґРѕР±РЅС‹Рµ РјРµС‚РѕРґС‹ РґР»СЏ Р±С‹СЃС‚СЂРѕР№ РѕС‚Р»Р°РґРєРё
     void BinaryFileBuilder::debug_print_input() const {
         lg::info("{}", inspect_input());
     }

@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест string-length
+// РўРµСЃС‚ string-length
 TEST_F(StringTest, StringLength) {
     Object obj = eval("(string-length \"hello\")");
     EXPECT_TRUE(obj.is_integer());
@@ -29,7 +29,7 @@ TEST_F(StringTest, StringLength) {
     EXPECT_EQ(obj.as_integer(), 0);
 }
 
-// Тест string-ref
+// РўРµСЃС‚ string-ref
 TEST_F(StringTest, StringRef) {
     Object obj = eval("(string-ref \"hello\" 0)");
     EXPECT_TRUE(obj.is_char());
@@ -40,14 +40,14 @@ TEST_F(StringTest, StringRef) {
     EXPECT_EQ(obj.as_char(), 'o');
 }
 
-// Тест string-append
+// РўРµСЃС‚ string-append
 TEST_F(StringTest, StringAppend) {
     Object obj = eval("(string-append \"hello\" \" \" \"world\")");
     EXPECT_TRUE(obj.is_string());
     EXPECT_EQ(obj.as_string()->data, "hello world");
 }
 
-// Тест substring
+// РўРµСЃС‚ substring
 TEST_F(StringTest, Substring) {
     Object obj = eval("(string-substr \"hello world\" 0 5)");
     EXPECT_TRUE(obj.is_string());
@@ -58,7 +58,7 @@ TEST_F(StringTest, Substring) {
     EXPECT_EQ(obj.as_string()->data, "world");
 }
 
-// Тест преобразований string <-> symbol
+// РўРµСЃС‚ РїСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёР№ string <-> symbol
 TEST_F(StringTest, StringSymbolConversions) {
     Object obj = eval("(string->symbol \"hello\")");
     EXPECT_TRUE(obj.is_symbol());

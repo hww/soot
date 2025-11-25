@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест quote
+// РўРµСЃС‚ quote
 TEST_F(SpecialFormsTest, Quote) {
     Object obj = eval("(quote (1 2 3))");
     EXPECT_TRUE(obj.is_pair());
@@ -30,7 +30,7 @@ TEST_F(SpecialFormsTest, Quote) {
     EXPECT_TRUE(obj.is_pair());
 }
 
-// Тест define и set!
+// РўРµСЃС‚ define Рё set!
 TEST_F(SpecialFormsTest, DefineAndSet) {
     eval("(define x 5)");
     Object obj = eval("x");
@@ -43,7 +43,7 @@ TEST_F(SpecialFormsTest, DefineAndSet) {
     EXPECT_EQ(obj.as_integer(), 10);
 }
 
-// Тест if
+// РўРµСЃС‚ if
 TEST_F(SpecialFormsTest, IfExpression) {
     Object obj = eval("(if #t 1 2)");
     EXPECT_TRUE(obj.is_integer());
@@ -61,7 +61,7 @@ TEST_F(SpecialFormsTest, IfExpression) {
     EXPECT_TRUE(obj.is_empty_list());
 }
 
-// Тест lambda
+// РўРµСЃС‚ lambda
 TEST_F(SpecialFormsTest, Lambda) {
     eval("(define add (lambda (x y) (+ x y)))");
     Object obj = eval("(add 3 4)");
@@ -69,14 +69,14 @@ TEST_F(SpecialFormsTest, Lambda) {
     EXPECT_EQ(obj.as_integer(), 7);
 }
 
-// Тест let
+// РўРµСЃС‚ let
 TEST_F(SpecialFormsTest, Let) {
     Object obj = eval("(let ((x 5) (y 3)) (+ x y))");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 8);
 }
 
-// Тест begin
+// РўРµСЃС‚ begin
 TEST_F(SpecialFormsTest, Begin) {
     Object obj = eval("(begin 1 2 3)");
     EXPECT_TRUE(obj.is_integer());

@@ -1,5 +1,5 @@
-
-# Создаем нашу библиотеку БЕЗ replxx файлов
+п»ї
+# РЎРѕР·РґР°РµРј РЅР°С€Сѓ Р±РёР±Р»РёРѕС‚РµРєСѓ Р‘Р•Р— replxx С„Р°Р№Р»РѕРІ
 add_library(vm_lib 
     common/util/crc32.cpp
     common/util/assert.cpp

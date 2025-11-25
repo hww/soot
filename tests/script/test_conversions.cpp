@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,7 +18,7 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест number->string
+// пїЅпїЅпїЅпїЅ number->string
 TEST_F(ConversionTest, NumberToString) {
     Object obj = eval("(number->string 42)");
     EXPECT_TRUE(obj.is_string());
@@ -28,7 +28,7 @@ TEST_F(ConversionTest, NumberToString) {
     EXPECT_TRUE(obj.is_string());
 }
 
-// Тест string->number
+// пїЅпїЅпїЅпїЅ string->number
 TEST_F(ConversionTest, StringToNumber) {
     Object obj = eval("(string->number \"42\")");
     EXPECT_TRUE(obj.is_integer());
@@ -39,7 +39,7 @@ TEST_F(ConversionTest, StringToNumber) {
     EXPECT_DOUBLE_EQ(obj.as_float(), 3.14);
 }
 
-// Тест char->integer и integer->char
+// пїЅпїЅпїЅпїЅ char->integer пїЅ integer->char
 TEST_F(ConversionTest, CharIntegerConversions) {
     Object obj = eval("(char->integer #\\A)");
     EXPECT_TRUE(obj.is_integer());

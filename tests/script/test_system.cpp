@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,17 +18,17 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест file-exists?
+// РўРµСЃС‚ file-exists?
 TEST_F(SystemTest, FileExists) {
     Object obj = eval("(file-exists? \"nonexistent.txt\")");
     EXPECT_TRUE(obj.is_boolean());
     EXPECT_FALSE(obj.as_boolean());
 }
 
-// Тест current-directory
+// РўРµСЃС‚ current-directory
 TEST_F(SystemTest, CurrentDirectory) {
     Object obj = eval("(current-directory)");
     EXPECT_TRUE(obj.is_string());
-    // Не можем проверить точное значение, но можем проверить что это не пустая строка
+    // РќРµ РјРѕР¶РµРј РїСЂРѕРІРµСЂРёС‚СЊ С‚РѕС‡РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ, РЅРѕ РјРѕР¶РµРј РїСЂРѕРІРµСЂРёС‚СЊ С‡С‚Рѕ СЌС‚Рѕ РЅРµ РїСѓСЃС‚Р°СЏ СЃС‚СЂРѕРєР°
     EXPECT_FALSE(obj.as_string()->empty());
 }

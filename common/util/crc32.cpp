@@ -1,4 +1,4 @@
-#include "crc32.h"
+﻿#include "crc32.h"
 
 namespace util
 {

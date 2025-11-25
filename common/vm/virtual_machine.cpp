@@ -1,4 +1,4 @@
-#include "virtual_machine.hpp"
+﻿#include "virtual_machine.hpp"
 #include "util/log.h"
 
 namespace vm {

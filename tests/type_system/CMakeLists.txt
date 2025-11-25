@@ -1,6 +1,6 @@
-# tests/CMakeLists.txt
+п»ї# tests/CMakeLists.txt
 
-# Добавляем эту строку в самое начало
+# Р”РѕР±Р°РІР»СЏРµРј СЌС‚Сѓ СЃС‚СЂРѕРєСѓ РІ СЃР°РјРѕРµ РЅР°С‡Р°Р»Рѕ
 include(GoogleTest)
 
 include_directories(common/script)
@@ -15,7 +15,7 @@ add_executable(type_system_tests
     tests/type_system/test_deftype.cpp
     #tests/type_system/test_goos_ts.cpp
 )
-# Тестовый исполняемый файл
+# РўРµСЃС‚РѕРІС‹Р№ РёСЃРїРѕР»РЅСЏРµРјС‹Р№ С„Р°Р№Р»
 target_link_libraries(type_system_tests type_system_lib script_lib gtest_main fmt)
 target_include_directories(type_system_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 if(MSVC)
@@ -24,7 +24,7 @@ if(MSVC)
     )
 endif()
 
-# Добавляем тесты
+# Р”РѕР±Р°РІР»СЏРµРј С‚РµСЃС‚С‹
 gtest_discover_tests(type_system_tests)
  
 

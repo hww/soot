@@ -1,4 +1,4 @@
-#include "native_func.hpp"
+ï»¿#include "native_func.hpp"
 #include "util/log.h"
 #include <iostream>
 
@@ -51,7 +51,7 @@ namespace vm {
     Variant native_add(u32 argc, const Variant* argv) {
         if (argc < 2) return Variant(0);
 
-        // Àâòîìàòè÷åñêîå ïðèâåäåíèå òèïîâ
+        // ÐÐ²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ñ‡ÐµÑÐºÐ¾Ðµ Ð¿Ñ€Ð¸Ð²ÐµÐ´ÐµÐ½Ð¸Ðµ Ñ‚Ð¸Ð¿Ð¾Ð²
         if (argv[0].is_float() || argv[1].is_float()) {
             return Variant(argv[0].to_float() + argv[1].to_float());
         }

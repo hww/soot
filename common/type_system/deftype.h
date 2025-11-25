@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "script/object.h"
 #include "type_spec.h"

@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include "types.hpp"
 #include "variant.hpp"
@@ -98,7 +98,7 @@ namespace vm {
                 return Variant();
             }
 
-            // Создаем корневой фрейм и основной фрейм выполнения
+            // Г‘Г®Г§Г¤Г ГҐГ¬ ГЄГ®Г°Г­ГҐГўГ®Г© ГґГ°ГҐГ©Г¬ ГЁ Г®Г±Г­Г®ГўГ­Г®Г© ГґГ°ГҐГ©Г¬ ГўГ»ГЇГ®Г«Г­ГҐГ­ГЁГї
             StackFrame* current_frame = create_stack_frame(
                 bytecode->get_code_ptr(),
                 bytecode->get_data_ptr(),
@@ -107,7 +107,7 @@ namespace vm {
 
             Variant final_result;
 
-            // Главный цикл выполнения
+            // ГѓГ«Г ГўГ­Г»Г© Г¶ГЁГЄГ« ГўГ»ГЇГ®Г«Г­ГҐГ­ГЁГї
             while (current_frame != nullptr) {
                 Instruction instr = current_frame->get_next_instruction();
 
@@ -115,7 +115,7 @@ namespace vm {
                 lg::debug("PC={} : {}", current_frame->pc - 1, instr.to_string());
 #endif
 
-                // ОДИН БОЛЬШОЙ SWITCH - как в оригинале
+                // ГЋГ„Г€ГЌ ГЃГЋГ‹ГњГГЋГ‰ SWITCH - ГЄГ ГЄ Гў Г®Г°ГЁГЈГЁГ­Г Г«ГҐ
                 switch (instr.opcode) {
                     // ============================================================
                     // Control Flow Instructions (0x0*)
@@ -876,7 +876,7 @@ namespace vm {
 
         std::unordered_map<StringId, NativeFunction> native_functions_;
 
-        // Модульная система
+        // ГЊГ®Г¤ГіГ«ГјГ­Г Гї Г±ГЁГ±ГІГҐГ¬Г 
         ModuleManager& modules_ = ModuleManager::instance();
 
     };

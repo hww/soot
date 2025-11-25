@@ -1,5 +1,5 @@
-
-# Создаем нашу библиотеку БЕЗ replxx файлов
+п»ї
+# РЎРѕР·РґР°РµРј РЅР°С€Сѓ Р±РёР±Р»РёРѕС‚РµРєСѓ Р‘Р•Р— replxx С„Р°Р№Р»РѕРІ
 add_library(script_lib 
     common/util/crc32.cpp
     common/util/assert.cpp
@@ -17,7 +17,7 @@ add_library(script_lib
     common/script/parse_helpers.cpp
 )
 
-# Исполняемый файл
+# РСЃРїРѕР»РЅСЏРµРјС‹Р№ С„Р°Р№Р»
 add_executable(lisp common/script/main.cpp)
 target_link_libraries(lisp PRIVATE script_lib  fmt)
 set_target_properties(lisp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

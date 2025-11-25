@@ -1,4 +1,4 @@
-// FileHub.h - ÷èñòûå îáúÿâëåíèÿ
+ï»¿// FileHub.h - Ã·ÄÅ„ÅˆÅ±Äº Ã®Ã¡ÃºË™Ã¢Ã«ÄºÃ­ÄË™
 #pragma once
 
 #include <filesystem>
@@ -11,45 +11,45 @@ namespace file_util {
 
 	namespace fs = std::filesystem;
 
-	// ==================== ÎÑÍÎÂÍÛÅ ÓÒÈËÈÒÛ ====================
+	// ==================== ÃÅƒÃÃÃ‚ÃÅ°Ä¹ Ã“Å‡ÄŒÃ‹ÄŒÅ‡Å° ====================
 	std::string read_text(const fs::path& path);
 	void write_text(const fs::path& path, const std::string& content);
 	std::vector<uint8_t> read_binary(const fs::path& path);
 	void write_binary(const fs::path& path, const std::vector<uint8_t>& data);
 
-	// ==================== ĞÀÁÎÒÀ Ñ ÏÓÒßÌÈ ====================
+	// ==================== ÄÅ”ÃÃÅ‡Å” Åƒ ÄÃ“Å‡ÃŸÄšÄŒ ====================
 	std::string get_filename(const fs::path& path);
 	std::string get_stem(const fs::path& path);
 	std::string get_extension(const fs::path& path);
 	fs::path join_paths(const fs::path& a, const fs::path& b);
 	//fs::path make_path(std::string path) { return fs::path(path); }
 
-	// ==================== ĞÀÁÎÒÀ Ñ ÄÈĞÅÊÒÎĞÈßÌÈ ====================
+	// ==================== ÄÅ”ÃÃÅ‡Å” Åƒ Ã„ÄŒÄÄ¹Ä˜Å‡ÃÄÄŒÃŸÄšÄŒ ====================
 	bool create_dirs(const fs::path& path);
 	bool create_dirs_for_file(const fs::path& file_path);
 	std::vector<fs::path> list_files(const fs::path& dir);
 	std::vector<fs::path> list_dirs(const fs::path& dir);
 
-	// ==================== ÏÎÈÑÊ ÔÀÉËÎÂ ====================
+	// ==================== ÄÃÄŒÅƒÄ˜ Ã”Å”Ã‰Ã‹ÃÃ‚ ====================
 	std::vector<fs::path> find_by_extension(const fs::path& dir, const std::string& ext);
 	std::vector<fs::path> find_by_extension_recursive(const fs::path& dir, const std::string& ext);
 	std::vector<fs::path> find_by_pattern(const fs::path& dir, const std::regex& pattern);
 
-	// ==================== ÏĞÎÂÅĞÊÈ È ÈÍÔÎĞÌÀÖÈß ====================
-	// Ïğîñòûå îá¸ğòêè - ìîæíî inline
+	// ==================== ÄÄÃÃ‚Ä¹ÄÄ˜ÄŒ ÄŒ ÄŒÃÃ”ÃÄÄšÅ”Ã–ÄŒÃŸ ====================
+	// ÄÄ‘Ã®Å„ÅˆÅ±Äº Ã®Ã¡Â¸Ä‘ÅˆÄ™Ä - Ä›Ã®Ä‡Ã­Ã® inline
 	inline bool exists(const fs::path& path) { return fs::exists(path); }
 	inline bool is_file(const fs::path& path) { return fs::is_regular_file(path); }
 	inline bool is_dir(const fs::path& path) { return fs::is_directory(path); }
 
 	uintmax_t get_size(const fs::path& path);
 
-	// ==================== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ====================
+	// ==================== ÃÄÄ¹ÄÅ”Ã–ÄŒÄŒ Åƒ Ã”Å”Ã‰Ã‹Å”ÄšÄŒ ====================
 	void copy_file(const fs::path& from, const fs::path& to);
 	void move_file(const fs::path& from, const fs::path& to);
 	bool remove_file(const fs::path& path);
 	uintmax_t remove_dir(const fs::path& path);
 
-	// ========== ÎÏÅĞÀÖÈÈ Ñ ÔÀÉËÀÌÈ ÄËß İÒÎÃÎ ÏĞÎÅÊÒÀ ============
+	// ========== ÃÄÄ¹ÄÅ”Ã–ÄŒÄŒ Åƒ Ã”Å”Ã‰Ã‹Å”ÄšÄŒ Ã„Ã‹ÃŸ ÃÅ‡ÃÄ‚Ã ÄÄÃÄ¹Ä˜Å‡Å” ============
 	fs::path get_project_dir();
 	std::string get_file_path(const std::vector<std::string>& input);
 } // namespace filehub

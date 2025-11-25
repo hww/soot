@@ -1,4 +1,4 @@
-/*!
+﻿/*!
  * @file assert.h
  * Custom ASSERT macro
  */

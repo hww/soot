@@ -1,4 +1,4 @@
-# Создаем нашу библиотеку БЕЗ replxx файлов
+п»ї# РЎРѕР·РґР°РµРј РЅР°С€Сѓ Р±РёР±Р»РёРѕС‚РµРєСѓ Р‘Р•Р— replxx С„Р°Р№Р»РѕРІ
 add_library(type_system_lib 
     common/type_system/type.cpp
     common/type_system/type_system.cpp
@@ -13,9 +13,9 @@ add_library(type_system_lib
     common/util/log.cpp
 )
 
-# Линкуем fmt если нужно
+# Р›РёРЅРєСѓРµРј fmt РµСЃР»Рё РЅСѓР¶РЅРѕ
 target_link_libraries(type_system_lib PRIVATE fmt::fmt)
 
-# Для теста
+# Р”Р»СЏ С‚РµСЃС‚Р°
 add_executable(type_system common/type_system/main.cpp)
 target_link_libraries(type_system PRIVATE type_system_lib fmt::fmt)

@@ -1,4 +1,4 @@
-#include "unicode_util.h"
+﻿#include "unicode_util.h"
 
 // clang-format off
 #ifdef _WIN32

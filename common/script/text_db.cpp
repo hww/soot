@@ -1,4 +1,4 @@
-#include "text_db.h"
+﻿#include "text_db.h"
 #include "util/file_util.h"
 #include <sstream>
 #include <algorithm>
@@ -232,4 +232,4 @@ namespace script {
 		m_fragments.clear();
 	}
 
-} // namespace s�ript
+} // namespace sñript

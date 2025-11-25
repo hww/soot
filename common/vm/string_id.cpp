@@ -1,4 +1,4 @@
-#include "string_id.hpp"
+п»ї#include "string_id.hpp"
 #include <fstream>
 #include "fmt/format.h"
 #include <algorithm>
@@ -137,18 +137,18 @@ namespace vm::string_id {
 
         auto it = g_string_table.find(id);
         if (it != g_string_table.end()) {
-            // Проверяем коллизию
+            // РџСЂРѕРІРµСЂСЏРµРј РєРѕР»Р»РёР·РёСЋ
             if (it->second != str) {
                 throw std::runtime_error(
                     fmt::format("CRC32 collision: '{}' and '{}' both map to {:08X}",
                         it->second, str, id)
                 );
             }
-            // Такая же строка уже есть - возвращаем существующий ID
+            // РўР°РєР°СЏ Р¶Рµ СЃС‚СЂРѕРєР° СѓР¶Рµ РµСЃС‚СЊ - РІРѕР·РІСЂР°С‰Р°РµРј СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ ID
             return id;
         }
 
-        // Новая строка - добавляем в таблицу
+        // РќРѕРІР°СЏ СЃС‚СЂРѕРєР° - РґРѕР±Р°РІР»СЏРµРј РІ С‚Р°Р±Р»РёС†Сѓ
         g_string_table[id] = str;
         g_loaded = true;
         return id;

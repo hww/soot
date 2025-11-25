@@ -1,4 +1,4 @@
-#include "binary_file_pool.hpp"
+п»ї#include "binary_file_pool.hpp"
 #include "types.hpp"
 #include "module.hpp"
 #include "ptr.hpp"
@@ -6,16 +6,16 @@
 namespace vm {
 
 
-    // Инициализация пула - внутри выделяем больше на INTERNAL_OFFSET
+    // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїСѓР»Р° - РІРЅСѓС‚СЂРё РІС‹РґРµР»СЏРµРј Р±РѕР»СЊС€Рµ РЅР° INTERNAL_OFFSET
     bool BinaryFilePool::initialize(u32 total_size) {
         if (pool_base) shutdown();
 
-        // Выделяем дополнительную память для смещения
+        // Р’С‹РґРµР»СЏРµРј РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅСѓСЋ РїР°РјСЏС‚СЊ РґР»СЏ СЃРјРµС‰РµРЅРёСЏ
         pool_base = new u8[total_size + INTERNAL_OFFSET];
         if (!pool_base) return false;
 
-        pool_size = total_size + INTERNAL_OFFSET; // Реальный размер
-        current_offset = INTERNAL_OFFSET; // Начинаем после смещения
+        pool_size = total_size + INTERNAL_OFFSET; // Р РµР°Р»СЊРЅС‹Р№ СЂР°Р·РјРµСЂ
+        current_offset = INTERNAL_OFFSET; // РќР°С‡РёРЅР°РµРј РїРѕСЃР»Рµ СЃРјРµС‰РµРЅРёСЏ
         allocations.clear();
         std::memset(pool_base, 0, pool_size);
 
@@ -24,13 +24,13 @@ namespace vm {
         return true;
     }
 
-    // Выделение памяти в пуле
+    // Р’С‹РґРµР»РµРЅРёРµ РїР°РјСЏС‚Рё РІ РїСѓР»Рµ
     void* BinaryFilePool::allocate(u32 size, Module* owner_module, StringId module_name) {
         if (!pool_base || size == 0) return nullptr;
 
         u32 aligned_size = align_size(size);
 
-        // Проверяем место, компактифицируем если нужно
+        // РџСЂРѕРІРµСЂСЏРµРј РјРµСЃС‚Рѕ, РєРѕРјРїР°РєС‚РёС„РёС†РёСЂСѓРµРј РµСЃР»Рё РЅСѓР¶РЅРѕ
         if (current_offset + aligned_size > pool_size) {
             if (!compactify()) return nullptr;
             if (current_offset + aligned_size > pool_size) return nullptr;
@@ -44,7 +44,7 @@ namespace vm {
         return addr;
     }
 
-    // Освобождение памяти модуля
+    // РћСЃРІРѕР±РѕР¶РґРµРЅРёРµ РїР°РјСЏС‚Рё РјРѕРґСѓР»СЏ
     bool BinaryFilePool::deallocate(StringId module_name) {
         auto it = std::find_if(allocations.begin(), allocations.end(),
             [module_name](const Allocation& alloc) {
@@ -62,7 +62,7 @@ namespace vm {
         return false;
     }
 
-    // Компактификация памяти
+    // РљРѕРјРїР°РєС‚РёС„РёРєР°С†РёСЏ РїР°РјСЏС‚Рё
     bool BinaryFilePool::compactify() {
         if (!pool_base || allocations.empty()) {
             current_offset = INTERNAL_OFFSET;
@@ -92,7 +92,7 @@ namespace vm {
         return true;
     }
 
-    // Освобождение пула
+    // РћСЃРІРѕР±РѕР¶РґРµРЅРёРµ РїСѓР»Р°
     void BinaryFilePool::shutdown() {
         for (auto& alloc : allocations) {
             if (alloc.owner_module) {

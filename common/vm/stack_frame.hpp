@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include "types.hpp"
 #include "variant.hpp"
@@ -55,7 +55,7 @@ namespace vm {
         }
 
         // ------------------------------------------------------------------------
-        // Register Access (ÈÑÏĞÀÂËÅÍÍÛÅ ÃĞÀÍÈÖÛ)
+        // Register Access (ÄŒÅƒÄÄÅ”Ã‚Ã‹Ä¹ÃÃÅ°Ä¹ Ä‚ÄÅ”ÃÄŒÃ–Å°)
         // ------------------------------------------------------------------------
 
         Variant& get_register(u32 index) {

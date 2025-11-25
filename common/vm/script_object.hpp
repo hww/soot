@@ -1,4 +1,4 @@
-/**
+п»ї/**
  * @file ScriptObject.hpp
  * @brief Reference counting with inline data and magic validation
  */
@@ -99,7 +99,7 @@ ScriptObject<T>* to_script_object(T* data_ptr) {
  */
 inline void script_ref(const void* data_ptr) {
     if (const ScriptObjectBase* base = to_script_base(data_ptr)) {
-        const_cast<ScriptObjectBase*>(base)->ref_count++;  // Safe - мы владеем объектом
+        const_cast<ScriptObjectBase*>(base)->ref_count++;  // Safe - Г¬Г» ГўГ«Г Г¤ГҐГҐГ¬ Г®ГЎГєГҐГЄГІГ®Г¬
     }
 }
 
@@ -119,8 +119,8 @@ inline void script_unref(const void* data_ptr) {
     if (const ScriptObjectBase* base = to_script_base(data_ptr)) {
         ScriptObjectBase* non_const_base = const_cast<ScriptObjectBase*>(base);
         if (--non_const_base->ref_count == 0) {
-            // Удаляем как сырую память - деструкторы не вызываются!
-            // Это ОСОЗНАННОЕ решение для производительности
+            // Г“Г¤Г Г«ГїГҐГ¬ ГЄГ ГЄ Г±Г»Г°ГіГѕ ГЇГ Г¬ГїГІГј - Г¤ГҐГ±ГІГ°ГіГЄГІГ®Г°Г» Г­ГҐ ГўГ»Г§Г»ГўГ ГѕГІГ±Гї!
+            // ГќГІГ® ГЋГ‘ГЋГ‡ГЌГЂГЌГЌГЋГ… Г°ГҐГёГҐГ­ГЁГҐ Г¤Г«Гї ГЇГ°Г®ГЁГ§ГўГ®Г¤ГЁГІГҐГ«ГјГ­Г®Г±ГІГЁ
             ::operator delete(non_const_base);
         }
     }

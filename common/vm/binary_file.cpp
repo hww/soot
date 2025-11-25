@@ -1,4 +1,4 @@
-#include "binary_file.hpp"
+п»ї#include "binary_file.hpp"
 #include <format>
 
 namespace vm {
@@ -7,7 +7,7 @@ namespace vm {
         ASSERT (pool_base != nullptr);
 
 
-        // Вычисляем старый базовый адрес пула
+        // Р’С‹С‡РёСЃР»СЏРµРј СЃС‚Р°СЂС‹Р№ Р±Р°Р·РѕРІС‹Р№ Р°РґСЂРµСЃ РїСѓР»Р°
         auto new_offset = reinterpret_cast<uintptr_t>(this) - reinterpret_cast<uintptr_t>(pool_base);
         auto delta = new_offset - base_offset;
         base_offset = new_offset;
@@ -16,18 +16,18 @@ namespace vm {
         
         if (delta == 0) return;
 
-        // Обновляем base_offset для нового положения
+        // РћР±РЅРѕРІР»СЏРµРј base_offset РґР»СЏ РЅРѕРІРѕРіРѕ РїРѕР»РѕР¶РµРЅРёСЏ
         generation++;
 
-        // Релоцируем указатели в заголовке
+        // Р РµР»РѕС†РёСЂСѓРµРј СѓРєР°Р·Р°С‚РµР»Рё РІ Р·Р°РіРѕР»РѕРІРєРµ
         definitions.offset += delta;
 
-        // Релоцируем указатели в определениях
+        // Р РµР»РѕС†РёСЂСѓРµРј СѓРєР°Р·Р°С‚РµР»Рё РІ РѕРїСЂРµРґРµР»РµРЅРёСЏС…
         for (u32 i = 0; i < definitions_count; i++) {
             Definition* def = get_definition(i);
             def->data_ptr.offset += delta;
 
-            // ЕСЛИ определение - функция, релоцируем и её внутренние указатели
+            // Р•РЎР›Р РѕРїСЂРµРґРµР»РµРЅРёРµ - С„СѓРЅРєС†РёСЏ, СЂРµР»РѕС†РёСЂСѓРµРј Рё РµС‘ РІРЅСѓС‚СЂРµРЅРЅРёРµ СѓРєР°Р·Р°С‚РµР»Рё
             if (def->type == type::function) {
                 Descriptor* desc = def->data_ptr.cast<Descriptor>().c();
                 if (desc) {

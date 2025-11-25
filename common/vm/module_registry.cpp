@@ -1,4 +1,4 @@
-#include "module_registry.hpp"
+п»ї#include "module_registry.hpp"
 #include "util/log.h"
 #include "util/assert.h"
 #include <fstream>
@@ -14,7 +14,7 @@ namespace vm {
 
         auto canonical_path = std::filesystem::canonical(path);
 
-        // Проверяем дубликаты
+        // РџСЂРѕРІРµСЂСЏРµРј РґСѓР±Р»РёРєР°С‚С‹
         if (std::find(search_paths_.begin(), search_paths_.end(), canonical_path) != search_paths_.end()) {
             lg::debug("Search path already added: {}", canonical_path.string());
             return;
@@ -81,7 +81,7 @@ namespace vm {
                 const auto& file_path = entry.path();
                 if (file_path.extension() != ".dci") continue;
 
-                // Создаем модуль из DCI файла
+                // РЎРѕР·РґР°РµРј РјРѕРґСѓР»СЊ РёР· DCI С„Р°Р№Р»Р°
                 auto module = create_module_from_dci(file_path);
                 if (module && module->is_valid_metadata()) {
                     module_cache_[module->name] = module;
@@ -97,17 +97,17 @@ namespace vm {
 
     std::shared_ptr<Module> ModuleRegistry::create_module_from_dci(const std::filesystem::path& dci_path) {
         try {
-            // Парсим DCI файл
+            // РџР°СЂСЃРёРј DCI С„Р°Р№Р»
             DciFile dci = DciFile::parse(dci_path.string());
             if (!dci.is_valid()) {
                 lg::warn("Invalid DCI file: {}", dci_path.string());
                 return nullptr;
             }
 
-            // ИСПРАВЛЕНИЕ: создаем модуль и инициализируем поля
+            // РРЎРџР РђР’Р›Р•РќРР•: СЃРѕР·РґР°РµРј РјРѕРґСѓР»СЊ Рё РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РїРѕР»СЏ
             auto module = std::make_shared<Module>();
 
-            // Заполняем поля напрямую
+            // Р—Р°РїРѕР»РЅСЏРµРј РїРѕР»СЏ РЅР°РїСЂСЏРјСѓСЋ
             module->name = string_id::register_string(dci.logical_path.c_str());
             module->file_path = dci_path;
             module->dci_imports = std::move(dci.imports);
@@ -115,12 +115,12 @@ namespace vm {
             module->dci_binary_size = dci.binary_size;
             module->load_state = Module::LoadState::METADATA;
 
-            // Находим соответствующий .bin файл
+            // РќР°С…РѕРґРёРј СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ .bin С„Р°Р№Р»
             std::filesystem::path bin_path = dci_path;
             bin_path.replace_extension(".bin");
             if (!std::filesystem::exists(bin_path)) {
                 lg::warn("Binary file not found for module: {}", bin_path.string());
-                // Но все равно возвращаем модуль - метаданные валидны
+                // РќРѕ РІСЃРµ СЂР°РІРЅРѕ РІРѕР·РІСЂР°С‰Р°РµРј РјРѕРґСѓР»СЊ - РјРµС‚Р°РґР°РЅРЅС‹Рµ РІР°Р»РёРґРЅС‹
             }
 
             return module;

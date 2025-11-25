@@ -1,4 +1,4 @@
-# SIDER Compiler Tool
+﻿# SIDER Compiler Tool
 
 Designed to generate a database of strings. There are several ways to generate such a database:
 

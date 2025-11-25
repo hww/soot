@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+ï»¿#include <gtest/gtest.h>
 #include "type_system/type_system.h"
 #include "type_system/defenum.h"
 #include "reader.h"
@@ -15,12 +15,12 @@ protected:
     void TearDown() override {
         delete ts;
     }
-    // Õåëïåð äëÿ ïàðñèíãà êàê â îðèãèíàëå
+    // Ð¥ÐµÐ»Ð¿ÐµÑ€ Ð´Ð»Ñ Ð¿Ð°Ñ€ÑÐ¸Ð½Ð³Ð° ÐºÐ°Ðº Ð² Ð¾Ñ€Ð¸Ð³Ð¸Ð½Ð°Ð»Ðµ
     EnumType* parse_deftype_string(const std::string& code, DefinitionMetadata* metda_data = nullptr) {
         auto obj = reader.read_from_string(code, "test");
         fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
-        // Èçâëåêàåì ôîðìó deftype: (defenum name ...) 
-        // â ïðîñòî (name ...) 
+        // Ð˜Ð·Ð²Ð»ÐµÐºÐ°ÐµÐ¼ Ñ„Ð¾Ñ€Ð¼Ñƒ deftype: (defenum name ...) 
+        // Ð² Ð¿Ñ€Ð¾ÑÑ‚Ð¾ (name ...) 
         auto& inner_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
         return parse_defenum(inner_form, ts, metda_data);
     }
@@ -30,7 +30,7 @@ protected:
 };
 
 TEST_F(DefEnumTest, DebugSimpleEnum) {
-    std::string code = "(defenum test (a) (b) (c))";  // ÁÅÇ äâîåòî÷èé!
+    std::string code = "(defenum test (a) (b) (c))";  // Ð‘Ð•Ð— Ð´Ð²Ð¾ÐµÑ‚Ð¾Ñ‡Ð¸Ð¹!
     try {
         EnumType* test_enum = parse_deftype_string(code);
         ASSERT_NE(test_enum, nullptr);
@@ -44,7 +44,7 @@ TEST_F(DefEnumTest, DebugSimpleEnum) {
 }
 
 TEST_F(DefEnumTest, BasicEnum) {
-    // ÏÐÀÂÈËÜÍÎ: çíà÷åíèÿ áåç äâîåòî÷èé
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐž: Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð±ÐµÐ· Ð´Ð²Ð¾ÐµÑ‚Ð¾Ñ‡Ð¸Ð¹
     std::string code = "(defenum color (red) (green) (blue))";
 
 
@@ -57,7 +57,7 @@ TEST_F(DefEnumTest, BasicEnum) {
 
 
 TEST_F(DefEnumTest, BitfieldEnum) {
-    // ÏÐÀÂÈËÜÍÎ: îïöèè ñ :, çíà÷åíèÿ áåç
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐž: Ð¾Ð¿Ñ†Ð¸Ð¸ Ñ :, Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð±ÐµÐ·
     std::string code = "(defenum flags :bitfield #t (read) (write) (execute))";
 
     EnumType* flags_enum = parse_deftype_string(code);
@@ -67,7 +67,7 @@ TEST_F(DefEnumTest, BitfieldEnum) {
 }
 
 TEST_F(DefEnumTest, EnumWithExplicitValues) {
-    // ÏÐÀÂÈËÜÍÎ: ïàðû (name value)
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐž: Ð¿Ð°Ñ€Ñ‹ (name value)
     std::string code = "(defenum weapon (pistol 0) (shotgun 1) (rocket 2))";
 
     EnumType* weapon_enum = parse_deftype_string(code);
@@ -76,7 +76,7 @@ TEST_F(DefEnumTest, EnumWithExplicitValues) {
 }
 
 TEST_F(DefEnumTest, EnumWithType) {
-    // ÏÐÀÂÈËÜÍÎ: îïöèÿ :type, çíà÷åíèÿ áåç äâîåòî÷èé
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐž: Ð¾Ð¿Ñ†Ð¸Ñ :type, Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð±ÐµÐ· Ð´Ð²Ð¾ÐµÑ‚Ð¾Ñ‡Ð¸Ð¹
     std::string code = "(defenum small :type int32 (value1) (value2))";
 
     EnumType* small_enum = parse_deftype_string(code);
@@ -107,7 +107,7 @@ TEST_F(DefEnumTest, EnumWithDocstring) {
 }
 
 TEST_F(DefEnumTest, MixedAutoAndExplicitValues) {
-    // ÏÐÀÂÈËÜÍÎ: ñìåøàííûé ôîðìàò
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐž: ÑÐ¼ÐµÑˆÐ°Ð½Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚
     std::string code = "(defenum mixed (first) (second 10) (third))";
 
     EnumType* mixed_enum = parse_deftype_string(code);
@@ -117,7 +117,7 @@ TEST_F(DefEnumTest, MixedAutoAndExplicitValues) {
 
 
 TEST_F(DefEnumTest, ComplexTypeSpec) {
-    // ÏÐÀÂÈËÜÍÛÉ ÔÎÐÌÀÒ: âñå entries â ñêîáêàõ
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐ«Ð™ Ð¤ÐžÐ ÐœÐÐ¢: Ð²ÑÐµ entries Ð² ÑÐºÐ¾Ð±ÐºÐ°Ñ…
     std::string code = "(defenum complex :type int32 :bitfield #f (flag1 1) (flag2 2))";
 
     EnumType* complex_enum = parse_deftype_string(code);
@@ -133,14 +133,14 @@ TEST_F(DefEnumTest, InvalidBitfieldValue) {
 }
 
 TEST_F(DefEnumTest, InvalidEnumValue) {
-    // Èñïîëüçóåì ïàðó äëÿ ÿâíîãî çíà÷åíèÿ
+    // Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ Ð¿Ð°Ñ€Ñƒ Ð´Ð»Ñ ÑÐ²Ð½Ð¾Ð³Ð¾ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ
     std::string code = "(defenum test (value \"not-a-number\"))";
 
     EXPECT_THROW(parse_deftype_string(code), std::runtime_error);
 }
 
 TEST_F(DefEnumTest, DuplicateEntries) {
-    std::string code = "(defenum test value1 value2 value1)"; // äóáëèêàò
+    std::string code = "(defenum test value1 value2 value1)"; // Ð´ÑƒÐ±Ð»Ð¸ÐºÐ°Ñ‚
 
     EXPECT_THROW(parse_deftype_string(code), std::runtime_error);
 }
@@ -210,7 +210,7 @@ TEST_F(DefEnumTest, InvalidBaseType) {
 }
 
 TEST_F(DefEnumTest, EnumWithCopyEntries) {
-    // ÏÐÀÂÈËÜÍÛÉ ÔÎÐÌÀÒ: âñå entries â ñêîáêàõ
+    // ÐŸÐ ÐÐ’Ð˜Ð›Ð¬ÐÐ«Ð™ Ð¤ÐžÐ ÐœÐÐ¢: Ð²ÑÐµ entries Ð² ÑÐºÐ¾Ð±ÐºÐ°Ñ…
     std::string code1 = "(defenum base (a 1) (b 2) (c 3))";
     parse_deftype_string(code1);
 
@@ -228,7 +228,7 @@ TEST_F(DefEnumTest, SimpleSymbolEntries) {
         ASSERT_NE(simple_enum, nullptr);
         EXPECT_EQ(simple_enum->get_name(), "simple");
 
-        // Ïðîâåðÿåì ÷òî entries ñîçäàëèñü
+        // ÐŸÑ€Ð¾Ð²ÐµÑ€ÑÐµÐ¼ Ñ‡Ñ‚Ð¾ entries ÑÐ¾Ð·Ð´Ð°Ð»Ð¸ÑÑŒ
         auto& entries = simple_enum->entries();
         EXPECT_GT(entries.size(), 0);
     }

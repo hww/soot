@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "interpreter.h"
 
 using namespace script;
@@ -18,22 +18,18 @@ protected:
     std::shared_ptr<EnvironmentObject> env;
 };
 
-// Тест создания хэш-таблиц
 TEST_F(HashTableTest, HashTableCreation) {
     Object obj = eval("(make-hash-table)");
     EXPECT_TRUE(obj.is_hash_table());
 }
 
-// Тест hash-table-set! и hash-table-ref
 TEST_F(HashTableTest, HashTableSetAndRef) {
-    // Все выражения выполняются в одном eval с begin
     eval("(begin \
         (define ht (make-hash-table)) \
         (hash-table-set! ht \"key1\" \"value1\") \
         (hash-table-set! ht 'key2 42) \
     )");
 
-    // Теперь ht определен в окружении env
     Object obj = eval("(hash-table-ref ht \"key1\")");
     EXPECT_TRUE(obj.is_string());
     EXPECT_EQ(obj.as_string()->data, "value1");
@@ -43,7 +39,7 @@ TEST_F(HashTableTest, HashTableSetAndRef) {
     EXPECT_EQ(obj.as_integer(), 42);
 }
 
-// Тест hash-table?
+// пїЅпїЅпїЅпїЅ hash-table?
 TEST_F(HashTableTest, HashTablePredicate) {
     Object obj = eval("(hash-table? (make-hash-table))");
     EXPECT_TRUE(obj.as_boolean());

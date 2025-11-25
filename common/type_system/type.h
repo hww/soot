@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 /*!
  * @file Type.h
@@ -50,23 +50,23 @@ constexpr u32 GOAL_RELOC_METHOD = 7;     // method ID of GOAL relocate
 constexpr u32 GOAL_MEMUSAGE_METHOD = 8;  // method ID of GOAL mem-usage
 
 constexpr int POINTER_SIZE = 4;
-constexpr int ARRAY_DATA_OFFSET = 16;    // как в оригинале
+constexpr int ARRAY_DATA_OFFSET = 16;    // РєР°Рє РІ РѕСЂРёРіРёРЅР°Р»Рµ
 
 // ============================================================================
 // Definition Metadata
 // ============================================================================
 
 struct DefinitionMetadata {
-    // Близко к оригиналу, но с удобными методами
+    // Р‘Р»РёР·РєРѕ Рє РѕСЂРёРіРёРЅР°Р»Сѓ, РЅРѕ СЃ СѓРґРѕР±РЅС‹РјРё РјРµС‚РѕРґР°РјРё
     std::optional<script::TextDb::ShortInfo> definition_info;
     std::optional<std::string> docstring;
 
-    // Добавляем только convenience методы без изменения структуры данных
+    // Р”РѕР±Р°РІР»СЏРµРј С‚РѕР»СЊРєРѕ convenience РјРµС‚РѕРґС‹ Р±РµР· РёР·РјРµРЅРµРЅРёСЏ СЃС‚СЂСѓРєС‚СѓСЂС‹ РґР°РЅРЅС‹С…
     bool has_location() const { return definition_info.has_value(); }
     bool has_docstring() const { return docstring.has_value(); }
     std::string get_docstring_or_empty() const { return docstring.value_or(""); }
 
-    // Для совместимости с тестами
+    // Р”Р»СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё СЃ С‚РµСЃС‚Р°РјРё
     bool operator==(const DefinitionMetadata& other) const {
         return definition_info == other.definition_info && docstring == other.docstring;
     }
@@ -133,7 +133,7 @@ public:
     std::string diff(const Field& other) const;
 
     int alignment() const {
-        // ASSERT(m_alignment != -1); // Раскомментировать когда будет ASSERT
+        // ASSERT(m_alignment != -1); // Р Р°СЃРєРѕРјРјРµРЅС‚РёСЂРѕРІР°С‚СЊ РєРѕРіРґР° Р±СѓРґРµС‚ ASSERT
         return m_alignment;
     }
 

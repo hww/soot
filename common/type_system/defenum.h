@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "type_system.h"
 #include "object.h"

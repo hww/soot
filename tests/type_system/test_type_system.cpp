@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+п»ї#include <gtest/gtest.h>
 #include "type_system/export.h"
 #include "fmt/format.h"
 
@@ -16,11 +16,11 @@ protected:
     std::unique_ptr<TypeSystem> ts;
 };
 
-// Базовые тесты системы типов
+// Р‘Р°Р·РѕРІС‹Рµ С‚РµСЃС‚С‹ СЃРёСЃС‚РµРјС‹ С‚РёРїРѕРІ
 TEST_F(TypeSystemTest, BasicTypeCreation) {
     ts->add_builtin_types();
 
-    // Проверяем иерархию КАК В ОРИГИНАЛЕ
+    // РџСЂРѕРІРµСЂСЏРµРј РёРµСЂР°СЂС…РёСЋ РљРђРљ Р’ РћР РР“РРќРђР›Р•
     Type* int_type = ts->lookup_type("int");
     EXPECT_EQ(int_type->get_parent(), "integer");  // int -> integer
 
@@ -60,7 +60,7 @@ TEST_F(TypeSystemTest, FieldManagement) {
 
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // Добавляем поля
+    // Р”РѕР±Р°РІР»СЏРµРј РїРѕР»СЏ
     ts->add_field_to_type(vector_type, "x", float_spec, false, false, -1, 0);
     ts->add_field_to_type(vector_type, "y", float_spec, false, false, -1, 4);
     ts->add_field_to_type(vector_type, "z", float_spec, false, false, -1, 8);
@@ -68,7 +68,7 @@ TEST_F(TypeSystemTest, FieldManagement) {
     EXPECT_EQ(vector_type->fields().size(), 3);
     EXPECT_EQ(vector_type->get_size_in_memory(), 12);
 
-    // Проверяем поиск полей
+    // РџСЂРѕРІРµСЂСЏРµРј РїРѕРёСЃРє РїРѕР»РµР№
     Field field_x = ts->lookup_field("test-vector", "x");
     EXPECT_EQ(field_x.name(), "x");
     EXPECT_EQ(field_x.offset(), 0);
@@ -78,7 +78,7 @@ TEST_F(TypeSystemTest, FieldManagement) {
 }
 
 TEST_F(TypeSystemTest, Inheritance) {
-    // Создаем родительскую структуру
+    // РЎРѕР·РґР°РµРј СЂРѕРґРёС‚РµР»СЊСЃРєСѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ
     StructureType* game_object_type = ts->add_builtin_structure("structure", "game-object");
 
     TypeSpec int_spec = ts->make_typespec("int32");
@@ -87,17 +87,17 @@ TEST_F(TypeSystemTest, Inheritance) {
     ts->add_field_to_type(game_object_type, "id", int_spec, false, false, -1, 0);
     ts->add_field_to_type(game_object_type, "name", string_spec, false, false, -1, 4);
 
-    // Создаем дочернюю структуру - должна унаследовать поля
+    // РЎРѕР·РґР°РµРј РґРѕС‡РµСЂРЅСЋСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ - РґРѕР»Р¶РЅР° СѓРЅР°СЃР»РµРґРѕРІР°С‚СЊ РїРѕР»СЏ
     StructureType* player_type = ts->add_builtin_structure("game-object", "player");
 
     ts->add_field_to_type(player_type, "health", int_spec, false, false, -1, -1);
     ts->add_field_to_type(player_type, "score", int_spec, false, false, -1, -1);
 
-    // Проверяем наследование
-    EXPECT_GE(player_type->fields().size(), 4); // как минимум 2 родительских + 2 дочерних
+    // РџСЂРѕРІРµСЂСЏРµРј РЅР°СЃР»РµРґРѕРІР°РЅРёРµ
+    EXPECT_GE(player_type->fields().size(), 4); // РєР°Рє РјРёРЅРёРјСѓРј 2 СЂРѕРґРёС‚РµР»СЊСЃРєРёС… + 2 РґРѕС‡РµСЂРЅРёС…
     EXPECT_GT(player_type->get_size_in_memory(), game_object_type->get_size_in_memory());
 
-    // Проверяем что можем найти унаследованные поля
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РјРѕР¶РµРј РЅР°Р№С‚Рё СѓРЅР°СЃР»РµРґРѕРІР°РЅРЅС‹Рµ РїРѕР»СЏ
     Field inherited_field = ts->lookup_field("player", "id");
     EXPECT_EQ(inherited_field.name(), "id");
 }
@@ -107,16 +107,16 @@ TEST_F(TypeSystemTest, MethodSystem) {
 
     TypeSpec method_spec = ts->make_function_typespec({}, "none");
 
-    // Объявляем метод - ID может быть 2 или больше, потому что у object уже есть методы
+    // РћР±СЉСЏРІР»СЏРµРј РјРµС‚РѕРґ - ID РјРѕР¶РµС‚ Р±С‹С‚СЊ 2 РёР»Рё Р±РѕР»СЊС€Рµ, РїРѕС‚РѕРјСѓ С‡С‚Рѕ Сѓ object СѓР¶Рµ РµСЃС‚СЊ РјРµС‚РѕРґС‹
     MethodInfo method = ts->declare_method(test_type, "test-method", std::nullopt, false, method_spec, false);
 
-    // Вместо проверки конкретного ID, проверяем что он положительный и уникальный
+    // Р’РјРµСЃС‚Рѕ РїСЂРѕРІРµСЂРєРё РєРѕРЅРєСЂРµС‚РЅРѕРіРѕ ID, РїСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РѕРЅ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Р№ Рё СѓРЅРёРєР°Р»СЊРЅС‹Р№
     EXPECT_GT(method.id, 0);
     EXPECT_EQ(method.name, "test-method");
     EXPECT_FALSE(method.no_virtual);
     EXPECT_EQ(method.defined_in_type, "method-test");
 
-    // Проверяем что метод добавлен в тип
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РјРµС‚РѕРґ РґРѕР±Р°РІР»РµРЅ РІ С‚РёРї
     bool method_found = false;
     for (const auto& m : test_type->get_methods_defined_for_type()) {
         if (m.name == "test-method") {
@@ -126,10 +126,10 @@ TEST_F(TypeSystemTest, MethodSystem) {
     }
     EXPECT_TRUE(method_found);
 
-    // Ищем метод через систему типов
+    // РС‰РµРј РјРµС‚РѕРґ С‡РµСЂРµР· СЃРёСЃС‚РµРјСѓ С‚РёРїРѕРІ
     MethodInfo found_method = ts->lookup_method("method-test", "test-method");
     EXPECT_EQ(found_method.name, "test-method");
-    EXPECT_EQ(found_method.id, method.id); // ID должен совпадать
+    EXPECT_EQ(found_method.id, method.id); // ID РґРѕР»Р¶РµРЅ СЃРѕРІРїР°РґР°С‚СЊ
 }
 
 
@@ -138,13 +138,13 @@ TEST_F(TypeSystemTest, TypeChecking) {
     TypeSpec int_spec = ts->make_typespec("int32");
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // int наследует от object
+    // int РЅР°СЃР»РµРґСѓРµС‚ РѕС‚ object
     EXPECT_TRUE(ts->tc(object_spec, int_spec));
 
-    // int равен int
+    // int СЂР°РІРµРЅ int
     EXPECT_TRUE(ts->tc(int_spec, int_spec));
 
-    // int не является float
+    // int РЅРµ СЏРІР»СЏРµС‚СЃСЏ float
     EXPECT_FALSE(ts->tc(int_spec, float_spec));
 }
 
@@ -154,16 +154,16 @@ TEST_F(TypeSystemTest, LowestCommonAncestor) {
     TypeSpec int_spec = ts->make_typespec("int32");
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // LCA int32 и int32 = int32
+    // LCA int32 Рё int32 = int32
     TypeSpec lca_same = ts->lowest_common_ancestor(int_spec, int_spec);
     EXPECT_EQ(lca_same.base_type(), "int32");
 
-    // LCA int32 и float = number (а не object!)
-    // Потому что: int32 -> sinteger -> integer -> number <- float
+    // LCA int32 Рё float = number (Р° РЅРµ object!)
+    // РџРѕС‚РѕРјСѓ С‡С‚Рѕ: int32 -> sinteger -> integer -> number <- float
     TypeSpec lca_diff = ts->lowest_common_ancestor(int_spec, float_spec);
     EXPECT_EQ(lca_diff.base_type(), "number");
 
-    // LCA int32 и object = object  
+    // LCA int32 Рё object = object  
     TypeSpec object_spec = ts->make_typespec("object");
     TypeSpec lca_object = ts->lowest_common_ancestor(int_spec, object_spec);
     EXPECT_EQ(lca_object.base_type(), "object");
@@ -172,7 +172,7 @@ TEST_F(TypeSystemTest, LowestCommonAncestor) {
 TEST_F(TypeSystemTest, TypeHierarchy) {
     ts->add_builtin_types();
 
-    // Проверяем полную цепочку наследования для int32
+    // РџСЂРѕРІРµСЂСЏРµРј РїРѕР»РЅСѓСЋ С†РµРїРѕС‡РєСѓ РЅР°СЃР»РµРґРѕРІР°РЅРёСЏ РґР»СЏ int32
     Type* type = ts->lookup_type("int32");
     std::vector<std::string> path;
 
@@ -182,7 +182,7 @@ TEST_F(TypeSystemTest, TypeHierarchy) {
     }
     path.push_back("object");
 
-    // Должно быть: int32 -> sinteger -> integer -> number -> object
+    // Р”РѕР»Р¶РЅРѕ Р±С‹С‚СЊ: int32 -> sinteger -> integer -> number -> object
     std::vector<std::string> expected = { "int32", "sinteger", "integer", "number", "object" };
     EXPECT_EQ(path, expected);
 }
@@ -190,14 +190,14 @@ TEST_F(TypeSystemTest, TypeHierarchy) {
 TEST_F(TypeSystemTest, MethodConstantsUsage) {
     ts->add_builtin_types();
 
-    // Проверяем, что методы имеют правильные ID
+    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РјРµС‚РѕРґС‹ РёРјРµСЋС‚ РїСЂР°РІРёР»СЊРЅС‹Рµ ID
     MethodInfo new_method = ts->lookup_method("object", "new");
     EXPECT_EQ(new_method.id, GOAL_NEW_METHOD);
 
     MethodInfo print_method = ts->lookup_method("object", "print");
     EXPECT_EQ(print_method.id, GOAL_PRINT_METHOD);
 
-    // Проверяем поиск по ID с константами
+    // РџСЂРѕРІРµСЂСЏРµРј РїРѕРёСЃРє РїРѕ ID СЃ РєРѕРЅСЃС‚Р°РЅС‚Р°РјРё
     MethodInfo method_by_id = ts->lookup_method("object", GOAL_NEW_METHOD);
     EXPECT_EQ(method_by_id.name, "new");
 }
@@ -216,7 +216,7 @@ TEST_F(TypeSystemTest, BitFieldType) {
 }
 
 TEST_F(TypeSystemTest, EnumType) {
-    // Создаем базовый тип для enum
+    // РЎРѕР·РґР°РµРј Р±Р°Р·РѕРІС‹Р№ С‚РёРї РґР»СЏ enum
     ValueType* base_type = ts->add_builtin_value_type("int32", "enum-base", 4, false, true, RegClass::GPR_64);
 
     std::unordered_map<std::string, int64_t> entries = {
@@ -240,7 +240,7 @@ TEST_F(TypeSystemTest, ArrayFields) {
 
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // Добавляем массивное поле
+    // Р”РѕР±Р°РІР»СЏРµРј РјР°СЃСЃРёРІРЅРѕРµ РїРѕР»Рµ
     ts->add_field_to_type(array_type, "data", float_spec, false, false, 10, 0);
 
     EXPECT_EQ(array_type->fields().size(), 1);
@@ -252,26 +252,26 @@ TEST_F(TypeSystemTest, ArrayFields) {
 }
 
 TEST_F(TypeSystemTest, TypeSpecOperations) {
-    // Тестируем базовые операции TypeSpec
+    // РўРµСЃС‚РёСЂСѓРµРј Р±Р°Р·РѕРІС‹Рµ РѕРїРµСЂР°С†РёРё TypeSpec
     TypeSpec base_spec("object");
     EXPECT_EQ(base_spec.base_type(), "object");
     EXPECT_TRUE(base_spec.empty());
 
-    // Добавляем аргументы
+    // Р”РѕР±Р°РІР»СЏРµРј Р°СЂРіСѓРјРµРЅС‚С‹
     TypeSpec arg1("int32");
     base_spec.add_arg(arg1);
 
     EXPECT_FALSE(base_spec.empty());
     EXPECT_TRUE(base_spec.has_single_arg());
 
-    // Клонирование
+    // РљР»РѕРЅРёСЂРѕРІР°РЅРёРµ
     TypeSpec cloned = base_spec;
     EXPECT_EQ(cloned.base_type(), "object");
     EXPECT_EQ(cloned.arg_count(), 1);
 }
 
 TEST_F(TypeSystemTest, VirtualMethodInheritance) {
-    // Создаем иерархию типов с методами
+    // РЎРѕР·РґР°РµРј РёРµСЂР°СЂС…РёСЋ С‚РёРїРѕРІ СЃ РјРµС‚РѕРґР°РјРё
     StructureType* base_type = ts->add_builtin_structure("structure", "base-type");
 
     TypeSpec base_method_spec = ts->make_function_typespec({ "base-type" }, "none");
@@ -279,38 +279,38 @@ TEST_F(TypeSystemTest, VirtualMethodInheritance) {
     MethodInfo base_method = ts->declare_method(base_type, "base-method",
         std::nullopt, false, base_method_spec, false);
 
-    // Создаем дочерний тип
+    // РЎРѕР·РґР°РµРј РґРѕС‡РµСЂРЅРёР№ С‚РёРї
     StructureType* derived_type = ts->add_builtin_structure("base-type", "derived-type");
 
-    // Должны найти метод родителя
+    // Р”РѕР»Р¶РЅС‹ РЅР°Р№С‚Рё РјРµС‚РѕРґ СЂРѕРґРёС‚РµР»СЏ
     MethodInfo found_method = ts->lookup_method("derived-type", "base-method");
     EXPECT_EQ(found_method.name, "base-method");
 }
 
-// Тест для проверки обработки ошибок
+// РўРµСЃС‚ РґР»СЏ РїСЂРѕРІРµСЂРєРё РѕР±СЂР°Р±РѕС‚РєРё РѕС€РёР±РѕРє
 TEST_F(TypeSystemTest, ErrorConditions) {
-    // Поиск несуществующего типа
+    // РџРѕРёСЃРє РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ С‚РёРїР°
     EXPECT_THROW(ts->lookup_type("non-existent-type"), std::runtime_error);
 
-    // Поиск несуществующего поля
+    // РџРѕРёСЃРє РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РїРѕР»СЏ
     EXPECT_THROW(ts->lookup_field("int32", "non-existent-field"), std::runtime_error);
 
-    // Поиск несуществующего метода
+    // РџРѕРёСЃРє РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РјРµС‚РѕРґР°
     EXPECT_THROW(ts->lookup_method("int32", "non-existent-method"), std::runtime_error);
 }
 
-// Тест производительности для больших структур
+// РўРµСЃС‚ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚Рё РґР»СЏ Р±РѕР»СЊС€РёС… СЃС‚СЂСѓРєС‚СѓСЂ
 TEST_F(TypeSystemTest, PerformanceTest) {
     StructureType* large_struct = ts->add_builtin_structure("structure", "large-struct");
 
     TypeSpec int_spec = ts->make_typespec("int32");
 
-    // Добавляем много полей
+    // Р”РѕР±Р°РІР»СЏРµРј РјРЅРѕРіРѕ РїРѕР»РµР№
     for (int i = 0; i < 10; i++) {
         std::string field_name = fmt::format("field_{}", i);
         ts->add_field_to_type(large_struct, field_name, int_spec, false, false, -1, -1);
 
-        // Проверяем что поле сразу доступно в структуре
+        // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РїРѕР»Рµ СЃСЂР°Р·Сѓ РґРѕСЃС‚СѓРїРЅРѕ РІ СЃС‚СЂСѓРєС‚СѓСЂРµ
         bool field_exists = false;
         for (const auto& field : large_struct->fields()) {
             if (field.name() == field_name) {
@@ -321,7 +321,7 @@ TEST_F(TypeSystemTest, PerformanceTest) {
         EXPECT_TRUE(field_exists) << "Field " << field_name << " should be in memory structure";
     }
 
-    // Теперь проверяем через lookup
+    // РўРµРїРµСЂСЊ РїСЂРѕРІРµСЂСЏРµРј С‡РµСЂРµР· lookup
     for (int i = 0; i < 10; i++) {
         std::string field_name = fmt::format("field_{}", i);
         Field field = ts->lookup_field("large-struct", field_name);
@@ -329,20 +329,20 @@ TEST_F(TypeSystemTest, PerformanceTest) {
     }
 }
 
-// Тест для forward declaration
+// РўРµСЃС‚ РґР»СЏ forward declaration
 TEST_F(TypeSystemTest, ForwardDeclaration) {
     ts->forward_declare_type_as("forward-type", "object");
 
-    // Должны иметь возможность создать TypeSpec для forward объявленного типа
+    // Р”РѕР»Р¶РЅС‹ РёРјРµС‚СЊ РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊ СЃРѕР·РґР°С‚СЊ TypeSpec РґР»СЏ forward РѕР±СЉСЏРІР»РµРЅРЅРѕРіРѕ С‚РёРїР°
     TypeSpec forward_spec = ts->make_typespec("forward-type");
     EXPECT_EQ(forward_spec.base_type(), "forward-type");
 
-    // Но не должны иметь полной информации
+    // РќРѕ РЅРµ РґРѕР»Р¶РЅС‹ РёРјРµС‚СЊ РїРѕР»РЅРѕР№ РёРЅС„РѕСЂРјР°С†РёРё
     EXPECT_TRUE(ts->partially_defined_type_exists("forward-type"));
     EXPECT_FALSE(ts->fully_defined_type_exists("forward-type"));
 }
 
-// Тест для new методов
+// РўРµСЃС‚ РґР»СЏ new РјРµС‚РѕРґРѕРІ
 TEST_F(TypeSystemTest, NewMethod) {
     StructureType* test_type = ts->add_builtin_structure("structure", "new-test");
 
@@ -363,22 +363,22 @@ TEST_F(TypeSystemTest, NewMethod) {
 // ============================================================================
 
 TEST_F(TypeSystemTest, ReverseFieldLookupBasic) {
-    // Создаем тестовую структуру
+    // РЎРѕР·РґР°РµРј С‚РµСЃС‚РѕРІСѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ
     StructureType* test_struct = ts->add_builtin_structure("structure", "reverse-test");
 
     TypeSpec int_spec = ts->make_typespec("int32");
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // Добавляем поля с известными смещениями
+    // Р”РѕР±Р°РІР»СЏРµРј РїРѕР»СЏ СЃ РёР·РІРµСЃС‚РЅС‹РјРё СЃРјРµС‰РµРЅРёСЏРјРё
     ts->add_field_to_type(test_struct, "x", float_spec, false, false, -1, 0);
     ts->add_field_to_type(test_struct, "y", float_spec, false, false, -1, 4);
     ts->add_field_to_type(test_struct, "z", float_spec, false, false, -1, 8);
     ts->add_field_to_type(test_struct, "id", int_spec, false, false, -1, 12);
 
-    // Тестируем reverse lookup
+    // РўРµСЃС‚РёСЂСѓРµРј reverse lookup
     FieldReverseLookupInput input;
     input.base_type = ts->make_typespec("reverse-test");
-    input.offset = 4;  // Должно быть поле "y"
+    input.offset = 4;  // Р”РѕР»Р¶РЅРѕ Р±С‹С‚СЊ РїРѕР»Рµ "y"
 
     FieldReverseLookupOutput result = ts->reverse_field_lookup(input);
 
@@ -394,10 +394,10 @@ TEST_F(TypeSystemTest, ReverseFieldLookupArray) {
 
     TypeSpec float_spec = ts->make_typespec("float");
 
-    // Добавляем массив из 10 float
+    // Р”РѕР±Р°РІР»СЏРµРј РјР°СЃСЃРёРІ РёР· 10 float
     ts->add_field_to_type(array_struct, "data", float_spec, false, false, 10, 0);
 
-    // Тестируем доступ к 5-му элементу массива
+    // РўРµСЃС‚РёСЂСѓРµРј РґРѕСЃС‚СѓРї Рє 5-РјСѓ СЌР»РµРјРµРЅС‚Сѓ РјР°СЃСЃРёРІР°
     FieldReverseLookupInput input;
     input.base_type = ts->make_typespec("array-test");
     input.offset = 20;  // 5 * 4 bytes (float size)
@@ -413,16 +413,16 @@ TEST_F(TypeSystemTest, ReverseFieldLookupArray) {
 }
 
 TEST_F(TypeSystemTest, ReverseFieldLookupInheritance) {
-    // Родительская структура
+    // Р РѕРґРёС‚РµР»СЊСЃРєР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР°
     StructureType* parent_struct = ts->add_builtin_structure("structure", "parent-struct");
     TypeSpec int_spec = ts->make_typespec("int32");
     ts->add_field_to_type(parent_struct, "parent_field", int_spec, false, false, -1, 0);
 
-    // Дочерняя структура
+    // Р”РѕС‡РµСЂРЅСЏСЏ СЃС‚СЂСѓРєС‚СѓСЂР°
     StructureType* child_struct = ts->add_builtin_structure("parent-struct", "child-struct");
     ts->add_field_to_type(child_struct, "child_field", int_spec, false, false, -1, 4);
 
-    // Ищем поле родителя в дочерней структуре
+    // РС‰РµРј РїРѕР»Рµ СЂРѕРґРёС‚РµР»СЏ РІ РґРѕС‡РµСЂРЅРµР№ СЃС‚СЂСѓРєС‚СѓСЂРµ
     FieldReverseLookupInput input;
     input.base_type = ts->make_typespec("child-struct");
     input.offset = 0;  // parent_field
@@ -440,24 +440,24 @@ TEST_F(TypeSystemTest, InlineArraySizeCalculation) {
     TypeSpec float_spec = ts->make_typespec("float");
     TypeSpec vector_spec = ts->make_typespec("structure");
 
-    // Создаем простую структуру для тестирования inline
+    // РЎРѕР·РґР°РµРј РїСЂРѕСЃС‚СѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ inline
     StructureType* vec3_type = ts->add_builtin_structure("structure", "vec3");
     ts->add_field_to_type(vec3_type, "x", float_spec, false, false, -1, 0);
     ts->add_field_to_type(vec3_type, "y", float_spec, false, false, -1, 4);
     ts->add_field_to_type(vec3_type, "z", float_spec, false, false, -1, 8);
 
-    // vec3 должен иметь размер 12 байт (3 * float по 4 байта)
-    // Без выравнивания до 16 байт!
+    // vec3 РґРѕР»Р¶РµРЅ РёРјРµС‚СЊ СЂР°Р·РјРµСЂ 12 Р±Р°Р№С‚ (3 * float РїРѕ 4 Р±Р°Р№С‚Р°)
+    // Р‘РµР· РІС‹СЂР°РІРЅРёРІР°РЅРёСЏ РґРѕ 16 Р±Р°Р№С‚!
     EXPECT_EQ(vec3_type->get_size_in_memory(), 12);
 
-    // Inline массив из vec3 (каждый vec3 = 12 bytes)
+    // Inline РјР°СЃСЃРёРІ РёР· vec3 (РєР°Р¶РґС‹Р№ vec3 = 12 bytes)
     ts->add_field_to_type(inline_test, "points", ts->make_typespec("vec3"),
         true,  // inline
         false, // not dynamic
         5,     // array size 5
         0);    // offset 0
 
-    // Размер должен быть 5 * 12 = 60 bytes (без дополнительного выравнивания)
+    // Р Р°Р·РјРµСЂ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ 5 * 12 = 60 bytes (Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ РІС‹СЂР°РІРЅРёРІР°РЅРёСЏ)
     Field points_field = ts->lookup_field("inline-test", "points");
     int calculated_size = ts->get_size_in_type(points_field);
 
@@ -468,26 +468,26 @@ TEST_F(TypeSystemTest, InlineArraySizeCalculation) {
 TEST_F(TypeSystemTest, ReverseFieldLookupInlineArray) {
     StructureType* container = ts->add_builtin_structure("structure", "container");
 
-    // Создаем простую структуру для inline массива
+    // РЎРѕР·РґР°РµРј РїСЂРѕСЃС‚СѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ РґР»СЏ inline РјР°СЃСЃРёРІР°
     StructureType* element_type = ts->add_builtin_structure("structure", "element");
     TypeSpec int_spec = ts->make_typespec("int32");
     ts->add_field_to_type(element_type, "value", int_spec, false, false, -1, 0);
     ts->add_field_to_type(element_type, "flag", int_spec, false, false, -1, 4);
 
-    // element должен иметь размер 8 байт (2 * int32 по 4 байта)
+    // element РґРѕР»Р¶РµРЅ РёРјРµС‚СЊ СЂР°Р·РјРµСЂ 8 Р±Р°Р№С‚ (2 * int32 РїРѕ 4 Р±Р°Р№С‚Р°)
     EXPECT_EQ(element_type->get_size_in_memory(), 8);
 
-    // Inline массив из 3 элементов
+    // Inline РјР°СЃСЃРёРІ РёР· 3 СЌР»РµРјРµРЅС‚РѕРІ
     ts->add_field_to_type(container, "elements", ts->make_typespec("element"),
         true, false, 3, 0);
 
-    // Размер массива должен быть 3 * 8 = 24 байта
+    // Р Р°Р·РјРµСЂ РјР°СЃСЃРёРІР° РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ 3 * 8 = 24 Р±Р°Р№С‚Р°
     Field elements_field = ts->lookup_field("container", "elements");
     EXPECT_EQ(ts->get_size_in_type(elements_field), 24);
     EXPECT_EQ(container->get_size_in_memory(), 24);
 
-    // Тестируем доступ ко второму элементу, полю flag
-    // Смещения: 
+    // РўРµСЃС‚РёСЂСѓРµРј РґРѕСЃС‚СѓРї РєРѕ РІС‚РѕСЂРѕРјСѓ СЌР»РµРјРµРЅС‚Сѓ, РїРѕР»СЋ flag
+    // РЎРјРµС‰РµРЅРёСЏ: 
     // - elements[0] at 0-7 (value=0, flag=4)
     // - elements[1] at 8-15 (value=8, flag=12) 
     // - elements[2] at 16-23 (value=16, flag=20)
@@ -510,7 +510,7 @@ TEST_F(TypeSystemTest, MultiReverseLookup) {
 
     TypeSpec int_spec = ts->make_typespec("int32");
 
-    // Добавляем несколько полей с разными score
+    // Р”РѕР±Р°РІР»СЏРµРј РЅРµСЃРєРѕР»СЊРєРѕ РїРѕР»РµР№ СЃ СЂР°Р·РЅС‹РјРё score
     ts->add_field_to_type(multi_struct, "field_a", int_spec, false, false, -1, 0, false, 1.0);
     ts->add_field_to_type(multi_struct, "field_b", int_spec, false, false, -1, 0, false, 2.0);
 
@@ -523,7 +523,7 @@ TEST_F(TypeSystemTest, MultiReverseLookup) {
     EXPECT_TRUE(results.success);
     EXPECT_GE(results.results.size(), 2);
 
-    // Проверяем что результаты отсортированы по score
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ СЂРµР·СѓР»СЊС‚Р°С‚С‹ РѕС‚СЃРѕСЂС‚РёСЂРѕРІР°РЅС‹ РїРѕ score
     EXPECT_GE(results.results[0].total_score, results.results[1].total_score);
 }
 
@@ -533,10 +533,10 @@ TEST_F(TypeSystemTest, ReverseFieldLookupNotFound) {
     TypeSpec int_spec = ts->make_typespec("int32");
     ts->add_field_to_type(simple_struct, "data", int_spec, false, false, -1, 0);
 
-    // Ищем по несуществующему смещению
+    // РС‰РµРј РїРѕ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРјСѓ СЃРјРµС‰РµРЅРёСЋ
     FieldReverseLookupInput input;
     input.base_type = ts->make_typespec("simple");
-    input.offset = 100;  // За пределами структуры
+    input.offset = 100;  // Р—Р° РїСЂРµРґРµР»Р°РјРё СЃС‚СЂСѓРєС‚СѓСЂС‹
 
     FieldReverseLookupOutput result = ts->reverse_field_lookup(input);
 
@@ -544,14 +544,14 @@ TEST_F(TypeSystemTest, ReverseFieldLookupNotFound) {
     EXPECT_TRUE(result.tokens.empty());
 }
 
-// Тест для BitField reverse lookup
+// РўРµСЃС‚ РґР»СЏ BitField reverse lookup
 TEST_F(TypeSystemTest, ReverseFieldLookupBitField) {
     BitFieldType* flags_type = (BitFieldType*)ts->add_type("bitfield-test",
         std::make_unique<BitFieldType>("bitfield", "bitfield-test", 4, false));
 
     TypeSpec int_spec = ts->make_typespec("int32");
 
-    // Добавляем битовые поля
+    // Р”РѕР±Р°РІР»СЏРµРј Р±РёС‚РѕРІС‹Рµ РїРѕР»СЏ
     ts->add_field_to_bitfield(flags_type, "flag1", int_spec, 0, 1, false);
     ts->add_field_to_bitfield(flags_type, "flag2", int_spec, 1, 2, false);
     ts->add_field_to_bitfield(flags_type, "flag3", int_spec, 3, 1, false);

@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include "config.h"
 #include "keybinds.h"
@@ -22,32 +22,32 @@ public:
     ReplWrapper(const std::string& username);
     ~ReplWrapper();
 
-    // Основные режимы
+    // РћСЃРЅРѕРІРЅС‹Рµ СЂРµР¶РёРјС‹
     void run_interactive();
     void run_network(int port = 8181);
     void run_script(const std::string& filename);
 
-    // Управление
+    // РЈРїСЂР°РІР»РµРЅРёРµ
     void print_welcome(const std::vector<std::string>& loaded_projects = {});
     void print_help();
     void print_keybind_help();
     void clear_screen();
 
-    // История
+    // РСЃС‚РѕСЂРёСЏ
     void load_history();
     void save_history();
     void add_to_history(const std::string& line);
 
-    // Доступ к компонентам
+    // Р”РѕСЃС‚СѓРї Рє РєРѕРјРїРѕРЅРµРЅС‚Р°Рј
     Config& get_config() { return config_; }
     script::Interpreter& get_interpreter() { return interpreter_; }
 
-    // Сеть
+    // РЎРµС‚СЊ
     void start_network_server(int port);
     void stop_network_server();
     void handle_network_message(const std::string& message, int client_socket);
 
-    // Работа в многострочном режиме
+    // Р Р°Р±РѕС‚Р° РІ РјРЅРѕРіРѕСЃС‚СЂРѕС‡РЅРѕРј СЂРµР¶РёРјРµ
     void set_multi_line_enabled(bool enabled) { multi_line_enabled_ = enabled; }
     void set_check_completion(bool check) { check_completion_ = check; }
 
@@ -80,12 +80,12 @@ private:
     std::atomic<bool> network_running_{ false };
     replxx::Replxx repl;
     Config config_;
-    std::vector<KeyBind> keybinds_;  // Исправляем KeyBinds на vector<KeyBind>
+    std::vector<KeyBind> keybinds_;  // РСЃРїСЂР°РІР»СЏРµРј KeyBinds РЅР° vector<KeyBind>
     script::Interpreter interpreter_;
     script::Reader reader;
     std::string username;
     bool nrepl_alive = false;
     std::atomic<bool> should_exit_{ false };
-    bool multi_line_enabled_ = true;  // Можно сделать настраиваемым
-    bool check_completion_ = true;    // Проверять завершенность выражений
+    bool multi_line_enabled_ = true;  // РњРѕР¶РЅРѕ СЃРґРµР»Р°С‚СЊ РЅР°СЃС‚СЂР°РёРІР°РµРјС‹Рј
+    bool check_completion_ = true;    // РџСЂРѕРІРµСЂСЏС‚СЊ Р·Р°РІРµСЂС€РµРЅРЅРѕСЃС‚СЊ РІС‹СЂР°Р¶РµРЅРёР№
 };
