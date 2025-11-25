@@ -24,9 +24,9 @@ namespace vm {
         std::filesystem::path file_path;
 
         // Metadata
-        std::vector<StringId> imports;
-        std::vector<StringId> exports;
-        u32 binary_size = 0;
+        std::vector<StringId> dci_imports;
+        std::vector<StringId> dci_exports;
+        u32 dci_binary_size = 0;
 
         // Runtime state
         LoadState load_state = LoadState::METADATA;
@@ -61,7 +61,7 @@ namespace vm {
              // Чистим только если НЕ из пула
              BinaryFilePool::deallocate(name);
              binary_file = nullptr;
-             binary_size = 0;
+             dci_binary_size = 0;
              file_path.clear();
              export_table.clear();
              import_table.clear();
@@ -108,25 +108,25 @@ namespace vm {
             result += std::format("  File: {}\n", file_path.string());
             result += std::format("  Load state: {}\n", load_state_to_string(load_state));
             result += std::format("  Generation: {}, Load order: {}\n", generation, load_order);
-            result += std::format("  Binary size: {} bytes\n", binary_size);
+            result += std::format("  DciBinary size: {} bytes\n", dci_binary_size);
 
 
             // Импорты
-            result += std::format("  Imports: {} symbols\n", imports.size());
-            for (size_t i = 0; i < imports.size() && i < 5; i++) { // показываем первые 5
-                result += std::format("    - {}\n", string_id::to_string(imports[i]));
+            result += std::format("  Imports: {} symbols\n", dci_imports.size());
+            for (size_t i = 0; i < dci_imports.size() && i < 5; i++) { // показываем первые 5
+                result += std::format("    - {}\n", string_id::to_string(dci_imports[i]));
             }
-            if (imports.size() > 5) {
-                result += std::format("    ... and {} more\n", imports.size() - 5);
+            if (dci_imports.size() > 5) {
+                result += std::format("    ... and {} more\n", dci_imports.size() - 5);
             }
 
             // Экспорты
-            result += std::format("  Exports: {} symbols\n", exports.size());
-            for (size_t i = 0; i < exports.size() && i < 5; i++) {
-                result += std::format("    - {}\n", string_id::to_string(exports[i]));
+            result += std::format("  Exports: {} symbols\n", dci_exports.size());
+            for (size_t i = 0; i < dci_exports.size() && i < 5; i++) {
+                result += std::format("    - {}\n", string_id::to_string(dci_exports[i]));
             }
-            if (exports.size() > 5) {
-                result += std::format("    ... and {} more\n", exports.size() - 5);
+            if (dci_exports.size() > 5) {
+                result += std::format("    ... and {} more\n", dci_exports.size() - 5);
             }
 
             // Таблица экспорта

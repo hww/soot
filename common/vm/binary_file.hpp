@@ -202,11 +202,25 @@ namespace vm {
         }
 
         /** Найти ByteCode по имени определения */
+        Definition* find_definition_by_name(StringId name) const {
+            for (u32 i = 0; i < definitions_count; i++) {
+                auto def = get_definition(i);
+                if (def->name == name) {
+                    return def;
+                }
+            }
+            return nullptr;
+        }
+
+        /** Найти ByteCode по имени определения */
         ByteCode* find_bytecode_by_name(StringId name) const {
             for (u32 i = 0; i < definitions_count; i++) {
                 auto def = get_definition(i);
                 if (def->name == name) {
-                    return def->data_ptr.cast<ByteCode>().c();
+                    if (def->type == type::function)
+                        return def->data_ptr.cast<ByteCode>().c();
+                    else
+                        return nullptr;
                 }
             }
             return nullptr;

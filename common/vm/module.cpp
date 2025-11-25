@@ -18,7 +18,12 @@ namespace vm {
     }
 
     Definition* Module::resolve_symbol(StringId name) {
-        // 1. Ищем в своих экспортах
+        // 1. Ищем в бинарном файле
+        if (binary_file) {
+            binary_file->find_definition_by_name(name);
+        }
+
+        // 2. Ищем в своих экспортах
         if (auto def = get_export(name)) {
             if (binary_file && binary_file->is_valid()) {
                 // НОВЫЙ API - data_ptr уже Ptr<ByteCode>
@@ -26,7 +31,7 @@ namespace vm {
             }
         }
 
-        // 2. Ищем в импортах
+        // 3. Ищем в импортах
         if (auto import_module = get_import(name)) {
             return import_module->resolve_export(name);
         }
@@ -43,7 +48,7 @@ namespace vm {
 
     ByteCode* Module::resolve_code(StringId name) {
         auto definition = resolve_symbol(name);
-        if (definition && definition->type == SID("dunction"))
+        if (definition && definition->type == type::function)
             return (ByteCode*)definition->data_ptr.c();
         return nullptr;
     }

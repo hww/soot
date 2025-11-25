@@ -119,7 +119,7 @@ namespace vm {
             auto def = file->get_definition(i);
 
             // Если символ в списке экспортов - добавляем в таблицу
-            if (std::find(module->exports.begin(), module->exports.end(), def->name) != module->exports.end()) {
+            if (std::find(module->dci_exports.begin(), module->dci_exports.end(), def->name) != module->dci_exports.end()) {
                 module->add_export(def->name, def);
             }
         }
@@ -129,7 +129,7 @@ namespace vm {
     }
 
     void ModuleManager::resolve_dependencies(Module* module) {
-        for (const auto& import_name : module->imports) {
+        for (const auto& import_name : module->dci_imports) {
             if (!is_module_loaded(import_name)) {
                 lg::debug("Loading dependency: {} -> {}",
                     string_id::to_string(module->name),
@@ -146,7 +146,7 @@ namespace vm {
 
     void ModuleManager::link_module(Module* module) {
         // Линкуем импорты
-        for (const auto& import_name : module->imports) {
+        for (const auto& import_name : module->dci_imports) {
             auto target_module = find_module_that_exports(import_name);
             if (target_module) {
                 module->add_import(import_name, target_module);

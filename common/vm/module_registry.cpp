@@ -110,9 +110,9 @@ namespace vm {
             // Заполняем поля напрямую
             module->name = string_id::register_string(dci.logical_path.c_str());
             module->file_path = dci_path;
-            module->imports = std::move(dci.imports);
-            module->exports = std::move(dci.exports);
-            module->binary_size = dci.binary_size;
+            module->dci_imports = std::move(dci.imports);
+            module->dci_exports = std::move(dci.exports);
+            module->dci_binary_size = dci.binary_size;
             module->load_state = Module::LoadState::METADATA;
 
             // Находим соответствующий .bin файл

@@ -12,6 +12,10 @@ protected:
     void SetUp() override {
         // Инициализируем нативные функции перед каждым тестом
         NativeFunctionRegistry::get_instance().initialize_builtins();
+        BinaryFilePool::initialize(1024);
+    }
+    void TearDown() override {
+        BinaryFilePool::shutdown();
     }
 };
 
@@ -54,9 +58,9 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
     auto module = builder.build_and_load_to_pool(SID("test"));
-    auto bytecode = module->resolve_symbol(SID("simple_answer"),SID("dunction"));
-
-    Variant result = vm.execute_bytecode((ByteCode*)bytecode->data_ptr.c());
+    auto bytecode = module->resolve_code(SID("simple_answer"));
+    EXPECT_NE(bytecode, nullptr);
+    Variant result = vm.execute_bytecode(bytecode);
 
     EXPECT_FALSE(result.is_null());
     EXPECT_EQ(result.to_int(), 42);
