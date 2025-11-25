@@ -8,7 +8,7 @@ using namespace vm;
 class BinaryFilePoolTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        BinaryFilePool::shutdown();
+        BinaryFilePool::initialize(1024);
     }
 
     void TearDown() override {
@@ -17,6 +17,7 @@ protected:
 };
 
 TEST_F(BinaryFilePoolTest, Initialization) {
+    BinaryFilePool::shutdown();
     EXPECT_FALSE(BinaryFilePool::is_initialized());
 
     bool result = BinaryFilePool::initialize(1024);
@@ -28,9 +29,9 @@ TEST_F(BinaryFilePoolTest, Initialization) {
 }
 
 TEST_F(BinaryFilePoolTest, AllocateSingleModule) {
-    BinaryFilePool::initialize(1024);
+    
 
-    Module module(SID("test_module"), SID("test"), "test.bin");
+    Module module(SID("test_module"), "test.bin");
     std::vector<u8> module_data = { 0x01, 0x02, 0x03, 0x04 };
 
     void* module_addr = BinaryFilePool::allocate(
@@ -56,14 +57,16 @@ TEST_F(BinaryFilePoolTest, AllocateSingleModule) {
 }
 
 TEST_F(BinaryFilePoolTest, AllocateMultipleModules) {
-    BinaryFilePool::initialize(100);
+    
 
-    Module module1(SID("module1"), SID("m1"), "m1.bin");
-    Module module2(SID("module2"), SID("m2"), "m2.bin");
+    Module module1(SID("module1"), "m1.bin");
+    Module module2(SID("module2"), "m2.bin");
 
     std::vector<u8> data1 = { 0x01, 0x02 };
     std::vector<u8> data2 = { 0x03, 0x04, 0x05 };
 
+    auto free = BinaryFilePool::get_free_memory();
+    auto expect_used = 8;
     void* addr1 = BinaryFilePool::allocate(
         static_cast<u32>(data1.size()), &module1, module1.name);
     void* addr2 = BinaryFilePool::allocate(
@@ -72,8 +75,8 @@ TEST_F(BinaryFilePoolTest, AllocateMultipleModules) {
     EXPECT_NE(addr1, nullptr);
     EXPECT_NE(addr2, nullptr);
     EXPECT_EQ(BinaryFilePool::get_allocation_count(), 2);
-    EXPECT_EQ(BinaryFilePool::get_used_memory(), 8);
-    EXPECT_EQ(BinaryFilePool::get_free_memory(), 92);
+    EXPECT_EQ(BinaryFilePool::get_used_memory(), expect_used);
+    EXPECT_EQ(BinaryFilePool::get_free_memory(), free - expect_used);
 
     EXPECT_NE(addr1, addr2);
     EXPECT_GT(static_cast<u8*>(addr2), static_cast<u8*>(addr1));
@@ -83,25 +86,24 @@ TEST_F(BinaryFilePoolTest, AllocateMultipleModules) {
 }
 
 TEST_F(BinaryFilePoolTest, OutOfMemory) {
-    BinaryFilePool::initialize(10);
+   
 
-    Module module(SID("large_module"), SID("large"), "large.bin");
-    std::vector<u8> large_data(20, 0xAA);
-
-    void* result = BinaryFilePool::allocate(
-        static_cast<u32>(large_data.size()), &module, module.name);
-
-    EXPECT_EQ(result, nullptr);
-    EXPECT_EQ(BinaryFilePool::get_allocation_count(), 0);
-    EXPECT_EQ(BinaryFilePool::get_used_memory(), 0);
+   Module module(SID("large_module"), "large.bin");
+   std::vector<u8> large_data(10+BinaryFilePool::get_free_memory(), 0xAA);
+   
+   void* result = BinaryFilePool::allocate(
+       static_cast<u32>(large_data.size()), &module, module.name);
+   
+   EXPECT_EQ(result, nullptr);
+   EXPECT_EQ(BinaryFilePool::get_allocation_count(), 0);
+   EXPECT_EQ(BinaryFilePool::get_used_memory(), 0);
 }
 
 TEST_F(BinaryFilePoolTest, Alignment) {
-    BinaryFilePool::initialize(100);
-
-    Module module1(SID("mod1"), SID("m1"), "m1.bin");
-    Module module2(SID("mod2"), SID("m2"), "m2.bin");
-    Module module3(SID("mod3"), SID("m3"), "m3.bin");
+    
+    Module module1(SID("mod1"), "m1.bin");
+    Module module2(SID("mod2"), "m2.bin");
+    Module module3(SID("mod3"), "m3.bin");
 
     void* addr1 = BinaryFilePool::allocate(3, &module1, module1.name);
     void* addr2 = BinaryFilePool::allocate(5, &module2, module2.name);
@@ -123,9 +125,9 @@ TEST_F(BinaryFilePoolTest, Alignment) {
 }
 
 TEST_F(BinaryFilePoolTest, Deallocation) {
-    BinaryFilePool::initialize(100);
+    
 
-    Module module(SID("test_module"), SID("test"), "test.bin");
+    Module module(SID("test_module"), "test.bin");
     std::vector<u8> data = { 0x01, 0x02 };
 
     void* addr = BinaryFilePool::allocate(
@@ -144,10 +146,10 @@ TEST_F(BinaryFilePoolTest, Deallocation) {
 }
 
 TEST_F(BinaryFilePoolTest, FindAllocation) {
-    BinaryFilePool::initialize(100);
+    
 
-    Module module1(SID("module1"), SID("m1"), "m1.bin");
-    Module module2(SID("module2"), SID("m2"), "m2.bin");
+    Module module1(SID("module1"), "m1.bin");
+    Module module2(SID("module2"), "m2.bin");
 
     void* addr1 = BinaryFilePool::allocate(1, &module1, module1.name);
     void* addr2 = BinaryFilePool::allocate(1, &module2, module2.name);
@@ -158,19 +160,17 @@ TEST_F(BinaryFilePoolTest, FindAllocation) {
 }
 
 TEST_F(BinaryFilePoolTest, Utilization) {
-    BinaryFilePool::initialize(100);
-
-    Module module(SID("test_module"), SID("test"), "test.bin");
-    void* addr = BinaryFilePool::allocate(50, &module, module.name);
+     Module module(SID("test_module"), "test.bin");
+    void* addr = BinaryFilePool::allocate(BinaryFilePool::get_free_memory() / 2, &module, module.name);
 
     EXPECT_NE(addr, nullptr);
-    EXPECT_NEAR(BinaryFilePool::get_utilization(), 52.0, 0.1);
+    EXPECT_NEAR(BinaryFilePool::get_utilization(), 50.0, 0.1);
 }
 
 TEST_F(BinaryFilePoolTest, ShutdownAndReinitialize) {
-    BinaryFilePool::initialize(100);
+    
 
-    Module module(SID("test_module"), SID("test"), "test.bin");
+    Module module(SID("test_module"), "test.bin");
     void* addr = BinaryFilePool::allocate(1, &module, module.name);
 
     EXPECT_NE(addr, nullptr);

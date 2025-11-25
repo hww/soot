@@ -27,7 +27,7 @@ protected:
         ASSERT_NE(g_module_pool_base, nullptr);
 
         // Создаем временный модуль для аллокации
-        temp_module = new Module(SID("ptr_test"), SID("test"), "ptr_test.bin");
+        temp_module = new Module(SID("ptr_test"), "ptr_test.bin");
 
         setup_test_data();
         setup_array_data();

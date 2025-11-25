@@ -53,7 +53,7 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     builder.add_function(SID("simple_answer"), code);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
-    auto module = builder.build_and_load_to_pool();
+    auto module = builder.build_and_load_to_pool(SID("test"));
     auto bytecode = module->resolve_symbol(SID("simple_answer"),SID("dunction"));
 
     Variant result = vm.execute_bytecode((ByteCode*)bytecode->data_ptr.c());
@@ -66,7 +66,7 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder binary;
+    BinaryFileBuilder builder;
 
     // Функция: (5 + 3) * 2
     std::vector<Instruction> code;
@@ -77,9 +77,9 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     code.push_back(Instruction::create_abc(Opcode::MUL_INT, 5, 3, 4));          // r5 = r3 * r4
     code.push_back(Instruction::create_a(Opcode::RETURN, 5));                   // return r5
 
-    binary.add_function(SID("calculate"), code);
+    builder.add_function(SID("calculate"), code);
 
-    auto module = binary.build_and_load_to_pool();
+    auto module = builder.build_and_load_to_pool(SID("test"));
     auto bytecode = module->resolve_code(SID("calculate"));
     Variant result = vm.execute_bytecode(bytecode);
 
@@ -104,7 +104,7 @@ TEST_F(VirtualMachineTest, FunctionCall) {
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
 
-    auto module = builder.build_and_load_to_pool();
+    auto module = builder.build_and_load_to_pool(SID("test"));
     auto bytecode = module->resolve_code(SID("main"));
 
     Variant result = vm.execute_bytecode(bytecode);
@@ -139,7 +139,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
 
     builder.add_function(SID("test_native_call"), code);
 
-    auto module = builder.build_and_load_to_pool();
+    auto module = builder.build_and_load_to_pool(SID("test"));
     auto bytecode = module->resolve_code(SID("test_native_call"));
 
     // Проверяем что нативная функция работает отдельно
@@ -166,7 +166,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
 
     builder.add_function(SID("conditional"), code);
 
-    auto module = builder.build_and_load_to_pool();
+    auto module = builder.build_and_load_to_pool(SID("test"));
     auto bytecode = module->resolve_code(SID("conditional"));
 
     Variant result = vm.execute_bytecode(bytecode);
@@ -203,8 +203,8 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     binary2.add_function(SID("func2"), code2);
 
 
-    auto module1 = binary1.build_and_load_to_pool();
-    auto module2 = binary2.build_and_load_to_pool();
+    auto module1 = binary1.build_and_load_to_pool(SID("test1"));
+    auto module2 = binary2.build_and_load_to_pool(SID("test2"));
 
     auto bytecode1 = module1->resolve_code(SID("func1"));
     auto bytecode2 = module2->resolve_code(SID("func2"));

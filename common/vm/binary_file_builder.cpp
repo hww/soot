@@ -4,13 +4,12 @@
 namespace vm {
 
     /** Построить и загрузить модуль в пул */
-    std::shared_ptr<Module> BinaryFileBuilder::build_and_load_to_pool() {
+    std::shared_ptr<Module> BinaryFileBuilder::build_and_load_to_pool(StringId module_name) {
         std::vector<u8> data = build();
 
         // Создаем модуль
         auto module = std::make_shared<Module>(
-            module_name_,
-            module_name_,
+            module_name,
             std::filesystem::path("generated.bin")
         );
 
@@ -43,10 +42,6 @@ namespace vm {
 
     /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
     std::vector<u8> BinaryFileBuilder::build() {
-        if (module_name_ == 0) {
-            throw std::runtime_error("Module name not set");
-        }
-
         // 1. Создаем буфер начального размера (64KB)
         std::vector<u8> buffer(65536);
         u32 current_pos = 0;
@@ -170,9 +165,7 @@ namespace vm {
 
     /** Просмотреть входные данные которые были добавлены */
     std::string BinaryFileBuilder::inspect_input() const {
-        std::string result = fmt::format("BinaryFileBuilder<name:{}>:\n",
-            string_id::to_string(module_name_));
-
+        std::string result;
         result += fmt::format("  Total definitions: {}\n", definitions_.size());
 
         for (size_t i = 0; i < definitions_.size(); i++) {

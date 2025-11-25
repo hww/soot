@@ -43,8 +43,8 @@ namespace vm {
     public:
         Module() = default;
 
-        Module(StringId full_name, StringId short_name, std::filesystem::path file_path)
-            : name(full_name), file_path(std::move(file_path)) {
+        Module(StringId name, std::filesystem::path file_path)
+            : name(name), file_path(std::move(file_path)) {
         }
 
         // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
@@ -58,8 +58,13 @@ namespace vm {
         }
 
         ~Module() {
-            // Чистим только если НЕ из пула
+             // Чистим только если НЕ из пула
+             BinaryFilePool::deallocate(name);
              binary_file = nullptr;
+             binary_size = 0;
+             file_path.clear();
+             export_table.clear();
+             import_table.clear();
         }
 
         bool is_valid_metadata() const { return name != 0 && !file_path.empty(); }
@@ -88,6 +93,12 @@ namespace vm {
             if (binary_file)
                 binary_file->relocate_pointers(BinaryFilePool::get_base_address());
             lg::debug("Module {} relocated to new file base", string_id::to_string(name));
+        }
+
+        void on_pool_deaelocation(BinaryFile* file_base) {
+            binary_file = file_base;
+            generation++;
+            lg::debug("Module {} dealocated to new file base", string_id::to_string(name));
         }
 
         std::string to_string() const;

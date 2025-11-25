@@ -33,14 +33,9 @@ namespace vm {
         };
 
         std::vector<DefinitionData> definitions_;
-        StringId module_name_ = 0;
 
     public:
         BinaryFileBuilder() = default;
-
-        void set_module_name(StringId name) {
-            module_name_ = name;
-        }
 
         /** Добавить функцию */
         void add_function(StringId name, const std::vector<Instruction>& code,
@@ -56,7 +51,7 @@ namespace vm {
 
         /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
         std::vector<u8> build();
-        std::shared_ptr<Module> build_and_load_to_pool();
+        std::shared_ptr<Module> build_and_load_to_pool(StringId module_name);
 
         std::string inspect_input() const;
         std::string inspect_memory_dump(const std::vector<u8>& binary) const;

@@ -53,7 +53,8 @@ namespace vm {
 
         if (it != allocations.end()) {
             if (it->owner_module) {
-                it->owner_module->on_pool_relocation(nullptr);
+                it->owner_module->on_pool_deaelocation(nullptr);
+                it->owner_module = nullptr;
             }
             allocations.erase(it);
             return true;
@@ -96,6 +97,7 @@ namespace vm {
         for (auto& alloc : allocations) {
             if (alloc.owner_module) {
                 alloc.owner_module->on_pool_relocation(nullptr);
+				alloc.owner_module = nullptr;
             }
         }
 
@@ -106,5 +108,6 @@ namespace vm {
         allocations.clear();
 
         g_module_pool_base = nullptr;
+        fmt::print("Shutdown completed successfully\n");
     }
 }

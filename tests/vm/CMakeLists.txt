@@ -21,7 +21,6 @@ add_executable(vm_test
     tests/vm/test_native_functions.cpp
     tests/vm/test_virtual_machine.cpp
     tests/vm/test_module_pool.cpp
-    
     tests/vm/test_ptr.cpp
 )
 

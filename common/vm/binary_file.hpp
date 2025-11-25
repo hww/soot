@@ -196,14 +196,8 @@ namespace vm {
                 throw std::runtime_error("Definition index out of bounds");
             }
 
-            lg::info("get_definition: g_module_pool_base = {}, definitions.offset = {}",
-                (void*)g_module_pool_base, definitions.offset);
-
             Ptr<Definition> result_ptr = definitions + idx;
             Definition* result = result_ptr.c();
-
-            lg::info("result_ptr.offset = {}, result = {}", result_ptr.offset, (void*)result);
-
             return result;
         }
 
