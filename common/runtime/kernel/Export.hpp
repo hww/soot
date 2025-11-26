@@ -1,0 +1,11 @@
+﻿// The kernel
+#include "common/runtime/kernel/NativeFunc.hpp"
+#include "common/runtime/kernel/StateDefinition.hpp"
+#include "common/runtime/kernel/StateFrame.hpp"
+#include "common/runtime/kernel/Connectable.hpp"
+#include "common/runtime/kernel/Connection.hpp"
+#include "common/runtime/kernel/Engine.hpp"
+#include "common/runtime/kernel/EntityActor.hpp"
+#include "common/runtime/kernel/Process.hpp"
+#include "common/runtime/kernel/ProcessScheduler.hpp"
+#include "common/runtime/kernel/ExecutionContext.hpp"

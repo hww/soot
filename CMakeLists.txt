@@ -82,7 +82,7 @@ add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 include(common/script/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
-include(common/vm/CMakeLists.txt)
+include(common/runtime/CMakeLists.txt)
 
 # Installation (optional)
 install(TARGETS lisp

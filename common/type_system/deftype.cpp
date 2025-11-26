@@ -1,12 +1,11 @@
-﻿#include "deftype.h"
+#include "common/script/Export.hpp"
+#include "common/type_system/Deftype.hpp"
+#include "common/type_system/State.hpp"
+#include "common/util/Log.hpp"
+#include "common/util/StringUtil.hpp"
+#include "fmt/format.h"
 
 #include <unordered_map>
-
-#include "common/script/export.h"
-#include "state.h"
-#include "common/util/log.h"
-#include "common/util/string_util.h"
-#include "fmt/format.h"
 
 /*!
  * Missing Features

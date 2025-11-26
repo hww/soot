@@ -1212,7 +1212,7 @@ namespace vm
 #include "environment.hpp"
 #include "context.hpp"
 #include "module.hpp"
-#include "native_func.hpp"
+#include "NativeFunc.hpp"
 
 namespace vm
 {
@@ -4809,7 +4809,7 @@ namespace vm
 #include "environment.hpp"
 #include "math.hpp"
 #include "module.hpp"
-#include "native_func.hpp"
+#include "NativeFunc.hpp"
 
 namespace vm {
 
@@ -5466,7 +5466,7 @@ namespace vm
 #include "variant.hpp"
 #include "string_id.hpp"
 #include "module.hpp"
-#include "native_func.hpp"
+#include "NativeFunc.hpp"
 #include "assembler.hpp"
 /*!
  * @file kmalloc.cpp
@@ -5741,7 +5741,7 @@ namespace vm
 	void vm_malloc_deinitialize();
 }
 #include <iostream>
-#include "native_func.hpp"
+#include "NativeFunc.hpp"
 #include "string_id.hpp"
 #include "variant.hpp"
 #include "environment.hpp"

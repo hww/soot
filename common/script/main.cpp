@@ -1,12 +1,12 @@
-﻿#include <iostream>
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <iostream>
-#include "script/reader.h"
-#include "script/object.h"
-#include "script/interpreter.h"
-#include "script/text_db.h"
+#include "common/script/Reader.hpp"
+#include "common/script/Object.hpp"
+#include "common/script/Interpreter.hpp"
+#include "common/script/TextDb.hpp"
 
 using namespace script;
 

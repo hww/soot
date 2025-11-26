@@ -1,10 +1,10 @@
 ﻿include(common/cross_sockets/CMakeLists.txt)
 
 add_library(repl_lib
-    common/repl/config.cpp
-    common/repl/repl_wrapper.cpp
-    common/repl/nrepl/repl_server.cpp
-    common/repl/nrepl/repl_client.cpp
+    common/repl/Config.cpp
+    common/repl/ReplWrapper.cpp
+    common/repl/nrepl/ReplServer.cpp
+    common/repl/nrepl/ReplClient.cpp
 )
 
 # Исправлено: используем repl_lib вместо repl

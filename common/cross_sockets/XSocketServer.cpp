@@ -1,8 +1,8 @@
 // clang-format off
-#include "XSocketServer.h"
+#include "common/cross_sockets/XSocketServer.hpp"
 
-#include "XSocket.h"
-#include "common_types.h"
+#include "common/cross_sockets/XSocket.hpp"
+#include "common/CommonTypes.hpp"
 
 #include "fmt/format.h"
 
@@ -13,7 +13,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/util/log.h"
+#include "common/util/Log.hpp"
 // clang-format on
 
 XSocketServer::XSocketServer(std::function<bool()> shutdown_callback,

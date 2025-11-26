@@ -11,22 +11,22 @@ include_directories(common/script)
 
 # Создаем тестовый исполняемый файл
 add_executable(script_test
-    tests/script/main_script_test.cpp
-    tests/script/test_basic_types.cpp
-    tests/script/test_arithmetic.cpp
-    tests/script/test_lists.cpp
-    tests/script/test_special_forms.cpp
-    tests/script/test_predicates.cpp
-    tests/script/test_logical.cpp
-    tests/script/test_strings.cpp
-    tests/script/test_vectors.cpp
-    tests/script/test_hash_tables.cpp
-    tests/script/test_macros.cpp
-    tests/script/test_quasiquote.cpp
-    tests/script/test_loops.cpp
-    tests/script/test_conversions.cpp
-    tests/script/test_math.cpp
-    tests/script/test_system.cpp
+    tests/script/MainScriptTest.cpp
+    tests/script/TestBasicTypes.cpp
+    tests/script/TestArithmetic.cpp
+    tests/script/TestLists.cpp
+    tests/script/TestSpecialForms.cpp
+    tests/script/TestPredicates.cpp
+    tests/script/TestLogical.cpp
+    tests/script/TestStrings.cpp
+    tests/script/TestVectors.cpp
+    tests/script/TestHashTables.cpp
+    tests/script/TestMacros.cpp
+    tests/script/TestQuasiquote.cpp
+    tests/script/TestLoops.cpp
+    tests/script/TestConversions.cpp
+    tests/script/TestMath.cpp
+    tests/script/TestSystem.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest

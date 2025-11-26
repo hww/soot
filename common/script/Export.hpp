@@ -1,0 +1,10 @@
+// test_parsers.h
+#pragma once
+#include "common/script/Object.hpp"
+#include "common/script/Interpreter.hpp"
+#include "common/script/Reader.hpp"
+#include "common/script/PrettyPrinter.hpp"
+#include "common/script/ParseHelpers.hpp"
+#include "common/script/TextDb.hpp"
+#include "common/script/Printer.hpp"
+#include "common/script/PrinterEnv.hpp"

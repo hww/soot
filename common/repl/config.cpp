@@ -1,4 +1,4 @@
-﻿#include "config.h"
+#include "Config.hpp"
 #include "third_party/fmt/include/fmt/format.h"
 #include <fstream>
 #include <iostream>

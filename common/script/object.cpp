@@ -1,10 +1,10 @@
-﻿#include "object.h"
-#include "util/crc32.h"
+#include "common/CommonTypes.hpp"
+#include "common/util/Crc32.hpp"
+#include "common/script/Object.hpp"
 #include <sstream>
 #include <iostream>
 #include <cstring>
-#include <util/assert.h>
-#include <common_types.h>
+#include <assert.h>
 
 
 namespace script

@@ -1,16 +1,17 @@
 ﻿# Создаем нашу библиотеку БЕЗ replxx файлов
 add_library(type_system_lib 
-    common/type_system/type.cpp
-    common/type_system/type_system.cpp
-    common/type_system/type_spec.cpp
-    common/type_system/defenum.cpp
-    common/type_system/deftype.cpp
-    common/type_system/state.cpp
-    common/util/bit_utils.cpp
-    common/util/string_util.cpp
-    common/util/diff.cpp
-    common/util/file_util.cpp
-    common/util/log.cpp
+    common/util/BitUtils.cpp
+    common/util/StringUtil.cpp
+    common/util/Diff.cpp
+    common/util/FileUtil.cpp
+    common/util/Log.cpp
+    
+    common/type_system/Type.cpp
+    common/type_system/TypeSystem.cpp
+    common/type_system/TypeSpec.cpp
+    common/type_system/Defenum.cpp
+    common/type_system/Deftype.cpp
+    common/type_system/State.cpp
 )
 
 # Линкуем fmt если нужно

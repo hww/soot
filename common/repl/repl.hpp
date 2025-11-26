@@ -1,7 +1,7 @@
-﻿#pragma once
+#pragma once
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/fmt/include/fmt/color.h"
-#include "script/interpreter.h"
+#include "common/script/interpreter.h"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -46,7 +46,7 @@ public:
             history_.push_back(input);
         }
 
-        fmt::print(fg(fmt::color::green), "👋 Goodbye!\n");
+        fmt::print(fg(fmt::color::green), "� Goodbye!\n");
     }
 
     void start_network(int port = 8181) {

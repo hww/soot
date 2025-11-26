@@ -1,7 +1,7 @@
-﻿#include "common/script/printer.h"
-#include "common/script/object.h"
-#include "common/util/print_float.h"
-#include "common/common_types.h"
+#include "common/script/Printer.hpp"
+#include "common/script/Object.hpp"
+#include "common/util/PrintFloat.hpp"
+#include "common/CommonTypes.hpp"
 
 #include <cmath>
 #include <mutex>

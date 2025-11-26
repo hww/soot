@@ -1,15 +1,15 @@
-﻿#include "interpreter.h"
-#include "pretty_printer.h"
+#include "common/script/Interpreter.hpp"
+#include "common/script/PrettyPrinter.hpp"
 
 #include "fmt/args.h"
 #include "fmt/base.h"
 #include "fmt/format.h"
-#include "util/log.h"
-#include "util/crc32.h"
-#include "util/file_util.h"
-#include "util/string_util.h"
-#include "util/unicode_util.h"
-#include "common_types.h"
+#include "common/util/Log.hpp"
+#include "common/util/Crc32.hpp"
+#include "common/util/FileUtil.hpp"
+#include "common/util/StringUtil.hpp"
+#include "common/util/UnicodeUtil.hpp"
+#include "common/CommonTypes.hpp"
 
 #include <sstream>
 #include <filesystem>

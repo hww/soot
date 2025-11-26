@@ -3,7 +3,7 @@
 #include <string>
 
 #include "common/cross_sockets/XSocket.h"
-#include "common/util/log.h"
+#include "common/util/Log.h"
 
 #include "fmt/format.h"
 

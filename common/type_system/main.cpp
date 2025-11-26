@@ -1,7 +1,7 @@
-﻿#include "fmt/format.h"
-#include "type.h"
-#include "type_system.h"
-#include "type_spec.h"
+#include "fmt/format.h"
+#include "common/type_system/Type.hpp"
+#include "common/type_system/TypeSystem.hpp"
+#include "common/type_system/TypeSpec.hpp"
 
 // gogle test instead of main
 int main() {

@@ -1,6 +1,6 @@
-﻿#include "defenum.h"
-#include "common/util/bit_utils.h"
-#include "common/util/string_util.h"
+#include "common/type_system/Defenum.hpp"
+#include "common/util/BitUtils.hpp"
+#include "common/util/StringUtil.hpp"
 #include "fmt/format.h"
 
 namespace {

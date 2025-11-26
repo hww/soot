@@ -1,20 +1,20 @@
 ﻿
 # Создаем нашу библиотеку БЕЗ replxx файлов
 add_library(script_lib 
-    common/util/crc32.cpp
-    common/util/assert.cpp
-    common/util/file_util.cpp
-    common/util/print_float.cpp
-    common/util/log.cpp
+    common/util/Crc32.cpp
+    common/util/Assert.cpp
+    common/util/FileUtil.cpp
+    common/util/PrintFloat.cpp
+    common/util/Log.cpp
 
-    common/script/text_db.cpp
-    common/script/object.cpp
-    common/script/reader.cpp
-    common/script/interpreter.cpp
-    common/script/printer.cpp
-    common/script/printer_env.cpp
-    common/script/pretty_printer.cpp
-    common/script/parse_helpers.cpp
+    common/script/TextDb.cpp
+    common/script/Object.cpp
+    common/script/Reader.cpp
+    common/script/Interpreter.cpp
+    common/script/Printer.cpp
+    common/script/PrinterEnv.cpp
+    common/script/PrettyPrinter.cpp
+    common/script/ParseHelpers.cpp
 )
 
 # Исполняемый файл

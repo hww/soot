@@ -1,7 +1,10 @@
-﻿#include "crc32.h"
+#include "common/util/Crc32.hpp"
 
 namespace util
 {
+
+
+
     uint32_t compute_crc32(const std::string& str) {
         return compute_crc32(str.c_str(), str.length());
     }
@@ -25,7 +28,6 @@ namespace util
             0xc5a92679L, 0xc1683bceL, 0xcc2b1d17L, 0xc8ea00a0L, 0xd6ad50a5L, 0xd26c4d12L, 0xdf2f6bcbL, 0xdbee767cL, 0xe3a1cbc1L, 0xe760d676L, 0xea23f0afL, 0xeee2ed18L, 0xf0a5bd1dL, 0xf464a0aaL, 0xf9278673L, 0xfde69bc4L,
             0x89b8fd09L, 0x8d79e0beL, 0x803ac667L, 0x84fbdbd0L, 0x9abc8bd5L, 0x9e7d9662L, 0x933eb0bbL, 0x97ffad0cL, 0xafb010b1L, 0xab710d06L, 0xa6322bdfL, 0xa2f33668L, 0xbcb4666dL, 0xb8757bdaL, 0xb5365d03L, 0xb1f740b4L,
         };
-
         uint32_t crc = 0;
         if (length > 0) {
             for (size_t i = 0; i < length; i++) {
@@ -34,4 +36,6 @@ namespace util
         }
         return crc;
     }
+
+
 } // namespace script

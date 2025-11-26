@@ -1,5 +1,5 @@
-﻿#include "type.h"
-#include "common/util/assert.h"
+#include "common/type_system/Type.hpp"
+#include "common/util/Assert.hpp"
 #include "fmt/format.h"
 
 #include <stdexcept>

@@ -11,17 +11,17 @@ include_directories(common/vm)
 
 # Создаем тестовый исполняемый файл
 add_executable(vm_test
-    tests/vm/test_types.cpp
-    tests/vm/test_string_id.cpp
-    tests/vm/test_variant.cpp
-    tests/vm/test_instructions.cpp
-    tests/vm/test_stack_frame.cpp
-    tests/vm/test_binary_file.cpp
-    tests/vm/test_script_object.cpp
-    tests/vm/test_native_functions.cpp
-    tests/vm/test_virtual_machine.cpp
-    tests/vm/test_module_pool.cpp
-    tests/vm/test_ptr.cpp
+    tests/vm/TestTypes.cpp
+    tests/vm/TestStringId.cpp
+    tests/vm/TestVariant.cpp
+    tests/vm/TestInstructions.cpp
+    tests/vm/TestStackFrame.cpp
+    tests/vm/TestBinaryFile.cpp
+    tests/vm/TestScriptObject.cpp
+    tests/vm/TestNativeFunctions.cpp
+    tests/vm/TestVirtualMachine.cpp
+    tests/vm/TestModulePool.cpp
+    tests/vm/TestPtr.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest

@@ -4,7 +4,7 @@
 #include <mutex>
 #include <thread>
 
-#include "common/common_types.h"
+#include "common/CommonTypes.hpp"
 #include "common/cross_sockets/XSocket.h"
 
 /// @brief A cross platform generic socket client implementation

@@ -1,4 +1,4 @@
-﻿#include "log.h"
+#include "common/util/Log.hpp"
 #include <cstdio>
 #include <mutex>
 #include <sstream>
