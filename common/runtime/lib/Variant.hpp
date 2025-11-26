@@ -12,7 +12,7 @@ namespace runtime::lib {
     typedef s64 vm_int;
     typedef f64 vm_float;
 #else
-    typedef s32 vm_int;
+    typedef i32 vm_int;
     typedef f64 vm_float;
 #endif
     /**
@@ -167,7 +167,7 @@ namespace runtime::lib {
 
         Variant(StringId sid)
             : type_(type::string_id)
-            , int_value(static_cast<s32>(sid))
+            , int_value(static_cast<i32>(sid))
         {
         }
 
@@ -300,7 +300,7 @@ namespace runtime::lib {
             int_value = value;
         }
 
-        void set_int32(s32 value) {
+        void set_int32(i32 value) {
             type_ = type::u32;
             int_value = value;
         }
@@ -332,7 +332,7 @@ namespace runtime::lib {
 
         void set_sid(StringId sid) {
             type_ = type::string_id;
-            int_value = static_cast<s32>(sid);
+            int_value = static_cast<i32>(sid);
         }
 
         void set_string(const std::string& str) {
@@ -385,7 +385,7 @@ namespace runtime::lib {
             return int_value;
         }
 
-        s32 get_int32() const {
+        i32 get_int32() const {
             if (type_ != type::_int_) {
                 throw TypeError("get_int()", type::_int_, type_);
             }
@@ -446,9 +446,9 @@ namespace runtime::lib {
 
         vm_int to_int() const {
             if (type_ == type::_int_) return int_value;
-            if (type_ == type::_float_) return static_cast<s32>(float_value);
+            if (type_ == type::_float_) return static_cast<i32>(float_value);
             if (type_ == type::boolean) return int_value;
-            if (type_ == type::string_id) return static_cast<s32>(int_value);
+            if (type_ == type::string_id) return static_cast<i32>(int_value);
             throw TypeError("to_int() cannot convert from", type_);
         }
 

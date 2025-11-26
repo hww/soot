@@ -38,5 +38,6 @@ namespace runtime {
         class Connectable;
         class StateDefinition;
         class DeadPool;
+        class EntityActor;
     }
 }

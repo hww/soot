@@ -20,13 +20,13 @@ namespace runtime::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == type::i64)
-					return *((s64*)resolved->data_ptr.c());
+					return *((i64*)resolved->data_ptr.c());
 				if (resolved->type == type::i32)
-					return *((s32*)resolved->data_ptr.c());
+					return *((i32*)resolved->data_ptr.c());
 				if (resolved->type == type::i16)
-					return *((s16*)resolved->data_ptr.c());
+					return *((i16*)resolved->data_ptr.c());
 				if (resolved->type == type::i8)
-					return *((s8*)resolved->data_ptr.c());
+					return *((i8*)resolved->data_ptr.c());
 
 				if (resolved->type == type::u64)
 					return *((u64*)resolved->data_ptr.c());
@@ -51,13 +51,13 @@ namespace runtime::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == type::i64)
-					return *((s64*)resolved->data_ptr.c());
+					return *((i64*)resolved->data_ptr.c());
 				if (resolved->type == type::i32)
-					return *((s32*)resolved->data_ptr.c());
+					return *((i32*)resolved->data_ptr.c());
 				if (resolved->type == type::i16)
-					return *((s16*)resolved->data_ptr.c());
+					return *((i16*)resolved->data_ptr.c());
 				if (resolved->type == type::i8)
-					return *((s8*)resolved->data_ptr.c());
+					return *((i8*)resolved->data_ptr.c());
 
 				if (resolved->type == type::u64)
 					return *((u64*)resolved->data_ptr.c());
@@ -267,7 +267,7 @@ namespace runtime::vm {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src1 = current_frame->get_register(instr.b);
 				Variant& src2 = current_frame->get_register(instr.c);
-				s32 divisor = src2.to_int();
+				i32 divisor = src2.to_int();
 				if (divisor == 0) {
 					lg::error("Division by zero");
 					break;
@@ -280,7 +280,7 @@ namespace runtime::vm {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src1 = current_frame->get_register(instr.b);
 				Variant& src2 = current_frame->get_register(instr.c);
-				s32 divisor = src2.to_int();
+				i32 divisor = src2.to_int();
 				if (divisor == 0) {
 					lg::error("Division by zero");
 					break;
@@ -307,8 +307,8 @@ namespace runtime::vm {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src1 = current_frame->get_register(instr.b);
 				Variant& src2 = current_frame->get_register(instr.c);
-				s32 value = src1.to_int();
-				s32 shift = src2.to_int();
+				i32 value = src1.to_int();
+				i32 shift = src2.to_int();
 				dest = Variant(shift >= 0 ? value << shift : value >> -shift);
 				break;
 			}
@@ -325,14 +325,14 @@ namespace runtime::vm {
 			// ============================================================
 			case Opcode::LOAD_IMMEDIATE_INT: {
 				Variant& dest = current_frame->get_register(instr.a_imm);
-				dest = Variant(static_cast<s32>(instr.imm16));
+				dest = Variant(static_cast<i32>(instr.imm16));
 				break;
 			}
 
 			case Opcode::ADD_IMM: {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src = current_frame->get_register(instr.b);
-				s32 imm = static_cast<s32>(instr.c);
+				i32 imm = static_cast<i32>(instr.c);
 				dest = Variant(src.to_int() + imm);
 				break;
 			}
@@ -340,7 +340,7 @@ namespace runtime::vm {
 			case Opcode::SUB_IMM: {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src = current_frame->get_register(instr.b);
-				s32 imm = static_cast<s32>(instr.c);
+				i32 imm = static_cast<i32>(instr.c);
 				dest = Variant(src.to_int() - imm);
 				break;
 			}
@@ -348,7 +348,7 @@ namespace runtime::vm {
 			case Opcode::MUL_IMM: {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src = current_frame->get_register(instr.b);
-				s32 imm = static_cast<s32>(instr.c);
+				i32 imm = static_cast<i32>(instr.c);
 				dest = Variant(src.to_int() * imm);
 				break;
 			}
@@ -356,7 +356,7 @@ namespace runtime::vm {
 			case Opcode::DIV_IMM: {
 				Variant& dest = current_frame->get_register(instr.a);
 				Variant& src = current_frame->get_register(instr.b);
-				s32 imm = static_cast<s32>(instr.c);
+				i32 imm = static_cast<i32>(instr.c);
 				if (imm == 0) {
 					lg::error("Division by zero");
 					break;
@@ -590,7 +590,7 @@ namespace runtime::vm {
 			// ============================================================
 			case Opcode::LOAD_ARGC: {
 				Variant& dest = current_frame->get_register(instr.a);
-				dest = Variant(static_cast<s32>(current_frame->argc));
+				dest = Variant(static_cast<i32>(current_frame->argc));
 				break;
 			}
 
@@ -633,7 +633,7 @@ namespace runtime::vm {
 				Variant& regB = current_frame->get_register(instr.b);
 				if (regB.is_ptr()) {
 					Variant& regA = current_frame->get_register(instr.a);
-					s32 val = *reinterpret_cast<s32*>(regB.get_ptr());
+					i32 val = *reinterpret_cast<i32*>(regB.get_ptr());
 					regA = Variant(val);
 				}
 				else {
@@ -675,7 +675,7 @@ namespace runtime::vm {
 				Variant& regA = current_frame->get_register(instr.a);
 				Variant& regB = current_frame->get_register(instr.b);
 				if (regA.is_ptr()) {
-					*reinterpret_cast<s32*>(regA.get_ptr()) = regB.to_int();
+					*reinterpret_cast<i32*>(regA.get_ptr()) = regB.to_int();
 				}
 				else {
 					lg::error("STORE_IND_INT: Expected pointer, got {}", regA.to_string());

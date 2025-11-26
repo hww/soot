@@ -144,7 +144,8 @@ public:
      * Removes connections that match the specified predicate function.
      * @param predicate Function that returns true for connections to remove
      */
-    void RemoveMatching(bool (*predicate)(Connection*, Engine*));
+    template<typename Predicate>
+    void Engine::RemoveMatching(Predicate predicate);
 
     /**
      * Removes all active connections from the engine.

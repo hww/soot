@@ -59,21 +59,21 @@ namespace runtime::lib
          * @param diff Количество элементов для смещения
          * @return Новый указатель, смещенный на diff элементов
          */
-        Ptr operator+(s32 diff) const { return Ptr(offset + diff * sizeof(T)); }
+        Ptr operator+(i32 diff) const { return Ptr(offset + diff * sizeof(T)); }
 
         /**
          * @brief Вычитание целого числа из указателя
          * @param diff Количество элементов для обратного смещения
          * @return Новый указатель, смещенный на -diff элементов
          */
-        Ptr operator-(s32 diff) const { return Ptr(offset - diff * sizeof(T)); }
+        Ptr operator-(i32 diff) const { return Ptr(offset - diff * sizeof(T)); }
 
         /**
          * @brief Разность между двумя указателями
          * @param other Другой указатель того же типа
          * @return Количество элементов между указателями
          */
-        s32 operator-(const Ptr<T>& other) const {
+        i32 operator-(const Ptr<T>& other) const {
             return (offset - other.offset) / sizeof(T);
         }
 
@@ -149,21 +149,21 @@ namespace runtime::lib
          * @param diff Количество байт для смещения
          * @return Новый указатель, смещенный на diff байт
          */
-        Ptr<void> operator+(s32 diff) const { return Ptr<void>(offset + diff); }
+        Ptr<void> operator+(i32 diff) const { return Ptr<void>(offset + diff); }
 
         /**
          * @brief Вычитание целого числа из указателя (в байтах)
          * @param diff Количество байт для обратного смещения
          * @return Новый указатель, смещенный на -diff байт
          */
-        Ptr<void> operator-(s32 diff) const { return Ptr<void>(offset - diff); }
+        Ptr<void> operator-(i32 diff) const { return Ptr<void>(offset - diff); }
 
         /**
          * @brief Разность между двумя указателями (в байтах)
          * @param other Другой указатель того же типа
          * @return Количество байт между указателями
          */
-        s32 operator-(const Ptr<void>& other) const {
+        i32 operator-(const Ptr<void>& other) const {
             return offset - other.offset;
         }
 

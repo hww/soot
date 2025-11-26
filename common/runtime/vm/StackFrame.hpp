@@ -136,7 +136,7 @@ namespace runtime::vm {
         vm_int get_static_int(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             // Data is stored as Variants, so we need to extract s32
-            return *((s32*)(data_ptr + offset));
+            return *((i32*)(data_ptr + offset));
         }
 
         vm_float get_static_float(u32 offset) const {

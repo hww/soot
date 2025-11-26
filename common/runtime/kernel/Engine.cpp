@@ -196,7 +196,8 @@ void Engine::RemoveFromProcess(Process* process)
     }
 }
 
-void Engine::RemoveMatching(bool (*predicate)(Connection*, Engine*))
+template<typename Predicate>
+void Engine::RemoveMatching(Predicate predicate)
 {
     Connectable* current = AliveList.Next0;
     while (current != nullptr && current != &AliveListEnd)
@@ -224,21 +225,21 @@ void Engine::RemoveAll()
 
 void Engine::RemoveByParam0(void* value)
 {
-    RemoveMatching([](Connection* connection, Engine* engine) {
+    RemoveMatching([&](Connection* connection, Engine* engine) {
         return connection->Arg0 == value;
     });
 }
 
 void Engine::RemoveByParam1(int value)
 {
-    RemoveMatching([](Connection* connection, Engine* engine) {
+    RemoveMatching([&](Connection* connection, Engine* engine) {
         return connection->Arg1 == value;
     });
 }
 
 void Engine::RemoveByParam2(int value)
 {
-    RemoveMatching([](Connection* connection, Engine* engine) {
+    RemoveMatching([&](Connection* connection, Engine* engine) {
         return connection->Arg2 == value;
     });
 }

@@ -23,11 +23,14 @@ add_library(vm_lib
     common/runtime/vm/VirtualMachine.cpp
     ## Kernel
     common/runtime/kernel/NativeFunc.cpp
-    #common/runtime/kernel/Connection.cpp
-    #common/runtime/kernel/Connection.cpp
-    #common/runtime/kernel/ExecutionContext.cpp
-    #common/runtime/kernel/Process.cpp
-    #common/runtime/kernel/Engine.cpp
-    #common/runtime/kernel/ProcessScheduler.cpp
+    
+    common/runtime/kernel/Connection.cpp
+    common/runtime/kernel/Connection.cpp
+    common/runtime/kernel/Engine.cpp
+    common/runtime/kernel/Kernel.cpp
+    common/runtime/kernel/Process.cpp
+    common/runtime/kernel/ProcessRunner.cpp
+    common/runtime/kernel/StateDefinition.cpp
+    common/runtime/kernel/Scheduler.cpp
 )
 

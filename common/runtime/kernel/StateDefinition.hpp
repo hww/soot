@@ -3,13 +3,15 @@
 #include "common/runtime/ForwardDeclarations.hpp"
 #include "common/runtime/lib/StringId.hpp"
 #include "common/runtime/lib/Types.hpp"
-#include "common/runtime/files/BinaryFile.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 #include <unordered_map>
 #include <string>
 
-namespace runtime
+using namespace runtime::lib;
+using namespace runtime::files;
+
+namespace runtime::kernel
 {
     /**
      * StateDefinition - определение состояния для конечного автомата (State Machine)
@@ -104,9 +106,7 @@ namespace runtime
         /// Основной конструктор
         /// @param state_name - идентификатор состояния
         /// @param update_code - основной код состояния (может быть nullptr)
-        StateDefinition(StringId state_name, ByteCode* update_code = nullptr)
-            : name(state_name), update_bytecode(update_code) {
-        }
+        StateDefinition(StringId state_name, ByteCode* update_code = nullptr);
 
         /// Запрет копирования (указатели на байткод не должны копироваться)
         StateDefinition(const StateDefinition&) = delete;
@@ -135,175 +135,90 @@ namespace runtime
 
         /// Проверяет наличие обработчика для конкретного типа события
         /// @param event_type - тип события
-        bool has_event(StringId event_type) const {
-            return event_handlers.find(event_type) != event_handlers.end();
-        }
+        bool has_event(StringId event_type) const;
 
         /// Проверяет, есть ли хотя бы один обработчик событий
-        bool has_any_events() const {
-            return !event_handlers.empty();
-        }
+        bool has_any_events() const;
 
         // ===== МЕТОДЫ ДЛЯ РАБОТЫ С СОБЫТИЯМИ =====
 
         /// Добавляет обработчик события
         /// @param event_type - тип события
         /// @param handler - байткод обработчика
-        void add_event_handler(StringId event_type, ByteCode* handler) {
-            event_handlers[event_type] = handler;
-        }
+        void add_event_handler(StringId event_type, ByteCode* handler);
 
         /// Удаляет обработчик события
         /// @param event_type - тип события для удаления
-        void remove_event_handler(StringId event_type) {
-            event_handlers.erase(event_type);
-        }
+        void remove_event_handler(StringId event_type);
 
         /// Получает обработчик события
         /// @param event_type - тип события
         /// @return указатель на байткод или nullptr если не найден
-        ByteCode* get_event_handler(StringId event_type) const {
-            auto it = event_handlers.find(event_type);
-            return it != event_handlers.end() ? it->second : nullptr;
-        }
+        ByteCode* get_event_handler(StringId event_type) const;
 
         // ===== МЕТОДЫ ДЛЯ РАБОТЫ С НАСЛЕДОВАНИЕМ =====
 
         /// Проверяет, наследуется ли текущее состояние от указанного
         /// @param other - проверяемое родительское состояние
         /// @return true если это состояние наследуется от other
-        bool inherits_from(StringId other) const {
-            return parent_state == other;
-        }
+        bool inherits_from(StringId other) const;
 
         /// Проверяет, может ли состояние быть активировано напрямую
         /// Виртуальные состояния могут использоваться только как базовые для наследования
-        bool can_activate_directly() const {
-            return !metadata.is_virtual;
-        }
+        bool can_activate_directly() const;
 
         // ===== МЕТОДЫ ДЛЯ СБОРА СТАТИСТИКИ =====
 
         /// Обновляет статистику времени пребывания в состоянии
         /// @param delta_time - время в миллисекундах с последнего обновления
-        void update_time_stats(u32 delta_time) {
-            stats.time_in_state += delta_time;
-        }
+        void update_time_stats(u32 delta_time);
 
         /// Записывает факт входа в состояние
-        void record_enter() {
-            stats.enter_count++;
-        }
+        void record_enter();
 
         /// Записывает факт выполнения обновления состояния
-        void record_update() {
-            stats.update_count++;
-        }
+        void record_update();
 
         /// Записывает факт обработки события
-        void record_event_handled() {
-            stats.events_handled++;
-        }
+        void record_event_handled();
 
         /// Добавляет такты процессора к общей статистике
         /// @param cycles - количество тактов для добавления
-        void record_cycles(u64 cycles) {
-            stats.total_cycles += cycles;
-        }
+        void record_cycles(u64 cycles);
 
         /// Обновляет статистику последовательных выполнений
         /// @param consecutive_frames - количество последовательных кадров
-        void update_consecutive_frames(u32 consecutive_frames) {
-            if (consecutive_frames > stats.max_consecutive_frames) {
-                stats.max_consecutive_frames = consecutive_frames;
-            }
-        }
+        void update_consecutive_frames(u32 consecutive_frames);
 
         // ===== СЛУЖЕБНЫЕ МЕТОДЫ =====
 
         /// Сбрасывает всю статистику выполнения
-        void reset_statistics() {
-            stats = Statistics{};
-        }
+        void reset_statistics();
 
         /// Проверяет, является ли состояние валидным (имеет хотя бы один обработчик)
-        bool is_valid() const {
-            return has_enter() || has_exit() || has_update() ||
-                has_trans() || has_post() || has_any_events();
-        }
+        bool is_valid() const;
 
         /// Получает имя состояния в виде строки (для отладки)
-        std::string get_name_string() const {
-            return lib::to_string(name);
-        }
+        std::string get_name_string() const;
 
         /// Получает имя родительского состояния в виде строки (для отладки)
-        std::string get_parent_name_string() const {
-            return lib::to_string(parent_state);
-        }
+        std::string get_parent_name_string() const;
 
         /// Форматирует состояние в читаемую строку (для отладки)
-        std::string to_string() const {
-            std::string result = fmt::format("State('{}'", get_name_string());
-
-            if (parent_state != string_id::NONE) {
-                result += fmt::format(", parent:'{}'", get_parent_name_string());
-            }
-
-            if (metadata.is_virtual) {
-                result += ", virtual";
-                if (metadata.is_override) {
-                    result += "-override";
-                }
-            }
-
-            // Собираем информацию об обработчиках
-            std::vector<std::string> handlers;
-            if (has_enter()) handlers.push_back("enter");
-            if (has_trans()) handlers.push_back("trans");
-            if (has_update()) handlers.push_back("update");
-            if (has_post()) handlers.push_back("post");
-            if (has_exit()) handlers.push_back("exit");
-            if (has_any_events()) {
-                handlers.push_back(fmt::format("events:{}", event_handlers.size()));
-            }
-
-            if (!handlers.empty()) {
-                result += fmt::format(", handlers:[{}]", fmt::join(handlers, ", "));
-            }
-
-            result += ")";
-            return result;
-        }
+        std::string to_string() const;
 
         /// Форматирует статистику в читаемую строку
-        std::string statistics_to_string() const {
-            return fmt::format(
-                "State '{}' stats: time={}ms, enters={}, updates={}, events={}, cycles={}",
-                get_name_string(),
-                stats.time_in_state,
-                stats.enter_count,
-                stats.update_count,
-                stats.events_handled,
-                stats.total_cycles
-            );
-        }
+        std::string statistics_to_string() const;
 
         // ===== ОПЕРАТОРЫ СРАВНЕНИЯ =====
 
         /// Сравнение по имени состояния
-        bool operator==(const StateDefinition& other) const {
-            return name == other.name;
-        }
+        bool operator==(const StateDefinition& other) const;
 
-        bool operator!=(const StateDefinition& other) const {
-            return !(*this == other);
-        }
+        bool operator!=(const StateDefinition& other) const;
 
         /// Сравнение для упорядочивания (для использования в ordered контейнерах)
-        bool operator<(const StateDefinition& other) const {
-            return name < other.name;
-        }
+        bool operator<(const StateDefinition& other) const;
     };
 
 } // namespace runtime
@@ -311,8 +226,8 @@ namespace runtime
 // ===== ПОДДЕРЖКА ДЛЯ STD::UNORDERED_CONTAINERS =====
 namespace std {
     template<>
-    struct hash<runtime::StateDefinition> {
-        size_t operator()(const runtime::StateDefinition& state) const {
+    struct hash<runtime::kernel::StateDefinition> {
+        size_t operator()(const runtime::kernel::StateDefinition& state) const {
             return hash<StringId>{}(state.name);
         }
     };
