@@ -20,7 +20,6 @@ add_executable(vm_test
     tests/runtime/TestScriptObject.cpp
     tests/runtime/TestNativeFunctions.cpp
     tests/runtime/TestVirtualMachine.cpp
-    tests/runtime/TestModulePool.cpp
     tests/runtime/TestPtr.cpp
 )
 

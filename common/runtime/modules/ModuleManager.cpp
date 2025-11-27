@@ -77,35 +77,20 @@ namespace runtime::modules {
             file.seekg(0, std::ios::end);
             size_t file_size = file.tellg();
             file.seekg(0, std::ios::beg);
+            // 2. Выделяем память через vector
+            std::vector<u8> memory(file_size);
 
-            // 2. Выделяем память в пуле
-            void* memory = BinaryFilePool::allocate(
-                static_cast<u32>(file_size),
-                module.get(),
-                module->name
-            );
-            if (!memory) {
-                lg::error("Failed to allocate memory in pool for module: {}",
-                    lib::to_string(module->name));
-                return false;
-            }
-
-            // 3. Читаем файл ПРЯМО в память пула
-            file.read(static_cast<char*>(memory), file_size);
+            // 3. Читаем файл ПРЯМО в память вектора
+            file.read(reinterpret_cast<char*>(memory.data()), file_size);
 
             // 4. Инициализируем BinaryFile
-            BinaryFile* binary_file = static_cast<BinaryFile*>(memory);
-            binary_file->relocate_pointers(BinaryFilePool::get_base_address());
+            BinaryFile* binary_file = reinterpret_cast<BinaryFile*>(memory.data());
 
-            // 5. Сохраняем в модуле
-            module->binary_file = binary_file;
-            module->load_state = Module::LoadState::BINARY_LOADED;
-
-            // 6. Строим таблицу экспортов
-            build_export_table(module);
+            // 5. Сохраняем в модуле - ПЕРЕДАЕМ ВЛАДЕНИЕ вектором
+            module->set_file(std::move(memory));
 
             lg::debug("Loaded binary data for module: {} (size: {} bytes, addr: {})",
-                lib::to_string(module->name), file_size, memory);
+                string_id::to_cstring(module->name), file_size, reinterpret_cast<void*>(binary_file));
             return true;
 
         }
@@ -119,7 +104,7 @@ namespace runtime::modules {
     void ModuleManager::build_export_table(const std::shared_ptr<Module>& module) {
         ASSERT(module->is_binary_loaded());
 
-        BinaryFile* file = module->binary_file;
+        auto file = module->binary_file;
         for (u32 i = 0; i < file->definitions_count; i++) {
             auto def = file->get_definition(i);
 
@@ -193,7 +178,6 @@ namespace runtime::modules {
             auto mod_it = loaded_modules_.find(module_name);
             if (mod_it != loaded_modules_.end()) {
                 // Выгружаем из BinaryFilePool
-                BinaryFilePool::deallocate(module_name);
                 lg::info("Unloaded module: {}", lib::to_string(module_name));
             }
             loaded_modules_.erase(module_name);
@@ -210,9 +194,6 @@ namespace runtime::modules {
 
         auto module = it->second;
         lg::info("Hot reloading module: {}", lib::to_string(module_name));
-
-        // 1. Выгружаем старую версию из пула
-        BinaryFilePool::deallocate(module_name);
 
         // 2. Сбрасываем состояние модуля
         module->binary_file = nullptr;

@@ -3,7 +3,6 @@
 #include "common/runtime/ForwardDeclarations.hpp"
 #include "common/runtime/modules/Module.hpp"
 #include "common/runtime/modules/ModuleRegistry.hpp"
-#include "common/runtime/files/BinaryFilePool.hpp"
 #include <memory>
 #include <unordered_map>
 

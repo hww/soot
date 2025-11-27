@@ -37,7 +37,8 @@ namespace runtime::modules {
         u32 load_order = 0;
 
         // Binary data - ТЕПЕРЬ СЫРОЙ УКАЗАТЕЛЬ!
-        BinaryFile* binary_file = nullptr;
+        BinaryFile* binary_file;
+        std::vector<u8> binary_mem;
 
         // Linking data
         std::unordered_map<StringId, Definition*> export_table;
@@ -50,10 +51,13 @@ namespace runtime::modules {
             : name(name), file_path(std::move(file_path)) {
         }
 
-        // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
-        Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file);
+        Module(StringId name, std::filesystem::path, std::vector<u8> binary_file);
 
         ~Module();
+
+        bool load_file();
+        void build_export_table();
+        void set_file(std::vector<u8> binary_mem);
 
         bool is_valid_metadata() const { return name != 0 && !file_path.empty(); }
         bool is_linked() const { return load_state >= LoadState::LINKED; }
@@ -73,11 +77,6 @@ namespace runtime::modules {
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
         ByteCode* resolve_code(StringId name);
-
-        // Callback для пула при релокации
-        void on_pool_relocation(BinaryFile* file_base);
-
-        void on_pool_deaelocation(BinaryFile* file_base);
 
         std::string to_string() const;
 

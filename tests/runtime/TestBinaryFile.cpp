@@ -14,13 +14,11 @@ using namespace runtime::kernel;
 class BinaryFileTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Инициализируем пул для тестов
-        BinaryFilePool::initialize(1024 * 1024); // 1MB для тестов
+        // Инициализируем пул для тестов 1MB для тестов
         string_id::initialize();
     }
 
     void TearDown() override {
-        BinaryFilePool::shutdown();
     }
 
     // Вспомогательная функция для создания валидного BinaryFile в пуле
@@ -49,7 +47,7 @@ protected:
         builder.debug_print_input();
         builder.debug_full_inspect(builder.build());
         // Строим и загружаем модуль в пул
-        auto module = builder.build_and_load_to_pool(module_name_id);
+        auto module = builder.build_module(module_name_id);
         fmt::print("Module {}", module->inspect());
 
         fmt::print("Strings {}", string_id::inspect());
@@ -124,36 +122,6 @@ TEST_F(BinaryFileTest, DefinitionBoundsChecking) {
     EXPECT_THROW(module->binary_file->get_definition(2), std::runtime_error);
 
     std::cout << "=== DefinitionBoundsChecking completed ===" << std::endl;
-}
-
-TEST_F(BinaryFileTest, PoolCompaction) {
-    std::cout << "=== Starting PoolCompaction ===" << std::endl;
-
-    // Создаем несколько модулей
-    auto module1 = create_test_module("compaction1");
-    auto module2 = create_test_module("compaction2");
-
-    ASSERT_NE(module1, nullptr);
-    ASSERT_NE(module2, nullptr);
-
-    // Сохраняем адрес второго модуля
-    void* original_addr2 = module2->binary_file;
-
-    // Выгружаем первый модуль
-    BinaryFilePool::deallocate(module1->name);
-
-    // Компактифицируем
-    bool compact_result = BinaryFilePool::compactify();
-    EXPECT_TRUE(compact_result);
-
-    // Второй модуль все еще должен быть доступен
-    EXPECT_TRUE(module2->is_binary_loaded());
-    EXPECT_NE(module2->binary_file, nullptr);
-
-    // Адрес должен измениться после компактификации
-    EXPECT_NE(module2->binary_file, original_addr2);
-
-    std::cout << "=== PoolCompaction completed ===" << std::endl;
 }
 
 TEST_F(BinaryFileTest, ModuleExportResolution) {

@@ -1,6 +1,5 @@
 ﻿#include "common/runtime/modules/Module.hpp"
 #include "common/runtime/files/BinaryFile.hpp"
-#include "common/runtime/files/BinaryFilePool.hpp"
 #include "common/util/Log.hpp"
 
 using namespace runtime::files;
@@ -9,40 +8,45 @@ namespace runtime::modules {
 
 
     // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
-    Module::Module(StringId module_name, std::unique_ptr<BinaryFile> binary_file)
-        : name(module_name) {
-        if (binary_file) {
-            // Для тестов - создаем копию в куче
-            this->binary_file = new BinaryFile(*binary_file);
+    Module::Module(StringId module_name, std::filesystem::path path, std::vector<u8> binary_mem)
+        : name(module_name), file_path(path), binary_file()
+    {
+        set_file(std::move(binary_mem));
+    }
+    bool Module::load_file()
+    {
+
+    }
+
+    void Module::set_file(std::vector<u8> binary_mem) {
+        this->binary_mem = std::move(binary_mem);
+        if (this->binary_mem.empty()) {
+            this->binary_file = nullptr;
+            load_state = LoadState::METADATA;
+        }
+        else {
+            this->binary_file = reinterpret_cast<BinaryFile*>(this->binary_mem.data());
+            this->binary_file->set_owner(this);
+            build_export_table();
             load_state = LoadState::BINARY_LOADED;
         }
     }
 
+    void Module::build_export_table() {
+        if (!is_binary_loaded()) return;
+        for (u32 i = 0; i < binary_file->definitions_count; i++) {
+            auto def = binary_file->get_definition(i);
+            add_export(def->name, def);
+        }
+    }
     Module::~Module() {
-        // Чистим только если НЕ из пула
-        BinaryFilePool::deallocate(name);
+        binary_mem.clear();
         binary_file = nullptr;
         dci_binary_size = 0;
         file_path.clear();
         export_table.clear();
         import_table.clear();
     }
-
-    // Callback для пула при релокации
-    void Module::on_pool_relocation(BinaryFile* file_base) {
-        binary_file = file_base;
-        generation++;
-        if (binary_file)
-            binary_file->relocate_pointers(BinaryFilePool::get_base_address());
-        lg::debug("Module {} relocated to new file base", lib::to_string(name));
-    }
-
-    void Module::on_pool_deaelocation(BinaryFile* file_base) {
-        binary_file = file_base;
-        generation++;
-        lg::debug("Module {} dealocated to new file base", lib::to_string(name));
-    }
-
 
     Definition* Module::get_export(StringId name) const {
         auto it = export_table.find(name);
@@ -61,7 +65,9 @@ namespace runtime::modules {
     Definition* Module::resolve_symbol(StringId name) {
         // 1. Ищем в бинарном файле
         if (binary_file) {
-            binary_file->find_definition_by_name(name);
+            auto def = binary_file->find_definition_by_name(name);
+            if (def)
+                return def;
         }
 
         // 2. Ищем в своих экспортах

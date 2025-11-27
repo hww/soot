@@ -1,6 +1,5 @@
 ﻿#include "common/runtime/files/BinaryFileBuilder.hpp"
 #include "common/runtime/modules/Module.hpp"
-#include "common/runtime/files/BinaryFilePool.hpp"
 #include "fmt/format.h"
 
 using namespace runtime::lib;
@@ -9,38 +8,15 @@ using namespace runtime::modules;
 namespace runtime::files {
 
     /** Построить и загрузить модуль в пул */
-    std::shared_ptr<Module> BinaryFileBuilder::build_and_load_to_pool(StringId module_name) {
+    std::shared_ptr<Module> BinaryFileBuilder::build_module(StringId module_name) {
         std::vector<u8> data = build();
 
         // Создаем модуль
         auto module = std::make_shared<Module>(
             module_name,
-            std::filesystem::path("generated.bin")
+            std::filesystem::path("generated.bin"),
+            std::move(data) // убрал std::move
         );
-
-        // Загружаем в BinaryFilePool
-        void* pool_addr = BinaryFilePool::allocate(
-            static_cast<u32>(data.size()),
-            module.get(),
-            module->name
-        );
-
-        if (!pool_addr) {
-            throw std::runtime_error("Failed to allocate memory in BinaryFilePool");
-        }
-
-        // Копируем данные в пул
-        std::memcpy(pool_addr, data.data(), data.size());
-
-        // Релоцируем указатели BinaryFile
-        BinaryFile* binary_file = static_cast<BinaryFile*>(pool_addr);
-        binary_file->relocate_pointers(BinaryFilePool::get_base_address());
-
-        // Устанавливаем owner_module для всех ByteCode
-        setup_bytecode_owners(binary_file, module.get());
-
-        module->load_state = Module::LoadState::BINARY_LOADED;
-        build_export_table(module);
 
         return module;
     }
@@ -76,7 +52,7 @@ namespace runtime::files {
             new (&defs_table[i]) Definition{
                 def_data.name,      // StringId name
                 def_data.type,      // StringId type  
-                Ptr<void>(0)        // Временный нулевой указатель
+                Ptr<u8>()           // Временный нулевой указатель
             };
 
             // Проверим что записалось
@@ -95,7 +71,7 @@ namespace runtime::files {
             ensure_capacity(buffer, current_pos + 1024);
 
             // Обновляем указатель в таблице дефиниций
-            defs_table[i].data_ptr = Ptr<void>(current_pos);
+            defs_table[i].data_ptr = Ptr<u8>(current_pos);
             lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
             if (def.type == SID("function")) {
                 // Записываем ByteCode структуру
@@ -286,27 +262,25 @@ namespace runtime::files {
         result += inspect_memory_dump(binary);
         result += "\n";
 
-        // Если бинарник валиден, показать его структуру
+        // Только если бинарник достаточно большой И валиден
         if (binary.size() >= sizeof(BinaryFile)) {
+            // Используем const_cast для снятия константности
             const BinaryFile* header = reinterpret_cast<const BinaryFile*>(binary.data());
             if (header->is_valid()) {
                 result += "BINARY STRUCTURE:\n";
                 result += header->inspect();
             }
+            else {
+                result += "Binary header is not valid - cannot interpret structure\n";
+            }
+        }
+        else {
+            result += "Binary too small for structure interpretation\n";
         }
 
         return result;
     }
-
-    void BinaryFileBuilder::build_export_table(const std::shared_ptr<Module>& module) {
-        if (!module->is_binary_loaded()) return;
-
-        BinaryFile* file = module->binary_file;
-        for (u32 i = 0; i < file->definitions_count; i++) {
-            auto def = file->get_definition(i);
-            module->add_export(def->name, def);
-        }
-    }
+ 
 
     // Удобные методы для быстрой отладки
     void BinaryFileBuilder::debug_print_input() const {

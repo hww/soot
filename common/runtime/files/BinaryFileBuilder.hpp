@@ -5,7 +5,6 @@
 #include "common/runtime/lib/Variant.hpp"
 #include "common/runtime/files/BinaryFile.hpp"
 #include "common/runtime/vm/Instructions.hpp"
-#include "common/runtime/files/BinaryFilePool.hpp"
 #include "common/runtime/files/BinaryFile.hpp"
 #include "common/runtime/modules/Module.hpp"
 #include "common/util/Assert.hpp"
@@ -56,7 +55,7 @@ namespace runtime::files {
 
         /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
         std::vector<u8> build();
-        std::shared_ptr<Module> build_and_load_to_pool(StringId module_name);
+        std::shared_ptr<Module> build_module(StringId module_name);
 
         std::string inspect_input() const;
         std::string inspect_memory_dump(const std::vector<u8>& binary) const;
@@ -74,17 +73,6 @@ namespace runtime::files {
             }
         }
 
-        void setup_bytecode_owners(BinaryFile* binary_file, Module* owner_module) {
-            for (u32 i = 0; i < binary_file->definitions_count; i++) {
-                auto def = binary_file->get_definition(i);
-                if (def->type == SID("function")) {
-                    ByteCode* bytecode = def->data_ptr.cast<ByteCode>().c();
-                    if (bytecode) {
-                        bytecode->owner_module = owner_module;
-                    }
-                }
-            }
-        }
 
         void build_export_table(const std::shared_ptr<Module>& module);
 

@@ -30,13 +30,13 @@ namespace runtime::files {
     // =============================================================================
 
     std::string Definition::to_string() const {
-        return std::format("Definition('{}', '{}', ptr:{:x})",
-            string_id::to_cstring(name), string_id::to_cstring(type), data_ptr.offset);
+        return std::format("Definition('{}', '{}', :ptr {:x})",
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset);
     }
 
     std::string Definition::inspect() const {
         return std::format("(definition {} ({}) :ptr {:x})",
-            string_id::to_cstring(name), string_id::to_cstring(type), data_ptr.offset);
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset);
     }
 
     // =============================================================================
@@ -47,9 +47,9 @@ namespace runtime::files {
         code_count(0),
         data_size(0),
         debug_count(0),
-        code_ptr(0),
-        data_ptr(0),
-        debug_ptr(0),
+        code_ptr(),
+        data_ptr(),
+        debug_ptr(),
         owner_module(nullptr)
     {
     }
@@ -137,6 +137,7 @@ namespace runtime::files {
         // 3. Used size cannot exceed file size
         // 4. Definitions count must be reasonable (arbitrary limit of 1M)
         return magic == MAGIC &&
+            base_offset != nullptr &&
             file_size >= HEADER_SIZE &&
             used_size <= file_size &&
             definitions_count < (1 << 20); // Sanity check
@@ -183,14 +184,9 @@ namespace runtime::files {
         return nullptr;
     }
 
-    void BinaryFile::relocate_pointers(void* pool_base) {
-        ASSERT(pool_base != nullptr);
-
-
+    void BinaryFile::relocate_pointers() {
         // Вычисляем старый базовый адрес пула
-        auto new_offset = reinterpret_cast<uintptr_t>(this) - reinterpret_cast<uintptr_t>(pool_base);
-        auto delta = new_offset - base_offset;
-        base_offset = new_offset;
+        auto delta = reinterpret_cast<u8*>(this) - reinterpret_cast<u8*>(base_offset);
 
         lg::info("relocating file by offset: {}", delta);
 
@@ -212,6 +208,24 @@ namespace runtime::files {
                 Descriptor* desc = def->data_ptr.cast<Descriptor>().c();
                 if (desc) {
                     desc->relocate_pointers(delta);
+                }
+            }
+        }
+        base_offset = this;
+    }
+
+    void BinaryFile::set_owner(Module* owner) {
+        // Устанавливаем owner_module для файла
+        owner_module = owner;
+        // Setup all pointers
+        relocate_pointers();
+        // Устанавливаем owner_module для всех ByteCode
+        for (u32 i = 0; i < definitions_count; i++) {
+            auto def = get_definition(i);
+            if (def->type == SID("function")) {
+                ByteCode* bytecode = def->data_ptr.cast<ByteCode>().c();
+                if (bytecode) {
+                    bytecode->owner_module = owner_module;
                 }
             }
         }

@@ -12,7 +12,7 @@ add_library(vm_lib
     common/runtime/lib/Ptr.cpp
     ## Files
     common/runtime/files/BinaryFile.cpp
-    common/runtime/files/BinaryFilePool.cpp
+    
     common/runtime/files/BinaryFileBuilder.cpp
     ## Modules
     common/runtime/modules/Module.cpp

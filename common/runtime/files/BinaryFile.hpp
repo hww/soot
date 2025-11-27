@@ -82,7 +82,7 @@ namespace runtime::files {
         /** Type identifier (function, data, constant, etc.) */
         StringId type;
         /** Pointer to the actual data or code for this definition */
-        Ptr<void> data_ptr;
+        Ptr<u8> data_ptr;
 
         /**
          * @brief Convert to simple string representation
@@ -214,7 +214,11 @@ namespace runtime::files {
 
         // Reserved for alignment
         /** Base offset for relative pointers */
-        u32 base_offset;
+        BinaryFile* base_offset;
+
+        /** The owner module */
+        Module* owner_module;
+
         /** Reserved for future use */
         u32 reserved;
 
@@ -266,7 +270,13 @@ namespace runtime::files {
          * This method is called after loading the file into memory
          * to convert file offsets to valid memory pointers.
          */
-        void relocate_pointers(void* pool_base);
+        void relocate_pointers();
+
+        /**
+          * @bried Set the owner module
+          * @param Reference to the owner
+          */
+        void set_owner(Module* module);
 
         /**
          * @brief Convert to basic string representation
