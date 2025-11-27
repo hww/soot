@@ -11,7 +11,7 @@
 ![FPGA](https://img.shields.io/badge/FPGA-7B1FA2?style=flat&logo=intel&logoColor=white)
 ![Status](https://img.shields.io/badge/Status-Active-success)
 
-![REPL Screenshot](/blob/main/docs/screens/repl.png)
+![REPL Screenshot](/docs/screens/repl.png)
 
 ## Текущее состояние ✅
 **ЗАВЕРШЕНО И РАБОТАЕТ:**
