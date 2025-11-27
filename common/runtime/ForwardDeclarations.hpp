@@ -25,7 +25,7 @@ namespace runtime {
 
     namespace vm {
         struct Instruction;
-        class StackFrame;
+        struct StackFrame;
         class VirtualMachine;
         class StateFrame;
     }

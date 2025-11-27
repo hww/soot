@@ -15,15 +15,14 @@ namespace runtime::kernel {
     }
 
     Process* Scheduler::create_process(StringId name) {
-        u32 pid = generate_pid();
-        auto process = std::make_unique<Process>(pid, name);
+        auto process = std::make_unique<Process>(name);
         Process* process_ptr = process.get();
 
         all_processes_.push_back(std::move(process));
-        pid_to_process_[pid] = process_ptr;
+        pid_to_process_[process_ptr->pid] = process_ptr;
         name_to_process_[name] = process_ptr;
 
-        lg::debug("Created process '{}' with PID {}", lib::to_string(name), pid);
+        lg::debug("Created process '{}' with PID {}", lib::to_string(name), process->pid);
         return process_ptr;
     }
 
@@ -194,13 +193,6 @@ namespace runtime::kernel {
         return count;
     }
 
-    u32 Scheduler::generate_pid() {
-        while (pid_to_process_.find(next_pid_) != pid_to_process_.end() ||
-            next_pid_ == INVALID_PROCESS_ID) {
-            next_pid_++;
-        }
-        return next_pid_++;
-    }
 
     void Scheduler::cleanup_dead_processes() {
         auto it = all_processes_.begin();

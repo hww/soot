@@ -43,6 +43,7 @@ namespace runtime::vm {
 				throw new VmResolvingError("resolve_integer", name);
 			}
 		}
+		throw new VmResolvingError("resolve_integer", name);
 	}
 
 	vm_float VirtualMachine::resolve_float(StackFrame* frame, StringId name) {
@@ -74,6 +75,7 @@ namespace runtime::vm {
 				throw new VmResolvingError("resolve_float", name);
 			}
 		}
+		throw new VmResolvingError("resolve_float", name);
 	}
 
 	void* VirtualMachine::resolve_pointer(StackFrame* frame, StringId name) {
@@ -87,6 +89,7 @@ namespace runtime::vm {
 				throw new VmResolvingError("resolve_pointer", name);
 			}
 		}
+		throw new VmResolvingError("resolve_pointer", name);
 	}
 	// ------------------------------------------------------------------------
 	// Process Management (НОВОЕ - согласно нашему базису)

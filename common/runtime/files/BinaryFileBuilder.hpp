@@ -18,6 +18,7 @@
 #include <fstream>
 #include <cassert>
 #include <functional>
+#include <string>
 
 using namespace runtime::lib;
 using namespace runtime::modules;
@@ -25,7 +26,7 @@ using namespace runtime::modules;
 namespace runtime::files {
 
     /** Binary file builder - создает модули с BinaryFile */
- /** Binary file builder - простой последовательный билдер */
+ /** Binary file builder - простой последовательный конструктор */
     class BinaryFileBuilder {
     private:
         struct DefinitionData {
@@ -65,7 +66,7 @@ namespace runtime::files {
         void debug_full_inspect(const std::vector<u8>& binary) const;
 
     private:
-        void ensure_capacity(std::vector<u8>& buffer, u32 required_size) {
+        void ensure_capacity(std::vector<u8>& buffer, size_t required_size) {
             if (required_size > buffer.size()) {
                 // Увеличиваем буфер с запасом (удваиваем или +50%)
                 u32 new_size = std::max(required_size, buffer.size() * 2);

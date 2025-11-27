@@ -56,16 +56,13 @@ namespace runtime::kernel {
             if (actual_type == type::string_id) return arg.to_string();
             if (actual_type == type::string) return arg.to_string();
         }
-        // ��� ���������� - ���������� ��������������
         else if constexpr (std::is_pointer_v<T>) {
             if (actual_type == expected_type) {
                 return static_cast<T>(arg.get_ptr());
             }
         }
-        // ��� ������ ����� (�������� � �.�.)
         else {
             if (actual_type == expected_type) {
-                // ����� ����� ���������� ��������������
                 return arg.get_ptr();
             }
         }

@@ -3,6 +3,9 @@
 #include "common/runtime/ForwardDeclarations.hpp"
 #include "common/runtime/kernel/Connectable.hpp"
 #include "common/runtime/kernel/Connection.hpp"
+#include "common/runtime/lib/StringId.hpp"
+
+using namespace runtime::lib;
 
 namespace runtime { namespace kernel {
 
@@ -18,7 +21,7 @@ class Engine
 {
 public:
     /// Name identifier for this engine instance
-    const char* Name;
+    StringId Name;
 
     /// Current number of active connections
     int Length;
@@ -52,7 +55,7 @@ public:
      * @param name Identifier for this engine
      * @param size Number of connections to pre-allocate in the pool
      */
-    Engine(const char* name, int size);
+    Engine(StringId name, int size);
 
     /**
      * Cleans up engine resources
@@ -85,13 +88,13 @@ public:
      * Applies a function to all active connections in the engine.
      * @param action Action to perform on each connection
      */
-    void ApplyToConnections(void (*action)(Connection*));
+    void ApplyToConnections(void (*action)(Connection*, void* data), void* data);
 
     /**
      * Applies a function to all active connections in reverse order.
      * @param action Action to perform on each connectable
      */
-    void ApplyToConnectionsReversed(void (*action)(Connectable*));
+    void ApplyToConnectionsReversed(void (*action)(Connectable*, void* data), void* data);
 
     /**
      * Executes all active connections in reverse order.
@@ -141,11 +144,15 @@ public:
     void RemoveFromProcess(Process* process);
 
     /**
+     * Predicate for filtering processes.
+     */
+    using ConnectionFilterPredicate = bool(*)(Connection* connection, Engine* engine, void* data);
+
+    /**
      * Removes connections that match the specified predicate function.
      * @param predicate Function that returns true for connections to remove
      */
-    template<typename Predicate>
-    void Engine::RemoveMatching(Predicate predicate);
+    void RemoveMatching(ConnectionFilterPredicate predicate, void* data);
 
     /**
      * Removes all active connections from the engine.

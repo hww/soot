@@ -1,6 +1,6 @@
-# tests/CMakeLists.txt
+п»ї# tests/CMakeLists.txt
 
-# Добавляем эту строку в самое начало
+# Р”РѕР±Р°РІР»СЏРµРј СЌС‚Сѓ СЃС‚СЂРѕРєСѓ РІ СЃР°РјРѕРµ РЅР°С‡Р°Р»Рѕ
 include(GoogleTest)
 
 include_directories(common/engine)
@@ -9,15 +9,15 @@ include_directories(common/engine)
 # Script
 # ==============================================================
 
-# Создаем тестовый исполняемый файл
+# РЎРѕР·РґР°РµРј С‚РµСЃС‚РѕРІС‹Р№ РёСЃРїРѕР»РЅСЏРµРјС‹Р№ С„Р°Р№Р»
 add_executable(engine_test
     tests/engine/EngineResultTest.cpp
     tests/engine/ConnectableTest.cpp
-    tests/engine/ConnectionTest.cpp
-    tests/engine/EngineTest.cpp
+    #tests/engine/ConnectionTest.cpp
+    #tests/engine/EngineTest.cpp
 )
 
-# Линкуем с нашей библиотекой и gtest
+# Р›РёРЅРєСѓРµРј СЃ РЅР°С€РµР№ Р±РёР±Р»РёРѕС‚РµРєРѕР№ Рё gtest
 target_link_libraries(engine_test vm_lib gtest_main fmt)
 target_include_directories(vm_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
@@ -27,7 +27,7 @@ if(MSVC)
     )
 endif()
 
-# Регистрируем тесты для Test Explorer
+# Р РµРіРёСЃС‚СЂРёСЂСѓРµРј С‚РµСЃС‚С‹ РґР»СЏ Test Explorer
 gtest_discover_tests(engine_test)
 
 

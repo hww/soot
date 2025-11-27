@@ -1,8 +1,8 @@
 ﻿#include <gtest/gtest.h>
-#include "Connectable.h"
-#include "Process.h"
-#include "Engine.h"
-#include "Connection.h"
+#include "common/runtime/Export.hpp"
+
+using namespace runtime::kernel;
+using namespace runtime::lib;
 
 using namespace vm;
 
@@ -11,12 +11,15 @@ using namespace vm;
     protected:
         void SetUp() override
         {
-            process = std::make_shared<Process>("TestProcess");
-            engine = std::make_shared<Engine>("TestEngine", 10);
+            process = new Process(SID("TestProcess"));
+            engine = new Engine(SID("TestEngine"), 10);
         }
-
-        std::shared_ptr<Process> process;
-        std::shared_ptr<Engine> engine;
+        void TearDown() override {
+            delete process;
+            delete engine;
+        }
+        Process* process;
+        Engine* engine;
     };
 
     TEST_F(ConnectableTest, ConstructorWithOwner)
@@ -37,7 +40,7 @@ using namespace vm;
 
     TEST_F(ConnectableTest, OwnerToStringWithNullOwner)
     {
-        Connectable connectable;
+        Connectable connectable(nullptr);
         EXPECT_EQ(connectable.OwnerToString(), "null");
     }
 

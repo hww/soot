@@ -55,6 +55,11 @@ public:
     ConnectionFunction GetFunction() const;
 
     /**
+     * Sets the function delegate stored in Arg0.
+     */
+    void SetFunction(ConnectionFunction func);
+
+    /**
      * Traverses the connection hierarchy to find the owning Engine.
      * @return The Engine that owns this connection, or null if not found within iteration limits
      */

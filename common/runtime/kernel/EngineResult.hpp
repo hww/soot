@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace vm
+namespace runtime::kernel
 {
     /// <summary>
     /// Represents the result state of engine operations.

@@ -1,7 +1,10 @@
 ﻿#include <gtest/gtest.h>
-#include "Connection.h"
-#include "Engine.h"
-#include "Process.h"
+#include "common/runtime/kernel/Connectable.hpp"
+#include "common/runtime/kernel/Engine.hpp"
+#include "common/runtime/kernel/Process.hpp"
+#include "common/runtime/kernel/Engine.hpp"
+
+using namespace runtime::kernel;
 
 using namespace vm;
 
@@ -10,8 +13,8 @@ using namespace vm;
     protected:
         void SetUp() override
         {
-            engine = std::make_shared<Engine>("TestEngine", 10);
-            process = std::make_shared<Process>("TestProcess");
+            engine = std::make_shared<Engine>(SID("TestEngine"), 10);
+            process = std::make_shared<Process>(SID("TestProcess"));
         }
 
         std::shared_ptr<Engine> engine;
@@ -32,11 +35,11 @@ using namespace vm;
     TEST_F(ConnectionTest, FunctionStorage)
     {
         Connection connection;
+        bool functionCalled;
+        auto testFunction = [](int a, int b, int c, void* ctx) -> EEngineResult {
+            *((bool*)ctx) = true;
 
-        bool functionCalled = false;
-        auto testFunction = [&functionCalled](int a, int b, int c, std::shared_ptr<void> ctx) -> EEngineResult {
-            functionCalled = true;
-            return EEngineResult::None;
+            return EEngineResult::EER_None;
             };
 
         connection.SetFunction(testFunction);
@@ -45,7 +48,7 @@ using namespace vm;
         EXPECT_TRUE(retrievedFunction != nullptr);
 
         // Test function execution
-        retrievedFunction(1, 2, 3, nullptr);
+        retrievedFunction(1, 2, 3, &functionCalled);
         EXPECT_TRUE(functionCalled);
     }
 
@@ -53,8 +56,8 @@ using namespace vm;
     {
         Connection connection;
 
-        auto testObject = std::make_shared<int>(42);
-        connection.Arg0 = testObject;
+        int testObject = 42;
+        connection.Arg0 = &testObject;
         connection.Arg1 = 100;
         connection.Arg2 = 200;
         connection.Arg3 = 300;
@@ -65,40 +68,6 @@ using namespace vm;
         EXPECT_EQ(connection.Arg3, 300);
     }
 
-    TEST_F(ConnectionTest, GetMethodWithValidCast)
-    {
-        Connection connection;
-
-        auto originalObject = std::make_shared<std::string>("test");
-        connection.Arg0 = originalObject;
-
-        auto retrieved = connection.Get(originalObject);
-        EXPECT_EQ(retrieved, originalObject);
-    }
-
-    TEST_F(ConnectionTest, GetMethodWithNullArg0)
-    {
-        Connection connection;
-
-        auto defaultValue = std::make_shared<std::string>("default");
-        auto result = connection.Get(defaultValue);
-
-        EXPECT_EQ(result, defaultValue);
-    }
-
-    TEST_F(ConnectionTest, GetMethodWithInvalidCast)
-    {
-        Connection connection;
-
-        auto intObject = std::make_shared<int>(42);
-        connection.Arg0 = intObject;
-
-        auto defaultValue = std::make_shared<std::string>("default");
-
-        EXPECT_THROW({
-            connection.Get(defaultValue);
-            }, std::invalid_argument);
-    }
 
     TEST_F(ConnectionTest, MoveToDeadWithoutEngine)
     {

@@ -20,6 +20,11 @@ ConnectionFunction Connection::GetFunction() const
     return reinterpret_cast<ConnectionFunction>(Arg0);
 }
 
+void Connection::SetFunction(ConnectionFunction func)
+{
+    Arg0 = func;
+}
+
 Engine* Connection::GetEngine() const
 {
     const int iterationLimit = 1000;

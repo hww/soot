@@ -33,6 +33,7 @@ namespace runtime { namespace kernel {
         /// Previous node in the process-specific connection list
         Connectable* Prev1;
 
+        Connectable() = default;
         /**
          * Initializes a new Connectable instance with the specified owner.
          * @param owner The object that owns this connectable node

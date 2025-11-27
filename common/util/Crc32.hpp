@@ -1,4 +1,4 @@
-#ifndef CRC32_H
+﻿#ifndef CRC32_H
 #define CRC32_H
 
 #include <cstdint>
@@ -31,15 +31,22 @@ namespace util {
     };
 
 
-    constexpr uint32_t compute_crc32_constexpr(const std::string& str) {
-        return compute_crc32(str.c_str(), str.length());
-    }
 
     constexpr uint32_t compute_crc32_constexpr(const char* data, size_t length) {
         uint32_t crc = 0;
         if (length > 0) {
             for (size_t i = 0; i < length; i++) {
                 crc = (crc32_table_constexpr[((crc >> 24) ^ static_cast<uint8_t>(data[i])) & 0xff] ^ (crc << 8)) & 0xffffffff;
+            }
+        }
+        return crc;
+    }
+
+    constexpr uint32_t compute_crc32_constexpr(const char* str) {
+        uint32_t crc = 0;
+        if (str) {
+            for (size_t i = 0; str[i] != '\0'; i++) {
+                crc = (crc32_table_constexpr[((crc >> 24) ^ static_cast<uint8_t>(str[i])) & 0xff] ^ (crc << 8)) & 0xffffffff;
             }
         }
         return crc;

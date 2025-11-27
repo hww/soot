@@ -25,7 +25,7 @@ add_library(vm_lib
     common/runtime/kernel/NativeFunc.cpp
     
     common/runtime/kernel/Connection.cpp
-    common/runtime/kernel/Connection.cpp
+    common/runtime/kernel/Connectable.cpp
     common/runtime/kernel/Engine.cpp
     common/runtime/kernel/Kernel.cpp
     common/runtime/kernel/Process.cpp

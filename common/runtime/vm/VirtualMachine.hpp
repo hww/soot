@@ -26,7 +26,7 @@ namespace runtime::vm {
     // ============================================================================
     
     class VirtualMachine;
-    class StackFrame;
+    struct StackFrame;
 
     // ============================================================================
     // Native Function Interface

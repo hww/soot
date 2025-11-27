@@ -9,7 +9,7 @@ namespace runtime { namespace kernel {
 // Static buffer for string representations
 static char s_StringBuffer[2048];
 
-Engine::Engine(const char* name, int size)
+Engine::Engine(StringId name, int size)
     : Name(name), Length(0), FrameCount(0), Time(0.0f),
       AliveList(this), AliveListEnd(this), DeadList(this), DeadListEnd(this),
       DataSize(size)
@@ -59,7 +59,7 @@ Connectable* Engine::GetLastConnectable() const
     return const_cast<Connectable*>(&AliveListEnd);
 }
 
-void Engine::ApplyToConnections(void (*action)(Connection*))
+void Engine::ApplyToConnections(void (*action)(Connection*, void*), void* data)
 {
     Connectable* current = AliveList.Next0;
     while (current != nullptr && current != &AliveListEnd)
@@ -67,21 +67,22 @@ void Engine::ApplyToConnections(void (*action)(Connection*))
         Connectable* next = current->Next0;
         Connection* connection = static_cast<Connection*>(current);
         if (connection != nullptr)
-            action(connection);
+            action(connection, data);
         current = next;
     }
 }
 
-void Engine::ApplyToConnectionsReversed(void (*action)(Connectable*))
+void Engine::ApplyToConnectionsReversed(void (*action)(Connectable*, void*), void* data)
 {
     Connectable* current = AliveListEnd.Prev0;
     while (current != nullptr && current != &AliveList)
     {
         Connectable* previous = current->Prev0;
-        action(current);
+        action(current, data);
         current = previous;
     }
 }
+
 
 void Engine::ExecuteConnections(void* context)
 {
@@ -196,15 +197,15 @@ void Engine::RemoveFromProcess(Process* process)
     }
 }
 
-template<typename Predicate>
-void Engine::RemoveMatching(Predicate predicate)
+
+void Engine::RemoveMatching(ConnectionFilterPredicate predicate, void* data)
 {
     Connectable* current = AliveList.Next0;
     while (current != nullptr && current != &AliveListEnd)
     {
         Connectable* next = current->Next0;
         Connection* connection = static_cast<Connection*>(current);
-        if (connection != nullptr && predicate(connection, this))
+        if (connection != nullptr && predicate(connection, this, data))
             connection->MoveToDead();
         current = next;
     }
@@ -225,23 +226,23 @@ void Engine::RemoveAll()
 
 void Engine::RemoveByParam0(void* value)
 {
-    RemoveMatching([&](Connection* connection, Engine* engine) {
-        return connection->Arg0 == value;
-    });
+    RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        return connection->Arg0 == data;
+    }, value);
 }
 
 void Engine::RemoveByParam1(int value)
 {
-    RemoveMatching([&](Connection* connection, Engine* engine) {
-        return connection->Arg1 == value;
-    });
+    RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        return connection->Arg1 == *((int*)data);
+    }, &value);
 }
 
 void Engine::RemoveByParam2(int value)
 {
-    RemoveMatching([&](Connection* connection, Engine* engine) {
-        return connection->Arg2 == value;
-    });
+    RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        return connection->Arg2 == *((int*)data);
+    }, &value);
 }
 
 const char* Engine::Inspect() const
