@@ -23,7 +23,6 @@ namespace runtime::lib
     template <typename T>
     struct Ptr
     {
-
         u32 offset;  ///< Смещение от базового адреса пула памяти
 
         /**
