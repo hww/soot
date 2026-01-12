@@ -120,10 +120,3 @@ SOOT is designed for use in game engines and automation systems where Lisp's fle
 
 ---
 
-
-
-This is a very important clarification. It positions your project as a specialized tool for embedded systems and DSPs, while paying respect to the source of inspiration. It also explains **why** SOOT exists (simplicity and portability).
-
-Here is the updated section you can add to your **README.md** (I suggest placing it after the Introduction or in a new "Inspiration & Goals" section):
-
----
