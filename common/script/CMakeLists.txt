@@ -26,3 +26,10 @@ set_target_properties(sooti PROPERTIES
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+
+# Installation (optional)
+install(TARGETS sooti
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)

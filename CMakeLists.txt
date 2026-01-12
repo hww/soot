@@ -83,37 +83,8 @@ include(common/script/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/runtime/CMakeLists.txt)
+include(common/xiff/CMakeLists.txt)
 
-# Installation (optional)
-install(TARGETS sooti
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-)
-
-install(TARGETS soot
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-)
-
-# Определяем путь для ресурсов (обычно /usr/local/share/soot)
-set(SOOT_SHARE_DIR "share/soot")
-
-# Установка системной библиотеки (базовые функции)
-install(FILES 
-    lib.sot 
-    DESTINATION ${SOOT_SHARE_DIR}
-)
-
-# Установка шаблонов конфигурации (чтобы пользователь мог их скопировать в ~/.config/soot)
-# Мы кладем их в подпапку skeletons или examples
-install(FILES 
-    config.sot 
-    startup-pre.sot 
-    startup-post.sot
-    DESTINATION ${SOOT_SHARE_DIR}/skeletons
-)
 
 # Если у тебя есть папка с дополнительными лиспами
 # install(DIRECTORY common/lisp/ DESTINATION ${SOOT_SHARE_DIR}/lib)
