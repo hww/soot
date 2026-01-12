@@ -1,4 +1,5 @@
 ﻿; Startup commands that run after network (if enabled)
+(print "Loading SOOT Lisp REPL post...")
 (print "Network services initialized")
 ; Initialize network-dependent features
 ; (start-background-services)

@@ -1,4 +1,4 @@
-﻿# SOOT: High-Performance Lisp Engine & VM
+﻿# SOOT: Scriptable Object-Oriented Toolkit
 
 
 ![C++](https://img.shields.io/badge/C++-00599C?style=flat&logo=c%2B%2B&logoColor=white)
@@ -14,25 +14,6 @@
 
 ---
 ![REPL Screenshot](/docs/screens/repl.png)
-
----
-
-### 💡 Inspiration & Design Philosophy
-
-**SOOT** is built upon the foundation of the magnificent **OpenGOAL** project. It is important to note:
-
-* **Not a Branch**: This is a standalone project, not a fork or an improvement of OpenGOAL.
-* **Streamlined Design**: While it inherits concepts from OpenGOAL, SOOT is engineered to be significantly simpler and more lightweight.
-
-**The Goal:**
-
-The primary objective of SOOT is to provide a "sufficiently powerful" toolset for software design in specialized domains, including:
-
-* **Signal Processors (DSPs)**
-* **Microcontrollers (MCUs)**
-* **Embedded Engineering Tools**
-
-Unlike larger Lisp environments, SOOT is optimized for environments where resource efficiency and ease of integration are critical. It aims to be a portable, robust bridge between high-level Lisp logic and low-level embedded hardware.
 
 ---
 
@@ -57,20 +38,29 @@ sudo make install
 
 ```
 
+## 📄 File Formats
+
+SOOT distinguishes between source scripts and optimized bytecode:
+
+* **`.sot` (Soot Object/Source Toolkit)**: Plain-text Lisp files. Designed for modularity and high-level logic.
+* **`.soc` (Soot Compiled)**: Serialized bytecode for the **Carbon VM**. Essential for high-performance execution on DSPs and MCUs.
+
+The interpreter automatically attempts to resolve `.soc` files for faster boot times if available.
+
 ### Path Lookup Logic (XDG Standards)
 
 SOOT follows standard Linux directory conventions for seamless integration:
 
-1. **Project Layer**: Current working directory (e.g., `./config.gs`).
+1. **Project Layer**: Current working directory (e.g., `./config.sot`).
 2. **User Layer**: `~/.config/soot/` (Personal global settings).
-3. **System Layer**: `/usr/local/share/soot/` (Standard library and `lib.gs`).
+3. **System Layer**: `/usr/local/share/soot/` (Standard library and `lib.sot`).
 4. **Persistent History**: Stored automatically in `~/.cache/soot/history`.
 
 ---
 
-## ⚙️ Configuration (`config.gs`)
+## ⚙️ Configuration (`config.sot`)
 
-SOOT is configured using its own Lisp dialect. You can customize your environment in `~/.config/soot/config.gs`:
+SOOT is configured using its own Lisp dialect. You can customize your environment in `~/.config/soot/config.sot`:
 
 ```lisp
 '(
@@ -84,6 +74,26 @@ SOOT is configured using its own Lisp dialect. You can customize your environmen
 ```
 
 ---
+
+### 💡 Inspiration & Design Philosophy
+
+**SOOT** is built upon the foundation of the magnificent **OpenGOAL** project. It is important to note:
+
+* **Not a Branch**: This is a standalone project, not a fork or an improvement of OpenGOAL.
+* **Streamlined Design**: While it inherits concepts from OpenGOAL, SOOT is engineered to be significantly simpler and more lightweight.
+
+**The Goal:**
+
+The primary objective of SOOT is to provide a "sufficiently powerful" toolset for software design in specialized domains, including:
+
+* **Signal Processors (DSPs)**
+* **Microcontrollers (MCUs)**
+* **Embedded Engineering Tools**
+
+Unlike larger Lisp environments, SOOT is optimized for environments where resource efficiency and ease of integration are critical. It aims to be a portable, robust bridge between high-level Lisp logic and low-level embedded hardware.
+
+---
+
 
 ## 📊 Roadmap & Current Status
 

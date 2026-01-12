@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.8)
 
 project(repl
     VERSION 1.0.0
-    DESCRIPTION "SOOT: Minimalist Lisp-based Data & Bytecode Engine"
+    DESCRIPTION "SOOT: Scriptable Object-Oriented Toolkit"
     LANGUAGES C CXX
 )
 
@@ -102,16 +102,16 @@ set(SOOT_SHARE_DIR "share/soot")
 
 # Установка системной библиотеки (базовые функции)
 install(FILES 
-    lib.gs 
+    lib.sot 
     DESTINATION ${SOOT_SHARE_DIR}
 )
 
 # Установка шаблонов конфигурации (чтобы пользователь мог их скопировать в ~/.config/soot)
 # Мы кладем их в подпапку skeletons или examples
 install(FILES 
-    config.gs 
-    startup-pre.gs 
-    startup-post.gs
+    config.sot 
+    startup-pre.sot 
+    startup-post.sot
     DESTINATION ${SOOT_SHARE_DIR}/skeletons
 )
 

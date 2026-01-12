@@ -34,7 +34,7 @@ ReplWrapper::ReplWrapper(const std::string& username)
     : username(username), interpreter_(username), reader() {
     init_settings();
     // Загружаем конфиг (клавиши, порты)
-    load_config("config.gs");  
+    load_config("config.sot");  
 }
 
 ReplWrapper::~ReplWrapper() {
@@ -146,14 +146,14 @@ void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects)
     auto title_color = fg(fmt::color::light_gray) | fmt::emphasis::bold;
     auto accent_color = fg(fmt::color::orange_red); // Цвет тлеющего уголька для акцента
 
-    fmt::print(border_color, "------------------------------------------\n");
+    fmt::print(border_color, "----------------------------------------\n");
     
     // Логотип SOOT
-    fmt::print(title_color,  "             S  O  O  T                \n");
+    fmt::print(title_color,  "              S  O  O  T                \n");
     fmt::print(fg(fmt::color::slate_gray), 
-                             "      High-Performance Engine          \n");
+                             "   Scriptable Object-Oriented Toolkit   \n");
     
-    fmt::print(border_color, "------------------------------------------\n");
+    fmt::print(border_color, "----------------------------------------\n");
     
     // Техническая информация
     fmt::print(fg(fmt::color::gray), " core:    ");
@@ -165,7 +165,7 @@ void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects)
     fmt::print(fg(fmt::color::gray), " type:    ");
     fmt::print(fg(fmt::color::gold), "Interactive Shell (REPL)\n");
 
-    fmt::print(border_color, "------------------------------------------\n");
+    fmt::print(border_color, "----------------------------------------\n");
 
     fmt::print("Type {} or {} for help\n\n",
         fmt::format(fg(fmt::color::cyan), "(help)"),
@@ -465,14 +465,14 @@ std::string ReplWrapper::find_file(const std::string& name) {
 
 void ReplWrapper::load_startup_files() {
     
-    std::string lib_path = find_file("lib.gs");
+    std::string lib_path = find_file("lib.sot");
     if (!lib_path.empty()) {
         execute_line(fmt::format("(load-file \"{}\")", lib_path));
     }
 
     // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
     // Ищем везде, где может лежать startup-pre.gc
-    std::string pre_path = find_file("startup-pre.gc");
+    std::string pre_path = find_file("startup-pre.sot");
     if (!pre_path.empty()) {
         lg::info("Loading pre-startup: {}", pre_path);
         load_and_execute(pre_path);
@@ -480,7 +480,7 @@ void ReplWrapper::load_startup_files() {
 
     // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
     if (config_.enable_network && network_running_) {
-        std::string post_path = find_file("startup-post.gc");
+        std::string post_path = find_file("startup-post.sot");
         if (!post_path.empty()) {
             lg::info("Loading post-startup: {}", post_path);
             load_and_execute(post_path);
