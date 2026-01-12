@@ -3,21 +3,22 @@
 #include <iostream>
 
 void print_usage() {
-    fmt::print("Aleste Lisp - Professional REPL Environment\n\n");
+    fmt::print("SOOT Lisp - REPL Environment\n\n");
     fmt::print("Usage:\n");
-    fmt::print("  aleste                    {} Interactive REPL\n", "→");
-    fmt::print("  aleste --network [port]   {} Network REPL server\n", "→");
-    fmt::print("  aleste --script <file>    {} Execute script file\n", "→");
-    fmt::print("  aleste --help             {} Show this help\n", "→");
+    fmt::print("  soot                    {} Interactive REPL\n", "→");
+    fmt::print("  soot --network [port]   {} Network REPL server\n", "→");
+    fmt::print("  soot --script <file>    {} Execute script file\n", "→");
+    fmt::print("  soot --help             {} Show this help\n", "→");
     fmt::print("\nExamples:\n");
-    fmt::print("  aleste                    {} Start interactive mode\n", "→");
-    fmt::print("  aleste --network 8181     {} Start network server\n", "→");
-    fmt::print("  aleste --script demo.lisp {} Run script\n", "→");
+    fmt::print("  soot                    {} Start interactive mode\n", "→");
+    fmt::print("  soot --network 8181     {} Start network server\n", "→");
+    fmt::print("  soot --script demo.lisp {} Run script\n", "→");
 }
 
 int main(int argc, char* argv[]) {
     // Парсим аргументы командной строки
     std::string script_file;
+    std::string project_folder;
     bool use_network = false;
     int network_port = 8181;
     bool show_help = false;
@@ -46,6 +47,15 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+        else if (arg == "--project" || arg == "-p") {
+            if (i + 1 < argc) {
+                project_folder = argv[++i];
+            }
+            else {
+                fmt::print(fg(fmt::color::red), "Project path required\n");
+                return 1;
+            }
+        }
         else if (arg == "--help" || arg == "-h") {
             show_help = true;
         }
@@ -63,7 +73,7 @@ int main(int argc, char* argv[]) {
 
     try {
         // Создаем REPL
-        ReplWrapper repl("aleste-user");
+        ReplWrapper repl("soot-user");
 
         // Настраиваем конфигурацию
         auto& config = repl.get_config();

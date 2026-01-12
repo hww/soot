@@ -18,10 +18,11 @@ add_library(script_lib
 )
 
 # Исполняемый файл
-add_executable(lisp common/script/Main.cpp)
-target_link_libraries(lisp PRIVATE script_lib  fmt)
-set_target_properties(lisp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(lisp PROPERTIES 
+add_executable(sooti common/script/Main.cpp)
+target_link_libraries(sooti PRIVATE script_lib  fmt)
+set_target_properties(sooti PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(sooti PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+

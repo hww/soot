@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.8)
 
 project(repl
     VERSION 1.0.0
-    DESCRIPTION "Z80 Lisp Interpreter"
+    DESCRIPTION "SOOT: Minimalist Lisp-based Data & Bytecode Engine"
     LANGUAGES C CXX
 )
 
@@ -85,17 +85,38 @@ include(common/type_system/CMakeLists.txt)
 include(common/runtime/CMakeLists.txt)
 
 # Installation (optional)
-install(TARGETS lisp
+install(TARGETS sooti
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
 
-install(TARGETS repl
+install(TARGETS soot
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+# Определяем путь для ресурсов (обычно /usr/local/share/soot)
+set(SOOT_SHARE_DIR "share/soot")
+
+# Установка системной библиотеки (базовые функции)
+install(FILES 
+    lib.gs 
+    DESTINATION ${SOOT_SHARE_DIR}
+)
+
+# Установка шаблонов конфигурации (чтобы пользователь мог их скопировать в ~/.config/soot)
+# Мы кладем их в подпапку skeletons или examples
+install(FILES 
+    config.gs 
+    startup-pre.gs 
+    startup-post.gs
+    DESTINATION ${SOOT_SHARE_DIR}/skeletons
+)
+
+# Если у тебя есть папка с дополнительными лиспами
+# install(DIRECTORY common/lisp/ DESTINATION ${SOOT_SHARE_DIR}/lib)
 
 #### ТЕСТЫ - ПРОСТОЙ ВАРИАНТ
 if(BUILD_TESTS)

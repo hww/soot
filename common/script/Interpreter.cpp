@@ -10,6 +10,8 @@
 #include "common/util/StringUtil.hpp"
 #include "common/util/UnicodeUtil.hpp"
 #include "common/CommonTypes.hpp"
+#include "common/versions/version.h"
+#include "common/versions/revision.h"
 
 #include <sstream>
 #include <filesystem>
@@ -302,11 +304,11 @@ void Interpreter::execute_repl() {
     std::string input;
 
     //auto repl_env = std::make_shared<EnvironmentObject>();
-
-    std::cout << "Lisp REPL (type 'quit' to exit)\n";
+    fmt::print(fg(fmt::color::gray), "{}i {} Core [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA);
+    fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit' to leave\n");
 
     while (!want_exit) {
-        std::cout << "lisp> ";
+        std::cout << "sooti> ";
         std::cout.flush();
 
         if (!std::getline(std::cin, input)) {

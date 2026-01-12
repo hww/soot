@@ -63,12 +63,15 @@ private:
     void execute_line(const std::string& line);
     void setup_keybinds();
     void network_server_worker(int port);
-    std::string get_current_repl_token(const std::string& context);
     void load_startup_files();
+    void load_and_execute(const std::string& path) ;
     void execute_startup_commands(const std::vector<std::string>& commands);
     void show_history();
     void inspect_top_env();
 
+    std::string get_current_repl_token(const std::string& context);
+    std::string find_file(const std::string& name);
+    
     replxx::Replxx::completions_t get_completions(const std::string& input, int& context_len);
     replxx::Replxx::hints_t get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color);
     
