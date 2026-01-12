@@ -60,7 +60,7 @@ TEST(GoosBuiltins, ReadFile) {
 TEST(GoosBuiltins, LoadFile) {
     Interpreter i;
     // check that we can read and execute a file.
-    e(i, "(load-file \"test/test_data/test_goos_file0.gs\")");
+    e(i, "(load-file \"test/test_data/test_goos_file0.sot\")");
     EXPECT_EQ(e(i, "x"), "23");
     i.disable_printfs();
     for (auto x : { "(load-file 1)", "(load-file)", "(load-file \"goal/test/not_a_real_file.gc\")" }) {

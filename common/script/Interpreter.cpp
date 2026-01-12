@@ -177,7 +177,7 @@ namespace script
 }
 
 void Interpreter::load_library() {
-    auto cmd = "(load-file \"lib.gs\")";
+    auto cmd = "(load-file \"lib.sot\")";
     eval_with_rewind(reader.read_from_string(cmd), global_environment.as_env_ptr());
 }
 
@@ -304,7 +304,7 @@ void Interpreter::execute_repl() {
     std::string input;
 
     //auto repl_env = std::make_shared<EnvironmentObject>();
-    fmt::print(fg(fmt::color::gray), "{}i {} Core [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA);
+    fmt::print(fg(fmt::color::gray), "{}i Scriptable Object-Oriented Toolkit {} Core [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA);
     fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit' to leave\n");
 
     while (!want_exit) {
