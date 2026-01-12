@@ -6,19 +6,41 @@
 #include <fstream>
 #include "fmt/format.h"
 #include "fmt/color.h"
+#include "common/versions/version.h"
 
+namespace fs = std::filesystem;
 
+std::string get_config_dir() {
+#ifdef _WIN32
+    return std::string(std::getenv("APPDATA")) + "/soot";
+#else
+    const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
+    if (xdg_config) return std::string(xdg_config) + "/soot";
+    return std::string(std::getenv("HOME")) + "/.config/soot";
+#endif
+}
+
+std::string get_cache_dir() {
+#ifdef _WIN32
+    return get_config_dir() + "/cache";
+#else
+    const char* xdg_cache = std::getenv("XDG_CACHE_HOME");
+    if (xdg_cache) return std::string(xdg_cache) + "/soot";
+    return std::string(std::getenv("HOME")) + "/.cache/soot";
+#endif
+}
 
 ReplWrapper::ReplWrapper(const std::string& username)
     : username(username), interpreter_(username), reader() {
     init_settings();
-    load_config("config.gs");  // ДОБАВЛЯЕМ ЭТУ СТРОКУ
-    load_startup_files();  // Добавляем загрузку startup файлов
+    // Загружаем конфиг (клавиши, порты)
+    load_config("config.gs");  
 }
 
 ReplWrapper::~ReplWrapper() {
     stop_network_server();
 }
+
 
 void ReplWrapper::run_interactive() {
     load_history();
@@ -46,7 +68,7 @@ void ReplWrapper::run_interactive() {
     }
 
     save_history();
-    fmt::print(fg(fmt::color::green), "� Goodbye!\n");
+    fmt::print(fg(fmt::color::green), "� Goodbye!\n");
 }
 
 void ReplWrapper::execute_line(const std::string& line) {
@@ -119,19 +141,33 @@ void ReplWrapper::execute_line(const std::string& line) {
 }
 
 void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects) {
-    fmt::print(fg(fmt::color::steel_blue),                  "----------------------------------\n");
-    fmt::print(fg(fmt::color::gold) | fmt::emphasis::bold,  "             ALESTE LISP          \n");
-    fmt::print(fg(fmt::color::light_blue),                  "          Professional REPL       \n");
-    fmt::print(fg(fmt::color::steel_blue),                  "--------------------------------- \n");
-    fmt::print(fg(fmt::color::gray),                        " version: {} tag: {}\n", BUILT_SHA, BUILT_TAG);
+// Используем "графитовый" или стальной цвет для рамок
+    auto border_color = fg(fmt::color::dim_gray);
+    auto title_color = fg(fmt::color::light_gray) | fmt::emphasis::bold;
+    auto accent_color = fg(fmt::color::orange_red); // Цвет тлеющего уголька для акцента
 
-    fmt::print("Loaded: ");
-    for (const auto& project : loaded_projects) {
-        fmt::print(fg(fmt::color::cyan), "{} ", project);
-    }
-    fmt::print("\n");
+    fmt::print(border_color, "------------------------------------------\n");
+    
+    // Логотип SOOT
+    fmt::print(title_color,  "             S  O  O  T                \n");
+    fmt::print(fg(fmt::color::slate_gray), 
+                             "      High-Performance Engine          \n");
+    
+    fmt::print(border_color, "------------------------------------------\n");
+    
+    // Техническая информация
+    fmt::print(fg(fmt::color::gray), " core:    ");
+    fmt::print(fg(fmt::color::antique_white), "{} {}\n", SOOT_VERSION, SOOT_NAME);
+    
+    fmt::print(fg(fmt::color::gray), " build:   ");
+    fmt::print(fg(fmt::color::cadet_blue), "sha:{} tag:{}\n", BUILT_SHA, BUILT_TAG);
+    
+    fmt::print(fg(fmt::color::gray), " type:    ");
+    fmt::print(fg(fmt::color::gold), "Interactive Shell (REPL)\n");
 
-    fmt::print("Type {} or {} for help\n",
+    fmt::print(border_color, "------------------------------------------\n");
+
+    fmt::print("Type {} or {} for help\n\n",
         fmt::format(fg(fmt::color::cyan), "(help)"),
         fmt::format(fg(fmt::color::cyan), "(keybinds)"));
 }
@@ -302,11 +338,13 @@ void ReplWrapper::setup_keybinds() {
 }
 
 void ReplWrapper::load_history() {
-    repl.history_load(".aleste_history");
+    fs::path cache_path = get_cache_dir();
+    fs::create_directories(cache_path); // Автоматическое создание папки
+    repl.history_load((cache_path / "history").string());
 }
 
 void ReplWrapper::save_history() {
-    repl.history_save(".aleste_history");
+    repl.history_save((fs::path(get_cache_dir()) / "history").string());
 }
 
 void ReplWrapper::add_to_history(const std::string& line) {
@@ -334,14 +372,14 @@ void ReplWrapper::show_history() {
 }
 
 void ReplWrapper::run_network(int port) {
-    fmt::print(fg(fmt::color::cyan), "рџЊђ Network REPL starting on port {}...\n", port);
+    fmt::print(fg(fmt::color::cyan), "✓ Network REPL starting on port {}...\n", port);
     start_network_server(port);
     // После запуска сети также запускаем интерактивный режим
     run_interactive();
 }
 
 void ReplWrapper::run_script(const std::string& filename) {
-    fmt::print(fg(fmt::color::cyan), "рџ“њ Running script: {}\n", filename);
+    fmt::print(fg(fmt::color::cyan), "✓ Running script: {}\n", filename);
     // TODO: выполнение файла
 }
 
@@ -409,36 +447,57 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
     }
 }
 
+// Универсальный поиск: Проект -> Пользователь -> Система
+std::string ReplWrapper::find_file(const std::string& name) {
+    // 1. Текущая папка проекта
+    if (fs::exists(name)) return name;
+
+    // 2. Домашняя папка пользователя
+    fs::path user_path = fs::path(get_config_dir()) / name;
+    if (fs::exists(user_path)) return user_path.string();
+
+    // 3. Глобальная папка (установленная через make install)
+    fs::path sys_path = fs::path("/usr/local/share/soot") / name;
+    if (fs::exists(sys_path)) return sys_path.string();
+
+    return ""; 
+}
+
 void ReplWrapper::load_startup_files() {
-    // Загружаем pre-network startup файл
-    std::ifstream pre_file("startup-pre.gc");
-    if (pre_file) {
-        std::vector<std::string> pre_commands;
-        std::string line;
-        while (std::getline(pre_file, line)) {
-            if (!line.empty() && line[0] != ';') { // игнорируем пустые строки и комментарии
-                pre_commands.push_back(line);
-            }
-        }
-        execute_startup_commands(pre_commands);
-        lg::info("Loaded {} commands from startup-pre.gc", pre_commands.size());
+    
+    std::string lib_path = find_file("lib.gs");
+    if (!lib_path.empty()) {
+        execute_line(fmt::format("(load-file \"{}\")", lib_path));
     }
 
-    // Загружаем post-network startup файл (если сеть включена)
-    if (config_.enable_network) {
-        std::ifstream post_file("startup-post.gc");
-        if (post_file) {
-            std::vector<std::string> post_commands;
-            std::string line;
-            while (std::getline(post_file, line)) {
-                if (!line.empty() && line[0] != ';') {
-                    post_commands.push_back(line);
-                }
-            }
-            execute_startup_commands(post_commands);
-            lg::info("Loaded {} commands from startup-post.gc", post_commands.size());
+    // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
+    // Ищем везде, где может лежать startup-pre.gc
+    std::string pre_path = find_file("startup-pre.gc");
+    if (!pre_path.empty()) {
+        lg::info("Loading pre-startup: {}", pre_path);
+        load_and_execute(pre_path);
+    }
+
+    // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
+    if (config_.enable_network && network_running_) {
+        std::string post_path = find_file("startup-post.gc");
+        if (!post_path.empty()) {
+            lg::info("Loading post-startup: {}", post_path);
+            load_and_execute(post_path);
         }
     }
+}
+// Вспомогательный метод для чтения и выполнения
+void ReplWrapper::load_and_execute(const std::string& path) {
+    std::ifstream file(path);
+    std::string line;
+    std::vector<std::string> commands;
+    while (std::getline(file, line)) {
+        if (!line.empty() && line[0] != ';') {
+            commands.push_back(line);
+        }
+    }
+    execute_startup_commands(commands);
 }
 
 void ReplWrapper::execute_startup_commands(const std::vector<std::string>& commands) {
@@ -456,16 +515,30 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
 // ДОБАВЛЯЕМ ПОСЛЕ execute_startup_commands() И ПЕРЕД ЗАКРЫВАЮЩЕЙ СКОБКОЙ ФАЙЛА
 
 void ReplWrapper::load_config(const std::string& filename) {
+    // 1. Пытаемся найти полный путь к конфигу
+    std::string actual_path = find_file(filename);
+
+    // 2. Если файл не найден ни в одной из локаций
+    if (actual_path.empty()) {
+        // Не выводим ошибку, если это дефолтный конфиг, 
+        // просто используем зашитые в код дефолты
+        lg::debug("Config file '{}' not found, using internal defaults.", filename);
+        return;
+    }
+
     try {
-        auto config_data = reader.read_from_file({ filename }, true, false);
+        // 3. Читаем уже по найденному реальному пути
+        // Используем actual_path вместо filename
+        auto config_data = reader.read_from_file({ actual_path }, true, false);
         parse_config_data(config_data);
-        fmt::print("Loaded config from {}\n", filename);
+        
+        fmt::print(fg(fmt::color::gray), "✓ Loaded config from: {}\n", actual_path);
     }
     catch (const std::exception& e) {
-        fmt::print("Error in config file: {}\n", e.what());
+        // Здесь уже выводим ошибку, так как файл существует, но он битый
+        fmt::print(fg(fmt::color::red), "✗ Error parsing config [{}]: {}\n", actual_path, e.what());
     }
 }
-
 void ReplWrapper::parse_config_data(const script::Object& config_list) {
     // Рекурсивно разыменовываем quote формы
     script::Object data = config_list;
@@ -555,7 +628,7 @@ std::string ReplWrapper::read_multiline_simple() {
     while (true) {
         const char* input;
         if (first_line) {
-            input = repl.input("aleste> ");
+            input = repl.input("soot> ");
             first_line = false;
         }
         else {
@@ -593,7 +666,7 @@ std::string ReplWrapper::read_multiline_with_check() {
     while (true) {
         const char* input;
         if (first_line) {
-            input = repl.input("aleste> ");
+            input = repl.input("soot> ");
             first_line = false;
         }
         else {
