@@ -1,19 +1,20 @@
 ﻿;-*-Scheme-*-
 
-;; THE GOOS COMMON LIBRARY
+;; THE SOOT COMMON LIBRARY
+;; froked from goos library
 
-;; goos macro to define a new goos macro
+;; soot macro to define a new soot macro
 (define defsmacro (macro (name args &rest body)
 		    `(define ,name (macro ,args ,@body))
 		    )
   )
 
-;; macro to define a new goos function
+;; macro to define a new soot function
 (defsmacro desfun (name args &rest body)
   `(define ,name (lambda ,args ,@body))
   )
 
-;; goos macro to let us define goal macros from goos:
+;; soot macro to let us define SOOT macros from soot:
 (defsmacro defgmacro (name args &rest body)
   `(define :env *comp-env* ,name (macro ,args ,@body))
   )
@@ -228,7 +229,7 @@
   )
 
 ;; These are now implemented in Interpreter.cpp for speed.
-;; But I leave these here because it was cool to implement them in GOOS itself.
+;; But I leave these here because it was cool to implement them in soot itself.
 ; (defsmacro let (bindings &rest body)
 ;   `((lambda ,(apply first bindings) ,@body)
 ;     ,@(apply second bindings)))
@@ -382,9 +383,9 @@
   `(string->symbol (fmt #f ,str ,@args))
   )
 
-;; Bootstrap GOAL macro system
+;; Bootstrap SOOT macro system
 
-;; goal macro to define a goal macro
+;; SOOT macro to define a SOOT macro
 (defgmacro defmacro (name args &rest body)
   `(begin
      ,(if (and (> (length body) 1) (string? (first body)))
@@ -400,12 +401,12 @@
      )
   )
 
-;; goal macro to define a goos macro
+;; SOOT macro to define a soot macro
 (defgmacro defsmacro (name args &rest body)
   `(seval (defsmacro ,name ,args ,@body))
   )
 
-;; goal macro to define a goos function
+;; SOOT macro to define a soot function
 (defgmacro desfun (name args &rest body)
   `(seval (desfun ,name ,args ,@body))
   )
@@ -458,25 +459,25 @@
   (enum-length enum))
 
 
-;; shortcut to quit GOOS
+;; shortcut to quit soot
 (defsmacro e ()
   `(exit)
   )
 
 ;; this is checked in a test to see if this file is loaded.
-(define __goos-lib-loaded__ #t)
+(define __soot-lib-loaded__ #t)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;; USER PROFILES      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; *user* is defined when goos starts!
+;; *user* is defined when soot starts!
 (when *user*
   ;; (fmt #t "Loading user scripts for user: {}...\n" *user*)
   ;; i'm not sure what naming scheme to use here. user/<name>/user.sot?
-  ;; the GOAL one is loaded in Compiler.cpp
-  (try-load-file (fmt #f "goal_src/user/{}/user.sot" *user*))
+  ;; the SOOT one is loaded in Compiler.cpp
+  (try-load-file (fmt #f "SOOT_src/user/{}/user.sot" *user*))
   )
 
 (defsmacro user? (&rest users)
@@ -487,31 +488,3 @@
     )
   )
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;
-;; GAME STUFF!!!      ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; a map for art definitions used by art loading code.
-(define *art-info* (make-hash-table))
-
-;; a map for joint node names used by art loading code.
-(define *jg-info* (make-hash-table))
-
-;; a map for tpages used by texture macros.
-(define *tpage-info* (make-hash-table))
-
-;;;;;;;;;;;;;;;;;;;;;;;;
-;;  build system      ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define GAME_TERRITORY_SCEA 0)
-(define GAME_TERRITORY_SCEE 1)
-(define GAME_TERRITORY_SCEI 2)
-(define GAME_TERRITORY_SCEK 3)
-
-(define *jak1-full-game* (if (user? dass) #t #f))
-(define *default-territory* GAME_TERRITORY_SCEA)
-
-;; whether to enable ps3 test levels for jak 2
-(define USE_PS3_LEVELS #f)

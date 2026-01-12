@@ -668,29 +668,26 @@ Object Interpreter::eval_or(const Object& form, const Object& rest, const std::s
 }
 
 Object Interpreter::eval_set(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "set! requires variable and value");
+    auto args = get_args(form, rest, make_varargs());
+    vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
+    auto to_define = args.unnamed.at(0);
+    Object to_set = eval_with_rewind(args.unnamed.at(1), env);
+
+    std::shared_ptr<EnvironmentObject> search_env = env;
+    for (;;) {
+        auto kv = search_env->vars.lookup(to_define.as_symbol());
+        if (kv) {
+        search_env->vars.set(to_define.as_symbol(), to_set);
+        return to_set;
+        }
+
+        auto pe = search_env->parent_env;
+        if (pe) {
+        search_env = pe;
+        } else {
+            throw_eval_error(to_define, "symbol is not defined");
+        }
     }
-
-    Object name_obj = rest.as_pair()->car;
-    Object value_part = rest.as_pair()->cdr;
-
-    if (!name_obj.is_symbol()) {
-        throw_eval_error(form, "set! variable must be a symbol");
-    }
-
-    if (!value_part.is_pair()) {
-        throw_eval_error(form, "set! requires a value");
-    }
-
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
-
-    if (env) {
-        env->vars.set(name_obj.as_symbol(), value);
-        return value;
-    }
-
-    return value;
 }
 
 Object Interpreter::eval_let(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
