@@ -17,6 +17,25 @@
 
 ---
 
+### 💡 Inspiration & Design Philosophy
+
+**SOOT** is built upon the foundation of the magnificent **OpenGOAL** project. It is important to note:
+
+* **Not a Branch**: This is a standalone project, not a fork or an improvement of OpenGOAL.
+* **Streamlined Design**: While it inherits concepts from OpenGOAL, SOOT is engineered to be significantly simpler and more lightweight.
+
+**The Goal:**
+
+The primary objective of SOOT is to provide a "sufficiently powerful" toolset for software design in specialized domains, including:
+
+* **Signal Processors (DSPs)**
+* **Microcontrollers (MCUs)**
+* **Embedded Engineering Tools**
+
+Unlike larger Lisp environments, SOOT is optimized for environments where resource efficiency and ease of integration are critical. It aims to be a portable, robust bridge between high-level Lisp logic and low-level embedded hardware.
+
+---
+
 ## 🛠 Toolchain Architecture
 
 The project is split into two distinct binaries to separate execution from interaction:
@@ -101,3 +120,10 @@ SOOT is designed for use in game engines and automation systems where Lisp's fle
 
 ---
 
+
+
+This is a very important clarification. It positions your project as a specialized tool for embedded systems and DSPs, while paying respect to the source of inspiration. It also explains **why** SOOT exists (simplicity and portability).
+
+Here is the updated section you can add to your **README.md** (I suggest placing it after the Introduction or in a new "Inspiration & Goals" section):
+
+---
