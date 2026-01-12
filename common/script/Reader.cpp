@@ -3,7 +3,7 @@
 #include "common/util/FileUtil.hpp"  // твой file_hub
 #include "fmt/format.h"
 #include "fmt/ranges.h"
-#include "oaidl.h"
+//#include "oaidl.h"
 #include <cctype>
 
 namespace script {

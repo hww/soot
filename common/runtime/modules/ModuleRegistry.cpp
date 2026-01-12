@@ -3,6 +3,7 @@
 #include "common/util/Assert.hpp"
 #include <fstream>
 #include <algorithm>
+#include <fmt/core.h>
 
 using namespace runtime::lib;
 using namespace runtime::files;
@@ -146,7 +147,7 @@ namespace runtime::modules {
     }
 
     std::string ModuleRegistry::to_string() const {
-        return std::format("ModuleRegistry(paths:{}, modules:{}, dirty:{})",
+        return fmt::format("ModuleRegistry(paths:{}, modules:{}, dirty:{})",
             search_paths_.size(), module_cache_.size(), is_index_dirty_);
     }
 

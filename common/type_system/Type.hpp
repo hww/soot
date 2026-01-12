@@ -252,7 +252,7 @@ public:
     const std::map<std::string, TypeSpec>& get_states_declared_for_type() const { return m_states; }
 
     // Accessors
-    void Type::set_runtime_type(std::string name) { m_runtime_name = std::move(name); }
+    void set_runtime_type(std::string name) { m_runtime_name = std::move(name); }
     std::string get_name() const { return m_name; }
     std::string get_runtime_name() const;
     std::string get_parent() const { return m_parent; }

@@ -170,8 +170,8 @@ namespace runtime::vm {
         // ------------------------------------------------------------------------
 
         std::string to_string() const {
-            return std::format("StackFrame(pc:{}, argc:{}, ret_reg:{}, parent:{:x})",
-                pc, argc, ret_num, (int)parent_ptr);
+            return fmt::format("StackFrame(pc:{}, argc:{}, ret_reg:{}, parent:{:p})",
+                pc, argc, ret_num, (void*)parent_ptr);
         }
 
         void dump_registers() const {
