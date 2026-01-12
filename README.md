@@ -130,3 +130,6 @@ SOOT is designed for use in game engines and automation systems where Lisp's fle
 
 ---
 
+### Documentation
+
+# 📖 [SOOT Script Language - Quick Reference](common/script/README.md)

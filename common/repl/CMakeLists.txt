@@ -28,3 +28,28 @@ set_target_properties(soot PROPERTIES
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+
+install(TARGETS soot
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+
+# Определяем путь для ресурсов (обычно /usr/local/share/soot)
+set(SOOT_SHARE_DIR "share/soot")
+
+# Установка системной библиотеки (базовые функции)
+install(FILES 
+    lib.sot 
+    DESTINATION ${SOOT_SHARE_DIR}
+)
+
+# Установка шаблонов конфигурации (чтобы пользователь мог их скопировать в ~/.config/soot)
+# Мы кладем их в подпапку skeletons или examples
+install(FILES 
+    config.sot 
+    startup-pre.sot 
+    startup-post.sot
+    DESTINATION ${SOOT_SHARE_DIR}/skeletons
+)

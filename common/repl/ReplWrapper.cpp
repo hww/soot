@@ -10,6 +10,10 @@
 
 namespace fs = std::filesystem;
 
+// ============================================================
+// Utilities
+// ============================================================
+
 std::string get_config_dir() {
 #ifdef _WIN32
     return std::string(std::getenv("APPDATA")) + "/soot";
@@ -30,6 +34,10 @@ std::string get_cache_dir() {
 #endif
 }
 
+// ============================================================
+// Constructor/Destructor
+// ============================================================
+
 ReplWrapper::ReplWrapper(const std::string& username)
     : username(username), interpreter_(username), reader() {
     init_settings();
@@ -41,6 +49,36 @@ ReplWrapper::~ReplWrapper() {
     stop_network_server();
 }
 
+// ============================================================
+// Init/Settings
+// ============================================================
+
+void ReplWrapper::init_settings() {
+    repl.set_word_break_characters(" \t");
+    repl.set_max_history_size(1000);
+    
+    repl.set_complete_on_empty(false);
+    repl.set_indent_multiline(true);
+    repl.set_beep_on_ambiguous_completion(false);
+    repl.set_no_color(false);
+
+    // Настраиваем автодополнение - правильные типы
+    repl.set_completion_callback([this](const std::string& input, int& context_len) -> replxx::Replxx::completions_t {
+        return get_completions(input, context_len);
+        });
+
+    // Настраиваем подсказки - правильные типы
+    repl.set_hint_callback([this](const std::string& input, int& context_len, replxx::Replxx::Color& color) -> replxx::Replxx::hints_t {
+        color = replxx::Replxx::Color::GREEN;
+        return get_hints(input, context_len, color);
+        });
+
+    setup_keybinds();
+}
+
+// ============================================================
+// REPL
+// ============================================================
 
 void ReplWrapper::run_interactive() {
     load_history();
@@ -206,28 +244,9 @@ void ReplWrapper::clear_screen() {
     print_welcome({ "core", "stdlib" }); 
 }
 
-void ReplWrapper::init_settings() {
-    repl.set_word_break_characters(" \t");
-    repl.set_max_history_size(1000);
-    
-    repl.set_complete_on_empty(false);
-    repl.set_indent_multiline(true);
-    repl.set_beep_on_ambiguous_completion(false);
-    repl.set_no_color(false);
-
-    // Настраиваем автодополнение - правильные типы
-    repl.set_completion_callback([this](const std::string& input, int& context_len) -> replxx::Replxx::completions_t {
-        return get_completions(input, context_len);
-        });
-
-    // Настраиваем подсказки - правильные типы
-    repl.set_hint_callback([this](const std::string& input, int& context_len, replxx::Replxx::Color& color) -> replxx::Replxx::hints_t {
-        color = replxx::Replxx::Color::GREEN;
-        return get_hints(input, context_len, color);
-        });
-
-    setup_keybinds();
-}
+// ============================================================
+// Completitions
+// ============================================================
 
 // Completions возвращает vector<pair<string, Color>>
 replxx::Replxx::completions_t ReplWrapper::get_completions(
@@ -286,6 +305,10 @@ replxx::Replxx::hints_t ReplWrapper::get_hints(
     return hints;
 }
 
+// ============================================================
+// Keyboard
+// ============================================================
+
 void ReplWrapper::setup_keybinds() {
     // Только наши кастомные keybinds из config
     for (const auto& bind : config_.keybinds) {
@@ -337,6 +360,10 @@ void ReplWrapper::setup_keybinds() {
         });
 }
 
+// ============================================================
+// History
+// ============================================================
+
 void ReplWrapper::load_history() {
     fs::path cache_path = get_cache_dir();
     fs::create_directories(cache_path); // Автоматическое создание папки
@@ -371,6 +398,10 @@ void ReplWrapper::show_history() {
     }
 }
 
+// ============================================================
+// Starting
+// ============================================================
+
 void ReplWrapper::run_network(int port) {
     fmt::print(fg(fmt::color::cyan), "✓ Network REPL starting on port {}...\n", port);
     start_network_server(port);
@@ -382,6 +413,10 @@ void ReplWrapper::run_script(const std::string& filename) {
     fmt::print(fg(fmt::color::cyan), "✓ Running script: {}\n", filename);
     // TODO: выполнение файла
 }
+
+// ============================================================
+// Networking
+// ============================================================
 
 void ReplWrapper::start_network_server(int port) {
     if (network_running_) return;
@@ -446,6 +481,10 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
         fmt::print(fg(fmt::color::red), "[NETWORK] Error: {}\n", e.what());
     }
 }
+
+// ============================================================
+// Files
+// ============================================================
 
 // Универсальный поиск: Проект -> Пользователь -> Система
 std::string ReplWrapper::find_file(const std::string& name) {
@@ -512,7 +551,9 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
     }
 }
 
-// ДОБАВЛЯЕМ ПОСЛЕ execute_startup_commands() И ПЕРЕД ЗАКРЫВАЮЩЕЙ СКОБКОЙ ФАЙЛА
+// ============================================================
+// Config
+// ============================================================
 
 void ReplWrapper::load_config(const std::string& filename) {
     // 1. Пытаемся найти полный путь к конфигу
@@ -539,6 +580,7 @@ void ReplWrapper::load_config(const std::string& filename) {
         fmt::print(fg(fmt::color::red), "✗ Error parsing config [{}]: {}\n", actual_path, e.what());
     }
 }
+
 void ReplWrapper::parse_config_data(const script::Object& config_list) {
     // Рекурсивно разыменовываем quote формы
     script::Object data = config_list;
@@ -600,12 +642,9 @@ KeyBind::Modifier ReplWrapper::parse_modifier(const std::string& mod_str) {
     return KeyBind::Modifier::CTRL;
 }
 
-
-void ReplWrapper::inspect_top_env()
-{
-    script::Object obj = interpreter_.get_global_environmet();
-    fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
-}
+// ============================================================
+// Multilines on Input
+// ============================================================
 
 std::string ReplWrapper::read_multiline_expression(const std::string& first_line) {
     if (!multi_line_enabled_) {
@@ -693,6 +732,16 @@ std::string ReplWrapper::read_multiline_with_check() {
     }
 
     return result;
+}
+
+// ============================================================
+// Inspectors
+// ============================================================
+
+void ReplWrapper::inspect_top_env()
+{
+    script::Object obj = interpreter_.get_global_environmet();
+    fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
 }
 
 void ReplWrapper::inspect_text_db() {
