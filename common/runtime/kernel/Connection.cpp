@@ -22,7 +22,7 @@ ConnectionFunction Connection::GetFunction() const
 
 void Connection::SetFunction(ConnectionFunction func)
 {
-    Arg0 = func;
+    Arg0 = reinterpret_cast<void*>(func);
 }
 
 Engine* Connection::GetEngine() const

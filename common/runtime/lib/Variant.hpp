@@ -503,7 +503,7 @@ namespace runtime::lib {
             if (is_bool())    return get_bool() ? "true" : "false";
             if (is_sid())     return fmt::format("sid:{}", get_sid());
             if (is_string())  return get_string();
-            if (is_ptr())     return fmt::format("ptr:0x{:x}", (int)ptr_value);
+            if (is_ptr())     return fmt::format("ptr:{}", ptr_value);
             if (is_function())  return "lambda";
             if (is_native())  return "native";
             return "unknown";

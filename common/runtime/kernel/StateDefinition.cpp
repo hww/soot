@@ -2,6 +2,7 @@
 #include "common/runtime/lib/StringId.hpp"
 #include "common/runtime/lib/Types.hpp"
 #include <algorithm>
+#include <vector>
 
 namespace runtime::kernel
 {

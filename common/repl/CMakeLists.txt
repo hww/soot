@@ -20,7 +20,7 @@ else()
     target_link_libraries(repl_lib PRIVATE pthread)
 endif()
 
-add_executable(repl common/repl/main.cpp)
+add_executable(repl common/repl/Main.cpp)
 # Исправлено: добавляем связывание с repl_lib
 target_link_libraries(repl PRIVATE repl_lib)
 set_target_properties(repl PROPERTIES 

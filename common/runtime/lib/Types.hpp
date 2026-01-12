@@ -43,7 +43,7 @@ constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET; // 10
 class OverflowException : public std::exception {
 public:
     OverflowException(const std::string& msg) : message(msg) {}
-    const char* what() const override { return message.c_str(); }
+    const char* what() const noexcept override { return message.c_str(); }
 private:
     std::string message;
 };
