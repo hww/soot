@@ -57,7 +57,7 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 ((lambda (x &key flag) ...) 5 flag #t)  ; Error!
 
 ; With default values:
-((lambda (&key (width 100) (height 200)) 
+((lambda (&key (width 100) &key (height 200)) 
    (* width height)) :width 50)
 ; → 10000  (width=50, height=200 default)
 ```

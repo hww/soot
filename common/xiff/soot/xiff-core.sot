@@ -1,14 +1,15 @@
 ﻿;-*-Scheme-*-
 
+(define null #f)
+
 ;; xiff-core.sot
 (define *registry* '())
 
 ;; Макрос или функция для регистрации RPC
-(define define-rpc
-  (lambda (name &rest params)
+(desfun define-rpc (name &key (params null) &key (return null) &key (desc null))
     (let ((entry (list 'rpc name params)))
       (set! *registry* (cons entry *registry*))
-      (fmt #t "RPC Registered: %s\n" name))))
+      (fmt #t "RPC Registered: {}\n" name)))
 
 ;; Регистрация прерывания или вектора
 (define define-vector
@@ -17,3 +18,5 @@
 
 ;; Функция для получения данных в C++
 (define get-xiff-data (lambda () *registry*))
+
+(desfun generate-output (name) (print *registry*))
