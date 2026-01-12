@@ -4,21 +4,21 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 
 ## 📚 **Table of Contents**
 
-- [📋 Argument Syntax](#argument-syntax)
-- [🎯 Special Forms](#special-forms)
-- [🔧 Built-in Functions](#built-in-functions)
-- [🔢 Mathematics](#mathematics)
-- [📝 Strings](#strings)
-- [🔗 Lists and Pairs](#lists-and-pairs)
-- [🗃️ Vectors](#vectors)
-- [🔍 Type Predicates](#type-predicates)
-- [⚖️ Comparisons](#comparisons)
-- [🗄️ Hash Tables](#hash-tables)
-- [💾 File I/O](#file-io)
-- [🖥️ System](#system)
-- [🔄 Type Conversions](#type-conversions)
-- [🎲 Other Functions](#other-functions)
-
+- [Argument Syntax](#argument-syntax)
+- [Special Forms](#special-forms)
+- [Built-in Functions](#built-in-functions)
+- [Mathematics](#mathematics)
+- [Strings](#strings)
+- [Lists and Pairs](#lists-and-pairs)
+- [Vectors](#vectors)
+- [Type Predicates](#type-predicates)
+- [Comparisons](#comparisons)
+- [Hash Tables](#hash-tables)
+- [File I/O](#file-io)
+- [System](#system)
+- [Type Conversions](#type-conversions)
+- [Other Functions](#other-functions)
+- [Other Documentation](#other-documentation)
 ---
 
 ## 📋 **Argument Syntax**
@@ -446,3 +446,7 @@ sooti> exit             ; Exit REPL
 **Version**: SOOT Core [sha:...]  
 **Syntax**: Scheme-like with Common Lisp influences  
 **License**: Project-specific
+
+## 📖 **Other Documentation**
+
+- 📖 [SOOT Common Library Documentation*](common/script/README.LIB.md)
