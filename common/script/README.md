@@ -17,6 +17,7 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 - [File I/O](#file-io)
 - [System](#system)
 - [Type Conversions](#type-conversions)
+- [Time Functions](#time-functions)
 - [Other Functions](#other-functions)
 - [Other Documentation](#other-documentation)
 ---
@@ -307,12 +308,20 @@ Special forms don't evaluate their arguments automatically.
 
 ## 🖥️ **System**
 
-| Function                   | Arguments | Description           |
-|----------------------------|-----------|-----------------------|
-| `system`                   | `command` | Execute shell command |
-| `get-environment-variable` | `name`    | Get env variable      |
-| `current-directory`        |           | Get current directory |
-| `exit`                     |           | Exit interpreter      |
+| Function                   | Arguments   | Description                         |
+|----------------------------|-------------|-------------------------------------|
+| `system`                   | `command`   | Execute shell command               |
+| `get-environment-variable` | `name`      | Get env variable                    |
+| `exit`                     |             | Exit interpreter                    |
+| `get-path`                 | 'cwd        | Current working dir                 |
+| `get-path`                 | 'home       | User home ~                         |
+| `get-path`                 | 'config     | User settings ~/.config/soot/       |
+| `get-path`                 | 'cache      | Shared files ~/.cache/soot/         |
+| `get-path`                 | 'share      | Shared files /usr/local/share/soot/ |
+| `get-path`                 | 'exec       | Binary folder of script             |
+| `get-path`                 | 'project    | Project folder                      |
+| `find-file`                | `file name` | Find file in the system directories |
+|                            |             | The order is: project, user, system |
 
 **Examples:**
 
@@ -339,6 +348,15 @@ Special forms don't evaluate their arguments automatically.
 (char->integer #\A)              ; → 65
 (integer->char 66)               ; → #\B
 ```
+
+## 🎲 **Time Functions**
+
+| Function            | Arguments | Description                                                  | Example Output        |
+|---------------------|-----------|--------------------------------------------------------------|-----------------------|
+| `time-seconds`      |           | Returns current Unix timestamp in seconds (since 1970-01-01) | `1734167895`          |
+| `time-milliseconds` |           | Returns current Unix timestamp in milliseconds               | `1734167895123`       |
+| `time-microseconds` |           | Returns current Unix timestamp in microseconds               | `1734167895123456`    |
+| `time-nanoseconds`  |           | Returns current Unix timestamp in nanoseconds                | `1734167895123456789` |
 
 ## 🎲 **Other Functions**
 
@@ -449,4 +467,6 @@ sooti> exit             ; Exit REPL
 
 ## 📖 **Other Documentation**
 
-- 📖 [SOOT Common Library Documentation*](common/script/README.LIB.md)
+- 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
+
+

@@ -1,11 +1,11 @@
-// FileHub.cpp - âńĺ đĺŕëčçŕöčč
+// FileHub.cpp - все реализации
 #include "common/util/FileUtil.hpp"
 #include <fstream>
 #include <regex>
 
 namespace file_util {
 
-    // ==================== ÎŃÍÎÂÍŰĹ ÓŇČËČŇŰ ====================
+    // ==================== ОСНОВНЫЕ УТИЛИТЫ ====================
 
     std::string read_text(const fs::path& path) {
         std::ifstream file(path);
@@ -46,7 +46,7 @@ namespace file_util {
         file.write(reinterpret_cast<const char*>(data.data()), data.size());
     }
 
-    // ==================== ĐŔÁÎŇŔ Ń ĎÓŇßĚČ ====================
+    // ==================== РАБОТА С ПУТЯМИ ====================
 
     std::string get_filename(const fs::path& path) {
         return path.filename().string();
@@ -64,7 +64,7 @@ namespace file_util {
         return a / b;
     }
 
-    // ==================== ĐŔÁÎŇŔ Ń ÄČĐĹĘŇÎĐČßĚČ ====================
+    // ==================== РАБОТА С ДИРЕКТОРИЯМИ ====================
 
     bool create_dirs(const fs::path& path) {
         std::error_code ec;
@@ -99,7 +99,7 @@ namespace file_util {
         return dirs;
     }
 
-    // ==================== ĎÎČŃĘ ÔŔÉËÎÂ ====================
+    // ==================== ПОИСК ФАЙЛОВ ====================
 
     std::vector<fs::path> find_by_extension(const fs::path& dir, const std::string& ext) {
         std::vector<fs::path> files;
@@ -137,13 +137,13 @@ namespace file_util {
         return files;
     }
 
-    // ==================== ĎĐÎÂĹĐĘČ Č ČÍÔÎĐĚŔÖČß ====================
+    // ==================== ПРОВЕРКИ И ИНФОРМАЦИЯ ====================
 
     uintmax_t get_size(const fs::path& path) {
         return fs::file_size(path);
     }
 
-    // ==================== ÎĎĹĐŔÖČČ Ń ÔŔÉËŔĚČ ====================
+    // ==================== ОПЕРАЦИИ С ФАЙЛАМИ ====================
 
     void copy_file(const fs::path& from, const fs::path& to) {
         create_dirs_for_file(to);
@@ -163,11 +163,75 @@ namespace file_util {
         return fs::remove_all(path);
     }
 
-    // ========== ÎĎĹĐŔÖČČ Ń ÔŔÉËŔĚČ ÄËß ÝŇÎĂÎ ĎĐÎĹĘŇŔ ============
+    // ========== ОПЕРАЦИИ С ФАЙЛАМИ ДЛЯ ЭТОГО ПРОЕКТА ============
 
-    fs::path get_project_dir()
-    {
-        return fs::current_path();
+    static fs::path g_project_path = "";
+
+    void set_project_path(const fs::path& path) {
+        if (fs::exists(path) && fs::is_directory(path)) {
+            g_project_path = fs::absolute(path);
+        }
+    }
+
+    fs::path detect_project_root(fs::path start_from) {
+        fs::path current = fs::absolute(start_from);
+        while (current.has_parent_path()) {
+            // Маркеры корня проекта
+            if (fs::exists(current / "project.sot") || 
+                fs::exists(current / ".soot-root") ||
+                fs::exists(current / ".git")) {
+                return current;
+            }
+            current = current.parent_path();
+        }
+        return fs::current_path(); // fallback
+    }
+
+    fs::path get_path(PathType type) {
+        switch (type) {
+            case PathType::CWD: return fs::current_path();
+            case PathType::PROJECT: 
+                return g_project_path.empty() ? (g_project_path = detect_project_root()) : g_project_path;
+            
+            case PathType::HOME: {
+                const char* home = std::getenv("HOME");
+                return home ? fs::path(home) : fs::current_path();
+            }
+            
+            case PathType::CONFIG: {
+                const char* xdg = std::getenv("XDG_CONFIG_HOME");
+                if (xdg) return fs::path(xdg) / "soot";
+                return get_path(PathType::HOME) / ".config" / "soot";
+            }
+
+            case PathType::CACHE: {
+                const char* xdg = std::getenv("XDG_CACHE_HOME");
+                if (xdg) return fs::path(xdg) / "soot";
+                return get_path(PathType::HOME) / ".cache" / "soot";
+            }
+
+            case PathType::SHARE:
+                // В будущем здесь можно добавить логику проверки /usr/share vs /usr/local/share
+                return "/usr/local/share/soot";
+
+            default: return fs::current_path();
+        }
+    }
+
+    fs::path find_config_file(const std::string& filename) {
+        // 1. Проверяем проект
+        fs::path p = get_path(PathType::PROJECT) / filename;
+        if (fs::exists(p)) return p;
+
+        // 2. Проверяем конфиг пользователя
+        p = get_path(PathType::CONFIG) / filename;
+        if (fs::exists(p)) return p;
+
+        // 3. Проверяем системную папку
+        p = get_path(PathType::SHARE) / filename;
+        if (fs::exists(p)) return p;
+
+        return ""; // Не нашли
     }
 
     std::string get_file_path(const std::vector<std::string>& input) {
@@ -179,12 +243,11 @@ namespace file_util {
             return input.at(0);
         }
 
-        auto current_path = get_project_dir();
+        auto current_path = get_path(PathType::PROJECT);
         for (auto& str : input) {
             current_path /= str;
         }
 
         return current_path.string();
     }
-
 } // namespace filehub

@@ -123,6 +123,7 @@ namespace script
             {"vector-ref", &Interpreter::eval_vector_ref},
             {"vector-set!", &Interpreter::eval_vector_set},
             {"vector-length", &Interpreter::eval_vector_length},
+            {"vector->list", &Interpreter::eval_vector_to_list},
 
             // Хэш-таблицы
             {"make-hash-table", &Interpreter::eval_make_hash_table},
@@ -130,6 +131,8 @@ namespace script
             {"hash-table-ref", &Interpreter::eval_hash_table_ref},
             {"hash-table?", &Interpreter::eval_hash_table_p},
             {"hash-table-try-ref", &Interpreter::eval_hash_table_try_ref},
+            {"hash-table-length", &Interpreter::eval_hash_table_length},
+            {"hash-table->list", &Interpreter::eval_hash_table_to_list},
 
             // Системные и ввод-вывод
             {"print", &Interpreter::eval_print},
@@ -149,8 +152,9 @@ namespace script
             // System
             {"system", &Interpreter::eval_system},
             {"get-environment-variable", &Interpreter::eval_get_env}, // было eval_get_environment_variable
-            {"current-directory", &Interpreter::eval_current_directory},
             {"exit", &Interpreter::eval_exit},
+            {"get-path", &Interpreter::eval_get_path},
+            {"find-file", &Interpreter::eval_find_file},
 
             // Прочие
             {"gensym", &Interpreter::eval_gensym},
@@ -171,6 +175,12 @@ namespace script
             {"expt", &Interpreter::eval_expt},
             {"sqrt", &Interpreter::eval_sqrt},
             {"ash", &Interpreter::eval_ash},
+
+            // Время
+            {"time-seconds", &Interpreter::eval_time_seconds},
+            {"time-milliseconds", &Interpreter::eval_time_milliseconds},
+            {"time-microseconds", &Interpreter::eval_time_microseconds},
+            {"time-nanoseconds", &Interpreter::eval_time_nanoseconds},
         } });
     // load the standard library
     if (load_libs) load_library();
@@ -1989,6 +1999,23 @@ Object Interpreter::eval_vector_length(const Object& form, Arguments& args, cons
     return Object::make_integer(args.unnamed[0].as_array()->size());
 }
 
+Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::ARRAY }, {});
+
+    auto array = args.unnamed[0].as_array();
+    
+    // Рекурсивная функция для построения списка
+    std::function<Object(int)> build_list = [&](int index) -> Object {
+        if (index >= array->size()) {
+            return Object::make_empty_list();
+        }
+        return Object::make_pair(array->at(index), build_list(index + 1));
+    };
+    
+    return build_list(0);
+}
+
 // ==============================================
 // Хэш - таблицы с проверками
 // ==============================================
@@ -2006,20 +2033,17 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {}, {} }, {}); // Таблица, ключ, значение
 
     auto ht = args.unnamed[0].as_hash_table();
-    std::string key;
-
-    if (args.unnamed[1].is_string()) {
-        key = args.unnamed[1].as_string()->data;
-    }
-    else if (args.unnamed[1].is_symbol()) {
-        key = args.unnamed[1].as_symbol().name_ptr ? args.unnamed[1].as_symbol().name_ptr : "";
-    }
-    else {
-        throw_eval_error(form, "hash-table key must be string or symbol");
+    const char* str = nullptr;
+    if (args.unnamed.at(1).is_symbol()) {
+        str = args.unnamed.at(1).as_symbol().name_ptr;
+    } else if (args.unnamed.at(1).is_string()) {
+        str = args.unnamed.at(1).as_string()->data.c_str();
+    } else {
+        throw_eval_error(form, "Hash table must use symbol or string as the key.");
     }
 
-    ht->data[key] = args.unnamed[2];
-    return args.unnamed[2];
+    args.unnamed.at(0).as_hash_table()->data[str] = args.unnamed.at(2);
+    return Object::make_empty_list();
 }
 
 Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2072,6 +2096,36 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form,
     else {
         return Object::make_pair(m_true_object, it->second);
     }
+}
+
+Object Interpreter::eval_hash_table_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {}); // Один аргумент
+
+    auto ht = args.unnamed[0].as_hash_table();
+   
+    return Object::make_integer(ht->data.size());
+}
+
+Object Interpreter::eval_hash_table_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {});
+
+    auto ht = args.unnamed[0].as_hash_table();
+    Object result = Object::make_empty_list();
+    
+    // Итерируемся по unordered_map
+    for (const auto& [key, value] : ht->data) {
+        // Создаем пару (ключ значение)
+        Object pair = Object::make_pair(
+            Object::make_string(key), 
+            value
+        );
+        // Добавляем в начало списка
+        result = Object::make_pair(pair, result);
+    }
+    
+    return result;
 }
 
 Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2180,21 +2234,6 @@ Object Interpreter::eval_read_data_file(const Object & form,
     return Object::make_empty_list();
 }
 
-
-Object Interpreter::eval_current_directory(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, {}, {}); // Без аргументов
-
-    try {
-        std::string cwd = std::filesystem::current_path().string();
-        return Object::make_string(cwd);
-    }
-    catch (const std::exception& e) {
-        throw_eval_error(form, "cannot get current directory");
-    }
-    return m_false_object;
-}
-
 std::string Interpreter::read_entire_file(const std::string& filename) {
     std::ifstream file(filename);
     if (!file) {
@@ -2240,6 +2279,32 @@ Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::sh
     return Object::make_empty_list();
 }
 
+Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::SYMBOL }, {}); // Один символ
+    std::string sym = args.unnamed[0].as_symbol().name_ptr ? args.unnamed[0].as_symbol().name_ptr : "";
+    file_util::PathType select;
+    if (sym == "cwd")             select = file_util::PathType::CWD;
+    else  if (sym == "exe")       select = file_util::PathType::EXE;
+    else  if (sym == "home")      select = file_util::PathType::HOME;    
+    else  if (sym == "config")    select = file_util::PathType::CONFIG;
+    else  if (sym == "cache")     select = file_util::PathType::CACHE;
+    else  if (sym == "share")     select = file_util::PathType::SHARE;
+    else  if (sym == "project")   select = file_util::PathType::PROJECT;
+    else {
+        throw_eval_error(form, "get_path requires a symbol: cwd, exe, home, config, cache, share, project");
+    }
+    return Object::make_string(file_util::get_path(select).string());
+}
+
+Object Interpreter::eval_find_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (команда)
+
+    std::string path = args.unnamed[0].as_string()->data;
+    auto found = file_util::find_config_file(path);
+    return found.empty() ? Object::make_empty_list() : Object::make_string(found.string());
+}
 
 // ==============================================
 // Прочие функции с проверками
@@ -2356,6 +2421,62 @@ Object Interpreter::eval_integer_to_char(const Object& form, Arguments& args, co
     }
 
     return Object::make_char(static_cast<char>(code));
+}
+
+// ==============================================
+// Функции времени
+// ==============================================
+
+// time-seconds: возвращает количество секунд с эпохи Unix
+Object Interpreter::eval_time_seconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    (void)form;
+    vararg_check(form, args, {}, {}); // Без аргументов
+    
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+    
+    return Object::make_integer(static_cast<int64_t>(seconds));
+}
+
+// time-milliseconds: возвращает количество миллисекунд с эпохи Unix
+Object Interpreter::eval_time_milliseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    (void)form;
+    vararg_check(form, args, {}, {}); // Без аргументов
+    
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    
+    return Object::make_integer(static_cast<int64_t>(milliseconds));
+}
+
+// time-microseconds: если нужна еще большая точность
+Object Interpreter::eval_time_microseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    (void)form;
+    vararg_check(form, args, {}, {});
+    
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+    
+    return Object::make_integer(static_cast<int64_t>(microseconds));
+}
+
+// time-nanoseconds: максимальная точность
+Object Interpreter::eval_time_nanoseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    (void)form;
+    vararg_check(form, args, {}, {});
+    
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    
+    return Object::make_integer(static_cast<int64_t>(nanoseconds));
 }
 
 } // namespace script
