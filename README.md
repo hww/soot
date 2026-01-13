@@ -1,6 +1,4 @@
-Отличный README! Он хорошо структурирован и информативен. Вот несколько предложений по улучшению:
 
-```markdown
 # SOOT: Scriptable Object-Oriented Toolkit
 
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=flat&logo=c%2B%2B&logoColor=white)
