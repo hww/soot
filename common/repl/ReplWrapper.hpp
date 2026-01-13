@@ -70,7 +70,6 @@ private:
     void inspect_top_env();
 
     std::string get_current_repl_token(const std::string& context);
-    std::string find_file(const std::string& name);
     
     replxx::Replxx::completions_t get_completions(const std::string& input, int& context_len);
     replxx::Replxx::hints_t get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color);

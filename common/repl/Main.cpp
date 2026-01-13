@@ -50,6 +50,7 @@ int main(int argc, char* argv[]) {
         else if (arg == "--project" || arg == "-p") {
             if (i + 1 < argc) {
                 project_folder = argv[++i];
+                file_util::set_project_path(project_folder);
             }
             else {
                 fmt::print(fg(fmt::color::red), "Project path required\n");

@@ -1,22 +1,452 @@
-﻿;-*-Scheme-*-
+﻿;; -*-Scheme-*-
+;; xiff-core.sot - Core XIFF v6.0 implementation in SOOT
+;; Version: 6.0.0
+;; Date: 2026-01-13
 
-(define null #f)
+;; ============================================================================
+;; MODULE DECLARATION AND IMPORTS
+;; ============================================================================
 
-;; xiff-core.sot
-(define *registry* '())
+;(module xiff-core
+;  (export x-const x-field x-func x-struct x-begin-vtable x-end-vtable
+;          x-vtable-method x-module x-export-h x-export-c x-export-asm x-export-inc
+;          x-begin-struct x-end-struct x-enum x-method x-event
+;          xiff-define-file xiff-get-targets xiff-generate
+;          *registry* *current-file* *pending-fields*))
 
-;; Макрос или функция для регистрации RPC
-(desfun define-rpc (name &key (params null) &key (return null) &key (desc null))
-    (let ((entry (list 'rpc name params)))
-      (set! *registry* (cons entry *registry*))
-      (fmt #t "RPC Registered: {}\n" name)))
+;; Импорт стандартных библиотек
+;(require 'common/script/stdlib)
 
-;; Регистрация прерывания или вектора
-(define define-vector
-  (lambda (addr name)
-    (set! *registry* (cons (list 'vector addr name) *registry*))))
+;; ============================================================================
+;; GLOBAL STATE AND REGISTRY
+;; ============================================================================
 
-;; Функция для получения данных в C++
-(define get-xiff-data (lambda () *registry*))
+;; Основной реестр: хеш-таблица файл → список элементов
+(define *registry* (make-hash-table))
 
-(desfun generate-output (name) (print *registry*))
+;; Текущий обрабатываемый файл
+(define *current-file* #f)
+
+;; Текущая метка для привязки
+(define *current-label* #f)
+
+;; Очередь полей для привязки к текущей метке
+(define *pending-fields* '())
+
+;; Стек контекстов (для структур, VTables и т.д.)
+(define *context-stack* '())
+
+;; ============================================================================
+;; FILE MANAGEMENT
+;; ============================================================================
+
+(desfun xiff-define-file (file-path)
+  "Устанавливает текущий файл для регистрации элементов."
+  (set! *current-file* file-path)
+  (hash-table-set! *registry* file-path '())
+  (fmt #t "[INFO] Processing file: {}\n" file-path))
+
+(desfun x-register-element (type data)
+  "Регистрирует элемент в текущем файле."
+  (unless *current-file*
+    (ferror "No current file set. Use (xiff-define-file) first."))
+  
+  (let ((file-data (hash-table-ref *registry* *current-file*)))
+    (hash-table-set! *registry* *current-file*
+                    (cons (list type data (time-milliseconds)) file-data))))
+
+;; ============================================================================
+;; LABEL BINDING SYSTEM
+;; ============================================================================
+
+(desfun x-set-current-label (label-name)
+  "Устанавливает текущую метку и применяет отложенные поля."
+  ;; Применяем все отложенные поля к предыдущей метке
+  (when (and *current-label* (not (null? *pending-fields*)))
+    (apply-pending-fields *current-label* *pending-fields*)
+    (set! *pending-fields* '()))
+  
+  (set! *current-label* label-name))
+
+(desfun apply-pending-fields (label fields)
+  "Применяет отложенные поля к метке."
+  (dolist (field fields)
+    (let ((field-type (car field))
+          (field-args (cdr field)))
+      (x-register-element 'field 
+        (list 'label label 
+              'type field-type
+              'args field-args)))))
+
+;; ============================================================================
+;; CONSTANTS AND DATA
+;; ============================================================================
+
+(desmacro x-const (type &key name desc (value #f))
+  "Определяет константу."
+  (let ((const-name (or name *current-label*)))
+    (unless const-name
+      (ferror "x-const requires either :name or to be bound to a label"))
+    
+    `(x-register-element 'const
+       (list 'name ',const-name
+             'type ',type
+             'desc ,desc
+             'value ,value))))
+
+(desmacro x-field (type &key signed (array-size 1) name (offset #f))
+  "Определяет поле структуры (отложенная привязка)."
+  (let ((field-spec `(type ,type
+                        :signed ,(if signed #t #f)
+                        :array-size ,array-size
+                        :name ,(or name (gensym "field_"))
+                        :offset ,offset)))
+    
+    (if *current-label*
+        ;; Если есть текущая метка, регистрируем сразу
+        `(x-register-element 'field
+           (list 'label ,*current-label*
+                 ,@field-spec))
+        ;; Иначе добавляем в очередь
+        `(begin
+           (set! *pending-fields* 
+                 (cons ',field-spec *pending-fields*))
+           #f))))
+
+;; ============================================================================
+;; STRUCTURES
+;; ============================================================================
+
+(desmacro x-begin-struct (name &key size fields)
+  "Начинает определение структуры."
+  `(begin
+     (push! *context-stack* (list 'struct ,name))
+     (x-register-element 'struct-begin
+       (list 'name ',name
+             :size ,size
+             :fields ,fields))))
+
+(desmacro x-end-struct ()
+  "Заканчивает определение структуры."
+  (let ((ctx (pop! *context-stack*)))
+    (unless (eq? (car ctx) 'struct)
+      (ferror "x-end-struct called without matching x-begin-struct"))
+    
+    `(x-register-element 'struct-end
+       (list 'name ',(cadr ctx)))))
+
+(desmacro x-struct (name &key fields)
+  "Краткая форма определения структуры."
+  `(x-register-element 'struct
+     (list 'name ',name
+           :fields ',fields)))
+
+;; ============================================================================
+;; FUNCTIONS AND METHODS
+;; ============================================================================
+
+(desmacro x-func (name &key args return desc (wrapper 'fastcall))
+  "Определяет функцию."
+  (let ((func-name (if (symbol? name) name *current-label*)))
+    (unless func-name
+      (ferror "x-func requires either name argument or label binding"))
+    
+    `(x-register-element 'function
+       (list 'name ',func-name
+             :args ',args
+             :return ',return
+             :desc ,desc
+             :wrapper ',wrapper))))
+
+(desmacro x-method (name &key args return desc)
+  "Определяет метод VTable (частный случай функции)."
+  `(x-register-element 'method
+     (list 'name ',name
+           :args ',args
+           :return ',return
+           :desc ,desc)))
+
+;; ============================================================================
+;; VTABLE MANAGEMENT (BIOS SPECIFIC)
+;; ============================================================================
+
+(define *current-vtable* #f)
+(define *vtable-methods* '())
+
+(desmacro x-begin-vtable (name &key size type (mandatory-methods #t))
+  "Начинает определение VTable."
+  `(begin
+     (set! *current-vtable* ',name)
+     (set! *vtable-methods* '())
+     (push! *context-stack* (list 'vtable ,name))
+     (x-register-element 'vtable-begin
+       (list 'name ',name
+             :size ,size
+             :type ',type
+             :mandatory-methods ,mandatory-methods))))
+
+(desmacro x-vtable-method (name &key target)
+  "Добавляет метод в текущую VTable."
+  `(begin
+     (unless *current-vtable*
+       (ferror "x-vtable-method called outside of vtable context"))
+     
+     (push! *vtable-methods* (list ',name ',target))
+     (x-register-element 'vtable-method
+       (list 'vtable ,*current-vtable*
+             'method ',name
+             :target ',target))))
+
+(desmacro x-end-vtable ()
+  "Заканчивает определение VTable."
+  (let ((ctx (pop! *context-stack*)))
+    (unless (eq? (car ctx) 'vtable)
+      (ferror "x-end-vtable called without matching x-begin-vtable"))
+    
+    `(x-register-element 'vtable-end
+       (list 'name ',(cadr ctx)
+             :methods ,*vtable-methods*))))
+
+;; ============================================================================
+;; ENUMERATIONS
+;; ============================================================================
+
+(desmacro x-enum (name &key values type (default-type 'int))
+  "Определяет перечисление."
+  `(x-register-element 'enum
+     (list 'name ',name
+           :values ',values
+           :type ',(or type default-type))))
+
+;; ============================================================================
+;; EVENTS (BIOS COMMANDS)
+;; ============================================================================
+
+(desmacro x-event (name &key via command args return)
+  "Определяет событие/команду BIOS."
+  `(x-register-element 'event
+     (list 'name ',name
+           :via ',via
+           :command ,command
+           :args ',args
+           :return ',return)))
+
+;; ============================================================================
+;; MODULE AND EXPORT DIRECTIVES
+;; ============================================================================
+
+(define *exports* '())
+
+(desmacro x-module (name)
+  "Определяет имя модуля."
+  `(x-register-element 'module
+     (list 'name ,name)))
+
+(desmacro x-export-h (path)
+  "Добавляет экспорт C заголовочного файла."
+  `(begin
+     (push! *exports* (list 'h ,path))
+     (x-register-element 'export
+       (list 'type 'h
+             :path ,path))))
+
+(desmacro x-export-c (path)
+  "Добавляет экспорт C исходного файла."
+  `(begin
+     (push! *exports* (list 'c ,path))
+     (x-register-element 'export
+       (list 'type 'c
+             :path ,path))))
+
+(desmacro x-export-asm (path)
+  "Добавляет экспорт ASM wrapper файла."
+  `(begin
+     (push! *exports* (list 'asm ,path))
+     (x-register-element 'export
+       (list 'type 'asm
+             :path ,path))))
+
+(desmacro x-export-inc (path)
+  "Добавляет экспорт ASM include файла."
+  `(begin
+     (push! *exports* (list 'inc ,path))
+     (x-register-element 'export
+       (list 'type 'inc
+             :path ,path))))
+
+;; ============================================================================
+;; GENERATION INTERFACE (CALLED FROM C++)
+;; ============================================================================
+
+(desfun xiff-get-targets (source-path)
+  "Возвращает список целей для генерации."
+  (or *exports* (vector)))
+
+(desfun xiff-generate (target-type target-path source-file)
+  "Генерирует контент для указанной цели."
+  (let ((content (make-string-output-stream)))
+    
+    (case target-type
+      ('h (generate-c-header content target-path source-file))
+      ('c (generate-c-source content target-path source-file))
+      ('asm (generate-asm-wrapper content target-path source-file))
+      ('inc (generate-asm-include content target-path source-file))
+      (else (ferror "Unknown target type: {}" target-type)))
+    
+    (get-output-stream-string content)))
+
+;; ============================================================================
+;; GENERATION FUNCTIONS
+;; ============================================================================
+
+(define (generate-c-header out path source)
+  "Генерирует C заголовочный файл."
+  (let ((guard (path->guard-name path)))
+    (fmt out "/* File: {} */\n" path)
+    (fmt out "/* GENERATED BY XIFF v6.0 - DO NOT EDIT MANUALLY */\n")
+    (fmt out "/* Source: {} */\n\n" source)
+    
+    (fmt out "#ifndef {}\n" guard)
+    (fmt out "#define {}\n\n" guard)
+    
+    (fmt out "#include <stdint.h>\n")
+    (fmt out "#include <stdbool.h>\n\n")
+    
+    ;; Генерация контента на основе реестра
+    (generate-header-content out source)
+    
+    (fmt out "\n#endif /* {} */\n" guard)))
+
+(define (generate-header-content out source)
+  "Генерирует содержимое заголовочного файла."
+  (let ((file-data (hash-table-ref *registry* source)))
+    (dolist (item (reverse file-data))  ;; reverse для правильного порядка
+      (let ((type (car item))
+            (data (cadr item)))
+        (case type
+          ('const (generate-const-declaration out data))
+          ('enum (generate-enum-declaration out data))
+          ('struct (generate-struct-declaration out data))
+          ('function (generate-function-declaration out data))
+          ('module (generate-module-prefix out data)))))))
+
+(define (generate-const-declaration out data)
+  "Генерирует объявление константы."
+  (let ((name (assoc-get data 'name))
+        (value (assoc-get data 'value))
+        (type (assoc-get data 'type))
+        (desc (assoc-get data 'desc)))
+    
+    (when desc (fmt out "/* {} */\n" desc))
+    
+    (case type
+      ('uint8_t 'uint16_t 'uint32_t 'int8_t 'int16_t 'int32_t
+       (fmt out "#define {} {}\n" (c-name name) value))
+      (else
+       (fmt out "extern {} {};\n" (type->c-type type) (c-name name))))))
+
+(define (generate-function-declaration out data)
+  "Генерирует объявление функции."
+  (let ((name (assoc-get data 'name))
+        (args (assoc-get data 'args))
+        (return (assoc-get data 'return))
+        (desc (assoc-get data 'desc)))
+    
+    (when desc (fmt out "/* {} */\n" desc))
+    (fmt out "{} {}({});\n\n"
+         (type->c-type return)
+         (c-name name)
+         (args->c-params args))))
+
+;; ============================================================================
+;; UTILITY FUNCTIONS
+;; ============================================================================
+
+(define (path->guard-name path)
+  "Преобразует путь в имя guard макроса."
+  (let ((name (string-upcase 
+               (string-replace (string-replace path "/" "_") "." "_"))))
+    (string->symbol (string-append "_" name "_"))))
+
+(define (c-name asm-name)
+  "Преобразует ASM имя в C имя."
+  (cond
+    ((string-prefix? "__" asm-name)
+     (let ((module (get-current-module)))
+       (string-append module "_" (substring asm-name 2))))
+    ((string-prefix? "_" asm-name)
+     (substring asm-name 1))
+    (else asm-name)))
+
+(define (get-current-module)
+  "Возвращает имя текущего модуля."
+  (let ((file-data (hash-table-ref *registry* *current-file*)))
+    (dolist (item file-data)
+      (when (eq? (car item) 'module)
+        (return (assoc-get (cadr item) 'name))))
+    "unknown"))
+
+(define (type->c-type soot-type)
+  "Преобразует SOOT тип в C тип."
+  (cond
+    ((eq? soot-type 'void) "void")
+    ((eq? soot-type 'bool) "bool")
+    ((eq? soot-type 'uint8_t) "uint8_t")
+    ((eq? soot-type 'int8_t) "int8_t")
+    ((eq? soot-type 'uint16_t) "uint16_t")
+    ((eq? soot-type 'int16_t) "int16_t")
+    ((eq? soot-type 'uint32_t) "uint32_t")
+    ((eq? soot-type 'int32_t) "int32_t")
+    ((string-suffix? "*" (symbol->string soot-type))
+     (symbol->string soot-type))
+    (else (symbol->string soot-type))))
+
+(define (args->c-params args)
+  "Преобразует список аргументов SOOT в список параметров C."
+  (if (null? args)
+      "void"
+      (let ((param-strings '()))
+        (dolist (arg args)
+          (let ((name (car arg))
+                (type (cdr arg)))
+            (push! param-strings 
+                   (string-append (type->c-type type) " " (symbol->string name)))))
+        (string-join param-strings ", "))))
+
+;; ============================================================================
+;; SHORT NAME IMPORT (OPTIONAL CONVENIENCE)
+;; ============================================================================
+
+(module xiff/short
+  (export const field func struct begin-vtable end-vtable 
+          vtable-method module export-h export-c export-asm export-inc
+          begin-struct end-struct enum method event))
+
+;; Re-export всех x- функций без префикса
+(desmacro const args `(x-const ,@args))
+(desmacro field args `(x-field ,@args))
+(desmacro func args `(x-func ,@args))
+(desmacro struct args `(x-struct ,@args))
+(desmacro begin-vtable args `(x-begin-vtable ,@args))
+(desmacro end-vtable args `(x-end-vtable ,@args))
+(desmacro vtable-method args `(x-vtable-method ,@args))
+(desmacro module args `(x-module ,@args))
+(desmacro export-h args `(x-export-h ,@args))
+(desmacro export-c args `(x-export-c ,@args))
+(desmacro export-asm args `(x-export-asm ,@args))
+(desmacro export-inc args `(x-export-inc ,@args))
+(desmacro begin-struct args `(x-begin-struct ,@args))
+(desmacro end-struct args `(x-end-struct ,@args))
+(desmacro enum args `(x-enum ,@args))
+(desmacro method args `(x-method ,@args))
+(desmacro event args `(x-event ,@args))
+
+;; ============================================================================
+;; INITIALIZATION
+;; ============================================================================
+
+(fmt #t "[INFO] XIFF Core v6.0 loaded\n")
+(fmt #t "[INFO] Use (using 'xiff/short) for short names\n")
+
+;; Готово!
+#t

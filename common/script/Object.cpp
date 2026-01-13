@@ -161,6 +161,7 @@ namespace script
         case ObjectType::PAIR:
         case ObjectType::ARRAY:
         case ObjectType::ENVIRONMENT:
+        case ObjectType::STRING_HASH_TABLE:
             return heap_obj ? heap_obj->print() : "[invalid]";
         default:
             return "[unknown]";
@@ -185,6 +186,7 @@ namespace script
         case ObjectType::PAIR:
         case ObjectType::ARRAY:
         case ObjectType::ENVIRONMENT:
+        case ObjectType::STRING_HASH_TABLE:
             return heap_obj ? heap_obj->inspect() : "[invalid]";
         default:
             return "[unknown]";

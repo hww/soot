@@ -1,5 +1,6 @@
 #include "common/repl/ReplWrapper.hpp"
 #include "common/util/Log.hpp"
+#include "common/util/FileUtil.hpp"
 #include "common/versions/revision.h"
 #include "common/script/Object.hpp"
 #include <iostream>
@@ -9,30 +10,6 @@
 #include "common/versions/version.h"
 
 namespace fs = std::filesystem;
-
-// ============================================================
-// Utilities
-// ============================================================
-
-std::string get_config_dir() {
-#ifdef _WIN32
-    return std::string(std::getenv("APPDATA")) + "/soot";
-#else
-    const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
-    if (xdg_config) return std::string(xdg_config) + "/soot";
-    return std::string(std::getenv("HOME")) + "/.config/soot";
-#endif
-}
-
-std::string get_cache_dir() {
-#ifdef _WIN32
-    return get_config_dir() + "/cache";
-#else
-    const char* xdg_cache = std::getenv("XDG_CACHE_HOME");
-    if (xdg_cache) return std::string(xdg_cache) + "/soot";
-    return std::string(std::getenv("HOME")) + "/.cache/soot";
-#endif
-}
 
 // ============================================================
 // Constructor/Destructor
@@ -365,13 +342,14 @@ void ReplWrapper::setup_keybinds() {
 // ============================================================
 
 void ReplWrapper::load_history() {
-    fs::path cache_path = get_cache_dir();
+    fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
     fs::create_directories(cache_path); // Автоматическое создание папки
     repl.history_load((cache_path / "history").string());
 }
 
 void ReplWrapper::save_history() {
-    repl.history_save((fs::path(get_cache_dir()) / "history").string());
+    fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
+    repl.history_save((fs::path(cache_path) / "history").string());
 }
 
 void ReplWrapper::add_to_history(const std::string& line) {
@@ -486,32 +464,16 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
 // Files
 // ============================================================
 
-// Универсальный поиск: Проект -> Пользователь -> Система
-std::string ReplWrapper::find_file(const std::string& name) {
-    // 1. Текущая папка проекта
-    if (fs::exists(name)) return name;
-
-    // 2. Домашняя папка пользователя
-    fs::path user_path = fs::path(get_config_dir()) / name;
-    if (fs::exists(user_path)) return user_path.string();
-
-    // 3. Глобальная папка (установленная через make install)
-    fs::path sys_path = fs::path("/usr/local/share/soot") / name;
-    if (fs::exists(sys_path)) return sys_path.string();
-
-    return ""; 
-}
-
 void ReplWrapper::load_startup_files() {
     
-    std::string lib_path = find_file("lib.sot");
+    std::string lib_path = file_util::find_config_file("lib.sot");
     if (!lib_path.empty()) {
         execute_line(fmt::format("(load-file \"{}\")", lib_path));
     }
 
     // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
     // Ищем везде, где может лежать startup-pre.gc
-    std::string pre_path = find_file("startup-pre.sot");
+    std::string pre_path = file_util::find_config_file("startup-pre.sot");
     if (!pre_path.empty()) {
         lg::info("Loading pre-startup: {}", pre_path);
         load_and_execute(pre_path);
@@ -519,7 +481,7 @@ void ReplWrapper::load_startup_files() {
 
     // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
     if (config_.enable_network && network_running_) {
-        std::string post_path = find_file("startup-post.sot");
+        std::string post_path = file_util::find_config_file("startup-post.sot");
         if (!post_path.empty()) {
             lg::info("Loading post-startup: {}", post_path);
             load_and_execute(post_path);
@@ -557,7 +519,7 @@ void ReplWrapper::execute_startup_commands(const std::vector<std::string>& comma
 
 void ReplWrapper::load_config(const std::string& filename) {
     // 1. Пытаемся найти полный путь к конфигу
-    std::string actual_path = find_file(filename);
+    std::string actual_path = file_util::find_config_file(filename);
 
     // 2. Если файл не найден ни в одной из локаций
     if (actual_path.empty()) {
