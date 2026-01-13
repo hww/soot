@@ -66,24 +66,6 @@ soot --version
 docker build -t soot .
 docker run -it soot
 ```
-
----
-
-## 📁 Project Structure
-
-```
-soot/
-├── src/
-│   ├── core/          # Carbon VM core
-│   ├── compiler/      # SOT to SOC compiler
-│   ├── interpreter/   # sooti headless interpreter
-│   └── repl/         # soot interactive shell
-├── include/          # Public headers
-├── common/script/    # Standard library
-├── examples/         # Example scripts
-└── tests/           # Test suite
-```
-
 ---
 
 ## 📚 Usage Examples
@@ -96,24 +78,6 @@ soot
 # Execute a script
 soot script.sot
 
-# Compile to bytecode
-soot --compile script.sot -o script.soc
-
-# Execute bytecode
-soot script.soc
-```
-
-### Embedding in C++ Application
-```cpp
-#include <sooti/sooti.h>
-
-int main() {
-    sooti::VM vm;
-    vm.load_script("config.sot");
-    auto result = vm.eval("(+ 1 2 3)");
-    std::cout << result << std::endl;
-    return 0;
-}
 ```
 
 ### Remote Development (nREPL)
