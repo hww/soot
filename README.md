@@ -192,11 +192,8 @@ git push origin feature/amazing-feature
 
 ## 📖 Documentation
 
-- **[Language Reference](docs/language-reference.md)** - Complete SOT language specification
-- **[API Documentation](docs/api.md)** - Detailed API reference
-- **[Embedding Guide](docs/embedding.md)** - Integrating SOOT into applications
-- **[Performance Guide](docs/performance.md)** - Optimization techniques
-- **[Tutorials](docs/tutorials/)** - Step-by-step guides
+- 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
+- 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
 
 ---
 
@@ -259,7 +256,3 @@ Permission is hereby granted...
 
 **Star this repo if you find SOOT useful!** ⭐
 
-### Documentation
-
-- 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
-- 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
