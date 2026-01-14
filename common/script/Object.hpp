@@ -624,11 +624,24 @@ namespace script
         HashTableObject() = default;
 
         std::string print() const override {
-            return "#<hash-table>";
+            std::string result = "{";
+            for (const auto& kv : data) {
+            result += '(';
+            result += kv.first;
+            result += ' ';
+            result += kv.second.print();
+            result += ')';
+            result += ' ';
+            }
+            if (!data.empty()) {
+            result.pop_back();
+            }
+            result += '}';
+            return result;
         }
 
         std::string inspect() const override {
-            return "[hash-table size=" + std::to_string(data.size()) + "]";
+            return "[hash-table] kind: string, data: " + print() + "\n";
         }
     };
 

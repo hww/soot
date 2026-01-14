@@ -61,6 +61,6 @@ std::string XiffInjector::get_comment_prefix(const fs::path& file) {
     if (ext == ".asm" || ext == ".s" || ext == ".inc") {
         return ";";
     }
-    // По умолчанию C-style ( .h, .cpp, .c, .gs, .sot )
+    // По умолчанию C-style ( .h, .cpp, .c, .sot )
     return "//";
 }

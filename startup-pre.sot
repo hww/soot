@@ -1,5 +1,5 @@
 ﻿; Startup commands that run before network
-(print "Loading SOOT Lisp REPL pre...")
 ; Define useful variables
 (define debug-mode #t)
 (define version "1.0.0")
+(fmt #t "Startup Pre : Network services initialized\n")
