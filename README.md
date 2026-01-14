@@ -23,7 +23,19 @@ The system is divided into two distinct layers to separate high-level logic from
 
 ![REPL Screenshot](/docs/screens/repl.png)
 
----
+### "Why SOOT?" Section
+
+Since this is for constrained hardware, adding a small "Design Goals" list can help users understand your philosophy:
+
+    Zero-Dependency Core: Minimal external requirements.
+
+    Memory Efficiency: Tailored for MCUs and DSPs.
+
+    Developer-Centric: Built-in REPL for rapid hardware prototyping.
+
+### Carbon Status
+
+You’ve noted that the Carbon Compiler is in development. You might want to add a tiny "Roadmap" bullet point at the bottom to show what's coming next (e.g., "JIT support for Carbon VM" or "C++ FFI").
 
 ### Integrated Workflow
 
@@ -36,7 +48,7 @@ SOOT provides a unified interface for the entire development lifecycle:
 
 ---
 
-## Key Features
+## ✨ Key Features
 
 | Feature                | Description                                                                          |
 |------------------------|--------------------------------------------------------------------------------------|
@@ -74,7 +86,7 @@ soot --version
 
 ---
 
-## Usage Guide
+## 📚 Usage Guide
 
 SOOT provides a unified interface for scripting, project management, and interactive debugging.
 
@@ -109,7 +121,6 @@ bash> soot --network
 
 # Start server on a custom port
 bash> soot --network 9090
-
 ```
 
 #### 3. Script Execution & Project Management
@@ -122,10 +133,7 @@ bash> soot --script build.lisp
 
 # Run with a defined project context
 bash> soot --project ./my_mcu_project --script deploy.lisp
-
 ```
-
----
 
 ### Technical Note: Project Context
 
@@ -133,9 +141,9 @@ The `--project` flag is a key feature for your automation workflow. It sets the 
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-### User Configuration (`~/.config/soot/config.sot`)
+User Configuration (`~/.config/soot/config.sot`)
 
 ```lisp
 ;; -- Global configuration ----------------------
@@ -154,13 +162,13 @@ The `--project` flag is a key feature for your automation workflow. It sets the 
 (setenv "SOOT_PATH" "/usr/local/share/soot")
 ```
 
-## Core Library & Platform Adaptation
+## 📦 Core Library & Platform Adaptation
 
 SOOT includes a minimal Standard Library located at /usr/local/share/soot/lib.sot. This library is automatically loaded to provide essential definitions and to handle cross-platform hardware abstractions.
 
 * 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
 
-## Configuration Paths and Files
+## 📁 Configuration Paths and Files
 
 SOOT follows modern standards (such as XDG) to ensure portability and clean organization across different operating systems.
 
@@ -184,11 +192,9 @@ The `find_config_file()` function resolves file locations using the following pr
 2. **User Level:** `CONFIG_PATH/filename`
 3. **System Level:** `SHARE_PATH/filename` (Fallback)
 
----
-
 ### Core Configuration Files
 
-#### 1. Main Configuration (`config.sot`)
+**1. Main Configuration (`config.sot`)**
 
 Defines the global behavior of the REPL and environment:
 
@@ -196,18 +202,16 @@ Defines the global behavior of the REPL and environment:
 * **Prompt:** Customizable REPL interface string.
 * **Keybinds:** Custom keyboard shortcuts.
 
-#### 2. Startup Sequence
+**1. Startup Sequence**
 
 SOOT executes a two-stage initialization process:
 
 * **Startup-Pre (`startup-pre.sot`):** Executed *before* network initialization. Used for environment setup and loading base libraries.
 * **Startup-Post (`startup-post.sot`):** Executed only if the Network REPL starts successfully. Used for post-connection logic and extended networking settings.
 
-#### 3. Standard Library (`lib.sot`)
+**3. Standard Library (`lib.sot`)**
 
 Loaded automatically during the boot process (after `startup-pre.sot`) to provide the standard Lisp functional core.
-
----
 
 ### Syntax and Customization
 
@@ -248,11 +252,11 @@ SOOT respects the following environment variables:
 
 **Note:** The **Cache** folder is created automatically when the history is loaded. Other directories are verified during search but are not created by the system to maintain a minimal footprint.
 
-## Contributing
+## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
-### Development Workflow
+## 🌿 Development Workflow
 
 ```bash
 # 1. Fork and clone
@@ -271,7 +275,7 @@ git push origin feature/amazing-feature
 # 5. Create Pull Request
 ```
 
-### Code Style
+## 🎯 Code Style
 
 * Follow [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)
 * Use `clang-format` for formatting
@@ -279,14 +283,14 @@ git push origin feature/amazing-feature
 
 ---
 
-## Other Documentation
+## 📖 Other Documentation
 
-* 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
-* 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
+* [SOOT Script Language - Quick Reference](common/script/README.md)
+* [SOOT Common Library Documentation](common/script/README.LIB.md)
 
 ---
 
-## License
+## 📄 License
 
 SOOT is released under the **MIT License**. See [LICENSE](LICENSE) for details.
 
