@@ -22,13 +22,79 @@ namespace lg {
 	};
 #endif
 
+	/**
+	 * 📊 Уровни логирования SOOT
+	 * Каждый уровень включает все предыдущие
+	 */
 	enum class level {
+		/**
+		 * 🕵️‍♂️ TRACE (0) - Максимальная детализация
+		 * • Каждое выражение и вызов функции
+		 * • Для отладки ядра и сложных багов
+		 * • Может замедлять работу
+		 */
 		trace = 0,
+
+		/**
+		 * 🔍 DEBUG (1) - Отладочная информация
+		 * • Состояния объектов, переменных
+		 * • Загрузка файлов, парсинг
+		 * • Сетевые соединения
+		 * • Для разработчиков
+		 */
 		debug = 1,
+
+		/**
+		 * 📋 INFO (2) - Информационные сообщения
+		 * • Старт/остановка сервисов
+		 * • Загрузка конфигурации
+		 * • Пользовательские операции
+		 * • Для мониторинга работы
+		 */
 		info = 2,
+
+		/**
+		 * ⚠️ WARN (3) - Предупреждения
+		 * • Нестандартные ситуации
+		 * • Устаревшие функции
+		 * • Возможные проблемы
+		 * • Работа продолжается
+		 */
 		warn = 3,
+
+		/**
+		 * ❌ ERROR (4) - Ошибки выполнения
+		 * • Неудачные операции
+		 * • Невалидный ввод
+		 * • Проблемы с IO
+		 * • Требует внимания
+		 */
 		error = 4,
-		die = 5
+
+		/**
+		 * 💀 DIE (5) - Критические ошибки
+		 * • Неисправимые состояния
+		 * • Коррупция памяти
+		 * • Аварийное завершение
+		 * • После лога вызывает abort()
+		 */
+		die = 5,
+
+		/**
+		 * 🔇 OFF (6) - Полное отключение
+		 * • Никаких логов
+		 * • Максимальная производительность
+		 * • Для production без отладки
+		 */
+		off = 6,
+
+		/**
+		 * 🚨 OFF_UNLESS_DIE (7) - Тихий режим
+		 * • Логирует только DIE
+		 * • Для production с мониторингом
+		 * • Тихий, но спасёт при катастрофе
+		 */
+		off_unless_die = 7
 	};
 
 	namespace internal {
@@ -85,15 +151,16 @@ namespace lg {
 		log(level::die, format, std::forward<Args>(args)...);
 	}
 
+	void log_print(const char* message);
 
 	template <typename... Args>
 	void print(const std::string& format, Args&&... args) {
 		std::string formatted_message = fmt::format(fmt::runtime(format), std::forward<Args>(args)...);
-		log(level::info, formatted_message.c_str());
+		log_print(formatted_message.c_str());
 	}
 	template <typename... Args>
 	void print(const fmt::text_style& ts, const std::string& format, Args&&... args) {
 		std::string formatted_message = fmt::vformat(ts, format, fmt::make_format_args(args...));
-		log(level::info, formatted_message.c_str());
+		log_print(formatted_message.c_str());
 	}
 }  // namespace lg

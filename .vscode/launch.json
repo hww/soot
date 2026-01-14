@@ -5,7 +5,7 @@
       "name": "Debug SOOT",
       "type": "cppdbg",
       "request": "launch",
-      "program": "soot",
+      "program": "${workspaceFolder}/build/bin/soot",
       "args": [],
       "cwd": "${workspaceFolder}",
       "environment": [],
@@ -22,13 +22,13 @@
       "preLaunchTask": "Build",
       "stopAtEntry": false,  // Остановиться при входе в main
     },
-        {
-      "name": "Debug System SOOT",
+    {
+      "name": "Debug SOOT (HOME)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
       "args": [],
-      "cwd": "${workspaceFolder}",
+      "cwd": "/home/valery",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",

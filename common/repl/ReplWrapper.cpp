@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 // ============================================================
 
 ReplWrapper::ReplWrapper(const std::string& username)
-    : username(username), interpreter_(username), reader() {
+    : username_(username), interpreter_(username), reader_(), loaded_files_(8) {
     init_settings();
     // Загружаем конфиг (клавиши, порты)
     load_config("config.sot");  
@@ -31,21 +31,21 @@ ReplWrapper::~ReplWrapper() {
 // ============================================================
 
 void ReplWrapper::init_settings() {
-    repl.set_word_break_characters(" \t");
-    repl.set_max_history_size(1000);
+    repl_.set_word_break_characters(" \t");
+    repl_.set_max_history_size(1000);
     
-    repl.set_complete_on_empty(false);
-    repl.set_indent_multiline(true);
-    repl.set_beep_on_ambiguous_completion(false);
-    repl.set_no_color(false);
+    repl_.set_complete_on_empty(false);
+    repl_.set_indent_multiline(true);
+    repl_.set_beep_on_ambiguous_completion(false);
+    repl_.set_no_color(false);
 
     // Настраиваем автодополнение - правильные типы
-    repl.set_completion_callback([this](const std::string& input, int& context_len) -> replxx::Replxx::completions_t {
+    repl_.set_completion_callback([this](const std::string& input, int& context_len) -> replxx::Replxx::completions_t {
         return get_completions(input, context_len);
         });
 
     // Настраиваем подсказки - правильные типы
-    repl.set_hint_callback([this](const std::string& input, int& context_len, replxx::Replxx::Color& color) -> replxx::Replxx::hints_t {
+    repl_.set_hint_callback([this](const std::string& input, int& context_len, replxx::Replxx::Color& color) -> replxx::Replxx::hints_t {
         color = replxx::Replxx::Color::GREEN;
         return get_hints(input, context_len, color);
         });
@@ -144,16 +144,21 @@ void ReplWrapper::execute_line(const std::string& line) {
         fmt::print("Completion check: {}\n", check_completion_ ? "ON" : "OFF");
         return;
     }
+    execute_line_internal(line, true);
+}
 
+void ReplWrapper::execute_line_internal(const std::string& line, bool print_result) {
     // Выполнение Lisp кода (только если не built-in команда)
     try {
         auto result = interpreter_.eval_string(line,"repl");
-        fmt::print(fg(fmt::color::green), "=> {}\n", result.print());
+        if (print_result) 
+            fmt::print(fg(fmt::color::green), "=> {}\n", result.print());
     }
     catch (const std::exception& e) {
         fmt::print(fg(fmt::color::red), "Error: {}\n", e.what());
     }
 }
+
 
 void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects) {
 // Используем "графитовый" или стальной цвет для рамок
@@ -217,7 +222,7 @@ void ReplWrapper::print_keybind_help() {
 }
 
 void ReplWrapper::clear_screen() {
-    repl.clear_screen();
+    repl_.clear_screen();
     print_welcome({ "core", "stdlib" }); 
 }
 
@@ -244,7 +249,7 @@ replxx::Replxx::completions_t ReplWrapper::get_completions(
     }
 
     // 2. История команд (только если начинается с введённого текста)
-    auto scan = repl.history_scan();
+    auto scan = repl_.history_scan();
 
     while (scan.next()) {
         auto entry = scan.get();
@@ -310,30 +315,30 @@ void ReplWrapper::setup_keybinds() {
         }
 
         if (key_code != 0) {
-            repl.bind_key(key_code, [this, command = bind.command](char32_t code) {
-                repl.set_state(replxx::Replxx::State(
+            repl_.bind_key(key_code, [this, command = bind.command](char32_t code) {
+                repl_.set_state(replxx::Replxx::State(
                     command.c_str(),
                     static_cast<int>(command.size())
                 ));
-                return repl.invoke(replxx::Replxx::ACTION::COMMIT_LINE, code);
+                return repl_.invoke(replxx::Replxx::ACTION::COMMIT_LINE, code);
                 });
         }
     }
 
     // Системные hotkeys (не конфликтуют с нашими)
-    repl.bind_key(replxx::Replxx::KEY::control('L'), [this](char32_t) {
+    repl_.bind_key(replxx::Replxx::KEY::control('L'), [this](char32_t) {
         clear_screen();
-        return repl.invoke(replxx::Replxx::ACTION::CLEAR_SCREEN, 0);
+        return repl_.invoke(replxx::Replxx::ACTION::CLEAR_SCREEN, 0);
         });
 
-    repl.bind_key(replxx::Replxx::KEY::control('R'), [this](char32_t) {
-        return repl.invoke(replxx::Replxx::ACTION::HISTORY_INCREMENTAL_SEARCH, 0);
+    repl_.bind_key(replxx::Replxx::KEY::control('R'), [this](char32_t) {
+        return repl_.invoke(replxx::Replxx::ACTION::HISTORY_INCREMENTAL_SEARCH, 0);
         });
 
     // CTRL+D - сразу выход
-    repl.bind_key(replxx::Replxx::KEY::control('D'), [this](char32_t) {
+    repl_.bind_key(replxx::Replxx::KEY::control('D'), [this](char32_t) {
         should_exit_ = true;
-        return repl.invoke(replxx::Replxx::ACTION::COMMIT_LINE, 0);
+        return repl_.invoke(replxx::Replxx::ACTION::COMMIT_LINE, 0);
         });
 }
 
@@ -344,20 +349,20 @@ void ReplWrapper::setup_keybinds() {
 void ReplWrapper::load_history() {
     fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
     fs::create_directories(cache_path); // Автоматическое создание папки
-    repl.history_load((cache_path / "history").string());
+    repl_.history_load((cache_path / "history").string());
 }
 
 void ReplWrapper::save_history() {
     fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
-    repl.history_save((fs::path(cache_path) / "history").string());
+    repl_.history_save((fs::path(cache_path) / "history").string());
 }
 
 void ReplWrapper::add_to_history(const std::string& line) {
-    repl.history_add(line);
+    repl_.history_add(line);
 }
 
 void ReplWrapper::show_history() {
-    int history_size = repl.history_size();
+    int history_size = repl_.history_size();
 
     if (history_size == 0) {
         fmt::print("No command history\n");
@@ -367,7 +372,7 @@ void ReplWrapper::show_history() {
     fmt::print("Command history (last {} commands):\n", history_size);
 
     // Используем HistoryScan для доступа к истории
-    auto scan = repl.history_scan();
+    auto scan = repl_.history_scan();
     int index = 1;
 
     while (scan.next()) {
@@ -468,15 +473,17 @@ void ReplWrapper::load_startup_files() {
     
     std::string lib_path = file_util::find_config_file("lib.sot");
     if (!lib_path.empty()) {
-        execute_line(fmt::format("(load-file \"{}\")", lib_path));
+        fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", lib_path);
+        execute_line_internal(fmt::format("(load-file \"{}\")", lib_path), false);
     }
 
     // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
     // Ищем везде, где может лежать startup-pre.gc
     std::string pre_path = file_util::find_config_file("startup-pre.sot");
     if (!pre_path.empty()) {
-        lg::info("Loading pre-startup: {}", pre_path);
-        load_and_execute(pre_path);
+        //lg::info("Loading pre-startup: {}", pre_path);
+        fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", pre_path);
+        execute_line_internal(fmt::format("(load-file \"{}\")", pre_path), false);
     }
 
     // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
@@ -484,21 +491,10 @@ void ReplWrapper::load_startup_files() {
         std::string post_path = file_util::find_config_file("startup-post.sot");
         if (!post_path.empty()) {
             lg::info("Loading post-startup: {}", post_path);
-            load_and_execute(post_path);
+            fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", post_path);
+            execute_line_internal(fmt::format("(load-file \"{}\")", post_path), false);
         }
     }
-}
-// Вспомогательный метод для чтения и выполнения
-void ReplWrapper::load_and_execute(const std::string& path) {
-    std::ifstream file(path);
-    std::string line;
-    std::vector<std::string> commands;
-    while (std::getline(file, line)) {
-        if (!line.empty() && line[0] != ';') {
-            commands.push_back(line);
-        }
-    }
-    execute_startup_commands(commands);
 }
 
 void ReplWrapper::execute_startup_commands(const std::vector<std::string>& commands) {
@@ -532,7 +528,7 @@ void ReplWrapper::load_config(const std::string& filename) {
     try {
         // 3. Читаем уже по найденному реальному пути
         // Используем actual_path вместо filename
-        auto config_data = reader.read_from_file({ actual_path }, true, false);
+        auto config_data = reader_.read_from_file({ actual_path }, true, false);
         parse_config_data(config_data);
         
         fmt::print(fg(fmt::color::gray), "✓ Loaded config from: {}\n", actual_path);
@@ -629,11 +625,11 @@ std::string ReplWrapper::read_multiline_simple() {
     while (true) {
         const char* input;
         if (first_line) {
-            input = repl.input("soot> ");
+            input = repl_.input("soot> ");
             first_line = false;
         }
         else {
-            input = repl.input("... ");
+            input = repl_.input("... ");
         }
 
         if (!input) break; // EOF
@@ -667,11 +663,11 @@ std::string ReplWrapper::read_multiline_with_check() {
     while (true) {
         const char* input;
         if (first_line) {
-            input = repl.input("soot> ");
+            input = repl_.input("soot> ");
             first_line = false;
         }
         else {
-            input = repl.input("... ");
+            input = repl_.input("... ");
         }
 
         if (!input) break; // EOF
@@ -685,7 +681,7 @@ std::string ReplWrapper::read_multiline_with_check() {
         result += line;
 
         // Проверяем, завершено ли выражение
-        if (reader.is_expression_complete(result)) {
+        if (reader_.is_expression_complete(result)) {
             break;
         }
 
@@ -707,7 +703,7 @@ void ReplWrapper::inspect_top_env()
 }
 
 void ReplWrapper::inspect_text_db() {
-    auto& db = reader.get_db();
+    auto& db = reader_.get_db();
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold,
         "=== Text Database ===\n");
@@ -728,7 +724,7 @@ void ReplWrapper::inspect_text_db() {
 }
 
 void ReplWrapper::inspect_symbol_table() {
-    auto& st = reader.get_symbol_table();
+    auto& st = reader_.get_symbol_table();
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold,
         "=== Symbol Table ===\n");

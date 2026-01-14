@@ -60,14 +60,15 @@ public:
     void inspect_symbol_table();
 private:
     void init_settings();
-    void execute_line(const std::string& line);
     void setup_keybinds();
     void network_server_worker(int port);
     void load_startup_files();
-    void load_and_execute(const std::string& path) ;
-    void execute_startup_commands(const std::vector<std::string>& commands);
     void show_history();
     void inspect_top_env();
+
+    void execute_line(const std::string& line);
+    void execute_line_internal(const std::string& line, bool verbose) ;
+    void execute_startup_commands(const std::vector<std::string>& commands);
 
     std::string get_current_repl_token(const std::string& context);
     
@@ -80,15 +81,18 @@ private:
 
     std::unique_ptr<ReplServer> network_server_;
     std::thread network_thread_;
-    std::atomic<bool> network_running_{ false };
-    replxx::Replxx repl;
-    Config config_;
-    std::vector<KeyBind> keybinds_;  // Исправляем KeyBinds на vector<KeyBind>
+    std::atomic<bool> network_running_ { false };
+    replxx::Replxx repl_;
     script::Interpreter interpreter_;
-    script::Reader reader;
-    std::string username;
-    bool nrepl_alive = false;
+    script::Reader reader_;
+    std::vector<KeyBind> keybinds_;  // Исправляем KeyBinds на vector<KeyBind>
+    std::string username_;
     std::atomic<bool> should_exit_{ false };
+    std::vector<std::string> loaded_files_;
+
+    Config config_;
+
+    bool nrepl_alive_ = false;
     bool multi_line_enabled_ = true;  // Можно сделать настраиваемым
     bool check_completion_ = true;    // Проверять завершенность выражений
 };

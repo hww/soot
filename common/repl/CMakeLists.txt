@@ -53,3 +53,9 @@ install(FILES
     startup-post.sot
     DESTINATION ${SOOT_SHARE_DIR}/skeletons
 )
+install(FILES 
+    config.sot 
+    startup-pre.sot 
+    startup-post.sot
+    DESTINATION ${SOOT_SHARE_DIR}
+)

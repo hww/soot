@@ -32,7 +32,7 @@ namespace lg {
 
     namespace internal {
 
-        const char* log_level_names[] = { "trace", "debug", "info", "warn", "error", "die" };
+        const char* log_level_names[] = { "trace", "debug", "info", "warn", "error", "die", "off", "off_unless_die" };
         const fmt::color log_colors[] = {
             fmt::color::gray, fmt::color::cyan, fmt::color::green,
             fmt::color::yellow, fmt::color::red, fmt::color::purple
@@ -85,6 +85,28 @@ namespace lg {
         }
 
     }  // namespace internal
+
+    void log_print(const char* message) {
+        // Мы всегда немедленно флашим вывод, так как без уровня логирования
+        // это может быть что угодно - от фатальной ошибки до отладочного сообщения
+        std::lock_guard<std::mutex> lock(gLogger.mutex);
+        
+        if (gLogger.fp) {
+            // Логируем в файл
+            std::string msg(message);
+            fwrite(msg.c_str(), msg.length(), 1, gLogger.fp);
+            fflush(gLogger.fp);
+        }
+
+        // Исправляем проверку: off_unless_die - это специальный уровень,
+        // который выключает всё кроме die
+        if (gLogger.stdout_log_level != level::off && 
+            gLogger.stdout_log_level != level::off_unless_die) {
+            fmt::print("{}", message);
+            fflush(stdout);
+            fflush(stderr);
+        }
+    }
 
     // Упрощенная ротация логов - максимум 10 файлов
     void set_file(const std::string& filename, bool should_rotate, bool append) {

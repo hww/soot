@@ -297,7 +297,7 @@ Object Interpreter::intern(const std::string& name) {
 }
 
 void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
-    throw std::runtime_error("Evaluation error on `" + o.print() + "`: " + err + "\n" +
+    throw std::runtime_error("[SOOT] Evaluation error on `" + o.print() + "`: " + err + "\n" +
         reader.get_db().get_info_for(o));
 }
 

@@ -2,6 +2,7 @@
 #include "common/util/FileUtil.hpp"
 #include <fstream>
 #include <regex>
+#include "common/util/Log.hpp"
 
 namespace file_util {
 
@@ -175,16 +176,33 @@ namespace file_util {
 
     fs::path detect_project_root(fs::path start_from) {
         fs::path current = fs::absolute(start_from);
-        while (current.has_parent_path()) {
+        
+        // Защита от бесконечного цикла
+        const size_t MAX_ITERATIONS = 100;
+        size_t iterations = 0;
+        
+        while (current.has_parent_path() && iterations < MAX_ITERATIONS) {
             // Маркеры корня проекта
             if (fs::exists(current / "project.sot") || 
                 fs::exists(current / ".soot-root") ||
                 fs::exists(current / ".git")) {
                 return current;
             }
-            current = current.parent_path();
+            
+            fs::path parent = current.parent_path();
+            
+            // Если достигли корневой директории (например, "/" или "C:\")
+            if (parent == current) {
+                break;
+            }
+            
+            current = parent;
+            iterations++;
         }
-        return fs::current_path(); // fallback
+        
+        // Fallback с логированием
+        lg::debug("Project root not found, falling back to: {}", fs::current_path().string());
+        return fs::current_path();
     }
 
     fs::path get_path(PathType type) {
