@@ -8,43 +8,54 @@
 ![Build](https://github.com/your-username/soot/actions/workflows/build.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
 
-**SOOT** is an embeddable Lisp interpreter and Virtual Machine designed for automation toolkits on constrained hardware (CPUs, MCUs, DSPs). Engineered with modern C++ for performance, it bridges the gap between lightweight execution and professional development.
+## SOOT & Carbon: A Tiered Ecosystem for Embedded Automation
+
+**SOOT** is an embeddable Lisp interpreter, inherited from **GOOS** and engineered with modern C++, designed to orchestrate automation toolkits for constrained hardware (CPUs, MCUs, DSPs). It serves as the high-level control center, bridging the gap between raw source code and final deployment.
+
+### The Architecture: SOOT and Carbon
+
+The system is divided into two distinct layers to separate high-level logic from low-level execution:
+
+* **SOOT (The Orchestrator):** A flexible Lisp interpreter used to design scripts for compiling and linking entire projects. Beyond simple builds, SOOT acts as a **preprocessor**, capable of modifying source files on the fly. Its integrated **REPL** allows developers to inspect and debug every stage of the pipeline—from code transformation to target communication—in an iterative loop.
+* **Carbon (The Execution Layer):** A specialized environment consisting of its own **Virtual Machine** and **Compiler**. While Carbon acts as the foundation for execution, the SOOT interpreter remains independent, acting as the manager that directs the Carbon compiler's operations.
+
+> **Note:** The Carbon Virtual Machine is fully functional, while the Carbon Compiler is currently under active development.
 
 ![REPL Screenshot](/docs/screens/repl.png)
 
 ---
 
-## ✨ Key Features
+### Integrated Workflow
 
-| Feature | Description |
-|---------|-------------|
-| **Dual Binary Architecture** | Separate interpreter core (`sooti`) and interactive REPL (`soot`) |
-| **Carbon VM** | High-performance bytecode execution engine |
-| **Multi-Format Support** | `.sot` (source) and `.soc` (compiled bytecode) files |
-| **Embeddable** | Minimal footprint for integration into other applications |
-| **Remote Development** | Built-in nREPL server for remote connectivity |
-| **XDG Compliance** | Standard Linux directory structure support |
-| **Modern Tooling** | Syntax highlighting, multiline editing, command history |
+SOOT provides a unified interface for the entire development lifecycle:
+
+1. **Preprocessing:** Dynamic modification of source code via Lisp scripts.
+2. **Orchestration:** Managing the compilation and linking process for the target platform.
+3. **Automation:** Handling firmware upload and establishing a communication link with the hardware.
+4. **Inspection:** Using the REPL at any stage for real-time debugging and system analysis.
+
+---
+
+## Key Features
+
+| Feature                | Description                                                                          |
+|------------------------|--------------------------------------------------------------------------------------|
+| **Orchestration Core** | Lisp interpreter (`sooti`) for build automation, linking, and source preprocessing.  |
+| **Carbon VM**          | A high-performance bytecode execution engine for target platforms, managed by SOOT.  |
+| **Interactive REPL**   | Full-featured environment (`soot`) for real-time debugging of the entire pipeline.   |
+| **Hybrid Execution**   | Supports `.sot` (Lisp source) and the upcoming `.soc` (Carbon compiled bytecode).    |
+| **Embedded & Remote**  | Minimal footprint for integration with an nREPL server for remote hardware links.    |
+| **Modern Tooling**     | XDG compliance, syntax highlighting, multiline editing, and command history.         |
+| **Carbon Compiler**    | **(In Development)** Native toolchain to bridge SOOT logic with Carbon VM execution. |
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
-```bash
-# Ubuntu/Debian
-sudo apt install build-essential cmake git
-
-# macOS
-brew install cmake gcc
-
-# Windows (MinGW/MSYS2)
-pacman -S --needed base-devel mingw-w64-x86_64-toolchain cmake git
-```
-
 ### Build & Install
+
 ```bash
-git clone https://github.com/your-username/soot.git
+git clone https://github.com/hww/soot.git
 cd soot
 
 # Configure
@@ -61,78 +72,191 @@ sudo make install
 soot --version
 ```
 
-### Docker (Alternative)
-```bash
-docker build -t soot .
-docker run -it soot
-```
 ---
 
-## 📚 Usage Examples
+## Usage Guide
 
-### Interactive REPL
+SOOT provides a unified interface for scripting, project management, and interactive debugging.
+
+### Command Line Interface
+
+| Flag               | Short | Description                                        |
+|--------------------|-------|----------------------------------------------------|
+| `--script <file>`  | `-s`  | Executes a specific Lisp script and exits.         |
+| `--network [port]` | `-n`  | Starts a Network REPL server (default: 8181).      |
+| `--project <path>` | `-p`  | Sets the working project path for file operations. |
+| `--help`           | `-h`  | Displays the help message.                         |
+
+### Execution Modes
+
+#### 1. Interactive REPL
+
+Start a local interactive session for real-time experimentation:
+
 ```bash
-# Start interactive session
-soot
+bash> soot
+```
 
-# Execute a script
-soot script.sot
+* 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
+  
+#### 2. Network REPL (nREPL)
+
+Launch a network server to connect from external editors (like Emacs/CIDER or VSCode/Calva). Note that SOOT starts both the network server and a local interactive session simultaneously:
+
+```bash
+# Start server on default port 8181
+bash> soot --network
+
+# Start server on a custom port
+bash> soot --network 9090
 
 ```
 
-### Remote Development (nREPL)
-```bash
-# Start nREPL server (port 8181)
-soot --nrepl
+#### 3. Script Execution & Project Management
 
-# Connect from editor (Emacs/CIDER, VSCode/Calva)
-# Connect to localhost:8181
+Use SOOT as an orchestrator for your build process by specifying a project directory and a script:
+
+```bash
+# Run a specific automation script
+bash> soot --script build.lisp
+
+# Run with a defined project context
+bash> soot --project ./my_mcu_project --script deploy.lisp
+
 ```
 
 ---
 
-## ⚙️ Configuration
+### Technical Note: Project Context
+
+The `--project` flag is a key feature for your automation workflow. It sets the base path for `file_util`, allowing your Lisp scripts to use relative paths when modifying source files or linking binaries, ensuring the automation logic remains portable across different environments.
+
+---
+
+## Configuration
 
 ### User Configuration (`~/.config/soot/config.sot`)
+
 ```lisp
-;; Global configuration
+;; -- Global configuration ----------------------
 (define *nrepl-port* 8181)
 (define *prompt* "soot> ")
 (define *history-size* 1000)
 
-;; Keybindings
+;; -- Keybindings -------------------------------
 (keybind ctrl "L" "Clear screen" "(clear-screen)")
 (keybind ctrl "K" "Show keybinds" "(show-keybinds)")
 
-;; Autoload modules
+;; -- Autoload modules --------------------------
 (autoload 'math 'strings 'json)
 
-;; Environment variables
+;; -- Environment variables ---------------------
 (setenv "SOOT_PATH" "/usr/local/share/soot")
 ```
 
-### System Configuration (`/usr/local/share/soot/lib.sot`)
-```lisp
-;; Standard library definitions
-(provide 'soot-core)
+## Core Library & Platform Adaptation
 
-;; Platform-specific extensions
-(cond
-  ((string=? (platform) "linux") (load "linux-ext.sot"))
-  ((string=? (platform) "windows") (load "win-ext.sot"))
-  ((string=? (platform) "darwin") (load "macos-ext.sot")))
-```
+SOOT includes a minimal Standard Library located at /usr/local/share/soot/lib.sot. This library is automatically loaded to provide essential definitions and to handle cross-platform hardware abstractions.
+
+* 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
+
+## Configuration Paths and Files
+
+SOOT follows modern standards (such as XDG) to ensure portability and clean organization across different operating systems.
+
+### Path Resolution Table
+
+| Path Type   | Description               | Resolution Logic                              |
+|-------------|---------------------------|-----------------------------------------------|
+| **CWD**     | Current Working Directory | `fs::current_path()`                          |
+| **EXE**     | Executable Directory      | System-specific binary location               |
+| **HOME**    | User Home Directory       | `$HOME` or current path fallback              |
+| **CONFIG**  | Configuration Files       | `$XDG_CONFIG_HOME/soot/` or `~/.config/soot/` |
+| **CACHE**   | Cache and History         | `$XDG_CACHE_HOME/soot/` or `~/.cache/soot/`   |
+| **SHARE**   | System-wide Assets        | `/usr/local/share/soot/`                      |
+| **PROJECT** | Project Root              | Set via `--project` flag or auto-detected     |
+
+### Search Priority
+
+The `find_config_file()` function resolves file locations using the following priority:
+
+1. **Project Level:** `PROJECT_PATH/filename` (Highest priority)
+2. **User Level:** `CONFIG_PATH/filename`
+3. **System Level:** `SHARE_PATH/filename` (Fallback)
 
 ---
 
-## 🤝 Contributing
+### Core Configuration Files
+
+#### 1. Main Configuration (`config.sot`)
+
+Defines the global behavior of the REPL and environment:
+
+* **nREPL Port:** Default network listening port.
+* **Prompt:** Customizable REPL interface string.
+* **Keybinds:** Custom keyboard shortcuts.
+
+#### 2. Startup Sequence
+
+SOOT executes a two-stage initialization process:
+
+* **Startup-Pre (`startup-pre.sot`):** Executed *before* network initialization. Used for environment setup and loading base libraries.
+* **Startup-Post (`startup-post.sot`):** Executed only if the Network REPL starts successfully. Used for post-connection logic and extended networking settings.
+
+#### 3. Standard Library (`lib.sot`)
+
+Loaded automatically during the boot process (after `startup-pre.sot`) to provide the standard Lisp functional core.
+
+---
+
+### Syntax and Customization
+
+#### Configuration Format
+
+Files use a native Lisp-like syntax for readability and consistency:
+
+```lisp
+(nrepl-port 7888)
+(prompt "soot> ")
+(keybind ctrl "K" "Clear screen" "(clear)")
+```
+
+#### Keybindings
+
+The system supports three primary modifiers for interactive productivity:
+
+* `ctrl` — Control + Key
+* `shift` — Shift + Key
+* `meta` — Meta/Alt + Key
+
+#### Path Manipulation Functions
+
+The interpreter exposes built-in functions to interact with the file system:
+
+* `(get-path 'symbol)` — Retrieves the absolute path for a specific type (e.g., `'CONFIG`).
+* `(find-file "filename")` — Locates a file based on the search priority rules.
+
+---
+
+### Environment Variables & Directories
+
+SOOT respects the following environment variables:
+
+* `HOME`: Base user directory.
+* `XDG_CONFIG_HOME`: Standard location for configuration files.
+* `XDG_CACHE_HOME`: Standard location for volatile data (e.g., command history).
+
+**Note:** The **Cache** folder is created automatically when the history is loaded. Other directories are verified during search but are not created by the system to maintain a minimal footprint.
+
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
 
 ### Development Workflow
+
 ```bash
 # 1. Fork and clone
-git clone https://github.com/your-username/soot.git
+git clone https://github.com/hww/soot.git
 
 # 2. Create feature branch
 git checkout -b feature/amazing-feature
@@ -148,75 +272,24 @@ git push origin feature/amazing-feature
 ```
 
 ### Code Style
-- Follow [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)
-- Use `clang-format` for formatting
-- Document public APIs with Doxygen-style comments
+
+* Follow [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)
+* Use `clang-format` for formatting
+* Document public APIs with Doxygen-style comments
 
 ---
 
-## 📖 Documentation
+## Other Documentation
 
-- 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
-- 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| **"Command not found: soot"** | Ensure `/usr/local/bin` is in PATH |
-| **Missing dependencies** | Install `libfmt-dev`, `libreplxx-dev` |
-| **Permission denied** | Use `sudo make install` or set custom prefix |
-| **nREPL connection failed** | Check firewall: `sudo ufw allow 8181` |
-
-### Debug Mode
-```bash
-# Enable verbose output
-soot --verbose script.sot
-
-# Debug bytecode
-soot --debug --compile script.sot
-
-# Profile execution
-soot --profile script.sot
-```
+* 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
+* 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
 
 ---
 
-## 📄 License
+## License
 
 SOOT is released under the **MIT License**. See [LICENSE](LICENSE) for details.
 
-```
-MIT License
-
-Copyright (c) 2024 Your Name
-
-Permission is hereby granted...
-```
-
 ---
 
-## 🙏 Acknowledgements
-
-- **OpenGOAL** for inspiration in Lisp implementation
-- **replxx** for excellent terminal handling
-- **fmt** for modern formatting library
-- All contributors and users of SOOT
-
----
-
-## 📞 Support & Community
-
-- **Issues**: [GitHub Issues](https://github.com/your-username/soot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/soot/discussions)
-- **Email**: your-email@example.com
-- **Twitter**: [@soot_lang](https://twitter.com/soot_lang)
-
----
-
-**Star this repo if you find SOOT useful!** ⭐
-
+⭐ **Star this repo if you find SOOT useful!** ⭐
