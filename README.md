@@ -23,7 +23,7 @@ The system is divided into two distinct layers to separate high-level logic from
 
 ![REPL Screenshot](/docs/screens/repl.png)
 
-### "Why SOOT?" Section
+### Why SOOT?
 
 Since this is for constrained hardware, adding a small "Design Goals" list can help users understand your philosophy:
 
