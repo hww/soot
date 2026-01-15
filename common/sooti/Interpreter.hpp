@@ -203,8 +203,6 @@ namespace script
         void set_args_in_env(const Object& form, const Arguments& args,
             const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
 
-        std::string read_entire_file(const std::string& filename);
-
         // Основной метод оценки пар
         Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
 

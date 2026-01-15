@@ -216,35 +216,41 @@ void ReplWrapper::clear_screen() {
 
 // Completions возвращает vector<pair<string, Color>>
 replxx::Replxx::completions_t ReplWrapper::get_completions(const std::string& input, int& context_len) {
-
     replxx::Replxx::completions_t completions;
+    if (input.empty()) return completions;
 
-    // 1. Built-in команды
-    std::vector<std::string> builtin_commands = {
-        "help", "keybinds", "clear", "quit", "history",
-        "(help)", "(keybinds)", "(clear)", "(quit)", "(history)"
-    };
+    // 1. Находим начало последнего слова (границы: пробел, скобки, кавычки)
+    size_t last_token_pos = input.find_last_of(" ( ' \" \t");
+    
+    std::string word_to_match;
+    if (last_token_pos == std::string::npos) {
+        word_to_match = input;
+    } else {
+        word_to_match = input.substr(last_token_pos + 1);
+    }
 
-    for (const auto& cmd : builtin_commands) {
-        if (cmd.find(input) == 0) {
-            completions.emplace_back(cmd, replxx::Replxx::Color::GREEN);
+    // Сообщаем Replxx, сколько символов с конца строки мы заменяем
+    context_len = static_cast<int>(word_to_match.length());
+
+    // 2. Дополнения из интерпретатора (функции, переменные)
+    std::string matched_symbols = interpreter_.get_all_symbols_matching(word_to_match);
+    std::stringstream ss(matched_symbols);
+    std::string sym;
+    while (ss >> sym) {
+        // Добавляем только само слово, Replxx подставит его после префикса
+        completions.emplace_back(sym, replxx::Replxx::Color::CYAN);
+    }
+
+    // 3. Встроенные команды (только если это самое начало строки)
+    if (last_token_pos == std::string::npos) {
+        std::vector<std::string> builtins = {"help", "clear", "quit", "history"};
+        for (const auto& cmd : builtins) {
+            if (cmd.find(word_to_match) == 0) {
+                completions.emplace_back(cmd, replxx::Replxx::Color::GREEN);
+            }
         }
     }
 
-    // 2. История команд (только если начинается с введённого текста)
-    auto scan = repl_.history_scan();
-
-    while (scan.next()) {
-        auto entry = scan.get();
-        if (!entry.text().empty() && entry.text().find(input) == 0) {
-            completions.emplace_back(entry.text(), replxx::Replxx::Color::YELLOW);
-        }
-    }
-
-    // 3. TODO: Lisp функции/переменные из interpreter_
-    // Нужно добавить когда будет доступ к списку функций
-
-    context_len = static_cast<int>(input.length());
     return completions;
 }
 

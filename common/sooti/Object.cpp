@@ -366,14 +366,19 @@ namespace script
     // PairObject implementations
     std::string PairObject::print() const {
         std::stringstream ss;
-        ss << "(" << car.print();
+        ss << "(";
+        
+        // Печатаем первый элемент
+        ss << car.print();
 
         Object current = cdr;
+        // Пока хвост — это пара, печатаем её car через пробел
         while (current.is_pair()) {
             ss << " " << current.as_pair()->car.print();
             current = current.as_pair()->cdr;
         }
 
+        // Если список завершился не пустым списком, а чем-то другим (dotted pair)
         if (!current.is_empty_list()) {
             ss << " . " << current.print();
         }
@@ -383,9 +388,7 @@ namespace script
     }
 
     std::string PairObject::inspect() const {
-        std::stringstream ss;
-        ss << "[pair] car=" << car.inspect() << " cdr=" << cdr.inspect();
-        return ss.str();
+        return "[pair] " + print() + "\n";;
     }
 
 

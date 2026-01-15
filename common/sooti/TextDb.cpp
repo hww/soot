@@ -3,6 +3,10 @@
 #include <sstream>
 #include <algorithm>
 #include <stdexcept>
+#include "fmt/args.h"
+#include "fmt/base.h"
+#include "fmt/format.h"
+#include "fmt/color.h"
 
 namespace script {
 
@@ -98,14 +102,14 @@ namespace script {
 				if (terminate_compiler_error) {
 					*terminate_compiler_error = false;
 				}
-				return "?\n";
+				return "?";
 			}
 		}
 		else {
 			if (terminate_compiler_error) {
 				*terminate_compiler_error = false;
 			}
-			return "?\n";
+			return "?";
 		}
 	}
 
@@ -129,12 +133,19 @@ namespace script {
 	 */
 	std::string TextDb::get_info_for(const std::shared_ptr<SourceText>& frag, int offset) const {
 		int line_idx = frag->get_line_idx(offset);
-		std::string result = frag->get_description() + ":" + std::to_string(line_idx + 1) + "\n";
-		result += frag->get_line_containing_offset(offset) + "\n";
+		
+		// Формат: "filename:line" (выделяем тусклым)
+		std::string result = fmt::format(fg(fmt::color::gray), "  at {}:{}\n", 
+										frag->get_description(), line_idx + 1);
+		
+		// Сама строка кода
+		std::string line = frag->get_line_containing_offset(offset);
+		result += "    " + line + "\n";
 
+		// Указатель ^
 		int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
-		std::string pointer(offset_in_line, ' ');
-		pointer += "^\n";
+		std::string pointer = "    " + std::string(offset_in_line, ' ') + "^\n";
+		
 		return result + pointer;
 	}
 

@@ -169,6 +169,7 @@ namespace script
         // String representation
         std::string print() const;
         std::string inspect() const;
+        std::string type_name() const { return object_type_to_string(type); }
 
         // Type checking
         bool is_integer() const { return type == ObjectType::INTEGER; }
