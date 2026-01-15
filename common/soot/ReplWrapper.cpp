@@ -390,59 +390,74 @@ bool ReplWrapper::run_server_impl(std::string host, int port) {
 
 // КЛИЕНТСКАЯ реализация (подключение к серверу)
 bool ReplWrapper::run_client_impl(std::string host, int port) {
-    if (is_client_running_) return true;
+    fmt::print("DEBUG: Starting client connection to {}:{}\n", host, port);
+    
+    if (is_client_running_) {
+        fmt::print("DEBUG: Client already running\n");
+        return true;
+    }
 
-    // 1. Простое создание сокета
+    // 1. Создаем сокет
     client_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+    fmt::print("DEBUG: Socket created: {}\n", client_socket_);
+    
     if (client_socket_ < 0) {
-        fmt::print(fg(fmt::color::red), "✗ Failed to create socket\n");
+        fmt::print(fg(fmt::color::red), "✗ Failed to create socket: {}\n", strerror(errno));
         return false;
     }
 
-    // 2. Простой адрес
+    // 2. Устанавливаем таймаут на чтение
+    struct timeval tv;
+    tv.tv_sec = 3; // 3 секунды таймаут
+    tv.tv_usec = 0;
+    setsockopt(client_socket_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     
-    // 3. Преобразуем хост в IP
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
-        fmt::print(fg(fmt::color::red), "✗ Invalid address\n");
+    std::string ip = (host == "localhost") ? "127.0.0.1" : host;
+    fmt::print("DEBUG: Using IP: {}\n", ip);
+    
+    if (inet_pton(AF_INET, ip.c_str(), &serv_addr.sin_addr) <= 0) {
+        fmt::print(fg(fmt::color::red), "✗ Invalid address: {}\n", ip);
         close(client_socket_);
+        client_socket_ = -1;
         return false;
     }
 
-    // 4. Пробуем подключиться с таймаутом
-    fmt::print("Trying to connect...\n");
-    
-    // Устанавливаем таймаут
-    struct timeval tv;
-    tv.tv_sec = 3; // 3 секунды
-    tv.tv_usec = 0;
-    setsockopt(client_socket_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    fmt::print(fg(fmt::color::cyan), "Connecting...\n");
     
     int result = connect(client_socket_, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    fmt::print("DEBUG: connect() returned: {}\n", result);
     
     if (result < 0) {
-        fmt::print(fg(fmt::color::red), "✗ Cannot connect to server at {}:{}\n", "127.0.0.1", port);
-        fmt::print("  - Make sure server is running: run with '--server' flag first\n");
-        fmt::print("  - Check if port {} is not blocked\n", port);
+        fmt::print(fg(fmt::color::red), "✗ Connection failed: {}\n", strerror(errno));
         close(client_socket_);
+        client_socket_ = -1;
         return false;
     }
 
-    fmt::print(fg(fmt::color::green), "✓ Connected!\n");
+    fmt::print("DEBUG: Connected! Waiting for welcome message...\n");
     
-    // Быстро читаем приветствие
-    char buffer[100];
-    ssize_t n = recv(client_socket_, buffer, sizeof(buffer)-1, 0);
+    // 3. Читаем приветствие с таймаутом
+    char welcome[256] = {0};
+    ssize_t n = recv(client_socket_, welcome, sizeof(welcome)-1, 0);
+    fmt::print("DEBUG: recv() returned: {} bytes\n", n);
+    
     if (n > 0) {
-        buffer[n] = 0;
-        fmt::print("Server: {}\n", buffer);
+        welcome[n] = '\0';
+        fmt::print(fg(fmt::color::green), "{}", welcome);
+    } else if (n == 0) {
+        fmt::print("DEBUG: Server closed connection immediately\n");
+    } else {
+        fmt::print("DEBUG: recv error: {}\n", strerror(errno));
     }
-    
+
     is_client_running_ = true;
     is_client_mode_ = true;
+    fmt::print(fg(fmt::color::green), "✓ Connected to server\n");
     return true;
 }
 
@@ -458,13 +473,20 @@ void ReplWrapper::stop_network_server() {
 }
 
 void ReplWrapper::network_server_worker(int port) {
+    lg::info("Network worker started, calling get_msg() loop");
+    
     while (is_server_running_) {
         auto message = network_server_->get_msg();
-        // Сообщения обрабатываются в handle_network_message через callback
-
+        
+        if (message.has_value()) {
+            lg::info("Got network message: {}", *message);
+        }
+        
         if (!is_server_running_) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    
+    lg::info("Network worker stopped");
 }
 
 void ReplWrapper::handle_network_message(const std::string& message, int client_socket) {
