@@ -25,7 +25,7 @@ namespace script
 
     enum class ObjectType : uint8_t {
         EMPTY_LIST, INTEGER, FLOAT, CHAR,
-        SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE
+        SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE, READER
     };
 
     std::string object_type_to_string(ObjectType type);
@@ -40,7 +40,9 @@ namespace script
     class SymbolTable;
     class StringObject;
     class ArrayObject;
-
+    class TextStream;
+    class ReaderObject;
+    class Reader;
 
     struct ArgumentSpec;
 
@@ -92,9 +94,11 @@ namespace script
         explicit FixedObject(T v) : value(v) {}
         FixedObject() = default;
 
-        std::string print() const { return fixed_to_string(value); }
+        std::string print() const {
+             return fixed_to_string(value); 
+        }
         std::string inspect() const {
-            return type_as_string() + " " + fixed_to_string(value);
+            return type_as_string() + " " + print();
         }
 
         bool operator==(const FixedObject<T>& other) const {
@@ -159,6 +163,7 @@ namespace script
         static Object make_macro(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
         static Object make_vector(const std::vector<Object>& elements);
         static Object make_hash_table();
+        static Object make_reader(TextStream* textStream);
 
 
         // String representation
@@ -180,6 +185,7 @@ namespace script
         bool is_vector() const { return type == ObjectType::ARRAY; }
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
+        bool is_reader() const { return type == ObjectType::READER; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
         bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
@@ -202,6 +208,7 @@ namespace script
             if (!is_integer()) throw_type_error("integer");
             return integer_obj;
         }
+        ReaderObject* as_reader() const;
 
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
@@ -645,6 +652,28 @@ namespace script
         }
     };
 
+    class ReaderObject : public HeapObject {
+        public:
+        // Передаем указатель на активный поток разбора
+        TextStream* ts = nullptr;
+
+        explicit ReaderObject(TextStream* stream) : ts(stream) {}
+
+        // peek-char: смотрим символ через твой ts->peek()
+        Object peek_char() const;
+
+        // read-char: извлекаем символ через твой ts->read()
+        Object read_char();
+
+        // skip-whitespace: используем твой метод
+        void skip_whitespace();
+
+        // Проверка на конец файла
+        bool is_eof() const;
+        std::string print() const override;
+        std::string inspect() const override;
+    };
+ 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);
 

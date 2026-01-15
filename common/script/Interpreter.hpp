@@ -19,6 +19,7 @@ namespace script
         Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string(const std::string& expression, const std::string& filename);
+        Object call_lambda(const Object& lambda, const std::vector<Object>& args);
 
         // Символы и окружение
         Object intern(const std::string& name);
@@ -32,9 +33,7 @@ namespace script
         void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
         ArgumentSpec make_varargs();
         std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_list_return_last(const Object& form,
-            Object rest,
-            const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env);
 
         // Обработка ошибок
         void throw_eval_error(const Object& o, const std::string& err);
@@ -76,6 +75,7 @@ namespace script
         Object eval_macro(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_let_star(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_quasiquote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_apply(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
         // Математические
@@ -145,12 +145,19 @@ namespace script
         Object eval_format(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // файлы
-        Object eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_read_data_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_try_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_parse_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Reader
+        Object eval_set_reader_macro(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_remove_reader_macro(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_peek_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_delimited_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Система
         Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

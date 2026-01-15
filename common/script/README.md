@@ -109,6 +109,108 @@ Special forms don't evaluate their arguments automatically.
 (let ((var1 val1) ...) body)  ; Local bindings
 (let* ((var1 val1) ...) body) ; Sequential bindings
 ```
+Here is a polished and more professional version of the documentation for your Reader Macros. It covers the simple substitution, lambda-based processing, and the important edge cases we solved (like character literals).
+
+---
+
+## **Customizing the Reader (Reader Macros)**
+
+Reader Macros allow you to extend the Soot syntax by defining how specific characters or sequences are parsed. You can use them for simple symbol substitution or complex structural transformations.
+
+### **1. Simple Symbol Substitution**
+
+You can map a character to a specific symbol. This is useful for creating shorthand "tags."
+
+```scheme
+;; Register '$' as a macro that expands to the symbol 'label'
+soot> (set-reader-macro "$" "label")
+=> #t
+
+;; The reader now wraps the following object with the 'label' symbol
+soot> (read-data "$1945")
+=> (label 1945)
+
+```
+
+To revert the syntax to its original state, use `remove-reader-macro`:
+
+```lisp
+soot> (remove-reader-macro "$")
+=> #t
+
+soot> (read-data "$1945")
+=> $1945
+
+```
+
+---
+
+### **2. Functional Reader Macros (Lambda)**
+
+For more advanced syntax, like custom brackets or data structures, you can pass a `lambda` to `set-reader-macro`. The lambda receives one argument: the **Reader** stream.
+
+#### **Example: Implementing Square Bracket Vectors `[ ]**`
+
+This macro captures everything between `[` and `]` and converts it into a native vector.
+
+```lisp
+;; Define '[' to read a list until it hits ']' and apply the 'vector' function
+(set-reader-macro #\[ 
+  (lambda (r)
+    (let ((lis (read-delimited-list #\] r)))
+      (apply 'vector lis))))
+
+;; Define ']' as a terminator to prevent it from being read as a stray symbol
+(set-reader-macro #\] 
+  (lambda (r) 
+    (error "Unexpected closing bracket")))
+
+```
+
+**Usage:**
+
+```scheme
+soot> [1 2 3]
+=> #(1 2 3)
+
+```
+
+---
+
+### **3. Character Literals and Escape Logic**
+
+Soot’s reader is designed to respect Lisp character literal rules. Even if a character is registered as a macro (like `[`), it will be ignored when escaped as a character literal.
+
+| Input | Interpretation | Result |
+| --- | --- | --- |
+| `[` | **Reader Macro** | Triggers the vector lambda |
+| `#\[` | **Character Literal** | Returns the character object `[` |
+| `#\newline` | **Named Character** | Returns the newline character (ASCII 10) |
+
+This ensures that your code can still manipulate the brackets as data without accidentally triggering the macro during definition or character processing.
+
+Implementing Hash Maps (dictionaries) using curly braces is a great exercise because, unlike vectors, it requires handling pairs of data (keys and values).
+
+In Lisp, a common way to represent this during reading is to collect a flat list of items and then convert them into a hash map structure.
+Adding Hash Map Syntax {key value ...}
+
+To make this work, we will define a macro for { that reads everything until } and then passes that list to a hash-map constructor.
+
+```lisp
+(set-reader-macro #\{ 
+  (lambda (r)
+    (let ((elements (read-delimited-list #\} r)))
+      (apply 'make-hash-table elements))))
+
+(set-reader-macro #\} (lambda (r) (error "Unexpected closing brace")))
+```
+
+Usage in REPL:
+
+```lisp
+soot> { :name "Valery" :status "online" }
+=> #{ :name "Valery" :status "online" }
+```
 
 ### **Quoting**
 
@@ -284,18 +386,29 @@ Special forms don't evaluate their arguments automatically.
 
 ## 💾 **File I/O**
 
-| Function                   | Arguments           | Description                   |
-|----------------------------|---------------------|-------------------------------|
-| `print` `pprint` `inspect` | `value`             | Print with different formats  |
-| `fmt`                      | `#t format args...` | Formatted output              |
-|                            | `#f format args...` | Formatt to string             |
-| `error`                    | `message`           | Throw error                   |
-| `read`                     | `string`            | Read from string              |
-| `load-file`                | `filename`          | Load and execute file         |
-| `read-file`                | `filename`          | Read file contents            |
-| `try-load-file`            | `filename`          | Load file, return #f if fails |
-| `file-exists?`             | `filename`          | Check if file exists          |
-| `read-data-file`           | `filename`          | Read data file                |
+| Function                     | Arguments               | top level     | Description                    |
+|------------------------------|-------------------------|---------------|--------------------------------|
+| `print` `pprint` `inspect`   | `value`                 |               | Print with different formats   |
+| `fmt`                        | `#t format args...`     |               | Formatted output               |
+|                              | `#f format args...`     |               | Formatt to string              |
+| `error`                      | `message`               |               | Throw error                    |
+| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
+| `file-exists?`               | `filename`              |               | Check if file exists           |
+| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
+| `read-str`                   | `filename`              |               | Read from file to string       |
+| `parse-str`                  | `string`                | yes           | Parse string                   |
+| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
+| `read`                       | `reader`                |               | Read from string               |
+| `read-char"`                 | `reader`                |               | Read from string               |
+| `peek-char`                  | `reader`                |               | Read from string               |
+| `read-delimited-list`        | `reader terminator`     |               | Read from string               |
+| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
+| `load`                       | `filename`              | yes (execute) | Load and execute file          |
+| `read-file`                  | `filename`              | yes           | Read file contents             |
+| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
+| `set-reader-macro`           | `pattern replacement`   |               | Set reader macro               |
+| `set-reader-macro`           | `pattern lambda`        |               | Set reader macro               |
+| `remove-reader-mac`          | `pattern`               |               | Remove reader macro            |
 
 **Examples:**
 

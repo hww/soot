@@ -18,7 +18,7 @@
 
 namespace script 
 {
-    Interpreter::Interpreter(const std::string& username, bool load_libs) {
+    Interpreter::Interpreter(const std::string& username, bool load_libs) : reader(this) {
         // Инициализируем boolean объекты как символы
         auto& symbols = reader.get_symbol_table();
         m_true_object = Object::make_symbol(&symbols, "#t");
@@ -50,7 +50,8 @@ namespace script
             {"array", ObjectType::ARRAY},
             {"lambda", ObjectType::LAMBDA},
             {"macro", ObjectType::MACRO},
-            {"environment", ObjectType::ENVIRONMENT}
+            {"environment", ObjectType::ENVIRONMENT},
+            {"reader", ObjectType::READER},
         };
 
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
@@ -97,6 +98,7 @@ namespace script
             {"append", &Interpreter::eval_append},
             {"null?", &Interpreter::eval_null_p},     // было eval_null_p
             {"pair?", &Interpreter::eval_pair_p},
+            {"apply", &Interpreter::eval_apply},
 
             // Предикаты типов
             {"symbol?", &Interpreter::eval_symbol_p},
@@ -142,12 +144,19 @@ namespace script
             {"error", &Interpreter::eval_error},
 
             // Files
-            {"read", &Interpreter::eval_read},
-            {"load-file", &Interpreter::eval_load_file},
-            {"read-file", &Interpreter::eval_read_file},
             {"file-exists?", &Interpreter::eval_file_exists_p},
-            {"read-data-file", &Interpreter::eval_read_data_file},
-            {"try-load-file", &Interpreter::eval_try_load_file},
+            {"read-str", &Interpreter::eval_read_str},
+            {"parse-str", &Interpreter::eval_parse_str},
+            {"read-file", &Interpreter::eval_read_file},
+            {"load", &Interpreter::eval_load},
+
+            // Reader
+            {"set-reader-macro", &Interpreter::eval_set_reader_macro},
+            {"remove-reader-macro", &Interpreter::eval_remove_reader_macro},
+            {"read", &Interpreter::eval_read},
+            {"read-char", &Interpreter::eval_read_char},
+            {"peek-char", &Interpreter::eval_peek_char},
+            {"read-delimited-list", &Interpreter::eval_read_delimited_list},
 
             // System
             {"system", &Interpreter::eval_system},
@@ -354,6 +363,7 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
     return eval_with_rewind(code, global_environment.as_env_ptr());
 }
 
+
 // ==============================================
 // Eval 
 // ==============================================
@@ -406,7 +416,11 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::STRING:
     case ObjectType::CHAR:
     case ObjectType::EMPTY_LIST:
+    case ObjectType::ARRAY:
+    case ObjectType::STRING_HASH_TABLE:
         return obj;
+    case ObjectType::LAMBDA:
+        return eval_pair(obj, env);
     default:
         throw_eval_error(obj, "cannot evaluate this object");
     }
@@ -434,10 +448,58 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     return result;
 }
 
+Object Interpreter::call_lambda(const Object& lambda, 
+                                const std::vector<Object>& args) {
+    if (!lambda.is_lambda()) {
+        throw std::runtime_error("call_lambda: object is not a lambda");
+    }
+    
+    const auto& lam = lambda.as_lambda();
+    
+    // 1. Проверка аргументов
+    size_t min_args = lam->args.unnamed.size();
+    bool has_rest = !lam->args.rest.empty() || lam->args.varargs;
+    
+    if (args.size() < min_args || (!has_rest && args.size() > min_args)) {
+        throw std::runtime_error(fmt::format(
+            "call_lambda: wrong number of arguments (expected {}, got {})",
+            has_rest ? fmt::format("at least {}", min_args) : std::to_string(min_args),
+            args.size()
+        ));
+    }
+    
+    // 2. Создаем Arguments
+    Arguments func_args;
+    func_args.unnamed = args;
+    
+    // Если есть rest-аргумент (не varargs, а именно &rest)
+    if (!lam->args.rest.empty() && args.size() > min_args) {
+        // Помещаем лишние аргументы в rest
+        for (size_t i = min_args; i < args.size(); ++i) {
+            func_args.rest.push_back(args[i]);
+        }
+        // Обрезаем unnamed до нужного размера
+        func_args.unnamed.resize(min_args);
+    }
+    
+    // 3. Создаем окружение для выполнения
+    // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
+    auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
+    auto lam_env = lam_env_obj.as_env_ptr();
+    
+    // 4. Биндим аргументы
+    Object dummy_form = Object::make_symbol(&reader.get_symbol_table(), "call-lambda");
+    set_args_in_env(dummy_form, func_args, lam->args, lam_env);
+    
+    // 5. Выполняем тело
+    return eval_list_return_last(lam->body, lam->body, lam_env);
+}
+
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
     const auto& pair = obj.as_pair();
     const Object& head = pair->car;
     const Object& rest = pair->cdr;
+
 
     // first see if we got a symbol:
     if (head.type == ObjectType::SYMBOL) {
@@ -505,6 +567,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
     if (eval_head.type != ObjectType::LAMBDA) {
         throw_eval_error(obj, "head of form didn't evaluate to lambda");
     }
+
 
     const auto& lam = eval_head.as_lambda();
     Arguments args = get_args(obj, rest, lam->args);
@@ -1868,6 +1931,57 @@ Object Interpreter::eval_boolean_p(const Object& form, Arguments& args, const st
     return make_bool(is_bool);
 }
 
+Object Interpreter::eval_apply(const Object& obj, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    if (args.unnamed.size() < 2) {
+        throw_eval_error(obj, "apply: expected function and list of arguments");
+    }
+
+    Object head = args.unnamed[0]; // Это может быть символ 'vector или объект LAMBDA
+    Object rest = args.unnamed[1]; // Это список (1 2 3)
+
+    // 1. Если это символ, пытаемся найти его в Builtins (как делает твой eval_pair)
+    if (head.type == ObjectType::SYMBOL) {
+        const auto& head_sym = head.as_symbol();
+        
+        // Проверяем встроенные функции (например, vector)
+        const auto& kv_b = builtin_forms.find((void*)head_sym.name_ptr);
+        if (kv_b != builtin_forms.end()) {
+            // Создаем Arguments напрямую из списка Lisp
+            Arguments builtin_args;
+            for (Object it = rest; it.is_pair(); it = it.as_pair()->cdr) {
+                builtin_args.unnamed.push_back(it.as_pair()->car);
+            }
+            // Вызываем встроенную функцию напрямую
+            return ((*this).*(kv_b->second))(obj, builtin_args, env);
+        }
+        
+        // Если не нашли в билтинах, вычисляем символ, чтобы получить Лямбду
+        head = eval_with_rewind(head, env);
+    }
+
+    // 2. Если это Лямбда (или результат вычисления символа стал Лямбдой)
+    if (head.type == ObjectType::LAMBDA) {
+        const auto& lam = head.as_lambda();
+        
+        // Перекладываем список rest в структуру Arguments для set_args_in_env
+        Arguments lam_args;
+        for (Object it = rest; it.is_pair(); it = it.as_pair()->cdr) {
+            lam_args.unnamed.push_back(it.as_pair()->car);
+        }
+
+        // Повторяем логику твоего eval_pair для вызова лямбды:
+        auto lam_env_obj = EnvironmentObject::make_new();
+        auto lam_env = lam_env_obj.as_env_ptr();
+        lam_env->parent_env = lam->parent_env;
+        
+        // Используем твою функцию привязки аргументов
+        set_args_in_env(obj, lam_args, lam->args, lam_env);
+        
+        return eval_list_return_last(lam->body, lam->body, lam_env);
+    }
+
+    throw_eval_error(obj, "apply: head didn't evaluate to a callable function");
+}
 // ==============================================
 // Функции сравнения
 // ==============================================
@@ -2021,11 +2135,37 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
 // ==============================================
 
 
-Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
+Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    (void)form;
-    vararg_check(form, args, {}, {}); // Без аргументов
-    return Object::make_hash_table();
+    Object table = Object::make_hash_table();
+    auto table_ptr = table.as_hash_table();
+
+    // 1. Обрабатываем именованные аргументы (те самые :a 1)
+    for (auto const& [key, val] : args.named) {
+        // Мы можем сохранить ключ как есть, или добавить обратно ":", 
+        // чтобы в таблице ключи выглядели одинаково
+        std::string key_with_colon = ":" + key; 
+        table_ptr->data[key_with_colon] = val;
+    }
+
+    // 2. Обрабатываем неименованные аргументы (если пришло "a" 1 или 'a 1)
+    const std::vector<Object>& elements = args.unnamed;
+    if (elements.size() % 2 != 0) {
+        throw_eval_error(form, "Positional arguments to make-hash-table must be in pairs");
+    }
+
+    for (size_t i = 0; i < elements.size(); i += 2) {
+        std::string key_str;
+        const Object& key_obj = elements[i];
+
+        if (key_obj.is_symbol()) key_str = key_obj.as_symbol().c_str();
+        else if (key_obj.is_string()) key_str = key_obj.as_string()->c_str();
+        else key_str = key_obj.print();
+
+        table_ptr->data[key_str] = elements[i + 1];
+    }
+
+    return table;
 }
 
 Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2138,12 +2278,32 @@ Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const
 // Системные функции с проверками
 // ==============================================
 
-Object Interpreter::eval_read(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
+// Утилита! Читает весь файл как текст.
+std::string Interpreter::read_entire_file(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file) {
+        throw std::runtime_error("Cannot open file: " + filename);
+    }
+    return std::string((std::istreambuf_iterator<char>(file)),
+        std::istreambuf_iterator<char>());
+}
+
+// Читает весь файл как текст.
+Object Interpreter::eval_read_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
+
+    std::string filename = args.unnamed[0].as_string()->data;
+    return Object::make_string(read_entire_file(filename));
+}
+
+// Превращает строку в список команд: (top-level ... ). Удобно для eval.
+Object Interpreter::eval_parse_str(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
 
     try {
-        return reader.read_from_string(args.unnamed[0].as_string()->data, "read input");
+        return reader.read_from_string(args.unnamed[0].as_string()->data, true, "read string");
     }
     catch (std::runtime_error& e) {
         throw_eval_error(form, std::string("read error: ") + e.what());
@@ -2151,7 +2311,18 @@ Object Interpreter::eval_read(const Object & form, Arguments & args, const std::
     return m_false_object;
 }
 
-Object Interpreter::eval_load_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+// Читает весь файл как данные, обернутые в top-level.
+Object Interpreter::eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
+
+    std::string filename = args.unnamed[0].as_string()->data;
+    std::string content = read_entire_file(filename);
+    return reader.read_from_string(content, true, filename);
+}
+
+// Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
+Object Interpreter::eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
     try {
@@ -2162,48 +2333,6 @@ Object Interpreter::eval_load_file(const Object& form, Arguments& args, const st
         throw_eval_error(form, std::string("load-file error: ") + e.what());
     }
     return m_false_object;
-}
-
-Object Interpreter::eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
-
-    std::string filename = args.unnamed[0].as_string()->data;
-    std::string content = read_entire_file(filename);
-    return reader.read_from_string(content, true, filename);
-}
-
-/*!
- * Combines read-file and eval to load in a file. Return #f if it doesn't exist.
- */
-Object Interpreter::eval_try_load_file(const Object& form,
-    Arguments& args,
-    const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {});
-
-    auto path = args.unnamed.at(0).as_string()->data;
-    std::ifstream file(path);
-    bool exists = file.good();
-    if (!exists) {
-        return m_false_object;
-    }
-
-    Object o;
-    try {
-        o = reader.read_from_file({ path }, true, true);
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("reader error inside of try-load-file:\n") + e.what());
-    }
-
-    try {
-        return eval_with_rewind(o, global_environment.as_env_ptr());
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("eval error inside of try-load-file:\n") + e.what());
-    }
-    return m_true_object;
 }
 
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2218,30 +2347,6 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
     return make_bool(exists);
 }
 
-//  Reads list data from a file, returns the pair.Not a lot of safety here!
-Object Interpreter::eval_read_data_file(const Object & form,
-    Arguments & args,
-    const std::shared_ptr<EnvironmentObject>&env) {
-    (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {});
-
-    try {
-        return reader.read_from_file({ args.unnamed.at(0).as_string()->data}, true, false).as_pair()->cdr;
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("reader error inside of read-file:\n") + e.what());
-    }
-    return Object::make_empty_list();
-}
-
-std::string Interpreter::read_entire_file(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file) {
-        throw std::runtime_error("Cannot open file: " + filename);
-    }
-    return std::string((std::istreambuf_iterator<char>(file)),
-        std::istreambuf_iterator<char>());
-}
 
 // ==============================================
 // Системные методы
@@ -2477,6 +2582,175 @@ Object Interpreter::eval_time_nanoseconds(const Object& form, Arguments& args, c
     auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
     
     return Object::make_integer(static_cast<int64_t>(nanoseconds));
+}
+
+// ==============================================
+// Macro Character
+// ==============================================
+
+Object Interpreter::eval_set_reader_macro(const Object& form, Arguments& args,
+                                           const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    
+    // Проверяем аргументы
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "set-reader-macro requires 2 arguments");
+    }
+    
+    // Получаем shortcut (первый аргумент)
+    std::string shortcut;
+    
+    if (args.unnamed[0].is_string()) {
+        shortcut = args.unnamed[0].as_string()->data;
+    }
+    else if (args.unnamed[0].is_symbol()) {
+        const char* sym_name = args.unnamed[0].as_symbol().name_ptr;
+        shortcut = sym_name ? sym_name : "";
+    }
+    else if (args.unnamed[0].is_char()) {
+        // Символ конвертируем в строку из одного символа
+        shortcut = std::string(1, args.unnamed[0].as_char());
+    }
+    else {
+        throw_eval_error(form,
+            "set-reader-macro: first argument must be string, symbol, or character");
+    }
+    
+    // Получаем replacement (второй аргумент)
+    std::string replacement;
+    auto object = args.unnamed[1];
+    if (object.is_string()) {
+        replacement = object.as_string()->data;
+        reader.add_reader_macro(shortcut, replacement, true);
+    }
+    else if (object.is_symbol()) {
+        const char* sym_name = object.as_symbol().name_ptr;
+        replacement = sym_name ? sym_name : "";
+        reader.add_reader_macro(shortcut, replacement, true);
+    }
+    else if (object.is_lambda()) {
+        reader.add_reader_macro(shortcut, object, false);
+    }
+    else {
+        throw_eval_error(form,
+            "set-reader-macro: second argument must be string or symbol");
+    }
+
+    return m_true_object;
+}
+Object Interpreter::eval_remove_reader_macro(const Object& form, Arguments& args,
+                                            const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "remove-reader-macro requires at least 1 argument");
+    }
+    
+    std::string shortcut;
+    
+    // Поддерживаем те же типы что и set-reader-macro
+    if (args.unnamed[0].is_string()) {
+        shortcut = args.unnamed[0].as_string()->data;
+    }
+    else if (args.unnamed[0].is_symbol()) {
+        const char* sym_name = args.unnamed[0].as_symbol().name_ptr;
+        shortcut = sym_name ? sym_name : "";
+    }
+    else if (args.unnamed[0].is_char()) {
+        shortcut = std::string(1, args.unnamed[0].as_char());
+    }
+    else {
+        throw_eval_error(form,
+            "remove-reader-macro: argument must be string, symbol, or character");
+    }
+    reader.remove_reader_macro(shortcut); 
+    
+    
+    return m_true_object;
+}
+
+
+Object Interpreter::eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
+        throw_eval_error(form, "read: requires a reader object");
+    }
+
+    ReaderObject* reader_obj = args.unnamed[0].as_reader();
+    if (!reader_obj->ts) {
+        throw_eval_error(form, "read: stream is null");
+    }
+
+    // Вызываем чтение одного объекта (чистого, без top-level)
+    // Метод read_from_stream должен выполнять get_next_token + read_object + process_macros
+    return reader.read_from_stream(*(reader_obj->ts)); 
+}
+
+Object Interpreter::eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
+        throw_eval_error(form, "read-char: requires a reader object");
+    }
+
+    ReaderObject* reader_obj = args.unnamed[0].as_reader();
+    auto ts = reader_obj->ts;
+
+    if (!ts || !ts->text_remains()) {
+        return Object::make_empty_list(); // EOF
+    }
+
+    // Используем метод твоего TextStream, который двигает seek и считает строки
+    char c = ts->read();
+    return Object::make_char(c);
+}
+
+Object Interpreter::eval_peek_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
+        throw_eval_error(form, "peek-char: requires a reader object");
+    }
+
+    ReaderObject* reader_obj = args.unnamed[0].as_reader();
+    auto ts = reader_obj->ts;
+
+    if (!ts || !ts->text_remains()) {
+        return Object::make_empty_list(); // EOF
+    }
+
+    // Используем твой ts->peek(), который просто берет char по текущему индексу
+    char c = ts->peek();
+    return Object::make_char(c);
+}
+
+Object Interpreter::eval_read_delimited_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // 1. Проверяем минимальное количество аргументов (Reader обязателен)
+    if (args.unnamed.size() != 2) {
+        throw_eval_error(form, "read-delimited-list requires at least 1 argument (reader)");
+    }
+
+        // 3. Определяем терминатор (по умолчанию ")")
+    std::string terminator = ")";
+    Object term_arg = args.unnamed[0];
+    if (term_arg.is_char()) {
+        terminator = std::string(1, term_arg.as_char());
+    } else if (term_arg.is_string()) {
+        terminator = term_arg.as_string()->data;
+    } else {
+        throw_eval_error(form, "read-delimited-list: 1st argument must be a char or string");
+    }
+
+    // 2. Извлекаем ReaderObject
+    if (!args.unnamed[1].is_reader()) {
+        throw_eval_error(form, "read-delimited-list: 2d argument must be a reader object");
+    }
+    ReaderObject* reader_obj = args.unnamed[1].as_reader();
+
+    // 4. Вызываем РЕАЛЬНЫЙ ридер
+    // Предполагается, что у твоего Interpreter есть доступ к экземпляру Reader (напр. m_reader)
+    // Мы используем разыменованный TextStream из ReaderObject
+    if (!reader_obj->ts) {
+        throw_eval_error(form, "read-delimited-list: reader stream is null");
+    }
+
+    // ВАЖНО: вызываем метод у объекта Reader, а не у обертки ReaderObject
+    return reader.read_list(*(reader_obj->ts), false, terminator);
 }
 
 } // namespace script

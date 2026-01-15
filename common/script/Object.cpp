@@ -1,6 +1,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/util/Crc32.hpp"
 #include "common/script/Object.hpp"
+#include "common/script/Reader.hpp"
 #include <sstream>
 #include <iostream>
 #include <cstring>
@@ -19,9 +20,27 @@ namespace script
 
     template <>
     std::string fixed_to_string<char>(char x) {
-        return std::string(1, x);
+        switch (x) {
+            case '\n': return "#\\newline";
+            case ' ':  return "#\\space";
+            case '\t': return "#\\tab";
+            case '\r': return "#\\return";
+            case '\0': return "#\\null";
+            case '\b': return "#\\backspace";
+            case 27:   return "#\\escape"; // ESC символ
+            default:
+                // Проверяем, является ли символ печатным (printable)
+                if (std::isprint(static_cast<unsigned char>(x))) {
+                    return std::string("#\\") + x;
+                } else {
+                    // Если символ непечатный, выводим его код в hex для отладки
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "#\\x%02x", static_cast<unsigned char>(x));
+                    return std::string(buf);
+                }
+        }
     }
-
+    
     template <>
     std::string fixed_to_string<IntType>(IntType x) {
         return std::to_string(x);
@@ -121,7 +140,15 @@ namespace script
         obj.heap_obj = std::make_shared<HashTableObject>();
         return obj;
     }
-
+    
+    Object Object::make_reader(TextStream* textStream)
+    {
+        Object obj;
+        obj.type = ObjectType::READER;
+        obj.heap_obj = std::make_shared<ReaderObject>(textStream);
+        return obj;    
+    }
+        
     Object Object::make_lambda(const ArgumentSpec& args, const Object& body,
         const std::shared_ptr<EnvironmentObject>& env) {
         Object obj = LambdaObject::make_new();
@@ -284,6 +311,14 @@ namespace script
                 " " + print());
         }
         return dynamic_cast<HashTableObject*>(heap_obj.get());
+    }
+
+    ReaderObject* Object::as_reader() const {
+        if (type != ObjectType::READER) {
+            throw std::runtime_error("as_reader called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<ReaderObject*>(heap_obj.get());
     }
 
     std::vector<Object> Object::as_c_vector() const {
@@ -516,5 +551,41 @@ namespace script
         result.type = ObjectType::PAIR;
         result.heap_obj = std::move(head);
         return result;
+    }
+
+
+    // peek-char: смотрим символ через твой ts->peek()
+    Object ReaderObject::peek_char() const {
+        if (!ts || !ts->text_remains()) {
+            return Object::make_empty_list(); // Или специальный EOF символ
+        }
+        return Object::make_char(ts->peek());
+    }
+
+    // read-char: извлекаем символ через твой ts->read()
+    Object ReaderObject::read_char() {
+        if (!ts || !ts->text_remains()) {
+            return Object::make_empty_list();
+        }
+        // Твой ts->read() сам инкрементирует seek и line_count
+        return Object::make_char(ts->read());
+    }
+
+    // skip-whitespace: используем твой метод
+    void ReaderObject::skip_whitespace() {
+        if (ts && ts->text_remains()) {
+            ts->seek_past_whitespace_and_comments();
+        }
+    }
+
+    // Проверка на конец файла
+    bool ReaderObject::is_eof() const {
+        return !ts || !ts->text_remains();
+    }
+
+    std::string ReaderObject::print() const { return "#<reader-stream>"; }
+    std::string ReaderObject::inspect() const { 
+        return "[reader] seek: " + std::to_string(ts ? ts->seek : 0) + 
+            " line: " + std::to_string(ts ? ts->line_count : 0); 
     }
 } // namespace script

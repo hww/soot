@@ -27,7 +27,7 @@ TEST_F(SystemTest, FileExists) {
 
 // Тест current-directory
 TEST_F(SystemTest, CurrentDirectory) {
-    Object obj = eval("(current-directory)");
+    Object obj = eval("(get-path 'cwd)");
     EXPECT_TRUE(obj.is_string());
     // Не можем проверить точное значение, но можем проверить что это не пустая строка
     EXPECT_FALSE(obj.as_string()->empty());

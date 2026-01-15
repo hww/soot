@@ -474,7 +474,7 @@ void ReplWrapper::load_startup_files() {
     std::string lib_path = file_util::find_config_file("lib.sot");
     if (!lib_path.empty()) {
         fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", lib_path);
-        execute_line_internal(fmt::format("(load-file \"{}\")", lib_path), false);
+        execute_line_internal(fmt::format("(load \"{}\")", lib_path), false);
     }
 
     // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
@@ -483,7 +483,7 @@ void ReplWrapper::load_startup_files() {
     if (!pre_path.empty()) {
         //lg::info("Loading pre-startup: {}", pre_path);
         fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", pre_path);
-        execute_line_internal(fmt::format("(load-file \"{}\")", pre_path), false);
+        execute_line_internal(fmt::format("(load \"{}\")", pre_path), false);
     }
 
     // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
@@ -492,7 +492,7 @@ void ReplWrapper::load_startup_files() {
         if (!post_path.empty()) {
             lg::info("Loading post-startup: {}", post_path);
             fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", post_path);
-            execute_line_internal(fmt::format("(load-file \"{}\")", post_path), false);
+            execute_line_internal(fmt::format("(load \"{}\")", post_path), false);
         }
     }
 }
