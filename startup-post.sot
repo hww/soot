@@ -1,4 +1,4 @@
 ﻿; Startup commands that run after network (if enabled)
 ; Initialize network-dependent features
 ; (start-background-services)
-(format #t "Startup Post : Network services initialized")
+(fmt #t "Startup Post : Network services initialized\n")

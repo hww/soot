@@ -116,22 +116,22 @@
       (+ 1 (count (cdr lst))))
   )
 
-(desfun apply (fun x)
+(desfun map (fun x)
 	(if (null? x)
 	    '()
 	    (cons (fun (car x))
-		        (apply fun (cdr x))
+		        (map fun (cdr x))
 		        )
 	    )
 	)
 
-;; same as apply but interleaves with two functions and lists
-(desfun apply2 (fun1 fun2 lst1 lst2)
+;; same as map but interleaves with two functions and lists
+(desfun map2 (fun1 fun2 lst1 lst2)
 	(if (or (null? lst1) (null? lst2) (not (= (length lst1) (length lst2))))
 	    '()
 	    (cons (fun1 (car lst1))
 		        (cons (fun2 (car lst2))
-                  (apply2 fun1 fun2 (cdr lst1) (cdr lst2))
+                  (map2 fun1 fun2 (cdr lst1) (cdr lst2))
                   )
 		        )
 	    )
@@ -190,7 +190,7 @@
   )
 
 (desfun list (&rest items)
-  (apply (lambda (x) x) items)
+  (map (lambda (x) x) items)
   )
 
 (desfun reverse (lst)
@@ -230,8 +230,8 @@
 ;; These are now implemented in Interpreter.cpp for speed.
 ;; But I leave these here because it was cool to implement them in GOOS itself.
 ; (defsmacro let (bindings &rest body)
-;   `((lambda ,(apply first bindings) ,@body)
-;     ,@(apply second bindings)))
+;   `((lambda ,(map first bindings) ,@body)
+;     ,@(map second bindings)))
 
 ; (defsmacro let* (bindings &rest body)
 ;   (if (null? bindings)
@@ -263,7 +263,7 @@
 
 (defsmacro with-gensyms (names &rest body)
   `(let
-     ,(apply (lambda (x) `(,x (gensym))) names)
+     ,(map (lambda (x) `(,x (gensym))) names)
      ,@body
      )
   )
@@ -470,6 +470,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;; USER PROFILES      ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
+
+(desfun try-load-file (path)
+  (if (file-exists? path)
+    (load path)
+    #f))
 
 ;; *user* is defined when goos starts!
 (when *user*

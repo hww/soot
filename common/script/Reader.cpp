@@ -1,5 +1,6 @@
 #include "Reader.hpp"
 #include "Printer.hpp"
+#include "Interpreter.hpp"
 #include "common/util/FileUtil.hpp"  // твой file_hub
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -115,7 +116,7 @@ namespace script {
 
 	// ==================== Reader ====================
 
-	Reader::Reader() {
+	Reader::Reader(Interpreter* interpeter) : m_interpreter(interpeter) {
 		// add default macros
 		add_reader_macro("'", "quote");
 		add_reader_macro("`", "quasiquote");
@@ -160,7 +161,61 @@ namespace script {
 		db.link(result, textFrag, 0);
 		return result;
 	}
+	/*!
+	 * Read a stream.
+	 */
+	Object Reader::read_from_stream(TextStream& ts) {
+		ts.seek_past_whitespace_and_comments();
+		if (!ts.text_remains()) {
+			return Object::make_empty_list(); 
+		}
 
+		auto tok = get_next_token(ts);
+		
+		// Проверяем, не является ли первый токен макросом (например, ' или @)
+		std::vector<const ReaderMacro*> macro_stack;
+		auto it = m_reader_macros.find(tok.text);
+		while (it != m_reader_macros.end()) {
+			macro_stack.push_back(&it->second);
+			if (!ts.text_remains()) {
+				throw_reader_error(ts, "Something must follow a reader macro", 0);
+			}
+			tok = get_next_token(ts);
+			it = m_reader_macros.find(tok.text);
+		}
+
+		// Лямбда для применения накопленных макросов
+		auto apply_macros = [&](Object obj) -> Object {
+			for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
+				const ReaderMacro* m = *i;
+				if (!m->lambda.is_empty_list()) {
+					obj = m_interpreter->call_lambda(m->lambda, { Object::make_reader(&ts) });
+				} else if (!m->replacement.empty()) {
+					Object sym = Object::make_symbol(&symbolTable, m->replacement.c_str());
+					obj = m->list ? script::build_list({ sym, obj }) : sym;
+				}
+			}
+			return obj;
+		};
+
+		Object result;
+		if (tok.text == "(") {
+			// Читаем список и оборачиваем в макросы, если они были перед "("
+			result = apply_macros(read_list(ts, true));
+		} else {
+			// Читаем атомарный объект и оборачиваем в макросы
+			if (read_object(tok, ts, result)) {
+				result = apply_macros(std::move(result));
+			} else {
+				throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
+			}
+		}
+		
+		return result;
+	}
+	/*!
+	 * Read a file.
+	 */
 	Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding, bool add_top_level) {
 		std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
 		const auto joined_file_path = file_util::get_file_path(file_path);
@@ -218,12 +273,15 @@ namespace script {
 
 	// ==================== Token Reading ====================
 
-/*!
- * Given a stream starting at the first character of a token, get the token. Doesn't consume
- * whitespace at the end and leaves the stream on the first character after the token.
- */
+	/*!
+	* Given a stream starting at the first character of a token, get the token. Doesn't consume
+	* whitespace at the end and leaves the stream on the first character after the token.
+	*/
 	Token Reader::get_next_token(TextStream& stream) {
-		ASSERT(stream.text_remains());
+		stream.seek_past_whitespace_and_comments();
+
+		if (!stream.text_remains()) return {};
+
 		Token t;
 		t.source_line = stream.line_count;
 		t.source_offset = stream.seek;
@@ -232,44 +290,102 @@ namespace script {
 		char first = stream.read();
 		t.text.push_back(first);
 
-		// Special tokens
-		if (first == '(' || first == ')' || first == '"' || first == '\'' || first == '`')
-			return t;
+		// --- НОВОЕ: Обработка литерала символа #\ ---
+		if (first == '#' && stream.text_remains() && stream.peek() == '\\') {
+				t.text.push_back(stream.read()); // Добавляем '\'
+				
+				// Читаем ПЕРВЫЙ символ после косой черты обязательно
+				if (stream.text_remains()) {
+					t.text.push_back(stream.read());
+				}
 
-		// ",@" token
+				// Продолжаем читать, пока идут буквы/цифры (для имен типа newline, space)
+				// Но останавливаемся перед пробелом или разделителями (скбоками)
+				while (stream.text_remains()) {
+					char next = stream.peek();
+					if (isspace(next) || next == ')' || next == '(' || next == '[' || next == ']' || next == '"' || next == ';') {
+						break;
+					}
+					t.text.push_back(stream.read());
+				}
+				return t; 
+			}
+
+		// 1. Приоритет №1: Составные токены (например, ,@)
 		if (first == ',' && stream.text_remains() && stream.peek() == '@') {
 			t.text.push_back(stream.read());
 			return t;
 		}
-		else if (first == ',') {
-			return t;
-		}
-		else if (first == '#' && stream.text_remains() && stream.peek() == '(') {
-			t.text.push_back(stream.read());
+
+		// 2. Встроенные разделители (теперь без конфликта с символами)
+		if (first == '(' || first == ')' || first == '"' || first == '\'' || first == '`') {
 			return t;
 		}
 
-		// Read until token end
+		// 3. Reader Macro символы
+		if (m_reader_macros.find(std::string(1, first)) != m_reader_macros.end()) {
+			return t; 
+		}
+
+		// 4. Чтение обычного токена
 		while (stream.text_remains()) {
 			char next = stream.peek();
-			if (next == ' ' || next == '\n' || next == '\t' || next == '\r' || next == ')' ||
-				next == ';' || next == '(') {
-				return t;
-			}
-			else {
+
+			// Проверяем на макрос-разделитель
+			if (isspace(next) || next == ')' || next == '(' || next == '"' || next == ';' ||
+				m_reader_macros.find(std::string(1, next)) != m_reader_macros.end()) {
+				break;
+			} else {
 				t.text.push_back(stream.read());
 			}
 		}
 
 		return t;
 	}
+
+	// ==================== Token Reading Macro ====================
+
 	/*!
- * Add a macro that replaces the sequence of [shortcut, other_token] with
- * (replacement other_token) <- a list with two objects, replacement is a symbol.
- * These are used to make 'x turn into (quote x) and similar.
- */
-	void Reader::add_reader_macro(const std::string& shortcut, std::string replacement) {
-		m_reader_macros[shortcut] = std::move(replacement);
+	* Add a macro that replaces the sequence of [shortcut, other_token] with
+	* (replacement other_token) <- a list with two objects, replacement is a symbol.
+	* These are used to make 'x turn into (quote x) and similar.
+	*/
+	void Reader::add_reader_macro(const std::string& shortcut, std::string replacement, bool list) {
+		ReaderMacro m;
+		m.shortcut = shortcut;
+		m.replacement = std::move(replacement);
+		m.list = list; 
+		m.lambda = Object::make_empty_list(); 
+		m_reader_macros[shortcut] = m;
+	}
+	
+	void Reader::add_reader_macro(const std::string& shortcut, Object lambda, bool list) {
+		ReaderMacro m;
+		m.shortcut = shortcut;
+		m.lambda = std::move(lambda);
+		m.replacement = ""; // В данном случае приоритет у лямбды
+		m.list = list;
+		
+		m_reader_macros[shortcut] = m;
+	}
+
+	void Reader::remove_reader_macro(const std::string& shortcut) {
+		auto it = m_reader_macros.find(shortcut);
+		if (it != m_reader_macros.end()) {
+			m_reader_macros.erase(it);
+			fmt::print("[READER] Removed macro: '{}'\n", shortcut);
+		} else {
+			fmt::print("[READER] Macro '{}' not found\n", shortcut);
+		}
+	}
+
+	// Возвращаем указатель или опционал, чтобы избежать копирования и ошибок доступа
+	const Reader::ReaderMacro* Reader::find_reader_macro(const std::string& shortcut) const {
+		auto it = m_reader_macros.find(shortcut);
+		if (it != m_reader_macros.end()) {
+			return &it->second;
+		}
+		return nullptr;
 	}
 
 	// ==================== Object Reading ====================
@@ -369,135 +485,104 @@ namespace script {
 	/*!
 	 * Call this on the character after the open paren.
 	 */
-	Object Reader::read_list(TextStream& ts, bool expect_close_paren) {
-		ts.seek_past_whitespace_and_comments();
+	Object Reader::read_list(TextStream& ts, bool expect_close_paren, std::string terminator) {
+    ts.seek_past_whitespace_and_comments();
 
-		ListBuilder list_builder;
-		bool got_close_paren = false;
-		bool got_dot = false;
-		bool got_thing_after_dot = false;
-		int start_offset = ts.seek;
+    ListBuilder list_builder;
+    bool got_terminator = false;
+    bool got_dot = false;
+    bool got_thing_after_dot = false;
+    int start_offset = ts.seek;
 
-		while (ts.text_remains()) {
-			auto tok = get_next_token(ts);
+    while (ts.text_remains()) {
+        auto tok = get_next_token(ts);
+        //std::cout << "DEBUG: current token is '" << tok.text << "'" << std::endl;
+        if (tok.text.empty()) break;
 
-			// Reader macros
-			std::vector<std::string> reader_macro_string_stack;
-			auto kv = m_reader_macros.find(tok.text);
-			if (kv != m_reader_macros.end()) {
-				while (kv != m_reader_macros.end()) {
-					reader_macro_string_stack.push_back(kv->second);
-					if (!ts.text_remains()) {
-						throw_reader_error(ts, "Something must follow a reader macro", 0);
-					}
-					tok = get_next_token(ts);
-					kv = m_reader_macros.find(tok.text);
-				}
-			}
-			else {
-				if (tok.text == ".") {
-					if (got_dot) {
-						throw_reader_error(ts, "A list cannot have multiple dots.", -1);
-					}
-					ts.seek_past_whitespace_and_comments();
-					if (!ts.text_remains()) {
-						throw_reader_error(ts, "A list cannot end in a dot", -1);
-					}
-					tok = get_next_token(ts);
-					got_dot = true;
-				}
-			}
+        // 1. ПРОВЕРКА ТЕРМИНАТОРА
+        if (tok.text == terminator || (expect_close_paren && tok.text == ")")) {
+            got_terminator = true;
+            break;
+        }
 
-			auto insert_object = [&](Object&& o) {
-				if (got_thing_after_dot) {
-					throw_reader_error(ts, "A list cannot have multiple entries after the dot", -1);
-				}
+        // 2. ОБРАБОТКА ТОЧКИ (Dotted Pair)
+        if (tok.text == "." && !got_dot) {
+            if (got_dot) throw_reader_error(ts, "Multiple dots in list", -1);
+            got_dot = true;
+            ts.seek_past_whitespace_and_comments();
+            continue; 
+        }
 
-				if (reader_macro_string_stack.empty()) {
-					list_builder.push_back(std::move(o));
-				}
-				else {
-					Object to_push_back = std::move(o);
-					while (!reader_macro_string_stack.empty()) {
-						to_push_back = script::build_list(
-							{ Object::make_symbol(&symbolTable, reader_macro_string_stack.back().c_str()),
-							 to_push_back });
-						reader_macro_string_stack.pop_back();
-					}
-					list_builder.push_back(std::move(to_push_back));
-				}
+        Object current_obj;
+        std::vector<const ReaderMacro*> macro_stack;
 
-				if (got_dot) {
-					got_thing_after_dot = true;
-				}
-				};
+        // 3. СБОР ПРЕФИКСНЫХ МАКРОСОВ (', `, ,)
+        // Мы крутим цикл, пока токены являются текстовыми макросами без лямбд
+        auto it = m_reader_macros.find(tok.text);
+        while (it != m_reader_macros.end() && it->second.lambda.is_empty_list()) {
+            macro_stack.push_back(&it->second);
+            tok = get_next_token(ts);
+            it = m_reader_macros.find(tok.text);
+        }
 
-			if (tok.text.empty()) {
-				break;
-			}
-			else if (tok.text[0] == '(') {
-				insert_object(read_list(ts, true));
-				ts.seek_past_whitespace_and_comments();
-				continue;
-			}
-			else if (tok.text[0] == ')') {
-				got_close_paren = true;
-				break;
-			}
-			else {
-				Object obj;
-				if (read_object(tok, ts, obj)) {
-					ts.seek_past_whitespace_and_comments();
-					insert_object(std::move(obj));
-				}
-				else {
-					throw_reader_error(ts, "invalid token encountered in reader: " + tok.text,
-						-int(tok.text.size()));
-				}
-			}
-		}
+        // 4. ЧТЕНИЕ БАЗОВОГО ОБЪЕКТА
+        // Теперь в tok лежит либо начало списка '(', либо макрос '[', либо просто данные
+        it = m_reader_macros.find(tok.text);
+        
+        if (it != m_reader_macros.end() && !it->second.lambda.is_empty_list()) {
+            // ФУНКЦИОНАЛЬНЫЙ МАКРОС (например, [ )
+            current_obj = m_interpreter->call_lambda(it->second.lambda, { Object::make_reader(&ts) });
+        } else if (tok.text == "(") {
+            // ВЛОЖЕННЫЙ СПИСОК
+            current_obj = read_list(ts, true);
+        } else {
+            // ОБЫЧНЫЙ ОБЪЕКТ (число, символ)
+            if (!read_object(tok, ts, current_obj)) {
+                throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
+            }
+        }
 
-		if (expect_close_paren && !got_close_paren) {
-			throw_reader_error(ts, "failed to find close paren", -1);
-		}
+        // 5. ПРИМЕНЕНИЕ НАКОПЛЕННЫХ ПРЕФИКСОВ
+        for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
+            const ReaderMacro* m = *i;
+            if (!m->replacement.empty()) {
+                Object sym = Object::make_symbol(&symbolTable, m->replacement.c_str());
+                current_obj = m->list ? script::build_list({ sym, current_obj }) : sym;
+            }
+        }
 
-		if (got_close_paren && !expect_close_paren) {
-			throw_reader_error(ts, "found an unexpected close paren", -1);
-		}
+        // 6. ВСТАВКА В СПИСОК
+        if (got_dot) {
+            if (got_thing_after_dot) throw_reader_error(ts, "Multiple entries after dot", -1);
+            got_thing_after_dot = true;
+        }
+        
+        list_builder.push_back(std::move(current_obj));
+        ts.seek_past_whitespace_and_comments();
+    }
 
-		if (got_dot && !got_thing_after_dot) {
-			throw_reader_error(ts, "A list must have an entry after the dot", -1);
-		}
+    // ВАЛИДАЦИЯ И СБОРКА (остается без изменений)
+    if (expect_close_paren && !got_terminator) {
+        throw_reader_error(ts, fmt::format("Expected terminator '{}'", (terminator == ")" ? ")" : terminator)), 0);
+    }
 
-		if (got_thing_after_dot) {
-			if (list_builder.size < 2) {
-				throw_reader_error(ts, "A list with a dot must have at least one thing before the dot", -1);
-			}
-			auto back = list_builder.pop_back();
-			list_builder.finalize();
-			auto rv = list_builder.head;
+    if (got_thing_after_dot) {
+        auto back = list_builder.pop_back();
+        list_builder.finalize();
+        auto rv = list_builder.head;
+        auto lst = rv;
+        while (lst.is_pair() && !lst.as_pair()->cdr.is_empty_list()) {
+            lst = lst.as_pair()->cdr;
+        }
+        if (lst.is_pair()) lst.as_pair()->cdr = back;
+        db.link(rv, ts.text, start_offset);
+        return rv;
+    }
 
-			auto lst = rv;
-			while (true) {
-				if (lst.as_pair()->cdr.is_empty_list()) {
-					lst.as_pair()->cdr = back;
-					break;
-				}
-				else {
-					lst = lst.as_pair()->cdr;
-				}
-			}
-			db.link(rv, ts.text, start_offset);
-			return rv;
-		}
-		else {
-			list_builder.finalize();
-			auto rv = list_builder.head;
-			db.link(rv, ts.text, start_offset);
-			return rv;
-		}
-	}
-
+    list_builder.finalize();
+    db.link(list_builder.head, ts.text, start_offset);
+    return list_builder.head;
+}
 	/*!
 	 * Read a string and escape. Start on the first char after the first double quote.
 	 * Supported escapes are \n, \t, \\ and work like they do in C.
@@ -567,11 +652,11 @@ namespace script {
 
 	// ==================== Number Parsers ====================
 
-/*!
- * Try decoding as a float.  Must have a "." in it.
- * Otherwise all combinations of leading zeros, "."'s, negative signs, etc are ok.
- * Trailing zeros not required.
- */
+	/*!
+	* Try decoding as a float.  Must have a "." in it.
+	* Otherwise all combinations of leading zeros, "."'s, negative signs, etc are ok.
+	* Trailing zeros not required.
+	*/
 	bool Reader::try_token_as_float(const Token& tok, Object& obj) {
 		if (float_start(tok.text[0]) && str_contains(tok.text, '.')) {
 			size_t offset = tok.text[0] == '-' ? 1 : 0;
@@ -792,6 +877,7 @@ namespace script {
 
 		while (ts.text_remains()) {
 			char c = ts.read();
+			char next = ts.text_remains() ? ts.peek() : '\0';
 
 			if (escape_next) {
 				escape_next = false;
@@ -816,6 +902,14 @@ namespace script {
 			}
 
 			switch (c) {
+			case '#':
+				if (next == '\\') {
+					ts.read(); // Съедаем саму обратную косую черту '\'
+					if (ts.text_remains()) {
+						ts.read(); // Съедаем любой символ, который идет следом (например, '[')
+					}
+				}
+				break;				
 			case ';':
 				in_comment = true;
 				break;
