@@ -2,7 +2,7 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "fmt/format.h"
-#include "common/script/Export.hpp"
+#include "common/sooti/Export.hpp"
 
 #define EXPECT_DEFTYPE_THROW(statement) \
     try { \

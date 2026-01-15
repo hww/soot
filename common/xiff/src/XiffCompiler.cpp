@@ -4,7 +4,7 @@
 #include "fmt/color.h"
 #include "xiff/XiffCompiler.hpp"
 #include "common/util/FileUtil.hpp"
-#include "common/script/Export.hpp"
+#include "common/sooti/Export.hpp"
 
 XiffCompiler::XiffCompiler(script::Interpreter& shared_interp) : m_interp(shared_interp) {}
 

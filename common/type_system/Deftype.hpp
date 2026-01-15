@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/script/Object.hpp"
+#include "common/sooti/Object.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "common/type_system/State.hpp"

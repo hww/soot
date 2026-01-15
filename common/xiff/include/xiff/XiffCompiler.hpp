@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/script/Interpreter.hpp" // Твой sooti
+#include "common/sooti/Interpreter.hpp" // Твой sooti
 #include "XiffInjector.hpp"
 #include <string>
 #include <vector>

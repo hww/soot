@@ -1,18 +1,18 @@
-# Создаем библиотеку REPL с ВСЕМИ исходниками
+# пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ REPL пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 add_library(repl_core 
-    src/repl/config.cpp
-    src/repl/repl_wrapper.cpp
-    src/repl/nrepl/ReplServer.cpp
-    src/repl/nrepl/ReplClient.cpp
-    # Добавляем cross_sockets если есть
-    src/repl/cross_sockets/XSocketServer.cpp
-    src/repl/cross_sockets/XSocketClient.cpp
+    src/soot/config.cpp
+    src/soot/repl_wrapper.cpp
+    src/soot/nrepl/ReplServer.cpp
+    src/soot/nrepl/ReplClient.cpp
+    # пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ cross_sockets пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+    src/soot/cross_sockets/XSocketServer.cpp
+    src/soot/cross_sockets/XSocketClient.cpp
 )
 
-# Подключаем ВСЕ зависимости
+# пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 target_link_libraries(repl_core PRIVATE 
     fmt::fmt
-    script_core  # твой интерпретатор
+    script_core  # пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 )
 
 # Platform-specific libraries
@@ -22,7 +22,7 @@ else()
     target_link_libraries(repl_core PRIVATE pthread)
 endif()
 
-# Исполняемый файл
+# пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
 add_executable(z80-lisp src/main.cpp)
 target_link_libraries(z80-lisp PRIVATE 
     repl_core

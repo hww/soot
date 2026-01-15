@@ -1,5 +1,5 @@
 ﻿# Создаем нашу библиотеку БЕЗ replxx файлов
-add_library(type_system_lib 
+add_library(libtypesys 
     common/util/BitUtils.cpp
     common/util/StringUtil.cpp
     common/util/Diff.cpp
@@ -15,8 +15,8 @@ add_library(type_system_lib
 )
 
 # Линкуем fmt если нужно
-target_link_libraries(type_system_lib PRIVATE fmt::fmt)
+target_link_libraries(libtypesys PRIVATE fmt::fmt)
 
 # Для теста
-add_executable(type_system common/type_system/Main.cpp)
-target_link_libraries(type_system PRIVATE type_system_lib fmt::fmt)
+add_executable(typesys common/type_system/Main.cpp)
+target_link_libraries(typesys PRIVATE libtypesys fmt::fmt)

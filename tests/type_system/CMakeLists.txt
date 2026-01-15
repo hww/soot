@@ -3,12 +3,12 @@
 # Добавляем эту строку в самое начало
 include(GoogleTest)
 
-include_directories(common/script)
+include_directories(common/sooti)
 
 # ==============================================================
 # Type System
 # ==============================================================
-add_executable(type_system_tests
+add_executable(typesys_tests
     tests/type_system/MainTypeSystemTest.cpp
     tests/type_system/TestDefenum.cpp
     tests/type_system/TestTypeSystem.cpp
@@ -16,15 +16,15 @@ add_executable(type_system_tests
     #tests/type_system/test_goos_ts.cpp
 )
 # Тестовый исполняемый файл
-target_link_libraries(type_system_tests type_system_lib script_lib gtest_main fmt)
-target_include_directories(type_system_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
+target_link_libraries(typesys_tests libtypesys libsoti gtest_main fmt)
+target_include_directories(typesys_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 if(MSVC)
-    set_target_properties(type_system_tests PROPERTIES 
+    set_target_properties(typesys_tests PROPERTIES 
         VS_DEBUGGER_ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/Debug"
     )
 endif()
 
 # Добавляем тесты
-gtest_discover_tests(type_system_tests)
+gtest_discover_tests(typesys_tests)
  
 

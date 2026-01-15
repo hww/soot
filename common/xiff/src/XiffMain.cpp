@@ -6,7 +6,7 @@
 #include "fmt/color.h"
 #include "common/util/Log.hpp"
 #include "common/util/FileUtil.hpp"
-#include "common/script/Export.hpp"
+#include "common/sooti/Export.hpp"
 #include "xiff/XiffCompiler.hpp"
 
 namespace fs = std::filesystem;

@@ -23,6 +23,48 @@
       "stopAtEntry": false,  // Остановиться при входе в main
     },
     {
+      "name": "Debug SOOT Server",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": ["--server", "8181"],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build",
+      "stopAtEntry": false,  // Остановиться при входе в main
+    },
+    {
+      "name": "Debug SOOT Client",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": ["--client", "8181"],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build",
+      "stopAtEntry": false,  // Остановиться при входе в main
+    },    
+    {
       "name": "Debug SOOT (HOME)",
       "type": "cppdbg",
       "request": "launch",
