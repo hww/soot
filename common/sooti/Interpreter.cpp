@@ -4,6 +4,7 @@
 #include "fmt/args.h"
 #include "fmt/base.h"
 #include "fmt/format.h"
+#include "fmt/color.h"
 #include "common/util/Log.hpp"
 #include "common/util/Crc32.hpp"
 #include "common/util/FileUtil.hpp"
@@ -12,7 +13,6 @@
 #include "common/CommonTypes.hpp"
 #include "common/versions/version.h"
 #include "common/versions/revision.h"
-
 #include <sstream>
 #include <filesystem>
 #include <set>
@@ -308,8 +308,11 @@ Object Interpreter::intern(const std::string& name) {
 }
 
 void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
-    throw std::runtime_error("[SOOT] Evaluation error on `" + o.print() + "`: " + err + "\n" +
-        reader.get_db().get_info_for(o));
+    auto info = reader.get_db().get_info_for(o);
+    if (info == "?")
+        throw std::runtime_error(o.print() + "`: " + err);
+    else
+        throw std::runtime_error(o.print() + "`: " + err + "\n" + info);
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
@@ -434,18 +437,40 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
         return eval(obj, env);
     }
     catch (std::runtime_error& e) {
+        // Статическая переменная хранит последний напечатанный объект, 
+        // чтобы не дублировать блоки при раскрутке стека.
+        static uintptr_t last_printed_obj = 0;
+        
         if (!disable_printing) {
-            printf("-----------------------------------------\n");
-            printf("From object %s\nat %s\n", obj.inspect().c_str(), reader.get_db().get_info_for(obj).c_str());
+            uintptr_t current_obj_ptr = reinterpret_cast<uintptr_t>(obj.heap_obj.get());
+            auto info_str = reader.get_db().get_info_for(obj);
+            
+            if (info_str != "?" && current_obj_ptr != last_printed_obj) {
+                last_printed_obj = current_obj_ptr;
+
+                auto border_color = fg(fmt::color::dim_gray);
+                auto type_color = fg(fmt::color::cadet_blue);
+                
+                fmt::print(border_color, "─── ");
+                fmt::print(type_color, "[{}]", obj.type_name());
+                fmt::print(border_color, " ─────────────────────────────────\n");
+                
+                // Печатаем инфо, где указатель '^' подсвечен красным или желтым
+                // (Для этого можно подправить TextDb::get_info_for или сделать замену здесь)
+                fmt::print("{}", info_str);
+            }
         }
-        throw;
+        throw; 
     }
 }
 
 Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env) {
     Object result;
     if (!try_symbol_lookup(sym, env, &result)) {
-        throw_eval_error(sym, "symbol is not defined");
+        auto border_color = fg(fmt::color::dim_gray);
+        fmt::print(border_color, "; Warning: use of undeclared identifier '{}'\n", sym.as_symbol().c_str());
+        //throw_eval_error(sym, "symbol is not defined");
+        return m_false_object;
     }
     return result;
 }
@@ -2280,37 +2305,20 @@ Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const
 // Системные функции с проверками
 // ==============================================
 
-// Утилита! Читает весь файл как текст.
-std::string Interpreter::read_entire_file(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file) {
-        throw std::runtime_error("Cannot open file: " + filename);
-    }
-    return std::string((std::istreambuf_iterator<char>(file)),
-        std::istreambuf_iterator<char>());
-}
-
 // Читает весь файл как текст.
 Object Interpreter::eval_read_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
     std::string filename = args.unnamed[0].as_string()->data;
-    return Object::make_string(read_entire_file(filename));
+    return Object::make_string(file_util::read_text(filename));
 }
 
 // Превращает строку в список команд: (top-level ... ). Удобно для eval.
 Object Interpreter::eval_parse_str(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
-
-    try {
-        return reader.read_from_string(args.unnamed[0].as_string()->data, true, "read string");
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("read error: ") + e.what());
-    }
-    return m_false_object;
+    return reader.read_from_string(args.unnamed[0].as_string()->data, true, "read string");
 }
 
 // Читает весь файл как данные, обернутые в top-level.
@@ -2319,22 +2327,15 @@ Object Interpreter::eval_read_file(const Object& form, Arguments& args, const st
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
 
     std::string filename = args.unnamed[0].as_string()->data;
-    std::string content = read_entire_file(filename);
+    std::string content = file_util::read_text(filename);
     return reader.read_from_string(content, true, filename);
 }
 
 // Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
 Object Interpreter::eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
-
-    try {
-        Object code = reader.read_from_file({ args.unnamed[0].as_string()->data }, true, true);
-        return eval_with_rewind(code, env);
-    }
-    catch (std::runtime_error& e) {
-        throw_eval_error(form, std::string("load-file error: ") + e.what());
-    }
-    return m_false_object;
+    Object code = reader.read_from_file({ args.unnamed[0].as_string()->data }, true, true);
+    return eval_with_rewind(code, env);
 }
 
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2383,7 +2384,7 @@ Object Interpreter::eval_system(const Object& form, Arguments& args, const std::
 Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form; (void)args; (void)env;
     want_exit = true;
-    return Object::make_empty_list();
+    return m_true_object;
 }
 
 Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2410,7 +2411,7 @@ Object Interpreter::eval_find_file(const Object& form, Arguments& args, const st
 
     std::string path = args.unnamed[0].as_string()->data;
     auto found = file_util::find_config_file(path);
-    return found.empty() ? Object::make_empty_list() : Object::make_string(found.string());
+    return found.empty() ? m_false_object : Object::make_string(found.string());
 }
 
 // ==============================================
@@ -2614,8 +2615,7 @@ Object Interpreter::eval_set_reader_macro(const Object& form, Arguments& args,
         shortcut = std::string(1, args.unnamed[0].as_char());
     }
     else {
-        throw_eval_error(form,
-            "set-reader-macro: first argument must be string, symbol, or character");
+        throw_eval_error(form, "set-reader-macro: first argument must be string, symbol, or character");
     }
     
     // Получаем replacement (второй аргумент)
@@ -2634,8 +2634,7 @@ Object Interpreter::eval_set_reader_macro(const Object& form, Arguments& args,
         reader.add_reader_macro(shortcut, object, false);
     }
     else {
-        throw_eval_error(form,
-            "set-reader-macro: second argument must be string or symbol");
+        throw_eval_error(form, "set-reader-macro: second argument must be string or symbol");
     }
 
     return m_true_object;
@@ -2663,8 +2662,7 @@ Object Interpreter::eval_remove_reader_macro(const Object& form, Arguments& args
         shortcut = std::string(1, args.unnamed[0].as_char());
     }
     else {
-        throw_eval_error(form,
-            "remove-reader-macro: argument must be string, symbol, or character");
+        throw_eval_error(form, "remove-reader-macro: argument must be string, symbol, or character");
     }
     reader.remove_reader_macro(shortcut); 
     
@@ -2699,7 +2697,7 @@ Object Interpreter::eval_get_reader_macro(const Object& form, Arguments& args,
     }
     auto macro = reader.find_reader_macro(shortcut); 
     if (macro == nullptr) 
-        return Object::make_empty_list();
+        return m_false_object;
     else if (!macro->lambda.is_empty_list())
         return macro->lambda;
     else
