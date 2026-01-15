@@ -109,7 +109,7 @@ Start a local interactive session for real-time experimentation:
 bash> soot
 ```
 
-* 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
+* 📖 [SOOT Script Language - Quick Reference](common/sooti/README.md)
   
 #### 2. Network REPL (nREPL)
 
@@ -166,7 +166,7 @@ User Configuration (`~/.config/soot/config.sot`)
 
 SOOT includes a minimal Standard Library located at /usr/local/share/soot/lib.sot. This library is automatically loaded to provide essential definitions and to handle cross-platform hardware abstractions.
 
-* 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
+* 📖 [SOOT Common Library Documentation](common/sooti/README.LIB.md)
 
 ## 📁 Configuration Paths and Files
 
@@ -280,13 +280,13 @@ git push origin feature/amazing-feature
 The following EMacs config file should get you started and configure OpenGOAL's formatting style
 
 ```lisp
-;; make gc files use lisp-mode
+;; make .sot files use lisp-mode
 (add-to-list 'auto-mode-alist '("\\.sot\\'" . lisp-mode))
-;; run setup-goal when we enter lisp mode
-(add-hook 'lisp-mode-hook 'setup-goal)
+;; run setup-soot when we enter lisp mode
+(add-hook 'lisp-mode-hook 'setup-soot)
 
-(defun setup-goal ()
-  ;; if we are in a gc file, change indent settings for GOAL
+(defun setup-soot ()
+  ;; if we are in a gc file, change indent settings for SOOL
   (when (and (stringp buffer-file-name)
              (string-match "\\.gc\\'" buffer-file-name))
     (put 'with-pp      'common-lisp-indent-function 0)
@@ -316,8 +316,8 @@ The following EMacs config file should get you started and configure OpenGOAL's 
 
 ## 📖 Other Documentation
 
-* [SOOT Script Language - Quick Reference](common/script/README.md)
-* [SOOT Common Library Documentation](common/script/README.LIB.md)
+* [SOOT Script Language - Quick Reference](common/sooti/README.md)
+* [SOOT Common Library Documentation](common/sooti/README.LIB.md)
 
 ---
 

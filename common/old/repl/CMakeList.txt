@@ -1,16 +1,16 @@
 add_library(repl_core 
     # REPL UI
-    src/repl/config.cpp
-    src/repl/repl_wrapper.cpp
+    src/soot/config.cpp
+    src/soot/repl_wrapper.cpp
     
-    # nREPL протокол  
-    src/repl/nrepl/ReplServer.cpp
-    src/repl/nrepl/ReplClient.cpp
+    # nREPL пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ  
+    src/soot/nrepl/ReplServer.cpp
+    src/soot/nrepl/ReplClient.cpp
     
-    # Низкоуровневые сокеты
-    src/repl/cross_sockets/XSocket.cpp
-    src/repl/cross_sockets/XSocketServer.cpp  
-    src/repl/cross_sockets/XSocketClient.cpp
+    # пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+    src/soot/cross_sockets/XSocket.cpp
+    src/soot/cross_sockets/XSocketServer.cpp  
+    src/soot/cross_sockets/XSocketClient.cpp
 )
 
 target_link_libraries(repl_core PRIVATE 

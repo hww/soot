@@ -1,5 +1,5 @@
-# Создаем нашу библиотеку БЕЗ replxx файлов
-add_library(util_lib 
+# РЎРѕР·РґР°РµРј РЅР°С€Сѓ Р±РёР±Р»РёРѕС‚РµРєСѓ Р‘Р•Р— replxx С„Р°Р№Р»РѕРІ
+add_library(libsootutils 
 
 common/util/Assert.cpp 
 common/util/BitUtils.cpp 
@@ -14,5 +14,5 @@ common/util/StringUtil.cpp
 common/util/UnicodeUtil.cpp 
 )
 
-# Линкуем fmt если нужно
-target_link_libraries(util_lib PRIVATE fmt::fmt)
+# Р›РёРЅРєСѓРµРј fmt РµСЃР»Рё РЅСѓР¶РЅРѕ
+target_link_libraries(libsootutils PRIVATE fmt::fmt)

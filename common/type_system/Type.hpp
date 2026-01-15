@@ -14,7 +14,7 @@
 #include <optional>
 #include "common/CommonTypes.hpp"
 #include "common/type_system/TypeSpec.hpp"
-#include "common/script/Export.hpp"
+#include "common/sooti/Export.hpp"
 
 // Forward declarations
 class Type;

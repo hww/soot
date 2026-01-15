@@ -1,8 +1,8 @@
 ﻿#include <gtest/gtest.h>
-#include "common/runtime/kernel/Connectable.hpp"
-#include "common/runtime/kernel/Engine.hpp"
-#include "common/runtime/kernel/Process.hpp"
-#include "common/runtime/lib/StringId.hpp"
+#include "common/carbon/kernel/Connectable.hpp"
+#include "common/carbon/kernel/Engine.hpp"
+#include "common/carbon/kernel/Process.hpp"
+#include "common/carbon/lib/StringId.hpp"
 #include <thread>
 #include <memory>
 

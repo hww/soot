@@ -15,7 +15,7 @@
 ;          *registry* *current-file* *pending-fields*))
 
 ;; Импорт стандартных библиотек
-;(require 'common/script/stdlib)
+;(require 'common/sooti/stdlib)
 
 ;; ============================================================================
 ;; GLOBAL STATE AND REGISTRY

@@ -1,0 +1,13 @@
+﻿// The kernel
+#include "common/carbon/kernel/Types.hpp"
+#include "common/carbon/kernel/NativeFunc.hpp"
+#include "common/carbon/kernel/StateDefinition.hpp"
+#include "common/carbon/kernel/StateFrame.hpp"
+#include "common/carbon/kernel/Connectable.hpp"
+#include "common/carbon/kernel/Connection.hpp"
+#include "common/carbon/kernel/Engine.hpp"
+#include "common/carbon/kernel/EntityActor.hpp"
+#include "common/carbon/kernel/Process.hpp"
+#include "common/carbon/kernel/Scheduler.hpp"
+#include "common/carbon/kernel/ProcessRunner.hpp"
+#include "common/carbon/kernel/Kernel.hpp"

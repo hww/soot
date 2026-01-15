@@ -15,6 +15,10 @@ set(CMAKE_BUILD_TYPE Debug)
 # или
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
 
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wno-pedantic)
+endif()
+
 # С CMake policies
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -82,10 +86,10 @@ include_directories(third_party/replxx/include)
 add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 
 # Include subdirectories
-include(common/script/CMakeLists.txt)
-include(common/repl/CMakeLists.txt)
+include(common/sooti/CMakeLists.txt)
+include(common/soot/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
-include(common/runtime/CMakeLists.txt)
+include(common/carbon/CMakeLists.txt)
 include(common/xiff/CMakeLists.txt)
 
 
@@ -106,8 +110,8 @@ if(BUILD_TESTS)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
     enable_testing()
-    include(tests/script/CMakeLists.txt)
+    include(tests/sooti/CMakeLists.txt)
     include(tests/type_system/CMakeLists.txt)
-    include(tests/runtime/CMakeLists.txt)
+    include(tests/carbon/CMakeLists.txt)
     include(tests/engine/CMakeLists.txt)
 endif()
