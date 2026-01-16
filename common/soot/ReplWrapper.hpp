@@ -27,7 +27,7 @@ public:
     void run_interactive();
     void run_server(std::string host, int port = 8181);
     void run_client(std::string host, int port = 8181);
-    void run_script(const std::string& filename);
+    void load_file(const std::string& filename);
 
     // Управление
     void print_welcome(const std::vector<std::string>& loaded_projects = {});

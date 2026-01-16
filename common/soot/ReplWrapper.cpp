@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 // ============================================================
 
 ReplWrapper::ReplWrapper(const std::string& username)
-    : username_(username), interpreter_(username), reader_(), loaded_files_(8), prompt_("> "), prompt_incomplete_("      ") {
+    : username_(username), interpreter_(username), reader_(), loaded_files_(8), prompt_("soot> "), prompt_incomplete_("      ") {
     init_settings();
     // Загружаем конфиг (клавиши, порты)
     load_config("config.sot");  
@@ -333,13 +333,13 @@ void ReplWrapper::show_history() {
 // Starting 
 // ============================================================
 
-void ReplWrapper::run_script(const std::string& filename) {
+void ReplWrapper::load_file(const std::string& filename) {
     fmt::print(fg(fmt::color::cyan), "✓ Running script: {}\n", filename);
     try {
         // Предполагаем, что у интерпретатора есть метод для загрузки файла
         interpreter_.eval_string(fmt::format("(load \"{}\")", filename), "script");
     } catch (const std::exception& e) {
-        fmt::print(fg(fmt::color::red), "✗ Script error: {}\n", e.what());
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "✗ Script error: {}\n", e.what());
     }
 }
 
@@ -519,6 +519,7 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
         send(client_socket, response.c_str(), response.size(), 0);
     }
     catch (const std::exception& e) {
+        // Не печатаем детали тут, они уже ушли в консоль сервера через eval_with_rewind
         std::string error = "Error: " + std::string(e.what()) + "\n";
         send(client_socket, error.c_str(), error.size(), 0);
     }
@@ -526,7 +527,6 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
 // ============================================================
 // Основная логика выполнения (Локально vs Сеть)
 // ============================================================
-
 void ReplWrapper::execute_line_internal(const std::string& line, bool print_result) {
     if (is_client_mode_) {
         // КЛИЕНТ: шлет код на сервер
@@ -581,7 +581,7 @@ void ReplWrapper::execute_line_internal(const std::string& line, bool print_resu
                 fmt::print(fg(fmt::color::green), "=> {}\n", result.print());
         }
         catch (const std::exception& e) {
-            fmt::print(fg(fmt::color::red), "Error: {}\n", e.what());
+            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());        
         }
     }
 }
@@ -873,7 +873,7 @@ std::string ReplWrapper::read_multiline_with_check() {
 
 void ReplWrapper::inspect_top_env()
 {
-    script::Object obj = interpreter_.get_global_environmet();
+    script::Object obj = interpreter_.get_global_environment();
     fmt::print("Simple:\n{}\n", script::EnvironmentPrettyPrinter::to_string(obj.as_env()));
 }
 

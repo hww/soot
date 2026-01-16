@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include "fmt/args.h"
 #include "fmt/base.h"
+#include "fmt/args.h"
+#include "fmt/base.h"
 #include "fmt/format.h"
 #include "fmt/color.h"
 
@@ -144,7 +146,7 @@ namespace script {
 
 		// Указатель ^
 		int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
-		std::string pointer = "    " + std::string(offset_in_line, ' ') + "^\n";
+		std::string pointer = "    " + fmt::format(fg(fmt::color::red) | fmt::emphasis::bold, "^\n");
 		
 		return result + pointer;
 	}

@@ -69,7 +69,7 @@ namespace script {
         Object read_from_stream(TextStream& ts);
         Object read_from_string(const std::string& str, bool add_top_level = true, const std::optional<std::string>& string_name = std::nullopt);
         Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true, bool add_top_level = true);
-
+        Object read_one(TextStream& ts);
         // REPL метод (если нужен):
         //std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
 
