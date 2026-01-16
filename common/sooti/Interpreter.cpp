@@ -1734,7 +1734,6 @@ Object Interpreter::eval_ash(const Object& form,
     }
     else {
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
-        return m_false_object;
     }
 }
 
@@ -2221,7 +2220,7 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     }
 
     args.unnamed.at(0).as_hash_table()->data[str] = args.unnamed.at(2);
-    return m_false_object;
+    return Object::make_empty_list();
 }
 
 Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2377,7 +2376,7 @@ Object Interpreter::eval_get_env(const Object& form, Arguments& args, const std:
         return Object::make_string(value);
     }
     else {
-        return m_false_object;
+        return Object::make_empty_list();
     }
 }
 
@@ -2395,7 +2394,7 @@ Object Interpreter::eval_system(const Object& form, Arguments& args, const std::
 Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form; (void)args; (void)env;
     want_exit = true;
-    return m_true_object;
+    return Object::make_empty_list();
 }
 
 Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2520,7 +2519,7 @@ Object Interpreter::eval_string_to_number(const Object& form, Arguments& args, c
         }
     }
     catch (const std::exception&) {
-        return m_false_object;
+        return Object::make_empty_list();
     }
 }
 
@@ -2648,7 +2647,7 @@ Object Interpreter::eval_set_macro_character(const Object& form, Arguments& args
         throw_eval_error(form, "set-reader-macro: second argument must be string or symbol");
     }
 
-    return m_true_object;
+    return Object::make_empty_list();
 }
 
 Object Interpreter::eval_remove_macro_character(const Object& form, Arguments& args,
@@ -2678,7 +2677,7 @@ Object Interpreter::eval_remove_macro_character(const Object& form, Arguments& a
     reader.remove_reader_macro(shortcut); 
     
     
-    return m_true_object;
+    return Object::make_empty_list();
 }
 
 Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args,
@@ -2708,7 +2707,7 @@ Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args
     }
     auto macro = reader.find_reader_macro(shortcut); 
     if (macro == nullptr) 
-        return m_false_object;
+        return Object::make_empty_list();
     else if (!macro->lambda.is_empty_list())
         return macro->lambda;
     else
