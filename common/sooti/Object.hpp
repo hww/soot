@@ -169,6 +169,12 @@ namespace script
         // String representation
         std::string print() const;
         std::string inspect() const;
+        std::string inspect_short() const { 
+            const int max_len = 64;
+            auto str = inspect(); // Добавили скобки ()
+            if (str.size() <= max_len) return str;
+            return str.substr(0, max_len-3) + "..."; // substr вместо substring
+        }
         std::string type_name() const { return object_type_to_string(type); }
 
         // Type checking

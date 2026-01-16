@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
 
         // Запускаем выбранный режим
         if (!script_file.empty()) {
-            repl.run_script(script_file);
+            repl.load_file(script_file);
         }
         else if (server) {
             repl.run_server("localhost", network_port);

@@ -152,9 +152,9 @@ namespace script
             {"load", &Interpreter::eval_load},
 
             // Reader
-            {"set-reader-macro", &Interpreter::eval_set_reader_macro},
-            {"remove-reader-macro", &Interpreter::eval_remove_reader_macro},
-            {"get-reader-macro", &Interpreter::eval_get_reader_macro},
+            {"set-macro-character", &Interpreter::eval_set_macro_character},
+            {"remove-macro-character", &Interpreter::eval_remove_macro_character},
+            {"get-macro-character", &Interpreter::eval_get_macro_character},
             {"read", &Interpreter::eval_read},
             {"read-char", &Interpreter::eval_read_char},
             {"peek-char", &Interpreter::eval_peek_char},
@@ -308,11 +308,7 @@ Object Interpreter::intern(const std::string& name) {
 }
 
 void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
-    auto info = reader.get_db().get_info_for(o);
-    if (info == "?")
-        throw std::runtime_error(o.print() + "`: " + err);
-    else
-        throw std::runtime_error(o.print() + "`: " + err + "\n" + info);
+    throw std::runtime_error(o.print() + "`: " + err);
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
@@ -332,7 +328,7 @@ void Interpreter::execute_repl() {
     fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit' to leave\n");
 
     while (!want_exit) {
-        std::cout << "> ";
+        std::cout << "sooti> ";
         std::cout.flush();
 
         if (!std::getline(std::cin, input)) {
@@ -347,6 +343,8 @@ void Interpreter::execute_repl() {
             Object code = reader.read_from_string(input, "repl");
             fmt::print("Reader Returned: {}\n", pretty_print::to_string(code));
             // evaluate
+            eval_depth = 0;
+            g_is_first_error_frame = true;
             Object result = eval_with_rewind(code, global_environment.as_env_ptr());
             // Print
             printf("%s\n", result.print().c_str());
@@ -364,10 +362,100 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
 {
     // read something from the user
     Object code = reader.read_from_string(expression, true, filename);
+    eval_depth = 0;
+    g_is_first_error_frame = true;
     // evaluate
     return eval_with_rewind(code, global_environment.as_env_ptr());
 }
 
+
+Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>& args) {
+    eval_depth = 0;
+    g_is_first_error_frame = true;
+
+    if (!lambda.is_lambda()) {
+        throw std::runtime_error("call_lambda: object is not a lambda");
+    }
+    
+    const auto& lam = lambda.as_lambda();
+    
+    // 1. Проверка аргументов
+    size_t min_args = lam->args.unnamed.size();
+    bool has_rest = !lam->args.rest.empty() || lam->args.varargs;
+    
+    if (args.size() < min_args || (!has_rest && args.size() > min_args)) {
+        throw std::runtime_error(fmt::format(
+            "call_lambda: wrong number of arguments (expected {}, got {})",
+            has_rest ? fmt::format("at least {}", min_args) : std::to_string(min_args),
+            args.size()
+        ));
+    }
+    
+    // 2. Создаем Arguments
+    Arguments func_args;
+    func_args.unnamed = args;
+    
+    // Если есть rest-аргумент (не varargs, а именно &rest)
+    if (!lam->args.rest.empty() && args.size() > min_args) {
+        // Помещаем лишние аргументы в rest
+        for (size_t i = min_args; i < args.size(); ++i) {
+            func_args.rest.push_back(args[i]);
+        }
+        // Обрезаем unnamed до нужного размера
+        func_args.unnamed.resize(min_args);
+    }
+    
+    // 3. Создаем окружение для выполнения
+    // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
+    auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
+    auto lam_env = lam_env_obj.as_env_ptr();
+    
+    // 4. Биндим аргументы
+    Object dummy_form = Object::make_symbol(&reader.get_symbol_table(), "call-lambda");
+    set_args_in_env(dummy_form, func_args, lam->args, lam_env);
+    
+    // 5. Выполняем тело
+    return eval_list_return_last(lam->body, lam->body, lam_env);
+}
+
+// ==============================================
+// Eval With Rewind (Recursion)
+// ==============================================
+
+Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
+    eval_depth++;
+    try {
+        auto result = eval(obj, env);
+        eval_depth--; // Сбрасываем при успехе
+        return result;
+    }
+    catch (std::runtime_error& e) {
+        eval_depth--;
+        if (!disable_printing) {
+            if (g_is_first_error_frame) {
+                auto info = reader.get_db().get_info_for(obj);
+                if (info != "?") {
+                    fmt::print(fg(fmt::color::indian_red), "\n─── ERROR ──────────────────────────────────\n");
+                    fmt::print("{}\n", info);
+                }
+                g_is_first_error_frame = false;
+            } else {
+                if (obj.is_pair()) {
+                    auto info_opt = reader.get_db().get_short_info_for(obj);
+                    // Печатаем "at ...", только если есть реальный файл и строка > 0
+                    if (info_opt && info_opt->line_idx_to_display > 0) {
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
+                                eval_depth + 1, obj.inspect_short(), info_opt->filename, info_opt->line_idx_to_display);
+                    } else {
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
+                                eval_depth + 1, obj.inspect_short());
+                    }
+                }
+            }
+        }
+        throw;
+    }
+}
 
 // ==============================================
 // Eval 
@@ -432,37 +520,6 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
     return Object::make_empty_list();
 }
 
-Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
-    try {
-        return eval(obj, env);
-    }
-    catch (std::runtime_error& e) {
-        // Статическая переменная хранит последний напечатанный объект, 
-        // чтобы не дублировать блоки при раскрутке стека.
-        static uintptr_t last_printed_obj = 0;
-        
-        if (!disable_printing) {
-            uintptr_t current_obj_ptr = reinterpret_cast<uintptr_t>(obj.heap_obj.get());
-            auto info_str = reader.get_db().get_info_for(obj);
-            
-            if (info_str != "?" && current_obj_ptr != last_printed_obj) {
-                last_printed_obj = current_obj_ptr;
-
-                auto border_color = fg(fmt::color::dim_gray);
-                auto type_color = fg(fmt::color::cadet_blue);
-                
-                fmt::print(border_color, "─── ");
-                fmt::print(type_color, "[{}]", obj.type_name());
-                fmt::print(border_color, " ─────────────────────────────────\n");
-                
-                // Печатаем инфо, где указатель '^' подсвечен красным или желтым
-                // (Для этого можно подправить TextDb::get_info_for или сделать замену здесь)
-                fmt::print("{}", info_str);
-            }
-        }
-        throw; 
-    }
-}
 
 Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env) {
     Object result;
@@ -475,52 +532,6 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     return result;
 }
 
-Object Interpreter::call_lambda(const Object& lambda, 
-                                const std::vector<Object>& args) {
-    if (!lambda.is_lambda()) {
-        throw std::runtime_error("call_lambda: object is not a lambda");
-    }
-    
-    const auto& lam = lambda.as_lambda();
-    
-    // 1. Проверка аргументов
-    size_t min_args = lam->args.unnamed.size();
-    bool has_rest = !lam->args.rest.empty() || lam->args.varargs;
-    
-    if (args.size() < min_args || (!has_rest && args.size() > min_args)) {
-        throw std::runtime_error(fmt::format(
-            "call_lambda: wrong number of arguments (expected {}, got {})",
-            has_rest ? fmt::format("at least {}", min_args) : std::to_string(min_args),
-            args.size()
-        ));
-    }
-    
-    // 2. Создаем Arguments
-    Arguments func_args;
-    func_args.unnamed = args;
-    
-    // Если есть rest-аргумент (не varargs, а именно &rest)
-    if (!lam->args.rest.empty() && args.size() > min_args) {
-        // Помещаем лишние аргументы в rest
-        for (size_t i = min_args; i < args.size(); ++i) {
-            func_args.rest.push_back(args[i]);
-        }
-        // Обрезаем unnamed до нужного размера
-        func_args.unnamed.resize(min_args);
-    }
-    
-    // 3. Создаем окружение для выполнения
-    // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
-    auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
-    auto lam_env = lam_env_obj.as_env_ptr();
-    
-    // 4. Биндим аргументы
-    Object dummy_form = Object::make_symbol(&reader.get_symbol_table(), "call-lambda");
-    set_args_in_env(dummy_form, func_args, lam->args, lam_env);
-    
-    // 5. Выполняем тело
-    return eval_list_return_last(lam->body, lam->body, lam_env);
-}
 
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
     const auto& pair = obj.as_pair();
@@ -1723,7 +1734,7 @@ Object Interpreter::eval_ash(const Object& form,
     }
     else {
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
-        return Object::make_empty_list();
+        return m_false_object;
     }
 }
 
@@ -2210,7 +2221,7 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     }
 
     args.unnamed.at(0).as_hash_table()->data[str] = args.unnamed.at(2);
-    return Object::make_empty_list();
+    return m_false_object;
 }
 
 Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2591,7 +2602,7 @@ Object Interpreter::eval_time_nanoseconds(const Object& form, Arguments& args, c
 // Macro Character
 // ==============================================
 
-Object Interpreter::eval_set_reader_macro(const Object& form, Arguments& args,
+Object Interpreter::eval_set_macro_character(const Object& form, Arguments& args,
                                            const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     
@@ -2640,7 +2651,7 @@ Object Interpreter::eval_set_reader_macro(const Object& form, Arguments& args,
     return m_true_object;
 }
 
-Object Interpreter::eval_remove_reader_macro(const Object& form, Arguments& args,
+Object Interpreter::eval_remove_macro_character(const Object& form, Arguments& args,
                                             const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     
@@ -2670,7 +2681,7 @@ Object Interpreter::eval_remove_reader_macro(const Object& form, Arguments& args
     return m_true_object;
 }
 
-Object Interpreter::eval_get_reader_macro(const Object& form, Arguments& args,
+Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args,
                                             const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     

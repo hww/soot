@@ -9,10 +9,10 @@
 ;
 ;=================================================================
 ; Lisp libary
-(desfun set-macro-character (char lambda) 
-    (set-reader-macro char lambda))
-(desfun get-macro-character (char)
-        (get-reader-macro char))
+;(desfun set-macro-character (char lambda)
+;    (set-reader-macro char lambda))
+;(desfun get-macro-character (char)
+;        (get-reader-macro char))
 
 ; =================================================================
 ; $ is a macro character to define labels
@@ -20,6 +20,7 @@
    (lambda (s c)
       (let ((sym (read s)))
            (lab sym))))
+(print 0)
 ; @ is a macro character to define registers
 (set-macro-character #\@ 
    (lambda (s c) 
@@ -46,21 +47,22 @@
               ('iy (make-lextoken :type 'iy-register :value 'iy))
               ('iv (make-lextoken :type 'iv-register :value 'iv))
               ('mr (make-lextoken :type 'mr-register :value 'mr))))))
-
-(desfun make-lextoken (&key (type 'none) &key (value #f))
+(print 1)
+(defun make-lextoken (&key (type 'none) &key (value #f))
         (list 1))
-(desfun eq (a b) (eq? a b))
-(desfun sign (x) (if (>= x 0) '+ '-))
-(defsmacro setq (name data) `(define ,name ,data))
+(defun eq (a b) (eq? a b))
+(defun sign (x) (if (>= x 0) '+ '-))
+(defmacro setq (name data) `(define ,name ,data))
 (print 2)
-(desfun make-indexed (sign reg val)
+
+(defun make-indexed (sign reg val)
    "Create an indexed lextoken"
    (let ((val (if (eq sign '+) (eval val) (- 0 (eval val)))))
         (case (lextoken-type reg)
            ('ix (make-lextoken :type 'ix-indexed :value val))
            ('iy (make-lextoken :type 'iy-indexed :value val)))))
 
-(desfun ind-reader (lis)
+(defun ind-reader (lis)
    "Read indirect adressing modes"
    (let ((first (car lis)))
         (cond 
@@ -81,7 +83,7 @@
 ;;              (ind-reader (list (eval first))))
            ((symbolp first)
               (make-lextoken :type 'asmsym-indirect :value first)))))
-                         
+(print 2)
 ; [ is a macro character for indirect and indexed adressing modes
 (set-macro-character "["
    (lambda (s c)
@@ -127,7 +129,7 @@
 (setf (con-code 'p) 6)
 (setf (con-code 'm) 7)
 
-(desfun parse-z80 (arg)
+(defun parse-z80 (arg)
   "Parse z80 source code, see the macro definitions and lextoken
   definitions above."
   (cond
@@ -145,7 +147,7 @@
 ; Set the assembler parse function to be parse-z80
 (setq *parse* #'parse-z80)
 
-(desfun lzasm-z80 (insts)
+(defun lzasm-z80 (insts)
   "Create a new z80 program"
   (make-asm-prog :insts (flatten-list insts)))
 

@@ -231,7 +231,22 @@ namespace script {
 		db.link(result, textFrag, 0);
 		return result;
 	}
+    
+	Object Reader::read_one(TextStream& ts) {
+		ts.seek_past_whitespace_and_comments();
+		if (!ts.text_remains()) return Object::make_empty_list();
 
+		Token tok = get_next_token(ts);
+		Object obj;
+		
+		// ВАЖНО: read_object внутри себя должен проверять:
+		// если токен == "(", он вызывает read_list и читает ВЕСЬ список.
+		if (read_object(tok, ts, obj)) {
+			return obj;
+		}
+		
+		return Object::make_empty_list();
+	}
 	/*!
 	 * Common read for a SourceText
 	 */

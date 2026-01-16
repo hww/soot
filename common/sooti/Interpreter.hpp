@@ -48,7 +48,7 @@ namespace script
         Reader& get_reader() { return reader; }
 
         // Лоступ к окружению
-        Object get_global_environmet() { return global_environment; }
+        Object get_global_environment() { return global_environment; }
 
         // Boolean helpers (используют символы)
         Object make_bool(bool value) { return value ? m_true_object : m_false_object; }
@@ -155,9 +155,9 @@ namespace script
         Object eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Reader
-        Object eval_set_reader_macro(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_get_reader_macro(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_remove_reader_macro(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_set_macro_character(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_get_macro_character(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_remove_macro_character(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_peek_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -254,5 +254,7 @@ namespace script
         Object global_environment;
         Object comp_env;
         bool disable_printing = false;
+        int eval_depth;
+        bool g_is_first_error_frame;
     };
 } // namespace script
