@@ -124,20 +124,24 @@ namespace script {
 
         ListBuilder() { head = Object::make_empty_list(); }
 
-        void push_back(Object&& o) {
+        std::shared_ptr<PairObject> push_back(Object&& o) {
             size++;
+            std::shared_ptr<PairObject> next;
             if (!tail) {
                 tail = std::make_shared<PairObject>(o, Object{});
                 head.type = ObjectType::PAIR;
                 head.heap_obj = tail;
+                next = tail;
             }
             else {
-                auto next = std::make_shared<PairObject>(o, Object{});
+                next = std::make_shared<PairObject>(o, Object{});
                 tail->cdr.type = ObjectType::PAIR;
                 tail->cdr.heap_obj = next;
                 prev_tail = std::move(tail);
                 tail = std::move(next);
+                next = tail;
             }
+            return next; // Возвращаем именно ту пару, в которую положили объект
         }
 
         Object pop_back() {

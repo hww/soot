@@ -82,6 +82,7 @@ namespace script {
 		if (o.is_empty_list()) return;
 
 		ASSERT(o.is_pair());
+		//printf ("<item offset=[%d] item=%s>%s</item>\n", offset, o.inspect_short().c_str(), frag->get_text());
 		TextRef ref;
 		ref.offset = offset;
 		ref.frag = std::move(frag);
@@ -144,9 +145,15 @@ namespace script {
 		std::string line = frag->get_line_containing_offset(offset);
 		result += "    " + line + "\n";
 
-		// Указатель ^
-		int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
-		std::string pointer = "    " + fmt::format(fg(fmt::color::red) | fmt::emphasis::bold, "^\n");
+		// 1. Вычисляем реальный отступ внутри строки
+		int offset_in_line = offset - frag->get_offset_of_line(line_idx);
+		if (offset_in_line < 0) offset_in_line = 0;
+
+		// 2. Создаем строку пробелов нужной длины (4 базовых + смещение в строке)
+		std::string spaces(4 + offset_in_line, ' ');
+		
+		// 3. Печатаем стрелку с правильным отступом
+		std::string pointer = spaces + fmt::format(fg(fmt::color::red) | fmt::emphasis::bold, "^\n");
 		
 		return result + pointer;
 	}
