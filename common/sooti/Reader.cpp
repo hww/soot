@@ -582,8 +582,21 @@ namespace script {
             if (got_thing_after_dot) throw_reader_error(ts, "Multiple entries after dot", -1);
             got_thing_after_dot = true;
         }
-        
-        list_builder.push_back(std::move(current_obj));
+
+        // Вызываем push_back, который теперь возвращает PairObject
+        auto new_pair_ptr = list_builder.push_back(std::move(current_obj));
+
+        // Линкуем ячейку к позиции текущего элемента (или первого макроса перед ним)
+        if (new_pair_ptr) {
+            Object pair_wrapper;
+            pair_wrapper.type = ObjectType::PAIR;
+            pair_wrapper.heap_obj = new_pair_ptr;
+
+            // Используем координаты из начала цепочки (если были макросы) или самого токена
+            int final_offset = macro_stack.empty() ? tok.source_offset : macro_stack.front().offset;
+            db.link(pair_wrapper, tok.source_text, final_offset);
+        }
+
         ts.seek_past_whitespace_and_comments();
     }
 
