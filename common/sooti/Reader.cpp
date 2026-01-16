@@ -529,13 +529,18 @@ namespace script {
         }
 
         Object current_obj;
-        std::vector<const ReaderMacro*> macro_stack;
+        struct MacroInContext {
+            const ReaderMacro* macro;
+            std::shared_ptr<SourceText> src;
+            int offset;
+        };
+        std::vector<MacroInContext> macro_stack;
 
         // 3. СБОР ПРЕФИКСНЫХ МАКРОСОВ (', `, ,)
         // Мы крутим цикл, пока токены являются текстовыми макросами без лямбд
         auto it = m_reader_macros.find(tok.text);
         while (it != m_reader_macros.end() && it->second.lambda.is_empty_list()) {
-            macro_stack.push_back(&it->second);
+            macro_stack.push_back({&it->second, tok.source_text, tok.source_offset});
             tok = get_next_token(ts);
             it = m_reader_macros.find(tok.text);
         }
@@ -560,10 +565,15 @@ namespace script {
 
         // 5. ПРИМЕНЕНИЕ НАКОПЛЕННЫХ ПРЕФИКСОВ
         for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
-            const ReaderMacro* m = *i;
+            const ReaderMacro* m = i->macro;
             if (!m->replacement.empty()) {
                 Object sym = Object::make_symbol(&symbolTable, m->replacement.c_str());
                 current_obj = m->list ? script::build_list({ sym, current_obj }) : sym;
+                
+                // Если макрос создал список (например, (quote x)), линкуем эту новую пару
+                if (m->list && current_obj.is_pair()) {
+                    db.link(current_obj, i->src, i->offset);
+                }
             }
         }
 
@@ -582,6 +592,7 @@ namespace script {
         throw_reader_error(ts, fmt::format("Expected terminator '{}'", (terminator == ")" ? ")" : terminator)), 0);
     }
 
+    // Обработка Dotted Pair
     if (got_thing_after_dot) {
         auto back = list_builder.pop_back();
         list_builder.finalize();
