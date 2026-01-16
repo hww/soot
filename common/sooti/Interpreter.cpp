@@ -430,15 +430,15 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
         return result;
     }
     catch (std::runtime_error& e) {
-        eval_depth--;
+        eval_depth--;        
         if (!disable_printing) {
             if (g_is_first_error_frame) {
                 auto info = reader.get_db().get_info_for(obj);
                 if (info != "?") {
                     fmt::print(fg(fmt::color::indian_red), "\n─── ERROR ──────────────────────────────────\n");
                     fmt::print("{}\n", info);
+                    g_is_first_error_frame = false;
                 }
-                g_is_first_error_frame = false;
             } else {
                 if (obj.is_pair()) {
                     auto info_opt = reader.get_db().get_short_info_for(obj);
@@ -477,6 +477,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
     return result;
 }
 
+// Запуск функции
 Object Interpreter::eval_list_return_last(const Object& form,
     Object rest,
     const std::shared_ptr<EnvironmentObject>& env) {
@@ -488,6 +489,7 @@ Object Interpreter::eval_list_return_last(const Object& form,
     while (true) {
         const Object* next = &iter->as_pair()->cdr;
         const Object* item = &iter->as_pair()->car;
+
         if (next->is_empty_list()) {
             return eval_with_rewind(*item, env);
         }
@@ -524,10 +526,7 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
 Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env) {
     Object result;
     if (!try_symbol_lookup(sym, env, &result)) {
-        auto border_color = fg(fmt::color::dim_gray);
-        fmt::print(border_color, "; Warning: use of undeclared identifier '{}'\n", sym.as_symbol().c_str());
-        //throw_eval_error(sym, "symbol is not defined");
-        return m_false_object;
+        throw std::runtime_error("Unbound variable: " + std::string(std::string(sym.as_symbol().c_str())));
     }
     return result;
 }
@@ -1275,6 +1274,7 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 
     return args;
 }
+
 ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
     ArgumentSpec spec;
 
@@ -2421,7 +2421,7 @@ Object Interpreter::eval_find_file(const Object& form, Arguments& args, const st
 
     std::string path = args.unnamed[0].as_string()->data;
     auto found = file_util::find_config_file(path);
-    return found.empty() ? m_false_object : Object::make_string(found.string());
+    return found.empty() ? Object::make_empty_list() : Object::make_string(found.string());
 }
 
 // ==============================================
