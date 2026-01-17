@@ -9,10 +9,49 @@
 ;
 ;=================================================================
 ; Lisp libary
-;(desfun set-macro-character (char lambda)
-;    (set-reader-macro char lambda))
-;(desfun get-macro-character (char)
-;        (get-reader-macro char))
+;; В CL 'eq' проверяет идентичность объектов (указателей).
+;; Если твой 'eq?' делает то же самое, это идеальный алиас.
+(defun eq (a b)
+  "Returns T if A and B are the same object, otherwise NIL."
+  (eq? a b))
+
+;; Более CL-ориентированный подход: в Лиспе знаки обычно возвращают числа 1, -1 или 0,
+;; но если тебе нужны символы '+ и '- для ассемблера, эта реализация верна.
+(defun sign (x)
+  "Returns '+ if X is non-negative, and '- if X is negative.
+   Useful for determining jump directions or offset signs in assembly."
+  (if (>= x 0) '+ '-))
+
+;; В CL 'setq' используется для переопределения существующих переменных.
+;; Если в твоем языке 'define' работает и как создание, и как обновление,
+;; то этот макрос корректен.
+(defmacro setq (name data)
+  "Basic assignment macro. Sets the variable NAME to the result of DATA."
+  `(define ,name ,data))
+
+;; 'setf' в CL — это мощнейшая система 'set-field'.
+;; В простейшем случае (setf name value) он работает как setq.
+;; Если ты передаешь getter (например, (setf (car x) 5)), это требует сложной логики.
+;; Пока сделаем базовую версию для переменных:
+(defmacro setf (place value)
+  (if (symbolp place)
+      ;; Случай 1: (setf x 5) -> (define x 5)
+      `(set! ,place ,value)
+      
+      ;; Случай 2: (setf (getter ...) 5)
+      (let ((head (car place))
+            (args (cdr place)))
+        (cond
+          ;; Если это (car x), превращаем в (set-car! x value)
+          ((eq head 'car) `(set-car! ,(car args) ,value))
+          
+          ;; Если это (cdr x), превращаем в (set-cdr! x value)
+          ((eq head 'cdr) `(set-cdr! ,(car args) ,value))
+          
+          ;; Если это твой новый lextoken-value
+          ((eq head 'lextoken-value) `(set-lextoken-value! ,(car args) ,value))
+          
+          (t (error "SETF: Неизвестное место для записи" place))))))
 
 ; =================================================================
 ; $ is a macro character to define labels
@@ -20,8 +59,18 @@
    (lambda (s c)
       (let ((sym (read s)))
            (lab sym))))
-(print 0)
-; @ is a macro character to define registers
+
+
+(defun make-lextoken (&key (type 'none) &key (value #f))
+        (list 1))
+(defun eq (a b) (eq? a b))
+(defun sign (x) (if (>= x 0) '+ '-))
+(defmacro setq (name data) `(define ,name ,data))
+
+                                        ; @ is a macro character to define registers
+(set-macro-character #\@ (lambda (a s) s))
+
+                                        ; @ is a macro character to define registers
 (set-macro-character #\@ 
    (lambda (s c) 
       (let ((reg (read s)))
@@ -47,13 +96,6 @@
               ('iy (make-lextoken :type 'iy-register :value 'iy))
               ('iv (make-lextoken :type 'iv-register :value 'iv))
               ('mr (make-lextoken :type 'mr-register :value 'mr))))))
-(print 1)
-(defun make-lextoken (&key (type 'none) &key (value #f))
-        (list 1))
-(defun eq (a b) (eq? a b))
-(defun sign (x) (if (>= x 0) '+ '-))
-(defmacro setq (name data) `(define ,name ,data))
-(print 2)
 
 (defun make-indexed (sign reg val)
    "Create an indexed lextoken"

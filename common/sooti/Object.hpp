@@ -16,6 +16,7 @@
 #include <type_traits>
 #include <cstring>
 #include <unordered_set>
+#include "SourceInfo.hpp"
 
 namespace script
 {
@@ -24,11 +25,20 @@ namespace script
     using IntType = int64_t;
 
     enum class ObjectType : uint8_t {
-        EMPTY_LIST, INTEGER, FLOAT, CHAR,
-        SYMBOL, STRING, PAIR, ARRAY, LAMBDA, MACRO, ENVIRONMENT, INVALID, STRING_HASH_TABLE, READER
+        INVALID, 
+        EMPTY_LIST, PAIR, 
+        ARRAY, STRING_HASH_TABLE, 
+        INTEGER, FLOAT, CHAR,
+        SYMBOL, STRING, 
+        LAMBDA, MACRO, 
+        ENVIRONMENT, 
+        READER, 
+        LEXTOKEN
     };
 
+    class Object;
     std::string object_type_to_string(ObjectType type);
+    Object object_type_to_symbol(ObjectType type);
 
     // Forward declarations
     class EnvironmentObject;
@@ -43,7 +53,8 @@ namespace script
     class TextStream;
     class ReaderObject;
     class Reader;
-
+    class LextokenObject;
+    
     struct ArgumentSpec;
 
     // InternedSymbolPtr как в OpenGOAL
@@ -155,16 +166,17 @@ namespace script
         static Object make_float(FloatType value);
         static Object make_char(char value);
         static Object make_empty_list();
+        static Object make_list(const std::vector<Object>& elements);
+        static Object make_array(const std::vector<Object>& elements);
+        static Object make_vector(const std::vector<Object>& elements);
         static Object make_symbol(SymbolTable* table, const char* name);
         static Object make_string(const std::string& text);
         static Object make_pair(const Object& car, const Object& cdr);
-        static Object make_array(const std::vector<Object>& elements);
         static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
         static Object make_macro(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
-        static Object make_vector(const std::vector<Object>& elements);
         static Object make_hash_table();
         static Object make_reader(TextStream* textStream);
-
+        static Object make_lextoken(const Object& type, const Object& value, const TextRef& info);
 
         // String representation
         std::string print() const;
@@ -176,8 +188,10 @@ namespace script
             return str.substr(0, max_len-3) + "..."; // substr вместо substring
         }
         std::string type_name() const { return object_type_to_string(type); }
+        Object type_symbol() const { return object_type_to_symbol(type); }
 
         // Type checking
+        bool is_heap_object() const { return heap_obj != nullptr; }
         bool is_integer() const { return type == ObjectType::INTEGER; }
         bool is_float() const { return type == ObjectType::FLOAT; }
         bool is_char() const { return type == ObjectType::CHAR; }
@@ -193,29 +207,28 @@ namespace script
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_reader() const { return type == ObjectType::READER; }
+        bool is_lextoken() const { return type == ObjectType::LEXTOKEN; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
         bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
         bool is_false() const { return is_symbol() && (as_symbol() == "#f"); }
 
         // Value access with type checking
-        IntType as_integer() const;
-        FloatType as_float() const;
-        char as_char() const;
-        const InternedSymbolPtr& as_symbol() const;
-        StringObject* as_string() const;
-        ArrayObject* as_array() const;
-        HashTableObject* as_hash_table() const;
-        MacroObject* as_macro() const;
-        LambdaObject* as_lambda() const;
-        EnvironmentObject* as_env() const;
+        bool                        as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
+        char                        as_char() const;
+        IntType                     as_integer() const;
+        FloatType                   as_float() const;
+        StringObject*               as_string() const;
+        ArrayObject*                as_array() const;
+        HashTableObject*            as_hash_table() const;
+        MacroObject*                as_macro() const;
+        LambdaObject*               as_lambda() const;
+        EnvironmentObject*          as_env() const;
+        ReaderObject*               as_reader() const;
+        LextokenObject*             as_lextoken() const;
+        const IntegerObject&        as_integer_obj() const;
+        const InternedSymbolPtr&    as_symbol() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
-        bool as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
-        const IntegerObject& as_integer_obj() const {
-            if (!is_integer()) throw_type_error("integer");
-            return integer_obj;
-        }
-        ReaderObject* as_reader() const;
 
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
@@ -438,6 +451,40 @@ namespace script
     };
 
     class SymbolTable {
+    public:
+        struct core {
+            static Object empty_list;
+            static Object integer;
+            static Object float_pt;
+            static Object character;
+            static Object symbol;
+            static Object string;
+            static Object pair;
+            static Object array;
+            static Object lambda;
+            static Object macro;
+            static Object environment;
+            static Object reader;
+            static Object lextoken;
+            static Object unknown;
+        };
+
+        void init_core_symbols() {
+            SymbolTable::core::empty_list     = Object::make_symbol(this, "empty-list");
+            SymbolTable::core::integer        = Object::make_symbol(this, "integer");
+            SymbolTable::core::float_pt       = Object::make_symbol(this, "float");
+            SymbolTable::core::character      = Object::make_symbol(this, "char");
+            SymbolTable::core::symbol         = Object::make_symbol(this, "symbol");
+            SymbolTable::core::string         = Object::make_symbol(this, "string");
+            SymbolTable::core::pair           = Object::make_symbol(this, "pair");
+            SymbolTable::core::array          = Object::make_symbol(this, "array");
+            SymbolTable::core::lambda         = Object::make_symbol(this, "lambda");
+            SymbolTable::core::macro          = Object::make_symbol(this, "macro");
+            SymbolTable::core::environment    = Object::make_symbol(this, "environment");
+            SymbolTable::core::reader         = Object::make_symbol(this, "reader");
+            SymbolTable::core::lextoken       = Object::make_symbol(this, "lextoken");
+            SymbolTable::core::unknown        = Object::make_symbol(this, "unknown");
+        }
     public:
         SymbolTable(const SymbolTable&) = delete;
         SymbolTable& operator=(const SymbolTable&) = delete;
@@ -685,7 +732,20 @@ namespace script
         std::string print() const override;
         std::string inspect() const override;
     };
- 
+
+
+    class LextokenObject : public HeapObject {
+        public:
+        Object      type;      // Например, символ 'OPCODE или 'REGISTER
+        Object      value;     // Например, "MOV" или 7
+        TextRef     location;  // Ссылка на файл, строку и колонку в .asm файле
+
+        explicit LextokenObject(const Object& type, const Object& value, const TextRef& location): type(type),  value(value), location(location) {}
+
+        std::string print() const override;
+        std::string inspect() const override;
+    };
+
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);
 

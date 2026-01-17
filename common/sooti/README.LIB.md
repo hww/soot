@@ -96,3 +96,46 @@
 
 Чтобы проверить, загружена ли библиотека в текущем окружении, используйте переменную `*core-lib-loaded*`.
 
+Вот профессиональный комментарий для документации или `CONTRIBUTING.md`, который объясняет, как работает эта система. Текст написан на английском (так как это стандарт для исходного кода), с четким разделением на логику и преимущества.
+
+---
+
+### 📝 Documentation: Type System & Dispatching
+
+#### Core Type Representation
+
+The interpreter utilizes a **Static Symbol Mapping** for object types. Instead of returning raw strings or integers, the `type?` function returns interned symbols stored in `SymbolTable::core`.
+
+* **Mechanism:** Every `ObjectType` maps directly to a pre-allocated `Object` (Symbol) during the Reader's initialization.
+* **Performance:** Type comparisons are  operations because they rely on pointer equality (via `eq?`) rather than string comparisons.
+
+#### High-Level Dispatching: `case-type`
+
+To handle different object types gracefully, use the `case-type` macro. It provides a clean, declarative syntax for type-based branching.
+
+**Syntax:**
+
+```lisp
+(case-type <expression>
+  (<type-symbol-1> <body-1>)
+  (<type-symbol-2> <body-2>)
+  (else            <default-body>))
+
+```
+
+**Implementation Details:**
+
+1. **Single Evaluation:** The input expression is evaluated exactly once and bound to a `gensym`'ed variable.
+2. **Expansion:** The macro expands into a `let` block containing a `cond` structure.
+3. **Efficiency:** Each branch performs a direct `eq?` check against interned type symbols (`integer`, `string`, `lextoken`, etc.).
+
+#### Best Practices
+
+* Use `case-type` instead of nested `if` or `cond` with manual `type?` calls.
+* Always provide an `else` branch when handling compiler-critical data like `lextoken` to catch unexpected states.
+* Refer to `SymbolTable::core` in C++ when adding new primitive types to ensure they are available to the Lisp environment.
+
+---
+
+**Что дальше?**
+Если ты планируешь активно работать с токенами, я могу помочь написать версию `case-token`, которая будет проверять не только тип `lextoken`, но и его внутренний подтип (например, `OP_CODE`, `REGISTER`, `LABEL`) в одну строчку. Хочешь?

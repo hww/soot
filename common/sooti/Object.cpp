@@ -10,6 +10,22 @@
 
 namespace script
 {
+    // Инициализация памяти для статических членов
+    Object script::SymbolTable::core::empty_list;
+    Object script::SymbolTable::core::integer;
+    Object script::SymbolTable::core::float_pt;
+    Object script::SymbolTable::core::character;
+    Object script::SymbolTable::core::symbol;
+    Object script::SymbolTable::core::string;
+    Object script::SymbolTable::core::pair;
+    Object script::SymbolTable::core::array;
+    Object script::SymbolTable::core::lambda;
+    Object script::SymbolTable::core::macro;
+    Object script::SymbolTable::core::environment;
+    Object script::SymbolTable::core::reader;
+    Object script::SymbolTable::core::lextoken;
+    Object script::SymbolTable::core::unknown;
+
     // Специализации fixed_to_string
     template <>
     std::string fixed_to_string<FloatType>(FloatType x) {
@@ -51,22 +67,28 @@ namespace script
         return x.name_ptr ? std::string(x.name_ptr) : "";
     }
 
-    std::string object_type_to_string(ObjectType type) {
+
+    Object object_type_to_symbol(ObjectType type) {
         switch (type) {
-        case ObjectType::EMPTY_LIST: return "empty-list";
-        case ObjectType::INTEGER: return "integer";
-        case ObjectType::FLOAT: return "float";
-        case ObjectType::CHAR: return "char";
-        case ObjectType::SYMBOL: return "symbol";
-        case ObjectType::STRING: return "string";
-        case ObjectType::PAIR: return "pair";
-        case ObjectType::ARRAY: return "array";
-        case ObjectType::LAMBDA: return "lambda";
-        case ObjectType::MACRO: return "macro";
-        case ObjectType::ENVIRONMENT: return "environment";
-        case ObjectType::INVALID: return "invalid";
-        default: return "unknown";
+            case ObjectType::EMPTY_LIST:    return SymbolTable::core::empty_list; // было EmptyList
+            case ObjectType::INTEGER:       return SymbolTable::core::integer;    // было Integer
+            case ObjectType::FLOAT:         return SymbolTable::core::float_pt;   // было Float
+            case ObjectType::CHAR:          return SymbolTable::core::character;  // было Char
+            case ObjectType::SYMBOL:        return SymbolTable::core::symbol;
+            case ObjectType::STRING:        return SymbolTable::core::string;
+            case ObjectType::PAIR:          return SymbolTable::core::pair;
+            case ObjectType::ARRAY:         return SymbolTable::core::array;
+            case ObjectType::LAMBDA:        return SymbolTable::core::lambda;
+            case ObjectType::MACRO:         return SymbolTable::core::macro;
+            case ObjectType::ENVIRONMENT:   return SymbolTable::core::environment;
+            case ObjectType::READER:        return SymbolTable::core::reader;
+            case ObjectType::LEXTOKEN:      return SymbolTable::core::lextoken;
+            default:                        return SymbolTable::core::unknown;
         }
+    }
+
+    std::string object_type_to_string(ObjectType type) {
+        return object_type_to_symbol(type).as_symbol().c_str();
     }
 
     void Object::throw_type_error(const std::string& expected) const {
@@ -100,6 +122,10 @@ namespace script
         Object obj;
         obj.type = ObjectType::EMPTY_LIST;
         return obj;
+    }
+
+    Object Object::make_list(const std::vector<Object>& elements) {
+        return build_list(elements);
     }
 
     Object Object::make_symbol(SymbolTable* table, const char* name) {
@@ -148,7 +174,16 @@ namespace script
         obj.heap_obj = std::make_shared<ReaderObject>(textStream);
         return obj;    
     }
-        
+
+    Object Object::make_lextoken(const Object& type, const Object& value, const TextRef& info)
+    {
+        Object obj;
+        obj.type = ObjectType::LEXTOKEN;
+        // Создаем shared_ptr для твоего нового класса
+        obj.heap_obj = std::make_shared<LextokenObject>(type, value, info);
+        return obj;    
+    }
+
     Object Object::make_lambda(const ArgumentSpec& args, const Object& body,
         const std::shared_ptr<EnvironmentObject>& env) {
         Object obj = LambdaObject::make_new();
@@ -182,16 +217,11 @@ namespace script
             return char_obj.print();
         case ObjectType::SYMBOL:
             return symbol_obj.print();
-        case ObjectType::LAMBDA:
-        case ObjectType::MACRO:
-        case ObjectType::STRING:
-        case ObjectType::PAIR:
-        case ObjectType::ARRAY:
-        case ObjectType::ENVIRONMENT:
-        case ObjectType::STRING_HASH_TABLE:
-            return heap_obj ? heap_obj->print() : "[invalid]";
         default:
-            return "[unknown]";
+            if (is_heap_object())
+                return heap_obj ? heap_obj->print() : "[invalid-heap-object]";
+            else
+                return "[unknown]";
         }
     }
 
@@ -207,16 +237,11 @@ namespace script
             return char_obj.inspect();
         case ObjectType::SYMBOL:
             return symbol_obj.inspect();
-        case ObjectType::LAMBDA:
-        case ObjectType::MACRO:
-        case ObjectType::STRING:
-        case ObjectType::PAIR:
-        case ObjectType::ARRAY:
-        case ObjectType::ENVIRONMENT:
-        case ObjectType::STRING_HASH_TABLE:
-            return heap_obj ? heap_obj->inspect() : "[invalid]";
         default:
-            return "[unknown]";
+            if (is_heap_object())
+                return heap_obj ? heap_obj->inspect() : "[invalid-heap-object]";
+            else
+                return "[unknown]";
         }
     }
 
@@ -320,6 +345,14 @@ namespace script
         }
         return dynamic_cast<ReaderObject*>(heap_obj.get());
     }
+    
+    LextokenObject* Object::as_lextoken() const {
+        if (type != ObjectType::LEXTOKEN) {
+            throw std::runtime_error("as_lextoken called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<LextokenObject*>(heap_obj.get());
+    }
 
     std::vector<Object> Object::as_c_vector() const {
         if (!is_list())
@@ -331,6 +364,11 @@ namespace script
             current = current.as_pair()->cdr;
         }
         return result;
+    }
+
+    const IntegerObject& Object::as_integer_obj() const {
+        if (!is_integer()) throw_type_error("integer");
+        return integer_obj;
     }
 
     // Comparison
@@ -424,6 +462,7 @@ namespace script
         m_used_entries = 0;
         m_next_resize = (m_entries.size() * kMaxUsed);
         m_mask = 0b1;
+        init_core_symbols();
     }
 
     SymbolTable::~SymbolTable() {
@@ -588,7 +627,11 @@ namespace script
 
     std::string ReaderObject::print() const { return "#<reader-stream>"; }
     std::string ReaderObject::inspect() const { 
-        return "[reader] seek: " + std::to_string(ts ? ts->seek : 0) + 
-            " line: " + std::to_string(ts ? ts->line_count : 0); 
+        return "[reader] seek: " + std::to_string(ts ? ts->seek : 0) + " line: " + std::to_string(ts ? ts->line_count : 0); 
+    }
+
+    std::string LextokenObject::print() const { return "#<lextoken>"; }
+    std::string LextokenObject::inspect() const { 
+        return "[lextoken] type: " + type.inspect() + " value: " + value.inspect(); 
     }
 } // namespace script

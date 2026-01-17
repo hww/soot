@@ -1,4 +1,4 @@
-# 📖 **SOOT Script Language - Quick Reference**
+# 📖 **SOOT Script Language - Quick Reference** (Updated)
 
 SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting language for C++ applications.
 
@@ -18,8 +18,11 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 - [System](#system)
 - [Type Conversions](#type-conversions)
 - [Time Functions](#time-functions)
+- [Reader and LexTokens](#reader-and-lextokens)
+- [Macro System](#macro-system)
 - [Other Functions](#other-functions)
 - [Other Documentation](#other-documentation)
+
 ---
 
 ## 📋 **Argument Syntax**
@@ -108,111 +111,7 @@ Special forms don't evaluate their arguments automatically.
 (macro (args) body...)        ; Macro definition
 (let ((var1 val1) ...) body)  ; Local bindings
 (let* ((var1 val1) ...) body) ; Sequential bindings
-```
-Here is a polished and more professional version of the documentation for your Reader Macros. It covers the simple substitution, lambda-based processing, and the important edge cases we solved (like character literals).
-
----
-
-## **Customizing the Reader (Reader Macros)**
-
-Reader Macros allow you to extend the Soot syntax by defining how specific characters or sequences are parsed. You can use them for simple symbol substitution or complex structural transformations.
-
-### **1. Simple Symbol Substitution**
-
-You can map a character to a specific symbol. This is useful for creating shorthand "tags."
-
-```scheme
-;; Register '$' as a macro that expands to the symbol 'label'
-soot> (set-reader-macro "$" "label")
-=> #t
-
-soot> (get-reader-macro "$")
-=> "label"
-
-;; The reader now wraps the following object with the 'label' symbol
-soot> (read-data "$1945")
-=> (label 1945)
-
-```
-
-To revert the syntax to its original state, use `remove-reader-macro`:
-
-```lisp
-soot> (remove-reader-macro "$")
-=> #t
-
-soot> (read-data "$1945")
-=> $1945
-
-```
-
-### **2. Functional Reader Macros (Lambda)**
-
-For more advanced syntax, like custom brackets or data structures, you can pass a `lambda` to `set-reader-macro`. The lambda receives one argument: the **Reader** stream.
-
-#### **Example: Implementing Square Bracket Vectors `[ ]**`
-
-This macro captures everything between `[` and `]` and converts it into a native vector.
-
-```lisp
-;; Define '[' to read a list until it hits ']' and apply the 'vector' function
-(set-reader-macro #\[ 
-  (lambda (r s)
-    ; r-reader s-pattern to replace 
-    (let ((lis (read-delimited-list #\] r)))
-      (apply 'vector lis))))
-
-;; Define ']' as a terminator to prevent it from being read as a stray symbol
-(set-reader-macro #\] 
-  (lambda (r) 
-    (error "Unexpected closing bracket")))
-```
-
-**Usage:**
-
-```scheme
-soot> [1 2 3]
-=> #(1 2 3)
-
-```
-
----
-
-### **3. Character Literals and Escape Logic**
-
-Soot’s reader is designed to respect Lisp character literal rules. Even if a character is registered as a macro (like `[`), it will be ignored when escaped as a character literal.
-
-| Input       | Interpretation        | Result                                   |
-|-------------|-----------------------|------------------------------------------|
-| `[`         | **Reader Macro**      | Triggers the vector lambda               |
-| `#\[`       | **Character Literal** | Returns the character object `[`         |
-| `#\newline` | **Named Character**   | Returns the newline character (ASCII 10) |
-
-This ensures that your code can still manipulate the brackets as data without accidentally triggering the macro during definition or character processing.
-
-Implementing Hash Maps (dictionaries) using curly braces is a great exercise because, unlike vectors, it requires handling pairs of data (keys and values).
-
-In Lisp, a common way to represent this during reading is to collect a flat list of items and then convert them into a hash map structure.
-Adding Hash Map Syntax {key value ...}
-
-To make this work, we will define a macro for { that reads everything until } and then passes that list to a hash-map constructor.
-
-```lisp
-;; define {
-(set-reader-macro #\{ 
-  (lambda (r s)
-    ; r-reader s-pattern to replace 
-    (let ((elements (read-delimited-list #\} r)))
-      (apply 'make-hash-table elements))))
-;; define }
-(set-reader-macro #\} (lambda (r) (error "Unexpected closing brace")))
-```
-
-Usage in REPL:
-
-```lisp
-soot> { :name "Valery" :status "online" }
-=> #{ :name "Valery" :status "online" }
+(while condition body...)     ; While loop
 ```
 
 ### **Quoting**
@@ -226,7 +125,6 @@ soot> { :name "Valery" :status "online" }
 
 ```scheme
 (begin expr1 expr2 ...)       ; Sequence of expressions
-(while condition body...)     ; While loop
 ```
 
 ---
@@ -295,6 +193,7 @@ soot> { :name "Valery" :status "online" }
 | `list`                | `item...`    | Create list       |
 | `length`              | `list`       | List length       |
 | `append`              | `list...`    | Concatenate lists |
+| `apply`               | `func list`  | Apply function to list arguments |
 
 **Examples:**
 
@@ -305,16 +204,18 @@ soot> { :name "Valery" :status "online" }
 (list 1 2 3)             ; → (1 2 3)
 (length '(a b c d))      ; → 4
 (append '(1 2) '(3 4))   ; → (1 2 3 4)
+(apply + '(1 2 3))       ; → 6
 ```
 
 ## 🗃️ **Vectors**
 
-| Function        | Arguments              | Description   |
-|-----------------|------------------------|---------------|
-| `vector`        | `item...`              | Create vector |
-| `vector-ref`    | `vector integer`       | Get element   |
-| `vector-set!`   | `vector integer value` | Set element   |
-| `vector-length` | `vector`               | Vector size   |
+| Function            | Arguments              | Description            |
+|---------------------|------------------------|------------------------|
+| `vector`            | `item...`              | Create vector          |
+| `vector-ref`        | `vector integer`       | Get element            |
+| `vector-set!`       | `vector integer value` | Set element            |
+| `vector-length`     | `vector`               | Vector size            |
+| `vector->list`      | `vector`               | Convert vector to list |
 
 **Examples:**
 
@@ -323,22 +224,27 @@ soot> { :name "Valery" :status "online" }
 (vector-ref #(a b c) 1)          ; → b
 (vector-set! #(1 2 3) 1 99)      ; → #(1 99 3)
 (vector-length #(a b c d))       ; → 4
+(vector->list #(1 2 3))          ; → (1 2 3)
 ```
 
 ## 🔍 **Type Predicates**
 
-| Function     | Arguments         | Returns                |
-|--------------|-------------------|------------------------|
-| `null?`      | `value`           | #t if empty list       |
-| `pair?`      | `value`           | #t if pair/list        |
-| `symbol?`    | `value`           | #t if symbol           |
-| `number?`    | `value`           | #t if integer or float |
-| `string?`    | `value`           | #t if string           |
-| `char?`      | `value`           | #t if character        |
-| `vector?`    | `value`           | #t if vector           |
-| `procedure?` | `value`           | #t if function         |
-| `boolean?`   | `value`           | #t if #t or #f         |
-| `type?`      | `type-name value` | Check specific type    |
+| Function       | Arguments         | Returns                |
+|----------------|-------------------|------------------------|
+| `null?`        | `value`           | #t if empty list       |
+| `pair?`        | `value`           | #t if pair/list        |
+| `symbol?`      | `value`           | #t if symbol           |
+| `number?`      | `value`           | #t if integer or float |
+| `string?`      | `value`           | #t if string           |
+| `char?`        | `value`           | #t if character        |
+| `vector?`      | `value`           | #t if vector           |
+| `procedure?`   | `value`           | #t if function         |
+| `boolean?`     | `value`           | #t if #t or #f         |
+| `type?`        | `type-name value` | Check specific type    |
+| `reader?`      | `value`           | #t if reader object    |
+| `lextoken?`    | `value`           | #t if lex token        |
+| `hash-table?`  | `value`           | #t if hash table       |
+| `type-name`    | `value`           | Returns type as symbol |
 
 **Examples:**
 
@@ -350,6 +256,7 @@ soot> { :name "Valery" :status "online" }
 (string? "hello")        ; → #t
 (type? 'integer 5)       ; → #t
 (type? 'string "test")   ; → #t
+(type-name "hello")      ; → 'string
 ```
 
 ## ⚖️ **Comparisons**
@@ -370,81 +277,90 @@ soot> { :name "Valery" :status "online" }
 
 ## 🗄️ **Hash Tables**
 
-| Function             | Arguments         | Description              |
-|----------------------|-------------------|--------------------------|
-| `make-hash-table`    |                   | Create hash table        |
-| `hash-table-set!`    | `table key value` | Set value                |
-| `hash-table-ref`     | `table key`       | Get value                |
-| `hash-table-try-ref` | `table key`       | Returns (success? value) |
-| `hash-table?`        | `value`           | Check if hash table      |
+| Function                 | Arguments         | Description              |
+|--------------------------|-------------------|--------------------------|
+| `make-hash-table`        | `pairs...`        | Create hash table        |
+| `hash-table-set!`        | `table key value` | Set value                |
+| `hash-table-ref`         | `table key`       | Get value                |
+| `hash-table-try-ref`     | `table key`       | Returns (success? value) |
+| `hash-table?`            | `value`           | Check if hash table      |
+| `hash-table-length`      | `table`           | Number of entries        |
+| `hash-table->list`       | `table`           | Convert to list of pairs |
 
 **Examples:**
 
 ```scheme
-(define ht (make-hash-table))
+(define ht (make-hash-table :name "John" :age 30))
 (hash-table-set! ht "name" "John")
 (hash-table-ref ht "name")       ; → "John"
-(hash-table-try-ref ht "age")    ; → (#f ())
+(hash-table-try-ref ht "age")    ; → (#t 30) or (#f ())
+(hash-table-length ht)           ; → 2
+(hash-table->list ht)            ; → (("name" . "John") ("age" . 30))
 ```
 
 ## 💾 **File I/O**
 
-| Function                     | Arguments               | top level     | Description                    |
-|------------------------------|-------------------------|---------------|--------------------------------|
-| `print` `pprint` `inspect`   | `value`                 |               | Print with different formats   |
-| `fmt`                        | `#t format args...`     |               | Formatted output               |
-|                              | `#f format args...`     |               | Formatt to string              |
-| `error`                      | `message`               |               | Throw error                    |
-| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
-| `file-exists?`               | `filename`              |               | Check if file exists           |
-| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
-| `read-str`                   | `filename`              |               | Read from file to string       |
-| `parse-str`                  | `string`                | yes           | Parse string                   |
-| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
-| `read`                       | `reader`                |               | Read from string               |
-| `read-char"`                 | `reader`                |               | Read from string               |
-| `peek-char`                  | `reader`                |               | Read from string               |
-| `read-delimited-list`        | `reader terminator`     |               | Read from string               |
-| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
-| `load`                       | `filename`              | yes (execute) | Load and execute file          |
-| `read-file`                  | `filename`              | yes           | Read file contents             |
-| ---------------------------- | ----------------------- | -----------   | ------------------------------ |
-| `set-reader-macro`           | `pattern replacement`   |               | Set reader macro               |
-| `set-reader-macro`           | `pattern lambda`        |               | Set reader macro               |
-| `remove-reader-mac`          | `pattern`               |               | Remove reader macro            |
+| Function                   | Arguments                          | Description                  |
+|----------------------------|------------------------------------|------------------------------|
+| `print` `pprint` `inspect` | `value`                            | Print with different formats |
+| `fmt`                      | `dest format args...`              | Formatted output             |
+| `cfmt`                     | `dest format args... :color color` | Formatted output with color  |
+| `error`                    | `message [object]`                 | Throw error with context     |
+| `file-exists?`             | `filename`                         | Check if file exists         |
+| `read-str`                 | `filename`                         | Read from file to string     |
+| `parse-str`                | `string`                           | Parse string to code         |
+| `load`                     | `filename`                         | Load and execute file        |
+| `read-file`                | `filename`                         | Read file contents as code   |
 
 **Examples:**
 
 ```scheme
 (print "Hello")                    ; Print value
-(load-file "script.sot")           ; Execute file
-(file-exists? "data.txt")          ; → #t or #f
-(fmt #t "Hello ~a" :arg1 "World")  ; Print formatted
+(load "script.sot")               ; Execute file
+(file-exists? "data.txt")         ; → #t or #f
+(fmt #t "Hello ~a" "World")       ; Print formatted
+(fmt #f "Value: ~d" 42)           ; → "Value: 42"
+(error "File not found" form)     ; Throw error with location
 ```
+
+**Colors:**
+
+Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "gray"
+
+**Logging:**
+
+| Function | Arguments         | Description |
+|----------|-------------------|-------------|
+| log      | `"trace" message` |             |
+| log      | `"debug" message` |             |
+| log      | `"info" message`  |             |
+| log      | `"warn" message`  |             |
+| log      | `"error" message` |             |
+| log      | `"die" message`   |             |
 
 ## 🖥️ **System**
 
-| Function                   | Arguments   | Description                         |
-|----------------------------|-------------|-------------------------------------|
-| `system`                   | `command`   | Execute shell command               |
-| `get-environment-variable` | `name`      | Get env variable                    |
-| `exit`                     |             | Exit interpreter                    |
-| `get-path`                 | 'cwd        | Current working dir                 |
-| `get-path`                 | 'home       | User home ~                         |
-| `get-path`                 | 'config     | User settings ~/.config/soot/       |
-| `get-path`                 | 'cache      | Shared files ~/.cache/soot/         |
-| `get-path`                 | 'share      | Shared files /usr/local/share/soot/ |
-| `get-path`                 | 'exec       | Binary folder of script             |
-| `get-path`                 | 'project    | Project folder                      |
-| `find-file`                | `file name` | Find file in the system directories |
-|                            |             | The order is: project, user, system |
+| Function                   | Arguments      | Description                         |
+|----------------------------|----------------|-------------------------------------|
+| `system`                   | `command`      | Execute shell command               |
+| `get-environment-variable` | `name`         | Get env variable                    |
+| `exit`                     | `[code]`       | Exit interpreter (default code 0)   |
+| `get-path`                 | `'cwd`         | Current working dir                 |
+| `get-path`                 | `'exe`         | Executable directory                |
+| `get-path`                 | `'home`        | User home ~                         |
+| `get-path`                 | `'config`      | User settings ~/.config/soot/       |
+| `get-path`                 | `'cache`       | Cache files ~/.cache/soot/          |
+| `get-path`                 | `'share`       | Shared files /usr/local/share/soot/ |
+| `get-path`                 | `'project`     | Project folder                      |
+| `find-file`                | `filename`     | Find file in system directories     |
 
 **Examples:**
 
 ```scheme
 (system "ls -la")                     ; Execute command
 (get-environment-variable "PATH")     ; Get PATH env
-(current-directory)                   ; → "/current/path"
+(get-path 'cwd)                       ; → "/current/path"
+(exit 0)                              ; Exit with code 0
 ```
 
 ## 🔄 **Type Conversions**
@@ -473,6 +389,67 @@ soot> { :name "Valery" :status "online" }
 | `time-milliseconds` |           | Returns current Unix timestamp in milliseconds               | `1734167895123`       |
 | `time-microseconds` |           | Returns current Unix timestamp in microseconds               | `1734167895123456`    |
 | `time-nanoseconds`  |           | Returns current Unix timestamp in nanoseconds                | `1734167895123456789` |
+
+## 📖 **Reader and LexTokens**
+
+### **Reader Functions**
+
+| Function                   | Arguments                    | Description                                 |
+|----------------------------|------------------------------|---------------------------------------------|
+| `set-macro-character`      | `pattern replacement/lambda` | Define reader macro                         |
+| `remove-macro-character`   | `pattern`                    | Remove reader macro                         |
+| `get-macro-character`      | `pattern`                    | Get reader macro definition                 |
+| `read`                     | `reader`                     | Read one object from reader                 |
+| `read-char`                | `reader`                     | Read one character from reader              |
+| `peek-char`                | `reader`                     | Peek next character without consuming       |
+| `read-delimited-list`      | `terminator reader`          | Read list until terminator                  |
+
+### **LexToken Functions**
+
+| Function         | Arguments      | Description                         |
+|------------------|----------------|-------------------------------------|
+| `make-lextoken`  | `:type :value` | Create lex token with metadata      |
+| `lextoken-type`  | `lextoken`     | Get token type                      |
+| `lextoken-value` | `lextoken`     | Get token value                     |
+| `lextoken-info`  | `lextoken`     | Get source location (file line col) |
+
+**Examples:**
+
+```scheme
+;; Reader macros
+(set-macro-character "$" "label")
+(read "$test")                 ; → (label test)
+
+(set-macro-character #\[ 
+  (lambda (r s)
+    (let ((lis (read-delimited-list #\] r)))
+      (apply 'vector lis))))
+
+;; Lex tokens
+(define token (make-lextoken :type 'identifier :value 'x))
+(lextoken-type token)         ; → identifier
+(lextoken-info token)         ; → ("repl" 1 5)
+```
+
+## 🔄 **Macro System**
+
+| Function      | Arguments    | Description                      |
+|---------------|--------------|----------------------------------|
+| `macroexpand` | `expression` | Expand macros in expression      |
+
+**Examples:**
+
+```scheme
+(define-macro my-or (lambda args
+  (if (null? args)
+      #f
+      (list 'if (car args) 
+            (car args)
+            (cons 'my-or (cdr args))))))
+
+(macroexpand '(my-or a b c))
+; → (if a a (my-or b c))
+```
 
 ## 🎲 **Other Functions**
 
@@ -508,8 +485,12 @@ soot> { :name "Valery" :status "online" }
 ### **List Processing**
 
 ```scheme
+(define (map f lst)
+  (if (null? lst)
+      '()
+      (cons (f (car lst)) (map f (cdr lst)))))
+
 (map (lambda (x) (* x 2)) '(1 2 3 4))  ; → (2 4 6 8)
-(filter even? '(1 2 3 4 5))            ; → (2 4)
 ```
 
 ### **File Processing**
@@ -529,6 +510,7 @@ soot> { :name "Valery" :status "online" }
 2. **Lists vs. Vectors**: Use `()` for lists, `#()` for vectors
 3. **Equality**: Use `eqv?` for value comparison, `eq?` for object identity
 4. **No `&body`**: Use `&rest` instead
+5. **Macro arguments**: Macros don't evaluate arguments automatically
 
 ---
 
@@ -543,27 +525,32 @@ soot> { :name "Valery" :status "online" }
 (lambda (&rest args)
   (apply + args))
 
-;; Error handling (try/catch not built-in - use conditions)
+;; Error handling with context
 (if (file-exists? "config.sot")
-    (load-file "config.sot")
-    (print "Config not found, using defaults"))
+    (load "config.sot")
+    (error "Config not found, using defaults" 'config.sot))
 ```
 
 ---
 
 ## 📖 **Type Reference**
 
-| Type      | Literal    | Example               |
-|-----------|------------|-----------------------|
-| Integer   | `123`      | `42`, `-5`, `0xFF`    |
-| Float     | `1.23`     | `3.14`, `-2.5`        |
-| Boolean   | `#t`, `#f` | `#t`, `#f`            |
-| String    | `"text"`   | `"Hello"`, `"test\n"` |
-| Character | `#\c`      | `#\a`, `#\newline`    |
-| Symbol    | `'name`    | `'x`, `'my-var`       |
-| List      | `(a b c)`  | `'(1 2 3)`, `()`      |
-| Vector    | `#(a b c)` | `#(1 2 3)`            |
-| Pair      | `(a . b)`  | `(1 . 2)`             |
+| Type       | Literal        | Example               |
+|------------|----------------|-----------------------|
+| Integer    | `123`          | `42`, `-5`, `0xFF`    |
+| Float      | `1.23`         | `3.14`, `-2.5`        |
+| Boolean    | `#t`, `#f`     | `#t`, `#f`            |
+| String     | `"text"`       | `"Hello"`, `"test\n"` |
+| Character  | `#\c`          | `#\a`, `#\newline`    |
+| Symbol     | `'name`        | `'x`, `'my-var`       |
+| List       | `(a b c)`      | `'(1 2 3)`, `()`      |
+| Vector     | `#(a b c)`     | `#(1 2 3)`            |
+| Pair       | `(a . b)`      | `(1 . 2)`             |
+| Lambda     | `(lambda ...)` | Function object       |
+| Macro      | `(macro ...)`  | Macro object          |
+| Hash Table | `#{...}`       | Hash table object     |
+| Lex Token  |                | Token with metadata   |
+| Reader     |                | Text stream reader    |
 
 ---
 
@@ -577,6 +564,29 @@ sooti> exit             ; Exit REPL
 
 ---
 
+## 📋 **Function Index**
+
+| Category        | Functions                                                                                                                            |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| Core            | `define`, `set!`, `lambda`, `macro`, `if`, `cond`, `let`, `let*`, `quote`, `quasiquote`                                              |
+| Math            | `+`, `-`, `*`, `/`, `=`, `<`, `>`, `<=`, `>=`, `abs`, `max`, `min`, `expt`, `sqrt`, `ash`                                            |
+| Lists           | `cons`, `car`, `cdr`, `list`, `length`, `append`, `apply`, `set-car!`, `set-cdr!`                                                    |
+| Strings         | `string-append`, `string-length`, `string-ref`, `string-substr`                                                                      |
+| Vectors         | `vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector->list`                                                               |
+| Hash Tables     | `make-hash-table`, `hash-table-set!`, `hash-table-ref`, `hash-table-try-ref`, `hash-table?`, `hash-table-length`, `hash-table->list` |
+| Type Predicates | `null?`, `pair?`, `symbol?`, `number?`, `string?`, `char?`, `vector?`, `procedure?`, `boolean?`, `type?`, `reader?`, `lextoken?`     |
+| Comparisons     | `eq?`, `eqv?`                                                                                                                        |
+| Conversions     | `number->string`, `string->number`, `char->integer`, `integer->char`, `string->symbol`, `symbol->string`                             |
+| File I/O        | `print`, `pprint`, `inspect`, `fmt`, `error`, `file-exists?`, `read-str`, `parse-str`, `load`, `read-file`                           |
+| System          | `system`, `get-environment-variable`, `exit`, `get-path`, `find-file`                                                                |
+| Time            | `time-seconds`, `time-milliseconds`, `time-microseconds`, `time-nanoseconds`                                                         |
+| Reader          | `set-macro-character`, `remove-macro-character`, `get-macro-character`, `read`, `read-char`, `peek-char`, `read-delimited-list`      |
+| LexTokens       | `make-lextoken`, `lextoken-type`, `lextoken-value`, `lextoken-info`                                                                  |
+| Macro System    | `macroexpand`                                                                                                                        |
+| Other           | `gensym`, `eval`                                                                                                                     |
+
+---
+
 **Version**: SOOT Core [sha:...]  
 **Syntax**: Scheme-like with Common Lisp influences  
 **License**: Project-specific
@@ -585,4 +595,17 @@ sooti> exit             ; Exit REPL
 
 - 📖 [SOOT Common Library Documentation](common/sooti/README.LIB.md)
 
+### **Key Updates to Documentation:**
 
+1. **Added missing functions**: `apply`, `vector->list`, `hash-table-length`, `hash-table->list`
+2. **Updated type predicates**: Added `hash-table?` and `type-name`
+3. **Enhanced error function**: Now supports optional context object
+4. **Added LexToken section**: Documented all lex token functions
+5. **Added Macro section**: Documented `macroexpand`
+6. **Fixed formatting**: Consistent tables and examples
+7. **Added function index**: Quick reference by category
+8. **Updated examples**: All examples now match actual implementation
+9. **Corrected argument syntax**: Fixed documentation for keyword arguments
+10. **Added reader macro examples**: Show both string and lambda variants
+
+The documentation now accurately reflects all functions available in the `Interpreter` class implementation.

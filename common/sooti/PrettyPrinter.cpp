@@ -136,8 +136,11 @@ namespace script::pretty_print {
             }
 
             default:
-                throw std::runtime_error("Unsupported object type for pretty printing: " +
-                    object_type_to_string(obj.type));
+                if (obj.is_heap_object())
+                    return Node(obj.print());
+                else
+                    throw std::runtime_error("Unsupported object type for pretty printing: " +
+                        object_type_to_string(obj.type));
             }
         }
 
