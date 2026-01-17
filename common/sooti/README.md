@@ -229,22 +229,22 @@ Special forms don't evaluate their arguments automatically.
 
 ## 🔍 **Type Predicates**
 
-| Function       | Arguments         | Returns                |
-|----------------|-------------------|------------------------|
-| `null?`        | `value`           | #t if empty list       |
-| `pair?`        | `value`           | #t if pair/list        |
-| `symbol?`      | `value`           | #t if symbol           |
-| `number?`      | `value`           | #t if integer or float |
-| `string?`      | `value`           | #t if string           |
-| `char?`        | `value`           | #t if character        |
-| `vector?`      | `value`           | #t if vector           |
-| `procedure?`   | `value`           | #t if function         |
-| `boolean?`     | `value`           | #t if #t or #f         |
-| `type?`        | `type-name value` | Check specific type    |
-| `reader?`      | `value`           | #t if reader object    |
-| `lextoken?`    | `value`           | #t if lex token        |
-| `hash-table?`  | `value`           | #t if hash table       |
-| `type-name`    | `value`           | Returns type as symbol |
+| Function      | Arguments         | Returns                |
+|---------------|-------------------|------------------------|
+| `null?`       | `value`           | #t if empty list       |
+| `pair?`       | `value`           | #t if pair/list        |
+| `symbol?`     | `value`           | #t if symbol           |
+| `number?`     | `value`           | #t if integer or float |
+| `string?`     | `value`           | #t if string           |
+| `char?`       | `value`           | #t if character        |
+| `vector?`     | `value`           | #t if vector           |
+| `procedure?`  | `value`           | #t if function         |
+| `boolean?`    | `value`           | #t if #t or #f         |
+| `reader?`     | `value`           | #t if reader object    |
+| `lextoken?`   | `value`           | #t if lex token        |
+| `hash-table?` | `value`           | #t if hash table       |
+| `type-of`     | `value`           | Returns type as symbol |
+| `type?`       | `value type-name` | Check specific type    |
 
 **Examples:**
 

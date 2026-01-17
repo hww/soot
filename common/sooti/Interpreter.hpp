@@ -142,7 +142,7 @@ namespace script
         Object eval_procedure_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_type_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_type_name(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_type_of(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Сравнение
         Object eval_equals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

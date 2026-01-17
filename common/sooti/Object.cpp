@@ -2,6 +2,7 @@
 #include "common/util/Crc32.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
+#include "fmt/format.h"
 #include <sstream>
 #include <iostream>
 #include <cstring>
@@ -10,21 +11,118 @@
 
 namespace script
 {
-    // Инициализация памяти для статических членов
-    Object script::SymbolTable::core::empty_list;
-    Object script::SymbolTable::core::integer;
-    Object script::SymbolTable::core::float_pt;
-    Object script::SymbolTable::core::character;
-    Object script::SymbolTable::core::symbol;
-    Object script::SymbolTable::core::string;
-    Object script::SymbolTable::core::pair;
-    Object script::SymbolTable::core::array;
-    Object script::SymbolTable::core::lambda;
-    Object script::SymbolTable::core::macro;
-    Object script::SymbolTable::core::environment;
-    Object script::SymbolTable::core::reader;
-    Object script::SymbolTable::core::lextoken;
-    Object script::SymbolTable::core::unknown;
+    SymbolTable::SymbolTable() {
+        m_power_of_two_size = 1;  // 2 ^ 1 = 2
+        m_entries.resize(2);
+        m_used_entries = 0;
+        m_next_resize = (m_entries.size() * kMaxUsed);
+        m_mask = 0b1;
+        init_core_symbols();
+    }
+
+    SymbolTable::~SymbolTable() {
+        for (auto& e : m_entries) {
+            delete[] e.name;
+        }
+    }
+    void SymbolTable::init_core_symbols() {
+        core.empty_list     = Object::make_symbol(this, "empty-list");
+        core.integer        = Object::make_symbol(this, "integer");
+        core.float_pt       = Object::make_symbol(this, "float");
+        core.character      = Object::make_symbol(this, "char");
+        core.symbol         = Object::make_symbol(this, "symbol");
+        core.string         = Object::make_symbol(this, "string");
+        core.pair           = Object::make_symbol(this, "pair");
+        core.array          = Object::make_symbol(this, "array");
+        core.lambda         = Object::make_symbol(this, "lambda");
+        core.macro          = Object::make_symbol(this, "macro");
+        core.environment    = Object::make_symbol(this, "environment");
+        core.reader         = Object::make_symbol(this, "reader");
+        core.lextoken       = Object::make_symbol(this, "lextoken");
+        core.unknown        = Object::make_symbol(this, "unknown");
+    }
+    Object SymbolTable::object_type_to_symbol(ObjectType type) {
+        switch (type) {
+            case ObjectType::EMPTY_LIST:    return core.empty_list; // было EmptyList
+            case ObjectType::INTEGER:       return core.integer;    // было Integer
+            case ObjectType::FLOAT:         return core.float_pt;   // было Float
+            case ObjectType::CHAR:          return core.character;  // было Char
+            case ObjectType::SYMBOL:        return core.symbol;
+            case ObjectType::STRING:        return core.string;
+            case ObjectType::PAIR:          return core.pair;
+            case ObjectType::ARRAY:         return core.array;
+            case ObjectType::LAMBDA:        return core.lambda;
+            case ObjectType::MACRO:         return core.macro;
+            case ObjectType::ENVIRONMENT:   return core.environment;
+            case ObjectType::READER:        return core.reader;
+            case ObjectType::LEXTOKEN:      return core.lextoken;
+            default:                        return core.unknown;
+        }
+    }
+
+    InternedSymbolPtr SymbolTable::intern(const char* str) {
+        size_t string_len = strlen(str);
+        uint32_t hash = util::compute_crc32(str, string_len);
+
+        // probe
+        for (uint32_t i = 0; i < m_entries.size(); i++) {
+            uint32_t slot_addr = (hash + i) & m_mask;
+            auto& slot = m_entries[slot_addr];
+            if (!slot.name) {
+                // not found, insert!
+                slot.hash = hash;
+                auto* name = new char[string_len + 1];
+                memcpy(name, str, string_len + 1);
+                slot.name = name;
+                m_used_entries++;
+
+                if (m_used_entries >= m_next_resize) {
+                    resize();
+                    return intern(str);
+                }
+                return { name };
+            }
+            else {
+                if (slot.hash != hash) {
+                    continue;  // bad hash
+                }
+                if (strcmp(slot.name, str) != 0) {
+                    continue;  // bad name
+                }
+                return { slot.name };
+            }
+        }
+
+        // should be impossible to reach.
+        ASSERT_NOT_REACHED();
+    }
+
+    void SymbolTable::resize() {
+        m_power_of_two_size++;
+        m_mask = (1U << m_power_of_two_size) - 1;
+
+        std::vector<Entry> new_entries(m_entries.size() * 2);
+        for (const auto& old_entry : m_entries) {
+            if (old_entry.name) {
+                bool done = false;
+                for (uint32_t i = 0; i < new_entries.size(); i++) {
+                    uint32_t slot_addr = (old_entry.hash + i) & m_mask;
+                    auto& slot = new_entries[slot_addr];
+                    if (!slot.name) {
+                        slot.name = old_entry.name;
+                        slot.hash = old_entry.hash;
+                        done = true;
+                        break;
+                    }
+                }
+                ASSERT(done);
+            }
+        }
+
+        m_entries = std::move(new_entries);
+        m_next_resize = kMaxUsed * m_entries.size();
+    }
+
 
     // Специализации fixed_to_string
     template <>
@@ -67,28 +165,39 @@ namespace script
         return x.name_ptr ? std::string(x.name_ptr) : "";
     }
 
-
-    Object object_type_to_symbol(ObjectType type) {
-        switch (type) {
-            case ObjectType::EMPTY_LIST:    return SymbolTable::core::empty_list; // было EmptyList
-            case ObjectType::INTEGER:       return SymbolTable::core::integer;    // было Integer
-            case ObjectType::FLOAT:         return SymbolTable::core::float_pt;   // было Float
-            case ObjectType::CHAR:          return SymbolTable::core::character;  // было Char
-            case ObjectType::SYMBOL:        return SymbolTable::core::symbol;
-            case ObjectType::STRING:        return SymbolTable::core::string;
-            case ObjectType::PAIR:          return SymbolTable::core::pair;
-            case ObjectType::ARRAY:         return SymbolTable::core::array;
-            case ObjectType::LAMBDA:        return SymbolTable::core::lambda;
-            case ObjectType::MACRO:         return SymbolTable::core::macro;
-            case ObjectType::ENVIRONMENT:   return SymbolTable::core::environment;
-            case ObjectType::READER:        return SymbolTable::core::reader;
-            case ObjectType::LEXTOKEN:      return SymbolTable::core::lextoken;
-            default:                        return SymbolTable::core::unknown;
-        }
-    }
-
     std::string object_type_to_string(ObjectType type) {
-        return object_type_to_symbol(type).as_symbol().c_str();
+    switch (type) {
+        case ObjectType::EMPTY_LIST:
+        return "[empty list]";
+        case ObjectType::INTEGER:
+        return "[integer]";
+        case ObjectType::FLOAT:
+        return "[float]";
+        case ObjectType::CHAR:
+        return "[char]";
+        case ObjectType::SYMBOL:
+        return "[symbol]";
+        case ObjectType::STRING:
+        return "[string]";
+        case ObjectType::PAIR:
+        return "[pair]";
+        case ObjectType::ARRAY:
+        return "[array]";
+        case ObjectType::LAMBDA:
+        return "[lambda]";
+        case ObjectType::MACRO:
+        return "[macro]";
+        case ObjectType::ENVIRONMENT:
+        return "[environment]";
+        case ObjectType::STRING_HASH_TABLE:
+        return "[string-hash-table]";
+        case ObjectType::READER:
+        return "[reader]";
+        case ObjectType::LEXTOKEN:
+        return "[lextoken]";
+        default:
+            throw std::runtime_error("unknown object type in object_type_to_string");
+        }
     }
 
     void Object::throw_type_error(const std::string& expected) const {
@@ -453,85 +562,6 @@ namespace script
             << " named=" << named.size()
             << " rest=" << rest.size();
         return ss.str();
-    }
-
-
-    SymbolTable::SymbolTable() {
-        m_power_of_two_size = 1;  // 2 ^ 1 = 2
-        m_entries.resize(2);
-        m_used_entries = 0;
-        m_next_resize = (m_entries.size() * kMaxUsed);
-        m_mask = 0b1;
-        init_core_symbols();
-    }
-
-    SymbolTable::~SymbolTable() {
-        for (auto& e : m_entries) {
-            delete[] e.name;
-        }
-    }
-
-    InternedSymbolPtr SymbolTable::intern(const char* str) {
-        size_t string_len = strlen(str);
-        uint32_t hash = util::compute_crc32(str, string_len);
-
-        // probe
-        for (uint32_t i = 0; i < m_entries.size(); i++) {
-            uint32_t slot_addr = (hash + i) & m_mask;
-            auto& slot = m_entries[slot_addr];
-            if (!slot.name) {
-                // not found, insert!
-                slot.hash = hash;
-                auto* name = new char[string_len + 1];
-                memcpy(name, str, string_len + 1);
-                slot.name = name;
-                m_used_entries++;
-
-                if (m_used_entries >= m_next_resize) {
-                    resize();
-                    return intern(str);
-                }
-                return { name };
-            }
-            else {
-                if (slot.hash != hash) {
-                    continue;  // bad hash
-                }
-                if (strcmp(slot.name, str) != 0) {
-                    continue;  // bad name
-                }
-                return { slot.name };
-            }
-        }
-
-        // should be impossible to reach.
-        ASSERT_NOT_REACHED();
-    }
-
-    void SymbolTable::resize() {
-        m_power_of_two_size++;
-        m_mask = (1U << m_power_of_two_size) - 1;
-
-        std::vector<Entry> new_entries(m_entries.size() * 2);
-        for (const auto& old_entry : m_entries) {
-            if (old_entry.name) {
-                bool done = false;
-                for (uint32_t i = 0; i < new_entries.size(); i++) {
-                    uint32_t slot_addr = (old_entry.hash + i) & m_mask;
-                    auto& slot = new_entries[slot_addr];
-                    if (!slot.name) {
-                        slot.name = old_entry.name;
-                        slot.hash = old_entry.hash;
-                        done = true;
-                        break;
-                    }
-                }
-                ASSERT(done);
-            }
-        }
-
-        m_entries = std::move(new_entries);
-        m_next_resize = kMaxUsed * m_entries.size();
     }
 
     /*!
