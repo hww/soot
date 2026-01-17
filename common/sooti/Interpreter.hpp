@@ -6,9 +6,39 @@
 #include <functional>
 #include <unordered_map>
 #include <memory>
+#include "fmt/format.h"
+#include "fmt/color.h"
 
 namespace script
 {
+    class EvalException : public std::exception {
+    public:
+        Object form;                        // Тот самый объект (Pair или LexToken)
+        std::string message;                // Текст ошибки
+        bool already_printed = false;       // Не печай второй раз
+        bool error_header_required = true; 
+        bool detailed_error_required = true; 
+
+        EvalException(Object f, std::string m) : form(f), message(std::move(m)) {}
+
+        // Чтобы соответствовать стандарту std::exception
+        const char* what() const noexcept override {
+            return message.c_str();
+        }
+    };
+    class ExitException : public std::exception {
+    public:
+        int exit_code;
+        std::string message; // Храним строку здесь
+
+        explicit ExitException(int code = 0) 
+            : exit_code(code), message(fmt::format("Exit with code {}", code)) {}
+
+        const char* what() const noexcept override {
+            return message.c_str(); // Теперь это безопасно
+        }
+    };
+
     class Interpreter {
     public:
         Interpreter(const std::string& username = "user", bool load_libs = false);
@@ -51,10 +81,10 @@ namespace script
         Object get_global_environment() { return global_environment; }
 
         // Boolean helpers (используют символы)
-        Object make_bool(bool value) { return value ? m_true_object : m_false_object; }
+        Object make_bool(bool value) { return value ? true_object : false_object; }
         bool is_true(const Object& o) const { return !is_false(o); }
-        bool is_false(const Object& o) const { return o.is_symbol() && o.as_symbol().name_ptr == m_false_object.as_symbol().name_ptr; }
-        bool is_bool(const Object& o) const { return o.is_symbol() && (o.as_symbol().name_ptr == m_false_object.as_symbol().name_ptr || o.as_symbol().name_ptr == m_true_object.as_symbol().name_ptr); }
+        bool is_false(const Object& o) const { return o.is_symbol() && o.as_symbol().name_ptr == false_object.as_symbol().name_ptr; }
+        bool is_bool(const Object& o) const { return o.is_symbol() && (o.as_symbol().name_ptr == false_object.as_symbol().name_ptr || o.as_symbol().name_ptr == true_object.as_symbol().name_ptr); }
         bool truthy(const Object& o) { return !is_false(o); }
 
         // Помощники для чисел
@@ -79,6 +109,7 @@ namespace script
         Object eval_let_star(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_quasiquote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_apply(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_macroexpand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
         // Математические
@@ -110,7 +141,8 @@ namespace script
         Object eval_vector_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_procedure_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_type(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_type_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_type_name(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Сравнение
         Object eval_equals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -145,7 +177,12 @@ namespace script
         Object eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_error(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_format(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_fmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_cfmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        
+        // Logger
+        Object eval_log(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) ;
 
         // файлы
         Object eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -162,6 +199,14 @@ namespace script
         Object eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_peek_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_delimited_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_reader_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // LexToken
+        Object eval_make_lextoken(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lextoken_type(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lextoken_value(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lextoken_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lextoken_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Система
         Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -198,6 +243,8 @@ namespace script
         // Quasiquote helpers
         Object quasiquote_helper(const Object& form, const std::shared_ptr<EnvironmentObject>& env);
 
+    
+        
         // Улучшенная обработка аргументов
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);
         void set_args_in_env(const Object& form, const Arguments& args,
@@ -244,17 +291,19 @@ namespace script
             const Arguments& args,
             const std::vector<std::optional<ObjectType>>& unnamed,
             const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
+        
+        
 
         // Состояние
-        Reader reader;
-        bool want_exit = false;
-        Object m_true_object;
-        Object m_false_object;
-        int gensym_id = 0;
-        Object global_environment;
-        Object comp_env;
-        bool disable_printing = false;
-        int eval_depth;
-        bool g_is_first_error_frame;
+        Reader  reader;
+        Object  true_object;
+        Object  false_object;
+        int     gensym_id = 0;
+        Object  global_environment;
+        Object  comp_env;
+        bool    disable_printing = false;
+        int     stack_depth;
     };
+
+    fmt::terminal_color string_to_color(const std::string& name);
 } // namespace script

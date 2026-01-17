@@ -9,6 +9,8 @@
 #include "fmt/color.h"
 #include "common/versions/version.h"
 
+#include "common/sooti/PrettyPrinter.hpp"
+
 namespace fs = std::filesystem;
 
 // ============================================================
@@ -335,10 +337,21 @@ void ReplWrapper::show_history() {
 
 void ReplWrapper::load_file(const std::string& filename) {
     fmt::print(fg(fmt::color::cyan), "✓ Running script: {}\n", filename);
+    script::Object result = script::Object::make_empty_list();
     try {
         // Предполагаем, что у интерпретатора есть метод для загрузки файла
-        interpreter_.eval_string(fmt::format("(load \"{}\")", filename), "script");
-    } catch (const std::exception& e) {
+        result = interpreter_.eval_string(fmt::format("(load \"{}\")", filename), "script");
+    }
+    catch (script::ExitException& e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());        
+        exit(e.exit_code);
+    }
+    catch (script::EvalException& e) {
+        if (e.already_printed)
+            return;
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());        
+    }
+    catch (const std::exception& e) {
         fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "✗ Script error: {}\n", e.what());
     }
 }
@@ -515,8 +528,18 @@ void ReplWrapper::handle_network_message(const std::string& message, int client_
     try {
         // Здесь мы используем интерпретатор сервера
         auto result = interpreter_.eval_string(trimmed, "network");
-        std::string response = "=> " + result.print() + "\n";
+        auto result_str = script::pretty_print::to_string(result);
+        std::string response = fmt::format(fg(fmt::color::green), "=> {}\n", result_str);
         send(client_socket, response.c_str(), response.size(), 0);
+    }
+    catch (script::ExitException& e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());        
+        exit(e.exit_code);
+    }
+    catch (script::EvalException& e) {
+        if (e.already_printed)
+            return;
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());        
     }
     catch (const std::exception& e) {
         // Не печатаем детали тут, они уже ушли в консоль сервера через eval_with_rewind
@@ -578,7 +601,19 @@ void ReplWrapper::execute_line_internal(const std::string& line, bool print_resu
         try {
             auto result = interpreter_.eval_string(line, "repl");
             if (print_result) 
-                fmt::print(fg(fmt::color::green), "=> {}\n", result.print());
+            {
+                auto result_str = script::pretty_print::to_string(result);
+                fmt::print(fg(fmt::color::green), "=> {}\n", result_str);
+            }
+        }
+        catch (script::ExitException& e) {
+            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());        
+            exit(e.exit_code);
+        }
+        catch (script::EvalException& e) {
+            if (e.already_printed)
+                return;
+            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());        
         }
         catch (const std::exception& e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());        

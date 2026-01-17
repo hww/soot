@@ -36,13 +36,17 @@ namespace script {
 	}
 
 	int SourceText::get_line_idx(int offset) {
-		for (size_t line = 0; line < m_offset_by_line.size() - 1; line++) {
-			if (offset >= m_offset_by_line[line] && offset < m_offset_by_line[line + 1]) {
-				return line;
-			}
+		// Проверка на выход за границы текста
+		if (offset < 0 || offset >= (int)m_text.size()) {
+			throw std::runtime_error("Offset out of bounds: " + std::to_string(offset));
 		}
-		throw std::runtime_error("Unable to get line index for character at position " +
-			std::to_string(offset));
+
+		// Ищем первый элемент, который БОЛЬШЕ нашего offset
+		auto it = std::upper_bound(m_offset_by_line.begin(), m_offset_by_line.end(), offset);
+		
+		// Индекс строки — это позиция найденного элемента минус 1
+		// (Потому что upper_bound нашел начало СЛЕДУЮЩЕЙ строки)
+		return std::distance(m_offset_by_line.begin(), it) - 1;
 	}
 
 	int SourceText::get_offset_of_line(int line_idx) {
@@ -89,11 +93,35 @@ namespace script {
 		m_map[o.heap_obj] = ref;
 	}
 
-	/*!
-	 * Given an object, get a string representing where it's from. Or "?" if we can't find it.
+	/**
+	 * @brief Генерирует детализированный строковый отчет о расположении объекта в исходном коде.
+	 * * Метод выполняет роль диспетчера: он определяет тип объекта (LexToken или Pair) и пытается 
+	 * сопоставить его с метаданными, хранящимися в базе данных (TextDb).
+	 * * @param o Объект, для которого запрашивается информация (обычно LexToken или Pair).
+	 * @param terminate_compiler_error [out] Указатель на булеву переменную, определяющую критичность ошибки.
+	 * * ### О параметре terminate_compiler_error:
+	 * Этот флаг позволяет вызывающей стороне (например, компилятору или REPL) понять, можно ли 
+	 * игнорировать данную ошибку или она является фатальной для текущего контекста:
+	 * * - **true (Fatal):** Ошибка произошла в контексте, который делает дальнейшую сборку или 
+	 * выполнение невозможным. Например, ошибка в основном скрипте или системной библиотеке.
+	 * Интерпретатор должен немедленно прекратить работу.
+	 * * - **false (Recoverable):** Ошибка произошла в "мягком" контексте. Например, в REPL, где мы 
+	 * хотим просто вывести сообщение и позволить пользователю ввести новую команду, не убивая 
+	 * весь процесс.
+	 * * @return std::string Отформатированный блок текста со ссылкой на файл, номером строки, 
+	 * исходным кодом и визуальным указателем (стрелкой ^) под объектом. 
+	 * Возвращает "?", если объект не найден в базе данных.
 	 */
 	std::string TextDb::get_info_for(const Object& o, bool* terminate_compiler_error) const {
-		if (o.is_pair()) {
+		if (o.is_lextoken()) {
+			auto token = o.as_lextoken();
+			// Устанавливаем флаг для токена, если он привязан к фрагменту
+            if (terminate_compiler_error && token->location.frag) {
+                *terminate_compiler_error = token->location.frag->terminate_compiler_error();
+            }
+			return get_info_for(token->location.frag, token->location.offset);
+		}
+		else if (o.is_pair()) {
 			auto kv = m_map.find(o.heap_obj);
 			if (kv != m_map.end()) {
 				if (terminate_compiler_error) {
@@ -116,7 +144,7 @@ namespace script {
 		}
 	}
 
-	std::optional<TextDb::ShortInfo> TextDb::get_short_info_for(const Object& o) const {
+	std::optional<ShortInfo> TextDb::get_short_info_for(const Object& o) const {
 		if (o.is_pair()) {
 			auto kv = m_map.find(o.heap_obj);
 			if (kv != m_map.end()) {
@@ -131,6 +159,21 @@ namespace script {
 		}
 	}
 
+	std::optional<TextRef> TextDb::get_text_ref(const Object& o) const {
+		if (o.is_pair()) {
+			auto kv = m_map.find(o.heap_obj);
+			if (kv != m_map.end()) {
+				return kv->second;
+			}
+			else {
+				return {};
+			}
+		}
+		else {
+			return {};
+		}
+	}
+	
 	/*!
 	 * Given a source text and an offset, print a description of where it is.
 	 */
@@ -158,7 +201,7 @@ namespace script {
 		return result + pointer;
 	}
 
-	std::optional<TextDb::ShortInfo> TextDb::get_short_info_for(const std::shared_ptr<SourceText>& frag, int offset) const {
+	std::optional<ShortInfo> TextDb::get_short_info_for(const std::shared_ptr<SourceText>& frag, int offset) const {
 		int line_idx = frag->get_line_idx(offset);
 		int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
 
@@ -171,7 +214,7 @@ namespace script {
 
 	}
 
-	std::optional<TextDb::ShortInfo> TextDb::try_get_short_info(const std::shared_ptr<HeapObject>& o) const {
+	std::optional<ShortInfo> TextDb::try_get_short_info(const std::shared_ptr<HeapObject>& o) const {
 		auto it = m_map.find(o);
 		if (it != m_map.end()) {
 			auto& frag = it->second.frag;
@@ -207,7 +250,7 @@ namespace script {
 		return {};
 	}
 
-	std::optional<TextDb::ShortInfo> TextDb::try_get_short_info(const Object& o) const {
+	std::optional<ShortInfo> TextDb::try_get_short_info(const Object& o) const {
 		if (o.is_pair()) {
 			return try_get_short_info(o.heap_obj);
 		}

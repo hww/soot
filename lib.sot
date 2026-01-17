@@ -24,13 +24,14 @@
   `(let ,(map (lambda (x) `(,x (gensym))) names)
      ,@body))
 
-
 ;; --- [ Секция 2: Управляющие конструкции ] ---
 
 ;; @doc (if clause true-branch false-branch)
 ;; Классическое ветвление.
-(defmacro if (clause true-branch false-branch)
-  `(cond (,clause ,true-branch) (#t ,false-branch)))
+(defmacro if (test then else)
+  `(cond 
+     (,test ,then)
+     (#t ,else)))
 
 ;; @doc (when clause &rest body)
 ;; Выполняет body, если clause истинно.
@@ -53,7 +54,21 @@
   `(let ((it ,condition))
      (if it ,true-branch ,false-branch)))
 
-
+;; (case-type <expression>
+;;   (<type-symbol-1> <body-1>)
+;;   (<type-symbol-2> <body-2>)
+;;   (else            <default-body>))
+(defmacro case-type (obj &rest branches)
+  (let ((type-sym (gensym))) ;; Создаем уникальное имя, чтобы не было конфликтов
+    `(let ((,type-sym (type? ,obj)))
+       (cond
+         ,@(map (lambda (branch)
+                  (let ((head (car branch))
+                        (body (cdr branch)))
+                    (if (eq? head 'else)
+                        `(#t ,@body) ;; Если ветка else, то предикат всегда true
+                        `((eq? ,type-sym ',head) ,@body))))
+                branches)))))
 ;; --- [ Секция 3: Работа со списками ] ---
 
 ;; Аксессоры (C-x-R)

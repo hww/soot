@@ -58,7 +58,7 @@ constexpr int ARRAY_DATA_OFFSET = 16;    // как в оригинале
 
 struct DefinitionMetadata {
     // Близко к оригиналу, но с удобными методами
-    std::optional<script::TextDb::ShortInfo> definition_info;
+    std::optional<script::ShortInfo> definition_info;
     std::optional<std::string> docstring;
 
     // Добавляем только convenience методы без изменения структуры данных

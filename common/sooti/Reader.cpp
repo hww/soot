@@ -48,8 +48,7 @@ namespace script {
 		}
 	}  // namespace
 
-
-		// ==================== TextStream ====================
+	// ==================== TextStream ====================
 
 	/*!
 	 * Advance a TextStream through any comments or whitespace.
