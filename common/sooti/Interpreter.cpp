@@ -54,6 +54,7 @@ namespace script
             {"environment", ObjectType::ENVIRONMENT},
             {"reader", ObjectType::READER},
             {"lextoken", ObjectType::LEXTOKEN},
+            {"place", ObjectType::PLACE}
         };
 
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
@@ -444,10 +445,10 @@ Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>
 // Eval With Rewind (Main Recursion)
 // ==============================================
 
-Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     stack_depth++;
     try {
-        auto result = eval(obj, env);
+        auto result = eval(obj, env, self_eval_place);
         stack_depth--; // Сбрасываем при успехе
         return result;
     }
@@ -512,7 +513,7 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
 // Eval (Single Item)
 // ==============================================
 
-Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
     case ObjectType::SYMBOL:
         return eval_symbol(obj, env);
@@ -1847,8 +1848,51 @@ Object Interpreter::eval_ash(const Object& form,
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
     }
 }
+// ==============================================
+// Bit operations
+// ==============================================
 
+// (logand n1 n2 ...)
+Object Interpreter::eval_logand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.empty()) return Object::make_integer(-1); // Нейтральный элемент для AND
+    
+    long result = number_to_integer(args.unnamed.at(0));
+    for (size_t i = 1; i < args.unnamed.size(); ++i) {
+        result &= number_to_integer(args.unnamed.at(i));
+    }
+    return Object::make_integer(result);
+}
 
+// (logior n1 n2 ...)
+Object Interpreter::eval_logior(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    long result = 0;
+    for (const auto& arg : args.unnamed) {
+        result |= number_to_integer(arg);
+    }
+    return Object::make_integer(result);
+}
+
+// (logxor n1 n2 ...)
+Object Interpreter::eval_logxor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (args.unnamed.empty()) return Object::make_integer(0);
+    
+    long result = number_to_integer(args.unnamed.at(0));
+    for (size_t i = 1; i < args.unnamed.size(); ++i) {
+        result ^= number_to_integer(args.unnamed.at(i));
+    }
+    return Object::make_integer(result);
+}
+
+// (lognot n)
+Object Interpreter::eval_lognot(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {}); // Ожидаем ровно один аргумент
+    auto val = number_to_integer(args.unnamed.at(0));
+    return Object::make_integer(~val);
+}
 // ==============================================
 // Функции сравнения с проверками
 // ==============================================
@@ -2110,6 +2154,13 @@ Object Interpreter::eval_lextoken_p(const Object & form, Arguments & args, const
     return make_bool(args.unnamed[0].is_lextoken());
 }
 
+Object Interpreter::eval_place_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {}); // Один аргумент
+    return make_bool(args.unnamed[0].is_place());
+}
+
+
 // ==============================================
 // Apply 
 // ==============================================
@@ -2269,7 +2320,7 @@ Object Interpreter::eval_vector_ref(const Object& form, Arguments& args, const s
         throw_eval_error(form, "vector-ref: index out of range");
     }
 
-    return elements->at(index);
+    return elements->get(index);
 }
 
 Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2307,7 +2358,7 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
         if (index >= array->size()) {
             return Object::make_empty_list();
         }
-        return Object::make_pair(array->at(index), build_list(index + 1));
+        return Object::make_pair(array->get(index), build_list(index + 1));
     };
     
     return build_list(0);
@@ -3079,7 +3130,7 @@ Object Interpreter::eval_lextoken_info(const Object& form, Arguments& args, cons
 }
 
 // ==============================================
-// Ьфскщучзфтв
+// Macroexpand
 // ==============================================
 
 Object Interpreter::eval_macroexpand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3123,6 +3174,10 @@ Object Interpreter::eval_macroexpand(const Object& form, Arguments& args, const 
     return code;
 }
 
+// ==============================================
+// Log
+// ==============================================
+
 Object Interpreter::eval_log(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     // Минимальный вызов: (log 'level "format" ...)
@@ -3165,4 +3220,62 @@ Object Interpreter::eval_log(const Object& form, Arguments& args, const std::sha
     return Object::make_string(formatted);
 }
 
+// ==============================================
+// Place
+// ==============================================
+
+Object Interpreter::eval_make_place(const Object& form,
+                                    Arguments& args,
+                                    const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Проверяем, что передано ровно два аргумента: контейнер и ключ
+    vararg_check(form, args, { {}, {} }, {});
+
+    Object container = args.unnamed.at(0);
+    Object key = args.unnamed.at(1);
+
+    // Валидация типов контейнера (KISS: проверяем только базовые типы)
+    if (container.type != ObjectType::STRING_HASH_TABLE && 
+        container.type != ObjectType::ARRAY) {
+        throw_eval_error(form, "make-place: container must be a hash-table or an array");
+    }
+
+    // Создаем новый объект типа PLACE
+    // Предполагаю, что у тебя в Object есть конструктор или фабрика для PLACE
+    return Object::make_place(container, key);
+}
+Object Interpreter::eval_place_set_special(const Object& form, 
+                                           const Object& rest, 
+                                           const std::shared_ptr<EnvironmentObject>& env) {
+    
+    if (!rest.is_pair())           
+        throw_eval_error(form, "place-set!: expected pair in 1st argument");                              
+    auto rest_pair = rest.as_pair();
+    // 1. Проверка аргументов: ожидаем (place-set! <place-expr> <value-expr>)
+    // rest -> (<place-expr> <value-expr>)
+    if (rest_pair->lenght() != 2) {
+        throw_eval_error(form, "place-set!: expected 2 arguments");
+    }
+
+    Object place_expr = rest_pair->car;
+    Object value_expr = rest_pair->cdr.as_pair()->car;
+
+    // 2. ВЫЧИСЛЯЕМ 'place_expr'.
+    // ВАЖНО: твой базовый eval должен иметь механизм, позволяющий 
+    // получить сам объект PLACE без авто-раскрытия.
+    // Обычно это делается через отдельный метод или флаг.
+    Object place_obj = eval_with_rewind(place_expr, env, false); 
+
+    if (place_obj.type != ObjectType::PLACE) {
+        throw_eval_error(form, "place-set!: first argument must evaluate to a Place object");
+    }
+
+    // 3. Вычисляем значение (здесь авто-раскрытие нам не мешает)
+    Object new_value = eval(value_expr, env);
+
+    // 4. Записываем
+    place_obj.as_place()->set(new_value);
+
+    return new_value; 
+}
 } // namespace script

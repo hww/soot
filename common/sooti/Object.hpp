@@ -33,10 +33,10 @@ namespace script
         LAMBDA, MACRO, 
         ENVIRONMENT, 
         READER, 
-        LEXTOKEN
+        LEXTOKEN,
+        PLACE
     };
 
-    class Object;
     std::string object_type_to_string(ObjectType type);
 
     // Forward declarations
@@ -53,7 +53,8 @@ namespace script
     class ReaderObject;
     class Reader;
     class LextokenObject;
-    
+    class PlaceObject;
+
     struct ArgumentSpec;
 
     // InternedSymbolPtr как в OpenGOAL
@@ -176,6 +177,7 @@ namespace script
         static Object make_hash_table();
         static Object make_reader(TextStream* textStream);
         static Object make_lextoken(const Object& type, const Object& value, const TextRef& info);
+        static Object make_place(const Object& object, const Object& key);
 
         // String representation
         std::string print() const;
@@ -206,6 +208,7 @@ namespace script
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_reader() const { return type == ObjectType::READER; }
         bool is_lextoken() const { return type == ObjectType::LEXTOKEN; }
+        bool is_place() const { return type == ObjectType::PLACE; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
         bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
@@ -224,6 +227,7 @@ namespace script
         EnvironmentObject*          as_env() const;
         ReaderObject*               as_reader() const;
         LextokenObject*             as_lextoken() const;
+        PlaceObject*                as_place() const;
         const IntegerObject&        as_integer_obj() const;
         const InternedSymbolPtr&    as_symbol() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
@@ -251,6 +255,16 @@ namespace script
 
         std::string print() const override;
         std::string inspect() const override;
+
+        int lenght() {
+            int count = 1;
+            auto lst = cdr;
+            while (lst.is_pair()) {
+                count++;
+                lst = lst.as_pair()->cdr;
+            }
+            return count;
+        }
     };
 
     class StringObject : public HeapObject {
@@ -307,9 +321,10 @@ namespace script
 
         int size() { return data.size(); }
 
-        Object& at(int index) { return data[index]; }
-        const Object& operator[](size_t idx) const { return data.at(idx); }
+        Object& get(int index) { return data[index]; }
+        Object& set(int index, Object value) { data[index] = value; }
 
+        const Object& operator[](size_t idx) const { return data.at(idx); }
         Object& operator[](size_t idx) { return data.at(idx); }
 
         std::string print() const override {
@@ -464,6 +479,7 @@ namespace script
             Object environment;
             Object reader;
             Object lextoken;
+            Object place;
             Object unknown;
         } core;
         void init_core_symbols();
@@ -692,6 +708,36 @@ namespace script
         std::string inspect() const override {
             return "[hash-table] kind: string, data: " + print() + "\n";
         }
+
+        // Метод получения: возвращает ссылку на объект. 
+        // Если ключа нет, unordered_map создаст объект по умолчанию.
+        Object& get(const std::string& key) {
+            return data[key];
+        }
+
+        // Метод установки: записывает значение и возвращает ссылку на обновленное место.
+        Object& set(const std::string& key, Object value) {
+            data[key] = std::move(value); // используем move для эффективности
+            return data[key];
+        }
+
+        // Доступ по строковому ключу (неконстантный): 
+        // стандартное поведение для ассоциативных контейнеров.
+        Object& operator[](const std::string& key) {
+            return data[key];
+        }
+
+        // Доступ по индексу (size_t): 
+        // В unordered_map нет прямого доступа по индексу, как в векторе.
+        // Если это необходимо, используем итераторы (но помни, что порядок не гарантирован).
+        const Object& operator[](size_t idx) const {
+            if (idx >= data.size()) {
+                throw std::out_of_range("HashTable index out of bounds");
+            }
+            auto it = data.begin();
+            std::advance(it, idx);
+            return it->second;
+        }
     };
 
     class ReaderObject : public HeapObject {
@@ -727,6 +773,65 @@ namespace script
 
         std::string print() const override;
         std::string inspect() const override;
+    };
+
+    class PlaceObject : public HeapObject {
+        public:
+        Object container; // Таблица (HashTable) или Массив (Array)
+        Object key;       // Символ-ключ или Индекс
+        PlaceObject(){}
+        PlaceObject(const Object& obj, const Object& key) : container(obj), key(key) {}
+
+        // Чтение: лезем в контейнер за значением
+        Object get() const {
+            if (container.type == ObjectType::STRING_HASH_TABLE) {
+                auto k = key_as_string();
+                return container.as_hash_table()->get(k);
+            } else if (container.type == ObjectType::ARRAY) {
+                auto idx = key_as_integer();
+                return container.as_array()->get(idx);
+            }
+            return Object::make_empty_list();
+        }
+
+        // Запись: обновляем значение в контейнере
+        void set(const Object& value) {
+            if (container.type == ObjectType::STRING_HASH_TABLE) {
+                std::string k = key_as_string();
+                container.as_hash_table()->set(k, value);
+            } else if (container.type == ObjectType::ARRAY) {
+                auto idx = key_as_integer();
+                container.as_array()->set(idx, value);
+            }
+        }
+
+
+        std::string print() const override;
+        std::string inspect() const override;
+        private:
+        std::string key_as_string() const {
+            // В C++ эффективнее использовать локальную переменную
+            if (key.is_symbol())
+                return key.as_symbol().c_str(); // Предполагаю, что .name() возвращает std::string или char*
+            if (key.is_string())
+                return key.as_string()->c_str(); // Если это уже std::string
+            
+            // Fallback: превращаем любой объект в строку для отладки или ключа
+            return key.print(); 
+        }
+
+        int key_as_integer() const {
+            if (key.is_integer())
+                return key.as_integer(); // Обычно возвращает int или int64_t
+            
+            if (key.is_float())
+                return static_cast<int>(key.as_float()); // Приведение float -> int
+            
+            // Внимание: в твоем исходнике здесь была ошибка! 
+            // Пытаться вызвать .as_string().c_str() и присвоить это в int нельзя.
+            
+            return 0; // Или бросай исключение "Invalid index type"
+        }
     };
 
     Object build_list(std::vector<Object>&& objects);

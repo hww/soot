@@ -46,8 +46,8 @@ namespace script
         void load_library();
 
         // Основные методы оценки
-        Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
+        Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_string(const std::string& expression, const std::string& filename);
         Object call_lambda(const Object& lambda, const std::vector<Object>& args);
 
@@ -112,6 +112,7 @@ namespace script
         Object eval_macroexpand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
+
         // Математические
         Object eval_plus(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_minus(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -180,7 +181,6 @@ namespace script
         Object eval_fmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_cfmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-        
         // Logger
         Object eval_log(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) ;
 
@@ -220,6 +220,9 @@ namespace script
         Object eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_set_car(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_set_cdr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_make_place(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_place_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_place_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
 
         // Преобразования типов
         Object eval_number_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -235,15 +238,21 @@ namespace script
         Object eval_sqrt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ash(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
+        // Bits
+        Object eval_logand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_logior(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_logxor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lognot(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lhift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
         // Время
         Object eval_time_seconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_time_milliseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_time_microseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_time_nanoseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);        
+
         // Quasiquote helpers
         Object quasiquote_helper(const Object& form, const std::shared_ptr<EnvironmentObject>& env);
-
-    
         
         // Улучшенная обработка аргументов
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);

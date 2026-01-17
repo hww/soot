@@ -39,6 +39,7 @@ namespace script
         core.environment    = Object::make_symbol(this, "environment");
         core.reader         = Object::make_symbol(this, "reader");
         core.lextoken       = Object::make_symbol(this, "lextoken");
+        core.place          = Object::make_symbol(this, "place");
         core.unknown        = Object::make_symbol(this, "unknown");
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
@@ -56,6 +57,7 @@ namespace script
             case ObjectType::ENVIRONMENT:   return core.environment;
             case ObjectType::READER:        return core.reader;
             case ObjectType::LEXTOKEN:      return core.lextoken;
+            case ObjectType::PLACE:         return core.place;
             default:                        return core.unknown;
         }
     }
@@ -195,6 +197,8 @@ namespace script
         return "[reader]";
         case ObjectType::LEXTOKEN:
         return "[lextoken]";
+        case ObjectType::PLACE:
+        return "[place]";
         default:
             throw std::runtime_error("unknown object type in object_type_to_string");
         }
@@ -290,6 +294,15 @@ namespace script
         obj.type = ObjectType::LEXTOKEN;
         // Создаем shared_ptr для твоего нового класса
         obj.heap_obj = std::make_shared<LextokenObject>(type, value, info);
+        return obj;    
+    }
+
+    Object Object::make_place(const Object& object, const Object& key)
+    {
+        Object obj;
+        obj.type = ObjectType::PLACE;
+        // Создаем shared_ptr для твоего нового класса
+        obj.heap_obj = std::make_shared<PlaceObject>(object, key);
         return obj;    
     }
 
@@ -461,6 +474,14 @@ namespace script
                 " " + print());
         }
         return dynamic_cast<LextokenObject*>(heap_obj.get());
+    }
+
+    PlaceObject* Object::as_place() const {
+        if (type != ObjectType::PLACE) {
+            throw std::runtime_error("as_place called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<PlaceObject*>(heap_obj.get());
     }
 
     std::vector<Object> Object::as_c_vector() const {
@@ -663,5 +684,10 @@ namespace script
     std::string LextokenObject::print() const { return "#<lextoken>"; }
     std::string LextokenObject::inspect() const { 
         return "[lextoken] type: " + type.inspect() + " value: " + value.inspect(); 
+    }
+
+    std::string PlaceObject::print() const { return "#<place>"; }
+    std::string PlaceObject::inspect() const { 
+        return "[lextoken] container: " + container.inspect() + " key: " + key.inspect(); 
     }
 } // namespace script
