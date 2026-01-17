@@ -145,7 +145,12 @@ Special forms don't evaluate their arguments automatically.
 | `max` `min`       | `number...`        | Maximum/Minimum  |
 | `expt`            | `base exponent`    | Power            |
 | `sqrt`            | `number`           | Square root      |
-| `ash`             | `integer shift`    | Arithmetic shift |
+| `ash`             | `integer`          | Arithmetic shift |
+| `logand`          | `integer`          | Logic AND        |
+| `logor`           | `integer`          | Logic OR         |
+| `logxor`          | `integer`          | Logic XOR        |
+| `lognot`          | `integer`          | Logic NOT        |
+| `lshift`          | `integer shift`    | Logic shift      |
 
 **Examples:**
 
@@ -243,6 +248,7 @@ Special forms don't evaluate their arguments automatically.
 | `reader?`     | `value`           | #t if reader object    |
 | `lextoken?`   | `value`           | #t if lex token        |
 | `hash-table?` | `value`           | #t if hash table       |
+| `place?`      | `value`           | #t if place            |
 | `type-of`     | `value`           | Returns type as symbol |
 | `type?`       | `value type-name` | Check specific type    |
 
@@ -297,6 +303,187 @@ Special forms don't evaluate their arguments automatically.
 (hash-table-length ht)           ; → 2
 (hash-table->list ht)            ; → (("name" . "John") ("age" . 30))
 ```
+
+Here is the documentation for the **Place** system in SOOT, written in professional technical English for your project's docs.
+
+---
+
+## SOOT Generalized References (Places)
+
+The **Place** system in SOOT provides a unified mechanism for accessing and modifying data, regardless of where that data is stored. Inspired by Common Lisp's `setf` and the concept of "L-values," a Place object acts as a first-class reference (or iterator) to a specific location in a container.
+
+### Core Concepts
+
+In most languages, reading a value and writing a value use different syntax (e.g., `gethash` vs `hash-table-set!`). In SOOT, the **Place** object abstracts this away:
+
+- When evaluated in a standard context, a Place automatically **dereferences** to its value.
+- When used within a mutation macro (like `setf`), it provides the **address** for the update.
+
+---
+
+### Built-in Procedures
+
+#### `make-place`
+
+`(make-place container key)`
+
+Creates a new **Place** object that references a specific entry within a container.
+
+- **`container`**: Must be a supported mutable structure, such as a `hash-table` or `array`.
+- **`key`**: The lookup key for hash-tables (symbol/string) or a numerical index for arrays.
+
+**Example:**
+
+```lisp
+(define my-table (make-string-hash-table))
+(define p (make-place my-table "register-a")) 
+;; p is now a "pointer" to the "register-a" entry in my-table
+
+```
+
+#### `place?`
+
+`(place? object)`
+
+A predicate that returns `#t` if the provided `object` is of the `PLACE` type, and `#f` otherwise.
+
+**Example:**
+
+```lisp
+(place? (make-place my-table "a")) ; => #t
+(place? 42)                        ; => #f
+```
+
+#### `place-set!`
+
+`(place? object)`
+
+A predicate that returns `#t` if the provided `object` is of the `PLACE` type, and `#f` otherwise.
+
+**Example:**
+
+```lisp
+(define p (make-place my-table "a")) ; => #t
+(place-set! p 42)                    ; => #f
+```
+
+---
+
+## Integration with `setf`
+
+The primary use of Places is through the `setf` macro. Because SOOT's `eval` automatically resolves Places to their values, you can use them transparently in logic.
+
+```lisp
+;; Standard Getter-style usage
+(define *regs* (make-string-hash-table))
+(define a-ref (make-place *regs* 'a))
+
+(setf a-ref 10)           ;; Writes 10 to the table via the Place
+(print a-ref)             ;; Implicitly calls .get(), prints 10
+(setf a-ref (+ a-ref 5))  ;; Reads 10, adds 5, writes 15 back
+
+```
+
+---
+
+## Technical Implementation Details
+
+### Implicit Evaluation (Auto-Dereferencing)
+
+The SOOT Interpreter's `eval` loop handles `ObjectType::PLACE` by automatically invoking the internal `get()` method. This ensures that Places can be passed to arithmetic and logic functions without explicit calls to a "fetch" procedure.
+
+### Memory Management
+
+Places are implemented using `std::shared_ptr<PlaceObject>`. They hold a reference to their parent container, preventing the container from being garbage collected as long as the Place is alive.
+
+---
+Here is the professional documentation for the Bitwise Operations, tailored for your Z80 assembly manual.
+
+---
+
+## Bitwise Operations (Bit-Magic)
+
+SOOT provides a robust set of bitwise primitives essential for low-level systems programming, instruction encoding, and hardware emulation. These functions operate on integer values at the binary level.
+
+### Core Bitwise Primitives
+
+#### `ash` (Arithmetic Shift)
+
+`(ash value count)`
+
+Performs an arithmetic shift of `value` by `count` bits.
+
+* If **`count`** is positive, the value is shifted **left** (multiplication by ).
+* If **`count`** is negative, the value is shifted **right** (division by ).
+* **Note:** Right shifts preserve the sign bit (arithmetic shift), making it safe for signed integers.
+
+**Example:**
+
+```lisp
+(ash #b00001111 2)  ; => #b00111100 (60)
+(ash #b00111100 -2) ; => #b00001111 (15)
+
+```
+
+#### `logand` (Bitwise AND)
+
+`(logand &rest integers)`
+
+Returns the bitwise logical AND of its arguments. If no arguments are provided, it returns `-1` (the identity element for AND). Used primarily for **masking** specific bits.
+
+**Example:**
+
+```lisp
+(logand #b1100 #b1010) ; => #b1000
+
+```
+
+#### `logior` (Bitwise Inclusive OR)
+
+`(logior &rest integers)`
+
+Returns the bitwise logical inclusive OR of its arguments. If no arguments are provided, it returns `0`. Used primarily for **combining** flags or opcodes.
+
+**Example:**
+
+```lisp
+;; Combining Z80 opcode bits
+(logior #x40 (ash reg-dest 3) reg-src)
+
+```
+
+#### `logxor` (Bitwise Exclusive OR)
+
+`(logxor &rest integers)`
+
+Returns the bitwise logical exclusive OR of its arguments. Returns `0` if no arguments are provided. Useful for **toggling** specific bits or parity checks.
+
+**Example:**
+
+```lisp
+(logxor #b1100 #b1010) ; => #b0110
+
+```
+
+#### `lognot` (Bitwise NOT)
+
+`(lognot integer)`
+
+Returns the bitwise complement (inverse) of the integer. Every `0` bit becomes `1` and every `1` bit becomes `0`.
+
+**Example:**
+
+```lisp
+(lognot #b0000) ; => -1 (or #b1111... in two's complement)
+
+```
+
+---
+
+#### Implementation Note for SOOT
+
+All bitwise operations in SOOT are performed using 64-bit signed integers. When encoding 8-bit or 16-bit Z80 instructions, ensure you use `(logand ... #xFF)` or `(logand ... #xFFFF)` to truncate values to the desired width if necessary.
+
 
 ## 💾 **File I/O**
 

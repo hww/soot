@@ -1,7 +1,4 @@
-﻿(defpackage lzasm
-  (:use common-lisp))
-
-; Helpers
+﻿; Helpers
 (defun lshift (val shift)
    (* (expt 2 shift) val))
 

@@ -60,7 +60,7 @@ bool XiffCompiler::finalize_and_inject() {
         auto targets = get_targets_res.as_array();
 
         for (int i=0;i<targets->size();i++) {
-            auto target = targets->at(i);
+            auto target = targets->get(i);
             if (!target.is_array()) {
                 fmt::print(stderr, "[ERR] [XiffCompiler] finalize_and_inject : Lisp generator did not return a array for target.\n");
                 return false;
@@ -72,8 +72,8 @@ bool XiffCompiler::finalize_and_inject() {
                 return false;                  
             }
             
-            auto type = target_array->at(0);
-            auto path = target_array->at(0);
+            auto type = target_array->get(0);
+            auto path = target_array->get(0);
             if (!type.is_string() || !path.is_string()) {
                 fmt::print(stderr, "[ERR] [XiffCompiler] finalize_and_inject : Expected strings in target's type and path path.\n");
                 return false;                  

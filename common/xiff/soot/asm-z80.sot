@@ -6,6 +6,8 @@
 ; hl-indirect, bc-indirect, de-indirect, sp-indirect, imm-indirect
 ; asmsym, asmsym-indirect
 
+(load "libcl.sot")
+
 ; =================================================================
 ; $ is a macro character to define labels
 (set-macro-character #\$
@@ -13,21 +15,11 @@
       (let ((sym (read s)))
            (lab sym))))
 
-
-(defun make-lextoken (&key (type 'none) &key (value #f))
-        (list 1))
-(defun eq (a b) (eq? a b))
-(defun sign (x) (if (>= x 0) '+ '-))
-(defmacro setq (name data) `(define ,name ,data))
-
-                                        ; @ is a macro character to define registers
-(set-macro-character #\@ (lambda (a s) s))
-
-                                        ; @ is a macro character to define registers
+; @ is a macro character to define registers
 (set-macro-character #\@ 
    (lambda (s c) 
       (let ((reg (read s)))
-           (case reg
+            (case reg
               ('a (make-lextoken :type '8-register :value 'a))
               ('b (make-lextoken :type '8-register :value 'b))
               ('c (make-lextoken :type '8-register :value 'c))
