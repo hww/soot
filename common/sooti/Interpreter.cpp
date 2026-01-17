@@ -100,10 +100,10 @@ namespace script
             {"apply",    &Interpreter::eval_apply},
 
             // Предикаты типов
-            {"type-name",   &Interpreter::eval_type_name},
+            {"type-of",     &Interpreter::eval_type_of},
+            {"type?",       &Interpreter::eval_type_p},
             {"null?",       &Interpreter::eval_null_p},     // было eval_null_p
             {"pair?",       &Interpreter::eval_pair_p},
-            {"type?",       &Interpreter::eval_type_p},
             {"symbol?",     &Interpreter::eval_symbol_p},
             {"number?",     &Interpreter::eval_number_p},
             {"string?",     &Interpreter::eval_string_p},
@@ -2016,24 +2016,24 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
 // Предикаты типов с проверками
 // ==============================================
 
-Object Interpreter::eval_type_name(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
+Object Interpreter::eval_type_of(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {});
 
-    return args.unnamed[0].type_symbol();
+    return reader.get_symbol_table().object_type_to_symbol(args.unnamed[0].type);
 }
 
 Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::SYMBOL, {} }, {});
+    vararg_check(form, args, { {}, ObjectType::SYMBOL }, {});
 
-    auto type_name = args.unnamed[0].as_symbol().name_ptr;
+    auto type_name = args.unnamed[1].as_symbol().name_ptr;
     auto kv = string_to_type.find(type_name);
     if (kv == string_to_type.end()) {
         throw_eval_error(form, fmt::format("invalid type name: {}", type_name));
     }
 
-    return make_bool(args.unnamed[1].type == kv->second);
+    return make_bool(args.unnamed[0].type == kv->second);
 }
 
 Object Interpreter::eval_null_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {

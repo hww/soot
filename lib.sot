@@ -59,16 +59,17 @@
 ;;   (<type-symbol-2> <body-2>)
 ;;   (else            <default-body>))
 (defmacro case-type (obj &rest branches)
-  (let ((type-sym (gensym))) ;; Создаем уникальное имя, чтобы не было конфликтов
-    `(let ((,type-sym (type? ,obj)))
+  (let ((type-sym (gensym)))
+    `(let ((,type-sym (type-of ,obj)))
        (cond
          ,@(map (lambda (branch)
                   (let ((head (car branch))
                         (body (cdr branch)))
                     (if (eq? head 'else)
-                        `(#t ,@body) ;; Если ветка else, то предикат всегда true
+                        `(#t ,@body)
                         `((eq? ,type-sym ',head) ,@body))))
                 branches)))))
+
 ;; --- [ Секция 3: Работа со списками ] ---
 
 ;; Аксессоры (C-x-R)
@@ -172,6 +173,31 @@
 (defmacro neq? (a b) `(not (eq? ,a ,b)))
 (defmacro !=   (a b) `(not (= ,a ,b)))
 
+
+;; --- [ Секция 7: Лог ] ---
+
+(defun info  (fmt-str &rest args)  (apply 'log 'info  fmt-str args))
+(defun warn  (fmt-str &rest args)  (apply 'log 'warn  fmt-str args))
+(defun error (fmt-str &rest args)  (apply 'log 'error fmt-str args))
+
+;; --- [ Секция 8: Функция к сриску ] ---
+
+;; Стандартный map (то, что у тебя называлось apply)
+(defun map (fun x)
+    (if (null? x)
+        '()
+        (cons (fun (car x))
+              (map fun (cdr x)))))
+
+;; Твой apply2, теперь map2
+(defun map2 (fun1 fun2 lst1 lst2)
+    (if (or (null? lst1) 
+            (null? lst2) 
+            (not (= (length lst1) (length lst2))))
+        '()
+        (cons (fun1 (car lst1))
+              (cons (fun2 (car lst2))
+                    (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
 
 ;; Маркер успешной загрузки библиотеки
 (define *core-lib-loaded* #t)

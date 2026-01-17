@@ -38,7 +38,6 @@ namespace script
 
     class Object;
     std::string object_type_to_string(ObjectType type);
-    Object object_type_to_symbol(ObjectType type);
 
     // Forward declarations
     class EnvironmentObject;
@@ -188,7 +187,6 @@ namespace script
             return str.substr(0, max_len-3) + "..."; // substr вместо substring
         }
         std::string type_name() const { return object_type_to_string(type); }
-        Object type_symbol() const { return object_type_to_symbol(type); }
 
         // Type checking
         bool is_heap_object() const { return heap_obj != nullptr; }
@@ -452,39 +450,24 @@ namespace script
 
     class SymbolTable {
     public:
-        struct core {
-            static Object empty_list;
-            static Object integer;
-            static Object float_pt;
-            static Object character;
-            static Object symbol;
-            static Object string;
-            static Object pair;
-            static Object array;
-            static Object lambda;
-            static Object macro;
-            static Object environment;
-            static Object reader;
-            static Object lextoken;
-            static Object unknown;
-        };
-
-        void init_core_symbols() {
-            SymbolTable::core::empty_list     = Object::make_symbol(this, "empty-list");
-            SymbolTable::core::integer        = Object::make_symbol(this, "integer");
-            SymbolTable::core::float_pt       = Object::make_symbol(this, "float");
-            SymbolTable::core::character      = Object::make_symbol(this, "char");
-            SymbolTable::core::symbol         = Object::make_symbol(this, "symbol");
-            SymbolTable::core::string         = Object::make_symbol(this, "string");
-            SymbolTable::core::pair           = Object::make_symbol(this, "pair");
-            SymbolTable::core::array          = Object::make_symbol(this, "array");
-            SymbolTable::core::lambda         = Object::make_symbol(this, "lambda");
-            SymbolTable::core::macro          = Object::make_symbol(this, "macro");
-            SymbolTable::core::environment    = Object::make_symbol(this, "environment");
-            SymbolTable::core::reader         = Object::make_symbol(this, "reader");
-            SymbolTable::core::lextoken       = Object::make_symbol(this, "lextoken");
-            SymbolTable::core::unknown        = Object::make_symbol(this, "unknown");
-        }
+        struct TypeSymbols {
+            Object empty_list;
+            Object integer;
+            Object float_pt;
+            Object character;
+            Object symbol;
+            Object string;
+            Object pair;
+            Object array;
+            Object lambda;
+            Object macro;
+            Object environment;
+            Object reader;
+            Object lextoken;
+            Object unknown;
+        } core;
+        void init_core_symbols();
+        Object object_type_to_symbol(ObjectType type);
     public:
         SymbolTable(const SymbolTable&) = delete;
         SymbolTable& operator=(const SymbolTable&) = delete;
