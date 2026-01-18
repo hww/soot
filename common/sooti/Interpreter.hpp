@@ -9,23 +9,19 @@
 #include "fmt/format.h"
 #include "fmt/color.h"
 
-namespace script
-{
-    class EvalException : public std::exception {
-    public:
-        Object form;                        // Тот самый объект (Pair или LexToken)
-        std::string message;                // Текст ошибки
-        bool already_printed = false;       // Не печай второй раз
-        bool error_header_required = true; 
-        bool detailed_error_required = true; 
-
-        EvalException(Object f, std::string m) : form(f), message(std::move(m)) {}
-
-        // Чтобы соответствовать стандарту std::exception
-        const char* what() const noexcept override {
-            return message.c_str();
+namespace std {
+    template <>
+    struct hash<script::InternedSymbolPtr> {
+        size_t operator()(const script::InternedSymbolPtr& s) const noexcept {
+            // Поскольку символы интернированы, адрес указателя 
+            // сам по себе является отличным уникальным хешем.
+            return std::hash<const char*>{}(s.name_ptr);
         }
     };
+}
+
+namespace script
+{
     class ExitException : public std::exception {
     public:
         int exit_code;
@@ -94,20 +90,20 @@ namespace script
 
     private:
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
-        Object eval_quote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_define(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lambda(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_begin(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_set(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_let(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_if(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_and(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_or(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_cond(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_while(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_macro(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_let_star(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_quasiquote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_define_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lambda_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_begin_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_let_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_if_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_and_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_or_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_cond_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_while_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_macro_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_let_star_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_quasiquote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_apply(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_macroexpand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
@@ -220,9 +216,8 @@ namespace script
         Object eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_set_car(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_set_cdr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_make_place(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_place_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_place_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_defsetf(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_get_setter(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Преобразования типов
         Object eval_number_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -257,10 +252,30 @@ namespace script
         // Улучшенная обработка аргументов
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);
         void set_args_in_env(const Object& form, const Arguments& args,
-            const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
+        const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
 
         // Основной метод оценки пар
         Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
+
+        void init_special_forms(
+            const std::unordered_map<std::string,
+            Object(Interpreter::*)(const Object&,
+                const Object&,
+                const std::shared_ptr<EnvironmentObject>&)>&
+            forms);
+
+        void init_builtin_forms(
+            const std::unordered_map<std::string,
+            Object(Interpreter::*)(const Object&,
+                Arguments&,
+                const std::shared_ptr<EnvironmentObject>&)>&
+            forms);
+
+        void vararg_check(const Object& form,
+            const Arguments& args,
+            const std::vector<std::optional<ObjectType>>& unnamed,
+            const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
+
 
         // Таблицы форм
         std::unordered_map<
@@ -279,30 +294,15 @@ namespace script
                 const std::shared_ptr<EnvironmentObject>& env)>>
             special_forms;
 
-        void init_special_forms(
-            const std::unordered_map<std::string,
-            Object(Interpreter::*)(const Object&,
-                const Object&,
-                const std::shared_ptr<EnvironmentObject>&)>&
-            forms);
-
-        void init_builtin_forms(
-            const std::unordered_map<std::string,
-            Object(Interpreter::*)(const Object&,
-                Arguments&,
-                const std::shared_ptr<EnvironmentObject>&)>&
-            forms);
 
         // Для проверки типов
-        std::unordered_map<std::string, ObjectType> string_to_type;
+        std::unordered_map<std::string, ObjectType> 
+            string_to_type;
 
-        void vararg_check(const Object& form,
-            const Arguments& args,
-            const std::vector<std::optional<ObjectType>>& unnamed,
-            const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
+        // Карта: Имя Геттера -> Имя Сеттера
+        std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> 
+            setter_map;
         
-        
-
         // Состояние
         Reader  reader;
         Object  true_object;

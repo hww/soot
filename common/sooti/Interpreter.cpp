@@ -1,5 +1,6 @@
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
+#include "common/sooti/Errors.hpp"
 
 #include "fmt/args.h"
 #include "fmt/base.h"
@@ -19,7 +20,7 @@
 
 namespace script 
 {
-    Interpreter::Interpreter(const std::string& username, bool load_libs) : reader(this) {
+    Interpreter::Interpreter(const std::string& username, bool load_libs) : reader(this), setter_map() {
         // Инициализируем boolean объекты как символы
         auto& symbols = reader.get_symbol_table();
         true_object = Object::make_symbol(&symbols, "#t");
@@ -54,26 +55,26 @@ namespace script
             {"environment", ObjectType::ENVIRONMENT},
             {"reader", ObjectType::READER},
             {"lextoken", ObjectType::LEXTOKEN},
-            {"place", ObjectType::PLACE}
+            {"keyword", ObjectType::KEYWORD},
         };
 
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
         init_special_forms({
-            {"define", &Interpreter::eval_define},
-            {"quote", &Interpreter::eval_quote},
-            {"set!", &Interpreter::eval_set},
-            {"let", &Interpreter::eval_let},
-            {"let*", &Interpreter::eval_let_star},
-            {"lambda", &Interpreter::eval_lambda},
-            {"cond", &Interpreter::eval_cond},
-            {"begin", &Interpreter::eval_begin},
-            {"or", &Interpreter::eval_or},
-            {"and", &Interpreter::eval_and},
-            {"if", &Interpreter::eval_if},
-            {"macro", &Interpreter::eval_macro},
-            {"quasiquote", &Interpreter::eval_quasiquote},
-            {"while", &Interpreter::eval_while},
-            {"top-level", &Interpreter::eval_begin} // top level evaluation
+            {"define", &Interpreter::eval_define_special},
+            {"quote", &Interpreter::eval_quote_special},
+            {"set!", &Interpreter::eval_set_special},
+            {"let", &Interpreter::eval_let_special},
+            {"let*", &Interpreter::eval_let_star_special},
+            {"lambda", &Interpreter::eval_lambda_special},
+            {"cond", &Interpreter::eval_cond_special},
+            {"begin", &Interpreter::eval_begin_special},
+            {"or", &Interpreter::eval_or_special},
+            {"and", &Interpreter::eval_and_special},
+            {"if", &Interpreter::eval_if_special},
+            {"macro", &Interpreter::eval_macro_special},
+            {"quasiquote", &Interpreter::eval_quasiquote_special},
+            {"while", &Interpreter::eval_while_special},
+            {"top-level", &Interpreter::eval_begin_special}, // top level evaluation
             });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -187,8 +188,11 @@ namespace script
             {"get-environment-variable", &Interpreter::eval_get_env}, // было eval_get_environment_variable
 
             // Прочие
-            {"gensym", &Interpreter::eval_gensym},
-            {"eval",   &Interpreter::eval_eval},
+            {"gensym",      &Interpreter::eval_gensym},
+            {"eval",        &Interpreter::eval_eval},
+            {"defsetf",     &Interpreter::eval_defsetf},
+            {"get-setter",  &Interpreter::eval_get_setter},
+
 
             // Преобразования типов
             {"number->string", &Interpreter::eval_number_to_string},
@@ -205,6 +209,12 @@ namespace script
             {"expt",    &Interpreter::eval_expt},
             {"sqrt",    &Interpreter::eval_sqrt},
             {"ash",     &Interpreter::eval_ash},
+
+            {"logand",     &Interpreter::eval_logand},
+            {"logior",     &Interpreter::eval_logior},
+            {"logxor",     &Interpreter::eval_logxor},
+            {"lognot",     &Interpreter::eval_lognot},
+            {"lshift",     &Interpreter::eval_ash},
 
             // Время
             {"time-seconds",        &Interpreter::eval_time_seconds},
@@ -490,11 +500,11 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
                     bool add_newline = stack_depth == 0;
                     // Печатаем "at ...", только если есть реальный файл и строка > 0
                     if (info_opt && info_opt->line_idx_to_display > 0) {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}", 
-                                stack_depth + 1, obj.inspect_short(), info_opt->filename, info_opt->line_idx_to_display);
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
+                                stack_depth + 1, obj.inspect_short(reader.get_symbol_table()), info_opt->filename, info_opt->line_idx_to_display);
                     } else {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}", 
-                                stack_depth + 1, obj.inspect_short());
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
+                                stack_depth + 1, obj.inspect_short(reader.get_symbol_table()));
                     }
                     if (add_newline) fmt::print(fg(fmt::color::dim_gray), "\n");
                 }
@@ -526,6 +536,8 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::EMPTY_LIST:
     case ObjectType::ARRAY:
     case ObjectType::STRING_HASH_TABLE:
+    case ObjectType::READER:
+    case ObjectType::LEXTOKEN: 
         return obj;
     case ObjectType::LAMBDA:
         return eval_pair(obj, env);
@@ -672,7 +684,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
     return eval_list_return_last(lam->body, lam->body, lam_env);
 }
 
-Object Interpreter::eval_quote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     if (!rest.is_pair()) {
         throw_eval_error(form, "quote requires one argument");
@@ -680,7 +692,7 @@ Object Interpreter::eval_quote(const Object& form, const Object& rest, const std
     return rest.as_pair()->car;
 }
 
-Object Interpreter::eval_define(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_define_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "define requires arguments");
     }
@@ -703,7 +715,7 @@ Object Interpreter::eval_define(const Object& form, const Object& rest, const st
     return value;
 }
 
-Object Interpreter::eval_lambda(const Object& form, const Object& rest,
+Object Interpreter::eval_lambda_special(const Object& form, const Object& rest,
     const std::shared_ptr<EnvironmentObject>& env) {
     // ...
     Object params_obj = rest.as_pair()->car;
@@ -728,14 +740,14 @@ Object Interpreter::eval_lambda(const Object& form, const Object& rest,
     return lambda_obj;
 }
 
-Object Interpreter::eval_begin(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_begin_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form;
 
     return eval_list_return_last(rest, rest, env);
 }
 
 
-Object Interpreter::eval_if(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_if_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "if requires condition and branches");
     }
@@ -763,7 +775,7 @@ Object Interpreter::eval_if(const Object& form, const Object& rest, const std::s
     }
 }
 
-Object Interpreter::eval_cond(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_cond_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     Object current_clause = rest;
 
     while (current_clause.is_pair()) {
@@ -802,7 +814,7 @@ Object Interpreter::eval_cond(const Object& form, const Object& rest, const std:
     return Object::make_empty_list();
 }
 
-Object Interpreter::eval_and(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_and_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form;
     Object current = rest;
     Object result = true_object;
@@ -818,7 +830,7 @@ Object Interpreter::eval_and(const Object& form, const Object& rest, const std::
     return result;
 }
 
-Object Interpreter::eval_or(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_or_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form;
     Object current = rest;
 
@@ -833,7 +845,7 @@ Object Interpreter::eval_or(const Object& form, const Object& rest, const std::s
     return false_object;
 }
 
-Object Interpreter::eval_set(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     auto args = get_args(form, rest, make_varargs());
     vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
     auto to_define = args.unnamed.at(0);
@@ -856,7 +868,7 @@ Object Interpreter::eval_set(const Object& form, const Object& rest, const std::
     }
 }
 
-Object Interpreter::eval_let(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_let_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "let requires bindings and body");
     }
@@ -905,7 +917,7 @@ Object Interpreter::eval_let(const Object& form, const Object& rest, const std::
     return result;
 }
 
-Object Interpreter::eval_while(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_while_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "while requires condition and body");
     }
@@ -937,7 +949,7 @@ Object Interpreter::eval_while(const Object& form, const Object& rest, const std
     return result;
 }
 
-Object Interpreter::eval_macro(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_macro_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "macro must receive two arguments");
     }
@@ -961,7 +973,7 @@ Object Interpreter::eval_macro(const Object& form, const Object& rest, const std
     return new_macro;
 }
 
-Object Interpreter::eval_let_star(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_let_star_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
         throw_eval_error(form, "let* requires bindings and body");
     }
@@ -1012,7 +1024,7 @@ Object Interpreter::eval_let_star(const Object& form, const Object& rest, const 
     return result;
 }
 
-Object Interpreter::eval_quasiquote(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_quasiquote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (rest.type != ObjectType::PAIR || rest.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
         throw_eval_error(form, "quasiquote must have one argument!");
     }
@@ -1448,12 +1460,15 @@ Object Interpreter::eval_pprint(const Object& form, Arguments& args, const std::
 
 Object Interpreter::eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
+    // Проверяем, что передан хотя бы один аргумент для инспекции
     vararg_check(form, args, { {} }, {});
 
-    if (!disable_printing) {
-        printf("%s\n", args.unnamed.at(0).inspect().c_str());
-    }
-    return Object::make_empty_list();
+    // Получаем объект, который нужно проинспектировать
+    const Object& target = args.unnamed.at(0);
+
+    // Вызываем метод inspect, который теперь (благодаря нашим правкам) 
+    // возвращает структуру данных (List/Pair), а не строку.
+    return target.inspect(reader.get_symbol_table());
 }
 
 Object Interpreter::eval_fmt(const Object& form,
@@ -2154,13 +2169,6 @@ Object Interpreter::eval_lextoken_p(const Object & form, Arguments & args, const
     return make_bool(args.unnamed[0].is_lextoken());
 }
 
-Object Interpreter::eval_place_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
-    (void)env;
-    vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_place());
-}
-
-
 // ==============================================
 // Apply 
 // ==============================================
@@ -2327,17 +2335,14 @@ Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const s
     (void)env;
     vararg_check(form, args, { ObjectType::ARRAY, ObjectType::INTEGER, {} }, {}); // Вектор, индекс, значение
 
-    auto vec_ptr = dynamic_cast<ArrayObject*>(args.unnamed[0].heap_obj.get());
-    if (!vec_ptr) {
-        throw_eval_error(form, "vector-set!: not a vector");
-    }
+    auto array = args.unnamed[0].as_array();
 
     int64_t index = args.unnamed[1].as_integer();
-    if (index < 0 || index >= static_cast<int64_t>(vec_ptr->data.size())) {
+    if (index < 0 || index >= static_cast<int64_t>(array->size())) {
         throw_eval_error(form, "vector-set!: index out of range");
     }
 
-    vec_ptr->data[index] = args.unnamed[2];
+    array->set(index, args.unnamed[2]);
     return args.unnamed[2];
 }
 
@@ -3221,61 +3226,38 @@ Object Interpreter::eval_log(const Object& form, Arguments& args, const std::sha
 }
 
 // ==============================================
-// Place
+// Таблица Setters для Getters
 // ==============================================
 
-Object Interpreter::eval_make_place(const Object& form,
-                                    Arguments& args,
-                                    const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    // Проверяем, что передано ровно два аргумента: контейнер и ключ
-    vararg_check(form, args, { {}, {} }, {});
+Object Interpreter::eval_defsetf(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // Проверка: нам нужно ровно два аргумента, и оба должны быть символами
+    vararg_check(form, args, {{ ObjectType::SYMBOL }, { ObjectType::SYMBOL }}, {});
 
-    Object container = args.unnamed.at(0);
-    Object key = args.unnamed.at(1);
+    // Извлекаем InternedSymbolPtr напрямую из объектов
+    InternedSymbolPtr getter = args.unnamed.at(0).as_symbol();
+    InternedSymbolPtr setter = args.unnamed.at(1).as_symbol();
 
-    // Валидация типов контейнера (KISS: проверяем только базовые типы)
-    if (container.type != ObjectType::STRING_HASH_TABLE && 
-        container.type != ObjectType::ARRAY) {
-        throw_eval_error(form, "make-place: container must be a hash-table or an array");
-    }
+    // Записываем в нашу unordered_map
+    setter_map[getter] = setter;
 
-    // Создаем новый объект типа PLACE
-    // Предполагаю, что у тебя в Object есть конструктор или фабрика для PLACE
-    return Object::make_place(container, key);
+    // Возвращаем имя сеттера как результат выполнения
+    return args.unnamed.at(1);
 }
-Object Interpreter::eval_place_set_special(const Object& form, 
-                                           const Object& rest, 
-                                           const std::shared_ptr<EnvironmentObject>& env) {
-    
-    if (!rest.is_pair())           
-        throw_eval_error(form, "place-set!: expected pair in 1st argument");                              
-    auto rest_pair = rest.as_pair();
-    // 1. Проверка аргументов: ожидаем (place-set! <place-expr> <value-expr>)
-    // rest -> (<place-expr> <value-expr>)
-    if (rest_pair->lenght() != 2) {
-        throw_eval_error(form, "place-set!: expected 2 arguments");
+
+Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // Проверка: один аргумент-символ
+    vararg_check(form, args, {{ ObjectType::SYMBOL }}, {});
+
+    InternedSymbolPtr getter = args.unnamed.at(0).as_symbol();
+
+    // Ищем в таблице
+    auto it = setter_map.find(getter);
+    if (it != setter_map.end()) {
+        // Если нашли, создаем объект-символ из сохраненного указателя
+        return Object::make_symbol(reader.get_symbol_table(), it->second.c_str());
     }
 
-    Object place_expr = rest_pair->car;
-    Object value_expr = rest_pair->cdr.as_pair()->car;
-
-    // 2. ВЫЧИСЛЯЕМ 'place_expr'.
-    // ВАЖНО: твой базовый eval должен иметь механизм, позволяющий 
-    // получить сам объект PLACE без авто-раскрытия.
-    // Обычно это делается через отдельный метод или флаг.
-    Object place_obj = eval_with_rewind(place_expr, env, false); 
-
-    if (place_obj.type != ObjectType::PLACE) {
-        throw_eval_error(form, "place-set!: first argument must evaluate to a Place object");
-    }
-
-    // 3. Вычисляем значение (здесь авто-раскрытие нам не мешает)
-    Object new_value = eval(value_expr, env);
-
-    // 4. Записываем
-    place_obj.as_place()->set(new_value);
-
-    return new_value; 
+    // Если ничего не нашли, возвращаем пустой список (nil)
+    return Object::make_empty_list();
 }
 } // namespace script

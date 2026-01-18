@@ -31,24 +31,36 @@
 ;; Пока сделаем базовую версию для переменных:
 (defmacro setf (place value)
   (if (symbolp place)
-      ;; Случай 1: (setf x 5) -> (define x 5)
+      ;; Случай 1: (setf x 5) -> (set! x 5)
       `(set! ,place ,value)
       
       ;; Случай 2: (setf (getter ...) 5)
       (let ((head (car place))
             (args (cdr place)))
         (cond
-          ;; Если это (car x), превращаем в (set-car! x value)
+          ;; Если это (car x) -> (set-car! x value)
           ((eq head 'car) `(set-car! ,(car args) ,value))
           
-          ;; Если это (cdr x), превращаем в (set-cdr! x value)
+          ;; Если это (cdr x) -> (set-cdr! x value)
           ((eq head 'cdr) `(set-cdr! ,(car args) ,value))
+
+          ;; Если это (make-place obj key) -> (place-set! (make-place obj key) value)
+          ((eq head 'make-place) `(place-set! ,place ,value))
+
+          ;; Если это (get hash key) или (getf hash key)
+          ;; Мы можем развернуть их сразу в (hash-table-set! hash key value) 
+          ;; или использовать существующий механизм place, если он универсален
+          ((eq head 'get)  `(place-set! (make-place ,(car args) ,(cadr args)) ,value))
+          ((eq head 'getf) `(place-set! (make-place ,(car args) ,(cadr args)) ,value))
           
-          ;; Если это твой новый lextoken-value
+          ;; Если это твой lextoken-value
           ((eq head 'lextoken-value) `(set-lextoken-value! ,(car args) ,value))
           
-          (t (error "SETF: Неизвестное место для записи" place))))))
+          ;; Дефолтный случай (используем #t вместо t для Scheme-совместимости)
+          (#t (error "SETF: Неизвестное место для записи" place))))))
+          
 
+(defun symbolp (sym) (symbol? sym))
 
 ;; Маркер успешной загрузки библиотеки
 (define *core-libcl-loaded* #t)

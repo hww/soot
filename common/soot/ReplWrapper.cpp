@@ -3,6 +3,7 @@
 #include "common/util/FileUtil.hpp"
 #include "common/versions/revision.h"
 #include "common/sooti/Object.hpp"
+#include "common/sooti/Errors.hpp"
 #include <iostream>
 #include <fstream>
 #include "fmt/format.h"
