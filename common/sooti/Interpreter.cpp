@@ -1,6 +1,7 @@
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Errors.hpp"
+#include "common/sooti/Printer.hpp"
 
 #include "fmt/args.h"
 #include "fmt/base.h"
@@ -11,6 +12,8 @@
 #include "common/util/FileUtil.hpp"
 #include "common/util/StringUtil.hpp"
 #include "common/util/UnicodeUtil.hpp"
+#include "common/util/StringUtil.hpp"
+
 #include "common/CommonTypes.hpp"
 #include "common/versions/version.h"
 #include "common/versions/revision.h"
@@ -27,6 +30,8 @@ namespace script
         object_true    = reader.get_symbol_table().core.object_true;;
         object_false   = reader.get_symbol_table().core.object_false;
         object_nil     = reader.get_symbol_table().core.object_nil;
+        symbol_true    = object_true.as_symbol().name_ptr;
+        symbol_false   = object_false.as_symbol().name_ptr;
         // Создаем глобальное окружение
         global_environment = EnvironmentObject::make_new("global");
 
@@ -129,10 +134,13 @@ namespace script
             {"eqv?",    &Interpreter::eval_eqv},
 
             // Строки
-            {"string-append",   &Interpreter::eval_string_append},
-            {"string-length",   &Interpreter::eval_string_length},
-            {"string-ref",      &Interpreter::eval_string_ref},
-            {"string-substr",   &Interpreter::eval_string_substr}, // было eval_substring
+            {"string-append",       &Interpreter::eval_string_append},
+            {"string-length",       &Interpreter::eval_string_length},
+            {"string-ref",          &Interpreter::eval_string_ref},
+            {"string-substr",       &Interpreter::eval_string_substr}, // было eval_substring
+            {"string-starts-with?", &Interpreter::eval_string_starts_with},
+            {"string-ends-with?",   &Interpreter::eval_string_ends_with},
+            {"string-split",        &Interpreter::eval_string_split},
 
             // Векторы
             {"vector",          &Interpreter::eval_vector},
@@ -329,7 +337,9 @@ void Interpreter::set_args_in_env(const Object& form,
         }
     }
 }
-
+/*!
+ * In env, set the variable named "name" to the value var.
+ */
 void Interpreter::define_var_in_env(const Object& env, const Object& var, const char* name) {
     env.as_env()->vars.set(InternedSymbolPtr{ intern_ptr(name) }, var);
 }
@@ -342,10 +352,6 @@ Object Interpreter::intern(const std::string& name) {
     return Object::make_symbol(&reader.get_symbol_table(), name.c_str());
 }
 
-void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
-    throw EvalException(o, err);
-}
-
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
     return reader.get_symbol_table().intern(name.c_str());
 }
@@ -353,7 +359,9 @@ InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
 // ==============================================
 // REPL
 // ==============================================
-
+/*!
+ * Display the REPL, which will run until the user executes exit.
+ */
 void Interpreter::execute_repl() {
     std::string input;
 
@@ -399,6 +407,13 @@ void Interpreter::execute_repl() {
     std::cout << "Goodbye!\n";
 }
 
+/*!
+ * Signal an evaluation error. This throws an exception which will unwind the evaluation stack
+ * for debugging.
+ */
+void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
+    throw EvalException(o, err);
+}
 
 Object Interpreter::eval_string(const std::string& expression, const std::string& filename)
 {
@@ -461,6 +476,11 @@ Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>
 // Eval With Rewind (Main Recursion)
 // ==============================================
 
+/*!
+ * Evaluate the given expression, with a "checkpoint" in the evaluation stack here.  If there is an
+ * evaluation error, there will be a print indicating there was an error in the evaluation of "obj",
+ * and if possible what file/line "obj" comes from.
+ */
 Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     stack_depth++;
     try {
@@ -688,13 +708,16 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
     set_args_in_env(obj, args, lam->args, lam_env);
     return eval_list_return_last(lam->body, lam->body, lam_env);
 }
-
+/*!
+ * Quote special form: (quote x) -> x
+ */
 Object Interpreter::eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    if (!rest.is_pair()) {
+    auto args = get_args_no_named(form, rest, make_varargs());
+    if (!args.unnamed.size()) {
         throw_eval_error(form, "quote requires one argument");
     }
-    return rest.as_pair()->car;
+    return args.unnamed.front();
 }
 
 Object Interpreter::eval_define_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1028,7 +1051,9 @@ Object Interpreter::eval_let_star_special(const Object& form, const Object& rest
     }
     return result;
 }
-
+/*!
+ * Quasiquote (backtick) evaluation
+ */
 Object Interpreter::eval_quasiquote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (rest.type != ObjectType::PAIR || rest.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
         throw_eval_error(form, "quasiquote must have one argument!");
@@ -1061,7 +1086,9 @@ Object build_list_with_spliced_tail(std::vector<Object>&& objects, const Object&
     result.heap_obj = std::move(head);
     return result;
 }
-
+/*!
+ * Recursive quasi-quote evaluation
+ */
 Object Interpreter::quasiquote_helper(const Object& form,
     const std::shared_ptr<EnvironmentObject>& env) {
     const Object* lst_iter = &form;
@@ -1173,6 +1200,240 @@ bool Interpreter::is_number(const Object& obj) {
 // Работа с аргументами
 // ==============================================
 
+/*!
+ * Get arguments being passed to a form. Don't evaluate them. There are two modes, "varargs" and
+ * "not varargs".  With varargs enabled, any number of unnamed and named arguments can be given.
+ * Without varags, the unnamed/named arguments must match the spec. By default specs are "not
+ * vararg" - use make_varags() to get a varargs spec.  In general, macros/lambdas use specs, but
+ * built-in forms use varargs.
+ *
+ * If form is "varargs", all arguments go to unnamed or named.
+ *  Ex: (.... a b :key-1 c d) will put a, b, d in unnamed and d in key-1
+ *
+ * If form isn't "varargs", the expected number of unnamed arguments must match, unless "rest"
+ * is specified, in which case the additional arguments are stored in rest.
+ *
+ * Also, if "varargs" isn't set, all keyword arguments must be defined. If the use doesn't provide
+ * a value, the default value will be used instead.
+ */
+Arguments Interpreter::get_args(const Object& form, const Object& rest, const ArgumentSpec& spec) {
+    Arguments args;
+
+    // loop over forms in list
+    const Object* current = &rest;
+    while (!current->is_empty_list()) {
+        const auto& arg = current->as_pair()->car;
+
+        // did we get a ":keyword"
+        if (arg.is_symbol() && arg.as_symbol().name_ptr && arg.as_symbol().name_ptr[0] == ':') {
+            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
+            const auto& kv = spec.named.find(key_name);
+
+            // check for unknown key name
+            if (!spec.varargs && kv == spec.named.end()) {
+                throw_eval_error(form, fmt::format("Key argument {} wasn't expected", key_name));
+            }
+
+            // check for multiple definition of key
+            if (args.named.find(key_name) != args.named.end()) {
+                throw_eval_error(form, fmt::format("Key argument {} multiply defined", key_name));
+            }
+
+            // check for well-formed :key value expression
+            current = &current->as_pair()->cdr;
+            if (current->is_empty_list()) {
+                throw_eval_error(form, "Key argument didn't have a value");
+            }
+
+            args.named[key_name] = current->as_pair()->car;
+        }
+        else {
+            // not a keyword. Add to unnamed or rest, depending on what we expect
+            if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
+                args.unnamed.push_back(arg);
+            }
+            else {
+                args.rest.push_back(arg);
+            }
+        }
+        current = &current->as_pair()->cdr;
+    }
+
+    // Check expected key args and set default values on unset ones if possible
+    for (auto& kv : spec.named) {
+        const auto& defined_kv = args.named.find(kv.first);
+        if (defined_kv == args.named.end()) {
+            // key arg not given by user, try to use a default value.
+            if (kv.second.has_default) {
+                args.named[kv.first] = kv.second.default_value;
+            }
+            else {
+                throw_eval_error(form,
+                    "key argument \"" + kv.first + "\" wasn't given and has no default value");
+            }
+        }
+    }
+
+    // Check argument size, if spec defines it
+    if (!spec.varargs) {
+        if (args.unnamed.size() < spec.unnamed.size()) {
+            throw_eval_error(form, "didn't get enough arguments");
+        }
+
+        if (!args.rest.empty() && spec.rest.empty()) {
+            throw_eval_error(form, "got too many arguments");
+        }
+    }
+
+    return args;
+}
+
+/*!
+ * Same as get_args, but named :key arguments are not parsed.
+ */
+Arguments Interpreter::get_args_no_named(const Object& form,
+                                         const Object& rest,
+                                         const ArgumentSpec& spec) {
+  Arguments args;
+
+  // Check expected key args, which should be none
+  if (!spec.named.empty()) {
+    throw_eval_error(form, "key arguments were expected in get_args_no_named");
+  }
+
+  // loop over forms in list
+  Object current = rest;
+  while (!current.is_empty_list()) {
+    auto arg = current.as_pair()->car;
+
+    // not a keyword. Add to unnamed or rest, depending on what we expect
+    if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
+      args.unnamed.push_back(arg);
+    } else {
+      args.rest.push_back(arg);
+    }
+    current = current.as_pair()->cdr;
+  }
+
+  // Check argument size, if spec defines it
+  if (!spec.varargs) {
+    if (args.unnamed.size() < spec.unnamed.size()) {
+      throw_eval_error(form, "didn't get enough arguments");
+    }
+    ASSERT(args.unnamed.size() == spec.unnamed.size());
+
+    if (!args.rest.empty() && spec.rest.empty()) {
+      throw_eval_error(form, "got too many arguments");
+    }
+  }
+
+  return args;
+}
+
+/*!
+ * Evaluate arguments in-place in the given environment.
+ * Evaluation order is:
+ *  - unnamed, in order of appearance
+ *  - keyword, in alphabetical order
+ *  - rest, in order of appearance
+ *
+ * Note that in varargs mode, all unnamed arguments are put in unnamed, not rest.
+ */
+void Interpreter::eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env) {
+  for (auto& arg : args->unnamed) {
+    arg = eval_with_rewind(arg, env);
+  }
+
+  for (auto& kv : args->named) {
+    kv.second = eval_with_rewind(kv.second, env);
+  }
+
+  for (auto& arg : args->rest) {
+    arg = eval_with_rewind(arg, env);
+  }
+}
+
+/*!
+ * Parse argument spec found in lambda/macro definition.
+ * Like (x y &key z &key (w my-default-value) &rest body)
+ */
+ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
+    ArgumentSpec spec;
+    bool parsing_keys = false; 
+    Object current = rest;
+
+    while (!current.is_empty_list()) {
+        auto arg = current.as_pair()->car;
+
+        // 1. Пытаемся понять, не встретили ли мы спец-символ (&key или &rest)
+        std::string arg_name = "";
+        bool is_sym = arg.is_symbol();
+        if (is_sym) {
+            arg_name = arg.as_symbol().name_ptr ? arg.as_symbol().name_ptr : "";
+        }
+
+        // 2. Логика переключения режимов
+        if (is_sym && arg_name == "&rest") {
+            current = current.as_pair()->cdr;
+            if (!current.is_pair()) throw_eval_error(form, "rest arg must have a name");
+            
+            auto rest_name_obj = current.as_pair()->car;
+            if (!rest_name_obj.is_symbol()) throw_eval_error(form, "rest name must be a symbol");
+            
+            spec.rest = rest_name_obj.as_symbol().name_ptr;
+            if (!current.as_pair()->cdr.is_empty_list()) throw_eval_error(form, "rest must be the last argument");
+            break; 
+        }
+        
+        if (is_sym && arg_name == "&key") {
+            parsing_keys = true;
+            current = current.as_pair()->cdr;
+            continue; // Идем к следующему элементу после "&key"
+        }
+
+        // 3. Обработка самого аргумента в зависимости от режима
+        if (parsing_keys) {
+            std::string key_arg_name;
+            NamedArg na;
+
+            if (arg.is_symbol()) {
+                // Случай: &key b
+                key_arg_name = arg.as_symbol().name_ptr;
+            } 
+            else if (arg.is_pair()) {
+                // Случай: &key (b 1)
+                auto key_iter = arg; // (b 1)
+                auto kn = key_iter.as_pair()->car; // b
+                if (!kn.is_symbol()) throw_eval_error(form, "key name must be a symbol");
+                key_arg_name = kn.as_symbol().name_ptr;
+
+                auto val_part = key_iter.as_pair()->cdr; // (1)
+                if (val_part.is_pair()) {
+                    na.has_default = true;
+                    na.default_value = val_part.as_pair()->car; // 1
+                }
+            } 
+            else {
+                throw_eval_error(form, "invalid key argument");
+            }
+
+            if (spec.named.count(key_arg_name)) {
+                throw_eval_error(form, fmt::format("key argument {} multiply defined", key_arg_name));
+            }
+            spec.named[key_arg_name] = na;
+        } 
+        else {
+            // Обычный позиционный аргумент
+            if (!is_sym) throw_eval_error(form, "positional args must be symbols");
+            spec.unnamed.push_back(arg_name);
+        }
+
+        current = current.as_pair()->cdr;
+    }
+    return spec;
+}
+
+
 /*
  * FUNCTION: vararg_check
  *
@@ -1273,161 +1534,6 @@ void Interpreter::vararg_check(
         if (named.find(name) == named.end()) {
             throw_eval_error(form, fmt::format("unexpected named argument '{}'", name));
         }
-    }
-}
-
-Arguments Interpreter::get_args(const Object& form, const Object& rest, const ArgumentSpec& spec) {
-    Arguments args;
-
-    // loop over forms in list
-    const Object* current = &rest;
-    while (!current->is_empty_list()) {
-        const auto& arg = current->as_pair()->car;
-
-        // did we get a ":keyword"
-        if (arg.is_symbol() && arg.as_symbol().name_ptr && arg.as_symbol().name_ptr[0] == ':') {
-            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
-            const auto& kv = spec.named.find(key_name);
-
-            // check for unknown key name
-            if (!spec.varargs && kv == spec.named.end()) {
-                throw_eval_error(form, fmt::format("Key argument {} wasn't expected", key_name));
-            }
-
-            // check for multiple definition of key
-            if (args.named.find(key_name) != args.named.end()) {
-                throw_eval_error(form, fmt::format("Key argument {} multiply defined", key_name));
-            }
-
-            // check for well-formed :key value expression
-            current = &current->as_pair()->cdr;
-            if (current->is_empty_list()) {
-                throw_eval_error(form, "Key argument didn't have a value");
-            }
-
-            args.named[key_name] = current->as_pair()->car;
-        }
-        else {
-            // not a keyword. Add to unnamed or rest, depending on what we expect
-            if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
-                args.unnamed.push_back(arg);
-            }
-            else {
-                args.rest.push_back(arg);
-            }
-        }
-        current = &current->as_pair()->cdr;
-    }
-
-    // Check expected key args and set default values on unset ones if possible
-    for (auto& kv : spec.named) {
-        const auto& defined_kv = args.named.find(kv.first);
-        if (defined_kv == args.named.end()) {
-            // key arg not given by user, try to use a default value.
-            if (kv.second.has_default) {
-                args.named[kv.first] = kv.second.default_value;
-            }
-            else {
-                throw_eval_error(form,
-                    "key argument \"" + kv.first + "\" wasn't given and has no default value");
-            }
-        }
-    }
-
-    // Check argument size, if spec defines it
-    if (!spec.varargs) {
-        if (args.unnamed.size() < spec.unnamed.size()) {
-            throw_eval_error(form, "didn't get enough arguments");
-        }
-
-        if (!args.rest.empty() && spec.rest.empty()) {
-            throw_eval_error(form, "got too many arguments");
-        }
-    }
-
-    return args;
-}
-
-ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
-    ArgumentSpec spec;
-    bool parsing_keys = false; 
-    Object current = rest;
-
-    while (!current.is_empty_list()) {
-        auto arg = current.as_pair()->car;
-
-        // 1. Пытаемся понять, не встретили ли мы спец-символ (&key или &rest)
-        std::string arg_name = "";
-        bool is_sym = arg.is_symbol();
-        if (is_sym) {
-            arg_name = arg.as_symbol().name_ptr ? arg.as_symbol().name_ptr : "";
-        }
-
-        // 2. Логика переключения режимов
-        if (is_sym && arg_name == "&rest") {
-            current = current.as_pair()->cdr;
-            if (!current.is_pair()) throw_eval_error(form, "rest arg must have a name");
-            
-            auto rest_name_obj = current.as_pair()->car;
-            if (!rest_name_obj.is_symbol()) throw_eval_error(form, "rest name must be a symbol");
-            
-            spec.rest = rest_name_obj.as_symbol().name_ptr;
-            if (!current.as_pair()->cdr.is_empty_list()) throw_eval_error(form, "rest must be the last argument");
-            break; 
-        }
-        
-        if (is_sym && arg_name == "&key") {
-            parsing_keys = true;
-            current = current.as_pair()->cdr;
-            continue; // Идем к следующему элементу после "&key"
-        }
-
-        // 3. Обработка самого аргумента в зависимости от режима
-        if (parsing_keys) {
-            std::string key_arg_name;
-            NamedArg na;
-
-            if (arg.is_symbol()) {
-                // Случай: &key b
-                key_arg_name = arg.as_symbol().name_ptr;
-            } 
-            else if (arg.is_pair()) {
-                // Случай: &key (b 1)
-                auto key_iter = arg; // (b 1)
-                auto kn = key_iter.as_pair()->car; // b
-                if (!kn.is_symbol()) throw_eval_error(form, "key name must be a symbol");
-                key_arg_name = kn.as_symbol().name_ptr;
-
-                auto val_part = key_iter.as_pair()->cdr; // (1)
-                if (val_part.is_pair()) {
-                    na.has_default = true;
-                    na.default_value = val_part.as_pair()->car; // 1
-                }
-            } 
-            else {
-                throw_eval_error(form, "invalid key argument");
-            }
-
-            if (spec.named.count(key_arg_name)) {
-                throw_eval_error(form, fmt::format("key argument {} multiply defined", key_arg_name));
-            }
-            spec.named[key_arg_name] = na;
-        } 
-        else {
-            // Обычный позиционный аргумент
-            if (!is_sym) throw_eval_error(form, "positional args must be symbols");
-            spec.unnamed.push_back(arg_name);
-        }
-
-        current = current.as_pair()->cdr;
-    }
-    return spec;
-}
-
-
-void Interpreter::eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env) {
-    for (auto& arg : args->unnamed) {
-        arg = eval_with_rewind(arg, env);
     }
 }
 
@@ -2337,6 +2443,47 @@ Object Interpreter::eval_string_substr(const Object& form, Arguments& args, cons
 
     return Object::make_string(str.substr(start, end - start));
 }
+
+
+Object Interpreter::eval_string_starts_with(const Object& form,
+                                            Arguments& args,
+                                            const std::shared_ptr<EnvironmentObject>& env) {
+  (void)env;
+  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  auto& str = args.unnamed.at(0).as_string()->data;
+  auto& suffix = args.unnamed.at(1).as_string()->data;
+
+  if (str_util::starts_with(str, suffix)) {
+    return object_true;
+  }
+  return object_false;
+}
+
+Object Interpreter::eval_string_ends_with(const Object& form,
+                                          Arguments& args,
+                                          const std::shared_ptr<EnvironmentObject>& env) {
+  (void)env;
+  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  auto& str = args.unnamed.at(0).as_string()->data;
+  auto& suffix = args.unnamed.at(1).as_string()->data;
+
+  if (str_util::ends_with(str, suffix)) {
+    return object_true;
+  }
+  return object_false;
+}
+
+Object Interpreter::eval_string_split(const Object& form,
+                                      Arguments& args,
+                                      const std::shared_ptr<EnvironmentObject>& env) {
+  (void)env;
+  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  auto& str = args.unnamed.at(0).as_string()->data;
+  auto& delim = args.unnamed.at(1).as_string()->data;
+  auto list = str_util::split(str, delim.at(0));
+  return pretty_print::build_list(list);
+}
+
 
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;

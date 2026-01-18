@@ -1,4 +1,4 @@
-﻿; Helpers
+﻿;; Helpers
 (defun lower-byte (bla)
    "Get the lower byte of the integer"
    (logand bla #b11111111))
@@ -43,9 +43,9 @@
                  *optable*)
         opc))
 
-(defun get-opc (opc &optional (arg1 'null) (arg2 'null) (arg3 'null))
+(defun get-opc (opc &key (arg1 'null) (arg2 'null) (arg3 'null))
   "Get the hash-table entry for the corresponding opcode"
-  (gethash (list opc arg1 arg2 arg3) *optable*))
+  (gethash (lt opc arg1 arg2 arg3) *optable*))
 
 (defstruct inst
   "Assembler instruction"
@@ -60,7 +60,7 @@
            (lextoken-type (inst-arg1 inst))
            (lextoken-type (inst-arg2 inst))
            (lextoken-type (inst-arg3 inst))))
-
+(log 'info "asm-prog")
 (defstruct asm-prog
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
@@ -95,12 +95,12 @@
    all the functions returned by the instruction."
   (progn
 
-    ; Pass 1
+    ;; Pass 1
     (setf (asm-prog-ilc prog) 0)
     (mapcar #'(lambda (x) 
                  (let ((opc (get-inst x)))
-             ;          (print "pass1")
-             ;          (print x)
+             ;;          (print "pass1")
+             ;;          (print x)
                       (setf (asm-prog-ilc prog)
                             (+ (asm-prog-ilc prog)
                                (funcall (opcode-pass1 opc) 
@@ -108,12 +108,12 @@
             (asm-prog-insts prog))
     (setf (asm-prog-labs prog) (nreverse (asm-prog-labs prog)))
 
-    ; Pass 2
+    ;; Pass 2
     (setf (asm-prog-ilc prog) 0)
     (mapcar #'(lambda (x) 
                  (let ((opc (get-inst x)))
-             ;          (print "pass2")
-             ;          (print x)
+             ;;          (print "pass2")
+             ;;          (print x)
                       (setf (asm-prog-ilc prog)
                             (+ (asm-prog-ilc prog)
                                (funcall (opcode-pass2 opc) 
@@ -144,10 +144,10 @@
              (close bos)
              (format t "Program written to file ~S~%" file))
            (format t "Program could not be written to file ~S~%" file))))
-
+(log 'info "sss")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Parse function for the appropriate assembler type
+;; Parse function for the appropriate assembler type
 (defparameter *parse* nil 
    "Parse function for the appropriate assembler type")
 
@@ -200,9 +200,9 @@
                                 :arg2 bla2
                                 :arg3 bla3))))
 
-; Es ist immer ein bisschen laestig, alles doppelt hinzuschreiben, wenn
-; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
-; Wert). Die Soperand Macro ersetzt sowas automatisch.
+;; Es ist immer ein bisschen laestig, alles doppelt hinzuschreiben, wenn
+;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
+;; Wert). Die Soperand Macro ersetzt sowas automatisch.
 (defmacro soperand (sym size documentation
                     &key (pass1 size) 
                          (pass2 size)
@@ -274,3 +274,6 @@
            (get-label r1 prog)
            '())
      :arg1 asmsym)
+
+(fmt #t "asm-program-loader\n")
+(define *asm-program-loader* #t)

@@ -6,6 +6,8 @@ add_library(libsoti
     common/util/FileUtil.cpp
     common/util/PrintFloat.cpp
     common/util/Log.cpp
+    common/util/StringUtil.cpp
+    common/util/Diff.cpp  # или другой файл с реализацией google_diff
 
     common/sooti/TextDb.cpp
     common/sooti/Object.cpp
@@ -19,7 +21,7 @@ add_library(libsoti
 
 # Исполняемый файл
 add_executable(sooti common/sooti/SOOTiMain.cpp)
-target_link_libraries(sooti PRIVATE libsoti  fmt)
+target_link_libraries(sooti PRIVATE libsoti fmt)
 set_target_properties(sooti PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(sooti PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

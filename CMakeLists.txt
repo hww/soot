@@ -91,6 +91,7 @@ include(common/soot/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
 include(common/xiff/CMakeLists.txt)
+#include(common/util/CMakeLists.txt)
 
 
 # Если у тебя есть папка с дополнительными лиспами

@@ -69,6 +69,10 @@
   `(let ((it ,condition))
      (if it ,true-branch ,false-branch)))
 
+;; Выполняет последовательность выражений и возвращает результат последнего.
+(defmacro progn (&rest body)
+  `((lambda () ,@body)))
+
 ;;;; ===========================================================================
 ;;;; CASE-TYPE MACRO
 ;;;; ===========================================================================
@@ -183,6 +187,26 @@
           (car alist)
           (assoc x (cdr alist)))))
 
+;; @doc (push! lst obj)
+;; Добавляет элемент в начало списка (изменяет переменную lst).
+(defmacro push! (lst obj)
+  `(set! ,lst (cons ,obj ,lst)))
+
+;; @doc (pop! lst)
+;; Удаляет и возвращает первый элемент списка (изменяет переменную lst).
+(defmacro pop! (lst)
+  (with-gensyms (tmp)
+    `(let ((,tmp (car ,lst)))
+       (set! ,lst (cdr ,lst))
+       ,tmp)))
+
+;; Применяет функцию func к каждому элементу списка lst и возвращает список результатов.
+(defun mapcar (func lst)
+  (if (null lst)
+      nil
+      (cons (func (car lst))
+            (mapcar func (cdr lst)))))
+
 ;; --- [ Секция 3.1: Hash Table ] ---
 
 ;; Ищет значение в хеш-таблице по ключу.
@@ -219,20 +243,6 @@
 (defmacro +! (place arg) `(set! ,place (+ ,place ,arg)))
 (defmacro -! (place arg) `(set! ,place (- ,place ,arg)))
 
-;; @doc (push! lst obj)
-;; Добавляет элемент в начало списка (изменяет переменную lst).
-(defmacro push! (lst obj) 
-  `(set! ,lst (cons ,obj ,lst)))
-
-;; @doc (pop! lst)
-;; Удаляет и возвращает первый элемент списка (изменяет переменную lst).
-(defmacro pop! (lst)
-  (with-gensyms (tmp)
-    `(let ((,tmp (car ,lst)))
-       (set! ,lst (cdr ,lst))
-       ,tmp)))
-
-
 ;; --- [ Секция 6: Предикаты типов ] ---
 
 (defmacro string?  (x) `(type? 'string ,x))
@@ -265,24 +275,26 @@
        
 ;; --- [ Секция 8: Функция к сриску ] ---
 
-;; Стандартный map (то, что у тебя называлось apply)
+;; Стандартный map: Трансформирует список, применяя функцию к каждому элементу.
+;; Возвращает новый список той же длины с результатами вычислений.
+;; (map (lambda (x) (* x x)) '(1 2 3)) => (1 4 9)
 (defun map (fun x)
     (if (null? x)
         '()
         (cons (fun (car x))
               (map fun (cdr x)))))
 
-;; Твой apply2, теперь map2
+;; Специализированный map2: Параллельный обход двух списков с разными функциями.
+;; Полезен для задач сборки данных, где нужно одновременно обработать два потока.
+;; Важно: Проверяет списки на равенство длин и завершается, если один из них пуст.
 (defun map2 (fun1 fun2 lst1 lst2)
-    (if (or (null? lst1) 
-            (null? lst2) 
+    (if (or (null? lst1)
+            (null? lst2)
             (not (= (length lst1) (length lst2))))
         '()
         (cons (fun1 (car lst1))
               (cons (fun2 (car lst2))
                     (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
-
-
 
 ;=================================================================
 ; Mimic Common Lisp Library
@@ -320,6 +332,12 @@
 ;; --- Math & Utilities ---
 (defun sign (x) (if (>= x 0) '+ '-))
 
+;; Алиас для удобства (Common Lisp style)
+(defun intern (str) (string->symbol str))
+
+;; Если нет concat, но есть string-append
+(defun concat (&rest args) (apply 'string-append args))
+
 ;; --- Setf CL Style ---
 
 ;; 'setf' в CL — это мощнейшая система 'set-field'.
@@ -335,12 +353,6 @@
            (,(get-setter (car place)) ,@(cdr place) ,tmp-val)
            ,tmp-val))))
 
-(defmacro pop (place)
-  (let ((tmp (gensym))) ; Если нет gensym, можно пока просто tmp
-    `(let ((,tmp (car ,place)))
-       (setf ,place (cdr ,place))
-       ,tmp)))
-
 ;; --- Asserts & Errors ---
 
 (defmacro assert (condition &optional message)
@@ -352,6 +364,38 @@
 (defmacro check-type (var predicate)
   `(assert (,predicate ,var) (fmt #f "Variable ~s failed type check ~s" ',var ',predicate)))
 
+;; --- Structures ----------
+
+;; =============================================================================
+;; DEFSTRUCT: Генератор структур данных в стиле Common Lisp.
+;; =============================================================================
+;; Автоматизирует создание "объектов" на базе ассоциативных списков (alist).
+;; Пример использования: (defstruct point x y)
+;; Макрос создаст в памяти:
+;;   1. Конструктор (make-point x y)
+;;   2. Геттер (point-x instance)
+;;   3. Геттер (point-y instance)
+;; =============================================================================
+(defmacro defstruct (name &rest fields)
+  ;; На этапе расширения (expansion-time) создаем символ конструктора "make-NAME"
+  (let ((constructor (intern (concat "make-" (symbol->string name)))))
+    `(progn
+
+       ;; --- Генерация Конструктора ---
+       ;; Создает функцию, которая принимает значения полей и упаковывает их
+       ;; в список пар вида ((поле1 . значение1) (поле2 . значение2) ...).
+       ;; Использование ,@ в map позволяет "развернуть" список созданных cons-пар.
+       (defun ,constructor ,fields
+         (list ,@(map (lambda (f) `(cons ',f ,f)) fields)))
+
+       ;; --- Генерация Геттеров ---
+       ;; Для каждого поля 'f' создаем функцию с именем "name-f".
+       ;; Каждый геттер ищет символ поля в ассоциативном списке через 'assoc'.
+       ,@(map (lambda (f)
+                (let ((getter-name (intern (concat (symbol->string name) "-" (symbol->string f)))))
+                  `(defun ,getter-name (instance)
+                     (cdr (assoc ',f instance)))))
+              fields))))
 
 ;; Маркер успешной загрузки библиотеки
 (define *core-lib-loaded* #t)

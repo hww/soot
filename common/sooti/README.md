@@ -714,7 +714,7 @@ sooti> exit             ; Exit REPL
 | Core            | `define`, `set!`, `lambda`, `macro`, `if`, `cond`, `let`, `let*`, `quote`, `quasiquote`                                              |
 | Math            | `+`, `-`, `*`, `/`, `=`, `<`, `>`, `<=`, `>=`, `abs`, `max`, `min`, `expt`, `sqrt`, `ash`                                            |
 | Lists           | `cons`, `car`, `cdr`, `list`, `length`, `append`, `apply`, `set-car!`, `set-cdr!`                                                    |
-| Strings         | `string-append`, `string-length`, `string-ref`, `string-substr`                                                                      |
+| Strings         | `string-append`, `string-length`, `string-ref`, `string-substr`,`string_starts_with?`, `string-ends-with?`, `string-split`           |
 | Vectors         | `vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector->list`                                                               |
 | Hash Tables     | `make-hash-table`, `hash-table-set!`, `hash-table-ref`, `hash-table-try-ref`, `hash-table?`, `hash-table-length`, `hash-table->list` |
 | Type Predicates | `null?`, `pair?`, `symbol?`, `number?`, `string?`, `char?`, `vector?`, `procedure?`, `boolean?`, `type?`, `reader?`, `lextoken?`     |
