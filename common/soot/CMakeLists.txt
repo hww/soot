@@ -42,7 +42,6 @@ set(SOOT_SHARE_DIR "share/soot")
 # Установка системной библиотеки (базовые функции)
 install(FILES 
     lib.sot 
-    libcl.sot 
     DESTINATION ${SOOT_SHARE_DIR}
 )
 

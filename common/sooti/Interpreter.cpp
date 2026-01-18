@@ -23,14 +23,18 @@ namespace script
     Interpreter::Interpreter(const std::string& username, bool load_libs) : reader(this), setter_map() {
         // Инициализируем boolean объекты как символы
         auto& symbols = reader.get_symbol_table();
-        true_object = Object::make_symbol(&symbols, "#t");
-        false_object = Object::make_symbol(&symbols, "#f");
 
+        object_true    = reader.get_symbol_table().core.object_true;;
+        object_false   = reader.get_symbol_table().core.object_false;
+        object_nil     = reader.get_symbol_table().core.object_nil;
         // Создаем глобальное окружение
         global_environment = EnvironmentObject::make_new("global");
 
         // create the environment which is be visible from GOAL
         comp_env = EnvironmentObject::make_new("goal");
+
+        define_var_in_env(global_environment, object_nil, "NIL");
+        define_var_in_env(comp_env, object_nil, "NIL");
 
         define_var_in_env(global_environment, global_environment, "*global-env*");
         define_var_in_env(global_environment, comp_env, "*comp-env*");
@@ -101,10 +105,14 @@ namespace script
             {"append",   &Interpreter::eval_append},
             {"apply",    &Interpreter::eval_apply},
 
-            // Предикаты типов
+            {"bound?",      &Interpreter::eval_bound_p},
+
+            // Работа с типом
             {"type-of",     &Interpreter::eval_type_of},
             {"type?",       &Interpreter::eval_type_p},
-            {"null?",       &Interpreter::eval_null_p},     // было eval_null_p
+
+            // Предикаты типов
+            {"null?",       &Interpreter::eval_null_p},   // legacy  
             {"pair?",       &Interpreter::eval_pair_p},
             {"symbol?",     &Interpreter::eval_symbol_p},
             {"number?",     &Interpreter::eval_number_p},
@@ -214,7 +222,8 @@ namespace script
             {"logior",     &Interpreter::eval_logior},
             {"logxor",     &Interpreter::eval_logxor},
             {"lognot",     &Interpreter::eval_lognot},
-            {"lshift",     &Interpreter::eval_ash},
+            {"lshift",     &Interpreter::eval_lshift},
+            {"rshift",     &Interpreter::eval_rshift},
 
             // Время
             {"time-seconds",        &Interpreter::eval_time_seconds},
@@ -260,12 +269,9 @@ bool Interpreter::try_symbol_lookup(const Object& sym,
     const std::shared_ptr<EnvironmentObject>& env,
     Object* dest) {
     // Boolean проверка
-    if (sym.as_symbol().name_ptr == true_object.as_symbol().name_ptr) {
-        *dest = true_object;
-        return true;
-    }
-    if (sym.as_symbol().name_ptr == false_object.as_symbol().name_ptr) {
-        *dest = false_object;
+    if (sym.as_symbol().name_ptr == object_true.as_symbol().name_ptr ||
+        sym.as_symbol().name_ptr == object_false.as_symbol().name_ptr) {
+        *dest = sym;
         return true;
     }
 
@@ -599,7 +605,6 @@ Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<Environ
     return result;
 }
 
-
 Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
     const auto& pair = obj.as_pair();
     const Object& head = pair->car;
@@ -817,7 +822,7 @@ Object Interpreter::eval_cond_special(const Object& form, const Object& rest, co
 Object Interpreter::eval_and_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form;
     Object current = rest;
-    Object result = true_object;
+    Object result = object_true;
 
     while (current.is_pair()) {
         result = eval_with_rewind(current.as_pair()->car, env);
@@ -842,7 +847,7 @@ Object Interpreter::eval_or_special(const Object& form, const Object& rest, cons
         current = current.as_pair()->cdr;
     }
 
-    return false_object;
+    return object_false;
 }
 
 Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1908,6 +1913,35 @@ Object Interpreter::eval_lognot(const Object& form, Arguments& args, const std::
     auto val = number_to_integer(args.unnamed.at(0));
     return Object::make_integer(~val);
 }
+
+Object Interpreter::eval_lshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::INTEGER}, {ObjectType::INTEGER} }, {});
+    
+    auto val = args.unnamed.at(0).as_integer();
+    auto sa  = args.unnamed.at(1).as_integer();
+
+    // Логический сдвиг влево на отрицательное число — это нонсенс, 
+    // поэтому мы просто возвращаем 0 или кидаем ошибку.
+    if (sa < 0) return Object::make_integer(0); 
+    if (sa >= 64) return Object::make_integer(0);
+
+    return Object::make_integer(val << sa);
+}
+
+Object Interpreter::eval_rshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::INTEGER}, {ObjectType::INTEGER} }, {});
+    
+    auto val = args.unnamed.at(0).as_integer();
+    auto sa  = args.unnamed.at(1).as_integer();
+
+    // Логический сдвиг влево на отрицательное число — это нонсенс, 
+    // поэтому мы просто возвращаем 0 или кидаем ошибку.
+    if (sa < 0) return Object::make_integer(0); 
+    if (sa >= 64) return Object::make_integer(0);
+
+    return Object::make_integer(val >> sa);
+}
+
 // ==============================================
 // Функции сравнения с проверками
 // ==============================================
@@ -1924,7 +1958,7 @@ Object Interpreter::eval_numequals(const Object& form, Arguments& args, const st
     FloatType a_val = number_to_float(args.unnamed[0]);
     FloatType b_val = number_to_float(args.unnamed[1]);
 
-    return make_bool(a_val == b_val);
+    return true_or_false(a_val == b_val);
 }
 
 Object Interpreter::eval_lt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1938,7 +1972,7 @@ Object Interpreter::eval_lt(const Object& form, Arguments& args, const std::shar
     FloatType a_val = number_to_float(args.unnamed[0]);
     FloatType b_val = number_to_float(args.unnamed[1]);
 
-    return make_bool(a_val < b_val);
+    return true_or_false(a_val < b_val);
 }
 
 Object Interpreter::eval_gt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1952,7 +1986,7 @@ Object Interpreter::eval_gt(const Object& form, Arguments& args, const std::shar
     FloatType a_val = number_to_float(args.unnamed[0]);
     FloatType b_val = number_to_float(args.unnamed[1]);
 
-    return make_bool(a_val > b_val);
+    return true_or_false(a_val > b_val);
 }
 
 Object Interpreter::eval_leq(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1966,7 +2000,7 @@ Object Interpreter::eval_leq(const Object& form, Arguments& args, const std::sha
     FloatType a_val = number_to_float(args.unnamed[0]);
     FloatType b_val = number_to_float(args.unnamed[1]);
 
-    return make_bool(a_val <= b_val);
+    return true_or_false(a_val <= b_val);
 }
 
 Object Interpreter::eval_geq(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1980,7 +2014,7 @@ Object Interpreter::eval_geq(const Object& form, Arguments& args, const std::sha
     FloatType a_val = number_to_float(args.unnamed[0]);
     FloatType b_val = number_to_float(args.unnamed[1]);
 
-    return make_bool(a_val >= b_val);
+    return true_or_false(a_val >= b_val);
 }
 
 // ==============================================
@@ -2075,6 +2109,17 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
 // Предикаты типов с проверками
 // ==============================================
 
+Object Interpreter::eval_bound_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::SYMBOL} }, {});
+    auto sym = args.unnamed.at(0);
+    Object result;
+    // Ищем символ в текущем и родительских окружениях
+    if (try_symbol_lookup(sym, env, &result)) {
+        return object_true; // Твой #t / T
+    }
+    return object_false; // Твой #f / NIL
+}
+
 Object Interpreter::eval_type_of(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {});
@@ -2092,49 +2137,49 @@ Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std
         throw_eval_error(form, fmt::format("invalid type name: {}", type_name));
     }
 
-    return make_bool(args.unnamed[0].type == kv->second);
+    return true_or_false(args.unnamed[0].type == kv->second);
 }
 
 Object Interpreter::eval_null_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_empty_list());
+    return true_or_false(args.unnamed[0].is_empty_list());
 }
 
 Object Interpreter::eval_pair_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_pair());
+    return true_or_false(args.unnamed[0].is_pair());
 }
 
 Object Interpreter::eval_symbol_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_symbol());
+    return true_or_false(args.unnamed[0].is_symbol());
 }
 
 Object Interpreter::eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_integer() || args.unnamed[0].is_float());
+    return true_or_false(args.unnamed[0].is_integer() || args.unnamed[0].is_float());
 }
 
 Object Interpreter::eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_string());
+    return true_or_false(args.unnamed[0].is_string());
 }
 
 Object Interpreter::eval_char_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_char());
+    return true_or_false(args.unnamed[0].is_char());
 }
 
 Object Interpreter::eval_vector_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_array());
+    return true_or_false(args.unnamed[0].is_array());
 }
 
 Object Interpreter::eval_procedure_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2144,7 +2189,7 @@ Object Interpreter::eval_procedure_p(const Object& form, Arguments& args, const 
         args.unnamed[0].is_macro() ||
         (args.unnamed[0].is_symbol() &&
             builtin_forms.find((void*)args.unnamed[0].as_symbol().name_ptr) != builtin_forms.end());
-    return make_bool(is_proc);
+    return true_or_false(is_proc);
 }
 
 Object Interpreter::eval_boolean_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2154,19 +2199,19 @@ Object Interpreter::eval_boolean_p(const Object& form, Arguments& args, const st
     bool is_bool = (obj.is_symbol() && obj.as_symbol().name_ptr &&
         (strcmp(obj.as_symbol().name_ptr, "#t") == 0 ||
             strcmp(obj.as_symbol().name_ptr, "#f") == 0));
-    return make_bool(is_bool);
+    return true_or_false(is_bool);
 }
 
 Object Interpreter::eval_reader_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_reader());
+    return true_or_false(args.unnamed[0].is_reader());
 }
 
 Object Interpreter::eval_lextoken_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_lextoken());
+    return true_or_false(args.unnamed[0].is_lextoken());
 }
 
 // ==============================================
@@ -2230,13 +2275,13 @@ Object Interpreter::eval_apply(const Object& obj, Arguments& args, const std::sh
 
 Object Interpreter::eval_equals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { {}, {} }, {});
-    return make_bool(args.unnamed[0] == args.unnamed[1]);
+    return true_or_false(args.unnamed[0] == args.unnamed[1]);
 }
 
 Object Interpreter::eval_eqv(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {}, {} }, {}); // Два аргумента
-    return make_bool(args.unnamed[0] == args.unnamed[1]);
+    return true_or_false(args.unnamed[0] == args.unnamed[1]);
 }
 
 // ==============================================
@@ -2373,35 +2418,35 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
 // Хэш - таблицы с проверками
 // ==============================================
 
-
 Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    Object table = Object::make_hash_table();
+    
+    // 1. Извлекаем настройки из именованных аргументов
+    size_t size = args.named.count("size") ? args.named.at("size").as_integer() : 16;
+    Object table = Object::make_hash_table(size);
     auto table_ptr = table.as_hash_table();
 
-    // 1. Обрабатываем именованные аргументы (те самые :a 1)
-    for (auto const& [key, val] : args.named) {
-        // Мы можем сохранить ключ как есть, или добавить обратно ":", 
-        // чтобы в таблице ключи выглядели одинаково
-        std::string key_with_colon = ":" + key; 
-        table_ptr->data[key_with_colon] = val;
-    }
-
-    // 2. Обрабатываем неименованные аргументы (если пришло "a" 1 или 'a 1)
-    const std::vector<Object>& elements = args.unnamed;
-    if (elements.size() % 2 != 0) {
-        throw_eval_error(form, "Positional arguments to make-hash-table must be in pairs");
-    }
-
-    for (size_t i = 0; i < elements.size(); i += 2) {
-        std::string key_str;
-        const Object& key_obj = elements[i];
-
-        if (key_obj.is_symbol()) key_str = key_obj.as_symbol().c_str();
-        else if (key_obj.is_string()) key_str = key_obj.as_string()->c_str();
-        else key_str = key_obj.print();
-
-        table_ptr->data[key_str] = elements[i + 1];
+    // 2. Смотрим на первый позиционный аргумент
+    if (!args.unnamed.empty()) {
+        const Object& data = args.unnamed.at(0);
+        
+        if (data.is_list()) {
+            Object current = data;
+            // Итерируемся, пока не дойдем до EMPTY_LIST (NIL)
+            while (current.is_pair()) {
+                auto current_pair = current.as_pair();
+                Object item = current_pair->car; // Элемент списка (ожидаем пару-точку)
+                
+                if (item.is_pair()) {
+                    auto item_pair = item.as_pair();
+                    // Ключ — это car, Значение — это cdr
+                    // Пример: ("MOV" . #x89) -> car: "MOV", cdr: #x89
+                    table_ptr->data[item_pair->car.print()] = item_pair->cdr;
+                }
+                
+                current = current_pair->cdr; // Переходим к следующей ячейке
+            }
+        }
     }
 
     return table;
@@ -2470,10 +2515,10 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form,
     const auto& it = table->data.find(str);
     if (it == table->data.end()) {
         // not in table
-        return Object::make_pair(false_object, Object::make_empty_list());
+        return Object::make_pair(object_false, Object::make_empty_list());
     }
     else {
-        return Object::make_pair(true_object, it->second);
+        return Object::make_pair(object_true, it->second);
     }
 }
 
@@ -2510,7 +2555,7 @@ Object Interpreter::eval_hash_table_to_list(const Object& form, Arguments& args,
 Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return make_bool(args.unnamed[0].is_hash_table());
+    return true_or_false(args.unnamed[0].is_hash_table());
 }
 
 // ==============================================
@@ -2559,7 +2604,7 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
     bool exists = file.good();
     file.close();
 
-    return make_bool(exists);
+    return true_or_false(exists);
 }
 
 

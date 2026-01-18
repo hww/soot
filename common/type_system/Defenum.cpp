@@ -120,8 +120,8 @@ EnumType* parse_defenum(const script::Object& defenum,
             base_type = parse_typespec(ts, option_value);
         }
         else if (option_name == ":bitfield") {
-            if (option_value.is_symbol() && option_value.is_boolean()) {
-                is_bitfield = option_value.is_true();
+            if (symbol_string(option_value) != "#f") {
+                is_bitfield = true;
             }
             else {
                 throw std::runtime_error(":bitfield value must be #t or #f, got: " + option_value.print());

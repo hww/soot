@@ -344,9 +344,9 @@ The `setf` macro uses this registry to perform code rewriting. It handles two pr
 **Registration (Library Level):**
 
 ```lisp
-(defsetf car set-car!)
-(defsetf get hash-table-set!)
-(defsetf vector-ref vector-set!)
+(defsetf 'car 'set-car!)
+(defsetf 'get 'hash-table-set!)
+(defsetf 'vector-ref 'vector-set!)
 
 ```
 

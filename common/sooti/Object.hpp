@@ -178,7 +178,7 @@ namespace script
         static Object make_pair(const Object& car, const Object& cdr);
         static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
         static Object make_macro(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
-        static Object make_hash_table();
+        static Object make_hash_table(int size = 16);
         static Object make_reader(TextStream* textStream);
         static Object make_lextoken(const Object& type, const Object& value, const TextRef& info);
 
@@ -211,11 +211,33 @@ namespace script
         bool is_lextoken() const { return type == ObjectType::LEXTOKEN; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
-        bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
-        bool is_false() const { return is_symbol() && (as_symbol() == "#f"); }
 
+        // Evaluates the truthiness of an object. Since the Object class lacks access 
+        // to the Symbol Table, it must perform string comparisons, which is inefficient. 
+        // For better performance, the Interpreter uses its own 'truthy()' method, 
+        // which compares pre-interned symbols directly.
+        bool as_boolean() const { 
+            if (is_empty_list()) return false;
+            return !(is_symbol() && as_symbol() == "#f"); 
+        }
+        /**
+         * @brief Evaluates the truthiness of an object in accordance with Common Lisp semantics.
+         * * This method implements the core logical branching rule: an object is considered 
+         * "false" (NIL) if it is either an empty list or the specific '#f' symbol. 
+         * All other objects (including zero, empty strings, etc.) evaluate to "true".
+         * * Optimization: Uses direct pointer comparison for the false symbol, 
+         * leveraging the fact that symbols are interned.
+         * * @param false_symbol A reference to the pre-interned symbol used for 'false' (e.g., "#f").
+         * @return true if the object is truthy, false if it is an empty list or matches false_symbol.
+         */
+        bool truthy(InternedSymbolPtr false_symbol) const 
+        { 
+            // Ложь — это если объект является пустым списком ИЛИ символом #f
+            if (is_empty_list()) return false;
+            return !(is_symbol() && as_symbol().name_ptr == false_symbol.name_ptr); 
+        }
+        
         // Value access with type checking
-        bool                        as_boolean() const { return !is_symbol() || as_symbol() != "#f"; }
         char                        as_char() const;
         IntType                     as_integer() const;
         FloatType                   as_float() const;
@@ -354,6 +376,7 @@ namespace script
         std::unordered_map<std::string, Object> data;
 
         HashTableObject() = default;
+        HashTableObject(int size = 16) : data(size) {};
         ~HashTableObject() override = default;
 
         std::string print() const override {
@@ -548,6 +571,9 @@ namespace script
             Object lextoken;
             Object place;
             Object unknown;
+            Object object_true;
+            Object object_false;
+            Object object_nil;
         } core;
         void init_core_symbols();
         Object object_type_to_symbol(ObjectType type);

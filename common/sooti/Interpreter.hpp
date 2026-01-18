@@ -77,11 +77,11 @@ namespace script
         Object get_global_environment() { return global_environment; }
 
         // Boolean helpers (используют символы)
-        Object make_bool(bool value) { return value ? true_object : false_object; }
-        bool is_true(const Object& o) const { return !is_false(o); }
-        bool is_false(const Object& o) const { return o.is_symbol() && o.as_symbol().name_ptr == false_object.as_symbol().name_ptr; }
-        bool is_bool(const Object& o) const { return o.is_symbol() && (o.as_symbol().name_ptr == false_object.as_symbol().name_ptr || o.as_symbol().name_ptr == true_object.as_symbol().name_ptr); }
-        bool truthy(const Object& o) { return !is_false(o); }
+        Object true_or_false(bool value) { return value ? object_true : object_false; }
+
+        bool truthy(const Object& o)  const { 
+            return o.truthy(object_false.as_symbol());
+        }
 
         // Помощники для чисел
         bool is_number(const Object& obj);
@@ -129,6 +129,9 @@ namespace script
         Object eval_append(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_null_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_pair_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Предикат дефиниции
+        Object eval_bound_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Предикаты типов
         Object eval_symbol_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -238,7 +241,8 @@ namespace script
         Object eval_logior(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_logxor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_lognot(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lhift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_lshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_rshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Время
         Object eval_time_seconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -305,8 +309,9 @@ namespace script
         
         // Состояние
         Reader  reader;
-        Object  true_object;
-        Object  false_object;
+        Object  object_true;
+        Object  object_false;
+        Object  object_nil;
         int     gensym_id = 0;
         Object  global_environment;
         Object  comp_env;
