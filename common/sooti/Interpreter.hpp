@@ -59,6 +59,9 @@ namespace script
 
         // Вспомогательные методы
         Arguments get_args(const Object& form, const Object& rest, const ArgumentSpec& spec);
+        Arguments get_args_no_named(const Object& form,
+                                         const Object& rest,
+                                         const ArgumentSpec& spec);
         void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
         ArgumentSpec make_varargs();
         std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
@@ -155,6 +158,9 @@ namespace script
         Object eval_string_substr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_starts_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_ends_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_split(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Векторы
         Object eval_vector(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -311,6 +317,8 @@ namespace script
         Reader  reader;
         Object  object_true;
         Object  object_false;
+        const char* symbol_true;
+        const char* symbol_false;
         Object  object_nil;
         int     gensym_id = 0;
         Object  global_environment;
