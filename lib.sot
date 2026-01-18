@@ -24,6 +24,21 @@
   `(let ,(map (lambda (x) `(,x (gensym))) names)
      ,@body))
 
+
+;; Определяет переменную и присваивает ей значение.
+;; Использует &rest для имитации опционального значения и документации.
+(defmacro defparameter (name &rest args)
+  (define value (car args))
+  `(define ,name ,value))
+
+;; Определяет переменную только если она еще не создана.
+;; Полезно для сохранения состояния между перезагрузками кода.
+(defmacro defvar (name &rest args)
+  (define value (car args))
+  `(if (not (bound? ',name))
+       (define ,name ,value)
+       nil))
+
 ;; --- [ Секция 2: Управляющие конструкции ] ---
 
 ;; @doc (if clause true-branch false-branch)
@@ -127,12 +142,19 @@
 
 ;; @doc (length lst) -> integer
 ;; Итеративный подсчет длины списка (безопасно для стека).
-(defun length (lst)
-  (let ((n 0) (iter lst))
-    (while (not (null? iter))
-      (set! n (+ n 1))
-      (set! iter (cdr iter)))
-    n))
+;(defun length (lst)
+;  (let ((n 0) (iter lst))
+;    (while (not (null? iter))
+;      (set! n (+ n 1))
+;      (set! iter (cdr iter)))
+;    n))
+
+;; Рекурсивно «выравнивает» вложенные списки в один плоский список.
+;; Использует consp для обнаружения подпунктов и append для их слияния.
+(defun flatten (lis)
+  (cond ((null lis) nil)
+        ((consp lis) (append (flatten (car lis)) (flatten (cdr lis))))
+        (t (list lis))))
 
 ;; @doc (reverse lst) -> list
 ;; Разворачивает список (итеративно).
@@ -161,6 +183,12 @@
           (car alist)
           (assoc x (cdr alist)))))
 
+;; --- [ Секция 3.1: Hash Table ] ---
+
+;; Ищет значение в хеш-таблице по ключу.
+;; Благодаря твоей реализации в C++, ключ может быть символом или строкой.
+(defun gethash (key table)
+  (hash-table-ref table key))
 
 ;; --- [ Секция 4: Циклы ] ---
 
@@ -234,7 +262,7 @@
 (defun info  (fmt-str &rest args)  (apply 'log 'info  fmt-str args))
 (defun warn  (fmt-str &rest args)  (apply 'log 'warn  fmt-str args))
 (defun error (fmt-str &rest args)  (apply 'log 'error fmt-str args))
-
+       
 ;; --- [ Секция 8: Функция к сриску ] ---
 
 ;; Стандартный map (то, что у тебя называлось apply)
@@ -255,19 +283,75 @@
                     (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
 
 
+
+;=================================================================
+; Mimic Common Lisp Library
+;=================================================================
+
+;; В раздел Mimic CL
+;; --- Fundamental Constants ---
+(define NIL '())      ; The primary empty list / false object
+(define nil NIL)      ; Lowercase alias for convenience
+(define T   #t)       ; The primary truth object
+(define t   T)        ; Lowercase alias for convenience
+
+;; --- Predicates ---
+(defun null  (x) (null? x))
+(defun nilp  (x) (null? x))
+(defun atom  (x) (not (pair? x)))
+(defun consp (x) (pair? x))
+(defun listp (x) (or (pair? x) (null? x)))
+
+;; --- Common Lisp Equality Alias ---
+(defun eq (a b) (eq? a b))
+
+;; --- Assignment & Variables ---
+(defmacro setq (name data) `(define ,name ,data))
+
+;; --- Generalized Variables (The core we just built) ---
+(defmacro setf (place value)
+  (if (symbolp place)
+      `(setq ,place ,value)
+      (let ((setter (get-setter (car place))))
+        (if (not (nil? setter))
+            `(,setter ,@(cdr place) ,value)
+            (error "SETF: No setter registered for: " (car place))))))
+
+;; --- Math & Utilities ---
+(defun sign (x) (if (>= x 0) '+ '-))
+
+;; --- Setf CL Style ---
+
 ;; 'setf' в CL — это мощнейшая система 'set-field'.
 ;; В простейшем случае (setf name value) он работает как setq.
 ;; Если ты передаешь getter (например, (setf (car x) 5)), это требует сложной логики.
 ;; Пока сделаем базовую версию для переменных:
 (defmacro setf (place value)
-  (if (symbolp place)
+  (if (symbol? place)
       `(set! ,place ,value)
-      (let ((setter (get-setter (car place))))
-        (if setter
-            ;; Мы просто ставим символ setter в начало списка. 
-            ;; Когда этот список пойдет на eval, символ превратится в вызов функции.
-            `(,setter ,@(cdr place) ,value)
-            (error "No setter for" (car place))))))
-            
+      (let ((setter (get-setter (car place)))
+            (tmp-val (gensym))) ; Если у тебя есть gensym для уникальных имен
+        `(let ((,tmp-val ,value))
+           (,(get-setter (car place)) ,@(cdr place) ,tmp-val)
+           ,tmp-val))))
+
+(defmacro pop (place)
+  (let ((tmp (gensym))) ; Если нет gensym, можно пока просто tmp
+    `(let ((,tmp (car ,place)))
+       (setf ,place (cdr ,place))
+       ,tmp)))
+
+;; --- Asserts & Errors ---
+
+(defmacro assert (condition &optional message)
+  `(if (not ,condition)
+       (error (if ,message ,message "Assertion failed!") ',condition)
+       T))
+
+;; (check-type x symbolp)
+(defmacro check-type (var predicate)
+  `(assert (,predicate ,var) (fmt #f "Variable ~s failed type check ~s" ',var ',predicate)))
+
+
 ;; Маркер успешной загрузки библиотеки
 (define *core-lib-loaded* #t)

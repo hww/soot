@@ -1,16 +1,4 @@
 ﻿; Helpers
-(defun lshift (val shift)
-   (* (expt 2 shift) val))
-
-(defun flatten-list (lis)
-   (cond
-      ((null lis) lis)
-      ((consp (car lis))
-       (append (flatten-list (car lis))
-               (flatten-list (cdr lis))))
-      (t (cons (car lis)
-                  (flatten-list (cdr lis))))))
-
 (defun lower-byte (bla)
    "Get the lower byte of the integer"
    (logand bla #b11111111))
@@ -30,14 +18,7 @@
                        lis))))
       (T lis)))
 
-; Lexical token
-
-(defstruct lextoken
-  "Lexical token"
-  (type 'null)
-  (value nil))
-
-(defparameter 
+(defparameter
   *optable* (make-hash-table :size 200 :test #'equal)
   "Opcode table for the assembler")
 

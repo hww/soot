@@ -28,7 +28,12 @@ namespace script
             delete[] e.name;
         }
     }
+
     void SymbolTable::init_core_symbols() {
+        core.object_true    = Object::make_symbol(this, "#t");
+        core.object_false   = Object::make_symbol(this, "#f");
+        core.object_nil     = Object::make_empty_list();
+
         core.empty_list     = Object::make_symbol(this, "empty-list");
         core.integer        = Object::make_symbol(this, "integer");
         core.float_pt       = Object::make_symbol(this, "float");
@@ -292,10 +297,10 @@ namespace script
         return make_array(elements); // Векторы и массивы - одно и то же
     }
 
-    Object Object::make_hash_table() {
+    Object Object::make_hash_table(int size) {
         Object obj;
         obj.type = ObjectType::STRING_HASH_TABLE;
-        obj.heap_obj = std::make_shared<HashTableObject>();
+        obj.heap_obj = std::make_shared<HashTableObject>(size);
         return obj;
     }
     
@@ -340,7 +345,7 @@ namespace script
     std::string Object::print() const {
         switch (type) {
         case ObjectType::EMPTY_LIST:
-            return "()";
+            return "NIL";
         case ObjectType::INTEGER:
             return integer_obj.print();
         case ObjectType::FLOAT:
