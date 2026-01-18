@@ -2,4 +2,4 @@
 ; Define useful variables
 (define debug-mode #t)
 (define version "1.0.0")
-(fmt #t "Startup Pre : Network services initialized\n")
+(cfmt #t "✓ Startup Pre : Network services initialized\n" :color "gray")

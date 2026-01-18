@@ -304,100 +304,56 @@ Special forms don't evaluate their arguments automatically.
 (hash-table->list ht)            ; → (("name" . "John") ("age" . 30))
 ```
 
-Here is the documentation for the **Place** system in SOOT, written in professional technical English for your project's docs.
+Here is the concise documentation in English to replace the **Place** section in your project.
 
 ---
 
-## SOOT Generalized References (Places)
+## Generalized Variables (Getter-Setter Mapping)
 
-The **Place** system in SOOT provides a unified mechanism for accessing and modifying data, regardless of where that data is stored. Inspired by Common Lisp's `setf` and the concept of "L-values," a Place object acts as a first-class reference (or iterator) to a specific location in a container.
+Soot implements a "Lisp-style" generalized variable system. Instead of using intermediate "Place" objects, the system relies on **symbolic transformation**. This allows the `setf` macro to rewrite read-expressions into their corresponding write-calls during the macro-expansion phase.
 
-### Core Concepts
+### Core Primitives (C++)
 
-In most languages, reading a value and writing a value use different syntax (e.g., `gethash` vs `hash-table-set!`). In SOOT, the **Place** object abstracts this away:
+* `(defsetf getter-name setter-name)` — Registers a global association between a getter function and its corresponding setter function.
+* `(get-setter getter-name)` — Returns the setter symbol associated with the given getter, or `nil` if no registration exists.
 
-- When evaluated in a standard context, a Place automatically **dereferences** to its value.
-- When used within a mutation macro (like `setf`), it provides the **address** for the update.
+### Architecture
 
----
+The system is powered by a high-performance `std::unordered_map` in the C++ core, mapping `InternedSymbolPtr` keys to `InternedSymbolPtr` values. Since symbols are interned, lookups are performed via pointer comparison, ensuring near-instantaneous transformation without memory allocation or string processing.
 
-### Built-in Procedures
+### The `setf` Macro
 
-#### `make-place`
+The `setf` macro uses this registry to perform code rewriting. It handles two primary cases:
 
-`(make-place container key)`
-
-Creates a new **Place** object that references a specific entry within a container.
-
-- **`container`**: Must be a supported mutable structure, such as a `hash-table` or `array`.
-- **`key`**: The lookup key for hash-tables (symbol/string) or a numerical index for arrays.
-
-**Example:**
+1. **Symbols**: If the target is a symbol, it expands to a simple `set!`.
+2. **Forms**: If the target is a list, it looks up the setter for the `car` of the form.
 
 ```lisp
-(define my-table (make-string-hash-table))
-(define p (make-place my-table "register-a")) 
-;; p is now a "pointer" to the "register-a" entry in my-table
+(defmacro setf (place value)
+  (if (symbolp place)
+      `(set! ,place ,value)
+      (let ((setter (get-setter (car place))))
+        (if (not (nilp setter))
+            `(,setter ,@(cdr place) ,value)
+            (error "SETF: No setter registered for: " (car place))))))
 
 ```
 
-#### `place?`
+### Usage Example
 
-`(place? object)`
-
-A predicate that returns `#t` if the provided `object` is of the `PLACE` type, and `#f` otherwise.
-
-**Example:**
+**Registration (Library Level):**
 
 ```lisp
-(place? (make-place my-table "a")) ; => #t
-(place? 42)                        ; => #f
-```
-
-#### `place-set!`
-
-`(place? object)`
-
-A predicate that returns `#t` if the provided `object` is of the `PLACE` type, and `#f` otherwise.
-
-**Example:**
-
-```lisp
-(define p (make-place my-table "a")) ; => #t
-(place-set! p 42)                    ; => #f
-```
-
----
-
-## Integration with `setf`
-
-The primary use of Places is through the `setf` macro. Because SOOT's `eval` automatically resolves Places to their values, you can use them transparently in logic.
-
-```lisp
-;; Standard Getter-style usage
-(define *regs* (make-string-hash-table))
-(define a-ref (make-place *regs* 'a))
-
-(setf a-ref 10)           ;; Writes 10 to the table via the Place
-(print a-ref)             ;; Implicitly calls .get(), prints 10
-(setf a-ref (+ a-ref 5))  ;; Reads 10, adds 5, writes 15 back
+(defsetf car set-car!)
+(defsetf get hash-table-set!)
+(defsetf vector-ref vector-set!)
 
 ```
 
----
+**Expansion (User Level):**
 
-## Technical Implementation Details
+The expression `(setf (get table "key") 100)` expands directly into `(hash-table-set! table "key" 100)`.
 
-### Implicit Evaluation (Auto-Dereferencing)
-
-The SOOT Interpreter's `eval` loop handles `ObjectType::PLACE` by automatically invoking the internal `get()` method. This ensures that Places can be passed to arithmetic and logic functions without explicit calls to a "fetch" procedure.
-
-### Memory Management
-
-Places are implemented using `std::shared_ptr<PlaceObject>`. They hold a reference to their parent container, preventing the container from being garbage collected as long as the Place is alive.
-
----
-Here is the professional documentation for the Bitwise Operations, tailored for your Z80 assembly manual.
 
 ---
 

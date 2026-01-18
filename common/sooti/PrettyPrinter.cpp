@@ -64,6 +64,7 @@ namespace script::pretty_print {
             case ObjectType::FLOAT:
             case ObjectType::CHAR:
             case ObjectType::SYMBOL:
+            case ObjectType::KEYWORD:
             case ObjectType::STRING:
                 return Node(obj.print());
 

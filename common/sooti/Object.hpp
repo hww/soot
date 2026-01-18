@@ -3,6 +3,7 @@
 #include "common/util/Crc32.hpp"
 #include "common/util/Assert.hpp"
 #include <string>
+#include <fmt/format.h>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -29,12 +30,11 @@ namespace script
         EMPTY_LIST, PAIR, 
         ARRAY, STRING_HASH_TABLE, 
         INTEGER, FLOAT, CHAR,
-        SYMBOL, STRING, 
+        SYMBOL, KEYWORD, STRING, 
         LAMBDA, MACRO, 
         ENVIRONMENT, 
         READER, 
-        LEXTOKEN,
-        PLACE
+        LEXTOKEN
     };
 
     std::string object_type_to_string(ObjectType type);
@@ -54,6 +54,7 @@ namespace script
     class Reader;
     class LextokenObject;
     class PlaceObject;
+    class Object;
 
     struct ArgumentSpec;
 
@@ -66,7 +67,8 @@ namespace script
         }
 
         const char* c_str() const { return name_ptr; }
-        
+        std::string as_string() { return std::string(name_ptr); }
+
         struct hash {
             auto operator()(const InternedSymbolPtr& x) const {
                 return std::hash<const void*>()((const void*)x.name_ptr);
@@ -108,9 +110,8 @@ namespace script
         std::string print() const {
              return fixed_to_string(value); 
         }
-        std::string inspect() const {
-            return type_as_string() + " " + print();
-        }
+
+        Object inspect(SymbolTable& symbols) const;
 
         bool operator==(const FixedObject<T>& other) const {
             return value == other.value;
@@ -141,7 +142,8 @@ namespace script
     public:
         virtual ~HeapObject() = default;
         virtual std::string print() const = 0;
-        virtual std::string inspect() const = 0;
+        virtual std::string printc() const { return print(); }
+        virtual Object inspect(SymbolTable& symbols) const = 0;
     };
 
     // Main Object class
@@ -170,6 +172,8 @@ namespace script
         static Object make_array(const std::vector<Object>& elements);
         static Object make_vector(const std::vector<Object>& elements);
         static Object make_symbol(SymbolTable* table, const char* name);
+        static Object make_symbol(SymbolTable& table, const char* name) { return make_symbol(&table, name);} 
+        static Object make_keyword(SymbolTable* table, const char* name);
         static Object make_string(const std::string& text);
         static Object make_pair(const Object& car, const Object& cdr);
         static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
@@ -177,17 +181,13 @@ namespace script
         static Object make_hash_table();
         static Object make_reader(TextStream* textStream);
         static Object make_lextoken(const Object& type, const Object& value, const TextRef& info);
-        static Object make_place(const Object& object, const Object& key);
 
         // String representation
         std::string print() const;
-        std::string inspect() const;
-        std::string inspect_short() const { 
-            const int max_len = 64;
-            auto str = inspect(); // Добавили скобки ()
-            if (str.size() <= max_len) return str;
-            return str.substr(0, max_len-3) + "..."; // substr вместо substring
-        }
+        std::string printc() const { return is_heap_object() && heap_obj ? heap_obj->printc() : print(); } // сырой формат например без "" для строки
+        std::string inspect_short(SymbolTable& symbols) const;
+        Object inspect(SymbolTable& symbols) const;
+
         std::string type_name() const { return object_type_to_string(type); }
 
         // Type checking
@@ -196,6 +196,7 @@ namespace script
         bool is_float() const { return type == ObjectType::FLOAT; }
         bool is_char() const { return type == ObjectType::CHAR; }
         bool is_symbol() const { return type == ObjectType::SYMBOL; }
+        bool is_keyword() const { return type == ObjectType::KEYWORD; }
         bool is_string() const { return type == ObjectType::STRING; }
         bool is_pair() const { return type == ObjectType::PAIR; }
         bool is_array() const { return type == ObjectType::ARRAY; }
@@ -208,7 +209,6 @@ namespace script
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_reader() const { return type == ObjectType::READER; }
         bool is_lextoken() const { return type == ObjectType::LEXTOKEN; }
-        bool is_place() const { return type == ObjectType::PLACE; }
         bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
         bool is_true() const { return is_symbol() && (as_symbol() != "#f"); }
@@ -227,9 +227,9 @@ namespace script
         EnvironmentObject*          as_env() const;
         ReaderObject*               as_reader() const;
         LextokenObject*             as_lextoken() const;
-        PlaceObject*                as_place() const;
         const IntegerObject&        as_integer_obj() const;
         const InternedSymbolPtr&    as_symbol() const;
+        const InternedSymbolPtr&    as_keyword() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
 
         // C++ идеоматичные методы
@@ -252,9 +252,10 @@ namespace script
         Object cdr;
         PairObject() = default;
         PairObject(const Object& car, const Object& cdr) : car(car), cdr(cdr) {}
+        ~PairObject() override = default;
 
         std::string print() const override;
-        std::string inspect() const override;
+        Object inspect(SymbolTable& symbols) const override;
 
         int lenght() {
             int count = 1;
@@ -271,6 +272,7 @@ namespace script
     public:
         std::string data;
         explicit StringObject(std::string text) : data(std::move(text)) {}
+        ~StringObject() override = default;
 
         int length() const { return data.length(); }
         bool empty() const { return data.empty(); }
@@ -283,9 +285,11 @@ namespace script
             return "\"" + data + "\"";
         }
 
-        std::string inspect() const override {
-            return "[string] \"" + data + "\"";
+        std::string printc() const override {
+            return data;
         }
+
+        Object inspect(SymbolTable& symbols) const override;
 
         // Неявное преобразование в std::string
         operator std::string() const {
@@ -317,7 +321,9 @@ namespace script
     class ArrayObject : public HeapObject {
     public:
         std::vector<Object> data;
+        
         explicit ArrayObject(std::vector<Object> elements) : data(std::move(elements)) {}
+        ~ArrayObject() override = default;
 
         int size() { return data.size(); }
 
@@ -339,10 +345,70 @@ namespace script
             return result + ")";
         }
 
-        std::string inspect() const override {
-            return "[array] size: " + std::to_string(data.size()) + " data: " + print() + "\n";
+        Object inspect(SymbolTable& symbols) const override;
+
+    };
+
+    class HashTableObject : public HeapObject {
+    public:
+        std::unordered_map<std::string, Object> data;
+
+        HashTableObject() = default;
+        ~HashTableObject() override = default;
+
+        std::string print() const override {
+            // Короткий системный принт: #<hash-table size:5>
+            return fmt::format("#<hash-table size:{}>", data.size());
         }
 
+        std::string print_long() const  {
+            std::string result = "{";
+            for (const auto& kv : data) {
+            result += '(';
+            result += kv.first;
+            result += ' ';
+            result += kv.second.print();
+            result += ')';
+            result += ' ';
+            }
+            if (!data.empty()) {
+            result.pop_back();
+            }
+            result += '}';
+            return result;
+        }
+
+        Object inspect(SymbolTable& symbols) const override;
+
+        // Метод получения: возвращает ссылку на объект. 
+        // Если ключа нет, unordered_map создаст объект по умолчанию.
+        Object& get(const std::string& key) {
+            return data[key];
+        }
+
+        // Метод установки: записывает значение и возвращает ссылку на обновленное место.
+        Object& set(const std::string& key, Object value) {
+            data[key] = std::move(value); // используем move для эффективности
+            return data[key];
+        }
+
+        // Доступ по строковому ключу (неконстантный): 
+        // стандартное поведение для ассоциативных контейнеров.
+        Object& operator[](const std::string& key) {
+            return data[key];
+        }
+
+        // Доступ по индексу (size_t): 
+        // В unordered_map нет прямого доступа по индексу, как в векторе.
+        // Если это необходимо, используем итераторы (но помни, что порядок не гарантирован).
+        const Object& operator[](size_t idx) const {
+            if (idx >= data.size()) {
+                throw std::out_of_range("HashTable index out of bounds");
+            }
+            auto it = data.begin();
+            std::advance(it, idx);
+            return it->second;
+        }
     };
 
     template <typename T>
@@ -360,7 +426,8 @@ namespace script
         InternedPtrMap(const InternedPtrMap&) = delete;
         InternedPtrMap& operator=(const InternedPtrMap&) = delete;
         InternedPtrMap() { clear(); }
-    
+        
+        int size() const { return m_entries.size(); }
         const std::vector<Entry>& get_all_entries() const { return m_entries; }
 
         T* lookup(InternedSymbolPtr str) {
@@ -429,7 +496,6 @@ namespace script
 
     private:
 
-
         void resize() {
             m_power_of_two_size++;
             m_mask = (1U << m_power_of_two_size) - 1;
@@ -471,6 +537,7 @@ namespace script
             Object float_pt;
             Object character;
             Object symbol;
+            Object keyword;
             Object string;
             Object pair;
             Object array;
@@ -531,6 +598,9 @@ namespace script
         EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
             : parent_env(std::move(parent)) {
         }
+        ~EnvironmentObject() override = default;
+
+        int size() const { return vars.size(); }
 
         Object* find(const char* n, SymbolTable* st) {
             return vars.lookup(st->intern(n));
@@ -559,19 +629,13 @@ namespace script
         }
 
         std::string print() const override {
-            if (name.empty()) {
-                return "<unnamed environment>";
-            }
-            else {
-                return "<environment \"" + name + "\">";
-            }
+            return fmt::format("#<env {} parent:{} @{:p}>", 
+                name.empty() ? "anonymous" : name,
+                parent_env ? parent_env->name : "none",
+                (void*)this);
         }
 
-        std::string inspect() const override {
-            std::string result = "[environment]\n  name: " + name +
-                "\n  parent: " + (parent_env ? parent_env->print() : "NONE") + "\n";
-            return result;
-        }
+        Object inspect(SymbolTable& symbols) const override;
     };
 
     // Аргументы функций
@@ -580,6 +644,8 @@ namespace script
         std::map<std::string, Object> named;
         std::vector<Object> rest;
         bool has_rest = false;
+
+        Object inspect(SymbolTable& symbols) const;
 
         Object get_named(const std::string& name, const Object& default_value) {
             auto it = named.find(name);
@@ -612,6 +678,8 @@ namespace script
         size_t unnamed_size() const { return unnamed.size(); }
         size_t named_size() const { return named.size(); }
         bool empty() const { return unnamed.empty() && named.empty(); }
+        Object to_object(SymbolTable& symbols) const;
+        Object inspect(SymbolTable& symbols) const;
 
         const std::string& operator[](size_t index) const {
             if (index >= unnamed.size()) throw std::out_of_range("ArgumentSpec index out of range");
@@ -640,6 +708,7 @@ namespace script
         ArgumentSpec args;
 
         LambdaObject() = default;
+        ~LambdaObject() override = default;
 
         static Object make_new() {
             Object obj;
@@ -649,12 +718,10 @@ namespace script
         }
 
         std::string print() const override {
-            return name.empty() ? "<unnamed lambda>" : "<lambda \"" + name + "\">";
+            return name.empty() ? "#<unnamed lambda>" : "<lambda " + name + ">";
         }
-
-        std::string inspect() const override {
-            return "[lambda]\n  name: " + name + "\n" + args.print();
-        }
+        
+        Object inspect(SymbolTable& symbols) const override;
     };
 
     class MacroObject : public HeapObject {
@@ -665,6 +732,7 @@ namespace script
         ArgumentSpec args;
 
         MacroObject() = default;
+        ~MacroObject() override = default;
 
         static Object make_new() {
             Object obj;
@@ -674,70 +742,10 @@ namespace script
         }
 
         std::string print() const override {
-            return name.empty() ? "<unnamed macro>" : "<macro \"" + name + "\">";
+            return name.empty() ? "#<unnamed macro>" : "#<macro " + name + ">";
         }
 
-        std::string inspect() const override {
-            return "[macro]\n  name: " + name + "\n" + args.print();
-        }
-    };
-
-    class HashTableObject : public HeapObject {
-    public:
-        std::unordered_map<std::string, Object> data;
-
-        HashTableObject() = default;
-
-        std::string print() const override {
-            std::string result = "{";
-            for (const auto& kv : data) {
-            result += '(';
-            result += kv.first;
-            result += ' ';
-            result += kv.second.print();
-            result += ')';
-            result += ' ';
-            }
-            if (!data.empty()) {
-            result.pop_back();
-            }
-            result += '}';
-            return result;
-        }
-
-        std::string inspect() const override {
-            return "[hash-table] kind: string, data: " + print() + "\n";
-        }
-
-        // Метод получения: возвращает ссылку на объект. 
-        // Если ключа нет, unordered_map создаст объект по умолчанию.
-        Object& get(const std::string& key) {
-            return data[key];
-        }
-
-        // Метод установки: записывает значение и возвращает ссылку на обновленное место.
-        Object& set(const std::string& key, Object value) {
-            data[key] = std::move(value); // используем move для эффективности
-            return data[key];
-        }
-
-        // Доступ по строковому ключу (неконстантный): 
-        // стандартное поведение для ассоциативных контейнеров.
-        Object& operator[](const std::string& key) {
-            return data[key];
-        }
-
-        // Доступ по индексу (size_t): 
-        // В unordered_map нет прямого доступа по индексу, как в векторе.
-        // Если это необходимо, используем итераторы (но помни, что порядок не гарантирован).
-        const Object& operator[](size_t idx) const {
-            if (idx >= data.size()) {
-                throw std::out_of_range("HashTable index out of bounds");
-            }
-            auto it = data.begin();
-            std::advance(it, idx);
-            return it->second;
-        }
+        Object inspect(SymbolTable& symbols) const override;
     };
 
     class ReaderObject : public HeapObject {
@@ -746,6 +754,7 @@ namespace script
         TextStream* ts = nullptr;
 
         explicit ReaderObject(TextStream* stream) : ts(stream) {}
+        ~ReaderObject() override = default;
 
         // peek-char: смотрим символ через твой ts->peek()
         Object peek_char() const;
@@ -759,7 +768,7 @@ namespace script
         // Проверка на конец файла
         bool is_eof() const;
         std::string print() const override;
-        std::string inspect() const override;
+        Object inspect(SymbolTable& symbols) const override;
     };
 
 
@@ -770,68 +779,10 @@ namespace script
         TextRef     location;  // Ссылка на файл, строку и колонку в .asm файле
 
         explicit LextokenObject(const Object& type, const Object& value, const TextRef& location): type(type),  value(value), location(location) {}
+        ~LextokenObject() override = default;
 
         std::string print() const override;
-        std::string inspect() const override;
-    };
-
-    class PlaceObject : public HeapObject {
-        public:
-        Object container; // Таблица (HashTable) или Массив (Array)
-        Object key;       // Символ-ключ или Индекс
-        PlaceObject(){}
-        PlaceObject(const Object& obj, const Object& key) : container(obj), key(key) {}
-
-        // Чтение: лезем в контейнер за значением
-        Object get() const {
-            if (container.type == ObjectType::STRING_HASH_TABLE) {
-                auto k = key_as_string();
-                return container.as_hash_table()->get(k);
-            } else if (container.type == ObjectType::ARRAY) {
-                auto idx = key_as_integer();
-                return container.as_array()->get(idx);
-            }
-            return Object::make_empty_list();
-        }
-
-        // Запись: обновляем значение в контейнере
-        void set(const Object& value) {
-            if (container.type == ObjectType::STRING_HASH_TABLE) {
-                std::string k = key_as_string();
-                container.as_hash_table()->set(k, value);
-            } else if (container.type == ObjectType::ARRAY) {
-                auto idx = key_as_integer();
-                container.as_array()->set(idx, value);
-            }
-        }
-
-
-        std::string print() const override;
-        std::string inspect() const override;
-        private:
-        std::string key_as_string() const {
-            // В C++ эффективнее использовать локальную переменную
-            if (key.is_symbol())
-                return key.as_symbol().c_str(); // Предполагаю, что .name() возвращает std::string или char*
-            if (key.is_string())
-                return key.as_string()->c_str(); // Если это уже std::string
-            
-            // Fallback: превращаем любой объект в строку для отладки или ключа
-            return key.print(); 
-        }
-
-        int key_as_integer() const {
-            if (key.is_integer())
-                return key.as_integer(); // Обычно возвращает int или int64_t
-            
-            if (key.is_float())
-                return static_cast<int>(key.as_float()); // Приведение float -> int
-            
-            // Внимание: в твоем исходнике здесь была ошибка! 
-            // Пытаться вызвать .as_string().c_str() и присвоить это в int нельзя.
-            
-            return 0; // Или бросай исключение "Invalid index type"
-        }
+        Object inspect(SymbolTable& symbols) const override;
     };
 
     Object build_list(std::vector<Object>&& objects);

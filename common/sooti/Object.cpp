@@ -1,7 +1,10 @@
 #include "common/CommonTypes.hpp"
 #include "common/util/Crc32.hpp"
 #include "common/sooti/Object.hpp"
+#include "common/sooti/ListBuilder.hpp"
 #include "common/sooti/Reader.hpp"
+#include "common/sooti/Errors.hpp"
+
 #include "fmt/format.h"
 #include <sstream>
 #include <iostream>
@@ -31,6 +34,7 @@ namespace script
         core.float_pt       = Object::make_symbol(this, "float");
         core.character      = Object::make_symbol(this, "char");
         core.symbol         = Object::make_symbol(this, "symbol");
+        core.keyword        = Object::make_symbol(this, "keyword");
         core.string         = Object::make_symbol(this, "string");
         core.pair           = Object::make_symbol(this, "pair");
         core.array          = Object::make_symbol(this, "array");
@@ -39,7 +43,6 @@ namespace script
         core.environment    = Object::make_symbol(this, "environment");
         core.reader         = Object::make_symbol(this, "reader");
         core.lextoken       = Object::make_symbol(this, "lextoken");
-        core.place          = Object::make_symbol(this, "place");
         core.unknown        = Object::make_symbol(this, "unknown");
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
@@ -49,6 +52,7 @@ namespace script
             case ObjectType::FLOAT:         return core.float_pt;   // было Float
             case ObjectType::CHAR:          return core.character;  // было Char
             case ObjectType::SYMBOL:        return core.symbol;
+            case ObjectType::KEYWORD:       return core.keyword;
             case ObjectType::STRING:        return core.string;
             case ObjectType::PAIR:          return core.pair;
             case ObjectType::ARRAY:         return core.array;
@@ -57,7 +61,6 @@ namespace script
             case ObjectType::ENVIRONMENT:   return core.environment;
             case ObjectType::READER:        return core.reader;
             case ObjectType::LEXTOKEN:      return core.lextoken;
-            case ObjectType::PLACE:         return core.place;
             default:                        return core.unknown;
         }
     }
@@ -197,8 +200,8 @@ namespace script
         return "[reader]";
         case ObjectType::LEXTOKEN:
         return "[lextoken]";
-        case ObjectType::PLACE:
-        return "[place]";
+        case ObjectType::KEYWORD:
+        return "[keyword]";
         default:
             throw std::runtime_error("unknown object type in object_type_to_string");
         }
@@ -245,6 +248,22 @@ namespace script
         Object obj;
         obj.type = ObjectType::SYMBOL;
         obj.symbol_obj.value = table->intern(name);  // ← преобразуем в string
+        return obj;
+    }
+
+    Object Object::make_keyword(SymbolTable* table, const char* name) {
+        Object obj;
+        obj.type = ObjectType::KEYWORD;
+
+        if (name[0] == ':') {
+            // Если уже начинается с ':', интернируем как есть
+            obj.symbol_obj.value = table->intern(name);
+        } else {
+            // Если нет, добавляем префикс
+            std::string name_with_colon = ":" + std::string(name);
+            obj.symbol_obj.value = table->intern(name_with_colon.c_str());
+        }
+
         return obj;
     }
 
@@ -297,15 +316,6 @@ namespace script
         return obj;    
     }
 
-    Object Object::make_place(const Object& object, const Object& key)
-    {
-        Object obj;
-        obj.type = ObjectType::PLACE;
-        // Создаем shared_ptr для твоего нового класса
-        obj.heap_obj = std::make_shared<PlaceObject>(object, key);
-        return obj;    
-    }
-
     Object Object::make_lambda(const ArgumentSpec& args, const Object& body,
         const std::shared_ptr<EnvironmentObject>& env) {
         Object obj = LambdaObject::make_new();
@@ -339,29 +349,11 @@ namespace script
             return char_obj.print();
         case ObjectType::SYMBOL:
             return symbol_obj.print();
+        case ObjectType::KEYWORD:
+            return symbol_obj.print();
         default:
             if (is_heap_object())
                 return heap_obj ? heap_obj->print() : "[invalid-heap-object]";
-            else
-                return "[unknown]";
-        }
-    }
-
-    std::string Object::inspect() const {
-        switch (type) {
-        case ObjectType::EMPTY_LIST:
-            return "[empty-list]";
-        case ObjectType::INTEGER:
-            return integer_obj.inspect();
-        case ObjectType::FLOAT:
-            return float_obj.inspect();
-        case ObjectType::CHAR:
-            return char_obj.inspect();
-        case ObjectType::SYMBOL:
-            return symbol_obj.inspect();
-        default:
-            if (is_heap_object())
-                return heap_obj ? heap_obj->inspect() : "[invalid-heap-object]";
             else
                 return "[unknown]";
         }
@@ -444,6 +436,14 @@ namespace script
         }
         return symbol_obj.value;
     }
+    
+    const InternedSymbolPtr& Object::as_keyword() const {
+        if (type != ObjectType::SYMBOL) {
+            throw std::runtime_error("as_symbol called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return symbol_obj.value;
+    }
 
     ArrayObject* Object::as_array() const {
         if (type != ObjectType::ARRAY) {
@@ -474,14 +474,6 @@ namespace script
                 " " + print());
         }
         return dynamic_cast<LextokenObject*>(heap_obj.get());
-    }
-
-    PlaceObject* Object::as_place() const {
-        if (type != ObjectType::PLACE) {
-            throw std::runtime_error("as_place called on a " + object_type_to_string(type) +
-                " " + print());
-        }
-        return dynamic_cast<PlaceObject*>(heap_obj.get());
     }
 
     std::vector<Object> Object::as_c_vector() const {
@@ -531,58 +523,11 @@ namespace script
         }
     }
 
-    // PairObject implementations
-    std::string PairObject::print() const {
-        std::stringstream ss;
-        ss << "(";
-        
-        // Печатаем первый элемент
-        ss << car.print();
-
-        Object current = cdr;
-        // Пока хвост — это пара, печатаем её car через пробел
-        while (current.is_pair()) {
-            ss << " " << current.as_pair()->car.print();
-            current = current.as_pair()->cdr;
-        }
-
-        // Если список завершился не пустым списком, а чем-то другим (dotted pair)
-        if (!current.is_empty_list()) {
-            ss << " . " << current.print();
-        }
-
-        ss << ")";
-        return ss.str();
-    }
-
-    std::string PairObject::inspect() const {
-        return "[pair] " + print() + "\n";;
-    }
-
-
-
     // Вспомогательные функции
     ArgumentSpec make_varargs() {
         ArgumentSpec spec;
         spec.varargs = true;
         return spec;
-    }
-
-    std::string ArgumentSpec::print() const {
-        std::stringstream ss;
-        ss << "ArgumentSpec: unnamed=" << unnamed.size()
-            << " named=" << named.size()
-            << " rest=" << (rest.empty() ? "none" : rest)
-            << " varargs=" << (varargs ? "true" : "false");
-        return ss.str();
-    }
-
-    std::string Arguments::print() const {
-        std::stringstream ss;
-        ss << "Arguments: unnamed=" << unnamed.size()
-            << " named=" << named.size()
-            << " rest=" << rest.size();
-        return ss.str();
     }
 
     /*!
@@ -676,18 +621,296 @@ namespace script
         return !ts || !ts->text_remains();
     }
 
-    std::string ReaderObject::print() const { return "#<reader-stream>"; }
-    std::string ReaderObject::inspect() const { 
-        return "[reader] seek: " + std::to_string(ts ? ts->seek : 0) + " line: " + std::to_string(ts ? ts->line_count : 0); 
+    Object ArgumentSpec::to_object(SymbolTable& symbols) const {
+        ListBuilder lb{};
+
+        // 1. Позиционные аргументы
+        for (const auto& name : unnamed) {
+            lb.push_back(Object::make_symbol(&symbols, name.c_str()));
+        }
+
+        // 2. Именованные аргументы (Keyword arguments)
+        if (!named.empty()) {
+            lb.push_back(Object::make_keyword(&symbols, "key")); // Маркер &key
+            for (const auto& [name, spec] : named) {
+                if (spec.has_default) {
+                    // Если есть дефолт: (name default)
+                    ListBuilder entry{};
+                    entry.push_back(Object::make_symbol(&symbols, name.c_str()));
+                    entry.push_back(spec.default_value);
+                    lb.push_back(entry.finalize());
+                } else {
+                    lb.push_back(Object::make_symbol(&symbols, name.c_str()));
+                }
+            }
+        }
+
+        // 3. Rest аргумент (вариативность)
+        if (!rest.empty()) {
+            lb.push_back(Object::make_symbol(&symbols, "rest")); // Маркер &rest
+            lb.push_back(Object::make_symbol(&symbols, rest.c_str()));
+        }
+
+        return lb.finalize();
     }
 
-    std::string LextokenObject::print() const { return "#<lextoken>"; }
-    std::string LextokenObject::inspect() const { 
-        return "[lextoken] type: " + type.inspect() + " value: " + value.inspect(); 
+    // -- PRINTS --------------------------------------------------------------
+
+    std::string ArgumentSpec::print() const {
+        // Вместо "ArgumentSpec: unnamed=2..." сделаем более сжатый системный вид
+        return fmt::format("#<arg-spec {}:{}:{}{}>", 
+            unnamed.size(), 
+            named.size(), 
+            rest.empty() ? "0" : "1",
+            varargs ? "+" : "");
     }
 
-    std::string PlaceObject::print() const { return "#<place>"; }
-    std::string PlaceObject::inspect() const { 
-        return "[lextoken] container: " + container.inspect() + " key: " + key.inspect(); 
+    std::string Arguments::print() const {
+        // Инстанция аргументов в момент вызова
+        return fmt::format("#<args-invoked u:{} n:{} r:{}>", 
+            unnamed.size(), 
+            named.size(), 
+            rest.size());
+    }
+
+    std::string ReaderObject::print() const { 
+        return "#<reader-stream>"; 
+    }
+
+    std::string LextokenObject::print() const { 
+        // Используем printc(), чтобы токен выглядел как #<lextoken SYMBOL>, а не #<lextoken "SYMBOL">
+        return fmt::format("#<lextoken {}>", value.printc()); 
+    }
+
+    // PairObject implementations
+    std::string PairObject::print() const {
+        std::stringstream ss;
+        ss << "(";
+        
+        // Печатаем первый элемент
+        ss << car.print();
+
+        Object current = cdr;
+        // Пока хвост — это пара, печатаем её car через пробел
+        while (current.is_pair()) {
+            ss << " " << current.as_pair()->car.print();
+            current = current.as_pair()->cdr;
+        }
+
+        // Если список завершился не пустым списком, а чем-то другим (dotted pair)
+        if (!current.is_empty_list()) {
+            ss << " . " << current.print();
+        }
+
+        ss << ")";
+        return ss.str();
+    }
+
+    // -- INSPECTORS --------------------------------------------------------------
+
+    std::string Object::inspect_short(SymbolTable& symbols) const { 
+        const int max_len = 64;
+        // 1. Получаем S-expression инспекта
+        Object info = this->inspect(symbols); 
+        
+        // 2. Превращаем структуру в строку для отображения
+        std::string str = info.print(); 
+        
+        if (str.size() <= max_len) return str;
+        return str.substr(0, max_len - 3) + "...";
+    }
+
+    Object Object::inspect(SymbolTable& symbols) const {
+        switch (type) {
+            case ObjectType::EMPTY_LIST:
+                return Object::make_symbol(&symbols, "nil");
+
+            case ObjectType::INTEGER: {
+                ListBuilder lb{symbols};
+                lb.push_back(Object::make_symbol(&symbols, "integer"));
+                lb.push_kv(symbols, "value", *this);
+                return lb.finalize();
+            }
+
+            case ObjectType::FLOAT: {
+                ListBuilder lb{symbols};
+                lb.push_back(Object::make_symbol(&symbols, "float"));
+                lb.push_kv(symbols, "value", *this);
+                return lb.finalize();
+            }
+
+            case ObjectType::SYMBOL: {
+                ListBuilder lb{symbols};
+                lb.push_back(Object::make_symbol(&symbols, "symbol"));
+                lb.push_kv(symbols, "name", *this);
+                return lb.finalize();
+            }
+
+            case ObjectType::KEYWORD: {
+                ListBuilder lb{symbols};
+                lb.push_back(Object::make_symbol(&symbols, "keyword"));
+                lb.push_kv(symbols, "name", *this);
+                return lb.finalize();
+            }
+
+            default:
+                if (is_heap_object() && heap_obj) {
+                    return heap_obj->inspect(symbols); 
+                }
+                return Object::make_symbol(&symbols, "error-unknown");
+        }
+    }
+
+    Object PairObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "pair"));
+        lb.push_kv(symbols, "car", this->car);
+        lb.push_kv(symbols, "cdr", this->cdr);
+        return lb.finalize();
+    }
+
+    Object StringObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "string"));
+        lb.push_kv(symbols, "value", Object::make_string(print().c_str()));
+        lb.push_kv(symbols, "length", Object::make_integer(data.length()));
+        return lb.finalize();
+    }
+
+    template <typename T>
+    Object FixedObject<T>::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, type_as_string().c_str()));
+        lb.push_kv(symbols, "value", Object(value)); // Убрали & перед symbols
+        return lb.finalize();
+    }
+
+    Object ArrayObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        
+        // 1. Имя типа
+        lb.push_back(Object::make_symbol(&symbols, "array"));
+        
+        // 2. Метаданные
+        lb.push_kv(symbols, "length", Object::make_integer(data.size()));
+        lb.push_kv(symbols, "address", Object::make_integer((int64_t)this));
+
+        // 3. Содержимое (опционально, выводим первые 10 элементов, чтобы не заспамить консоль)
+        ListBuilder elements_lb{symbols};
+        size_t limit = std::min(data.size(), (size_t)10);
+        for (size_t i = 0; i < limit; ++i) {
+            elements_lb.push_back(data[i]);
+        }
+        
+        if (data.size() > 10) {
+            elements_lb.push_back(Object::make_symbol(&symbols, "..."));
+        }
+
+        lb.push_kv(symbols, "data", elements_lb.finalize());
+        
+        return lb.finalize();
+    }
+
+    // Удалено дублирующееся определение HashTableObject::inspect. Оставили одно:
+    Object HashTableObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "hash-table"));
+        lb.push_kv(symbols, "size", Object::make_integer(data.size()));
+        
+        ListBuilder entries_lb{symbols};
+        for (const auto& [key, val] : data) {
+            ListBuilder pair_lb{symbols};
+            pair_lb.push_back(Object::make_string(key.c_str()));
+            pair_lb.push_back(val);
+            entries_lb.push_back(pair_lb.finalize());
+        }
+        lb.push_kv(symbols, "entries", entries_lb.finalize());
+        return lb.finalize();
+    }
+
+    Object EnvironmentObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "environment"));
+        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
+        
+        if (parent_env) {
+            lb.push_kv(symbols, "parent", Object::make_string(parent_env->print().c_str()));
+        }
+
+        // Если InternedPtrMap не поддерживает итераторы, выводим только количество
+        lb.push_kv(symbols, "bindings-count", Object::make_integer(size()));
+        lb.push_kv(symbols, "address", Object::make_integer((int64_t)this));
+        return lb.finalize();
+    }
+
+    Object LambdaObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "lambda"));
+        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
+        lb.push_kv(symbols, "args", args.to_object(symbols)); 
+        lb.push_kv(symbols, "body", body);
+        return lb.finalize();
+    }
+
+    Object MacroObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        
+        // 1. Заголовок типа
+        lb.push_back(Object::make_symbol(&symbols, "macro"));
+        
+        // 2. Имя макроса (если есть)
+        lb.push_kv(symbols, "name", name.empty() ? 
+            Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
+        
+        // 3. Спецификация аргументов
+        // Вызываем to_object, который возвращает структуру аргументов (списки имён и т.д.)
+        lb.push_kv(symbols, "args", args.to_object(symbols));
+        
+        // 4. Тело макроса (исходный код)
+        lb.push_kv(symbols, "body", body);
+
+        // 5. Адрес в памяти для отладки
+        lb.push_kv(symbols, "address", Object::make_integer((int64_t)this));
+
+        return lb.finalize();
+    }
+
+    Object ReaderObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "reader"));
+        lb.push_kv(symbols, "line", Object::make_integer(ts ? ts->line_count : 0));
+        return lb.finalize();
+    }
+
+    Object LextokenObject::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "lextoken"));
+        lb.push_kv(symbols, "value", value);
+        return lb.finalize();
+    }
+
+    Object ArgumentSpec::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "argument-spec"));
+        lb.push_kv(symbols, "has-rest", rest.empty() ? Object::make_empty_list() : Object::make_symbol(&symbols, "t"));
+        lb.push_kv(symbols, "structure", this->to_object(symbols));
+        return lb.finalize();
+    }
+
+    Object Arguments::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+        lb.push_back(Object::make_symbol(&symbols, "arguments-instance"));
+
+        ListBuilder u_list{symbols};
+        for (const auto& obj : unnamed) u_list.push_back(obj);
+        lb.push_kv(symbols, "unnamed", u_list.finalize());
+
+        ListBuilder n_list{symbols};
+        for (const auto& [name, obj] : named) {
+            n_list.push_kv(symbols, name.c_str(), obj); // Убрали & перед symbols
+        }
+        lb.push_kv(symbols, "named", n_list.finalize());
+
+        return lb.finalize();
     }
 } // namespace script
