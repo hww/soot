@@ -350,7 +350,7 @@ namespace script
         int size() { return data.size(); }
 
         Object& get(int index) { return data[index]; }
-        Object& set(int index, Object value) { data[index] = value; }
+        void set(int index, Object value) { data[index] = value; }
 
         const Object& operator[](size_t idx) const { return data.at(idx); }
         Object& operator[](size_t idx) { return data.at(idx); }

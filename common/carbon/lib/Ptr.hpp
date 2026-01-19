@@ -21,7 +21,7 @@ namespace runtime::lib
     struct Ptr
     {
         union {
-            u32 offset;  ///< Смещение от базового адреса пула памяти (фактически используется 32 бита)
+            u64 offset;    ///< Смещение для файла (4 байта)
             T* ptr;      ///< Непосредственный указатель в памяти
         };
 
@@ -34,7 +34,7 @@ namespace runtime::lib
          * @brief Конструктор из смещения
          * @param off Смещение от базового адреса
          */
-        explicit Ptr(u32 off) : offset(off) {}
+        explicit Ptr(u64 off) : offset(off) {}
 
         /**
          * @brief Конструктор из nullptr

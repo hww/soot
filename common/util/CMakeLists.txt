@@ -12,6 +12,9 @@ common/util/Log.cpp
 common/util/PrintFloat.cpp 
 common/util/StringUtil.cpp 
 common/util/UnicodeUtil.cpp 
+common/util/FileUtil.cpp
+common/util/PrintFloat.cpp
+common/util/Diff.cpp  # или другой файл с реализацией google_diff
 )
 
 # Линкуем fmt если нужно

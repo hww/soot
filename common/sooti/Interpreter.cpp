@@ -2530,7 +2530,7 @@ Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const s
     auto array = args.unnamed[0].as_array();
 
     int64_t index = args.unnamed[1].as_integer();
-    if (index < 0 || index >= static_cast<int64_t>(array->size())) {
+    if (index < 0 || index >= array->size()) {
         throw_eval_error(form, "vector-set!: index out of range");
     }
 
