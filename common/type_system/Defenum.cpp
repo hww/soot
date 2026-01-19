@@ -120,11 +120,12 @@ EnumType* parse_defenum(const script::Object& defenum,
             base_type = parse_typespec(ts, option_value);
         }
         else if (option_name == ":bitfield") {
-            if (symbol_string(option_value) != "#f") {
+            if (symbol_string(option_value) == "#t") {
                 is_bitfield = true;
-            }
-            else {
-                throw std::runtime_error(":bitfield value must be #t or #f, got: " + option_value.print());
+            } else if (symbol_string(option_value) == "#f") {
+                is_bitfield = false;
+            } else {
+                    throw std::runtime_error(":bitfield value must be #t or #f, got: " + option_value.print());
             }
         }
         else if (option_name == ":copy-entries") {

@@ -10,6 +10,32 @@
         "isDefault": true
       },
       "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Build Tests",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/build && make test_build -j$(nproc)",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/build && make test_run",
+      "group": "test",
+      "dependsOn": ["Build Tests"]
+    },
+    {
+      "label": "Clean Build",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/build && rm -rf * && cmake .. && make -j$(nproc)",
+      "group": "build"
+    },
+    {
+      "label": "Clean and Build Tests",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/build && rm -rf * && cmake -DBUILD_TESTS=ON .. && make test_build -j$(nproc)",
+      "group": "build"
     }
   ]
 }

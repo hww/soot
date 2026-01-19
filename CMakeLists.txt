@@ -1,5 +1,5 @@
 ﻿# Верхний уровень
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 
 project(repl
     VERSION 1.0.0
@@ -60,18 +60,21 @@ else()
     endif()
 endif()
 
-# Build options
-option(BUILD_TESTS "Build tests" ON)
-option(BUILD_SHARED_LIBS "Build as shared library" OFF)
+# --- Build options -------------------------------------------
+# Флаг для сборки тестов (по умолчанию выключен)
+option(BUILD_TESTS "Build tests" OFF)
 
 # ВАЖНО: Отключаем тесты в fmt чтобы избежать конфликтов
 set(FMT_TEST OFF CACHE BOOL "Disable fmt tests" FORCE)
 
+option(BUILD_SHARED_LIBS "Build as shared library" OFF)
+
+# --- REVISIONS -----------------------------------------------
 # Version control will write to common/versions/revision.h file
 include(CMakeLib.txt)
 write_revision_h()
 
-
+# --- SUBPROJECTS DIRECTORIES ---------------------------------
 # Include folders
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(common)
@@ -91,13 +94,14 @@ include(common/soot/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
 include(common/xiff/CMakeLists.txt)
-#include(common/util/CMakeLists.txt)
+include(common/util/CMakeLists.txt)
 
 
 # Если у тебя есть папка с дополнительными лиспами
 # install(DIRECTORY common/lisp/ DESTINATION ${SOOT_SHARE_DIR}/lib)
 
-#### ТЕСТЫ - ПРОСТОЙ ВАРИАНТ
+# --- ТЕСТЫ -----------------------------------------------
+
 if(BUILD_TESTS)
     # Отключаем лишнее в googletest
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -116,3 +120,7 @@ if(BUILD_TESTS)
     include(tests/carbon/CMakeLists.txt)
     include(tests/engine/CMakeLists.txt)
 endif()
+
+
+
+# ---
