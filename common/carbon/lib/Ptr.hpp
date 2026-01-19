@@ -73,7 +73,7 @@ namespace runtime::lib
          * @param diff Количество элементов для смещения
          * @return Новый указатель, смещенный на diff элементов
          */
-        Ptr operator+(i32 diff) const {
+        Ptr operator+(i64 diff) const {
             return Ptr(offset + diff * sizeof(T));
         }
 
@@ -82,7 +82,7 @@ namespace runtime::lib
          * @param diff Количество элементов для обратного смещения
          * @return Новый указатель, смещенный на -diff элементов
          */
-        Ptr operator-(i32 diff) const {
+        Ptr operator-(i64 diff) const {
             return Ptr(offset - diff * sizeof(T));
         }
 

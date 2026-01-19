@@ -708,17 +708,6 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
     set_args_in_env(obj, args, lam->args, lam_env);
     return eval_list_return_last(lam->body, lam->body, lam_env);
 }
-/*!
- * Quote special form: (quote x) -> x
- */
-Object Interpreter::eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
-    auto args = get_args_no_named(form, rest, make_varargs());
-    if (!args.unnamed.size()) {
-        throw_eval_error(form, "quote requires one argument");
-    }
-    return args.unnamed.front();
-}
 
 Object Interpreter::eval_define_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     if (!rest.is_pair()) {
@@ -743,8 +732,30 @@ Object Interpreter::eval_define_special(const Object& form, const Object& rest, 
     return value;
 }
 
-Object Interpreter::eval_lambda_special(const Object& form, const Object& rest,
-    const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    auto args = get_args(form, rest, make_varargs());
+    vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
+    auto to_define = args.unnamed.at(0);
+    Object to_set = eval_with_rewind(args.unnamed.at(1), env);
+
+    std::shared_ptr<EnvironmentObject> search_env = env;
+    for (;;) {
+        auto kv = search_env->vars.lookup(to_define.as_symbol());
+        if (kv) {
+        search_env->vars.set(to_define.as_symbol(), to_set);
+        return to_set;
+        }
+
+        auto pe = search_env->parent_env;
+        if (pe) {
+        search_env = pe;
+        } else {
+            throw_eval_error(to_define, "symbol is not defined");
+        }
+    }
+}
+
+Object Interpreter::eval_lambda_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     // ...
     Object params_obj = rest.as_pair()->car;
     Object body_obj = rest.as_pair()->cdr;  // ВСЁ тело после параметров
@@ -768,39 +779,56 @@ Object Interpreter::eval_lambda_special(const Object& form, const Object& rest,
     return lambda_obj;
 }
 
+Object Interpreter::eval_macro_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "macro must receive two arguments");
+    }
+
+    Object arg_list = rest.as_pair()->car;
+    if (!arg_list.is_pair() && !arg_list.is_empty_list()) {
+        throw_eval_error(form, "macro argument list must be a list");
+    }
+
+    Object new_macro = MacroObject::make_new();
+    auto m = new_macro.as_macro();
+    m->args = parse_arg_spec(form, arg_list);
+
+    Object rrest = rest.as_pair()->cdr;
+    if (!rrest.is_pair()) {
+        throw_eval_error(form, "macro body must be a list");
+    }
+
+    m->body = rrest;
+    m->parent_env = env;
+    return new_macro;
+}
+
+/*!
+ * Quote special form: (quote x) -> x
+ */
+Object Interpreter::eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    auto args = get_args_no_named(form, rest, make_varargs());
+    if (!args.unnamed.size()) {
+        throw_eval_error(form, "quote requires one argument");
+    }
+    return args.unnamed.front();
+}
+
+/*!
+ * Quasiquote (backtick) evaluation
+ */
+Object Interpreter::eval_quasiquote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    if (rest.type != ObjectType::PAIR || rest.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
+        throw_eval_error(form, "quasiquote must have one argument!");
+    }
+    return quasiquote_helper(rest.as_pair()->car, env);
+}
+
 Object Interpreter::eval_begin_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form;
 
     return eval_list_return_last(rest, rest, env);
-}
-
-
-Object Interpreter::eval_if_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "if requires condition and branches");
-    }
-
-    Object condition_obj = rest.as_pair()->car;
-    Object then_part_obj = rest.as_pair()->cdr;
-
-    if (!then_part_obj.is_pair()) {
-        throw_eval_error(form, "if requires then branch");
-    }
-
-    Object condition_result = eval_with_rewind(condition_obj, env);
-
-    if (truthy(condition_result)) {
-        return eval_with_rewind(then_part_obj.as_pair()->car, env);
-    }
-    else {
-        Object else_part = then_part_obj.as_pair()->cdr;
-        if (else_part.is_pair()) {
-            return eval_with_rewind(else_part.as_pair()->car, env);
-        }
-        else {
-            return Object::make_empty_list();
-        }
-    }
 }
 
 Object Interpreter::eval_cond_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -842,20 +870,32 @@ Object Interpreter::eval_cond_special(const Object& form, const Object& rest, co
     return Object::make_empty_list();
 }
 
-Object Interpreter::eval_and_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)form;
-    Object current = rest;
-    Object result = object_true;
-
-    while (current.is_pair()) {
-        result = eval_with_rewind(current.as_pair()->car, env);
-        if (!truthy(result)) {
-            return result;
-        }
-        current = current.as_pair()->cdr;
+Object Interpreter::eval_if_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "if requires condition and branches");
     }
 
-    return result;
+    Object condition_obj = rest.as_pair()->car;
+    Object then_part_obj = rest.as_pair()->cdr;
+
+    if (!then_part_obj.is_pair()) {
+        throw_eval_error(form, "if requires then branch");
+    }
+
+    Object condition_result = eval_with_rewind(condition_obj, env);
+
+    if (truthy(condition_result)) {
+        return eval_with_rewind(then_part_obj.as_pair()->car, env);
+    }
+    else {
+        Object else_part = then_part_obj.as_pair()->cdr;
+        if (else_part.is_pair()) {
+            return eval_with_rewind(else_part.as_pair()->car, env);
+        }
+        else {
+            return Object::make_empty_list();
+        }
+    }
 }
 
 Object Interpreter::eval_or_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -873,27 +913,71 @@ Object Interpreter::eval_or_special(const Object& form, const Object& rest, cons
     return object_false;
 }
 
-Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    auto args = get_args(form, rest, make_varargs());
-    vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
-    auto to_define = args.unnamed.at(0);
-    Object to_set = eval_with_rewind(args.unnamed.at(1), env);
+Object Interpreter::eval_and_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form;
+    Object current = rest;
+    Object result = object_true;
 
-    std::shared_ptr<EnvironmentObject> search_env = env;
-    for (;;) {
-        auto kv = search_env->vars.lookup(to_define.as_symbol());
-        if (kv) {
-        search_env->vars.set(to_define.as_symbol(), to_set);
-        return to_set;
+    while (current.is_pair()) {
+        result = eval_with_rewind(current.as_pair()->car, env);
+        if (!truthy(result)) {
+            return result;
         }
-
-        auto pe = search_env->parent_env;
-        if (pe) {
-        search_env = pe;
-        } else {
-            throw_eval_error(to_define, "symbol is not defined");
-        }
+        current = current.as_pair()->cdr;
     }
+
+    return result;
+}
+
+Object Interpreter::eval_let_star_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "let* requires bindings and body");
+    }
+
+    Object bindings_obj = rest.as_pair()->car;
+    Object body_obj = rest.as_pair()->cdr;
+
+    if (!bindings_obj.is_list()) {
+        throw_eval_error(form, "let* bindings must be a list");
+    }
+
+    auto current_env = env;
+
+    Object current_binding = bindings_obj;
+    while (current_binding.is_pair()) {
+        Object binding = current_binding.as_pair()->car;
+
+        if (!binding.is_pair()) {
+            throw_eval_error(form, "let* binding must be a pair (name value)");
+        }
+
+        Object name_obj = binding.as_pair()->car;
+        Object value_part = binding.as_pair()->cdr;
+
+        if (!name_obj.is_symbol()) {
+            throw_eval_error(form, "let* binding name must be a symbol");
+        }
+
+        if (!value_part.is_pair()) {
+            throw_eval_error(form, "let* binding must have a value");
+        }
+
+        auto new_env = std::make_shared<EnvironmentObject>(current_env);
+
+        Object value = eval_with_rewind(value_part.as_pair()->car, current_env);
+        new_env->vars.set(name_obj.as_symbol(), value);
+
+        current_env = new_env;
+        current_binding = current_binding.as_pair()->cdr;
+    }
+
+    Object result = Object::make_empty_list();
+    Object current_body = body_obj;
+    while (current_body.is_pair()) {
+        result = eval_with_rewind(current_body.as_pair()->car, current_env);
+        current_body = current_body.as_pair()->cdr;
+    }
+    return result;
 }
 
 Object Interpreter::eval_let_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -975,90 +1059,6 @@ Object Interpreter::eval_while_special(const Object& form, const Object& rest, c
     }
 
     return result;
-}
-
-Object Interpreter::eval_macro_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "macro must receive two arguments");
-    }
-
-    Object arg_list = rest.as_pair()->car;
-    if (!arg_list.is_pair() && !arg_list.is_empty_list()) {
-        throw_eval_error(form, "macro argument list must be a list");
-    }
-
-    Object new_macro = MacroObject::make_new();
-    auto m = new_macro.as_macro();
-    m->args = parse_arg_spec(form, arg_list);
-
-    Object rrest = rest.as_pair()->cdr;
-    if (!rrest.is_pair()) {
-        throw_eval_error(form, "macro body must be a list");
-    }
-
-    m->body = rrest;
-    m->parent_env = env;
-    return new_macro;
-}
-
-Object Interpreter::eval_let_star_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "let* requires bindings and body");
-    }
-
-    Object bindings_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
-
-    if (!bindings_obj.is_list()) {
-        throw_eval_error(form, "let* bindings must be a list");
-    }
-
-    auto current_env = env;
-
-    Object current_binding = bindings_obj;
-    while (current_binding.is_pair()) {
-        Object binding = current_binding.as_pair()->car;
-
-        if (!binding.is_pair()) {
-            throw_eval_error(form, "let* binding must be a pair (name value)");
-        }
-
-        Object name_obj = binding.as_pair()->car;
-        Object value_part = binding.as_pair()->cdr;
-
-        if (!name_obj.is_symbol()) {
-            throw_eval_error(form, "let* binding name must be a symbol");
-        }
-
-        if (!value_part.is_pair()) {
-            throw_eval_error(form, "let* binding must have a value");
-        }
-
-        auto new_env = std::make_shared<EnvironmentObject>(current_env);
-
-        Object value = eval_with_rewind(value_part.as_pair()->car, current_env);
-        new_env->vars.set(name_obj.as_symbol(), value);
-
-        current_env = new_env;
-        current_binding = current_binding.as_pair()->cdr;
-    }
-
-    Object result = Object::make_empty_list();
-    Object current_body = body_obj;
-    while (current_body.is_pair()) {
-        result = eval_with_rewind(current_body.as_pair()->car, current_env);
-        current_body = current_body.as_pair()->cdr;
-    }
-    return result;
-}
-/*!
- * Quasiquote (backtick) evaluation
- */
-Object Interpreter::eval_quasiquote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    if (rest.type != ObjectType::PAIR || rest.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
-        throw_eval_error(form, "quasiquote must have one argument!");
-    }
-    return quasiquote_helper(rest.as_pair()->car, env);
 }
 
 Object build_list_with_spliced_tail(std::vector<Object>&& objects, const Object& tail) {
@@ -1164,7 +1164,7 @@ Object Interpreter::quasiquote_helper(const Object& form,
 }
 
 // ==============================================
-// Конвертирование типов
+// Конвертирование типов lpres
 // ==============================================
 
 int64_t Interpreter::number_to_integer(const Object& obj) {
@@ -1543,11 +1543,9 @@ ArgumentSpec Interpreter::make_varargs() {
     return spec;
 }
 
-
 // ==============================================
 // Системные функции(print, pprint, inspect)
 // ==============================================
-
 
 Object Interpreter::eval_print(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
@@ -1956,10 +1954,7 @@ Object Interpreter::eval_sqrt(const Object& form, Arguments& args, const std::sh
     return Object::make_float(std::sqrt(val));
 }
 
-
-Object Interpreter::eval_ash(const Object& form,
-    Arguments& args,
-    const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_ash(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {}, {} }, {});
     auto val = number_to_integer(args.unnamed.at(0));
@@ -1974,6 +1969,7 @@ Object Interpreter::eval_ash(const Object& form,
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
     }
 }
+
 // ==============================================
 // Bit operations
 // ==============================================
@@ -2051,7 +2047,6 @@ Object Interpreter::eval_rshift(const Object& form, Arguments& args, const std::
 // ==============================================
 // Функции сравнения с проверками
 // ==============================================
-
 
 Object Interpreter::eval_numequals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -2163,7 +2158,6 @@ Object Interpreter::eval_list_func(const Object& form, Arguments& args, const st
     }
     return result;
 }
-
 
 Object Interpreter::eval_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;

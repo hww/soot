@@ -80,8 +80,6 @@
 ; Closing macro character for indirect and indexed adressing modes
 (set-macro-character #\] ")")
 
-(print 3)
-
 ; z80 register codes, needed often during instruction assembling
 (setq *reg-codes* (make-hash-table :size 11))
 
