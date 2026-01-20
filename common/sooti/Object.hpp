@@ -33,8 +33,7 @@ namespace script
         SYMBOL, KEYWORD, STRING, 
         LAMBDA, MACRO, 
         ENVIRONMENT, 
-        READER, 
-        LEXTOKEN
+        READER
     };
 
     std::string object_type_to_string(ObjectType type);
@@ -208,8 +207,6 @@ namespace script
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_reader() const { return type == ObjectType::READER; }
-        bool is_lextoken() const { return type == ObjectType::LEXTOKEN; }
-        bool is_symbol(const std::string& name) const { return is_symbol() && as_symbol() == name; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
 
         // Evaluates the truthiness of an object. Since the Object class lacks access 
@@ -798,18 +795,6 @@ namespace script
     };
 
 
-    class LextokenObject : public HeapObject {
-        public:
-        Object      type;      // Например, символ 'OPCODE или 'REGISTER
-        Object      value;     // Например, "MOV" или 7
-        TextRef     location;  // Ссылка на файл, строку и колонку в .asm файле
-
-        explicit LextokenObject(const Object& type, const Object& value, const TextRef& location): type(type),  value(value), location(location) {}
-        ~LextokenObject() override = default;
-
-        std::string print() const override;
-        Object inspect(SymbolTable& symbols) const override;
-    };
 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);

@@ -62,7 +62,7 @@ endif()
 
 # --- Build options -------------------------------------------
 # Флаг для сборки тестов (по умолчанию выключен)
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 
 # ВАЖНО: Отключаем тесты в fmt чтобы избежать конфликтов
 set(FMT_TEST OFF CACHE BOOL "Disable fmt tests" FORCE)
@@ -93,6 +93,7 @@ include(common/sooti/CMakeLists.txt)
 include(common/soot/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
+#include(common/carbonc/CMakeLists.txt)
 include(common/xiff/CMakeLists.txt)
 include(common/util/CMakeLists.txt)
 
@@ -103,24 +104,26 @@ include(common/util/CMakeLists.txt)
 # --- ТЕСТЫ -----------------------------------------------
 
 if(BUILD_TESTS)
-    # Отключаем лишнее в googletest
+    # enable_testing должен быть вызван в корневом файле обязательно
+    enable_testing()
+    
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-    
-    if(WIN32)
-        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    endif()
-    
-    # Добавляем googletest
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
-    enable_testing()
+    # Подключаем тесты
     include(tests/sooti/CMakeLists.txt)
-    include(tests/type_system/CMakeLists.txt)
+    include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
     include(tests/carbon/CMakeLists.txt)
     include(tests/engine/CMakeLists.txt)
 endif()
 
-
-
-# ---
+# Создать общую цель для сборки всех тестов
+add_custom_target(tests
+    COMMENT "Building all tests"
+    DEPENDS 
+        sooti_test
+        typesys_tests  # ИСПРАВЛЕНО: было type_system_test
+        carbon_test
+        engine_test
+)

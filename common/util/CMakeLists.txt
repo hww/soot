@@ -14,7 +14,8 @@ common/util/StringUtil.cpp
 common/util/UnicodeUtil.cpp 
 common/util/FileUtil.cpp
 common/util/PrintFloat.cpp
-common/util/Diff.cpp  # или другой файл с реализацией google_diff
+common/util/Diff.cpp  
+common/util/math/Geometry.cpp  
 )
 
 # Линкуем fmt если нужно

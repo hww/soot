@@ -8,7 +8,7 @@
 TypeSpec state_to_go_function(const TypeSpec& state_type, const TypeSpec& return_type) {
     ASSERT(state_type.base_type() == "state");
     std::vector<TypeSpec> arg_types;
-    for (int i = 0; i < (int)state_type.arg_count() - 1; i++) {
+    for (int i = 0; i < (int)state_type.get_args_count() - 1; i++) {
         arg_types.push_back(state_type.get_arg(i));
     }
 
@@ -115,7 +115,7 @@ std::vector<std::string> get_state_handler_arg_names(StateHandler kind) {
 namespace {
     TypeSpec func_to_state_type(const TypeSpec& func_type, const TypeSpec& proc_type) {
         TypeSpec result("state");
-        for (int i = 0; i < ((int)func_type.arg_count()) - 1; i++) {
+        for (int i = 0; i < ((int)func_type.get_args_count()) - 1; i++) {
             result.add_arg(func_type.get_arg(i));
         }
         result.add_arg(proc_type);
@@ -128,23 +128,23 @@ std::optional<TypeSpec> get_state_type_from_enter_and_code(const TypeSpec& enter
     const TypeSpec& proc_type,
     const TypeSystem& ts) {
     bool enter_real_func =
-        enter_func_type.base_type() == "function" && enter_func_type.arg_count() > 0;
-    bool code_real_func = code_func_type.base_type() == "function" && code_func_type.arg_count() > 0;
+        enter_func_type.base_type() == "function" && enter_func_type.get_args_count() > 0;
+    bool code_real_func = code_func_type.base_type() == "function" && code_func_type.get_args_count() > 0;
 
     if (enter_real_func && code_real_func) {
         int i = 0;
         TypeSpec result("state");
-        for (; i < std::min((int)enter_func_type.arg_count(), (int)code_func_type.arg_count()) - 1;
+        for (; i < std::min((int)enter_func_type.get_args_count(), (int)code_func_type.get_args_count()) - 1;
             i++) {
             result.add_arg(
                 ts.lowest_common_ancestor(enter_func_type.get_arg(i), code_func_type.get_arg(i)));
         }
 
-        for (; i < ((int)enter_func_type.arg_count()) - 1; i++) {
+        for (; i < ((int)enter_func_type.get_args_count()) - 1; i++) {
             result.add_arg(enter_func_type.get_arg(i));
         }
 
-        for (; i < ((int)code_func_type.arg_count()) - 1; i++) {
+        for (; i < ((int)code_func_type.get_args_count()) - 1; i++) {
             result.add_arg(code_func_type.get_arg(i));
         }
 
@@ -164,11 +164,11 @@ std::optional<TypeSpec> get_state_type_from_enter_and_code(const TypeSpec& enter
 
 std::optional<TypeSpec> get_state_type_from_func(const TypeSpec& func_type,
     const TypeSpec& proc_type) {
-    bool real_func = func_type.base_type() == "function" && func_type.arg_count() > 0;
+    bool real_func = func_type.base_type() == "function" && func_type.get_args_count() > 0;
 
     if (real_func) {
         TypeSpec result("state");
-        for (int i = 0; i < (int)func_type.arg_count() - 1; i++) {
+        for (int i = 0; i < (int)func_type.get_args_count() - 1; i++) {
             result.add_arg(func_type.get_arg(i));
         }
         result.add_arg(proc_type);

@@ -57,6 +57,9 @@ namespace {
         if (obj.is_symbol()) {
             return obj.as_symbol().name_ptr;
         }
+        if (obj.is_keyword()) {
+            return obj.as_keyword().name_ptr;
+        }
         throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
     }
 
@@ -142,7 +145,7 @@ namespace {
                         }
                         offset_override = overlay_field.offset();
                     }
-                    else if (param.is_pair() && car(&param).is_symbol("->")) {
+                    else if (param.is_pair() && symbol_string(car(&param)) == "->") {
                         auto name_it = cdr(&param);
                         if (name_it->is_empty_list()) {
                             throw std::runtime_error(
@@ -386,15 +389,19 @@ namespace {
             method_name = symbol_string(car(obj));
             obj = cdr(obj);
 
-            if (!obj->is_empty_list() && car(obj).is_symbol(":override-doc")) {
-                obj = cdr(obj);
-                if (car(obj).is_string()) {
-                    docstring = str_util::trim_newline_indents(car(obj).as_string()->data);
-                    overriding_doc = true;
+            if (!obj->is_empty_list() && car(obj).is_keyword())
+            { 
+                auto kw =  symbol_string(car(obj));
+                if (kw == ":override-doc") {
                     obj = cdr(obj);
-                }
-                else {
-                    throw std::runtime_error("Specified :override-doc with no docstring!");
+                    if (car(obj).is_string()) {
+                        docstring = str_util::trim_newline_indents(car(obj).as_string()->data);
+                        overriding_doc = true;
+                        obj = cdr(obj);
+                    }
+                    else {
+                        throw std::runtime_error("Specified :override-doc with no docstring!");
+                    }
                 }
             }
 
@@ -417,8 +424,8 @@ namespace {
                 // this int is assumed to be the id, and always at the end!
                 //
                 // Doing it like this makes the ordering not critical
-                while (!obj->is_empty_list() && car(obj).is_symbol()) {
-                    const auto& keyword = car(obj).as_symbol();
+                while (!obj->is_empty_list() && car(obj).is_keyword()) {
+                    const auto& keyword = car(obj).as_keyword();
                     if (keyword.name_ptr == ":no-virtual") {
                         no_virtual = true;
                     }

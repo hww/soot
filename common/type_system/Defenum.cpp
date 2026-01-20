@@ -9,6 +9,9 @@ namespace {
         if (obj.is_symbol()) {
             return obj.as_symbol().name_ptr;
         }
+        if (obj.is_keyword()) {
+            return obj.as_keyword().name_ptr;
+        }        
         throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
     }
 
@@ -102,7 +105,7 @@ EnumType* parse_defenum(const script::Object& defenum,
     while (!iter->is_empty_list() && iter->is_pair()) {
         auto& current = iter->as_pair()->car;
 
-        if (!current.is_symbol() || !current.as_symbol().starts_with_colon()) {
+        if (!current.is_keyword()) {
             break; // не опция, переходим к entries
         }
 

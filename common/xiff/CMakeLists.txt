@@ -10,7 +10,13 @@ target_include_directories(libxiff PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/common/xiff/include
 )
 
-target_link_libraries(libxiff PRIVATE libsoti fmt replxx )
+target_link_libraries(libxiff PRIVATE 
+libsoti 
+libsoticore 
+libtypesys
+fmt 
+replxx 
+libsootutils)
 
 if(WIN32)
     target_link_libraries(libxiff PRIVATE ws2_32)

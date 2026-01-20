@@ -1,59 +1,39 @@
 {
-  "C_Cpp_Runner.cCompilerPath": "gcc",
-  "C_Cpp_Runner.cppCompilerPath": "g++",
-  "C_Cpp_Runner.debuggerPath": "gdb",
-  "C_Cpp_Runner.cStandard": "",
-  "C_Cpp_Runner.cppStandard": "",
-  "C_Cpp_Runner.msvcBatchPath": "",
-  "C_Cpp_Runner.useMsvc": false,
-  "C_Cpp_Runner.warnings": [
-    "-Wall",
-    "-Wextra",
-    "-Wpedantic",
-    "-Wshadow",
-    "-Wformat=2",
-    "-Wcast-align",
-    "-Wconversion",
-    "-Wsign-conversion",
-    "-Wnull-dereference"
-  ],
-  "C_Cpp_Runner.msvcWarnings": [
-    "/W4",
-    "/permissive-",
-    "/w14242",
-    "/w14287",
-    "/w14296",
-    "/w14311",
-    "/w14826",
-    "/w44062",
-    "/w44242",
-    "/w14905",
-    "/w14906",
-    "/w14263",
-    "/w44265",
-    "/w14928"
-  ],
-  "C_Cpp_Runner.enableWarnings": true,
-  "C_Cpp_Runner.warningsAsError": false,
-  "C_Cpp_Runner.compilerArgs": [],
-  "C_Cpp_Runner.linkerArgs": [],
-  "C_Cpp_Runner.includePaths": [],
-  "C_Cpp_Runner.includeSearch": [
-    "*",
-    "**/*"
-  ],
-  "C_Cpp_Runner.excludeSearch": [
-    "**/build",
-    "**/build/**",
-    "**/.*",
-    "**/.*/**",
-    "**/.vscode",
-    "**/.vscode/**"
-  ],
-  "C_Cpp_Runner.useAddressSanitizer": false,
-  "C_Cpp_Runner.useUndefinedSanitizer": false,
-  "C_Cpp_Runner.useLeakSanitizer": false,
-  "C_Cpp_Runner.showCompilationTime": false,
-  "C_Cpp_Runner.useLinkTimeOptimization": false,
-  "C_Cpp_Runner.msvcSecureNoWarnings": false
+    // 1. Главная настройка: заставляем IntelliSense брать пути из CMake
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    
+    // 2. Исправляем C_Cpp_Runner, чтобы он не индексировал лишнего
+    "C_Cpp_Runner.includeSearch": [
+        "${workspaceFolder}/common/**",
+        "${workspaceFolder}/third_party/**"
+    ],
+    "C_Cpp_Runner.excludeSearch": [
+        "**/build/**",
+        "**/.*/**",
+        "**/.vscode/**",
+        "**/.git/**"
+    ],
+
+    // 3. Настройки индексации (IntelliSense)
+    "C_Cpp.intelliSenseEngine": "default",
+    // Запрещаем сканировать папку build для поиска исходников (чтобы не дублировать символы)
+    "C_Cpp.files.exclude": {
+        "**/build/**": true
+    },
+
+    // 4. Настройки CMake Tools для корректной сборки
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureSettings": {
+        "BUILD_TESTS": "ON",
+        "FMT_TEST": "OFF"
+    },
+    // Отключаем встроенный проводник тестов CMake, чтобы не было дублей
+    "cmake.testing.enabled": false,
+    // Оставляем управление за TestMate
+    "testMate.cpp.test.executables": "build/bin/*test*",
+    "testMate.cpp.test.onConfigurationChange": "reload",
+    // Это заставит CMake пересобирать зависимости при изменении исходников
+    "cmake.buildBeforeRun": true,
+    "cmake.autoSelectActiveFolder": true,
+    "cmake.generator": "Unix Makefiles"
 }

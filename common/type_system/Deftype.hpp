@@ -13,6 +13,5 @@ struct DeftypeResult {
 };
 
 TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src);
-DeftypeResult parse_deftype(const script::Object& deftype,
-    TypeSystem* ts,
-    script::EnvironmentMap* constants = nullptr);
+
+DeftypeResult parse_deftype(const script::Object& deftype, TypeSystem* ts, script::EnvironmentMap* constants = nullptr);

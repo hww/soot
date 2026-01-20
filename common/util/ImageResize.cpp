@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-#include "common/math/Vector.h"
+#include "common/util/math/Vector.hpp"
 
 namespace {
 struct BilinearSample {
