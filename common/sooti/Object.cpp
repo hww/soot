@@ -65,7 +65,6 @@ namespace script
             case ObjectType::MACRO:         return core.macro;
             case ObjectType::ENVIRONMENT:   return core.environment;
             case ObjectType::READER:        return core.reader;
-            case ObjectType::LEXTOKEN:      return core.lextoken;
             default:                        return core.unknown;
         }
     }
@@ -203,8 +202,6 @@ namespace script
         return "[string-hash-table]";
         case ObjectType::READER:
         return "[reader]";
-        case ObjectType::LEXTOKEN:
-        return "[lextoken]";
         case ObjectType::KEYWORD:
         return "[keyword]";
         default:
@@ -309,15 +306,6 @@ namespace script
         Object obj;
         obj.type = ObjectType::READER;
         obj.heap_obj = std::make_shared<ReaderObject>(textStream);
-        return obj;    
-    }
-
-    Object Object::make_lextoken(const Object& type, const Object& value, const TextRef& info)
-    {
-        Object obj;
-        obj.type = ObjectType::LEXTOKEN;
-        // Создаем shared_ptr для твоего нового класса
-        obj.heap_obj = std::make_shared<LextokenObject>(type, value, info);
         return obj;    
     }
 
@@ -443,7 +431,7 @@ namespace script
     }
     
     const InternedSymbolPtr& Object::as_keyword() const {
-        if (type != ObjectType::SYMBOL) {
+        if (type != ObjectType::KEYWORD) {
             throw std::runtime_error("as_symbol called on a " + object_type_to_string(type) +
                 " " + print());
         }
@@ -472,15 +460,7 @@ namespace script
         }
         return dynamic_cast<ReaderObject*>(heap_obj.get());
     }
-    
-    LextokenObject* Object::as_lextoken() const {
-        if (type != ObjectType::LEXTOKEN) {
-            throw std::runtime_error("as_lextoken called on a " + object_type_to_string(type) +
-                " " + print());
-        }
-        return dynamic_cast<LextokenObject*>(heap_obj.get());
-    }
-
+  
     std::vector<Object> Object::as_c_vector() const {
         if (!is_list())
             throw std::runtime_error("as_vector called on a " + object_type_to_string(type) + " " + print());
@@ -682,11 +662,6 @@ namespace script
         return "#<reader-stream>"; 
     }
 
-    std::string LextokenObject::print() const { 
-        // Используем printc(), чтобы токен выглядел как #<lextoken SYMBOL>, а не #<lextoken "SYMBOL">
-        return fmt::format("#<lextoken {}>", value.printc()); 
-    }
-
     // PairObject implementations
     std::string PairObject::print() const {
         std::stringstream ss;
@@ -884,13 +859,6 @@ namespace script
         ListBuilder lb{symbols};
         lb.push_back(Object::make_symbol(&symbols, "reader"));
         lb.push_kv(symbols, "line", Object::make_integer(ts ? ts->line_count : 0));
-        return lb.finalize();
-    }
-
-    Object LextokenObject::inspect(SymbolTable& symbols) const {
-        ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "lextoken"));
-        lb.push_kv(symbols, "value", value);
         return lb.finalize();
     }
 

@@ -2,6 +2,7 @@
 
 #include "common/sooti/Reader.hpp"
 #include "common/sooti/Object.hpp"
+#include "common/sooti/SootTypeSystem.hpp"
 #include <iostream>
 #include <functional>
 #include <unordered_map>
@@ -35,9 +36,33 @@ namespace script
         }
     };
 
-    class Interpreter {
+    class Interpreter  {
+        friend class SootTypeSystem;
     public:
         Interpreter(const std::string& username = "user", bool load_libs = false);
+
+        // --- Псевдонимы типов ---
+        // Для форм, которые сами решают, что вычислять (quote, define, if)
+        using SpecialFormMethod = Object(Interpreter::*)(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Для стандартных функций (аргументы уже вычислены)
+        using BuiltinFormMethod = Object(Interpreter::*)(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // --- Методы регистрации ---
+        void add_special_form(std::string name, SpecialFormMethod form) {
+            void* key = (void*)intern_ptr(name).name_ptr;           
+            special_forms[key] = form; // Теперь это map
+        }
+
+        void add_builtin_form(std::string name, BuiltinFormMethod form) {
+            void* key = (void*)intern_ptr(name).name_ptr;           
+            builtin_forms[key] = form;
+        }
+
+        void add_custom_form(std::string name, BuiltinFormMethod form) {
+            void* key = (void*)intern_ptr(name).name_ptr;           
+            m_custom_forms.push_back({key, form}); // Для вектора используем push_back
+        }
 
         void load_library();
 
@@ -73,18 +98,21 @@ namespace script
         // REPL
         void execute_repl();
 
-        // Доступ к ридеру
+        // --- Доступ к приватным членам -------
+        // Лоступ к Reader
         Reader& get_reader() { return reader; }
-
         // Лоступ к окружению
         Object get_global_environment() { return global_environment; }
-
+        SymbolTable& get_symbols() { return reader.get_symbol_table(); }
+        TextDb& get_db() { return reader.get_db(); }
+        // Константы
+        Object get_nil() { return object_nil; }
+        Object get_true() { return object_true; }
+        Object get_false() { return object_false; }
         // Boolean helpers (используют символы)
         Object true_or_false(bool value) { return value ? object_true : object_false; }
-
-        bool truthy(const Object& o)  const { 
-            return o.truthy(object_false.as_symbol());
-        }
+        // Check if value is true
+        bool truthy(const Object& o)  const { return o.truthy(object_false.as_symbol()); }
 
         // Помощники для чисел
         bool is_number(const Object& obj);
@@ -206,13 +234,6 @@ namespace script
         Object eval_read_delimited_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_reader_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-        // LexToken
-        Object eval_make_lextoken(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lextoken_type(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lextoken_value(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lextoken_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_lextoken_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-
         // Система
         Object eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_env(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -258,63 +279,43 @@ namespace script
 
         // Quasiquote helpers
         Object quasiquote_helper(const Object& form, const std::shared_ptr<EnvironmentObject>& env);
-        
+               
+        // Основной метод оценки пар
+        Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
+
         // Улучшенная обработка аргументов
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);
         void set_args_in_env(const Object& form, const Arguments& args,
         const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
-
-        // Основной метод оценки пар
-        Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
-
-        void init_special_forms(
-            const std::unordered_map<std::string,
-            Object(Interpreter::*)(const Object&,
-                const Object&,
-                const std::shared_ptr<EnvironmentObject>&)>&
-            forms);
-
-        void init_builtin_forms(
-            const std::unordered_map<std::string,
-            Object(Interpreter::*)(const Object&,
-                Arguments&,
-                const std::shared_ptr<EnvironmentObject>&)>&
-            forms);
-
         void vararg_check(const Object& form,
             const Arguments& args,
             const std::vector<std::optional<ObjectType>>& unnamed,
             const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
 
+        Object eval_ts_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ts_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ts_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-        // Таблицы форм
-        std::unordered_map<
-            void*,
-            Object(Interpreter::*)(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>&)>
-            builtin_forms;
+        Object eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-        std::vector<std::pair<
-            void*,
-            std::function<Object(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>&)>>>
-            m_custom_forms;
+        // --- Инициализация Хранилища ---       
+        void init_special_forms(const std::unordered_map<std::string, SpecialFormMethod>& forms);
+        void init_builtin_forms(const std::unordered_map<std::string, BuiltinFormMethod>& forms);        
+        // --- Хранилища ---
+        // Быстрый поиск для базовых вещей
+        std::unordered_map<void*, BuiltinFormMethod> builtin_forms;
+        std::unordered_map<void*, SpecialFormMethod> special_forms;
 
-        std::vector<std::pair<void*,
-            Object(Interpreter::*)(const Object& form,
-                const Object& rest,
-                const std::shared_ptr<EnvironmentObject>& env)>>
-            special_forms;
+        // Вектор для кастомных форм (если важен порядок перехвата)
+        std::vector<std::pair<void*, BuiltinFormMethod>> m_custom_forms;
 
-
-        // Для проверки типов
-        std::unordered_map<std::string, ObjectType> 
-            string_to_type;
-
-        // Карта: Имя Геттера -> Имя Сеттера
-        std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> 
-            setter_map;
-        
+        // Типы и Сеттеры
+        std::unordered_map<std::string, ObjectType> string_to_type;
+        std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> setter_map;
+            
         // Состояние
-        Reader  reader;
         Object  object_true;
         Object  object_false;
         const char* symbol_true;
@@ -325,6 +326,8 @@ namespace script
         Object  comp_env;
         bool    disable_printing = false;
         int     stack_depth;
+        std::unique_ptr<SootTypeSystem> m_type_system; // Реализатор
+        Reader  reader;
     };
 
     fmt::terminal_color string_to_color(const std::string& name);

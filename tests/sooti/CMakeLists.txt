@@ -30,7 +30,7 @@ add_executable(sooti_test
 )
 
 # Линкуем с нашей библиотекой и gtest
-target_link_libraries(sooti_test libsoti gtest_main fmt)
+target_link_libraries(sooti_test libsoti libtypesys gtest_main fmt)
 target_include_directories(sooti_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
 if(MSVC)

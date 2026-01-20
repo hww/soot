@@ -150,7 +150,8 @@ void ReplWrapper::execute_line(const std::string& line) {
 }
 
 void ReplWrapper::print_welcome(const std::vector<std::string>& loaded_projects) {
-// Используем "графитовый" или стальной цвет для рамок
+    (void)loaded_projects;
+    // Используем "графитовый" или стальной цвет для рамок
     auto border_color = fg(fmt::color::dim_gray);
     auto title_color = fg(fmt::color::light_gray) | fmt::emphasis::bold;
     auto accent_color = fg(fmt::color::orange_red); // Цвет тлеющего уголька для акцента
@@ -258,8 +259,7 @@ replxx::Replxx::completions_t ReplWrapper::get_completions(const std::string& in
 }
 
 // Hints возвращает vector<pair<string, Color>>  
-replxx::Replxx::hints_t ReplWrapper::get_hints(
-    const std::string& input, int& context_len, replxx::Replxx::Color& color) {
+replxx::Replxx::hints_t ReplWrapper::get_hints(const std::string& input, int& context_len, replxx::Replxx::Color& color) {
 
     replxx::Replxx::hints_t hints;
 
@@ -385,6 +385,7 @@ void ReplWrapper::run_client(std::string host, int port) {
 // ============================================================
 
 bool ReplWrapper::run_server_impl(std::string host, int port) {
+    (void)host;
     if (is_server_running_) return true;
 
     // Серверная часть: слушаем входящие
@@ -493,6 +494,7 @@ void ReplWrapper::stop_network_server() {
 }
 
 void ReplWrapper::network_server_worker(int port) {
+    (void)port;
     lg::info("Network worker started, calling get_msg() loop");
     
     while (is_server_running_) {

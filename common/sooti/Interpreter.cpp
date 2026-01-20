@@ -2,6 +2,8 @@
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Printer.hpp"
+#include "common/sooti/Object.hpp"
+
 
 #include "fmt/args.h"
 #include "fmt/base.h"
@@ -23,10 +25,16 @@
 
 namespace script 
 {
-    Interpreter::Interpreter(const std::string& username, bool load_libs) : reader(this), setter_map() {
-        // Инициализируем boolean объекты как символы
-        auto& symbols = reader.get_symbol_table();
 
+    Interpreter::Interpreter(const std::string& username, bool load_libs) 
+    :   reader(this), 
+        setter_map(),
+        m_type_system(std::make_unique<SootTypeSystem>(*this)) 
+    {
+        reader.set_lambda_caller([this](const Object& lambda, const std::vector<Object>& args) {
+                return this->call_lambda(lambda, args);
+            });
+        // Инициализируем boolean объекты как символы
         object_true    = reader.get_symbol_table().core.object_true;;
         object_false   = reader.get_symbol_table().core.object_false;
         object_nil     = reader.get_symbol_table().core.object_nil;
@@ -46,7 +54,7 @@ namespace script
         define_var_in_env(comp_env, comp_env, "*comp-env*");
         define_var_in_env(comp_env, global_environment, "*global-env*");
 
-        auto user = Object::make_symbol(&symbols, username.c_str());
+        auto user = Object::make_symbol(reader.get_symbol_table(), username.c_str());
         define_var_in_env(global_environment, user, "*user*");
 
         // Инициализация string_to_type для type?
@@ -63,10 +71,9 @@ namespace script
             {"macro", ObjectType::MACRO},
             {"environment", ObjectType::ENVIRONMENT},
             {"reader", ObjectType::READER},
-            {"lextoken", ObjectType::LEXTOKEN},
             {"keyword", ObjectType::KEYWORD},
         };
-
+        
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
         init_special_forms({
             {"define", &Interpreter::eval_define_special},
@@ -84,10 +91,11 @@ namespace script
             {"quasiquote", &Interpreter::eval_quasiquote_special},
             {"while", &Interpreter::eval_while_special},
             {"top-level", &Interpreter::eval_begin_special}, // top level evaluation
+
             });
 
-    // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
-    init_builtin_forms({ {
+        // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
+        init_builtin_forms({ {
             // Математические
             {"+",   &Interpreter::eval_plus},
             {"-",   &Interpreter::eval_minus},
@@ -127,7 +135,6 @@ namespace script
             {"procedure?",  &Interpreter::eval_procedure_p},
             {"boolean?",    &Interpreter::eval_boolean_p},
             {"reader?",     &Interpreter::eval_reader_p},
-            {"lextoken?",   &Interpreter::eval_lextoken_p},
 
             // Сравнение
             {"eq?",     &Interpreter::eval_equals},     // было eval_eq
@@ -189,12 +196,6 @@ namespace script
             {"peek-char",           &Interpreter::eval_peek_char},
             {"read-delimited-list", &Interpreter::eval_read_delimited_list},
 
-            // Lexer tokens
-            {"make-lextoken",  &Interpreter::eval_make_lextoken},
-            {"lextoken-type",  &Interpreter::eval_lextoken_type},
-            {"lextoken-value", &Interpreter::eval_lextoken_value},
-            {"lextoken-info",  &Interpreter::eval_lextoken_info},
-
             // Macro system
             {"macroexpand", &Interpreter::eval_macroexpand},
             
@@ -238,7 +239,20 @@ namespace script
             {"time-milliseconds",   &Interpreter::eval_time_milliseconds},
             {"time-microseconds",   &Interpreter::eval_time_microseconds},
             {"time-nanoseconds",    &Interpreter::eval_time_nanoseconds},
-        } });
+            // Отладка 
+            {"source-info",    &Interpreter::eval_source_info},
+
+        }});
+
+    // Type system
+    m_type_system->init_type_system();
+
+    add_special_form("defenum",   &Interpreter::eval_ts_defenum_special);   // does not return anything
+    add_special_form("deftype",   &Interpreter::eval_ts_deftype_special);   // does not return anything
+    add_special_form("typespec",  &Interpreter::eval_ts_typespec_special);  // return s-expression of typespec
+    add_builtin_form("type-info", &Interpreter::eval_ts_type_to_lisp);      // return s-expression of type
+    add_builtin_form("type-list", &Interpreter::eval_ts_types_list);        // return s-expression list of types
+
     // load the standard library
     if (load_libs) load_library();
 }
@@ -248,27 +262,17 @@ void Interpreter::load_library() {
     eval_with_rewind(reader.read_from_string(cmd), global_environment.as_env_ptr());
 }
 
-void Interpreter::init_builtin_forms(
-    const std::unordered_map<std::string,
-    Object(Interpreter::*)(const Object&,
-        Arguments&,
-        const std::shared_ptr<EnvironmentObject>&)>&
-    forms) {
+void Interpreter::init_builtin_forms(const std::unordered_map<std::string, BuiltinFormMethod>& forms) {
     for (const auto& [name, fn] : forms) {
-        builtin_forms[(void*)intern_ptr(name).name_ptr] = fn;
+        add_builtin_form(name, fn);
     }
 }
 
-void Interpreter::init_special_forms(
-    const std::unordered_map<std::string,
-    Object(Interpreter::*)(const Object&,
-        const Object&,
-        const std::shared_ptr<EnvironmentObject>&)>&
-    forms) {
+void Interpreter::init_special_forms(const std::unordered_map<std::string, SpecialFormMethod>& forms) {
     for (const auto& [name, fn] : forms) {
-        special_forms.push_back(std::make_pair((void*)intern_ptr(name).name_ptr, fn));
+        add_special_form(name,fn);
     }
-}
+} 
 // ==============================================
 // Environment 
 // ==============================================
@@ -551,6 +555,8 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
 
 Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
+    case ObjectType::KEYWORD:
+        return obj;
     case ObjectType::SYMBOL:
         return eval_symbol(obj, env);
     case ObjectType::PAIR:
@@ -563,7 +569,6 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::ARRAY:
     case ObjectType::STRING_HASH_TABLE:
     case ObjectType::READER:
-    case ObjectType::LEXTOKEN: 
         return obj;
     case ObjectType::LAMBDA:
         return eval_pair(obj, env);
@@ -597,6 +602,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
 Object Interpreter::eval_list_return_last(const Object& form,
     Object rest,
     const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form;
     if (rest.is_empty_list()) {
         return rest;
     }
@@ -655,7 +661,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         for (const auto& cf : m_custom_forms) {
             if (cf.first == head_sym.name_ptr) {
                 Arguments args = get_args(obj, rest, make_varargs());
-                return (cf.second)(obj, args, env);
+                return ((*this).*cf.second)(obj, args, env);
             }
         }
 
@@ -1177,6 +1183,7 @@ int64_t Interpreter::number_to_integer(const Object& obj) {
     else {
         throw_eval_error(obj, "object cannot be converted to integer");
     }
+    return 0;
 }
 
 double Interpreter::number_to_float(const Object& obj) {
@@ -1225,8 +1232,8 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
         const auto& arg = current->as_pair()->car;
 
         // did we get a ":keyword"
-        if (arg.is_symbol() && arg.as_symbol().name_ptr && arg.as_symbol().name_ptr[0] == ':') {
-            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
+        if (arg.is_keyword()) {
+            auto key_name = std::string(arg.as_keyword().name_ptr + 1);
             const auto& kv = spec.named.find(key_name);
 
             // check for unknown key name
@@ -1965,9 +1972,11 @@ Object Interpreter::eval_ash(const Object& form, Arguments& args, const std::sha
     else if (sa > -64) {
         return Object::make_integer(val >> -sa);
     }
-    else {
+    else 
+    {
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
     }
+    return Object::make_empty_list();
 }
 
 // ==============================================
@@ -2308,12 +2317,6 @@ Object Interpreter::eval_reader_p(const Object & form, Arguments & args, const s
     return true_or_false(args.unnamed[0].is_reader());
 }
 
-Object Interpreter::eval_lextoken_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
-    (void)env;
-    vararg_check(form, args, { {} }, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_lextoken());
-}
-
 // ==============================================
 // Apply 
 // ==============================================
@@ -2560,7 +2563,7 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
 // ==============================================
 
 Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
+    (void)form; (void)env;
     
     // 1. Извлекаем настройки из именованных аргументов
     size_t size = args.named.count("size") ? args.named.at("size").as_integer() : 16;
@@ -2780,6 +2783,7 @@ Object Interpreter::eval_system(const Object& form, Arguments& args, const std::
 
 
 Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)form; (void)env;
     int code = 0;
     if (!args.unnamed.empty() && args.unnamed[0].is_integer()) {
         code = args.unnamed[0].as_integer();
@@ -3106,6 +3110,7 @@ Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args
 
 
 Object Interpreter::eval_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
         throw_eval_error(form, "read: requires a reader object");
     }
@@ -3121,6 +3126,7 @@ Object Interpreter::eval_read(const Object& form, Arguments& args, const std::sh
 }
 
 Object Interpreter::eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
         throw_eval_error(form, "read-char: requires a reader object");
     }
@@ -3138,6 +3144,7 @@ Object Interpreter::eval_read_char(const Object& form, Arguments& args, const st
 }
 
 Object Interpreter::eval_peek_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     if (args.unnamed.empty() || !args.unnamed[0].is_reader()) {
         throw_eval_error(form, "peek-char: requires a reader object");
     }
@@ -3155,6 +3162,7 @@ Object Interpreter::eval_peek_char(const Object& form, Arguments& args, const st
 }
 
 Object Interpreter::eval_read_delimited_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     // 1. Проверяем минимальное количество аргументов (Reader обязателен)
     if (args.unnamed.size() != 2) {
         throw_eval_error(form, "read-delimited-list requires at least 1 argument (reader)");
@@ -3248,75 +3256,23 @@ std::string Interpreter::get_all_symbols_matching(const std::string& prefix) {
 // Lex Tokens
 // ==============================================
 
-Object Interpreter::eval_make_lextoken(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // Добавим проверку: мы ожидаем либо 2 позиционных, либо именованные
-    // Для простоты сейчас сделаем поддержку :type и :value как в CL
-    vararg_check(form, args, {}, {
-        {"type",  {false, {}}}, // Опциональные, так как можем задать дефолты
-        {"value", {false, {}}}
-    });
+Object Interpreter::eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Ждем один аргумент — любую форму (символ, число или cons-пару)
+    vararg_check(form, args, { ObjectType::PAIR }, { });
 
-    // 1. Извлекаем параметры. Если именованных нет, пробуем взять первые два позиционных
-    Object type = Object::make_symbol(&reader.get_symbol_table(), "unknown");
-    if (args.named.count("type")) type = args.named.at("type");
-    else if (args.unnamed.size() >= 1) type = args.unnamed[0];
-
-    Object value = Object::make_empty_list();
-    if (args.named.count("value")) value = args.named.at("value");
-    else if (args.unnamed.size() >= 2) value = args.unnamed[1];
-
-    // 2. Метаданные (работает отлично, судя по твоему логу ("repl" 0 15))
-    auto info_opt = reader.get_db().get_text_ref(form);
-    auto info = info_opt.value_or(TextRef::empty()); 
-
-    return Object::make_lextoken(type, value, info);
-}
-
-Object Interpreter::eval_lextoken_type(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // Проверяем: ровно 1 аргумент, тип должен быть LEXTOKEN
-    vararg_check(form, args, {{ ObjectType::LEXTOKEN }}, {});
-
-    // Извлекаем токен (он гарантированно LEXTOKEN после проверки)
-    auto token = std::static_pointer_cast<LextokenObject>(args.unnamed[0].heap_obj);
+    // Ищем информацию по адресу объекта в памяти
+    auto result = get_db().get_short_info_for(args.unnamed[0]);
     
-    return token->type;
-}
-Object Interpreter::eval_lextoken_value(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // Проверяем: ровно 1 аргумент типа LEXTOKEN
-    vararg_check(form, args, {{ ObjectType::LEXTOKEN }}, {});
+    if (!result) { // Если форма вычислена динамически и её нет в БД
+        return get_nil();
+    }
 
-    auto token = std::static_pointer_cast<LextokenObject>(args.unnamed[0].heap_obj);
-    
-    return token->value;
-}
-/**
- * (token-info <lextoken>) -> (filename line offset)
- * * Возвращает метаданные о расположении токена в исходном коде.
- * Полезно для генерации собственных сообщений об ошибках в ассемблере.
- */
-Object Interpreter::eval_lextoken_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // Проверка: ожидаем ровно один аргумент типа LEXTOKEN
-    vararg_check(form, args, {{ ObjectType::LEXTOKEN }}, {});
-
-    // Безопасное приведение к LextokenObject
-    auto token = std::static_pointer_cast<LextokenObject>(args.unnamed[0].heap_obj);
-    
-    auto source_location = token->location.frag.get();
-    auto offset = token->location.offset;
-
-    // 1. Сначала получаем индекс строки (это O(log N) за счет бинарного поиска в build_offsets)
-    int line_idx = source_location->get_line_idx(offset);
-
-    // 2. Получаем абсолютный offset начала этой строки (это O(1) — просто доступ к вектору)
-    int line_start_offset = source_location->get_offset_of_line(line_idx);
-
-    // 3. Вычисляем позицию внутри строки (колонку)
-    int pos_in_line = offset - line_start_offset;
-
-    return Object::make_list({
-        Object::make_string(source_location->get_description()),
-        Object::make_integer(line_idx + 1), // Обычно пользователю выводят 1-based индекс
-        Object::make_integer(pos_in_line)    // Смещение от начала строки
+    return pretty_print::build_list({
+        intern(":file"),    Object::make_string(result->filename),
+        intern(":line"),    Object::make_integer(result->line_idx_to_display),
+        intern(":column"),  Object::make_integer(result->pos_in_line),
+        intern(":text"),    Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
     });
 }
 
@@ -3416,6 +3372,7 @@ Object Interpreter::eval_log(const Object& form, Arguments& args, const std::sha
 // ==============================================
 
 Object Interpreter::eval_defsetf(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     // Проверка: нам нужно ровно два аргумента, и оба должны быть символами
     vararg_check(form, args, {{ ObjectType::SYMBOL }, { ObjectType::SYMBOL }}, {});
 
@@ -3445,5 +3402,21 @@ Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const s
 
     // Если ничего не нашли, возвращаем пустой список (nil)
     return Object::make_empty_list();
+}
+
+Object Interpreter::eval_ts_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_defenum_special(form, rest, env);
+}
+Object Interpreter::eval_ts_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_deftype_special(form, rest, env);
+}
+Object Interpreter::eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_typespec_special(form, rest, env);
+}
+Object Interpreter::eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_type_to_lisp(form, args, env);
+}
+Object Interpreter::eval_ts_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_types_list(form, args, env);
 }
 } // namespace script

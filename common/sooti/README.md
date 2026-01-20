@@ -314,8 +314,8 @@ Soot implements a "Lisp-style" generalized variable system. Instead of using int
 
 ### Core Primitives (C++)
 
-* `(defsetf getter-name setter-name)` — Registers a global association between a getter function and its corresponding setter function.
-* `(get-setter getter-name)` — Returns the setter symbol associated with the given getter, or `nil` if no registration exists.
+- `(defsetf getter-name setter-name)` — Registers a global association between a getter function and its corresponding setter function.
+- `(get-setter getter-name)` — Returns the setter symbol associated with the given getter, or `nil` if no registration exists.
 
 ### Architecture
 
@@ -369,9 +369,9 @@ SOOT provides a robust set of bitwise primitives essential for low-level systems
 
 Performs an arithmetic shift of `value` by `count` bits.
 
-* If **`count`** is positive, the value is shifted **left** (multiplication by ).
-* If **`count`** is negative, the value is shifted **right** (division by ).
-* **Note:** Right shifts preserve the sign bit (arithmetic shift), making it safe for signed integers.
+- If **`count`** is positive, the value is shifted **left** (multiplication by ).
+- If **`count`** is negative, the value is shifted **right** (division by ).
+- **Note:** Right shifts preserve the sign bit (arithmetic shift), making it safe for signed integers.
 
 **Example:**
 
@@ -752,3 +752,72 @@ sooti> exit             ; Exit REPL
 10. **Added reader macro examples**: Show both string and lambda variants
 
 The documentation now accurately reflects all functions available in the `Interpreter` class implementation.
+
+## Apendix 
+
+---
+
+### 🛠 Type System & Metaprogramming
+
+The interpreter features a robust type system integration inspired by OpenGOAL. This allows the assembler to query high-level type metadata during the compilation phase for the Z80 target.
+
+#### `(defmacro name (args...) body...)`
+
+Defines a compile-time macro. Macros allow for code transformation before execution, enabling the creation of custom assembly DSLs and optimized instruction generation.
+
+**Usage:** Used to automate repetitive assembly patterns or calculate offsets at compile-time.
+
+#### `(defenum name (entries...))`
+
+Registers an enumeration in the global type database.
+
+- **Syntax:** `(defenum Color (red 0) (green 1) (blue 2))`
+- **Note:** Enum symbols are treated as constants by the assembler.
+
+### `(deftype name (parent) (fields...))`
+
+Defines a new structure or basic type. The C++ backend automatically calculates field offsets, alignment, and total size based on the target architecture (Z80).
+
+**Example:**
+
+```lisp
+(deftype Sprite ()
+  (x uint8)
+  (y uint8)
+  (data (pointer uint8)))
+
+```
+
+#### `(typespec definition)`
+
+Validates a type description and returns a canonical S-expression. It allows the use of compound types (pointers, arrays) without explicitly defining them via `deftype`.
+
+- **Example:** `(typespec (pointer uint32))` returns `(pointer uint32)` if valid.
+
+#### `(type-info spec [property])`
+
+The primary reflection tool. It queries the C++ TypeSystem for metadata.
+
+- **Arguments:** * `spec`: A type name (symbol) or a specification (list).
+- `property` (optional): A specific attribute to retrieve (`'size`, `'align`, `':behavior`, etc.).
+- **Example:** `(type-info '(pointer uint8) 'size)` returns `2` (pointer size on Z80).
+
+### `(type-list)`
+
+Returns a flat list of all registered type names. Useful for debugging and verifying the current state of the TypeSystem.
+
+---
+
+#### Practical Assembly Example
+
+By leveraging these forms, you can create "Type-Aware" assembly macros that calculate offsets automatically:
+
+```lisp
+(defmacro ld-field (reg base-reg type field)
+  (let ((offset (type-info type field))) ;; Query C++ for the offset
+    `(ld ,reg (+ ,base-reg ,offset))))   ;; Generate Z80 opcodes
+
+;; In the program:
+(ld-field 'a 'hl 'Sprite 'y)             ;; Expands to: (ld a (+ hl 1))
+
+```

@@ -116,7 +116,7 @@ namespace script {
 
 	// ==================== Reader ====================
 
-	Reader::Reader(Interpreter* interpeter) : m_interpreter(interpeter) {
+	Reader::Reader(Interpreter* interpeter) : m_interpreter(interpeter)  {
 		// add default macros
 		add_reader_macro("'", "quote");
 		add_reader_macro("`", "quasiquote");
@@ -155,10 +155,10 @@ namespace script {
 		const std::optional<std::string>& string_name)
 	{
 		auto textFrag = std::make_shared<ProgramString>(str, string_name.value_or("Program string"));
-		db.insert(textFrag);
+		m_db.insert(textFrag);
 
 		auto result = internal_read(textFrag, false, add_top_level);
-		db.link(result, textFrag, 0);
+		m_db.link(result, textFrag, 0);
 		return result;
 	}
 	/*!
@@ -189,9 +189,10 @@ namespace script {
 			for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
 				const ReaderMacro* m = *i;
 				if (!m->lambda.is_empty_list()) {
-					obj = m_interpreter->call_lambda(m->lambda, { Object::make_reader(&ts) });
+					if (m_lambda_caller)
+						obj = m_lambda_caller(m->lambda, { Object::make_reader(&ts) });
 				} else if (!m->replacement.empty()) {
-					Object sym = Object::make_symbol(&symbolTable, m->replacement.c_str());
+					Object sym = Object::make_symbol(&m_symbols, m->replacement.c_str());
 					obj = m->list ? script::build_list({ sym, obj }) : sym;
 				}
 			}
@@ -225,10 +226,10 @@ namespace script {
 		}
 
 		auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
-		db.insert(textFrag);
+		m_db.insert(textFrag);
 
 		auto result = internal_read(textFrag, check_encoding, add_top_level);
-		db.link(result, textFrag, 0);
+		m_db.link(result, textFrag, 0);
 		return result;
 	}
     
@@ -275,7 +276,7 @@ namespace script {
 		try {
 			auto objs = read_list(ts, false);
 			if (add_top_level) {
-				return Object::make_pair(Object::make_symbol(&symbolTable, "top-level"), objs);
+				return Object::make_pair(Object::make_symbol(&m_symbols, "top-level"), objs);
 			}
 			else {
 				return objs;
@@ -481,6 +482,24 @@ namespace script {
 	bool Reader::try_token_as_symbol(const Token& tok, Object& obj) {
 		if (tok.text.empty()) return false;
 
+		// Проверяем, начинается ли токен с ':'
+		if (tok.text[0] == ':') {
+			// Ключевые слова должны содержать хотя бы один символ после ':'
+			if (tok.text.size() == 1) return false;
+			
+			// Проверяем остальные символы на валидность
+			for (size_t i = 1; i < tok.text.size(); i++) {
+				char c = tok.text[i];
+				if (!m_valid_symbols_chars[(int)c]) {
+					return false;
+				}
+			}
+			
+			// Создаем ключевое слово (убираем ведущий ':')
+			obj = Object::make_keyword(&m_symbols, tok.text.c_str());
+			return true;
+		}
+
 		char first = tok.text[0];
 		if (!m_valid_symbols_chars[(int)first]) {
 			return false;
@@ -493,7 +512,7 @@ namespace script {
 			}
 		}
 
-		obj = Object::make_symbol(&symbolTable, tok.text.c_str());
+		obj = Object::make_symbol(&m_symbols, tok.text.c_str());
 		return true;
 	}
 	// ==================== List Reading ====================
@@ -552,7 +571,8 @@ namespace script {
         if (it != m_reader_macros.end() && !it->second.lambda.is_empty_list()) {
             // ФУНКЦИОНАЛЬНЫЙ МАКРОС (например, [ )
 			auto macro = it->second;
-            current_obj = m_interpreter->call_lambda(macro.lambda, { Object::make_reader(&ts), Object::make_string(macro.shortcut) });
+			if (m_lambda_caller)
+            	current_obj = m_lambda_caller(macro.lambda, { Object::make_reader(&ts), Object::make_string(macro.shortcut) });
         } else if (tok.text == "(") {
             // ВЛОЖЕННЫЙ СПИСОК
             current_obj = read_list(ts, true);
@@ -567,12 +587,12 @@ namespace script {
         for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
             const ReaderMacro* m = i->macro;
             if (!m->replacement.empty()) {
-                Object sym = Object::make_symbol(&symbolTable, m->replacement.c_str());
+                Object sym = Object::make_symbol(&m_symbols, m->replacement.c_str());
                 current_obj = m->list ? script::build_list({ sym, current_obj }) : sym;
                 
                 // Если макрос создал список (например, (quote x)), линкуем эту новую пару
                 if (m->list && current_obj.is_pair()) {
-                    db.link(current_obj, i->src, i->offset);
+                    m_db.link(current_obj, i->src, i->offset);
                 }
             }
         }
@@ -594,7 +614,7 @@ namespace script {
 
             // Используем координаты из начала цепочки (если были макросы) или самого токена
             int final_offset = macro_stack.empty() ? tok.source_offset : macro_stack.front().offset;
-            db.link(pair_wrapper, tok.source_text, final_offset);
+            m_db.link(pair_wrapper, tok.source_text, final_offset);
         }
 
         ts.seek_past_whitespace_and_comments();
@@ -615,12 +635,12 @@ namespace script {
             lst = lst.as_pair()->cdr;
         }
         if (lst.is_pair()) lst.as_pair()->cdr = back;
-        db.link(rv, ts.text, start_offset);
+        m_db.link(rv, ts.text, start_offset);
         return rv;
     }
 
     list_builder.finalize();
-    db.link(list_builder.head, ts.text, start_offset);
+    m_db.link(list_builder.head, ts.text, start_offset);
     return list_builder.head;
 }
 	/*!
@@ -850,7 +870,7 @@ namespace script {
 	 */
 	void Reader::throw_reader_error(TextStream& here, const std::string& err, int seek_offset) {
 		throw std::runtime_error("Reader error:\n" + err + "\nat " +
-			db.get_info_for(here.text, here.seek + seek_offset));
+			m_db.get_info_for(here.text, here.seek + seek_offset));
 	}
 	/*!
 	 * Convert any string into one that can be read.

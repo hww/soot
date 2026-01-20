@@ -24,6 +24,7 @@
  // ============================================================================
 
 struct ReverseLookupNode;
+class script::Object;
 
 struct TypeFlags {
     union {
@@ -357,6 +358,7 @@ public:
     // ========================================================================
 
     std::string print_all_type_information() const;
+    script::Object get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string& type) const;
     int get_next_method_id(const Type* type) const;
 
@@ -368,8 +370,9 @@ public:
         m_types_allowed_to_be_redefined.push_back(type_name);
     }
 
+    script::Object get_all_type_names_as_objects() const;
     std::vector<std::string> get_all_type_names();
-    std::vector<std::string> search_types_by_parent_type(
+        std::vector<std::string> search_types_by_parent_type(
         const std::string& parent_type,
         const std::optional<std::vector<std::string>>& existing_matches = {});
 
@@ -438,8 +441,6 @@ private:
         bool allow_alias) const;
     int get_alignment_in_type(const Field& field);
 
-
-
     void builtin_structure_inherit(StructureType* st);
 
     // ========================================================================
@@ -453,6 +454,8 @@ private:
     std::vector<std::unique_ptr<Type>> m_old_types;
     std::vector<std::string> m_types_allowed_to_be_redefined;
     bool m_allow_redefinition = false;
+    public:
+    static int verbose;
 };
 
 // ============================================================================

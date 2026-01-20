@@ -66,6 +66,7 @@ public:
     void modify_tag(const std::string& tag_name, const std::string& tag_value);
     void add_or_modify_tag(const std::string& tag_name, const std::string& tag_value);
     void delete_tag(const std::string& tag_name);
+    int get_tags_count() const { return m_tags.size(); }    
     const std::vector<TypeTag>& get_tags() const { return m_tags; }
     bool has_tag(const std::string& tag_name) const { return try_get_tag(tag_name).has_value(); }
 
@@ -77,7 +78,7 @@ public:
     bool has_single_arg() const;
     const TypeSpec& get_single_arg() const;
     TypeSpec& get_single_arg();
-    size_t arg_count() const;
+    size_t get_args_count() const;
     const TypeSpec& get_arg(int idx) const;
     TypeSpec& get_arg(int idx);
     const TypeSpec& last_arg() const;

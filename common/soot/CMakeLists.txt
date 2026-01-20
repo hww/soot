@@ -12,7 +12,14 @@ target_include_directories(libsot PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(libsot PRIVATE libsoti fmt replxx xsockets_lib)
+target_link_libraries(libsot PRIVATE 
+libsoti 
+libsoticore 
+libtypesys
+libsootutils 
+fmt 
+replxx 
+xsockets_lib)
 
 if(WIN32)
     target_link_libraries(libsot PRIVATE ws2_32)

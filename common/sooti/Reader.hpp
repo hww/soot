@@ -10,7 +10,7 @@ namespace script {
 
     class Interpreter;
 
-    struct TextStream {
+     struct TextStream {
         explicit TextStream(std::shared_ptr<SourceText> ptr) {
             text = std::move(ptr);
         }
@@ -50,6 +50,8 @@ namespace script {
         int source_line;
     };
 
+    using LambdaCaller = std::function<Object(const Object&, const std::vector<Object>&)>;
+
     class Reader {
 
         struct ReaderMacro {
@@ -73,8 +75,8 @@ namespace script {
         // REPL метод (если нужен):
         //std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
 
-        SymbolTable& get_symbol_table() { return symbolTable; }
-        TextDb& get_db() { return db; }
+        SymbolTable& get_symbol_table() { return m_symbols; }
+        TextDb& get_db() { return m_db; }
 
         // Проверка завершения
         bool is_expression_complete(const std::string& code);
@@ -86,6 +88,10 @@ namespace script {
         void throw_reader_error(TextStream& here, const std::string& err, int seek_offset = 0);
 
         Object read_list(TextStream& ts, bool expect_close_paren = true, std::string terminator = ")");
+
+        void set_lambda_caller(LambdaCaller caller) {
+            m_lambda_caller = caller;
+        }
     private:
         // Внутренние методы как у них:
         Object internal_read(std::shared_ptr<SourceText> text, bool check_encoding, bool add_top_level = true);
@@ -106,11 +112,12 @@ namespace script {
 
         bool is_expression_complete_impl(TextStream& ts);
 
-        SymbolTable symbolTable;  // как у них - symbolTable, не m_symbols
-        TextDb db;                // как у них - db, не m_db
+        SymbolTable m_symbols;  // как у них - symbolTable, не m_symbols
+        TextDb m_db;                // как у них - db, не m_db
         bool m_valid_symbols_chars[256];
         std::unordered_map<std::string, ReaderMacro> m_reader_macros;
         Interpreter* m_interpreter;
+        LambdaCaller m_lambda_caller;
     };
 
 } // namespace script

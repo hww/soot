@@ -1,15 +1,15 @@
-﻿Отличный код! Я изучил вашу систему и готов создать детализированную документацию. Вот анализ и структурированная спецификация:
-
-## Анализ текущего состояния системы
+﻿# Анализ текущего состояния системы
 
 Ваша система состоит из трех основных компонентов:
+
 1. **Ассемблер** - почти завершен, с хорошей системой парсинга и кодогенерации
-2. **Виртуальная машина** - частично реализована, требует доработки 
+2. **Виртуальная машина** - частично реализована, требует доработки
 3. **Бинарный формат** - хорошо проработан, с поддержкой модулей и определений
 
 ## Спецификация ассемблерного языка VM
 
 ### Формат инструкций
+
 ```cpp
 struct FInstr {
     EOpcode opcode;  // 8 бит
@@ -23,6 +23,7 @@ struct FInstr {
 ### Система команд (группировка по типам операций)
 
 #### Управление выполнением
+
 - `ret a` - возврат из функции
 - `call a, b, k` - вызов функции (a-функция, b-регистр результата, k-кол-во аргументов)
 - `calln a, b, k` - вызов нативной функции
@@ -31,6 +32,7 @@ struct FInstr {
 - `brno a, k` - условный переход если false
 
 #### Целочисленные операции
+
 ```lisp
 (add r0, r1, r2)    ; r0 = r1 + r2
 (sub r0, r1, r2)    ; r0 = r1 - r2  
@@ -43,6 +45,7 @@ struct FInstr {
 ```
 
 #### Операции с плавающей точкой
+
 ```lisp  
 (fadd r0, r1, r2)   ; r0 = r1 + r2
 (fsub r0, r1, r2)   ; r0 = r1 - r2
@@ -54,6 +57,7 @@ struct FInstr {
 ```
 
 #### Загрузка констант
+
 ```lisp
 (ldk r0, 123)       ; загрузка immediate
 (ldsi r0, data[5])  ; загрузка статического целого
@@ -62,6 +66,7 @@ struct FInstr {
 ```
 
 #### Сравнения
+
 ```lisp
 (cpeq r0, r1, r2)   ; целочисленное сравнение =
 (cpgt r0, r1, r2)   ; целочисленное сравнение >
@@ -72,6 +77,7 @@ struct FInstr {
 ### Директивы ассемблера
 
 #### Определение функций
+
 ```lisp
 (define (function-name arg1 arg2)
   (let ((local-var1 : type) 
@@ -82,6 +88,7 @@ struct FInstr {
 ```
 
 #### Метки и данные
+
 ```lisp
 (label function-start)
 (define *global-var* 42)
@@ -91,6 +98,7 @@ struct FInstr {
 ## Спецификация бинарного формата
 
 ### Заголовок файла
+
 ```cpp
 struct FBinFileHeader {
     u32 magic_num = 0x00435844; // "DC00"
@@ -104,6 +112,7 @@ struct FBinFileHeader {
 ```
 
 ### Структура определений
+
 ```cpp
 struct FDefinition {
     StringId Name;    // имя определения (SID)
@@ -113,6 +122,7 @@ struct FDefinition {
 ```
 
 ### Организация байткода
+
 ```cpp
 struct FByteCode {
     u32 desc_size;    // полный размер (заголовок + код + данные)
@@ -130,6 +140,7 @@ struct FByteCode {
 ### Организация памяти выполнения
 
 #### Регистры (34 регистра)
+
 ```cpp
 constexpr size_t DC_FRAME_MAX_REGISTERS_NUM = 34;
 constexpr size_t ARGUMENT_REGISTERS_OFFSET = 24;  // r24-r33: аргументы
@@ -137,6 +148,7 @@ constexpr size_t LOCAL_REGISTERS_OFFSET = 0;      // r0-r23: локальные 
 ```
 
 #### Структура фрейма
+
 ```cpp
 struct FStackFrame {
     FInstr* code_ptr;      // указатель на код
@@ -150,6 +162,7 @@ struct FStackFrame {
 ```
 
 ### Типы данных Variant
+
 ```cpp
 struct FVariant {
     StringId type;  // SID("nil"), SID("s32"), SID("f32"), SID("ptr")
@@ -164,13 +177,16 @@ struct FVariant {
 ## Интеграционные точки с интерпретатором лиспа
 
 ### 1. Использование систематипов
+
 Ваш интерпретатор может генерировать AST, которое затем преобразуется в:
+
 - **Структуры данных** → таблица данных в `.bin` файле
 - **Функции/лямбды** → байткод VM  
 - **Определения типов** → информация о типах для runtime
 
 ### 2. Процесс компиляции
-```
+
+```text
 Lisp AST 
     → (ваш интерпретатор) 
     → промежуточное представление 
@@ -179,16 +195,19 @@ Lisp AST
 ```
 
 ### 3. Совместимость типов
+
 Система типов вашего интерпретатора должна маппиться на:
-- `integer` → `SID("s32")` 
+
+- `integer` → `SID("s32")`
 - `float` → `SID("f32")`
-- `string` → `SID("string")` 
+- `string` → `SID("string")`
 - `symbol` → `SID("symbol")`
 - `lambda` → `SID("lambda")`
 
 ## Рекомендации по улучшению VM
 
 ### 1. Управление памятью
+
 ```cpp
 // Добавить в FStackFrame
 void initialize_locals(); // инициализация локальных переменных
@@ -196,6 +215,7 @@ void cleanup_locals();    // очистка (для GC)
 ```
 
 ### 2. Система исключений
+
 ```cpp
 struct FVMException {
     EExceptionType type;
@@ -206,6 +226,7 @@ struct FVMException {
 ```
 
 ### 3. Отладка
+
 ```cpp
 struct FDebugInfo {
     std::map<size_t, Location> pc_to_source; // mapping PC → исходный код
@@ -238,6 +259,7 @@ FStackFrame* PushStackFrame(FByteCode* pCode, FStackFrame* pParent) {
 ```
 
 **Пример вызова:**
+
 ```lisp
 ; Исходный код
 (define (main)
@@ -252,6 +274,7 @@ FStackFrame* PushStackFrame(FByteCode* pCode, FStackFrame* pParent) {
 ```
 
 **Процесс создания фрейма:**
+
 1. `main` выполняется в текущем фрейме
 2. При `call` создается новый фрейм для `add-one`
 3. Аргументы копируются из регистров `r24+` вызывающего фрейма в `r24+` нового фрейма
@@ -279,12 +302,13 @@ FStackFrame* PopStackFrame(FStackFrame* pFrame) {
 
 ### Схема распределения регистров
 
-```
+```text
 Регистры 0-23: Локальные переменные
 Регистры 24-33: Аргументы функции
 ```
 
 **Пример:**
+
 ```lisp
 (define (calculate a b)
   (let ((local1 (+ a b))
@@ -299,6 +323,7 @@ FStackFrame* PopStackFrame(FStackFrame* pFrame) {
 ```
 
 **Байткод:**
+
 ```lisp
 ; let ((local1 (+ a b)))
 (add r0, r24, r25)     ; r0 = r24 + r25
@@ -337,6 +362,7 @@ FVariant& FStackFrame::resolve_register(u32 index) {
 ```
 
 **Пример замыкания:**
+
 ```lisp
 (define (make-counter initial)
   (lambda ()
@@ -353,6 +379,7 @@ FVariant& FStackFrame::resolve_register(u32 index) {
 ### 1. Массивы (Array)
 
 **Представление в памяти:**
+
 ```cpp
 struct FArray {
     u32 length;
@@ -362,6 +389,7 @@ struct FArray {
 ```
 
 **Передача между методами:**
+
 ```lisp
 (define (process-array arr)
   (let ((len (array-length arr)))
@@ -378,6 +406,7 @@ struct FArray {
 ### 2. Строки (String)
 
 **Представление:**
+
 ```cpp
 struct FString {
     u32 length;
@@ -387,6 +416,7 @@ struct FString {
 ```
 
 **Операции:**
+
 ```lisp
 (define (concatenate str1 str2)
   (string-append str1 str2))
@@ -400,6 +430,7 @@ struct FString {
 ### 3. Пользовательские структуры
 
 **Определение типа:**
+
 ```lisp
 (deftype vec3 
   ((x float)
@@ -417,6 +448,7 @@ struct FString {
 ```
 
 **Доступ к полям:**
+
 ```cpp
 // Компилятор знает смещения полей:
 // vec3::x = offset 0, vec3::y = offset 4, vec3::z = offset 8
@@ -430,9 +462,10 @@ struct FString {
 
 ## Управление памятью - анализ вашей системы
 
-### Сильные стороны:
+### Сильные стороны
 
 1. **Variant система** - хорошая основа:
+
 ```cpp
 struct FVariant {
     StringId type;
@@ -444,16 +477,18 @@ struct FVariant {
 };
 ```
 
-2. **Разделение данных и кода** в `FByteCode`
+1. **Разделение данных и кода** в `FByteCode`
 
-3. **Система определений** для глобального доступа
+2. **Система определений** для глобального доступа
 
-### Проблемы и улучшения:
+### Проблемы и улучшения
 
 #### 1. Отсутствие сборки мусора
+
 **Текущее состояние:** Утечки памяти при создании объектов.
 
 **Решение - добавить подсчет ссылок:**
+
 ```cpp
 struct FGCObject {
     std::atomic<u32> ref_count;
@@ -474,6 +509,7 @@ struct FArray : FGCObject {
 ```
 
 #### 2. Улучшение системы регистров
+
 ```cpp
 struct FStackFrame {
     // Текущая проблема: регистры хранят сырые указатели
@@ -497,6 +533,7 @@ struct FStackFrame {
 ```
 
 #### 3. Управление жизненным циклом фреймов
+
 ```cpp
 class FStackFrame {
 private:
@@ -522,7 +559,7 @@ public:
 };
 ```
 
-### Пример полного жизненного цикла:
+### Пример полного жизненного цикла
 
 ```lisp
 (define (create-and-process)
@@ -538,6 +575,7 @@ public:
 ```
 
 **Байткод с управлением памятью:**
+
 ```lisp
 ; create-and-process:
 (calln array-new-native, r0, 1)  ; r0 = новый массив (refcount=1)
@@ -546,7 +584,6 @@ public:
 (call process-array-func, r1, 1) ; вызов - временное увеличение refcount
 ; при выходе из фрейма - автоматический release r0
 ```
-
 
 # Система управления памятью ScriptObject
 
@@ -561,7 +598,8 @@ ScriptObject - это система автоматического управл
 ## 🏗️ Архитектура
 
 ### Структура памяти
-```
+
+```text
 [ref_count:4][данные...]
 ^            ^
 base_ptr     data_ptr
@@ -586,6 +624,7 @@ struct ScriptObject : ScriptObjectBase {
 ## 📝 API системы
 
 ### Создание объектов
+
 ```cpp
 // Создание объекта любого типа
 Vector3* vec = script_create<Vector3>(1.0f, 2.0f, 3.0f);
@@ -594,6 +633,7 @@ MyClass* obj = script_create<MyClass>(arg1, arg2);
 ```
 
 ### Управление ссылками
+
 ```cpp
 // Увеличение счетчика
 script_ref(data_ptr);
@@ -606,6 +646,7 @@ int32_t count = script_ref_count(data_ptr);
 ```
 
 ### Вспомогательные функции
+
 ```cpp
 // Получение base pointer из data pointer
 ScriptObjectBase* base = to_script_base(data_ptr);
@@ -636,6 +677,7 @@ public:
 ## 🎪 "Магический трюк"
 
 ### Ключевое преобразование
+
 ```cpp
 // Из data_ptr в base_ptr
 ScriptObjectBase* to_script_base(const void* data_ptr) {
@@ -649,6 +691,7 @@ T* get_data_ptr() { return &this->data; }
 ```
 
 ### Преимущества подхода
+
 - ✅ **Нулевой оверхед** в скриптах - прямые доступы к памяти
 - ✅ **Автоматическое управление** - скрипты не заботятся о памяти
 - ✅ **Производительность** - минимум вызовов, максимум инлайнинга
@@ -657,6 +700,7 @@ T* get_data_ptr() { return &this->data; }
 ## 🛡️ Безопасность
 
 ### Rule of 5 для Variant
+
 ```cpp
 class Variant {
     // Копирование увеличивает refcount
@@ -680,17 +724,20 @@ class Variant {
 ## 📊 Производительность
 
 ### Преимущества
+
 - **Скрипты**: Прямой доступ к данным без оверхеда
 - **VM**: Быстрые атомарные операции с refcount
 - **Память**: Минимальный overhead (4 байта на объект)
 
 ### Ограничения
+
 - Не поддерживает циклические ссылки
 - Требует аккуратного использования в многопоточных средах
 
 ## 🔧 Использование в VM
 
 ### Типичный сценарий
+
 ```cpp
 void execute_script() {
     Variant local_vars[10];
@@ -707,13 +754,14 @@ void execute_script() {
 }
 ```
 
+``` cpp
 // example_usage.cpp
-#include "VirtualMachine.hpp"
-#include "BinaryFile.hpp"
+# include "VirtualMachine.hpp"
+# include "BinaryFile.hpp"
 
 int main() {
     using namespace vm;
-    
+
     // Инициализация VM
     VirtualMachine& vm = VirtualMachine::get_instance();
     

@@ -245,14 +245,18 @@
 
 ;; --- [ Секция 6: Предикаты типов ] ---
 
-(defmacro string?  (x) `(type? 'string ,x))
-(defmacro float?   (x) `(type? 'float ,x))
-(defmacro integer? (x) `(type? 'integer ,x))
-(defmacro pair?    (x) `(type? 'pair ,x))
-(defmacro symbol?  (x) `(type? 'symbol ,x))
-(defmacro number?  (x) `(or (float? ,x) (integer? ,x)))
+(defmacro typep    (x t) `(type? ,x ,t))
+(defmacro numberp  (x) `(number? ,x))
+(defmacro floatp   (x) `(type? ,x 'float))
+(defmacro integerp (x) `(type? ,x 'integer))
+(defmacro fixnump  (x) `(type? ,x 'integer))
+(defmacro symbolp  (x) `(type? ,x 'symbol))
+(defmacro stringp  (x) `(type? ,x 'string))
+(defmacro pairp    (x) `(type? ,x 'pair))
+
 (defmacro neq? (a b) `(not (eq? ,a ,b)))
 (defmacro !=   (a b) `(not (= ,a ,b)))
+
 
 ;;;; ===========================================================================
 ;;;; LIST? PREDICATE
@@ -372,30 +376,51 @@
 ;; Автоматизирует создание "объектов" на базе ассоциативных списков (alist).
 ;; Пример использования: (defstruct point x y)
 ;; Макрос создаст в памяти:
-;;   1. Конструктор (make-point x y)
+;;   1. Конструктор (make-point :x 1 :y 2)
 ;;   2. Геттер (point-x instance)
 ;;   3. Геттер (point-y instance)
 ;; =============================================================================
+
 (defmacro defstruct (name &rest fields)
-  ;; На этапе расширения (expansion-time) создаем символ конструктора "make-NAME"
-  (let ((constructor (intern (concat "make-" (symbol->string name)))))
+  (let ((constructor (intern (concat "make-" (symbol->string name))))
+        (struct-name (symbol->string name))
+        (normalized (map (lambda (f) (if (pair? f) f (list f nil))) fields)))
     `(progn
+       ;; --- Конструктор ---
+       (defun ,constructor (&key ,@fields)
+         (let ((ht (make-hash-table))) ;; Вызов без аргументов
+           (hash-table-set! ht :_type_ ',(intern struct-name))
+           ,@(map (lambda (f-spec)
+                    (let ((f-name (car f-spec)))
+                      `(hash-table-set! ht ,(intern (concat ":" (symbol->string f-name))) ,f-name)))
+                  normalized)
+           ht))
 
-       ;; --- Генерация Конструктора ---
-       ;; Создает функцию, которая принимает значения полей и упаковывает их
-       ;; в список пар вида ((поле1 . значение1) (поле2 . значение2) ...).
-       ;; Использование ,@ в map позволяет "развернуть" список созданных cons-пар.
-       (defun ,constructor ,fields
-         (list ,@(map (lambda (f) `(cons ',f ,f)) fields)))
+       ;; --- Предикат типа ---
+       (defun ,(intern (concat (symbol->string name) "?")) (obj)
+         (and (hash-table? obj) 
+              (eq? (hash-table-get obj :_type_) ',(intern struct-name))))
 
-       ;; --- Генерация Геттеров ---
-       ;; Для каждого поля 'f' создаем функцию с именем "name-f".
-       ;; Каждый геттер ищет символ поля в ассоциативном списке через 'assoc'.
-       ,@(map (lambda (f)
-                (let ((getter-name (intern (concat (symbol->string name) "-" (symbol->string f)))))
+       ;; --- Геттеры ---
+       ,@(map (lambda (f-spec)
+                (let* ((f-name (car f-spec))
+                       (getter-name (intern (concat (symbol->string name) "-" (symbol->string f-name))))
+                       (key (intern (concat ":" (symbol->string f-name)))))
                   `(defun ,getter-name (instance)
-                     (cdr (assoc ',f instance)))))
-              fields))))
+                     (hash-table-get instance ,key))))
+              normalized))))
 
+(defun build-struct-from-plist (fields args)
+  "Превращает (:key1 val1 :key2 val2) в ((key1 . val1) (key2 . val2))"
+  (if (null? args)
+      '()
+      (cons (cons (car args) (second args))
+            (build-struct-from-plist fields (cddr args)))))
+(defun build-struct-from-plist (args)
+  "Превращает (:type 'imm :value 10) в ((:type . imm) (:value . 10))"
+  (if (null? args)
+      '()
+      (cons (cons (car args) (cadr args))
+            (build-struct-from-plist (cddr args)))))            
 ;; Маркер успешной загрузки библиотеки
 (define *core-lib-loaded* #t)

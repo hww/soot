@@ -84,6 +84,7 @@ private:
     void parse_config_data(const script::Object& config_list);
     KeyBind::Modifier parse_modifier(const std::string& mod_str);
 
+    std::string username_;
     std::unique_ptr<ReplServer> network_server_;
     std::thread network_thread_;
     std::atomic<bool> is_server_running_ { false };
@@ -94,7 +95,6 @@ private:
     script::Interpreter interpreter_;
     script::Reader reader_;
     std::vector<KeyBind> keybinds_;  // Исправляем KeyBinds на vector<KeyBind>
-    std::string username_;
     std::atomic<bool> should_exit_{ false };
     std::vector<std::string> loaded_files_;
     std::string prompt_;

@@ -77,7 +77,7 @@ TypeSpec& TypeSpec::get_single_arg() {
     return m_arguments->front();
 }
 
-size_t TypeSpec::arg_count() const {
+size_t TypeSpec::get_args_count() const {
     return m_arguments ? m_arguments->size() : 0;
 }
 
@@ -211,13 +211,13 @@ bool TypeSpec::is_compatible_child_method(const TypeSpec& implementation,
     }
 
     // Check argument count
-    if (implementation.arg_count() != arg_count()) {
+    if (implementation.get_args_count() != get_args_count()) {
         if (bad_arg_idx_out) *bad_arg_idx_out = -1;
         return false;
     }
 
     // Check each argument for compatibility
-    for (size_t i = 0; i < arg_count(); i++) {
+    for (size_t i = 0; i < get_args_count(); i++) {
         if (!get_arg(i).is_compatible_child_method(implementation.get_arg(i), child_type)) {
             if (bad_arg_idx_out) *bad_arg_idx_out = i;
             return false;

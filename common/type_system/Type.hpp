@@ -78,6 +78,7 @@ struct DefinitionMetadata {
 // ============================================================================
 
 class MethodInfo {
+    
 public:
     int id = -1;
     std::string name;
@@ -202,6 +203,8 @@ private:
 
 class Type {
 public:
+    static int verbose;
+public:
     Type(std::string parent, std::string name, bool is_boxed, int heap_base);
     virtual ~Type() = default;
 
@@ -303,6 +306,7 @@ protected:
 
     // State system
     std::map<std::string, TypeSpec> m_states;
+
 };
 
 // ============================================================================

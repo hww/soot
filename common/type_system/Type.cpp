@@ -21,6 +21,8 @@ namespace {
 
 }  // namespace
 
+int Type::verbose = 0;
+
 // ============================================================================
 // MethodInfo Implementation
 // ============================================================================
@@ -483,10 +485,11 @@ std::string StructureType::print() const {
 
 void StructureType::inherit(StructureType* parent) {
     if (!parent) return;
-
-    fmt::print("DEBUG: Inheriting from {} to {}\n", parent->get_name(), get_name());
-    fmt::print("DEBUG: Parent has {} fields, size: {}\n",
-        parent->fields().size(), parent->get_size_in_memory());
+    if (Type::verbose) {
+        fmt::print("DEBUG: Inheriting from {} to {}\n", parent->get_name(), get_name());
+        fmt::print("DEBUG: Parent has {} fields, size: {}\n",
+            parent->fields().size(), parent->get_size_in_memory());
+    }
 
     // Копируем ВСЕ поля родителя
     m_fields = parent->fields(); // Копируем поля
@@ -494,8 +497,10 @@ void StructureType::inherit(StructureType* parent) {
     m_dynamic = parent->is_dynamic();
     m_idx_of_first_unique_field = m_fields.size();
 
-    fmt::print("DEBUG: After inheritance - {} has {} fields, size: {}\n",
-        get_name(), m_fields.size(), m_size_in_mem);
+    if (Type::verbose) {
+        fmt::print("DEBUG: After inheritance - {} has {} fields, size: {}\n",
+            get_name(), m_fields.size(), m_size_in_mem);
+    }
 }
 
 bool StructureType::operator==(const Type& other) const {

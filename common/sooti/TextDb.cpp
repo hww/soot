@@ -113,15 +113,7 @@ namespace script {
 	 * Возвращает "?", если объект не найден в базе данных.
 	 */
 	std::string TextDb::get_info_for(const Object& o, bool* terminate_compiler_error) const {
-		if (o.is_lextoken()) {
-			auto token = o.as_lextoken();
-			// Устанавливаем флаг для токена, если он привязан к фрагменту
-            if (terminate_compiler_error && token->location.frag) {
-                *terminate_compiler_error = token->location.frag->terminate_compiler_error();
-            }
-			return get_info_for(token->location.frag, token->location.offset);
-		}
-		else if (o.is_pair()) {
+		if (o.is_pair()) {
 			auto kv = m_map.find(o.heap_obj);
 			if (kv != m_map.end()) {
 				if (terminate_compiler_error) {

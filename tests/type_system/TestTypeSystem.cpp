@@ -267,7 +267,7 @@ TEST_F(TypeSystemTest, TypeSpecOperations) {
     // Клонирование
     TypeSpec cloned = base_spec;
     EXPECT_EQ(cloned.base_type(), "object");
-    EXPECT_EQ(cloned.arg_count(), 1);
+    EXPECT_EQ(cloned.get_args_count(), 1);
 }
 
 TEST_F(TypeSystemTest, VirtualMethodInheritance) {
