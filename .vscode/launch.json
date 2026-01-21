@@ -1,25 +1,140 @@
 {
-  "name": "Carbon Test",
-  "type": "cppdbg",
-  "request": "launch",
-  "program": "${workspaceFolder}/build/bin/typesys_tests", // Проверьте имя бинарника из CMake!
-  "args": [],
-  "stopAtEntry": false,
-  "cwd": "${workspaceFolder}",
-  "environment": [
+  "version": "0.2.0",
+  "configurations": [
     {
-      "name": "LD_LIBRARY_PATH",
-      "value": "${workspaceFolder}/build/lib:${env:LD_LIBRARY_PATH}"
-    }
-  ],
-  "externalConsole": false,
-  "MIMode": "gdb",
-  "setupCommands": [
+      "name": "Debug SOOT",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,  // Остановиться при входе в main
+    },
     {
-      "description": "Enable pretty-printing for gdb",
-      "text": "-enable-pretty-printing",
-      "ignoreFailures": true
+      "name": "Debug SOOT Server",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": ["--server", "8181"],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,  // Остановиться при входе в main
+    },
+    {
+      "name": "Debug SOOT Client",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": ["--client", "8181"],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,  // Остановиться при входе в main
+    },    
+    {
+      "name": "Debug SOOT (HOME)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/soot",
+      "args": [],
+      "cwd": "/home/valery",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": true,  // Остановиться при входе в main
+    },
+    {
+      "name": "Debug XIFF",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/xiff",
+      "args": ["--compile", "-e", "(+ 1o1 2 3)", "--tokens", "--ast"],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All"
+    },
+
+    {
+      "name": "TypeSys Test",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/typesys_tests", // Проверьте имя бинарника из CMake!
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "LD_LIBRARY_PATH",
+          "value": "${workspaceFolder}/build/lib:${env:LD_LIBRARY_PATH}"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build Tests",
+      "configurations": [
+
+      ] // Теперь он зависит от "Build All"
     }
-  ],
-  "preLaunchTask": "Build Tests" // Теперь он зависит от "Build All"
+  ]
 }
+

@@ -18,7 +18,7 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 - [System](#system)
 - [Type Conversions](#type-conversions)
 - [Time Functions](#time-functions)
-- [Reader and LexTokens](#reader-and-lextokens)
+- [Reader](#reader)
 - [Macro System](#macro-system)
 - [Other Functions](#other-functions)
 - [Other Documentation](#other-documentation)
@@ -547,14 +547,6 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 | `peek-char`                | `reader`                     | Peek next character without consuming       |
 | `read-delimited-list`      | `terminator reader`          | Read list until terminator                  |
 
-### **LexToken Functions**
-
-| Function         | Arguments      | Description                         |
-|------------------|----------------|-------------------------------------|
-| `make-lextoken`  | `:type :value` | Create lex token with metadata      |
-| `lextoken-type`  | `lextoken`     | Get token type                      |
-| `lextoken-value` | `lextoken`     | Get token value                     |
-| `lextoken-info`  | `lextoken`     | Get source location (file line col) |
 
 **Examples:**
 
@@ -724,7 +716,6 @@ sooti> exit             ; Exit REPL
 | System          | `system`, `get-environment-variable`, `exit`, `get-path`, `find-file`                                                                |
 | Time            | `time-seconds`, `time-milliseconds`, `time-microseconds`, `time-nanoseconds`                                                         |
 | Reader          | `set-macro-character`, `remove-macro-character`, `get-macro-character`, `read`, `read-char`, `peek-char`, `read-delimited-list`      |
-| LexTokens       | `make-lextoken`, `lextoken-type`, `lextoken-value`, `lextoken-info`                                                                  |
 | Macro System    | `macroexpand`                                                                                                                        |
 | Other           | `gensym`, `eval`                                                                                                                     |
 
