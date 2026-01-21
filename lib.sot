@@ -333,6 +333,11 @@
             `(,setter ,@(cdr place) ,value)
             (error "SETF: No setter registered for: " (car place))))))
 
+(defsetf 'car 'set-car!)
+(defsetf 'cdr 'set-cr!)
+(defsetf 'get 'hash-table-set!)
+(defsetf 'vector-ref 'vector-set!)
+
 ;; --- Math & Utilities ---
 (defun sign (x) (if (>= x 0) '+ '-))
 
@@ -380,21 +385,23 @@
 ;;   2. Геттер (point-x instance)
 ;;   3. Геттер (point-y instance)
 ;; =============================================================================
-
 (defmacro defstruct (name &rest fields)
-  (let ((constructor (intern (concat "make-" (symbol->string name))))
-        (struct-name (symbol->string name))
-        (normalized (map (lambda (f) (if (pair? f) f (list f nil))) fields)))
+  (let* ((constructor (intern (concat "make-" (symbol->string name))))
+         (struct-name (symbol->string name))
+         (normalized (map (lambda (f) (if (pair? f) f (list f nil))) fields)))
     `(progn
        ;; --- Конструктор ---
-       (defun ,constructor (&key ,@fields)
-         (let ((ht (make-hash-table))) ;; Вызов без аргументов
-           (hash-table-set! ht :_type_ ',(intern struct-name))
+       (defun ,constructor (&key ,@normalized)
+         (make-hash-table 
+          (list 
+           ;; Ставим ' перед ключом! Теперь для эвалуатора это (quote :_type_)
+           ;; и он передаст :_type_ в list как обычный позиционный параметр.
+           (list ':_type_ ',(intern struct-name))
            ,@(map (lambda (f-spec)
-                    (let ((f-name (car f-spec)))
-                      `(hash-table-set! ht ,(intern (concat ":" (symbol->string f-name))) ,f-name)))
-                  normalized)
-           ht))
+                    (let ((f-name (car f-spec))
+                          (key (intern (concat ":" (symbol->string (car f-spec))))))
+                      `(list ',key ,f-name)))
+                  normalized))))
 
        ;; --- Предикат типа ---
        (defun ,(intern (concat (symbol->string name) "?")) (obj)
@@ -407,8 +414,18 @@
                        (getter-name (intern (concat (symbol->string name) "-" (symbol->string f-name))))
                        (key (intern (concat ":" (symbol->string f-name)))))
                   `(defun ,getter-name (instance)
-                     (hash-table-get instance ,key))))
-              normalized))))
+                     ;; Здесь тоже квотируем ключ
+                     (hash-table-ref instance ,key))))
+              normalized)
+       ;; --- Сеттеры ---
+      ,@(map (lambda (f-spec)
+              (let* ((f-name (car f-spec))
+                      ;; Имя: v-x! или set-v-x!
+                      (setter-name (intern (concat (symbol->string name) "-" (symbol->string f-name) "!")))
+                      (key (intern (concat ":" (symbol->string f-name)))))
+                `(defun ,setter-name (instance value) ;; Добавили value!
+                    (hash-table-set! instance ,key value)))) ;; Передали value!
+            normalized))))
 
 (defun build-struct-from-plist (fields args)
   "Превращает (:key1 val1 :key2 val2) в ((key1 . val1) (key2 . val2))"

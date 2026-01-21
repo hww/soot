@@ -1,4 +1,10 @@
 {
+    // 0. Самая Главная настройка: запрещаем меню открываться клавиатурой
+    "window.titleBarStyle": "custom",
+    "window.customMenuBarAltFocus": false,  
+    "window.enableMenuBarMnemonics": false,
+    "window.menuBarVisibility": "visible",
+
     // 1. Главная настройка: заставляем IntelliSense брать пути из CMake
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     

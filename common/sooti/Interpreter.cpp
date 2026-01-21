@@ -1985,7 +1985,7 @@ Object Interpreter::eval_ash(const Object& form, Arguments& args, const std::sha
 
 // (logand n1 n2 ...)
 Object Interpreter::eval_logand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    (void)env;
+    (void)form; (void)args;(void)env;
     if (args.unnamed.empty()) return Object::make_integer(-1); // Нейтральный элемент для AND
     
     long result = number_to_integer(args.unnamed.at(0));
@@ -2562,6 +2562,17 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
 // Хэш - таблицы с проверками
 // ==============================================
 
+const char* get_hash_key(Object item_pair) {
+    if (item_pair.is_symbol()) {
+        return item_pair.as_symbol().name_ptr;
+    } else if (item_pair.is_keyword()) {
+        return item_pair.as_keyword().name_ptr;
+    } else if (item_pair.is_string()) {
+        return item_pair.as_string()->data.c_str();
+    } else {
+        return nullptr;
+    }   
+}
 Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)form; (void)env;
     
@@ -2585,7 +2596,13 @@ Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, 
                     auto item_pair = item.as_pair();
                     // Ключ — это car, Значение — это cdr
                     // Пример: ("MOV" . #x89) -> car: "MOV", cdr: #x89
-                    table_ptr->data[item_pair->car.print()] = item_pair->cdr;
+                    const char* str = get_hash_key(item_pair->car);
+
+                    if (str != nullptr) {
+                        table_ptr->data[str] = item_pair->cdr;
+                    } else {
+                        throw_eval_error(form, "Hash table must use key symbol or string as the key.");
+                    }                    
                 }
                 
                 current = current_pair->cdr; // Переходим к следующей ячейке
@@ -2601,16 +2618,14 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {}, {} }, {}); // Таблица, ключ, значение
 
     auto ht = args.unnamed[0].as_hash_table();
-    const char* str = nullptr;
-    if (args.unnamed.at(1).is_symbol()) {
-        str = args.unnamed.at(1).as_symbol().name_ptr;
-    } else if (args.unnamed.at(1).is_string()) {
-        str = args.unnamed.at(1).as_string()->data.c_str();
+    const char* key = get_hash_key(args.unnamed.at(1));
+    if (key != nullptr) {
+        ht->data[key] = args.unnamed.at(2);
     } else {
-        throw_eval_error(form, "Hash table must use symbol or string as the key.");
+        throw_eval_error(form, "Hash table must use key symbol or string as the key.");
     }
 
-    args.unnamed.at(0).as_hash_table()->data[str] = args.unnamed.at(2);
+
     return Object::make_empty_list();
 }
 
@@ -2619,24 +2634,19 @@ Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, con
     vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {} }, {}); // Таблица и ключ
 
     auto ht = args.unnamed[0].as_hash_table();
-    std::string key;
+    const char* key = get_hash_key(args.unnamed.at(1));
 
-    if (args.unnamed[1].is_string()) {
-        key = args.unnamed[1].as_string()->data;
-    }
-    else if (args.unnamed[1].is_symbol()) {
-        key = args.unnamed[1].as_symbol().name_ptr ? args.unnamed[1].as_symbol().name_ptr : "";
-    }
-    else {
+    if (key != nullptr) {
+        auto it = ht->data.find(key);
+        if (it == ht->data.end()) {
+            throw_eval_error(form, "hash-table-ref: key not found: " + std::string(key));
+        }
+        return it->second;
+    } else {
         throw_eval_error(form, "hash-table key must be string or symbol");
     }
 
-    auto it = ht->data.find(key);
-    if (it == ht->data.end()) {
-        throw_eval_error(form, "hash-table-ref: key not found: " + key);
-    }
-
-    return it->second;
+    return get_nil();
 }
 // Try to look up a value by key in a hash table.The result is a pair of(success.value).
 
@@ -2646,24 +2656,20 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form,
     vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {} }, {});
     const auto* table = args.unnamed.at(0).as_hash_table();
 
-    const char* str = nullptr;
-    if (args.unnamed.at(1).is_symbol()) {
-        str = args.unnamed.at(1).as_symbol().name_ptr;
-    }
-    else if (args.unnamed.at(1).is_string()) {
-        str = args.unnamed.at(1).as_string()->c_str();
+    const char* key = get_hash_key(args.unnamed.at(1));
+    if (key != nullptr) {
+        const auto& it = table->data.find(key);
+        if (it == table->data.end()) {
+            // not in table
+            return Object::make_pair(object_false, Object::make_empty_list());
+        } else {
+            return Object::make_pair(object_true, it->second);
+        }
     }
     else {
         throw_eval_error(form, "Hash table must use symbol or string as the key.");
     }
-    const auto& it = table->data.find(str);
-    if (it == table->data.end()) {
-        // not in table
-        return Object::make_pair(object_false, Object::make_empty_list());
-    }
-    else {
-        return Object::make_pair(object_true, it->second);
-    }
+
 }
 
 Object Interpreter::eval_hash_table_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2794,7 +2800,7 @@ Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::sh
 Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::SYMBOL }, {}); // Один символ
-    std::string sym = args.unnamed[0].as_symbol().name_ptr ? args.unnamed[0].as_symbol().name_ptr : "";
+    std::string sym = args.unnamed[0].as_symbol().name_ptr;
     file_util::PathType select;
     if (sym == "cwd")             select = file_util::PathType::CWD;
     else  if (sym == "exe")       select = file_util::PathType::EXE;
@@ -3168,7 +3174,7 @@ Object Interpreter::eval_read_delimited_list(const Object& form, Arguments& args
         throw_eval_error(form, "read-delimited-list requires at least 1 argument (reader)");
     }
 
-        // 3. Определяем терминатор (по умолчанию ")")
+    // 3. Определяем терминатор (по умолчанию ")")
     std::string terminator = ")";
     Object term_arg = args.unnamed[0];
     if (term_arg.is_char()) {

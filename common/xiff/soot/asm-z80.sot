@@ -188,7 +188,7 @@
     (T 'XXX)))
   
 ; Set the assembler parse function to be parse-z80
-(setq *parse* #'parse-z80)
+(setq *parse* 'parse-z80)
 
 (defun lzasm-z80 (insts)
   "Create a new z80 program"

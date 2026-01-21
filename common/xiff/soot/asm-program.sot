@@ -5,11 +5,11 @@
 
 (defun higher-byte (bla)
    "Get the higher byte of the integer"
-   (floor bla 256))
+   (logand (rshift bla 8) #b11111111))
 
 (defun recsubstitute (dest source lis)
    (cond
-      ((equal lis source)
+      ((eq? lis source)
          dest)
       ((listp lis)
          (cond
@@ -19,11 +19,11 @@
       (T lis)))
 
 (defparameter
-  *optable* (make-hash-table :size 200 :test #'equal)
+  *optable* (make-hash-table '() :size 200 :test 'equal)
   "Opcode table for the assembler")
 
+; Assembler opcode
 (defstruct opcode
-   "Assembler opcode"
    (documentation "")
    (op nil)
    (arg1 'null)
@@ -36,12 +36,11 @@
 
 (defun hash-opcode (opc)
   "Enter an opcode into the assembler opcode table"
-  (setf (gethash (list (opcode-op opc)
-                       (opcode-arg1 opc)
-                       (opcode-arg2 opc)
-                       (opcode-arg3 opc))
-                 *optable*)
-        opc))
+  (let ((key (fmt #f "{} {} {}"  (opcode-op opc)
+                                 (opcode-arg1 opc)
+                                 (opcode-arg2 opc)
+                                 (opcode-arg3 opc))))
+    (hash-table-set! *optable* key opc)))
 
 (defun get-opc (opc &key (arg1 'null) (arg2 'null) (arg3 'null))
   "Get the hash-table entry for the corresponding opcode"

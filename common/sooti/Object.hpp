@@ -700,7 +700,9 @@ namespace script
         size_t size() const { return unnamed.size() + named.size(); }
         size_t unnamed_size() const { return unnamed.size(); }
         size_t named_size() const { return named.size(); }
+        
         bool empty() const { return unnamed.empty() && named.empty(); }
+
         Object to_object(SymbolTable& symbols) const;
         Object inspect(SymbolTable& symbols) const;
 
