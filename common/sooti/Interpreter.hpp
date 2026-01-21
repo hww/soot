@@ -38,7 +38,9 @@ namespace script
 
     class Interpreter  {
         friend class SootTypeSystem;
+
     public:
+    
         Interpreter(const std::string& username = "user", bool load_libs = false);
 
         // --- Псевдонимы типов ---
@@ -51,19 +53,21 @@ namespace script
         // --- Методы регистрации ---
         void add_special_form(std::string name, SpecialFormMethod form) {
             void* key = (void*)intern_ptr(name).name_ptr;           
-            special_forms[key] = form; // Теперь это map
+            m_special_forms[key] = form; // Теперь это map
         }
 
-        void add_builtin_form(std::string name, BuiltinFormMethod form) {
+        void add_builtin_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
             void* key = (void*)intern_ptr(name).name_ptr;           
-            builtin_forms[key] = form;
+            m_builtin_forms[key] = form;
         }
 
-        void add_custom_form(std::string name, BuiltinFormMethod form) {
+        void add_custom_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
+            // Интернируем имя, чтобы получить стабильный указатель для поиска
             void* key = (void*)intern_ptr(name).name_ptr;           
-            m_custom_forms.push_back({key, form}); // Для вектора используем push_back
+            
+            // Добавляем в вектор (предполагается, что m_custom_forms хранит std::pair или структуру)
+            m_custom_forms.push_back({key, form}); 
         }
-
         void load_library();
 
         // Основные методы оценки
@@ -84,11 +88,12 @@ namespace script
 
         // Вспомогательные методы
         Arguments get_args(const Object& form, const Object& rest, const ArgumentSpec& spec);
+        Arguments get_args_with_spec(const Object& form, const Object& rest, const ArgumentSpec& spec);
         Arguments get_args_no_named(const Object& form,
                                          const Object& rest,
                                          const ArgumentSpec& spec);
         void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
-        ArgumentSpec make_varargs();
+        ArgumentSpec make_varargs(bool varargs, bool keys);
         std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env);
 
@@ -100,19 +105,19 @@ namespace script
 
         // --- Доступ к приватным членам -------
         // Лоступ к Reader
-        Reader& get_reader() { return reader; }
+        Reader& get_reader() { return m_reader; }
         // Лоступ к окружению
-        Object get_global_environment() { return global_environment; }
-        SymbolTable& get_symbols() { return reader.get_symbol_table(); }
-        TextDb& get_db() { return reader.get_db(); }
+        Object get_global_environment() { return m_global_environment; }
+        SymbolTable& get_symbols() { return m_reader.get_symbol_table(); }
+        TextDb& get_db() { return m_reader.get_db(); }
         // Константы
-        Object get_nil() { return object_nil; }
-        Object get_true() { return object_true; }
-        Object get_false() { return object_false; }
+        Object get_nil() { return m_object_nil; }
+        Object get_true() { return m_object_true; }
+        Object get_false() { return m_object_false; }
         // Boolean helpers (используют символы)
-        Object true_or_false(bool value) { return value ? object_true : object_false; }
+        Object true_or_false(bool value) { return value ? m_object_true : m_object_false; }
         // Check if value is true
-        bool truthy(const Object& o)  const { return o.truthy(object_false.as_symbol()); }
+        bool truthy(const Object& o)  const { return o.truthy(m_object_false.as_symbol()); }
 
         // Помощники для чисел
         bool is_number(const Object& obj);
@@ -305,29 +310,29 @@ namespace script
         void init_builtin_forms(const std::unordered_map<std::string, BuiltinFormMethod>& forms);        
         // --- Хранилища ---
         // Быстрый поиск для базовых вещей
-        std::unordered_map<void*, BuiltinFormMethod> builtin_forms;
-        std::unordered_map<void*, SpecialFormMethod> special_forms;
+        std::unordered_map<void*, SpecialFormMethod> m_special_forms;
+        std::unordered_map<void*, BuiltinFormMethod> m_builtin_forms;
 
         // Вектор для кастомных форм (если важен порядок перехвата)
         std::vector<std::pair<void*, BuiltinFormMethod>> m_custom_forms;
 
         // Типы и Сеттеры
-        std::unordered_map<std::string, ObjectType> string_to_type;
-        std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> setter_map;
+        std::unordered_map<std::string, ObjectType> m_string_to_type;
+        std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
             
         // Состояние
-        Object  object_true;
-        Object  object_false;
-        const char* symbol_true;
-        const char* symbol_false;
-        Object  object_nil;
-        int     gensym_id = 0;
-        Object  global_environment;
-        Object  comp_env;
-        bool    disable_printing = false;
-        int     stack_depth;
+        Object      m_object_true;
+        Object      m_object_false;
+        const char* m_symbol_true;
+        const char* m_symbol_false;
+        Object      m_object_nil;
+        int         m_gensym_id = 0;
+        Object      m_global_environment;
+        Object      m_comp_env;
+        bool        m_disable_printing = false;
+        int         m_stack_depth;
         std::unique_ptr<SootTypeSystem> m_type_system; // Реализатор
-        Reader  reader;
+        Reader      m_reader;
     };
 
     fmt::terminal_color string_to_color(const std::string& name);
