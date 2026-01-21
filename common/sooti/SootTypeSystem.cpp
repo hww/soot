@@ -96,50 +96,50 @@ namespace script
 
         // 1. Базовая информация о типе
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "name"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "name"),
             Object::make_string(type->get_name())
         ));
 
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "runtime-name"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "runtime-name"),
             Object::make_string(type->get_runtime_name())
         ));
 
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "parent"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "parent"),
             Object::make_string(type->get_parent())
         ));
 
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "boxed"),
-            type->is_boxed() ? m_interpreter.object_true : m_interpreter.object_false
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "boxed"),
+            type->is_boxed() ? m_interpreter.m_object_true : m_interpreter.m_object_false
         ));
 
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "heap-base"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "heap-base"),
             Object::make_integer(type->heap_base())
         ));
 
         // 2. Тип-специфичная информация
         if (auto* value_type = dynamic_cast<const ValueType*>(type)) {
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "type-category"),
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "value-type")
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "type-category"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "value-type")
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "size"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "size"),
                 Object::make_integer(value_type->get_size_in_memory())
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "load-size"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "load-size"),
                 Object::make_integer(value_type->get_load_size())
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "sign-extend"),
-                value_type->get_load_signed() ? m_interpreter.object_true : m_interpreter.object_false
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "sign-extend"),
+                value_type->get_load_signed() ? m_interpreter.m_object_true : m_interpreter.m_object_false
             ));
 
             // Для перечислений
@@ -156,13 +156,13 @@ namespace script
                 }
                 
                 assoc_pairs.push_back(Object::make_pair(
-                    Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "enum-entries"),
+                    Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "enum-entries"),
                     entries_list
                 ));
 
                 assoc_pairs.push_back(Object::make_pair(
-                    Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "bitfield"),
-                    enum_type->is_bitfield() ? m_interpreter.object_true : m_interpreter.object_false
+                    Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "bitfield"),
+                    enum_type->is_bitfield() ? m_interpreter.m_object_true : m_interpreter.m_object_false
                 ));
             }
             
@@ -182,30 +182,30 @@ namespace script
                 }
                 
                 assoc_pairs.push_back(Object::make_pair(
-                    Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "bitfields"),
+                    Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "bitfields"),
                     fields_list
                 ));
             }
         }
         else if (auto* struct_type = dynamic_cast<const StructureType*>(type)) {
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "type-category"),
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "structure-type")
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "type-category"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "structure-type")
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "size"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "size"),
                 Object::make_integer(struct_type->get_size_in_memory())
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "dynamic"),
-                struct_type->is_dynamic() ? m_interpreter.object_true : m_interpreter.object_false
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "dynamic"),
+                struct_type->is_dynamic() ? m_interpreter.m_object_true : m_interpreter.m_object_false
             ));
 
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "packed"),
-                struct_type->is_packed() ? m_interpreter.object_true : m_interpreter.object_false
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "packed"),
+                struct_type->is_packed() ? m_interpreter.m_object_true : m_interpreter.m_object_false
             ));
 
             // Поля структуры
@@ -216,9 +216,9 @@ namespace script
                     Object::make_string(field.name()),
                     Object::make_integer(field.offset()),
                     type_spec_to_lisp(field.type()),
-                    field.is_inline() ? m_interpreter.object_true : m_interpreter.object_false,
-                    field.is_array() ? m_interpreter.object_true : m_interpreter.object_false,
-                    field.is_dynamic() ? m_interpreter.object_true : m_interpreter.object_false,
+                    field.is_inline() ? m_interpreter.m_object_true : m_interpreter.m_object_false,
+                    field.is_array() ? m_interpreter.m_object_true : m_interpreter.m_object_false,
+                    field.is_dynamic() ? m_interpreter.m_object_true : m_interpreter.m_object_false,
                     Object::make_integer(field.array_size())
                 });
                 
@@ -226,28 +226,28 @@ namespace script
             }
             
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "fields"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "fields"),
                 fields_list
             ));
             
             // Для BasicType добавляем специальный признак
             if (dynamic_cast<const BasicType*>(type)) {
                 assoc_pairs.push_back(Object::make_pair(
-                    Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "basic-type"),
-                    m_interpreter.object_true
+                    Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "basic-type"),
+                    m_interpreter.m_object_true
                 ));
             }
         }
         else if (auto* ref_type = dynamic_cast<const ReferenceType*>(type)) {
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "type-category"),
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "reference-type")
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "type-category"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "reference-type")
             ));
         }
         else if (dynamic_cast<const NullType*>(type)) {
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "type-category"),
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "null-type")
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "type-category"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "null-type")
             ));
         }
 
@@ -267,7 +267,7 @@ namespace script
         }
         
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "methods"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "methods"),
             methods_list
         ));
 
@@ -285,7 +285,7 @@ namespace script
         }
         
         assoc_pairs.push_back(Object::make_pair(
-            Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "states"),
+            Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "states"),
             states_list
         ));
 
@@ -299,7 +299,7 @@ namespace script
             });
             
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "new-method"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "new-method"),
                 new_method_info
             ));
         }
@@ -314,14 +314,14 @@ namespace script
             });
             
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "defined-at"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "defined-at"),
                 location_info
             ));
         }
         
         if (type->m_metadata.has_docstring()) {
             assoc_pairs.push_back(Object::make_pair(
-                Object::make_symbol(&m_interpreter.reader.get_symbol_table(), "docstring"),
+                Object::make_symbol(&m_interpreter.m_reader.get_symbol_table(), "docstring"),
                 Object::make_string(type->m_metadata.get_docstring_or_empty())
             ));
         }

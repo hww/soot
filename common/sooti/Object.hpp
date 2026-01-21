@@ -692,6 +692,9 @@ namespace script
     };
 
     struct ArgumentSpec {
+        // mark as it may have &keys, aka: :foo 1 :bar 2
+        bool keys = true;
+        // mark it as it may have variable list, aka: &rest
         bool varargs = false;
         std::vector<std::string> unnamed;
         std::unordered_map<std::string, NamedArg> named;
