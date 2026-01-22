@@ -11,18 +11,18 @@
   (cond ((null? lst) '())
         ((eq? (car lst) old) 
          (cons new (substitute new old (cdr lst))))
-        (t (cons (car lst) (substitute new old (cdr lst))))))
+        (#t (cons (car lst) (substitute new old (cdr lst))))))
 
 (defun recsubstitute (dest source lis)
    (cond
       ((eq? lis source)
          dest)
-      ((listp lis)
+      ((list? lis)
          (cond
-            ((null lis) lis)
-            (T (mapcar (lambda (lis) (recsubstitute dest source lis))
+            ((null? lis) lis)
+            (#t (mapcar (lambda (lis) (recsubstitute dest source lis))
                        lis))))
-      (T lis)))
+      (#t lis)))
 
 (defun nsubstitute (new old lst)
   (let ((current lst))
@@ -40,9 +40,9 @@
    "Assembler opcode"
    (documentation "")
    (op nil)
-   (arg1 'null)
-   (arg2 'null)
-   (arg3 'null)
+   (arg1 nil)
+   (arg2 nil)
+   (arg3 nil)
    (size 0)
    (pass1 nil)
    (pass2 nil)
@@ -58,9 +58,13 @@
                                  (opcode-arg3 opc))))
     (hash-table-set! *optable* key opc)))
 
-(defun get-opc (opc &key (arg1 'null) (arg2 'null) (arg3 'null))
+(defun get-opc (opc &optional (arg1 'null) (arg2 'null) (arg3 'null))
   "Get the hash-table entry for the corresponding opcode"
-  (gethash (lt opc arg1 arg2 arg3) *optable*))
+  (let ((key (fmt #f "{} {} {}"  (opcode-op opc)
+                                 (opcode-arg1 opc)
+                                 (opcode-arg2 opc)
+                                 (opcode-arg3 opc))))
+     (hash-table-ref *optable* key)))
 
 (defstruct inst
    "Assembler instruction"
@@ -82,7 +86,7 @@
   (insts nil)
   ;(ifuncs nil)
   (labs nil)
-  (ltable (make-hash-table :size 30 :test 'eq))
+  (ltable (make-hash-table))
   (ilc 0))
 
 (defun get-label (label prog)
@@ -92,7 +96,7 @@
 (defun shift-label (label value prog)
   "Shift a label from program prog by the specified value"
   (let ((bla (get-label label prog)))
-       (setf (gethash label (asm-prog-ltable prog))
+       (hash-table-set! label (asm-prog-ltable prog)
              (+ bla value))))
 
 (defun shift-following-labels (value prog)
@@ -101,51 +105,46 @@
   (mapcar (lambda (label)
              (shift-label label value prog))
           (asm-prog-labs prog)))
-
-(defun assemble (prog &key
+(defun assemble (prog &optional
                       (func (lambda (byte) 
                                (format t "~D: Word: ~b~%"
                                          (asm-prog-ilc prog) byte))))
   "Assemble an assembler program, go through pass 1, pass2 and then call
    all the functions returned by the instruction."
   (progn
-
     ;; Pass 1
-    (setf (asm-prog-ilc prog) 0)
+    (asm-prog-ilc! prog 0)
     (mapcar (lambda (x) 
                  (let ((opc (get-inst x)))
-             ;;          (print "pass1")
-             ;;          (print x)
-                      (setf (asm-prog-ilc prog)
-                            (+ (asm-prog-ilc prog)
-                               ((opcode-pass1 opc) 
-                                        x prog)))))
+                      (asm-prog-ilc! prog
+                           (+ (asm-prog-ilc prog)
+                              ((opcode-pass1 opc) x prog)))))
             (asm-prog-insts prog))
-    (setf (asm-prog-labs prog) (nreverse (asm-prog-labs prog)))
+    (asm-prog-labs! prog (nreverse (asm-prog-labs prog)))
 
     ;; Pass 2
-    (setf (asm-prog-ilc prog) 0)
+    (asm-prog-ilc! prog 0)
     (mapcar (lambda (x) 
                  (let ((opc (get-inst x)))
-             ;;          (print "pass2")
-             ;;          (print x)
-                      (setf (asm-prog-ilc prog)
-                            (+ (asm-prog-ilc prog)
-                               ((opcode-pass2 opc) 
-                                        x prog)))))
+                      (asm-prog-ilc! prog
+                           (+ (asm-prog-ilc prog)
+                              ((opcode-pass2 opc) x prog)))))
             (asm-prog-insts prog))
 
-    ; Pass 3
-    ; Call the whole program instruction function list
-    (setf (asm-prog-ilc prog) 0)
+    ;; Pass 3
+    ;; Call the whole program instruction function list
+    (asm-prog-ilc! prog 0)
     (mapcar (lambda (x)
                  (let* ((opc (get-inst x))
                         (lis ((opcode-pass3 opc) x prog)))
+                       ;; Отладочный вывод
                        (print "pass3")
                        (print x)
+                       ;; Генерация кода
                        (mapcar func lis)
-                (setf (asm-prog-ilc prog)
-                      (+ (asm-prog-ilc prog) (list-length lis)))))
+                       ;; Обновление счетчика
+                       (asm-prog-ilc! prog
+                            (+ (asm-prog-ilc prog) (list-length lis)))))
             (asm-prog-insts prog))))
 
 (defun assemble-raw-byte (prog file)
@@ -159,7 +158,10 @@
              (close bos)
              (format t "Program written to file ~S~%" file))
            (format t "Program could not be written to file ~S~%" file))))
-(log 'info "sss")
+
+(defun assemble-raw-byte (prog file)
+   (progn 
+      (assemble prog (lambda (byte) (write-byte byte bos)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Parse function for the appropriate assembler type
@@ -205,7 +207,7 @@
 
        (hash-opcode opc))
 
-  `(defun ,sym (&key (arg1 (make-lextoken :type 'null))
+  `(defun ,sym (&optional (arg1 (make-lextoken :type 'null))
                      (arg2 (make-lextoken :type 'null))
                      (arg3 (make-lextoken :type 'null)))
       (let ((bla1 (*parse* arg1))
@@ -246,12 +248,12 @@
         (mapcar3 
 
           (lambda (blo blob bloc)
-             (if (or (eq blo 'variable)
-                     (eq blo 'var-indirect))
+             (if (or (eq? blo 'variable)
+                     (eq? blo 'var-indirect))
                  (progn 
-                    (setf pass1b (recsubstitute bloc blob pass1b))
-                    (setf pass2b (recsubstitute bloc blob pass2b))
-                    (setf pass3b (recsubstitute bloc blob pass3b))
+                    (set! pass1b (recsubstitute bloc blob pass1b))
+                    (set! pass2b (recsubstitute bloc blob pass2b))
+                    (set! pass3b (recsubstitute bloc blob pass3b))
                     (push! `(,bloc (get-label ,blob prog)) rplis))))
 
           (list arg1 arg2 arg3)
@@ -280,7 +282,7 @@
      :pass1 
         (progn
            (push r1 (asm-prog-labs prog))
-           (setf (gethash r1 (asm-prog-ltable prog))
+           (hash-table-set! r1 (asm-prog-ltable prog)
                  (asm-prog-ilc prog))
         0)
      :pass3

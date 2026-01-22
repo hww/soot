@@ -1,9 +1,9 @@
-﻿(load "asm-program.lisp")
+﻿(load "common/xiff/soot/asm-program.sot")
 
-(load "asm-z80.lisp")
+(load "common/xiff/soot/asm-z80.sot")
 
 (defmacro subroutine (name &rest code)
-   `((label ,name) ,@code))
+   `((lab ',name) ,@code))
 
 (defparameter 
    test 
@@ -21,8 +21,9 @@ $blu
       (ld @a @c)
 $blo
 
-(subroutine blubber
-      (ld @a @c))
-))
+;;(subroutine blubber
+;;      (ld @a @c))
+  )
+)
 
 (assemble test)
