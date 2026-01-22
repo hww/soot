@@ -318,7 +318,7 @@ void Interpreter::set_args_in_env(const Object& form,
 
     // unnamed args
     for (size_t i = 0; i < arg_spec.unnamed.size(); i++) {
-        env->vars.set(intern_ptr(arg_spec.unnamed.at(i)), args.unnamed.at(i));
+        env->vars.set(intern_ptr(arg_spec.unnamed.at(i).name), args.unnamed.at(i));
     }
 
     // named args
@@ -556,7 +556,10 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
 Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
     case ObjectType::SYMBOL:
-        return eval_symbol(obj, env);
+        if (obj.is_keyword())
+            return obj;
+        else
+            return eval_symbol(obj, env);
     case ObjectType::PAIR:
         return eval_pair(obj, env);
     case ObjectType::INTEGER:
@@ -649,7 +652,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         // try builtins next
         const auto& kv_b = m_builtin_forms.find((void*)head_sym.name_ptr);
         if (kv_b != m_builtin_forms.end()) {
-            Arguments args = get_args(obj, rest, make_varargs(true, false));
+            Arguments args = get_args(obj, rest, ArgumentSpec(false, true));
             // all "built-in" forms expect arguments to be evaluated (that's why they aren't special)
             eval_args(&args, env);
             return ((*this).*(kv_b->second))(obj, args, env);
@@ -658,7 +661,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         // try custom forms next
         for (const auto& cf : m_custom_forms) {
             if (cf.first == head_sym.name_ptr) {
-                Arguments args = get_args(obj, rest, make_varargs(true, false));
+                Arguments args = get_args(obj, rest, ArgumentSpec(false, true));
                 return ((*this).*cf.second)(obj, args, env);
             }
         }
@@ -737,7 +740,7 @@ Object Interpreter::eval_define_special(const Object& form, const Object& rest, 
 }
 
 Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    auto args = get_args(form, rest, make_varargs(true, false));
+    auto args = get_args(form, rest, ArgumentSpec(false, true));
     vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
     auto to_define = args.unnamed.at(0);
     Object to_set = eval_with_rewind(args.unnamed.at(1), env);
@@ -812,7 +815,7 @@ Object Interpreter::eval_macro_special(const Object& form, const Object& rest, c
  */
 Object Interpreter::eval_quote_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    auto args = get_args_no_named(form, rest, make_varargs(true, false));
+    auto args = get_args_no_named(form, rest, ArgumentSpec(false, true));
     if (!args.unnamed.size()) {
         throw_eval_error(form, "quote requires one argument");
     }
@@ -1308,38 +1311,42 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest, const ArgumentSpec& spec) {
     Arguments args;
     const Object* current = &rest;
-    size_t positional_idx = 0;
 
-    // 1. Сначала обрабатываем позиционные аргументы
-    while (!current->is_empty_list() && positional_idx < spec.unnamed.size()) {
-        const auto& arg = current->as_pair()->car;
-        
-        // Здесь мы НЕ проверяем arg.is_keyword(). 
-        // В этой позиции любой объект — это просто данные.
-        args.unnamed.push_back(arg);
-        
-        positional_idx++;
-        current = &current->as_pair()->cdr;
-    }
-
-    // Проверка: хватило ли позиционных аргументов?
-    if (positional_idx < spec.unnamed.size()) {
-        throw_eval_error(form, fmt::format("Not enough positional arguments. Expected {}, got {}", 
-                         spec.unnamed.size(), positional_idx));
+    // 1. Обработка всех позиционных аргументов (обязательные + опциональные)
+    for (const auto& p_spec : spec.unnamed) {
+        if (!current->is_empty_list()) {
+            // Если в вызове есть данные — просто забираем их.
+            // Мы не проверяем на ключевые слова, так как позиция имеет приоритет.
+            const auto& val = current->as_pair()->car;
+            args.unnamed.push_back(val); // Сохраняем под именем из спецификации
+            current = &current->as_pair()->cdr;
+        } else {
+            // Данные в вызове закончились. Проверяем, является ли аргумент опциональным.
+            if (p_spec.is_optional) {
+                // Аргумент опциональный — подставляем дефолтное значение
+                 args.unnamed.push_back(p_spec.default_value);
+            } else {
+                // Аргумент обязательный, но данных нет — это ошибка
+                throw_eval_error(form, fmt::format(
+                    "Not enough arguments. Required positional argument '{}' is missing.", 
+                    p_spec.name));
+            }
+        }
     }
 
     // 2. Теперь обрабатываем то, что осталось (Keyword или Rest)
     while (!current->is_empty_list()) {
         const auto& arg = current->as_pair()->car;
 
+        auto is_keyword = arg.is_keyword();
         // Если функция ждет именованные аргументы (&key) и мы встретили ключевое слово
-        if (arg.is_keyword() && !spec.named.empty()) {
+        if (is_keyword && !spec.named.empty()) {
             auto key_name = std::string(arg.as_symbol().name_ptr + 1);
             
             // Проверка на валидность ключа
             const auto& it = spec.named.find(key_name);
             if (it == spec.named.end()) {
-                // Если разрешены varargs, можно игнорировать или класть в rest.
+                // Если разрешены keys, можно игнорировать или класть в rest.
                 // Но обычно неизвестный &key — это ошибка.
                 throw_eval_error(form, fmt::format("Unknown key argument: :{}", key_name));
             }
@@ -1452,6 +1459,7 @@ void Interpreter::eval_args(Arguments* args, const std::shared_ptr<EnvironmentOb
 ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
     ArgumentSpec spec;
     bool parsing_keys = false; 
+    bool parsing_optional = false; 
     Object current = rest;
 
     while (!current.is_empty_list()) {
@@ -1466,6 +1474,8 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
 
         // 2. Логика переключения режимов
         if (is_sym && arg_name == "&rest") {
+            parsing_optional = false;
+            parsing_keys = false;            
             current = current.as_pair()->cdr;
             if (!current.is_pair()) throw_eval_error(form, "rest arg must have a name");
             
@@ -1478,8 +1488,17 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
         }
         
         if (is_sym && arg_name == "&key") {
-            spec.keys = true;
+            parsing_optional = false;
             parsing_keys = true;
+            spec.keys = true;
+            current = current.as_pair()->cdr;
+            continue; // Идем к следующему элементу после "&key"
+        }
+
+        if (is_sym && arg_name == "&optional") {
+            parsing_optional = true;
+            parsing_keys = false;
+            spec.keys = true;
             current = current.as_pair()->cdr;
             continue; // Идем к следующему элементу после "&key"
         }
@@ -1515,10 +1534,38 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
             }
             spec.named[key_arg_name] = na;
         } 
+        else if (parsing_optional) {
+            PositionalArg opt_arg;
+
+            if (arg.is_symbol()) {
+                // Случай: &key b
+                opt_arg.is_optional = true;
+                opt_arg.name = arg.as_symbol().name_ptr;
+                opt_arg.default_value = get_nil();
+            } 
+            else if (arg.is_pair()) {
+                // Случай: &optional (b 1)
+                auto kn = arg.as_pair()->car; 
+                if (!kn.is_symbol()) throw_eval_error(form, "optional name must be a symbol");
+                
+                opt_arg.name = kn.as_symbol().name_ptr;
+                opt_arg.is_optional = true;
+
+                auto val_list = arg.as_pair()->cdr;
+                if (val_list.is_pair()) {
+                    // Если есть второй элемент — это и есть наше default_value
+                    opt_arg.default_value = val_list.as_pair()->car;
+                }
+            }
+            else {
+                throw_eval_error(form, "invalid optional argument " + arg.print());
+            }
+            spec.unnamed.push_back(opt_arg);
+        }         
         else {
             // Обычный позиционный аргумент
             if (!is_sym) throw_eval_error(form, "positional args must be symbols");
-            spec.unnamed.push_back(arg_name);
+            spec.unnamed.push_back({name: arg_name, is_optional: false });
         }
 
         current = current.as_pair()->cdr;
@@ -1628,13 +1675,6 @@ void Interpreter::vararg_check(
             throw_eval_error(form, fmt::format("unexpected named argument '{}'", name));
         }
     }
-}
-
-ArgumentSpec Interpreter::make_varargs(bool varargs, bool keys) {
-    ArgumentSpec spec;
-    spec.keys = keys;
-    spec.varargs = varargs;
-    return spec;
 }
 
 // ==============================================
@@ -1768,7 +1808,6 @@ Object Interpreter::eval_cfmt(const Object& form, Arguments& args, const std::sh
 
     return Object::make_string(formatted);
 }
-
 
 /**
  * (error <message-string> [object])

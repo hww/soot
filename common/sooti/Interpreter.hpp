@@ -93,7 +93,7 @@ namespace script
                                          const Object& rest,
                                          const ArgumentSpec& spec);
         void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
-        ArgumentSpec make_varargs(bool varargs, bool keys);
+
         std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env);
 
