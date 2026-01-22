@@ -10,7 +10,7 @@ namespace {
             return obj.as_symbol().name_ptr;
         }
         if (obj.is_keyword()) {
-            return obj.as_keyword().name_ptr;
+            return obj.as_symbol().name_ptr;
         }        
         throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
     }

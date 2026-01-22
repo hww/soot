@@ -39,7 +39,6 @@ namespace script
         core.float_pt       = Object::make_symbol(this, "float");
         core.character      = Object::make_symbol(this, "char");
         core.symbol         = Object::make_symbol(this, "symbol");
-        core.keyword        = Object::make_symbol(this, "keyword");
         core.string         = Object::make_symbol(this, "string");
         core.pair           = Object::make_symbol(this, "pair");
         core.array          = Object::make_symbol(this, "array");
@@ -57,7 +56,6 @@ namespace script
             case ObjectType::FLOAT:         return core.float_pt;   // было Float
             case ObjectType::CHAR:          return core.character;  // было Char
             case ObjectType::SYMBOL:        return core.symbol;
-            case ObjectType::KEYWORD:       return core.keyword;
             case ObjectType::STRING:        return core.string;
             case ObjectType::PAIR:          return core.pair;
             case ObjectType::ARRAY:         return core.array;
@@ -202,8 +200,6 @@ namespace script
         return "[string-hash-table]";
         case ObjectType::READER:
         return "[reader]";
-        case ObjectType::KEYWORD:
-        return "[keyword]";
         default:
             throw std::runtime_error("unknown object type in object_type_to_string");
         }
@@ -255,7 +251,7 @@ namespace script
 
     Object Object::make_keyword(SymbolTable* table, const char* name) {
         Object obj;
-        obj.type = ObjectType::KEYWORD;
+        obj.type = ObjectType::SYMBOL;
 
         if (name[0] == ':') {
             // Если уже начинается с ':', интернируем как есть
@@ -341,8 +337,6 @@ namespace script
         case ObjectType::CHAR:
             return char_obj.print();
         case ObjectType::SYMBOL:
-            return symbol_obj.print();
-        case ObjectType::KEYWORD:
             return symbol_obj.print();
         default:
             if (is_heap_object())
@@ -430,14 +424,6 @@ namespace script
         return symbol_obj.value;
     }
     
-    const InternedSymbolPtr& Object::as_keyword() const {
-        if (type != ObjectType::KEYWORD) {
-            throw std::runtime_error("as_symbol called on a " + object_type_to_string(type) +
-                " " + print());
-        }
-        return symbol_obj.value;
-    }
-
     ArrayObject* Object::as_array() const {
         if (type != ObjectType::ARRAY) {
             throw std::runtime_error("as_array called on a " + object_type_to_string(type) + " " + print());
@@ -506,13 +492,6 @@ namespace script
         default:
             return heap_obj.get() == other.heap_obj.get();
         }
-    }
-
-    // Вспомогательные функции
-    ArgumentSpec make_varargs() {
-        ArgumentSpec spec;
-        spec.varargs = true;
-        return spec;
     }
 
     /*!
@@ -722,13 +701,6 @@ namespace script
             case ObjectType::SYMBOL: {
                 ListBuilder lb{symbols};
                 lb.push_back(Object::make_symbol(&symbols, "symbol"));
-                lb.push_kv(symbols, "name", *this);
-                return lb.finalize();
-            }
-
-            case ObjectType::KEYWORD: {
-                ListBuilder lb{symbols};
-                lb.push_back(Object::make_symbol(&symbols, "keyword"));
                 lb.push_kv(symbols, "name", *this);
                 return lb.finalize();
             }

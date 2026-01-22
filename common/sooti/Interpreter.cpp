@@ -71,7 +71,6 @@ namespace script
             {"macro", ObjectType::MACRO},
             {"environment", ObjectType::ENVIRONMENT},
             {"reader", ObjectType::READER},
-            {"keyword", ObjectType::KEYWORD},
         };
         
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
@@ -556,8 +555,6 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
 
 Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
-    case ObjectType::KEYWORD:
-        return obj;
     case ObjectType::SYMBOL:
         return eval_symbol(obj, env);
     case ObjectType::PAIR:
@@ -702,7 +699,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
 
 
     if (eval_head.type != ObjectType::LAMBDA) {
-        throw_eval_error(obj, "head of form didn't evaluate to lambda");
+        throw_eval_error(eval_head, "head of form didn't evaluate to lambda: " + eval_head.type_name() + " " + eval_head.print());
     }
 
 
@@ -1234,7 +1231,7 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 
         // did we get a ":keyword"
         if (spec.keys && arg.is_keyword()) {
-            auto key_name = std::string(arg.as_keyword().name_ptr + 1);
+            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
             const auto& kv = spec.named.find(key_name);
 
             // check for unknown key name
@@ -1296,6 +1293,18 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
     return args;
 }
 
+/*!
+ * Same as get_args, but it reffers to ArgumentSpect to find associations woth named :key arguments 
+ * are not parsed. It allows to pass  keywords to methods.
+ * (defun foo (a &key b &rest lst) ...) 
+ * can be invoked
+ * (foo 1 :b 2)  ;; named priorty
+ * but possible to do 
+ * (foo :b :b 2)   ;; unnamed prioprity
+ * (foo 1 :c :b 2) ;; unnamed prioprity
+ *         ^
+ *         +----------- to the (rest)
+ */
 Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest, const ArgumentSpec& spec) {
     Arguments args;
     const Object* current = &rest;
@@ -1325,7 +1334,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
 
         // Если функция ждет именованные аргументы (&key) и мы встретили ключевое слово
         if (arg.is_keyword() && !spec.named.empty()) {
-            auto key_name = std::string(arg.as_keyword().name_ptr + 1);
+            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
             
             // Проверка на валидность ключа
             const auto& it = spec.named.find(key_name);
@@ -1346,8 +1355,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
             }
 
             args.named[key_name] = current->as_pair()->car;
-        } 
-        else {
+        } else {
             // Если это не ключевое слово или функция не ждет &key
             if (!spec.rest.empty() || spec.varargs) {
                 args.rest.push_back(arg);
@@ -1714,32 +1722,34 @@ fmt::terminal_color string_to_color(const std::string& name) {
     return (it != colors.end()) ? it->second : fmt::terminal_color::white;
 }
 
+// (cfmt #t 'red "format" arguments )
 Object Interpreter::eval_cfmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    if (args.unnamed.size() < 2) {
-        throw_eval_error(form, "cfmt requires at least destination and format-string");
+    if (args.unnamed.size() < 3) {
+        throw_eval_error(form, "cfmt requires at least destination, color and format-string");
     }
 
     auto dest = args.unnamed.at(0);
-    auto format_str = args.unnamed.at(1);
+
+    // Обработка цвета из ключевых аргументов (например, :color "red")
+    fmt::terminal_color text_color = fmt::terminal_color::white;
+    auto it_color = args.unnamed.at(1);
+    if (it_color.is_string()) {
+        text_color = string_to_color(it_color.as_string()->data);
+    } else if (it_color.is_symbol()) {
+        text_color = string_to_color(it_color.as_symbol().c_str());
+    } else {
+         throw_eval_error(form, "cfmt color as string or symbol");
+    }
+
+    auto format_str = args.unnamed.at(2);
     if (!format_str.is_string()) {
         throw_eval_error(form, "cfmt: format string must be a string");
     }
 
-    // Обработка цвета из ключевых аргументов (например, :color "red")
-    fmt::terminal_color text_color = fmt::terminal_color::white;
-    auto it_color = args.named.find("color");
-    if (it_color != args.named.end()) {
-        if (it_color->second.is_string()) {
-            text_color = string_to_color(it_color->second.as_string()->data);
-        } else if (it_color->second.is_symbol()) {
-            text_color = string_to_color(it_color->second.as_symbol().c_str());
-        }
-    }
-
     // Собираем аргументы (как в твоем fmt)
     fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
-    for (size_t i = 2; i < args.unnamed.size(); i++) {
+    for (size_t i = 3; i < args.unnamed.size(); i++) {
         const auto& arg = args.unnamed.at(i);
         if (arg.is_string()) {
             arg_store.push_back(arg.as_string()->data);
@@ -1758,6 +1768,7 @@ Object Interpreter::eval_cfmt(const Object& form, Arguments& args, const std::sh
 
     return Object::make_string(formatted);
 }
+
 
 /**
  * (error <message-string> [object])
@@ -2646,8 +2657,6 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
 const char* get_hash_key(Object item_pair) {
     if (item_pair.is_symbol()) {
         return item_pair.as_symbol().name_ptr;
-    } else if (item_pair.is_keyword()) {
-        return item_pair.as_keyword().name_ptr;
     } else if (item_pair.is_string()) {
         return item_pair.as_string()->data.c_str();
     } else {
