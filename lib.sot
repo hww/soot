@@ -162,11 +162,11 @@
 ;    n))
 
 ;; Рекурсивно «выравнивает» вложенные списки в один плоский список.
-;; Использует consp для обнаружения подпунктов и append для их слияния.
+;; Использует pair? для обнаружения подпунктов и append для их слияния.
 (defun flatten (lis)
-  (cond ((null lis) nil)
-        ((consp lis) (append (flatten (car lis)) (flatten (cdr lis))))
-        (t (list lis))))
+  (cond ((null? lis) nil)
+        ((pair? lis) (append (flatten (car lis)) (flatten (cdr lis))))
+        (#t (list lis))))
 
 ;; @doc (reverse lst) -> list
 ;; Разворачивает список (итеративно).
@@ -212,7 +212,7 @@
 ;; Применяет функцию func к каждому элементу списка lst.
 ;; Результат: новый список из возвращаемых значений.
 (defun mapcar (func lst)
-  (if (null lst)
+  (if (null? lst)
       nil ; Базовый случай: список кончился.
       (cons (func (car lst)) ; Вызываем func для "головы" и кладем в новый список.
             (mapcar func (cdr lst))))) ; Рекурсивно идем к "хвосту".
@@ -222,7 +222,7 @@
 ;; Лямбда func должна принимать ровно 2 аргумента.
 (defun mapcar2 (func lst1 lst2)
   ; Если ХОТЯ БЫ ОДИН список пуст, обработка прекращается.
-  (if (or (null lst1) (null lst2))
+  (if (or (null? lst1) (null? lst2))
       nil
       ; Берем по одному элементу из каждого списка и передаем в func.
       (cons (func (car lst1) (car lst2))
@@ -234,7 +234,7 @@
 (defun mapcar3 (func lst1 lst2 lst3)
   ; Синхронно идем по трем спискам. Если один короче других,
   ; результат будет длиной с самый короткий список.
-  (if (or (null lst1) (null lst2) (null lst3))
+  (if (or (null? lst1) (null? lst2) (null? lst3))
       nil
       ; Извлекаем головы (car) всех трех списков одновременно.
       (cons (func (car lst1) (car lst2) (car lst3))
@@ -340,33 +340,6 @@
 
 ;; В раздел Mimic CL
 ;; --- Fundamental Constants ---
-(define NIL '())      ; The primary empty list / false object
-(define nil NIL)      ; Lowercase alias for convenience
-(define T   #t)       ; The primary truth object
-(define t   T)        ; Lowercase alias for convenience
-
-;; --- Predicates ---
-(defun null  (x) (null? x))
-(defun nilp  (x) (null? x))
-(defun atom  (x) (not (pair? x)))
-(defun consp (x) (pair? x))
-(defun listp (x) (or (pair? x) (null? x)))
-
-;; --- Common Lisp Equality Alias ---
-(defun eq (a b) (eq? a b))
-
-;; --- Assignment & Variables ---
-(defmacro setq (name data) `(define ,name ,data))
-
-;; --- Generalized Variables (The core we just built) ---
-(defmacro setf (place value)
-  (if (symbolp place)
-      `(setq ,place ,value)
-      (let ((setter (get-setter (car place))))
-        (if (not (nil? setter))
-            `(,setter ,@(cdr place) ,value)
-            (error "SETF: No setter registered for: " (car place))))))
-
 (defsetf 'car 'set-car!)
 (defsetf 'cdr 'set-cr!)
 (defsetf 'get 'hash-table-set!)
@@ -416,8 +389,73 @@
 ;; Пример использования: (defstruct point x y)
 ;; Макрос создаст в памяти:
 ;;   1. Конструктор (make-point :x 1 :y 2)
-;;   2. Геттер (point-x instance)
-;;   3. Геттер (point-y instance)
+;;   2. Геттер   (struct-ref instance field)
+;;   3. Сеттер   (struct-set! instance field value)
+;;   4. Предикат (struct-type? instance field type)
+;;   5. Тип      (struct-type instance )
+;; =============================================================================
+(defmacro defstructure (name &rest fields)
+  (let* ((struct-name-sym name)
+          (doc? (string? (car fields)))
+          (fields (if doc? (cdr fields) fields))
+          (constructor (intern (concat "make-" (symbol->string name))))
+          (normalized (map (lambda (f) 
+                             (if (pair? f) 
+                                 f 
+                                 (list f nil))) 
+                           fields)))
+    `(progn
+       ;; Конструктор (оставляем как есть)
+       (defun ,constructor (&key ,@normalized)
+         (let ((h (make-hash-table)))
+           (hash-table-set! h ':_type_ ',struct-name-sym)
+           ,@(map (lambda (f-spec)
+                    (let ((f-name (car f-spec))
+                          (key (intern (symbol->string (car f-spec)))))  ;; Без двоеточия
+                      `(hash-table-set! h ',key ,f-name)))
+                  normalized)
+           h))
+       
+       ;; --- ОПЦИОНАЛЬНО: можно оставить конкретные геттеры/сеттеры для удобства ---
+       ;; Но основную логику реализуем через универсальные функции
+       )))
+
+;; Универсальные функции для всех структур
+(defun struct-type (obj)
+  "Возвращает тип структуры (символ)"
+  (if (hash-table? obj)
+      (hash-table-ref obj ':_type_)
+      (error "Not a struct: ~a" obj)))
+
+(defun struct-type? (obj type)
+  "Проверяет, является ли объект структурой указанного типа"
+  (and (hash-table? obj)
+       (eq? (struct-type obj) type)))
+
+(defun struct-ref (obj field)
+  "Получает значение поля структуры"
+  (if (hash-table? obj)
+      (hash-table-ref obj field)
+      (error "Not a struct: ~a" obj)))
+
+(defun struct-set! (obj field value)
+  "Устанавливает значение поля структуры"
+  (if (hash-table? obj)
+      (hash-table-set! obj field value)
+      (error "Not a struct: ~a" obj)))
+
+
+;; =============================================================================
+;; DEFSTRUCT: Генератор структур данных в стиле Common Lisp.
+;; =============================================================================
+;; Автоматизирует создание "объектов" на базе ассоциативных списков (alist).
+;; Пример использования: (defstruct point x y)
+;; Макрос создаст в памяти:
+;;   1. Конструктор (make-point :x 1 :y 2)
+;;   2. Геттер   (point-x instance field)
+;;   3. Сеттер   (point-xset! instance field value)
+;;   4. Предикат (point-type? instance field type)
+;;   5. Тип      (point-type instance )
 ;; =============================================================================
 (defmacro defstruct (name &rest fields)
   (let* ((struct-name-sym name)
@@ -446,6 +484,10 @@
        (defun ,(intern (concat struct-name-str "?")) (obj)
          (and (hash-table? obj) 
               (eq? (hash-table-ref obj :_type_) ',struct-name-sym)))
+       
+       (defun ,(intern (concat struct-name-str "-type")) (obj)
+         (and (hash-table? obj) 
+              (hash-table-ref obj :_type_)))
 
        ;; --- Геттеры ---
        ,@(map (lambda (f-spec)
@@ -465,6 +507,7 @@
                   `(defun ,setter-name (instance value)
                      (hash-table-set! instance ,key value))))
               normalized))))
+
 
 (defun build-struct-from-plist (fields args)
   "Превращает (:key1 val1 :key2 val2) в ((key1 . val1) (key2 . val2))"
@@ -510,7 +553,7 @@
       ((listp lis)
          (cond
             ; Если список пуст — возвращаем как есть.
-            ((null lis) lis)
+            ((null? lis) lis)
             ; Магия: вызываем recsubstitute для каждого элемента списка через mapcar.
             ; Это позволяет зайти на любую глубину вложенности.
             (T (mapcar (lambda (item) (recsubstitute dest source item))

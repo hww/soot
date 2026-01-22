@@ -48,6 +48,8 @@ namespace script
 
         define_var_in_env(m_global_environment, m_object_nil, "NIL");
         define_var_in_env(m_comp_env, m_object_nil, "NIL");
+        define_var_in_env(m_global_environment, m_object_nil, "nil");
+        define_var_in_env(m_comp_env, m_object_nil, "nil");
 
         define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
         define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -529,6 +531,7 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
                     auto info_opt = m_reader.get_db().get_short_info_for(obj);
                     bool add_newline = m_stack_depth == 0;
                     // Печатаем "at ..", только если есть реальный файл и строка > 0
+#ifdef INSPECT}                    
                     if (info_opt && info_opt->line_idx_to_display > 0) {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
                                 m_stack_depth + 1, obj.inspect_short(m_reader.get_symbol_table()), info_opt->filename, info_opt->line_idx_to_display);
@@ -536,6 +539,15 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
                                 m_stack_depth + 1, obj.inspect_short(m_reader.get_symbol_table()));
                     }
+#else
+                    if (info_opt && info_opt->line_idx_to_display > 0) {
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
+                                m_stack_depth + 1, obj.print(), info_opt->filename, info_opt->line_idx_to_display);
+                    } else {
+                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
+                                m_stack_depth + 1, obj.print());
+                    }
+#endif
                     if (add_newline) fmt::print(fg(fmt::color::dim_gray), "\n");
                 }
             }
@@ -749,15 +761,15 @@ Object Interpreter::eval_set_special(const Object& form, const Object& rest, con
     for (;;) {
         auto kv = search_env->vars.lookup(to_define.as_symbol());
         if (kv) {
-        search_env->vars.set(to_define.as_symbol(), to_set);
-        return to_set;
+            search_env->vars.set(to_define.as_symbol(), to_set);
+            return to_set;
         }
 
         auto pe = search_env->parent_env;
         if (pe) {
-        search_env = pe;
+            search_env = pe;
         } else {
-            throw_eval_error(to_define, "symbol is not defined");
+            throw_eval_error(to_define, "symbol is not defined " + std::string(to_define.as_symbol().c_str()));
         }
     }
 }

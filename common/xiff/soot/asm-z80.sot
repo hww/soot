@@ -27,7 +27,7 @@
 (set-macro-character "$"
    (lambda (s c)
       (let ((sym (read s)))
-           (lab :arg1 sym))))
+           (lab sym))))
 
 ;; @ is a macro character to define registers
 (set-macro-character "@" 
@@ -77,7 +77,7 @@
 ;;; Примечание: В Z80 смещение IX/IY — это знаковое 8-битное число (-128..127).
 (defun make-indexed (sign reg val)
    "Create an indexed lextoken"
-   (let ((val (if (eq sign '+) (eval val) (- 0 (eval val)))))
+   (let ((val (if (eq? sign '+) (eval val) (- 0 (eval val)))))
         (case (lextoken-type reg)
            ('ix (make-lextoken :type 'ix-indexed :value val))
            ('iy (make-lextoken :type 'iy-indexed :value val)))))
@@ -107,7 +107,7 @@
 ;;;                   Результат: Передает управление в make-indexed
 ;;;
 ;;;   (MY_LABEL)   -> LIS: (MY_LABEL)
-;;;                   FIRST: MY_LABEL (symbolp)
+;;;                   FIRST: MY_LABEL (symbol?)
 ;;;                   Результат: asmsym-indirect (адрес будет разрешен позже)
 (defun ind-reader (lis)
    "Read indirect adressing modes"
@@ -116,7 +116,7 @@
            ((fixnump first)
               (print lis)(print " ")(print (print first))
               (make-lextoken :type 'imm-indirect :value first))
-           ((or (eq '+ first) (eq '- first))
+           ((or (eq? '+ first) (eq? '- first))
               (apply 'make-indexed lis))
            ((lextoken? first)
               (case (lextoken-value first)
@@ -124,7 +124,7 @@
                  ('hl (make-lextoken :type 'hl-indirect))
                  ('sp (make-lextoken :type 'sp-indirect))
                  ('de (make-lextoken :type 'de-indirect))))
-           ((symbolp first)
+           ((symbol? first)
               (make-lextoken :type 'asmsym-indirect :value first)))))
 
 ;; [ is a macro character for indirect and indexed adressing modes
@@ -137,7 +137,7 @@
 (set-macro-character "]" ")")
 
 ;; z80 register codes, needed often during instruction assembling
-(setq *reg-codes* (make-hash-table '() 11))
+(define *reg-codes* (make-hash-table '() 11))
 
 (defmacro reg-code (reg)
    `(hash-table-ref *reg-codes* ,reg))
@@ -159,7 +159,7 @@
 (reg-code! 'af 3)
 
 ; z80 condition codes, needed often during instruction assembling
-(setq *con-codes* (make-hash-table))
+(define *con-codes* (make-hash-table))
 
 (defmacro con-code (reg)
    `(hash-table-ref *con-codes* ,reg))
@@ -179,23 +179,23 @@
   "Parse z80 source code, see the macro definitions and lextoken
   definitions above."
   (cond
-    ((null arg) '())
+    ((null? arg) '())
     ((numberp arg)
         (make-lextoken :type 'number
                        :value arg))
-    ((symbolp arg)
+    ((symbol? arg)
         (make-lextoken :type 'asmsym :value arg))
     ((lextoken? arg) arg)
     ; lists to embed data into the assembler source code
-    ((listp arg) (make-lextoken :type 'list :value arg))
-    (T 'XXX)))
+    ((list? arg) (make-lextoken :type 'list :value arg))
+    (#t 'XXX)))
   
 ; Set the assembler parse function to be parse-z80
-(setq *parse* parse-z80)
+(set! *parse* parse-z80)
 
 (defun lzasm-z80 (&rest insts)
   "Create a new z80 program"
-  (make-asm-prog :insts (flatten-list insts)))
+  (make-asm-prog :insts (flatten insts)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;; 8-Bit Load group ;;;;;;;;;;;;;;;;;;;
@@ -278,70 +278,70 @@
 
 (operand ld 1
      "LD A, (BC)"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 '(#b00001010))
      :arg1 8-register
      :arg2 bc-indirect)
 
 (operand ld 1
      "LD A, (DE)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 '(#b00011010))
      :arg1 8-register
      :arg2 de-indirect)
 
 (soperand ld 3
      "LD A, (nn)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b00111010 (lower-byte r2) (higher-byte r2)))
      :arg1 8-register
      :arg2 var-indirect)
 
 (operand ld 1
      "LD (BC), A"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 '(#b00000010))
      :arg1 bc-indirect
      :arg2 8-register)
 
 (operand ld 1
      "LD (DE), A"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 '(#b00010010))
      :arg1 de-indirect
      :arg2 8-register)
 
 (soperand ld 3
      "LD (nn), A"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 (list #b00110010 (lower-byte r1) (higher-byte r1)))
      :arg1 var-indirect
      :arg2 8-register)
 
 (operand ld 2
      "LD A, I" 
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 '(#b11101101 #b01010111))
      :arg1 8-register
      :arg2 iv-register)
 
 (operand ld 2
      "LD A, R"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 '(#b11101101 #b01011111))
      :arg1 8-register
      :arg2 mr-register)
 
 (operand ld 2
      "LD I, A"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 '(#b11101101 #b01000111))
      :arg1 iv-register
      :arg2 8-register)
 
 (operand ld 2
      "LD R, A"
-     :pass3 (if (eq r2 'a)
+     :pass3 (if (eq? r2 'a)
                 '(#b11101101 #b01001111))
      :arg1 mr-register
      :arg2 8-register)
@@ -380,9 +380,9 @@
 
 (soperand ld 4
      "LD dd, (nn)"
-     :pass1 (if (eq r1 'hl)
+     :pass1 (if (eq? r1 'hl)
                 (progn 
-                   (setf (inst-op inst) 'ldhl)
+                   (struct-set! inst-op :inst 'ldhl)
                    3)
                 4)
      :pass3 (list #b11101101 
@@ -490,14 +490,14 @@
 
 (operand ex 1
      "EX DE, HL"
-     :pass3 (if (and (eq r1 'de) (eq r2 'hl))
+     :pass3 (if (and (eq? r1 'de) (eq? r2 'hl))
                 (list #b11101011))
      :arg1 16-register
      :arg2 16-register)
 
 (operand ex 1
      "EX AF, AF'"
-     :pass3 (if (and (eq r1 'af) (eq r2 'af2))
+     :pass3 (if (and (eq? r1 'af) (eq? r2 'af2))
                 (list #b00001000))
      :arg1 16-register
      :arg2 16-register2)
@@ -508,7 +508,7 @@
 
 (operand ex 1
      "EX (SP), HL"
-     :pass3 (if (eq r2 'hl) (list #b11100011))
+     :pass3 (if (eq? r2 'hl) (list #b11100011))
      :arg1 sp-indirect
      :arg2 16-register)
 
@@ -562,226 +562,226 @@
 
 (operand add 1
      "ADD A, r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10000000 (reg-code r2))))
      :arg1 8-register
      :arg2 8-register)
 
 (operand add 2
      "ADD A, n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11000110 r2))
      :arg1 8-register
      :arg2 number)
 
 (operand add 1
      "ADD A, (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10000110))
      :arg1 8-register
      :arg2 hl-indirect)
 
 (operand add 3
      "ADD A, (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10000110 r2))
      :arg1 8-register
      :arg2 ix-indirect)
 
 (operand add 3
      "ADD A, (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10000110 r2))
      :arg1 8-register
      :arg2 iy-indirect)
 
 (operand adc 1
      "ADC A, r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10001000 (reg-code r2))))
      :arg1 8-register
      :arg2 8-register)
 
 (operand adc 2
      "ADC A, n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11001110 r2))
      :arg1 8-register
      :arg2 number)
 
 (operand adc 1
      "ADC A, (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10001110))
      :arg1 8-register
      :arg2 hl-indirect)
 
 (operand adc 3
      "ADC A, (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10001110 r2))
      :arg1 8-register
      :arg2 ix-indirect)
 
 (operand adc 3
      "ADC A, (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10001110 r2))
      :arg1 8-register
      :arg2 iy-indirect)
 
 (operand sub 1
      "SUB r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10010000 (reg-code r2))))
      :arg1 8-register)
 
 (operand sub 2
      "SUB n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11010110 r2))
      :arg1 number)
 
 (operand sub 1
      "SUB (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10010110))
      :arg1 hl-indirect)
 
 (operand sub 3
      "SUB (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10010110 r2))
      :arg1 ix-indirect)
 
 (operand sub 3
      "SUB (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10010110 r2))
      :arg1 iy-indirect)
 
 (operand sbc 1
      "SBC A, r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10011000 (reg-code r2))))
      :arg1 8-register
      :arg2 8-register)
 
 (operand sbc 2
      "SBC A, n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011110 r2))
      :arg1 8-register
      :arg2 number)
 
 (operand sbc 1
      "SBC A, (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10011110))
      :arg1 8-register
      :arg2 hl-indirect)
 
 (operand sbc 3
      "SBC A, (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10011110 r2))
      :arg1 8-register
      :arg2 ix-indirect)
 
 (operand sbc 3
      "SBC A, (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10011110 r2))
      :arg1 8-register
      :arg2 iy-indirect)
 
 (operand zand 1
      "AND r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10100000 (reg-code r2))))
      :arg1 8-register)
 
 (operand zand 2
      "AND n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11100110 r2))
      :arg1 number)
 
 (operand zand 1
      "AND (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10100110))
      :arg1 hl-indirect)
 
 (operand zand 3
      "AND (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10100110 r2))
      :arg1 ix-indirect)
 
 (operand zand 3
      "AND (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10100110 r2))
      :arg1 iy-indirect)
 
 (operand zor 1
      "OR r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10110000 (reg-code r2))))
      :arg1 8-register)
 
 (operand zor 2
      "OR n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11110110 r2))
      :arg1 number)
 
 (operand zor 1
      "OR (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10110110))
      :arg1 hl-indirect)
 
 (operand zor 3
      "OR (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10110110 r2))
      :arg1 ix-indirect)
 
 (operand zor 3
      "OR (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11111101 #b10110110 r2))
      :arg1 iy-indirect)
 
 (operand xor 1
      "XOR r"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list (logior #b10101000 (reg-code r2))))
      :arg1 8-register)
 
 (operand xor 2
      "XOR n"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11101110 r2))
      :arg1 number)
 
 (operand xor 1
      "XOR (HL)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b10101110))
      :arg1 hl-indirect)
 
 (operand xor 3
      "XOR (IX + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                 (list #b11011101 #b10101110 r2))
      :arg1 ix-indirect)
 
 (operand xor 3
      "XOR (IY + d)"
-     :pass3 (if (eq r1 'a)
+     :pass3 (if (eq? r1 'a)
                  (list #b11111101 #b10101110 r2))
      :arg1 iy-indirect)
 
@@ -1275,10 +1275,10 @@
                       (progn 
                          (format t "Shifting~%")
                          (shift-following-labels -1 prog)
-                         (setf (inst-op inst) 'jr)
+                         (struct-set! inst-op :inst 'jr)
                          3)
                       (progn 
-                         (setf (inst-op inst) 'jp)
+                         (struct-set! inst-op :inst 'jp)
                          4)))
      :arg1 asmsym)
 
@@ -1373,13 +1373,13 @@
 
 (operand in 2
      "IN A, (n)"
-     :pass3 (if (eq r1 'a) (list #b11011011 r2))
+     :pass3 (if (eq? r1 'a) (list #b11011011 r2))
      :arg1 8-register
      :arg2 number)
 
 (operand in 2
      "IN r, (C)"
-     :pass3 (if (eq r2 'c)
+     :pass3 (if (eq? r2 'c)
                 (list #b11101101 (logior #b01000000 
                                      (lshift (reg-code r1) 3))))
      :arg1 8-register
@@ -1403,13 +1403,13 @@
 
 (operand out 2
      "OUT (n), A"
-     :pass3 (if (eq r2 'a) (list #b11010011 r1))
+     :pass3 (if (eq? r2 'a) (list #b11010011 r1))
      :arg1 number
      :arg2 8-register)
 
 (operand out 2
      "OUT (C), r"
-     :pass3 (if (eq r1 'c)
+     :pass3 (if (eq? r1 'c)
                 (list #b11101101 (logior #b01000001
                                      (lshift (reg-code r2) 3))))
      :arg1 8-register
