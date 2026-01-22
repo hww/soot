@@ -1,12 +1,10 @@
-﻿; Lextoken types:
-;
-; number
-; 8register, 16register, ix, iy, hl, sp, iv, mr
-; ix-indexed, iy-indexed
-; hl-indirect, bc-indirect, de-indirect, sp-indirect, imm-indirect
-; asmsym, asmsym-indirect
-
-(load "libcl.sot")
+﻿;; Lextoken types:
+;;
+;; number
+;; 8register, 16register, ix, iy, hl, sp, iv, mr
+;; ix-indexed, iy-indexed
+;; hl-indirect, bc-indirect, de-indirect, sp-indirect, imm-indirect
+;; asmsym, asmsym-indirect
 
 (defun resolve-type-offset (expr)
   "Принимает (-> Type Field) и возвращает числовое смещение"
@@ -22,17 +20,17 @@
                                 " in type "
                                 (symbol->string type-name)))))))
 
-(defstruct lextoken (type 'null) (value nil))
 
-; =================================================================
-; $ is a macro character to define labels
-(set-macro-character #\$
+
+;; =================================================================
+;; $ is a macro character to define labels
+(set-macro-character "$"
    (lambda (s c)
       (let ((sym (read s)))
-           (lab sym))))
+           (lab :arg1 sym))))
 
-; @ is a macro character to define registers
-(set-macro-character #\@ 
+;; @ is a macro character to define registers
+(set-macro-character "@" 
    (lambda (s c) 
       (let ((reg (read s)))
             (case reg
@@ -129,48 +127,53 @@
            ((symbolp first)
               (make-lextoken :type 'asmsym-indirect :value first)))))
 
-; [ is a macro character for indirect and indexed adressing modes
+;; [ is a macro character for indirect and indexed adressing modes
 (set-macro-character "["
    (lambda (s c)
         (let ((lis (read-delimited-list "]" s)))
              (ind-reader lis))))
 
-; Closing macro character for indirect and indexed adressing modes
-(set-macro-character #\] ")")
+;; Closing macro character for indirect and indexed adressing modes
+(set-macro-character "]" ")")
 
-; z80 register codes, needed often during instruction assembling
-(setq *reg-codes* (make-hash-table :size 11))
+;; z80 register codes, needed often during instruction assembling
+(setq *reg-codes* (make-hash-table '() 11))
 
 (defmacro reg-code (reg)
-   `(gethash ,reg *reg-codes*))
+   `(hash-table-ref *reg-codes* ,reg))
 
-(setf (reg-code 'a) 7)
-(setf (reg-code 'b) 0)
-(setf (reg-code 'c) 1)
-(setf (reg-code 'd) 2)
-(setf (reg-code 'e) 3)
-(setf (reg-code 'h) 4)
-(setf (reg-code 'l) 5)
-(setf (reg-code 'bc) 0)
-(setf (reg-code 'de) 1)
-(setf (reg-code 'hl) 2)
-(setf (reg-code 'sp) 3)
-(setf (reg-code 'af) 3)
+(defmacro reg-code! (reg value)
+   `(hash-table-set! *reg-codes* ,reg ,value))
+
+(reg-code! 'a 7)
+(reg-code! 'b 0)
+(reg-code! 'c 1)
+(reg-code! 'd 2)
+(reg-code! 'e 3)
+(reg-code! 'h 4)
+(reg-code! 'l 5)
+(reg-code! 'bc 0)
+(reg-code! 'de 1)
+(reg-code! 'hl 2)
+(reg-code! 'sp 3)
+(reg-code! 'af 3)
 
 ; z80 condition codes, needed often during instruction assembling
-(setq *con-codes* (make-hash-table :size 11))
+(setq *con-codes* (make-hash-table))
 
-(defsmacro con-code (reg)
-   `(gethash ,reg *con-codes*))
+(defmacro con-code (reg)
+   `(hash-table-ref *con-codes* ,reg))
+(defmacro con-code! (reg value)
+   `(hash-table-set! *con-codes* ,reg ,value))
 
-(setf (con-code 'nz) 0)
-(setf (con-code 'z) 1)
-(setf (con-code 'nc) 2)
-(setf (con-code 'c) 3)
-(setf (con-code 'pe) 4)
-(setf (con-code 'po) 5)
-(setf (con-code 'p) 6)
-(setf (con-code 'm) 7)
+(con-code! 'nz 0)
+(con-code! 'z 1)
+(con-code! 'nc 2)
+(con-code! 'c 3)
+(con-code! 'pe 4)
+(con-code! 'po 5)
+(con-code! 'p 6)
+(con-code! 'm 7)
 
 (defun parse-z80 (arg)
   "Parse z80 source code, see the macro definitions and lextoken
@@ -182,15 +185,15 @@
                        :value arg))
     ((symbolp arg)
         (make-lextoken :type 'asmsym :value arg))
-    ((typep arg 'lextoken) arg)
+    ((lextoken? arg) arg)
     ; lists to embed data into the assembler source code
     ((listp arg) (make-lextoken :type 'list :value arg))
     (T 'XXX)))
   
 ; Set the assembler parse function to be parse-z80
-(setq *parse* 'parse-z80)
+(setq *parse* parse-z80)
 
-(defun lzasm-z80 (insts)
+(defun lzasm-z80 (&rest insts)
   "Create a new z80 program"
   (make-asm-prog :insts (flatten-list insts)))
 
@@ -1251,17 +1254,17 @@
 ;;;;;;;;;;;;;;;;;;;;; Jump group ;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Im ersten Pass wissen wir noch nicht wie gross und wie weit wir
-; springen, im zweiten Pass, wo schon alle Symbole bekannt sind,
-; koennen wir einigermassen gut wissen, wie weit wir springen.
-; Dementsprechend wir der Befehl "mutiert", so dass er in der dritten
-; Phase das richtige Ergebniss bringt. Falls wir zu JR mutieren (JR ist
-; kuerzer als JP), werden alle nachfolgende Labels um 1 byte geschiftet.
-; Fruehere umgeschriebene Jumps kuemmert es nicht, da sie in der dritten
-; Phase erst diesen Wert kriegen werden. Es kann allerdings durchaus
-; sein, das ein JMP der als longjump erkannt wurde, durch intensives
-; Shiften besser haette zu einem shortjump gemacht werden sollen, sowas
-; ist allerdings sehr haarig rauszufinden
+;; Im ersten Pass wissen wir noch nicht wie gross und wie weit wir
+;; springen, im zweiten Pass, wo schon alle Symbole bekannt sind,
+;; koennen wir einigermassen gut wissen, wie weit wir springen.
+;; Dementsprechend wir der Befehl "mutiert", so dass er in der dritten
+;; Phase das richtige Ergebniss bringt. Falls wir zu JR mutieren (JR ist
+;; kuerzer als JP), werden alle nachfolgende Labels um 1 byte geschiftet.
+;; Fruehere umgeschriebene Jumps kuemmert es nicht, da sie in der dritten
+;; Phase erst diesen Wert kriegen werden. Es kann allerdings durchaus
+;; sein, das ein JMP der als longjump erkannt wurde, durch intensives
+;; Shiften besser haette zu einem shortjump gemacht werden sollen, sowas
+;; ist allerdings sehr haarig rauszufinden
 
 (operand jmp 3
      "Virtual JMP operand, gets rewritten to JR or JP"

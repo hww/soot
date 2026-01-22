@@ -30,7 +30,7 @@ namespace script
         EMPTY_LIST, PAIR, 
         ARRAY, STRING_HASH_TABLE, 
         INTEGER, FLOAT, CHAR,
-        SYMBOL, KEYWORD, STRING, 
+        SYMBOL, STRING, 
         LAMBDA, MACRO, 
         ENVIRONMENT, 
         READER
@@ -195,7 +195,7 @@ namespace script
         bool is_float() const { return type == ObjectType::FLOAT; }
         bool is_char() const { return type == ObjectType::CHAR; }
         bool is_symbol() const { return type == ObjectType::SYMBOL; }
-        bool is_keyword() const { return type == ObjectType::KEYWORD; }
+        bool is_keyword() const { return type == ObjectType::SYMBOL && symbol_obj.value.starts_with_colon(); }
         bool is_string() const { return type == ObjectType::STRING; }
         bool is_pair() const { return type == ObjectType::PAIR; }
         bool is_array() const { return type == ObjectType::ARRAY; }
@@ -248,7 +248,6 @@ namespace script
         LextokenObject*             as_lextoken() const;
         const IntegerObject&        as_integer_obj() const;
         const InternedSymbolPtr&    as_symbol() const;
-        const InternedSymbolPtr&    as_keyword() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
 
         // C++ идеоматичные методы
@@ -557,7 +556,6 @@ namespace script
             Object float_pt;
             Object character;
             Object symbol;
-            Object keyword;
             Object string;
             Object pair;
             Object array;
@@ -725,7 +723,7 @@ namespace script
         }
 
         std::string print() const;
-        static ArgumentSpec make_varargs();
+
     };
 
     class LambdaObject : public HeapObject {

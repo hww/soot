@@ -58,7 +58,7 @@ namespace {
             return obj.as_symbol().name_ptr;
         }
         if (obj.is_keyword()) {
-            return obj.as_keyword().name_ptr;
+            return obj.as_symbol().name_ptr;
         }
         throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
     }
@@ -425,7 +425,7 @@ namespace {
                 //
                 // Doing it like this makes the ordering not critical
                 while (!obj->is_empty_list() && car(obj).is_keyword()) {
-                    const auto& keyword = car(obj).as_keyword();
+                    const auto& keyword = car(obj).as_symbol();
                     if (keyword.name_ptr == ":no-virtual") {
                         no_virtual = true;
                     }

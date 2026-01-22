@@ -135,14 +135,22 @@
 ;; --- [ Секция 3: Работа со списками ] ---
 
 ;; Аксессоры (C-x-R)
-(defmacro caar (x) `(car (car ,x)))
-(defmacro cadr (x) `(car (cdr ,x)))
-(defmacro cdar (x) `(cdr (car ,x)))
-(defmacro cddr (x) `(cdr (cdr ,x)))
+
 (defun first (x)  (car x))
 (defun rest (x)   (cdr x))
 (defun second (x) (car (cdr x)))
 (defun third (x)  (car (cddr x)))
+
+(defun caar   (x) (car (car x)))
+(defun cadr   (x) (car (cdr x)))   ; 2-й элемент
+(defun cdar   (x) (cdr (car x)))
+(defun cddr   (x) (cdr (cdr x)))
+(defun caaar  (x) (car (car (car x))))
+(defun caadr  (x) (car (car (cdr x))))
+(defun cadar  (x) (car (cdr (car x))))
+(defun caddr  (x) (car (cdr (cdr x)))) ; 3-й элемент
+(defun cdddr  (x) (cdr (cdr (cdr x))))
+(defun cadddr (x) (car (cdr (cdr (cdr x))))) ; 4-й элемент
 
 ;; @doc (length lst) -> integer
 ;; Итеративный подсчет длины списка (безопасно для стека).
@@ -189,7 +197,7 @@
 
 ;; @doc (push! lst obj)
 ;; Добавляет элемент в начало списка (изменяет переменную lst).
-(defmacro push! (lst obj)
+(defmacro push! (obj lst)
   `(set! ,lst (cons ,obj ,lst)))
 
 ;; @doc (pop! lst)
@@ -200,12 +208,38 @@
        (set! ,lst (cdr ,lst))
        ,tmp)))
 
-;; Применяет функцию func к каждому элементу списка lst и возвращает список результатов.
+;;; --- MAPCAR ---
+;; Применяет функцию func к каждому элементу списка lst.
+;; Результат: новый список из возвращаемых значений.
 (defun mapcar (func lst)
   (if (null lst)
+      nil ; Базовый случай: список кончился.
+      (cons (func (car lst)) ; Вызываем func для "головы" и кладем в новый список.
+            (mapcar func (cdr lst))))) ; Рекурсивно идем к "хвосту".
+
+;;; --- MAPCAR2 ---
+;; Параллельная обработка двух списков.
+;; Лямбда func должна принимать ровно 2 аргумента.
+(defun mapcar2 (func lst1 lst2)
+  ; Если ХОТЯ БЫ ОДИН список пуст, обработка прекращается.
+  (if (or (null lst1) (null lst2))
       nil
-      (cons (func (car lst))
-            (mapcar func (cdr lst)))))
+      ; Берем по одному элементу из каждого списка и передаем в func.
+      (cons (func (car lst1) (car lst2))
+            (mapcar2 func (cdr lst1) (cdr lst2)))))
+
+;;; --- MAPCAR3 ---
+;; Параллельная обработка трех списков (нужна для макроса soperand).
+;; Лямбда func должна принимать ровно 3 аргумента (например: blo, blob, bloc).
+(defun mapcar3 (func lst1 lst2 lst3)
+  ; Синхронно идем по трем спискам. Если один короче других,
+  ; результат будет длиной с самый короткий список.
+  (if (or (null lst1) (null lst2) (null lst3))
+      nil
+      ; Извлекаем головы (car) всех трех списков одновременно.
+      (cons (func (car lst1) (car lst2) (car lst3))
+            ; Рекурсивно переходим к хвостам (cdr) всех трех списков.
+            (mapcar3 func (cdr lst1) (cdr lst2) (cdr lst3)))))
 
 ;; --- [ Секция 3.1: Hash Table ] ---
 
@@ -386,46 +420,51 @@
 ;;   3. Геттер (point-y instance)
 ;; =============================================================================
 (defmacro defstruct (name &rest fields)
-  (let* ((constructor (intern (concat "make-" (symbol->string name))))
-         (struct-name (symbol->string name))
-         (normalized (map (lambda (f) (if (pair? f) f (list f nil))) fields)))
+  (let* ((struct-name-sym name)
+          (doc? (string? (car fields)))
+          ;; Если первый элемент строка — это докстринг, берем остальное как поля
+          (fields (if doc? (cdr fields) fields))
+          (struct-name-str (symbol->string name))
+          (constructor (intern (concat "make-" struct-name-str)))
+          (normalized (map (lambda (f) (if (pair? f) f (list f nil))) fields)))
     `(progn
        ;; --- Конструктор ---
+       ;; Используем &key, так как это Лисп-функция, она умеет в именованные аргументы
        (defun ,constructor (&key ,@normalized)
          (make-hash-table 
           (list 
-           ;; Ставим ' перед ключом! Теперь для эвалуатора это (quote :_type_)
-           ;; и он передаст :_type_ в list как обычный позиционный параметр.
-           (list ':_type_ ',(intern struct-name))
+           ;; Теперь не нужно (list ':_type_ 's), можно проще:
+           (cons :_type_ ',struct-name-sym)
            ,@(map (lambda (f-spec)
                     (let ((f-name (car f-spec))
                           (key (intern (concat ":" (symbol->string (car f-spec))))))
-                      `(list ',key ,f-name)))
+                      ;; Генерируем (list :key f-name)
+                      `(cons ,key ,f-name)))
                   normalized))))
 
        ;; --- Предикат типа ---
-       (defun ,(intern (concat (symbol->string name) "?")) (obj)
+       (defun ,(intern (concat struct-name-str "?")) (obj)
          (and (hash-table? obj) 
-              (eq? (hash-table-get obj :_type_) ',(intern struct-name))))
+              (eq? (hash-table-ref obj :_type_) ',struct-name-sym)))
 
        ;; --- Геттеры ---
        ,@(map (lambda (f-spec)
                 (let* ((f-name (car f-spec))
-                       (getter-name (intern (concat (symbol->string name) "-" (symbol->string f-name))))
+                       (getter-name (intern (concat struct-name-str "-" (symbol->string f-name))))
                        (key (intern (concat ":" (symbol->string f-name)))))
                   `(defun ,getter-name (instance)
-                     ;; Здесь тоже квотируем ключ
+                     ;; Просто передаем :key как есть
                      (hash-table-ref instance ,key))))
               normalized)
+
        ;; --- Сеттеры ---
-      ,@(map (lambda (f-spec)
-              (let* ((f-name (car f-spec))
-                      ;; Имя: v-x! или set-v-x!
-                      (setter-name (intern (concat (symbol->string name) "-" (symbol->string f-name) "!")))
-                      (key (intern (concat ":" (symbol->string f-name)))))
-                `(defun ,setter-name (instance value) ;; Добавили value!
-                    (hash-table-set! instance ,key value)))) ;; Передали value!
-            normalized))))
+       ,@(map (lambda (f-spec)
+                (let* ((f-name (car f-spec))
+                       (setter-name (intern (concat struct-name-str "-" (symbol->string f-name) "!")))
+                       (key (intern (concat ":" (symbol->string f-name)))))
+                  `(defun ,setter-name (instance value)
+                     (hash-table-set! instance ,key value))))
+              normalized))))
 
 (defun build-struct-from-plist (fields args)
   "Превращает (:key1 val1 :key2 val2) в ((key1 . val1) (key2 . val2))"
@@ -439,5 +478,67 @@
       '()
       (cons (cons (car args) (cadr args))
             (build-struct-from-plist (cddr args)))))            
+
+
+
+
+;;; --- SUBSTITUTE ---
+;; "Чистая" замена только на верхнем уровне списка.
+;; Создает копию списка, не меняя оригинал.
+(defun substitute (new old lst)
+  (cond ((null? lst) '()) ; Если список пуст — возвращаем пустой список.
+        
+        ; Если текущий элемент совпадает с тем, что ищем:
+        ((eq? (car lst) old) 
+         ; Создаем новую ячейку с 'new' и идем дальше по хвосту.
+         (cons new (substitute new old (cdr lst))))
+        
+        ; Если не совпадает:
+        (t (cons (car lst) (substitute new old (cdr lst))))))
+
+;;; --- RECSUBSTITUTE ---
+;; "Глубокая" рекурсивная замена. 
+;; Ищет 'source' даже внутри вложенных списков.
+(defun recsubstitute (dest source lis)
+   (cond
+      ; Случай 1: Сам элемент (или текущий атом) равен искомому.
+      ; Заменяем его на 'dest'.
+      ((eq? lis source)
+         dest)
+      
+      ; Случай 2: Если перед нами список — нужно "просеять" его внутрь.
+      ((listp lis)
+         (cond
+            ; Если список пуст — возвращаем как есть.
+            ((null lis) lis)
+            ; Магия: вызываем recsubstitute для каждого элемента списка через mapcar.
+            ; Это позволяет зайти на любую глубину вложенности.
+            (T (mapcar (lambda (item) (recsubstitute dest source item))
+                       lis))))
+      
+      ; Случай 3: Если это атом, но не тот, что мы ищем — просто возвращаем его.
+      (T lis)))
+
+;;; --- NSUBSTITUTE ---
+;; "Деструктивная" замена (n = non-destructive по названию, но destructive по факту).
+;; В отличие от обычной substitute, она НЕ создает новый список, 
+;; а переписывает память существующего.
+(defun nsubstitute (new old lst)
+  (let ((current lst)) ; Берем указатель на начало списка.
+    (while (not (null? current)) ; Пока не дошли до конца:
+      
+      ; Если голова текущей ячейки (car) равна 'old'
+      (if (eq? (car current) old)
+          ; Мы ПЕРЕЗАПИСЫВАЕМ значение прямо в этой ячейке памяти.
+          (set-car! current new)) 
+      
+      ; Переходим к следующей ячейке (сдвигаем указатель).
+      (set! current (cdr current)))
+    
+    ; Возвращаем тот же самый указатель на список.
+    ; Внимание: все, кто ссылался на этот список, увидят изменения!
+    lst))
+
+
 ;; Маркер успешной загрузки библиотеки
 (define *core-lib-loaded* #t)

@@ -7,6 +7,12 @@
    "Get the higher byte of the integer"
    (logand (rshift bla 8) #b11111111))
 
+(defun substitute (new old lst)
+  (cond ((null? lst) '())
+        ((eq? (car lst) old) 
+         (cons new (substitute new old (cdr lst))))
+        (t (cons (car lst) (substitute new old (cdr lst))))))
+
 (defun recsubstitute (dest source lis)
    (cond
       ((eq? lis source)
@@ -18,12 +24,20 @@
                        lis))))
       (T lis)))
 
+(defun nsubstitute (new old lst)
+  (let ((current lst))
+    (while (not (null? current))
+      (if (eq? (car current) old)
+          (set-car! current new)) ;; Меняем значение в текущей ячейке
+      (set! current (cdr current)))
+    lst)) ;; Возвращаем тот же самый список, но измененный
+
 (defparameter
-  *optable* (make-hash-table '() :size 200 :test 'equal)
+  *optable* (make-hash-table '() 200)
   "Opcode table for the assembler")
 
-; Assembler opcode
 (defstruct opcode
+   "Assembler opcode"
    (documentation "")
    (op nil)
    (arg1 'null)
@@ -33,6 +47,8 @@
    (pass1 nil)
    (pass2 nil)
    (pass3 nil))
+
+(defstruct lextoken (type 'null) (value nil))
 
 (defun hash-opcode (opc)
   "Enter an opcode into the assembler opcode table"
@@ -47,7 +63,7 @@
   (gethash (lt opc arg1 arg2 arg3) *optable*))
 
 (defstruct inst
-  "Assembler instruction"
+   "Assembler instruction"
   (op nil)
   (arg1 (make-lextoken :type 'null))
   (arg2 (make-lextoken :type 'null))
@@ -59,14 +75,14 @@
            (lextoken-type (inst-arg1 inst))
            (lextoken-type (inst-arg2 inst))
            (lextoken-type (inst-arg3 inst))))
-(log 'info "asm-prog")
+
 (defstruct asm-prog
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
   (insts nil)
   ;(ifuncs nil)
   (labs nil)
-  (ltable (make-hash-table :size 30 :test #'eq))
+  (ltable (make-hash-table :size 30 :test 'eq))
   (ilc 0))
 
 (defun get-label (label prog)
@@ -86,7 +102,7 @@
              (shift-label label value prog))
           (asm-prog-labs prog)))
 
-(defun assemble (prog &optional
+(defun assemble (prog &key
                       (func (lambda (byte) 
                                (format t "~D: Word: ~b~%"
                                          (asm-prog-ilc prog) byte))))
@@ -96,35 +112,35 @@
 
     ;; Pass 1
     (setf (asm-prog-ilc prog) 0)
-    (mapcar #'(lambda (x) 
+    (mapcar (lambda (x) 
                  (let ((opc (get-inst x)))
              ;;          (print "pass1")
              ;;          (print x)
                       (setf (asm-prog-ilc prog)
                             (+ (asm-prog-ilc prog)
-                               (funcall (opcode-pass1 opc) 
+                               ((opcode-pass1 opc) 
                                         x prog)))))
             (asm-prog-insts prog))
     (setf (asm-prog-labs prog) (nreverse (asm-prog-labs prog)))
 
     ;; Pass 2
     (setf (asm-prog-ilc prog) 0)
-    (mapcar #'(lambda (x) 
+    (mapcar (lambda (x) 
                  (let ((opc (get-inst x)))
              ;;          (print "pass2")
              ;;          (print x)
                       (setf (asm-prog-ilc prog)
                             (+ (asm-prog-ilc prog)
-                               (funcall (opcode-pass2 opc) 
+                               ((opcode-pass2 opc) 
                                         x prog)))))
             (asm-prog-insts prog))
 
     ; Pass 3
     ; Call the whole program instruction function list
     (setf (asm-prog-ilc prog) 0)
-    (mapcar #'(lambda (x)
+    (mapcar (lambda (x)
                  (let* ((opc (get-inst x))
-                        (lis (funcall (opcode-pass3 opc) x prog)))
+                        (lis ((opcode-pass3 opc) x prog)))
                        (print "pass3")
                        (print x)
                        (mapcar func lis)
@@ -151,8 +167,8 @@
    "Parse function for the appropriate assembler type")
 
 (defmacro operand (sym size documentation
-                   &key (pass1 size) 
-                        (pass2 size)
+                   &key (pass1 'DEFAULT) 
+                        (pass2 'DEFAULT)
                         (pass3 nil) 
                         (arg1 'null)
                         (arg2 'null)
@@ -189,12 +205,12 @@
 
        (hash-opcode opc))
 
-  `(defun ,sym (&optional (arg1 (make-lextoken :type 'null))
-                          (arg2 (make-lextoken :type 'null))
-                          (arg3 (make-lextoken :type 'null)))
-      (let ((bla1 (funcall *parse* arg1))
-            (bla2 (funcall *parse* arg2))
-            (bla3 (funcall *parse* arg3)))
+  `(defun ,sym (&key (arg1 (make-lextoken :type 'null))
+                     (arg2 (make-lextoken :type 'null))
+                     (arg3 (make-lextoken :type 'null)))
+      (let ((bla1 (*parse* arg1))
+            (bla2 (*parse* arg2))
+            (bla3 (*parse* arg3)))
            (make-inst :op ',sym :arg1 bla1
                                 :arg2 bla2
                                 :arg3 bla3))))
@@ -203,8 +219,8 @@
 ;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
 ;; Wert). Die Soperand Macro ersetzt sowas automatisch.
 (defmacro soperand (sym size documentation
-                    &key (pass1 size) 
-                         (pass2 size)
+                    &key (pass1 'DEFAULT) 
+                         (pass2 'DEFAULT)
                          (pass3 nil) 
                          (arg1 'null)
                          (arg2 'null)
@@ -227,22 +243,22 @@
          (pass2b pass2)
          (pass3b pass3))
         
-        (mapcar 
+        (mapcar3 
 
-          #'(lambda (blo blob bloc)
+          (lambda (blo blob bloc)
              (if (or (eq blo 'variable)
                      (eq blo 'var-indirect))
                  (progn 
                     (setf pass1b (recsubstitute bloc blob pass1b))
                     (setf pass2b (recsubstitute bloc blob pass2b))
                     (setf pass3b (recsubstitute bloc blob pass3b))
-                    (push `(,bloc (get-label ,blob prog)) rplis))))
+                    (push! `(,bloc (get-label ,blob prog)) rplis))))
 
           (list arg1 arg2 arg3)
           (list 'r1 'r2 'r3)
           (list 'r1b 'r2b 'r3b))
                
-        `(progn 
+        `(begin
             (operand ,sym ,size ,documentation
                      :pass1 ,pass1
                      :pass2 ,pass2
@@ -276,3 +292,4 @@
 
 (fmt #t "asm-program-loader\n")
 (define *asm-program-loader* #t)
+
