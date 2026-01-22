@@ -589,8 +589,8 @@ namespace script
         ListBuilder lb{};
 
         // 1. Позиционные аргументы
-        for (const auto& name : unnamed) {
-            lb.push_back(Object::make_symbol(&symbols, name.c_str()));
+        for (const auto& arg : unnamed) {
+            lb.push_back(Object::make_symbol(&symbols, arg.name.c_str()));
         }
 
         // 2. Именованные аргументы (Keyword arguments)
@@ -622,11 +622,13 @@ namespace script
 
     std::string ArgumentSpec::print() const {
         // Вместо "ArgumentSpec: unnamed=2..." сделаем более сжатый системный вид
-        return fmt::format("#<arg-spec {}:{}:{}{}>", 
+        return fmt::format("#<arg-spec u:{} n:{} r:{}{}{}>", 
             unnamed.size(), 
             named.size(), 
             rest.empty() ? "0" : "1",
-            varargs ? "+" : "");
+            keys ? " +rest" : "",
+            varargs ? " +vararg" : ""
+        );
     }
 
     std::string Arguments::print() const {

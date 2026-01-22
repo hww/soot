@@ -691,18 +691,53 @@ namespace script
      * (и должен использовать дефолт), и когда он отсутствует в спецификации.
      */
     struct NamedArg {
+        /** * @brief Флаг наличия значения по умолчанию.
+         * Если false, и аргумент не передан пользователем — это ошибка (для обязательных ключей).
+         */        
         bool has_default = false;
+        /** * @brief Значение, которое будет использовано, если аргумент не указан при вызове.
+         * Может содержать любой Lisp-объект (число, символ, список и т.д.).
+         */        
         Object default_value;
     };
-
+    /**
+     * @brief Представляет аргумент с опциональным значением по умолчанию.
+     * * Используется для обработки аргументов в секциях &optional.
+     * Позволяет различать ситуации, когда аргумент просто не передан 
+     * (и должен использовать дефолт), и когда он отсутствует в спецификации.
+     */
+    struct PositionalArg {
+        std::string name;
+        bool is_optional;     // или просто проверка has_default
+        Object default_value; // NIL по умолчанию для опциональных
+    };
+    /**
+     * @brief Спецификация аргументов функции (lambda-list).
+     * * Описывает структуру ожидаемых входных данных, разделяя их на категории
+     * согласно стандартам Lisp (позиционные, опциональные, ключевые и rest-аргументы).
+     */
     struct ArgumentSpec {
-        // mark as it may have &keys, aka: :foo 1 :bar 2
+        /** @brief Разрешить использование ключевых слов (&key), например: :mode 'fast. */
         bool keys = true;
-        // mark it as it may have variable list, aka: &rest
+        /** @brief Разрешить неограниченное количество неименованных аргументов (для встроенных функций). */
         bool varargs = false;
-        std::vector<std::string> unnamed;
-        std::unordered_map<std::string, NamedArg> named;
+        /** * @brief Список имен обязательных позиционных аргументов.
+         * Должны быть переданы в строгом порядке в начале вызова.
+         */        
+        std::vector<PositionalArg> unnamed;   
+        /** * @brief Именованные (ключевые) аргументы (&key).
+         * Передаются в формате :имя значение. Порядок в вызове не имеет значения.
+         */        
+        std::unordered_map<std::string, NamedArg> named;    
+        /** * @brief Имя переменной для захвата всех оставшихся аргументов (&rest).
+         * Если не пустая, все лишние аргументы будут собраны в список с этим именем.
+         */
         std::string rest;
+
+        ArgumentSpec() : keys(false), varargs(false) {
+        }
+        ArgumentSpec(bool keys, bool varargs) : keys(keys), varargs(varargs) {
+        }
 
         size_t size() const { return unnamed.size() + named.size(); }
         size_t unnamed_size() const { return unnamed.size(); }
@@ -713,9 +748,28 @@ namespace script
         Object to_object(SymbolTable& symbols) const;
         Object inspect(SymbolTable& symbols) const;
 
-        const std::string& operator[](size_t index) const {
+        const PositionalArg& operator[](size_t index) const {
             if (index >= unnamed.size()) throw std::out_of_range("ArgumentSpec index out of range");
             return unnamed[index];
+        }
+
+        const PositionalArg* get_unnamed_spec(const std::string& name) const {
+            for (const auto& arg : unnamed) {
+                if (arg.name == name) return &arg;
+            }
+            return nullptr;
+        }
+        /**
+         * @brief Проверяет, определен ли позиционный аргумент (обязательный или опциональный) с данным именем.
+         * @param name Имя аргумента для поиска.
+         * @return true, если аргумент найден в списке позиционных параметров.
+         */
+        bool has_unnamed(const std::string& name) const {
+            // Используем std::find_if для поиска в векторе структур
+            return std::any_of(unnamed.begin(), unnamed.end(), 
+                [&name](const PositionalArg& arg) {
+                    return arg.name == name;
+                });
         }
 
         bool has_named(const std::string& name) const {
