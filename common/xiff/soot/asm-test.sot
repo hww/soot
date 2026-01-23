@@ -24,4 +24,13 @@ $blo
   )
 )
 
-(assemble test)
+;(assemble test)
+
+
+(let* ((result (assemble test))
+       (bin-data (cdr (assoc :bin result))))
+  (begin
+    (write-binary "test.bin" bin-data)
+    (fmt #t "Bytes written: {}\n" (length bin-data))
+    ;; Если read-binary-file работает:
+    (fmt #t "Verified: {}\n" (read-binary "test.bin"))))

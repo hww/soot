@@ -685,7 +685,7 @@ namespace script
         }
 
         std::string print() const;
-        std::string print_full(size_t max_len = 80, size_t max_arg_len = 20) const;
+        std::string print_full(size_t max_len = 512, size_t max_arg_len = 64) const;
     };
 
     /**

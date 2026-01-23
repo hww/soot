@@ -185,15 +185,17 @@ namespace script
             {"file-exists?", &Interpreter::eval_file_exists_p},
             {"get-path",     &Interpreter::eval_get_path},
             {"find-file",    &Interpreter::eval_find_file},
+            {"read-binary",  &Interpreter::eval_read_binary_file},
+            {"write-binary", &Interpreter::eval_write_binary_file},
 
             // Reader
-            {"set-macro-character", &Interpreter::eval_set_macro_character},
+            {"set-macro-character",    &Interpreter::eval_set_macro_character},
             {"remove-macro-character", &Interpreter::eval_remove_macro_character},
-            {"get-macro-character", &Interpreter::eval_get_macro_character},
-            {"read",                &Interpreter::eval_read},
-            {"read-char",           &Interpreter::eval_read_char},
-            {"peek-char",           &Interpreter::eval_peek_char},
-            {"read-delimited-list", &Interpreter::eval_read_delimited_list},
+            {"get-macro-character",    &Interpreter::eval_get_macro_character},
+            {"read",                   &Interpreter::eval_read},
+            {"read-char",              &Interpreter::eval_read_char},
+            {"peek-char",              &Interpreter::eval_peek_char},
+            {"read-delimited-list",    &Interpreter::eval_read_delimited_list},
 
             // Macro system
             {"macroexpand", &Interpreter::eval_macroexpand},
@@ -3021,6 +3023,72 @@ Object Interpreter::eval_find_file(const Object& form, Arguments& args, const st
     return found.empty() ? Object::make_empty_list() : Object::make_string(found.string());
 }
 
+Object Interpreter::eval_write_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+(void)env;
+    // Путь — строка, Данные — любой тип (массив или список)
+    vararg_check(form, args, { ObjectType::STRING, {} }, {});
+
+    std::string path = args.unnamed[0].as_string()->c_str();
+    Object data = args.unnamed[1];
+
+    std::ofstream file(path, std::ios::binary | std::ios::out);
+    if (!file.is_open()) {
+        throw_eval_error(form, "Could not open file for writing: " + path);
+    }
+
+    // Универсальная итерация
+    if (data.is_array()) {
+        auto* arr = data.as_array();
+        for (int i = 0; i < arr->size(); ++i) {
+            file.put(static_cast<char>(arr->get(i).as_integer()));
+        }
+    } else { 
+        // Если не массив, то по логике vararg_check и нашей задаче — это список (Pair/Null)
+        Object current = data;
+        while (current.is_pair()) {
+            auto pair = current.as_pair();
+            if (pair->car.is_integer())
+                file.put(static_cast<char>(pair->car.as_integer()));
+            else
+                throw_eval_error(form, "Data list has non integer value:: " +  pair->car.print());
+            current = pair->cdr;
+        }
+    }
+
+    file.close();
+    return get_true();
+}
+
+// Gets file path andh the read mode 
+Object Interpreter::eval_read_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { ObjectType::STRING }, {}); 
+
+    std::string path = args.unnamed[0].as_string()->data;
+    
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        throw_eval_error(form, "Could not open file for writing: " + path);
+        return get_false(); 
+    }
+
+    // Определяем размер файла
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<Object> elements;
+    elements.reserve(size);
+
+    char byte;
+    while (file.get(byte)) {
+        // Превращаем каждый байт в объект-число Лиспа
+        elements.push_back(Object::make_integer(static_cast<unsigned char>(byte)));
+    }
+
+    file.close();
+    // Создаем ArrayObject и возвращаем его как Object через Heap
+    return Object::make_array(std::move(elements)); 
+}
 // ==============================================
 // Прочие функции с проверками
 // ==============================================
