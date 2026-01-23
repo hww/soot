@@ -422,7 +422,6 @@
 ;; Если нет concat, но есть string-append
 (defun concat (&rest args) (apply 'string-append args))
 
-
 ;; --- Asserts & Errors ---
 
 (defmacro assert (condition &optional message)

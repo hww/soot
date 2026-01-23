@@ -93,8 +93,9 @@
   (ilc 0))
 
 (defun get-label (label prog)
-  "Get the value of a label from the program label hashtable"
-  (gethash label (asm-prog-ltable prog)))
+  (let ((val (gethash label (asm-prog-ltable prog))))
+    (fmt #t "LOOKUP LABEL: name={} found-val={}\n" label val)
+    val))
 
 (defun shift-label (label value prog)
   "Shift a label from program prog by the specified value"
@@ -136,104 +137,102 @@
         (concat (fmt #f "{}" op)
                 (if (not (string-empty? a1)) (concat " " a1) "")
                 (if (not (string-empty? a2)) (concat ", " a2) "")
-                (if (not (string-empty? a3)) (concat ", " a3) "")))))
-
+                (if (not (string-empty? a3)) (concat ", " a3) "")
+                "   "
+                (fmt #f "{}" (inspect inst))))))
+(defun update-addresses-and-labels (prog pass-num)
+  (let ((current-ilc 0)
+        (changed #f))
+    (begin
+      (asm-prog-ilc! prog 0)
+      (mapcar (lambda (inst)
+                (let ((opc (get-inst inst)))
+                  (if (eq? (inst-op inst) 'lab)
+                      ;; МЕТКА: фиксируем её текущий адрес
+                      (let ((label-name (lextoken-value (inst-arg1 inst))))
+                        (setf (gethash label-name (asm-prog-ltable prog)) current-ilc))
+                      
+                      ;; ИНСТРУКЦИЯ: берем размер из pass1 или pass2
+                      (if opc
+                          (let* ((old-op (inst-op inst))
+                                 ;; Вызываем pass-функцию (pass1 или pass2)
+                                 (res (if (= pass-num 1)
+                                          ((opcode-pass1 opc) inst prog)
+                                          ((opcode-pass2 opc) inst prog))))
+                            (begin
+                              ;; Если в Pass 2 инструкция вернула #t или сменила тип — флаг changed
+                              (if (and (= pass-num 2) (not (eq? old-op (inst-op inst))))
+                                  (set! changed #t))
+                              
+                              ;; Увеличиваем ILC на размер (для jmp/jr это будет 3 или 2)
+                              (let ((size (if (integer? res) res (opcode-size opc))))
+                                (set! current-ilc (+ current-ilc size)))))))))
+              (asm-prog-insts prog))
+      (asm-prog-ilc! prog current-ilc)
+      changed)))
 (defun assemble (prog)
-  (begin
-    ;; НИКАКИХ reverse! Оставляем инструкции в исходном порядке
-    ;; (asm-prog-insts! prog (reverse (asm-prog-insts prog))) <-- УБРАТЬ ЭТО!
-    
-    (let ((bin-list '())
-          (listing '()))
-      (begin
-        ;; Pass 1: вычисляем размеры и устанавливаем метки
-        (asm-prog-ilc! prog 0)
-        (mapcar (lambda (x) 
-                  (let ((opc (get-inst x)))
-                    (if (eq? (inst-op x) 'lab)
-                        ;; МЕТКА: устанавливаем адрес метки
-                        (let ((label-name (lextoken-value (inst-arg1 x))))
-                          (setf (gethash label-name (asm-prog-ltable prog))
-                                (asm-prog-ilc prog))
-                          ;; Метка не занимает места в памяти
-                          0)
-                        ;; ИНСТРУКЦИЯ: вычисляем размер
-                        (if opc
-                            (let ((size ((opcode-pass1 opc) x prog)))
-                              (asm-prog-ilc! prog (+ (asm-prog-ilc prog) size))
-                              size)
-                            0))))
-                (asm-prog-insts prog))
-        
-        ;; Pass 2: релокации (если нужны)
-        (asm-prog-ilc! prog 0)
-        (mapcar (lambda (x)
-                  (if (not (eq? (inst-op x) 'lab))
-                      (let ((opc (get-inst x)))
-                        (if opc
-                            (let ((size ((opcode-pass2 opc) x prog)))
-                              (asm-prog-ilc! prog (+ (asm-prog-ilc prog) size))
-                              size)
-                            0))
-                      0))
-                (asm-prog-insts prog))
-        
-        ;; Pass 3: генерация кода и листинга
-        (asm-prog-ilc! prog 0)
+  (let ((bin-list '())
+        (listing '()))
+    (begin
+      ;; --- Pass 1: Начальная разметка ---
+      (update-addresses-and-labels prog 1)
+
+      ;; --- Pass 2: Итеративная стабилизация ---
+      (let ((is-changed #t)
+            (max-iters 10)
+            (i 0))
+        (while (and is-changed (< i max-iters))
+          (begin
+            (set! is-changed (update-addresses-and-labels prog 2))
+            (set! i (+ i 1)))))
+      ;; --- Pass 2.5: Финальная расстановка меток ---
+      (let ((current-ilc 0))
         (mapcar (lambda (inst)
-                  (let* ((opc (get-inst inst))
-                         (addr (asm-prog-ilc prog))
-                         (is-label (eq? (inst-op inst) 'lab))
-                         (bytes (if (and opc (not is-label))
-                                   ((opcode-pass3 opc) inst prog)
-                                   '()))
-                         (len 0))
-                    
-                    ;; ОТЛАДКА
-                    (fmt #t "Processing: Addr={:04X} Op={} IsLabel={}\n" 
-                         addr (inst-op inst) is-label)
-                    
+                  (if (eq? (struct-ref inst :op) 'lab)
+                      ;; Метка: записываем её ЖЕЛЕЗНЫЙ адрес в таблицу
+                      (let ((name (lextoken-value (struct-ref inst :arg1))))
+                        (setf (gethash name (asm-prog-ltable prog)) current-ilc))
+                      ;; Инструкция: просто наращиваем ILC на её текущий размер
+                      (let* ((opc (get-inst inst))
+                            ;; Если jmp уже в режиме short, прибавляем 2, иначе 3
+                            (size (if (and (eq? (struct-ref inst :op) 'jmp) 
+                                            (eq? (struct-ref inst :mode) 'short))
+                                      2 
+                                      (opcode-size opc))))
+                        (set! current-ilc (+ current-ilc size)))))
+                (asm-prog-insts prog)))
+      ;; --- Pass 3: Генерация кода ---
+      (asm-prog-ilc! prog 0)
+      (mapcar (lambda (inst)
+                (let* ((opc (get-inst inst))
+                       (addr (asm-prog-ilc prog))
+                       (is-label (eq? (inst-op inst) 'lab))
+                       (bytes (if (and opc (not is-label))
+                                 ((opcode-pass3 opc) inst prog)
+                                 '()))
+                       (len 0))
+                  (begin
                     (if (and opc (not is-label))
                         (begin
-                          ;; Вычисляем длину
                           (cond 
                             ((vector? bytes) (set! len (vector-length bytes)))
                             ((pair? bytes) (set! len (length bytes)))
                             ((integer? bytes) (set! len 1))
                             (else (set! len 0)))
                           
-                          (fmt #t "  -> Generating {} bytes: {}\n" len bytes)
-                          
-                          ;; Добавляем бинарные данные
+                          ;; Сборка бинарника
                           (cond 
-                            ((vector? bytes) 
-                             (set! bin-list (append bin-list (vector->list bytes))))
-                            ((pair? bytes) 
-                             (set! bin-list (append bin-list bytes)))
-                            ((integer? bytes) 
-                             (set! bin-list (append bin-list (list bytes)))))
+                            ((vector? bytes) (set! bin-list (append bin-list (vector->list bytes))))
+                            ((pair? bytes) (set! bin-list (append bin-list bytes)))
+                            ((integer? bytes) (set! bin-list (append bin-list (list bytes)))))
                           
-                          ;; Добавляем в листинг
-                          (set! listing 
-                                (append listing 
-                                        (list (list addr bytes (inst->string inst)))))
-                          
-                          ;; Увеличиваем счетчик
+                          (set! listing (append listing (list (list addr bytes (inst->string inst)))))
                           (asm-prog-ilc! prog (+ addr len)))
-                        
-                        ;; МЕТКА: только добавляем в листинг, не увеличиваем счетчик
-                        (begin
-                          (set! listing 
-                                (append listing 
-                                        (list (list addr '() (inst->string inst)))))
-                          (fmt #t "  -> Label: {}\n" (inst->string inst))))))
-                
-                (asm-prog-insts prog)) ;; Обрабатываем в ПРЯМОМ порядке
-        
-        ;; Возвращаем результат
-        (list (cons :bin bin-list)
-              (cons :lst listing))))))
-
+                        ;; Обработка метки в листинге
+                        (set! listing (append listing (list (list addr '() (inst->string inst)))))))))
+              (asm-prog-insts prog))
+      
+      (list (cons :bin bin-list) (cons :lst listing)))))
 (defun save-listing (path lst-data)
   (let ((out ""))
     (begin
@@ -298,6 +297,9 @@
       (assemble prog (lambda (byte) (write-byte byte bos)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun inspect-inst (msg inst size r1 r2 r3) 
+  (fmt #t "<inst {}  :op {}\n  :size {} \n  :r1 {}\n  :r2 {}\n  :r3 {}\n" msg (inspect inst-op) size msg r1 r2 r3))
+
 ;; Parse function for the appropriate assembler type
 (defparameter *parse* null 
    "Parse function for the appropriate assembler type")
@@ -323,6 +325,7 @@
                                    ;; МАГИЯ: связываем имя геттера с самим объектом
                                    (inst-op inst)
                                    (size ,size)) 
+                                   (inspect-inst "pass1" inst-op size r1 r2 r3)                                   
                                ,pass1))
                     :pass2 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
@@ -330,13 +333,16 @@
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    ;; МАГИЯ: теперь (struct-set! inst-op ...) сработает
                                    (inst-op inst)
-                                   (size ,size)) 
+                                   (size ,size))  
+                                   (inspect-inst "pass2" inst-op size r1 r2 r3)                                 
                                ,pass2))
                     :pass3 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
-                                   (inst-op inst))
+                                   (inst-op inst)
+                                   (size ,size))
+                                   (inspect-inst "pass3" inst-op size r1 r2 r3)
                                ,pass3))))
 
      (defun ,sym (&optional (a1 (make-lextoken :type null))
@@ -353,47 +359,35 @@
 ;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
 ;; Wert). Die Soperand Macro ersetzt sowas automatisch.
 (defmacro soperand (sym size documentation
-                    &key (pass1 size) ;; По умолчанию размер
-                         (pass2 size) 
-                         (pass3 '()) 
-                         (arg1 null)
-                         (arg2 null)
-                         (arg3 null))
-   (let* ((rplis null)
-          ;; Копируем списки аргументов, чтобы nsubstitute не испортил оригиналы
-          (arg-list (list arg1 arg2 arg3))
-          (arglis (nsubstitute 'asmsym-indirect 'var-indirect
-                   (nsubstitute 'asmsym 'variable (copy-list arg-list))))
+                    &key (pass1 size) (pass2 size) (pass3 '()) 
+                         (arg1 null) (arg2 null) (arg3 null) (relative #f))
+   (let* ((arg-list (list arg1 arg2 arg3))
+          (arglis  (nsubstitute 'asmsym-indirect 'var-indirect
+                    (nsubstitute 'asmsym 'variable (copy-list arg-list))))
           (arglis1 (nsubstitute 'imm-indirect 'var-indirect
-                   (nsubstitute 'number 'variable (copy-list arg-list))))
-          (pass3b pass3))
-        
-        (mapcar3 
-          (lambda (blo blob bloc)
-             (if (or (eq? blo 'variable) (eq? blo 'var-indirect))
-                 (begin 
-                    ;; Нам нужно менять pass3b, чтобы заменить r1 на r1b (адрес из таблицы)
-                    (set! pass3b (recsubstitute bloc blob pass3b))
-                    (push! `(,bloc (get-label ,blob prog)) rplis))))
-          arg-list
-          (list 'r1 'r2 'r3)
-          (list 'r1b 'r2b 'r3b))
+                    (nsubstitute 'number 'variable (copy-list arg-list)))))
                
         `(begin
+            ;; ВАРИАНТ ДЛЯ МЕТОК
             (operand ,sym ,size ,documentation
-                     :pass1 ,pass1
-                     :pass2 ,pass2
-                     :pass3 (let ,rplis ,pass3b) ;; Версия для меток (символов)
-                     :arg1 ,(car arglis)
-                     :arg2 ,(cadr arglis)
-                     :arg3 ,(caddr arglis))
+                     :pass1 ,pass1 :pass2 ,pass2
+                     :arg1 ,(car arglis) :arg2 ,(cadr arglis) :arg3 ,(caddr arglis)
+                     :pass3 (let* ((r1-raw (get-label r1 prog))
+                                   (r2-raw (if (or (eq? ',arg2 'variable) (eq? ',arg2 'var-indirect)) (get-label r2 prog) r2))
+                                   (r3-raw (if (or (eq? ',arg3 'variable) (eq? ',arg3 'var-indirect)) (get-label r3 prog) r3))
+                                   ;; ПЕРЕОПРЕДЕЛЯЕМ r1, r2, r3 для твоего кода
+                                   (r1 ,(if relative 
+                                            `(logand (- r1-raw (+ (asm-prog-ilc prog) ,size)) 255)
+                                            'r1-raw))
+                                   (r2 r2-raw)
+                                   (r3 r3-raw))
+                              ,pass3))
+
+            ;; ВАРИАНТ ДЛЯ ЧИСЕЛ
             (operand ,sym ,size ,documentation
-                     :pass1 ,pass1
-                     :pass2 ,pass2
-                     :pass3 ,pass3 ;; Версия для чисел
-                     :arg1 ,(car arglis1)
-                     :arg2 ,(cadr arglis1)
-                     :arg3 ,(caddr arglis1)))))
+                     :pass1 ,pass1 :pass2 ,pass2
+                     :arg1 ,(car arglis1) :arg2 ,(cadr arglis1) :arg3 ,(caddr arglis1)
+                     :pass3 ,pass3))))
 
 (operand lab 0
      "Label in the assembler program"
