@@ -23,38 +23,30 @@
 
 
 ;; =================================================================
-;; $ is a macro character to define labels
-(set-macro-character "$"
-   (lambda (s c)
-      (let ((sym (read s)))
-           (lab sym))))
-
-;; @ is a macro character to define registers
-(set-macro-character "@" 
-   (lambda (s c) 
-      (let ((reg (read s)))
-            (case reg
-              ('a (make-lextoken :type '8-register :value 'a))
-              ('b (make-lextoken :type '8-register :value 'b))
-              ('c (make-lextoken :type '8-register :value 'c))
-              ('d (make-lextoken :type '8-register :value 'd))
-              ('e (make-lextoken :type '8-register :value 'e))
-              ('h (make-lextoken :type '8-register :value 'h))
-              ('l (make-lextoken :type '8-register :value 'l))
-              ('bc (make-lextoken :type '16-register :value 'bc))
-              ('de (make-lextoken :type '16-register :value 'de))
-              ('hl (make-lextoken :type '16-register :value 'hl))
-              ('sp (make-lextoken :type '16-register :value 'sp))
-              ('af (make-lextoken :type '16-register :value 'af))
-              ('bc2 (make-lextoken :type '16-register2 :value 'bc2))
-              ('de2 (make-lextoken :type '16-register2 :value 'de2))
-              ('hl2 (make-lextoken :type '16-register2 :value 'hl2))
-              ('af2 (make-lextoken :type '16-register2 :value 'af2))
-              ('rv (make-lextoken :type 'rv-register :value 'rv))
-              ('ix (make-lextoken :type 'ix-register :value 'ix))
-              ('iy (make-lextoken :type 'iy-register :value 'iy))
-              ('iv (make-lextoken :type 'iv-register :value 'iv))
-              ('mr (make-lextoken :type 'mr-register :value 'mr))))))
+;; used by character-macro @ for example @a @hl
+(defun get-register-token (reg)
+  (case reg
+    ('a (make-lextoken :type '8-register :value 'a))
+    ('b (make-lextoken :type '8-register :value 'b))
+    ('c (make-lextoken :type '8-register :value 'c))
+    ('d (make-lextoken :type '8-register :value 'd))
+    ('e (make-lextoken :type '8-register :value 'e))
+    ('h (make-lextoken :type '8-register :value 'h))
+    ('l (make-lextoken :type '8-register :value 'l))
+    ('bc (make-lextoken :type '16-register :value 'bc))
+    ('de (make-lextoken :type '16-register :value 'de))
+    ('hl (make-lextoken :type '16-register :value 'hl))
+    ('sp (make-lextoken :type '16-register :value 'sp))
+    ('af (make-lextoken :type '16-register :value 'af))
+    ('bc2 (make-lextoken :type '16-register2 :value 'bc2))
+    ('de2 (make-lextoken :type '16-register2 :value 'de2))
+    ('hl2 (make-lextoken :type '16-register2 :value 'hl2))
+    ('af2 (make-lextoken :type '16-register2 :value 'af2))
+    ('rv (make-lextoken :type 'rv-register :value 'rv))
+    ('ix (make-lextoken :type 'ix-register :value 'ix))
+    ('iy (make-lextoken :type 'iy-register :value 'iy))
+    ('iv (make-lextoken :type 'iv-register :value 'iv))
+    ('mr (make-lextoken :type 'mr-register :value 'mr))))
 
 ;;; make-indexed (sign reg val)
 ;;; ---------------------------
@@ -126,15 +118,6 @@
                  ('de (make-lextoken :type 'de-indirect))))
            ((symbol? first)
               (make-lextoken :type 'asmsym-indirect :value first)))))
-
-;; [ is a macro character for indirect and indexed adressing modes
-(set-macro-character "["
-   (lambda (s c)
-        (let ((lis (read-delimited-list "]" s)))
-             (ind-reader lis))))
-
-;; Closing macro character for indirect and indexed adressing modes
-(set-macro-character "]" ")")
 
 ;; z80 register codes, needed often during instruction assembling
 (define *reg-codes* (make-hash-table '() 11))
@@ -1273,7 +1256,7 @@
                   (if (and (< jl 129)
                            (> jl -126))
                       (progn 
-                         (format t "Shifting~%")
+                         (fmt #t "Shifting\n")
                          (shift-following-labels -1 prog)
                          (struct-set! inst-op :inst 'jr)
                          3)
@@ -1430,3 +1413,5 @@
 (operand otdr 2
      "OTDR"
      :pass3 (list #b11101101 #b10111011))
+
+(fmt #t "Loaded asm-z80\n")

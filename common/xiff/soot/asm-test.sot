@@ -1,9 +1,7 @@
-﻿(load "common/xiff/soot/asm-program.sot")
-
-(load "common/xiff/soot/asm-z80.sot")
+﻿(load "common/xiff/soot/asm.sot")
 
 (defmacro subroutine (name &rest code)
-   `((lab ',name) ,@code))
+   `(list (lab ',name) ,@code))
 
 (defparameter 
    test 
@@ -21,8 +19,8 @@ $blu
       (ld @a @c)
 $blo
 
-;;(subroutine blubber
-;;      (ld @a @c))
+(subroutine blubber
+      (ld @a @c))
   )
 )
 

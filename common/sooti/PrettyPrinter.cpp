@@ -58,7 +58,7 @@ namespace script::pretty_print {
         Node to_node(const Object& obj) {
             switch (obj.type) {
             case ObjectType::EMPTY_LIST:
-                return Node("NIL");
+                return Node("null");
 
             case ObjectType::INTEGER:
             case ObjectType::FLOAT:

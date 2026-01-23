@@ -33,6 +33,9 @@ namespace script
         core.object_true    = Object::make_symbol(this, "#t");
         core.object_false   = Object::make_symbol(this, "#f");
         core.object_nil     = Object::make_empty_list();
+        core.optional       = Object::make_symbol(this, ":optional");
+        core.key            = Object::make_symbol(this, ":key");
+        core.rest           = Object::make_symbol(this, ":rest");
 
         core.empty_list     = Object::make_symbol(this, "empty-list");
         core.integer        = Object::make_symbol(this, "integer");
@@ -329,7 +332,7 @@ namespace script
     std::string Object::print() const {
         switch (type) {
         case ObjectType::EMPTY_LIST:
-            return "NIL";
+            return "null";
         case ObjectType::INTEGER:
             return integer_obj.print();
         case ObjectType::FLOAT:
@@ -637,6 +640,62 @@ namespace script
             unnamed.size(), 
             named.size(), 
             rest.size());
+    }
+
+    /**
+     * Вспомогательная функция для безопасного строкового представления объекта
+     */
+    std::string truncate_obj(const Object& obj, size_t max_arg_len) {
+        std::string s = obj.print(); // Используем существующий метод print объекта
+        if (s.length() <= max_arg_len) return s;
+        return s.substr(0, max_arg_len - 3) + "...";
+    }
+
+    std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {
+
+        std::stringstream ss;
+        bool print_optional = true;
+
+        ss << "(";
+
+        // 1. Позиционные аргументы (unnamed)
+        if (!unnamed.empty()) {
+            for (size_t i = 0; i < unnamed.size(); ++i) {
+                ss << truncate_obj(unnamed[i], max_arg_len);
+                if (i < unnamed.size() - 1) ss << " ";
+            }
+        }
+
+        // 2. Ключевые аргументы (named)
+        if (!named.empty()) {
+            if (!unnamed.empty()) ss << " ";
+            ss << "&key ";
+            bool first = true;
+            for (const auto& [name, val] : named) {
+                if (!first) ss << " ";
+                ss << ":" << name << " " << truncate_obj(val, max_arg_len);
+                first = false;
+            }
+        }
+
+        // 3. Остаток (rest)
+        if (has_rest) {
+            if (!unnamed.empty() || !named.empty()) ss << " ";
+            ss << "&rest: ";
+            for (size_t i = 0; i < rest.size(); ++i) {
+                ss << truncate_obj(rest[i], max_arg_len);
+                if (i < rest.size() - 1) ss << " ";
+            }
+        }
+
+        ss << ")";
+
+        std::string result = ss.str();
+        if (result.length() > max_len) {
+            return result.substr(0, max_len - 4) + "...}";
+        }
+
+        return result;
     }
 
     std::string ReaderObject::print() const { 

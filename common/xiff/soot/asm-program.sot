@@ -1,4 +1,5 @@
 ﻿;; Helpers
+
 (defun lower-byte (bla)
    "Get the lower byte of the integer"
    (logand bla #b11111111))
@@ -39,42 +40,44 @@
 (defstruct opcode
    "Assembler opcode"
    (documentation "")
-   (op nil)
-   (arg1 nil)
-   (arg2 nil)
-   (arg3 nil)
+   (op null)
+   (arg1 null)
+   (arg2 null)
+   (arg3 null)
    (size 0)
-   (pass1 nil)
-   (pass2 nil)
-   (pass3 nil))
+   (pass1 null)
+   (pass2 null)
+   (pass3 null))
 
-(defstruct lextoken (type 'null) (value nil))
+(defstruct lextoken (type null) (value null))
 
 (defun hash-opcode (opc)
   "Enter an opcode into the assembler opcode table"
-  (let ((key (fmt #f "{} {} {}"  (opcode-op opc)
+  (check-type opc opcode?)
+  (let ((key (fmt #f "{} {} {} {}"  (opcode-op opc)
                                  (opcode-arg1 opc)
                                  (opcode-arg2 opc)
                                  (opcode-arg3 opc))))
+    (fmt #t "hash-opcode :key {} :opc {}\n" key opc)                       
     (hash-table-set! *optable* key opc)))
 
-(defun get-opc (opc &optional (arg1 'null) (arg2 'null) (arg3 'null))
+(defun get-opc (opc &optional (arg1 null) (arg2 null) (arg3 null))
   "Get the hash-table entry for the corresponding opcode"
-  (let ((key (fmt #f "{} {} {}"  (opcode-op opc)
-                                 (opcode-arg1 opc)
-                                 (opcode-arg2 opc)
-                                 (opcode-arg3 opc))))
-     (hash-table-ref *optable* key)))
+  (let ((key (fmt #f "{} {} {} {}" opc  arg1 arg2 arg3))) 
+       (fmt #t "get-opc  :key {}\n" key)                       
+       (hash-table-ref *optable* key)))
 
 (defstruct inst
    "Assembler instruction"
-  (op nil)
-  (arg1 (make-lextoken :type 'null))
-  (arg2 (make-lextoken :type 'null))
-  (arg3 (make-lextoken :type 'null)))
+  (op null)
+  (arg1 (make-lextoken :type null))
+  (arg2 (make-lextoken :type null))
+  (arg3 (make-lextoken :type null)))
 
 (defun get-inst (inst)
   "Get the hash-table entry for the corresponding instruction"
+  (check-type inst inst?)  
+  (print `(get-inst ,(inspect inst)))
   (get-opc (inst-op inst) 
            (lextoken-type (inst-arg1 inst))
            (lextoken-type (inst-arg2 inst))
@@ -83,9 +86,9 @@
 (defstruct asm-prog
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
-  (insts nil)
-  ;(ifuncs nil)
-  (labs nil)
+  (insts null)
+  ;(ifuncs null)
+  (labs null)
   (ltable (make-hash-table))
   (ilc 0))
 
@@ -96,7 +99,7 @@
 (defun shift-label (label value prog)
   "Shift a label from program prog by the specified value"
   (let ((bla (get-label label prog)))
-       (hash-table-set! label (asm-prog-ltable prog)
+       (setf (gethash label (asm-prog-ltable prog))
              (+ bla value))))
 
 (defun shift-following-labels (value prog)
@@ -105,13 +108,14 @@
   (mapcar (lambda (label)
              (shift-label label value prog))
           (asm-prog-labs prog)))
+
 (defun assemble (prog &optional
                       (func (lambda (byte) 
-                               (format t "~D: Word: ~b~%"
+                               (fmt t "{}: Word: {}\n"
                                          (asm-prog-ilc prog) byte))))
   "Assemble an assembler program, go through pass 1, pass2 and then call
    all the functions returned by the instruction."
-  (progn
+  (begin
     ;; Pass 1
     (asm-prog-ilc! prog 0)
     (mapcar (lambda (x) 
@@ -153,110 +157,93 @@
                         :element-type 'unsigned-byte
                         :if-exists :overwrite)))
        (if bos
-           (progn 
+           (begin 
              (assemble prog (lambda (byte) (write-byte byte bos)))
              (close bos)
-             (format t "Program written to file ~S~%" file))
-           (format t "Program could not be written to file ~S~%" file))))
+             (fmt t "Program written to file {}\n" file))
+           (fmt t "Program could not be written to file {}\n" file))))
 
 (defun assemble-raw-byte (prog file)
-   (progn 
+   (begin 
       (assemble prog (lambda (byte) (write-byte byte bos)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Parse function for the appropriate assembler type
-(defparameter *parse* nil 
+(defparameter *parse* null 
    "Parse function for the appropriate assembler type")
 
 (defmacro operand (sym size documentation
-                   &key (pass1 'DEFAULT) 
-                        (pass2 'DEFAULT)
-                        (pass3 nil) 
-                        (arg1 'null)
-                        (arg2 'null)
-                        (arg3 'null))
+                   &key (pass1 0) 
+                        (pass2 0)
+                        (pass3 '()) 
+                        (arg1 null)
+                        (arg2 null)
+                        (arg3 null))
+  "Определяет опкод, регистрирует его в таблице *optable* и создает функцию-конструктор."
+  `(begin
+     ;; 1. Регистрация в таблицу опкодов
+     (hash-opcode (make-opcode 
+                    :documentation ,documentation
+                    :op ',sym 
+                    :size ,size 
+                    :arg1 ',arg1
+                    :arg2 ',arg2
+                    :arg3 ',arg3
+                    ;; Создаем замыкания для проходов ассемблера
+                    :pass1 (lambda (inst prog) 
+                             (let ((r1 (lextoken-value (inst-arg1 inst))) 
+                                   (r2 (lextoken-value (inst-arg2 inst)))
+                                   (r3 (lextoken-value (inst-arg3 inst))))
+                               ,pass1))
+                    :pass2 (lambda (inst prog) 
+                             (let ((r1 (lextoken-value (inst-arg1 inst))) 
+                                   (r2 (lextoken-value (inst-arg2 inst)))
+                                   (r3 (lextoken-value (inst-arg3 inst))))
+                               ,pass2))
+                    :pass3 (lambda (inst prog) 
+                             (let ((r1 (lextoken-value (inst-arg1 inst))) 
+                                   (r2 (lextoken-value (inst-arg2 inst)))
+                                   (r3 (lextoken-value (inst-arg3 inst))))
+                               ,pass3))))
 
-  "Define an operand, enter it into the assembler hash table, and call
-   the appropriate macro to define the function (op0, op1, op2, op3)"
-
-  (let ((opc (make-opcode 
-                :documentation documentation
-                :op sym 
-                :size size 
-                :pass1 (eval 
-                   `(lambda (inst prog) 
-                      (let ((r1 (lextoken-value (inst-arg1 inst))) 
-                            (r2 (lextoken-value (inst-arg2 inst)))
-                            (r3 (lextoken-value (inst-arg3 inst))))
-                           ,pass1)))
-                :pass2 (eval 
-                   `(lambda (inst prog) 
-                      (let ((r1 (lextoken-value (inst-arg1 inst))) 
-                            (r2 (lextoken-value (inst-arg2 inst)))
-                            (r3 (lextoken-value (inst-arg3 inst))))
-                           ,pass2)))
-                :pass3 (eval 
-                   `(lambda (inst prog) 
-                      (let ((r1 (lextoken-value (inst-arg1 inst))) 
-                            (r2 (lextoken-value (inst-arg2 inst)))
-                            (r3 (lextoken-value (inst-arg3 inst))))
-                           ,pass3)))
-                :arg1 arg1
-                :arg2 arg2
-                :arg3 arg3)))
-
-       (hash-opcode opc))
-
-  `(defun ,sym (&optional (arg1 (make-lextoken :type 'null))
-                     (arg2 (make-lextoken :type 'null))
-                     (arg3 (make-lextoken :type 'null)))
-      (let ((bla1 (*parse* arg1))
-            (bla2 (*parse* arg2))
-            (bla3 (*parse* arg3)))
-           (make-inst :op ',sym :arg1 bla1
-                                :arg2 bla2
-                                :arg3 bla3))))
+     ;; 2. Определение функции-конструктора (например, (lab ...))
+     (defun ,sym (&optional (a1 (make-lextoken :type null))
+                            (a2 (make-lextoken :type null))
+                            (a3 (make-lextoken :type null)))
+       (let ((bla1 (*parse* a1))
+             (bla2 (*parse* a2))
+             (bla3 (*parse* a3)))
+         (make-inst :op ',sym :arg1 bla1
+                              :arg2 bla2
+                              :arg3 bla3)))))
 
 ;; Es ist immer ein bisschen laestig, alles doppelt hinzuschreiben, wenn
 ;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
 ;; Wert). Die Soperand Macro ersetzt sowas automatisch.
 (defmacro soperand (sym size documentation
-                    &key (pass1 'DEFAULT) 
-                         (pass2 'DEFAULT)
-                         (pass3 nil) 
-                         (arg1 'null)
-                         (arg2 'null)
-                         (arg3 'null))
-
-  "Define an operand, enter it into the assembler hash table, and call
-   the appropriate macro to define the function (op0, op1, op2, op3).
-   the operand takes one or more arguments of type 'variable or
-   'var-indirect, and 2 operands are generated. One where the variable
-   arguments are used as immediate values, one where there are symbols."
-
-   (let ((rplis nil)
-         (arglis (nsubstitute 'asmsym-indirect 'var-indirect
-                 (nsubstitute 'asmsym 'variable 
-                              (list arg1 arg2 arg3))))
-         (arglis1 (nsubstitute 'imm-indirect 'var-indirect
-                 (nsubstitute 'number 'variable 
-                              (list arg1 arg2 arg3))))
-         (pass1b pass1)
-         (pass2b pass2)
-         (pass3b pass3))
+                    &key (pass1 size) ;; По умолчанию размер
+                         (pass2 size) 
+                         (pass3 '()) 
+                         (arg1 null)
+                         (arg2 null)
+                         (arg3 null))
+   (let* ((rplis null)
+          ;; Копируем списки аргументов, чтобы nsubstitute не испортил оригиналы
+          (arg-list (list arg1 arg2 arg3))
+          (arglis (nsubstitute 'asmsym-indirect 'var-indirect
+                   (nsubstitute 'asmsym 'variable (copy-list arg-list))))
+          (arglis1 (nsubstitute 'imm-indirect 'var-indirect
+                   (nsubstitute 'number 'variable (copy-list arg-list))))
+          (pass3b pass3))
         
         (mapcar3 
-
           (lambda (blo blob bloc)
-             (if (or (eq? blo 'variable)
-                     (eq? blo 'var-indirect))
-                 (progn 
-                    (set! pass1b (recsubstitute bloc blob pass1b))
-                    (set! pass2b (recsubstitute bloc blob pass2b))
+             (if (or (eq? blo 'variable) (eq? blo 'var-indirect))
+                 (begin 
+                    ;; Нам нужно менять pass3b, чтобы заменить r1 на r1b (адрес из таблицы)
                     (set! pass3b (recsubstitute bloc blob pass3b))
                     (push! `(,bloc (get-label ,blob prog)) rplis))))
-
-          (list arg1 arg2 arg3)
+          arg-list
           (list 'r1 'r2 'r3)
           (list 'r1b 'r2b 'r3b))
                
@@ -264,15 +251,14 @@
             (operand ,sym ,size ,documentation
                      :pass1 ,pass1
                      :pass2 ,pass2
-                     :pass3 (let ,rplis
-                                 ,pass3b)
+                     :pass3 (let ,rplis ,pass3b) ;; Версия для меток (символов)
                      :arg1 ,(car arglis)
                      :arg2 ,(cadr arglis)
                      :arg3 ,(caddr arglis))
             (operand ,sym ,size ,documentation
                      :pass1 ,pass1
                      :pass2 ,pass2
-                     :pass3 ,pass3
+                     :pass3 ,pass3 ;; Версия для чисел
                      :arg1 ,(car arglis1)
                      :arg2 ,(cadr arglis1)
                      :arg3 ,(caddr arglis1)))))
@@ -280,18 +266,18 @@
 (operand lab 0
      "Label in the assembler program"
      :pass1 
-        (progn
-           (push r1 (asm-prog-labs prog))
-           (hash-table-set! r1 (asm-prog-ltable prog)
+        (begin
+           (push! r1 (asm-prog-labs prog))
+           (setf (gethash r1 (asm-prog-ltable prog))
                  (asm-prog-ilc prog))
         0)
      :pass3
-        (progn 
-           (format t "Label ~S at ILC ~D.~%" r1 (asm-prog-ilc prog))
+        (begin 
+           (fmt #t "Label {} at ILC {}.\n" r1 (asm-prog-ilc prog))
            (get-label r1 prog)
            '())
      :arg1 asmsym)
 
-(fmt #t "asm-program-loader\n")
 (define *asm-program-loader* #t)
 
+(fmt #t "Loaded asm-program-loader\n")
