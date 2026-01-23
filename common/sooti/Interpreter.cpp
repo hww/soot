@@ -46,10 +46,8 @@ namespace script
         // create the environment which is be visible from GOAL
         m_comp_env = EnvironmentObject::make_new("goal");
 
-        define_var_in_env(m_global_environment, m_object_nil, "NIL");
-        define_var_in_env(m_comp_env, m_object_nil, "NIL");
-        define_var_in_env(m_global_environment, m_object_nil, "nil");
-        define_var_in_env(m_comp_env, m_object_nil, "nil");
+        define_var_in_env(m_global_environment, m_object_nil, "null");
+        define_var_in_env(m_comp_env, m_object_nil, "null");
 
         define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
         define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -481,7 +479,22 @@ Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>
 // ==============================================
 // Eval With Rewind (Main Recursion)
 // ==============================================
+std::string truncate_obj(std::string str, size_t max_len) {
+    // 1. Если строка слишком длинная — обрезаем и ставим "..."
+    if (str.length() > max_len) {
+        // Защита от слишком маленького max_arg_len (меньше 3)
+        if (max_len <= 3) {
+            return str.substr(0, max_len);
+        }
+        return str.substr(0, max_len - 3) + "...";
+    }
 
+    // 2. Если строка короче — дополняем пробелами справа
+    // (Или слева, если использовать std::right, но для данных обычно лучше слева)
+    str.append(max_len - str.length(), ' ');
+    
+    return str;
+}
 /*!
  * Evaluate the given expression, with a "checkpoint" in the evaluation stack here.  If there is an
  * evaluation error, there will be a print indicating there was an error in the evaluation of "obj",
@@ -540,12 +553,14 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
                                 m_stack_depth + 1, obj.inspect_short(m_reader.get_symbol_table()));
                     }
 #else
+                    int max_size = 80;
+                    auto obj_string = truncate_obj(obj.print(), max_size);
                     if (info_opt && info_opt->line_idx_to_display > 0) {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
-                                m_stack_depth + 1, obj.print(), info_opt->filename, info_opt->line_idx_to_display);
+                                m_stack_depth + 1, obj_string, info_opt->filename, info_opt->line_idx_to_display);
                     } else {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
-                                m_stack_depth + 1, obj.print());
+                                m_stack_depth + 1, obj_string);
                     }
 #endif
                     if (add_newline) fmt::print(fg(fmt::color::dim_gray), "\n");
@@ -1650,15 +1665,17 @@ void Interpreter::vararg_check(
     // Проверка unnamed аргументов
     if (!unnamed.empty()) {
         if (args.unnamed.size() != unnamed.size()) {
-            throw_eval_error(form, fmt::format("expected {} unnamed arguments, got {}",
-                unnamed.size(), args.unnamed.size()));
+            std::string argstr = args.print_full();
+            throw_eval_error(form, fmt::format("expected {} unnamed arguments, got {} in args {}",
+                unnamed.size(), args.unnamed.size(), argstr));
         }
 
         for (size_t i = 0; i < unnamed.size(); ++i) {
             if (unnamed[i].has_value() && args.unnamed[i].type != unnamed[i].value()) {
                 std::string expected = object_type_to_string(unnamed[i].value());
                 std::string got = object_type_to_string(args.unnamed[i].type);
-                throw_eval_error(form, fmt::format("argument {}: expected {}, got {}", i, expected, got));
+                std::string argstr = args.print_full();
+                throw_eval_error(form, fmt::format("argument {}: expected {}, got {} in args {}", i, expected, got, argstr));
             }
         }
     }
@@ -1669,7 +1686,8 @@ void Interpreter::vararg_check(
         auto it = args.named.find(name);
         if (spec.first) { // required
             if (it == args.named.end()) {
-                throw_eval_error(form, fmt::format("required named argument '{}' missing", name));
+                std::string argstr = args.print_full();                
+                throw_eval_error(form, fmt::format("required named argument '{}' missing in arga {}", name, argstr));
             }
         }
 
@@ -1677,14 +1695,16 @@ void Interpreter::vararg_check(
             it->second.type != spec.second.value()) {
             std::string expected = object_type_to_string(spec.second.value());
             std::string got = object_type_to_string(it->second.type);
-            throw_eval_error(form, fmt::format("named argument '{}': expected {}, got {}", name, expected, got));
+            std::string argstr = args.print_full();
+            throw_eval_error(form, fmt::format("named argument '{}': expected {}, got {} in arga {}", name, expected, got, argstr));
         }
     }
 
     // Проверка лишних named аргументов
     for (const auto& [name, _] : args.named) {
         if (named.find(name) == named.end()) {
-            throw_eval_error(form, fmt::format("unexpected named argument '{}'", name));
+            std::string argstr = args.print_full();            
+            throw_eval_error(form, fmt::format("unexpected named argument '{}'", name, argstr));
         }
     }
 }
@@ -1753,6 +1773,7 @@ Object Interpreter::eval_fmt(const Object& form,
     auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
     if (truthy(dest)) {
         lg::print("{}", formatted.c_str());
+        return get_nil();
     }
 
     return Object::make_string(formatted);

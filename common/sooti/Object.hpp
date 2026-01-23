@@ -569,6 +569,9 @@ namespace script
             Object object_true;
             Object object_false;
             Object object_nil;
+            Object optional;
+            Object key;
+            Object rest;
         } core;
         void init_core_symbols();
         Object object_type_to_symbol(ObjectType type);
@@ -682,6 +685,7 @@ namespace script
         }
 
         std::string print() const;
+        std::string print_full(size_t max_len = 80, size_t max_arg_len = 20) const;
     };
 
     /**
