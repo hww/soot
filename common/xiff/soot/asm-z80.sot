@@ -364,7 +364,7 @@
 (soperand ld 4
      "LD dd, (nn)"
      :pass1 (if (eq? r1 'hl)
-                (progn 
+                (begin 
                    (struct-set! inst-op :inst 'ldhl)
                    3)
                 4)
@@ -1136,7 +1136,7 @@
 
 (operand zbit 2
      "BIT b, r"
-     :pass3 (progn (print "bla")(list #b11001011 
+     :pass3 (begin (print "bla")(list #b11001011 
                   (logior #b01000000 (lshift (logand r1 7) 3)
                                      (reg-code r2))))
      :arg1 number
@@ -1255,12 +1255,12 @@
                    (jl (- r1v (asm-prog-ilc prog))))
                   (if (and (< jl 129)
                            (> jl -126))
-                      (progn 
+                      (begin 
                          (fmt #t "Shifting\n")
                          (shift-following-labels -1 prog)
                          (struct-set! inst-op :inst 'jr)
                          3)
-                      (progn 
+                      (begin 
                          (struct-set! inst-op :inst 'jp)
                          4)))
      :arg1 asmsym)
@@ -1272,13 +1272,25 @@
                   (higher-byte r1))
      :arg1 variable)
 
-(soperand jp 3
-     "JP c, nn"
-     :pass3 (list (logior #b11000010 (lshift (con-code r1) 3))
-                  (lower-byte r2)
-                  (higher-byte r2))
-     :arg1 asmsym
-     :arg2 variable)
+(soperand jmp 3
+   "Virtual JMP"
+   :pass2 (let* ((r1v (get-label r1 prog))
+                 (jl (- r1v (asm-prog-ilc prog))))
+            (if (and (< jl 129) (> jl -126))
+                (begin 
+                   (struct-set! inst :op 'jr) 
+                   2) 
+                (begin 
+                   (struct-set! inst :op 'jp)
+                   3)))
+   ;; ДОБАВЛЯЕМ ЭТО:
+   :pass3 (let ((target (get-label r1 prog)))
+            (if (eq? (struct-ref inst :op) 'jr)
+                ;; Если мы стали JR: код 0x18 + относительный адрес
+                (list #x18 (- target (asm-prog-ilc prog) 2))
+                ;; Если мы остались JP: код 0xC3 + абсолютный адрес (2 байта)
+                (list #xC3 (lower-byte target) (higher-byte target))))
+   :arg1 asmsym)
 
 (soperand jr 2
      "JR e"

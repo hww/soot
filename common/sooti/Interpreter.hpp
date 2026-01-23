@@ -245,6 +245,8 @@ namespace script
         Object eval_exit(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_find_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_write_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Прочие
         Object eval_gensym(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

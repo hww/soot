@@ -204,7 +204,7 @@ namespace script
         case ObjectType::READER:
         return "[reader]";
         default:
-            throw std::runtime_error("unknown object type in object_type_to_string");
+            throw std::runtime_error(fmt::format("unknown object type {} in object_type_to_string", (int)type));
         }
     }
 
