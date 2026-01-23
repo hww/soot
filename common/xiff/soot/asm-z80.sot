@@ -163,7 +163,7 @@
   definitions above."
   (cond
     ((null? arg) '())
-    ((numberp arg)
+    ((number? arg)
         (make-lextoken :type 'number
                        :value arg))
     ((symbol? arg)

@@ -26,11 +26,16 @@ $blo
 
 ;(assemble test)
 
-
 (let* ((result (assemble test))
-       (bin-data (cdr (assoc :bin result))))
+       (bin-data (cdr (assoc :bin result)))
+       (lst-data (cdr (assoc :lst result))))
   (begin
-    (write-binary "test.bin" bin-data)
-    (fmt #t "Bytes written: {}\n" (length bin-data))
-    ;; Если read-binary-file работает:
-    (fmt #t "Verified: {}\n" (read-binary "test.bin"))))
+    ;; 1. Записываем бинарник
+    (write-binary-file "test.bin" bin-data)
+
+    ;; 2. Сохраняем листинг
+    (save-listing "test.lst" lst-data)
+
+    ;; 3. Проверка
+    (print "--- Verification from file ---")
+    (print (read-text-file "test.lst"))))
