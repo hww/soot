@@ -128,6 +128,8 @@ namespace script
             {"pair?",       &Interpreter::eval_pair_p},
             {"symbol?",     &Interpreter::eval_symbol_p},
             {"number?",     &Interpreter::eval_number_p},
+            {"integer?",    &Interpreter::eval_integer_p},
+            {"float?",      &Interpreter::eval_float_p},
             {"string?",     &Interpreter::eval_string_p},
             {"char?",       &Interpreter::eval_char_p},
             {"vector?",     &Interpreter::eval_vector_p},
@@ -185,8 +187,10 @@ namespace script
             {"file-exists?", &Interpreter::eval_file_exists_p},
             {"get-path",     &Interpreter::eval_get_path},
             {"find-file",    &Interpreter::eval_find_file},
-            {"read-binary",  &Interpreter::eval_read_binary_file},
-            {"write-binary", &Interpreter::eval_write_binary_file},
+            {"read-binary-file",  &Interpreter::eval_read_binary_file},
+            {"write-binary-file", &Interpreter::eval_write_binary_file},
+            {"read-text-file",    &Interpreter::eval_read_text_file},
+            {"write-text-file",   &Interpreter::eval_write_text_file},
 
             // Reader
             {"set-macro-character",    &Interpreter::eval_set_macro_character},
@@ -1764,11 +1768,21 @@ Object Interpreter::eval_fmt(const Object& form,
 
     fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
     for (size_t i = 2; i < args.unnamed.size(); i++) {
-        if (args.unnamed.at(i).is_string()) {
-            arg_store.push_back(args.unnamed.at(i).as_string()->data);
+        auto& arg = args.unnamed.at(i);
+        if (arg.is_string()) {
+            arg_store.push_back(arg.as_string()->data);
+        }
+        else if (arg.is_symbol()) { // Добавляем обработку целых чисел
+            arg_store.push_back(arg.as_symbol().c_str());
+        }
+        else if (arg.is_integer()) { // Если есть float/double
+            arg_store.push_back(arg.as_integer()); 
+        }
+        else if (arg.is_float()) { // Если есть float/double
+            arg_store.push_back(arg.as_float()); 
         }
         else {
-            arg_store.push_back(args.unnamed.at(i).print());
+            arg_store.push_back(arg.print());
         }
     }
 
@@ -1825,10 +1839,20 @@ Object Interpreter::eval_cfmt(const Object& form, Arguments& args, const std::sh
     // Собираем аргументы (как в твоем fmt)
     fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
     for (size_t i = 3; i < args.unnamed.size(); i++) {
-        const auto& arg = args.unnamed.at(i);
+        auto& arg = args.unnamed.at(i);
         if (arg.is_string()) {
             arg_store.push_back(arg.as_string()->data);
-        } else {
+        }
+        else if (arg.is_symbol()) { // Добавляем обработку целых чисел
+            arg_store.push_back(arg.as_symbol().c_str());
+        }
+        else if (arg.is_integer()) { // Если есть float/double
+            arg_store.push_back(arg.as_integer()); 
+        }
+        else if (arg.is_float()) { // Если есть float/double
+            arg_store.push_back(arg.as_float()); 
+        }
+        else {
             arg_store.push_back(arg.print());
         }
     }
@@ -2431,11 +2455,22 @@ Object Interpreter::eval_symbol_p(const Object& form, Arguments& args, const std
     return true_or_false(args.unnamed[0].is_symbol());
 }
 
+Object Interpreter::eval_integer_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_integer());
+}
+Object Interpreter::eval_float_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {} }, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_float());
+}
 Object Interpreter::eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_integer() || args.unnamed[0].is_float());
 }
+
 
 Object Interpreter::eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -3088,6 +3123,45 @@ Object Interpreter::eval_read_binary_file(const Object& form, Arguments& args, c
     file.close();
     // Создаем ArrayObject и возвращаем его как Object через Heap
     return Object::make_array(std::move(elements)); 
+}
+
+Object Interpreter::eval_write_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Ждем две строки: путь и контент
+    vararg_check(form, args, { ObjectType::STRING, ObjectType::STRING }, {});
+
+    std::string path = args.unnamed[0].as_string()->data;
+    std::string content = args.unnamed[1].as_string()->data;
+
+    std::ofstream file(path); // Текстовый режим по умолчанию
+    if (!file.is_open()) {
+        throw_eval_error(form, "Could not open text file for writing: " + path);
+    }
+
+    file << content;
+    file.close();
+
+    return get_true();
+}
+
+Object Interpreter::eval_read_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Ждем один аргумент — путь к файлу
+    vararg_check(form, args, { ObjectType::STRING }, {});
+
+    std::string path = args.unnamed[0].as_string()->data;
+    
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw_eval_error(form, "Could not open text file for reading: " + path);
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf(); // Читаем весь поток в буфер
+    file.close();
+
+    // Возвращаем новую строку Лиспа
+    return Object::make_string(buffer.str());
 }
 // ==============================================
 // Прочие функции с проверками

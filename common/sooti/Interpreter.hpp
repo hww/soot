@@ -172,6 +172,8 @@ namespace script
         // Предикаты типов
         Object eval_symbol_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_integer_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_float_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_char_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_vector_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -247,6 +249,8 @@ namespace script
         Object eval_find_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_write_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_write_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_read_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Прочие
         Object eval_gensym(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

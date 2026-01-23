@@ -58,13 +58,13 @@
                                  (opcode-arg1 opc)
                                  (opcode-arg2 opc)
                                  (opcode-arg3 opc))))
-    (fmt #t "hash-opcode :key {} :opc {}\n" key opc)                       
+    ;(fmt #t "hash-opcode :key {} :opc {}\n" key opc)                       
     (hash-table-set! *optable* key opc)))
 
 (defun get-opc (opc &optional (arg1 null) (arg2 null) (arg3 null))
   "Get the hash-table entry for the corresponding opcode"
   (let ((key (fmt #f "{} {} {} {}" opc  arg1 arg2 arg3))) 
-       (fmt #t "get-opc  :key {}\n" key)                       
+       ;(fmt #t "get-opc  :key {}\n" key)                       
        (hash-table-ref *optable* key)))
 
 (defstruct inst
@@ -77,7 +77,7 @@
 (defun get-inst (inst)
   "Get the hash-table entry for the corresponding instruction"
   (check-type inst inst?)  
-  (print `(get-inst ,(inspect inst)))
+  ;(print `(get-inst ,(inspect inst)))
   (get-opc (inst-op inst) 
            (lextoken-type (inst-arg1 inst))
            (lextoken-type (inst-arg2 inst))
@@ -109,85 +109,177 @@
              (shift-label label value prog))
           (asm-prog-labs prog)))
 
+(defun arg->string (arg)
+  (if (hash-table? arg)
+      (let ((val (gethash ":value" arg))) ;; Используем строковый ключ ":value"
+        (if (not (null? val))
+            (fmt #f "{}" val)
+            "null"))
+      (if (null? arg) "null" (fmt #f "{}" arg))))
+
+;; Также нужно исправить функцию inst->string для правильного вывода аргументов:
+(defun arg->string (arg)
+  (if (lextoken? arg)
+      (let ((val (lextoken-value arg)))
+        (if (or (null? val) (eq? val 'null))
+            ""
+            (fmt #f "{}" val)))
+      ""))
+
+(defun inst->string (inst)
+  (let ((op (inst-op inst))
+        (a1 (arg->string (inst-arg1 inst)))
+        (a2 (arg->string (inst-arg2 inst)))
+        (a3 (arg->string (inst-arg3 inst))))
+    (if (eq? op 'lab)
+        (concat "label: " a1)
+        (concat (fmt #f "{}" op)
+                (if (not (string-empty? a1)) (concat " " a1) "")
+                (if (not (string-empty? a2)) (concat ", " a2) "")
+                (if (not (string-empty? a3)) (concat ", " a3) "")))))
+
+(defun assemble (prog)
+  (begin
+    ;; НИКАКИХ reverse! Оставляем инструкции в исходном порядке
+    ;; (asm-prog-insts! prog (reverse (asm-prog-insts prog))) <-- УБРАТЬ ЭТО!
+    
+    (let ((bin-list '())
+          (listing '()))
+      (begin
+        ;; Pass 1: вычисляем размеры и устанавливаем метки
+        (asm-prog-ilc! prog 0)
+        (mapcar (lambda (x) 
+                  (let ((opc (get-inst x)))
+                    (if (eq? (inst-op x) 'lab)
+                        ;; МЕТКА: устанавливаем адрес метки
+                        (let ((label-name (lextoken-value (inst-arg1 x))))
+                          (setf (gethash label-name (asm-prog-ltable prog))
+                                (asm-prog-ilc prog))
+                          ;; Метка не занимает места в памяти
+                          0)
+                        ;; ИНСТРУКЦИЯ: вычисляем размер
+                        (if opc
+                            (let ((size ((opcode-pass1 opc) x prog)))
+                              (asm-prog-ilc! prog (+ (asm-prog-ilc prog) size))
+                              size)
+                            0))))
+                (asm-prog-insts prog))
+        
+        ;; Pass 2: релокации (если нужны)
+        (asm-prog-ilc! prog 0)
+        (mapcar (lambda (x)
+                  (if (not (eq? (inst-op x) 'lab))
+                      (let ((opc (get-inst x)))
+                        (if opc
+                            (let ((size ((opcode-pass2 opc) x prog)))
+                              (asm-prog-ilc! prog (+ (asm-prog-ilc prog) size))
+                              size)
+                            0))
+                      0))
+                (asm-prog-insts prog))
+        
+        ;; Pass 3: генерация кода и листинга
+        (asm-prog-ilc! prog 0)
+        (mapcar (lambda (inst)
+                  (let* ((opc (get-inst inst))
+                         (addr (asm-prog-ilc prog))
+                         (is-label (eq? (inst-op inst) 'lab))
+                         (bytes (if (and opc (not is-label))
+                                   ((opcode-pass3 opc) inst prog)
+                                   '()))
+                         (len 0))
+                    
+                    ;; ОТЛАДКА
+                    (fmt #t "Processing: Addr={:04X} Op={} IsLabel={}\n" 
+                         addr (inst-op inst) is-label)
+                    
+                    (if (and opc (not is-label))
+                        (begin
+                          ;; Вычисляем длину
+                          (cond 
+                            ((vector? bytes) (set! len (vector-length bytes)))
+                            ((pair? bytes) (set! len (length bytes)))
+                            ((integer? bytes) (set! len 1))
+                            (else (set! len 0)))
+                          
+                          (fmt #t "  -> Generating {} bytes: {}\n" len bytes)
+                          
+                          ;; Добавляем бинарные данные
+                          (cond 
+                            ((vector? bytes) 
+                             (set! bin-list (append bin-list (vector->list bytes))))
+                            ((pair? bytes) 
+                             (set! bin-list (append bin-list bytes)))
+                            ((integer? bytes) 
+                             (set! bin-list (append bin-list (list bytes)))))
+                          
+                          ;; Добавляем в листинг
+                          (set! listing 
+                                (append listing 
+                                        (list (list addr bytes (inst->string inst)))))
+                          
+                          ;; Увеличиваем счетчик
+                          (asm-prog-ilc! prog (+ addr len)))
+                        
+                        ;; МЕТКА: только добавляем в листинг, не увеличиваем счетчик
+                        (begin
+                          (set! listing 
+                                (append listing 
+                                        (list (list addr '() (inst->string inst)))))
+                          (fmt #t "  -> Label: {}\n" (inst->string inst))))))
+                
+                (asm-prog-insts prog)) ;; Обрабатываем в ПРЯМОМ порядке
+        
+        ;; Возвращаем результат
+        (list (cons :bin bin-list)
+              (cons :lst listing))))))
+
 (defun save-listing (path lst-data)
   (let ((out ""))
     (begin
-      (mapcar (lambda (line)
-                (let ((addr (car line))
-                      (bytes (cadr line))
-                      (src (caddr line)))
-                  (set! out (concat out (fmt #f "{:04X} | {:12} | {}\n" 
-                                             addr (fmt #f "{}" bytes) src)))))
+      (mapcar (lambda (row)
+                (let* ((addr   (car row))
+                       (bytes  (cadr row))
+                       (src    (caddr row))
+                       (is-lab (string-starts-with? src "label: "))
+                       (b-str  ""))
+                  
+                  (if is-lab
+                      ;; 1. МЕТКА: помещаем имя во вторую колонку
+                      (let ((label-name (string-substr src 7 (string-length src))))
+                        (set! b-str (concat label-name ":"))
+                        (set! out 
+                              (concat out 
+                                      (fmt #f "{:04X} | {:15} | \n" 
+                                           addr b-str))))
+                      
+                      ;; 2. ИНСТРУКЦИЯ: байты во второй, код в третьей
+                      (begin
+                        (if (and (not (null? bytes)) (not (eq? bytes 'null)))
+                            (let ((b-list (if (list? bytes) bytes (list bytes))))
+                              (mapcar (lambda (b) 
+                                        (set! b-str (concat b-str (fmt #f "{:02X} " b))))
+                                      b-list)))
+                        (set! out 
+                              (concat out 
+                                      (fmt #f "{:04X} | {:15} | {}\n" 
+                                           addr b-str src)))))))
               lst-data)
-      ;; Если у тебя есть write-text-file, используй его, 
-      ;; иначе просто выведи в консоль для теста
-      (print out))))
+      (write-text-file path out)
+      (fmt #t "{}" out)
+      out)))
 
 (defun assemble-to-file (prog bin-path lst-path)
-  "Собирает программу и сохраняет бинарник и листинг по указанным путям."
   (let* ((res (assemble prog))
          (bin-data (cdr (assoc :bin res)))
          (lst-data (cdr (assoc :lst res))))
     (begin
-      ;; Запись бинарника (через твой новый C++ метод)
+      ;; Записываем бинарный файл
       (write-binary-file bin-path bin-data)
-      
-      ;; Запись листинга (просто печать в консоль или файл)
-      (print "--- LISTING ---")
-      (mapcar (lambda (line)
-                (let ((addr (car line))
-                      (bytes (cadr line))
-                      (src (caddr line)))
-                  (fmt #t "{:04X} | {:15} | {}\n" addr (fmt #f "{}" bytes) src)))
-              lst-data)
-      
-      (fmt #t "\nAssembly finished. Binary saved to: {}\n" bin-path)
+      ;; Генерируем и записываем текстовый листинг
+      (save-listing lst-path lst-data)
+      (fmt #t "\nAssembly finished. Binary: {}, Listing: {}\n" bin-path lst-path)
       get_true)))
-
-(defun assemble (prog)
-  (let ((bin-list '())
-        (listing '()))
-    (begin
-      ;; --- Pass 1: Считаем адреса и собираем метки ---
-      (asm-prog-ilc! prog 0)
-      (mapcar (lambda (x) 
-                (let ((opc (get-inst x)))
-                  (asm-prog-ilc! prog
-                    (+ (asm-prog-ilc prog)
-                       ((opcode-pass1 opc) x prog)))))
-              (asm-prog-insts prog))
-      (asm-prog-labs! prog (nreverse (asm-prog-labs prog)))
-
-      ;; --- Pass 2: Оптимизация (выбор JR/JP и т.д.) ---
-      (asm-prog-ilc! prog 0)
-      (mapcar (lambda (x) 
-                (let ((opc (get-inst x)))
-                  (asm-prog-ilc! prog
-                    (+ (asm-prog-ilc prog)
-                       ((opcode-pass2 opc) x prog)))))
-              (asm-prog-insts prog))
-
-      ;; --- Pass 3: Генерация байтов и листинга ---
-      (asm-prog-ilc! prog 0)
-      (mapcar (lambda (inst)
-                (let* ((opc (get-inst inst))
-                       (addr (asm-prog-ilc prog))
-                       (bytes ((opcode-pass3 opc) inst prog)))
-                  (begin
-                    ;; Накапливаем байты
-                    (if (not (null? bytes))
-                        (set! bin-list (append bin-list bytes)))
-                    
-                    ;; Добавляем в листинг (адрес, байты, исходник)
-                    (push! (list addr bytes (inst-op inst)) listing)
-                    
-                    ;; Двигаем ILC на количество сгенерированных байт
-                    (asm-prog-ilc! prog (+ addr (length bytes))))))
-              (asm-prog-insts prog))
-      
-      ;; Возвращаем результат как ассоциативный список
-         (list (cons :bin bin-list)
-            (cons :lst (nreverse listing))))))
 
 (defun assemble-raw-byte (prog file)
   (let ((bos (open file :direction :output
@@ -313,7 +405,7 @@
         0)
      :pass3
         (begin 
-           (fmt #t "Label {} at ILC {}.\n" r1 (asm-prog-ilc prog))
+           (fmt #t "Label `{}` at ILC `{}`.\n" r1 (asm-prog-ilc prog))
            (get-label r1 prog)
            '())
      :arg1 asmsym)

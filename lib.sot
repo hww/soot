@@ -330,18 +330,14 @@
 
 ;; --- [ Секция 6: Предикаты типов ] ---
 
-(defmacro typep    (x t) `(type? ,x ,t))
-(defmacro numberp  (x) `(number? ,x))
-(defmacro floatp   (x) `(type? ,x 'float))
-(defmacro integerp (x) `(type? ,x 'integer))
-(defmacro fixnump  (x) `(type? ,x 'integer))
-(defmacro symbolp  (x) `(type? ,x 'symbol))
-(defmacro stringp  (x) `(type? ,x 'string))
-(defmacro pairp    (x) `(type? ,x 'pair))
-
 (defmacro neq? (a b) `(not (eq? ,a ,b)))
 (defmacro !=   (a b) `(not (= ,a ,b)))
 
+;;;; ===========================================================================
+;;;; Strings
+;;;; ===========================================================================
+
+(defun string-empty? (s) (eq? 0 (string-length s)))
 
 ;;;; ===========================================================================
 ;;;; LIST? PREDICATE
