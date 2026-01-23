@@ -1248,54 +1248,41 @@
 ;; sein, das ein JMP der als longjump erkannt wurde, durch intensives
 ;; Shiften besser haette zu einem shortjump gemacht werden sollen, sowas
 ;; ist allerdings sehr haarig rauszufinden
+;; PASS 1 Returns instruction size
+;; PASS 2 Returns instruction size after when size can be changed
+;; PASS 3 Returns instructions bytes
 
-(operand jmp 3
-     "Virtual JMP operand, gets rewritten to JR or JP"
-     :pass2 (let* ((r1v (get-label r1 prog))
-                   (jl (- r1v (asm-prog-ilc prog))))
-                  (if (and (< jl 129)
-                           (> jl -126))
-                      (begin 
-                         (fmt #t "Shifting\n")
-                         (shift-following-labels -1 prog)
-                         (struct-set! inst-op :inst 'jr)
-                         3)
-                      (begin 
-                         (struct-set! inst-op :inst 'jp)
-                         4)))
-     :arg1 asmsym)
+(operand jmp 3 "Virtual JMP"
+   :arg1 asmsym
+   :pass1 3
+   :pass2 (let* ((target (get-label r1 prog))
+                 (offset (- target (asm-prog-ilc prog))))
+            (if (and (< offset 129) (> offset -126))
+                (begin 
+                   ;; НЕ МЕНЯЕМ :op, а ставим флаг в саму инструкцию
+                   (struct-set! inst :mode 'short) 
+                   2) ;; Возвращаем размер 2
+                (begin 
+                   (struct-set! inst :mode 'long)
+                   3))) ;; Возвращаем размер 3
+   :pass3 (let* ((target (get-label r1 prog))
+                 (curr (asm-prog-ilc prog))
+                 (mode (struct-ref inst :mode)))
+                 (cfmt #t 'red "DEBUG Pass3: label={} target={} curr-ilc={}" r1 target (asm-prog-ilc prog))
+            (if (eq? mode 'short)
+                (list #x18 (logand (- target (+ curr 2)) #xFF))
+                (list #xC3 (logand target #xFF) (logand (ash target -8) #xFF)))))
 
-(soperand jp 3
-     "JP nn"
-     :pass3 (list #b11000011
-                  (lower-byte r1)
-                  (higher-byte r1))
+(soperand jp 3 "JP nn"
+     :relative #f ;; (по умолчанию #f)
+     :pass3 (list #xC3 (lower-byte r1) (higher-byte r1))
      :arg1 variable)
 
-(soperand jmp 3
-   "Virtual JMP"
-   :pass2 (let* ((r1v (get-label r1 prog))
-                 (jl (- r1v (asm-prog-ilc prog))))
-            (if (and (< jl 129) (> jl -126))
-                (begin 
-                   (struct-set! inst :op 'jr) 
-                   2) 
-                (begin 
-                   (struct-set! inst :op 'jp)
-                   3)))
-   ;; ДОБАВЛЯЕМ ЭТО:
-   :pass3 (let ((target (get-label r1 prog)))
-            (if (eq? (struct-ref inst :op) 'jr)
-                ;; Если мы стали JR: код 0x18 + относительный адрес
-                (list #x18 (- target (asm-prog-ilc prog) 2))
-                ;; Если мы остались JP: код 0xC3 + абсолютный адрес (2 байта)
-                (list #xC3 (lower-byte target) (higher-byte target))))
-   :arg1 asmsym)
 
-(soperand jr 2
+(soperand jr 2 
      "JR e"
-     :pass3 (list #b00011000
-                  (- r1 (asm-prog-ilc prog) 2))
+     :relative #t
+     :pass3 (begin (cfmt #t 'yellow ":r1 {} :r2 {} :r3 {}" r1 r2 r3) (list #x18 r1)) ;; r1 автоматически станет смещением!
      :arg1 variable)
 
 (soperand jr 2
@@ -1323,9 +1310,10 @@
      :pass3 (list #b11111101 #b11101001)
      :arg1 iy-indirect)
 
-(soperand djnz 2
+(soperand djnz 2 
      "DJNZ e"
-     :pass3 (list #b00010000 (- r1 (asm-prog-ilc prog) 2))
+     :relative #t
+     :pass3 (list #x10 r1)
      :arg1 variable)
 
 (soperand call 3
