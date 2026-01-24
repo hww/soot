@@ -1,5 +1,9 @@
 ﻿;; Helpers
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Utilities
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun lower-byte (bla)
    "Get the lower byte of the integer"
    (logand bla #b11111111))
@@ -9,12 +13,28 @@
    (logand (rshift bla 8) #b11111111))
 
 (defun substitute (new old lst)
+  "Replace all occurrences of OLD with NEW in list LST.
+   Returns a new list with the replacements made.
+   
+   Example:
+   (substitute 'x 'y '(a y b y c)) 
+   => (a x b x c)"
   (cond ((null? lst) '())
         ((eq? (car lst) old) 
          (cons new (substitute new old (cdr lst))))
         (#t (cons (car lst) (substitute new old (cdr lst))))))
 
 (defun recsubstitute (dest source lis)
+  "Recursively replace SOURCE with DEST throughout LIS.
+   Works on nested lists and any level of structure.
+   
+   Arguments:
+   - DEST:  The replacement value
+   - SOURCE: The value to replace  
+   - LIS: The input (list or atom)
+   
+   Returns: Structure with all SOURCE replaced by DEST.
+   Note: Uses EQ for comparison at all levels."
    (cond
       ((eq? lis source)
          dest)
@@ -26,16 +46,32 @@
       (#t lis)))
 
 (defun nsubstitute (new old lst)
+  "Destructively replace OLD with NEW in list LST (modifies original).
+   Uses SET-CAR! to mutate list cells in place.
+   
+   Arguments:
+   - NEW: Replacement value
+   - OLD: Value to replace
+   - LST: List to modify (will be changed!)
+   
+   Returns: The modified list (same as input LST).
+   Warning: Mutates the original list structure."
   (let ((current lst))
     (while (not (null? current))
       (if (eq? (car current) old)
-          (set-car! current new)) ;; Меняем значение в текущей ячейке
+          (set-car! current new)) 
       (set! current (cdr current)))
-    lst)) ;; Возвращаем тот же самый список, но измененный
+    lst)) 
 
-(defparameter
-  *optable* (make-hash-table '() 200)
-  "Opcode table for the assembler")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Lextoken - assembler lexical token container
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defstruct lextoken (type null) (value null))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Opcode - assembler instruction data container  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defstruct opcode
    "Assembler opcode"
@@ -49,7 +85,14 @@
    (pass2 null)
    (pass3 null))
 
-(defstruct lextoken (type null) (value null))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Valid assembler instructions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; List of all assembler instructions
+(defparameter
+  *optable* (make-hash-table '() 200)
+  "Opcode table for the assembler")
 
 (defun hash-opcode (opc)
   "Enter an opcode into the assembler opcode table"
@@ -63,9 +106,16 @@
 
 (defun get-opc (opc &optional (arg1 null) (arg2 null) (arg3 null))
   "Get the hash-table entry for the corresponding opcode"
-  (let ((key (fmt #f "{} {} {} {}" opc  arg1 arg2 arg3))) 
-       ;(fmt #t "get-opc  :key {}\n" key)                       
-       (hash-table-ref *optable* key)))
+  (let* ((key (fmt #f "{} {} {} {}" opc  arg1 arg2 arg3)) 
+         (val (hash-table-try-ref *optable* key)))
+         ;(fmt #t "get-opc  :key {}\n" key)                       
+         (if (car val)
+          (cdr val)
+          (error (fmt #f "Can't find opcode {}" key (source-info opc))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Instruction это инструкция ассемблера
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defstruct inst
    "Assembler instruction"
@@ -74,6 +124,7 @@
   (arg2 (make-lextoken :type null))
   (arg3 (make-lextoken :type null)))
 
+;; Найти opcode для инструкции
 (defun get-inst (inst)
   "Get the hash-table entry for the corresponding instruction"
   (check-type inst inst?)  
@@ -83,19 +134,26 @@
            (lextoken-type (inst-arg2 inst))
            (lextoken-type (inst-arg3 inst))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Asm Prog контейнер програмы
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defstruct asm-prog
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
   (insts null)
   ;(ifuncs null)
-  (labs null)
-  (ltable (make-hash-table))
-  (ilc 0))
+  (labs null)                 ;; Метки
+  (ltable (make-hash-table))  ;;
+  (ilc 0))                    ;;
 
 (defun get-label (label prog)
-  (let ((val (gethash label (asm-prog-ltable prog))))
-    (fmt #t "LOOKUP LABEL: name={} found-val={}\n" label val)
-    val))
+  (let ((val (hash-table-try-ref (asm-prog-ltable prog) label)))
+    ;(fmt #t "LOOKUP LABEL: name={} found-val={}\n" label val)
+    (if (car val)
+      (cdr val)
+      (error (fmt #f "Can't find label {} in {}" label in (source-info label)))
+    )))
 
 (defun shift-label (label value prog)
   "Shift a label from program prog by the specified value"
@@ -110,36 +168,11 @@
              (shift-label label value prog))
           (asm-prog-labs prog)))
 
-(defun arg->string (arg)
-  (if (hash-table? arg)
-      (let ((val (gethash ":value" arg))) ;; Используем строковый ключ ":value"
-        (if (not (null? val))
-            (fmt #f "{}" val)
-            "null"))
-      (if (null? arg) "null" (fmt #f "{}" arg))))
 
-;; Также нужно исправить функцию inst->string для правильного вывода аргументов:
-(defun arg->string (arg)
-  (if (lextoken? arg)
-      (let ((val (lextoken-value arg)))
-        (if (or (null? val) (eq? val 'null))
-            ""
-            (fmt #f "{}" val)))
-      ""))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Обновление адресов и меток
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun inst->string (inst)
-  (let ((op (inst-op inst))
-        (a1 (arg->string (inst-arg1 inst)))
-        (a2 (arg->string (inst-arg2 inst)))
-        (a3 (arg->string (inst-arg3 inst))))
-    (if (eq? op 'lab)
-        (concat "label: " a1)
-        (concat (fmt #f "{}" op)
-                (if (not (string-empty? a1)) (concat " " a1) "")
-                (if (not (string-empty? a2)) (concat ", " a2) "")
-                (if (not (string-empty? a3)) (concat ", " a3) "")
-                "   "
-                (fmt #f "{}" (inspect inst))))))
 (defun update-addresses-and-labels (prog pass-num)
   (let ((current-ilc 0)
         (changed #f))
@@ -170,7 +203,44 @@
               (asm-prog-insts prog))
       (asm-prog-ilc! prog current-ilc)
       changed)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Утилиты для сохранения в list файл
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun arg->string (arg)
+  "Конвертировать агрумнт в строку для записи в листинг файл"
+  (if (lextoken? arg)
+      (let ((val (lextoken-value arg)))
+        (if (or (null? val) (eq? val 'null))
+            ""
+            (fmt #f "{}" val)))
+      ""))
+
+(defun inst->string (inst)
+  "Конвертировать инструкцию в строку для записи в листинг файл"
+  (let ((op (inst-op inst))
+        (a1 (arg->string (inst-arg1 inst)))
+        (a2 (arg->string (inst-arg2 inst)))
+        (a3 (arg->string (inst-arg3 inst))))
+    (if (eq? op 'lab)
+        (concat "label: " a1)
+        (concat (fmt #f "{}" op)
+                (if (not (string-empty? a1)) (concat " " a1) "")
+                (if (not (string-empty? a2)) (concat ", " a2) "")
+                (if (not (string-empty? a3)) (concat ", " a3) "")
+                ;"   "
+                ;(fmt #f "{}" (inspect inst))
+                ))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Компиляция программы
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun assemble (prog)
+  "Assemble an assembler program, go through pass 1, pass2 and then call
+   all the functions returned by the instruction."
   (let ((bin-list '())
         (listing '()))
     (begin
@@ -233,6 +303,7 @@
               (asm-prog-insts prog))
       
       (list (cons :bin bin-list) (cons :lst listing)))))
+
 (defun save-listing (path lst-data)
   (let ((out ""))
     (begin
@@ -261,12 +332,12 @@
                                       b-list)))
                         (set! out 
                               (concat out 
-                                      (fmt #f "{:04X} | {:15} | {}\n" 
+                                      (fmt #f "{:04X} |   {:13} | {}\n" 
                                            addr b-str src)))))))
               lst-data)
       (write-text-file path out)
       (fmt #t "{}" out)
-      out)))
+      null)))
 
 (defun assemble-to-file (prog bin-path lst-path)
   (let* ((res (assemble prog))
@@ -295,14 +366,19 @@
 (defun assemble-raw-byte (prog file)
    (begin 
       (assemble prog (lambda (byte) (write-byte byte bos)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Макросы для описания комманд ассемблера
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Дополнительная интсрукция для отображения параметров
 (defun inspect-inst (msg inst size r1 r2 r3) 
   (fmt #t "<inst {}  :op {}\n  :size {} \n  :r1 {}\n  :r2 {}\n  :r3 {}\n" msg (inspect inst-op) size msg r1 r2 r3))
 
 ;; Parse function for the appropriate assembler type
 (defparameter *parse* null 
    "Parse function for the appropriate assembler type")
+
 (defmacro operand (sym size documentation
                    &key (pass1 0) 
                         (pass2 0)
@@ -325,7 +401,7 @@
                                    ;; МАГИЯ: связываем имя геттера с самим объектом
                                    (inst-op inst)
                                    (size ,size)) 
-                                   (inspect-inst "pass1" inst-op size r1 r2 r3)                                   
+                                   ;(inspect-inst "pass1" inst-op size r1 r2 r3)                                   
                                ,pass1))
                     :pass2 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
@@ -334,7 +410,7 @@
                                    ;; МАГИЯ: теперь (struct-set! inst-op ...) сработает
                                    (inst-op inst)
                                    (size ,size))  
-                                   (inspect-inst "pass2" inst-op size r1 r2 r3)                                 
+                                   ;(inspect-inst "pass2" inst-op size r1 r2 r3)                                 
                                ,pass2))
                     :pass3 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
@@ -342,7 +418,7 @@
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    (inst-op inst)
                                    (size ,size))
-                                   (inspect-inst "pass3" inst-op size r1 r2 r3)
+                                   ;(inspect-inst "pass3" inst-op size r1 r2 r3)
                                ,pass3))))
 
      (defun ,sym (&optional (a1 (make-lextoken :type null))

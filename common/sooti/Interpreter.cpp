@@ -124,7 +124,7 @@ namespace script
             {"type?",       &Interpreter::eval_type_p},
 
             // Предикаты типов
-            {"null?",       &Interpreter::eval_null_p},   // legacy  
+            {"null?",       &Interpreter::eval_null_p},   
             {"pair?",       &Interpreter::eval_pair_p},
             {"symbol?",     &Interpreter::eval_symbol_p},
             {"number?",     &Interpreter::eval_number_p},
@@ -133,6 +133,7 @@ namespace script
             {"string?",     &Interpreter::eval_string_p},
             {"char?",       &Interpreter::eval_char_p},
             {"vector?",     &Interpreter::eval_vector_p},
+            {"hash-table?", &Interpreter::eval_hash_table_p},
             {"procedure?",  &Interpreter::eval_procedure_p},
             {"boolean?",    &Interpreter::eval_boolean_p},
             {"reader?",     &Interpreter::eval_reader_p},
@@ -151,46 +152,45 @@ namespace script
             {"string-split",        &Interpreter::eval_string_split},
 
             // Векторы
-            {"vector",          &Interpreter::eval_vector},
-            {"vector-ref",      &Interpreter::eval_vector_ref},
-            {"vector-set!",     &Interpreter::eval_vector_set},
-            {"vector-length",   &Interpreter::eval_vector_length},
-            {"vector->list",    &Interpreter::eval_vector_to_list},
+            {"vector",              &Interpreter::eval_vector},
+            {"vector-ref",          &Interpreter::eval_vector_ref},
+            {"vector-set!",         &Interpreter::eval_vector_set},
+            {"vector-length",       &Interpreter::eval_vector_length},
+            {"vector->list",        &Interpreter::eval_vector_to_list},
 
             // Хэш-таблицы
             {"make-hash-table",     &Interpreter::eval_make_hash_table},
             {"hash-table-set!",     &Interpreter::eval_hash_table_set},
             {"hash-table-ref",      &Interpreter::eval_hash_table_ref},
-            {"hash-table?",         &Interpreter::eval_hash_table_p},
             {"hash-table-try-ref",  &Interpreter::eval_hash_table_try_ref},
             {"hash-table-length",   &Interpreter::eval_hash_table_length},
             {"hash-table->list",    &Interpreter::eval_hash_table_to_list},
 
             // Системные и ввод-вывод
-            {"print",   &Interpreter::eval_print},
-            {"pprint",  &Interpreter::eval_pprint},
-            {"inspect", &Interpreter::eval_inspect},
-            {"fmt",     &Interpreter::eval_fmt},
-            {"cfmt",    &Interpreter::eval_cfmt},
-            {"error",   &Interpreter::eval_error},
+            {"print",               &Interpreter::eval_print},
+            {"pprint",              &Interpreter::eval_pprint},
+            {"inspect",             &Interpreter::eval_inspect},
+            {"fmt",                 &Interpreter::eval_fmt},
+            {"cfmt",                &Interpreter::eval_cfmt},
+            {"error",               &Interpreter::eval_error},
 
             // Logger
-            {"log",   &Interpreter::eval_log},
+            {"log",                 &Interpreter::eval_log},
 
             // Evaluation and parsing 
-            {"read-str",  &Interpreter::eval_read_str},
-            {"parse-str", &Interpreter::eval_parse_str},
-            {"read-file", &Interpreter::eval_read_file},
-            {"load",      &Interpreter::eval_load},
+            {"read-str",            &Interpreter::eval_read_str},
+            {"parse-str",           &Interpreter::eval_parse_str},
+            {"read-file",           &Interpreter::eval_read_file},
+            {"load",                &Interpreter::eval_load},
 
             // Files
-            {"file-exists?", &Interpreter::eval_file_exists_p},
-            {"get-path",     &Interpreter::eval_get_path},
-            {"find-file",    &Interpreter::eval_find_file},
-            {"read-binary-file",  &Interpreter::eval_read_binary_file},
-            {"write-binary-file", &Interpreter::eval_write_binary_file},
-            {"read-text-file",    &Interpreter::eval_read_text_file},
-            {"write-text-file",   &Interpreter::eval_write_text_file},
+            {"file-exists?",        &Interpreter::eval_file_exists_p},
+            {"get-path",            &Interpreter::eval_get_path},
+            {"find-file",           &Interpreter::eval_find_file},
+            {"read-binary-file",    &Interpreter::eval_read_binary_file},
+            {"write-binary-file",   &Interpreter::eval_write_binary_file},
+            {"read-text-file",      &Interpreter::eval_read_text_file},
+            {"write-text-file",     &Interpreter::eval_write_text_file},
 
             // Reader
             {"set-macro-character",    &Interpreter::eval_set_macro_character},
@@ -245,7 +245,7 @@ namespace script
             {"time-microseconds",   &Interpreter::eval_time_microseconds},
             {"time-nanoseconds",    &Interpreter::eval_time_nanoseconds},
             // Отладка 
-            {"source-info",    &Interpreter::eval_source_info},
+            {"source-info",         &Interpreter::eval_source_info},
 
         }});
 
@@ -2460,17 +2460,18 @@ Object Interpreter::eval_integer_p(const Object& form, Arguments& args, const st
     vararg_check(form, args, { {} }, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_integer());
 }
+
 Object Interpreter::eval_float_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_float());
 }
+
 Object Interpreter::eval_number_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_integer() || args.unnamed[0].is_float());
 }
-
 
 Object Interpreter::eval_string_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;

@@ -1251,27 +1251,19 @@
 ;; PASS 1 Returns instruction size
 ;; PASS 2 Returns instruction size after when size can be changed
 ;; PASS 3 Returns instructions bytes
-
-(operand jmp 3 "Virtual JMP"
-   :arg1 asmsym
-   :pass1 3
-   :pass2 (let* ((target (get-label r1 prog))
-                 (offset (- target (asm-prog-ilc prog))))
-            (if (and (< offset 129) (> offset -126))
-                (begin 
-                   ;; НЕ МЕНЯЕМ :op, а ставим флаг в саму инструкцию
-                   (struct-set! inst :mode 'short) 
-                   2) ;; Возвращаем размер 2
-                (begin 
-                   (struct-set! inst :mode 'long)
-                   3))) ;; Возвращаем размер 3
-   :pass3 (let* ((target (get-label r1 prog))
-                 (curr (asm-prog-ilc prog))
-                 (mode (struct-ref inst :mode)))
-                 (cfmt #t 'red "DEBUG Pass3: label={} target={} curr-ilc={}" r1 target (asm-prog-ilc prog))
-            (if (eq? mode 'short)
-                (list #x18 (logand (- target (+ curr 2)) #xFF))
-                (list #xC3 (logand target #xFF) (logand (ash target -8) #xFF)))))
+(operand jmp 3
+     "Virtual JMP"
+     :pass2 (let* ((target (get-label r1 prog)) ;; Тут добавим проверку (if (null? target) ...)
+                   (offset (if target (- target (asm-prog-ilc prog)) 0)))
+              (if (and target (< offset 129) (> offset -126))
+                  (begin 
+                     (setf (inst-op inst) 'jr)
+                     2) ;; Возвращаем честный размер
+                  (begin 
+                     (setf (inst-op inst) 'jp)
+                     3))) ;; Возвращаем честный размер
+     :pass3 (error "JMP should not be called in phase 3") 
+     :arg1 asmsym)
 
 (soperand jp 3 "JP nn"
      :relative #f ;; (по умолчанию #f)
@@ -1282,7 +1274,9 @@
 (soperand jr 2 
      "JR e"
      :relative #t
-     :pass3 (begin (cfmt #t 'yellow ":r1 {} :r2 {} :r3 {}" r1 r2 r3) (list #x18 r1)) ;; r1 автоматически станет смещением!
+     :pass3 (begin 
+          ;(cfmt #t 'yellow ":r1 {} :r2 {} :r3 {}" r1 r2 r3) 
+          (list #x18 r1)) ;; r1 автоматически станет смещением!
      :arg1 variable)
 
 (soperand jr 2
