@@ -39,6 +39,11 @@ namespace script
     class Interpreter  {
         friend class SootTypeSystem;
 
+        struct ContextFrame {
+            int depth;
+            Object form;
+            ContextFrame* prev;
+        };
     public:
     
         Interpreter(const std::string& username = "user", bool load_libs = false);
@@ -57,11 +62,13 @@ namespace script
         }
 
         void add_builtin_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
+            (void)allow_keys;
             void* key = (void*)intern_ptr(name).name_ptr;           
             m_builtin_forms[key] = form;
         }
 
         void add_custom_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
+            (void)allow_keys;
             // Интернируем имя, чтобы получить стабильный указатель для поиска
             void* key = (void*)intern_ptr(name).name_ptr;           
             
@@ -71,10 +78,12 @@ namespace script
         void load_library();
 
         // Основные методы оценки
-        Object eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
+        Object eval(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
+        Object eval_with_rewind(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_string(const std::string& expression, const std::string& filename);
         Object call_lambda(const Object& lambda, const std::vector<Object>& args);
+        void eval_args(const Object& parent_form, Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Для REPL и LSP
         std::string get_all_symbols_matching(const std::string& prefix);
@@ -83,7 +92,7 @@ namespace script
         Object intern(const std::string& name);
         InternedSymbolPtr intern_ptr(const std::string& name);
         bool try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest);
-        Object eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_symbol(const Object& parent_form, const Object& sym, const std::shared_ptr<EnvironmentObject>& env);
         void define_var_in_env(const Object& env, const Object& var, const char* name);
 
         // Вспомогательные методы
@@ -92,7 +101,6 @@ namespace script
         Arguments get_args_no_named(const Object& form,
                                          const Object& rest,
                                          const ArgumentSpec& spec);
-        void eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
 
         std::vector<Object> eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env);
@@ -292,7 +300,7 @@ namespace script
         Object quasiquote_helper(const Object& form, const std::shared_ptr<EnvironmentObject>& env);
                
         // Основной метод оценки пар
-        Object eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_pair(const Object& parent_for, const Object& obj, const std::shared_ptr<EnvironmentObject>& env);
 
         // Улучшенная обработка аргументов
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);
@@ -310,6 +318,7 @@ namespace script
         Object eval_ts_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // --- Инициализация Хранилища ---       
         void init_special_forms(const std::unordered_map<std::string, SpecialFormMethod>& forms);
@@ -336,9 +345,9 @@ namespace script
         Object      m_global_environment;
         Object      m_comp_env;
         bool        m_disable_printing = false;
-        int         m_stack_depth;
         std::unique_ptr<SootTypeSystem> m_type_system; // Реализатор
         Reader      m_reader;
+        ContextFrame* m_top_frame;
     };
 
     fmt::terminal_color string_to_color(const std::string& name);

@@ -42,6 +42,7 @@ namespace script {
 
         void insert(const std::shared_ptr<SourceText>& frag);
         void link(const Object& o, std::shared_ptr<SourceText> frag, int offset);
+      	void copy_link(const Object& from, const Object& to);
         std::string get_info_for(const Object& o, bool* terminate_compiler_error = nullptr) const;
         std::optional<ShortInfo> get_short_info_for(const Object& o) const;
         std::optional<TextRef> get_text_ref(const Object& o) const;

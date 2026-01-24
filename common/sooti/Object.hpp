@@ -26,7 +26,7 @@ namespace script
     using IntType = int64_t;
 
     enum class ObjectType : uint8_t {
-        INVALID, 
+        UNDEFINED, 
         EMPTY_LIST, PAIR, 
         ARRAY, STRING_HASH_TABLE, 
         INTEGER, FLOAT, CHAR,
@@ -149,7 +149,7 @@ namespace script
     class Object {
         friend class EnvironmentPrettyPrinter;
     public:
-        ObjectType type = ObjectType::INVALID;
+        ObjectType type = ObjectType::UNDEFINED;
 
         // For fixed types (value semantics) - как в OpenGOAL
         union {
@@ -190,6 +190,7 @@ namespace script
         std::string type_name() const { return object_type_to_string(type); }
 
         // Type checking
+        bool is_undefined() const { return type == ObjectType::UNDEFINED; }
         bool is_heap_object() const { return heap_obj != nullptr; }
         bool is_integer() const { return type == ObjectType::INTEGER; }
         bool is_float() const { return type == ObjectType::FLOAT; }
@@ -566,6 +567,7 @@ namespace script
             Object lextoken;
             Object place;
             Object unknown;
+            Object undefined;
             Object object_true;
             Object object_false;
             Object object_nil;
@@ -787,7 +789,7 @@ namespace script
         }
 
         std::string print() const;
-
+        std::string print_full(size_t max_len = 512, size_t max_arg_len = 64) const;
     };
 
     class LambdaObject : public HeapObject {

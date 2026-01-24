@@ -30,6 +30,7 @@ namespace script
     }
 
     void SymbolTable::init_core_symbols() {
+        core.undefined      = Object::make_symbol(this, "undefined");
         core.object_true    = Object::make_symbol(this, "#t");
         core.object_false   = Object::make_symbol(this, "#f");
         core.object_nil     = Object::make_empty_list();
@@ -54,6 +55,7 @@ namespace script
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
         switch (type) {
+            case ObjectType::UNDEFINED:     return core.undefined;
             case ObjectType::EMPTY_LIST:    return core.empty_list; // было EmptyList
             case ObjectType::INTEGER:       return core.integer;    // было Integer
             case ObjectType::FLOAT:         return core.float_pt;   // было Float
@@ -177,6 +179,8 @@ namespace script
 
     std::string object_type_to_string(ObjectType type) {
     switch (type) {
+        case ObjectType::UNDEFINED:
+        return "[undefined]";
         case ObjectType::EMPTY_LIST:
         return "[empty list]";
         case ObjectType::INTEGER:
@@ -622,6 +626,18 @@ namespace script
     }
 
     // -- PRINTS --------------------------------------------------------------
+    /**
+     * Вспомогательная функция для безопасного строкового представления объекта
+     */
+    std::string truncate_obj(const Object& obj, size_t max_arg_len) {
+        std::string s = obj.print(); // Используем существующий метод print объекта
+        if (s.length() <= max_arg_len) return s;
+        return s.substr(0, max_arg_len - 3) + "...";
+    }
+    std::string truncate_obj(const std::string& s, size_t max_arg_len) {
+        if (s.length() <= max_arg_len) return s;
+        return s.substr(0, max_arg_len - 3) + "...";
+    }
 
     std::string ArgumentSpec::print() const {
         // Вместо "ArgumentSpec: unnamed=2..." сделаем более сжатый системный вид
@@ -634,21 +650,59 @@ namespace script
         );
     }
 
+    std::string ArgumentSpec::print_full(size_t max_len, size_t max_arg_len) const {
+
+        std::stringstream ss;
+        bool print_optional = true;
+
+        ss << "(";
+
+        // 1. Позиционные аргументы (unnamed)
+        if (!unnamed.empty()) {
+            for (size_t i = 0; i < unnamed.size(); ++i) {
+                ss << truncate_obj(unnamed[i].name, max_arg_len);
+                if (i < unnamed.size() - 1) ss << " ";
+            }
+        }
+
+        // 2. Ключевые аргументы (named)
+        if (!named.empty()) {
+            if (!unnamed.empty()) ss << " ";
+            ss << "&key ";
+            bool first = true;
+            for (const auto& [name, val] : named) {
+                if (!first) ss << " ";
+                if (val.default_value.is_undefined())
+                    ss << name;
+                else
+                    ss << "(" << name << " " << truncate_obj(val.default_value, max_arg_len) << ")";
+                first = false;
+            }
+        }
+
+        // 3. Остаток (rest)
+        if (!rest.empty()) {
+            if (!unnamed.empty() || !named.empty()) ss << " ";
+            ss << "&rest: ";
+            ss << truncate_obj(rest, max_arg_len);
+        }
+
+        ss << ")";
+
+        std::string result = ss.str();
+        if (result.length() > max_len) {
+            return result.substr(0, max_len - 4) + "...}";
+        }
+
+        return result;
+    }
+
     std::string Arguments::print() const {
         // Инстанция аргументов в момент вызова
         return fmt::format("#<args-invoked u:{} n:{} r:{}>", 
             unnamed.size(), 
             named.size(), 
             rest.size());
-    }
-
-    /**
-     * Вспомогательная функция для безопасного строкового представления объекта
-     */
-    std::string truncate_obj(const Object& obj, size_t max_arg_len) {
-        std::string s = obj.print(); // Используем существующий метод print объекта
-        if (s.length() <= max_arg_len) return s;
-        return s.substr(0, max_arg_len - 3) + "...";
     }
 
     std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {

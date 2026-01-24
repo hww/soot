@@ -29,7 +29,8 @@ namespace script
     Interpreter::Interpreter(const std::string& username, bool load_libs) 
     :   m_reader(this), 
         m_setter_map(),
-        m_type_system(std::make_unique<SootTypeSystem>(*this)) 
+        m_type_system(std::make_unique<SootTypeSystem>(*this)),
+        m_top_frame(nullptr)
     {
         m_reader.set_lambda_caller([this](const Object& lambda, const std::vector<Object>& args) {
                 return this->call_lambda(lambda, args);
@@ -246,6 +247,7 @@ namespace script
             {"time-nanoseconds",    &Interpreter::eval_time_nanoseconds},
             // Отладка 
             {"source-info",         &Interpreter::eval_source_info},
+            {"get-context",         &Interpreter::eval_get_context}
 
         }});
 
@@ -395,7 +397,7 @@ void Interpreter::execute_repl() {
             Object code = m_reader.read_from_string(input, "repl");
             fmt::print("Reader Returned: {}\n", pretty_print::to_string(code));
             // evaluate
-            m_stack_depth = 0;;
+            m_top_frame = nullptr;
             Object result = eval_with_rewind(code, m_global_environment.as_env_ptr());
             // Print
             printf("%s\n", result.print().c_str());
@@ -429,14 +431,14 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
 {
     // read something from the user
     Object code = m_reader.read_from_string(expression, true, filename);
-    m_stack_depth = 0;;
+    m_top_frame = nullptr;
     // evaluate
     return eval_with_rewind(code, m_global_environment.as_env_ptr());
 }
 
 
 Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>& args) {
-    m_stack_depth = 0;;
+    m_top_frame = nullptr;
     if (!lambda.is_lambda()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
@@ -506,19 +508,27 @@ std::string truncate_obj(std::string str, size_t max_len) {
  * evaluation error, there will be a print indicating there was an error in the evaluation of "obj",
  * and if possible what file/line "obj" comes from.
  */
-Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
-    m_stack_depth++;
+Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
+    ContextFrame frame = { m_top_frame == nullptr ? 0 : m_top_frame->depth+1, parent_form, m_top_frame }; 
+    m_top_frame = &frame; 
     try {
-        auto result = eval(obj, env, self_eval_place);
-        m_stack_depth--; // Сбрасываем при успехе
+        //fmt::print(">>>> parent: {}\n    obj: {}\n    src: {}\n", 
+        //    parent_form.print().c_str(), 
+        //    obj.print().c_str(),
+        //     m_reader.get_db().get_info_for(obj)
+        //
+        //);
+       
+        auto result = eval(parent_form, obj, env, self_eval_place);
+        m_top_frame = frame.prev;
         return result;
     }
     catch (const ExitException& e) {
-        m_stack_depth--;
+        m_top_frame = frame.prev;
         throw; // Пробрасываем в самый верх (в main loop)
     }    
     catch (EvalException& e) {
-        m_stack_depth--;        
+        m_top_frame = frame.prev;
         if (!m_disable_printing) {
             if (e.error_header_required) {
                 // 1. Печатаем "Шапку"
@@ -548,53 +558,50 @@ Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<En
             } else {
                 if (obj.is_pair()) {
                     auto info_opt = m_reader.get_db().get_short_info_for(obj);
-                    bool add_newline = m_stack_depth == 0;
+                    bool level = m_top_frame == nullptr ? 0 : m_top_frame->depth;
                     // Печатаем "at ..", только если есть реальный файл и строка > 0
-#ifdef INSPECT}                    
-                    if (info_opt && info_opt->line_idx_to_display > 0) {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
-                                m_stack_depth + 1, obj.inspect_short(m_reader.get_symbol_table()), info_opt->filename, info_opt->line_idx_to_display);
-                    } else {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
-                                m_stack_depth + 1, obj.inspect_short(m_reader.get_symbol_table()));
-                    }
-#else
+
                     int max_size = 80;
                     auto obj_string = truncate_obj(obj.print(), max_size);
                     if (info_opt && info_opt->line_idx_to_display > 0) {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
-                                m_stack_depth + 1, obj_string, info_opt->filename, info_opt->line_idx_to_display);
+                                level, obj_string, info_opt->filename, info_opt->line_idx_to_display);
                     } else {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
-                                m_stack_depth + 1, obj_string);
+                                level, obj_string);
                     }
-#endif
-                    if (add_newline) fmt::print(fg(fmt::color::dim_gray), "\n");
+
+                    if (level == 0) fmt::print(fg(fmt::color::dim_gray), "\n");
                 }
             }
         }
         throw;
     }
     catch (const std::exception& e) {
-        m_stack_depth--;
+        m_top_frame = frame.prev;
         throw; // Пробрасываем в самый верх (в main loop)
     }
 
+}
+
+// Same as method befor but for cases wher are no parent form
+Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
+    return eval_with_rewind(obj, obj, env, self_eval_place);
 }
 
 // ==============================================
 // Eval (Single Item)
 // ==============================================
 
-Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
+Object Interpreter::eval(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
     case ObjectType::SYMBOL:
         if (obj.is_keyword())
             return obj;
         else
-            return eval_symbol(obj, env);
+            return eval_symbol(parent_form, obj, env);
     case ObjectType::PAIR:
-        return eval_pair(obj, env);
+        return eval_pair(parent_form, obj, env);
     case ObjectType::INTEGER:
     case ObjectType::FLOAT:
     case ObjectType::STRING:
@@ -605,7 +612,7 @@ Object Interpreter::eval(const Object& obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::READER:
         return obj;
     case ObjectType::LAMBDA:
-        return eval_pair(obj, env);
+        return eval_pair(parent_form, obj, env);
     default:
         throw_eval_error(obj, "cannot evaluate this object");
     }
@@ -621,7 +628,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
     Object current = list;
 
     while (current.is_pair()) {
-        result.push_back(eval_with_rewind(current.as_pair()->car, env));
+        result.push_back(eval_with_rewind(list, current.as_pair()->car, env));
         current = current.as_pair()->cdr;
     }
 
@@ -633,10 +640,8 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
 }
 
 // Запуск функции
-Object Interpreter::eval_list_return_last(const Object& form,
-    Object rest,
-    const std::shared_ptr<EnvironmentObject>& env) {
-    (void)form;
+Object Interpreter::eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env) {
+
     if (rest.is_empty_list()) {
         return rest;
     }
@@ -647,25 +652,25 @@ Object Interpreter::eval_list_return_last(const Object& form,
         const Object* item = &iter->as_pair()->car;
 
         if (next->is_empty_list()) {
-            return eval_with_rewind(*item, env);
+            return eval_with_rewind(form, *item, env);
         }
         else {
-            eval_with_rewind(*item, env);
+            eval_with_rewind(form, *item, env);
             iter = next;
         }
     }
 }
 
 
-Object Interpreter::eval_symbol(const Object& sym, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_symbol(const Object& parent_form, const Object& sym, const std::shared_ptr<EnvironmentObject>& env) {
     Object result;
     if (!try_symbol_lookup(sym, env, &result)) {
-        throw EvalException(sym, "Unbound variable: " + std::string(std::string(sym.as_symbol().c_str())));
+        throw EvalException(parent_form, "Unbound variable: " + std::string(std::string(sym.as_symbol().c_str())));
     }
     return result;
 }
 
-Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_pair(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env) {
     const auto& pair = obj.as_pair();
     const Object& head = pair->car;
     const Object& rest = pair->cdr;
@@ -687,7 +692,7 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
         if (kv_b != m_builtin_forms.end()) {
             Arguments args = get_args(obj, rest, ArgumentSpec(false, true));
             // all "built-in" forms expect arguments to be evaluated (that's why they aren't special)
-            eval_args(&args, env);
+            eval_args(obj, &args, env);
             return ((*this).*(kv_b->second))(obj, args, env);
         }
 
@@ -710,13 +715,13 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
             mac_env->parent_env = env;  // not 100% clear that this is right
             set_args_in_env(obj, args, macro->args, mac_env);
             // expand the macro!
-            return eval_with_rewind(eval_list_return_last(macro->body, macro->body, mac_env), env);
+            return eval_with_rewind(obj, eval_list_return_last(macro->body, macro->body, mac_env), env);
         }
     }
 
 
     // eval the head and try it as a lambda
-    Object eval_head = eval_with_rewind(head, env);
+    Object eval_head = eval_with_rewind(obj, head, env);
 
     // Пробуем применить как макрос (вычисленный или найденный по символу)
     if (eval_head.is_macro()) {
@@ -730,18 +735,17 @@ Object Interpreter::eval_pair(const Object& obj, const std::shared_ptr<Environme
 
         Object expanded_body = quasiquote_helper(macro->body, mac_env);
         Object expansion = eval_list_return_last(expanded_body, expanded_body, mac_env);
-        return eval_with_rewind(expansion, env);
+        return eval_with_rewind(obj, expansion, env);
     }
 
 
     if (eval_head.type != ObjectType::LAMBDA) {
-        throw_eval_error(eval_head, "head of form didn't evaluate to lambda: " + eval_head.type_name() + " " + eval_head.print());
+        throw_eval_error(parent_form, "head of form didn't evaluate to lambda: " + eval_head.type_name() + " " + eval_head.print());
     }
-
 
     const auto& lam = eval_head.as_lambda();
     Arguments args = get_args_with_spec(obj, rest, lam->args);
-    eval_args(&args, env);
+    eval_args(obj, &args, env);
     auto lam_env_obj = EnvironmentObject::make_new();
     auto lam_env = lam_env_obj.as_env_ptr();
     lam_env->parent_env = lam->parent_env;
@@ -764,7 +768,7 @@ Object Interpreter::eval_define_special(const Object& form, const Object& rest, 
         throw_eval_error(form, "define must have a value");
     }
 
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
+    Object value = eval_with_rewind(form, value_part.as_pair()->car, env);
 
     // Сохраняем в ПЕРЕДАННЫЙ environment
     env->vars.set(name_obj.as_symbol(), value);
@@ -776,7 +780,7 @@ Object Interpreter::eval_set_special(const Object& form, const Object& rest, con
     auto args = get_args(form, rest, ArgumentSpec(false, true));
     vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
     auto to_define = args.unnamed.at(0);
-    Object to_set = eval_with_rewind(args.unnamed.at(1), env);
+    Object to_set = eval_with_rewind(form, args.unnamed.at(1), env);
 
     std::shared_ptr<EnvironmentObject> search_env = env;
     for (;;) {
@@ -812,6 +816,7 @@ Object Interpreter::eval_lambda_special(const Object& form, const Object& rest, 
 
     Object lambda_obj = LambdaObject::make_new();
     auto lambda = lambda_obj.as_lambda();
+
     lambda->args = args;
     lambda->body = body_obj;  // ← ВСЁ тело, а не только .as_pair()->car!
     lambda->parent_env = env;
@@ -890,14 +895,14 @@ Object Interpreter::eval_cond_special(const Object& form, const Object& rest, co
             if (!body.is_pair()) {
                 throw_eval_error(form, "cond else clause must have body");
             }
-            return eval_with_rewind(body.as_pair()->car, env);
+            return eval_with_rewind(form, body.as_pair()->car, env);
         }
 
-        Object condition_result = eval_with_rewind(condition, env);
+        Object condition_result = eval_with_rewind(form, condition, env);
 
         if (truthy(condition_result)) {
             if (body.is_pair()) {
-                return eval_with_rewind(body.as_pair()->car, env);
+                return eval_with_rewind(form, body.as_pair()->car, env);
             }
             else {
                 return condition_result;
@@ -922,15 +927,15 @@ Object Interpreter::eval_if_special(const Object& form, const Object& rest, cons
         throw_eval_error(form, "if requires then branch");
     }
 
-    Object condition_result = eval_with_rewind(condition_obj, env);
+    Object condition_result = eval_with_rewind(form, condition_obj, env);
 
     if (truthy(condition_result)) {
-        return eval_with_rewind(then_part_obj.as_pair()->car, env);
+        return eval_with_rewind(form, then_part_obj.as_pair()->car, env);
     }
     else {
         Object else_part = then_part_obj.as_pair()->cdr;
         if (else_part.is_pair()) {
-            return eval_with_rewind(else_part.as_pair()->car, env);
+            return eval_with_rewind(form, else_part.as_pair()->car, env);
         }
         else {
             return Object::make_empty_list();
@@ -943,7 +948,7 @@ Object Interpreter::eval_or_special(const Object& form, const Object& rest, cons
     Object current = rest;
 
     while (current.is_pair()) {
-        Object result = eval_with_rewind(current.as_pair()->car, env);
+        Object result = eval_with_rewind(form, current.as_pair()->car, env);
         if (truthy(result)) {
             return result;
         }
@@ -959,7 +964,7 @@ Object Interpreter::eval_and_special(const Object& form, const Object& rest, con
     Object result = get_true();
 
     while (current.is_pair()) {
-        result = eval_with_rewind(current.as_pair()->car, env);
+        result = eval_with_rewind(form, current.as_pair()->car, env);
         if (!truthy(result)) {
             return result;
         }
@@ -1004,7 +1009,7 @@ Object Interpreter::eval_let_star_special(const Object& form, const Object& rest
 
         auto new_env = std::make_shared<EnvironmentObject>(current_env);
 
-        Object value = eval_with_rewind(value_part.as_pair()->car, current_env);
+        Object value = eval_with_rewind(form, value_part.as_pair()->car, current_env);
         new_env->vars.set(name_obj.as_symbol(), value);
 
         current_env = new_env;
@@ -1014,7 +1019,7 @@ Object Interpreter::eval_let_star_special(const Object& form, const Object& rest
     Object result = Object::make_empty_list();
     Object current_body = body_obj;
     while (current_body.is_pair()) {
-        result = eval_with_rewind(current_body.as_pair()->car, current_env);
+        result = eval_with_rewind(form, current_body.as_pair()->car, current_env);
         current_body = current_body.as_pair()->cdr;
     }
     return result;
@@ -1053,7 +1058,7 @@ Object Interpreter::eval_let_special(const Object& form, const Object& rest, con
             throw_eval_error(form, "let binding must have a value");
         }
 
-        Object value = eval_with_rewind(value_part.as_pair()->car, env);
+        Object value = eval_with_rewind(form, value_part.as_pair()->car, env);
         let_env->vars.set(name_obj.as_symbol(), value);
 
         current_binding = current_binding.as_pair()->cdr;
@@ -1063,7 +1068,7 @@ Object Interpreter::eval_let_special(const Object& form, const Object& rest, con
     Object current_body = body_obj;
 
     while (current_body.is_pair()) {
-        result = eval_with_rewind(current_body.as_pair()->car, let_env);
+        result = eval_with_rewind(form, current_body.as_pair()->car, let_env);
         current_body = current_body.as_pair()->cdr;
     }
     return result;
@@ -1082,10 +1087,9 @@ Object Interpreter::eval_while_special(const Object& form, const Object& rest, c
     }
 
     Object result = Object::make_empty_list();
-    int iteration = 0;
 
     while (true) {
-        Object condition_result = eval_with_rewind(condition_obj, env);
+        Object condition_result = eval_with_rewind(form, condition_obj, env);
 
         if (!truthy(condition_result)) {
             break;
@@ -1093,7 +1097,7 @@ Object Interpreter::eval_while_special(const Object& form, const Object& rest, c
 
         Object current_body = body_obj;
         while (current_body.is_pair()) {
-            result = eval_with_rewind(current_body.as_pair()->car, env);
+            result = eval_with_rewind(form, current_body.as_pair()->car, env);
             current_body = current_body.as_pair()->cdr;
         }
     }
@@ -1144,7 +1148,7 @@ Object Interpreter::quasiquote_helper(const Object& form,
                         unquote_arg.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
                         throw_eval_error(form, "unquote must have exactly 1 arg");
                     }
-                    result.push_back(eval_with_rewind(unquote_arg.as_pair()->car, env));
+                    result.push_back(eval_with_rewind(form, unquote_arg.as_pair()->car, env));
                     lst_iter = &lst_iter->as_pair()->cdr;
                     continue;
                 }
@@ -1158,7 +1162,7 @@ Object Interpreter::quasiquote_helper(const Object& form,
 
                     // bypass normal addition:
                     lst_iter = &lst_iter->as_pair()->cdr;
-                    Object splice_result = eval_with_rewind(unquote_arg.as_pair()->car, env);
+                    Object splice_result = eval_with_rewind(form, unquote_arg.as_pair()->car, env);
                     if (lst_iter->type == ObjectType::EMPTY_LIST) {
                         // optimization!
                         return build_list_with_spliced_tail(std::move(result), splice_result);
@@ -1361,8 +1365,8 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
             } else {
                 // Аргумент обязательный, но данных нет — это ошибка
                 throw_eval_error(form, fmt::format(
-                    "Not enough arguments. Required positional argument '{}' is missing.", 
-                    p_spec.name));
+                    "Not enough arguments. Required positional argument '{}' is missing in {}.", 
+                    p_spec.name, spec.print()));
             }
         }
     }
@@ -1381,17 +1385,17 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
             if (it == spec.named.end()) {
                 // Если разрешены keys, можно игнорировать или класть в rest.
                 // Но обычно неизвестный &key — это ошибка.
-                throw_eval_error(form, fmt::format("Unknown key argument: :{}", key_name));
+                throw_eval_error(form, fmt::format("Unknown key argument: {} in {}", key_name, spec.print_full()));
             }
 
             if (args.named.count(key_name)) {
-                throw_eval_error(form, fmt::format("Key argument :{} multiply defined", key_name));
+                throw_eval_error(form, fmt::format("Key argument: {} multiply defined in {}", key_name, spec.print_full()));
             }
 
             // Переходим к значению
             current = &current->as_pair()->cdr;
             if (current->is_empty_list()) {
-                throw_eval_error(form, fmt::format("Key :{} is missing a value", key_name));
+                throw_eval_error(form, fmt::format("Key {} is missing a value in {}", key_name, spec.print_full()));
             }
 
             args.named[key_name] = current->as_pair()->car;
@@ -1400,7 +1404,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
             if (!spec.rest.empty() || spec.varargs) {
                 args.rest.push_back(arg);
             } else {
-                throw_eval_error(form, "Too many arguments (no &rest or &key expected)");
+                throw_eval_error(form, fmt::format("Too many arguments (no &rest or &key expected) in {}", spec.print_full()));
             }
         }
         current = &current->as_pair()->cdr;
@@ -1412,7 +1416,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
             if (param_spec.has_default) {
                 args.named[name] = param_spec.default_value;
             } else {
-                throw_eval_error(form, fmt::format("Required key argument :{} is missing", name));
+                throw_eval_error(form, fmt::format("Required key argument {} is missing in {}", name, spec.print_full()));
             }
         }
     }
@@ -1471,17 +1475,17 @@ Arguments Interpreter::get_args_no_named(const Object& form,
  *
  * Note that in varargs mode, all unnamed arguments are put in unnamed, not rest.
  */
-void Interpreter::eval_args(Arguments* args, const std::shared_ptr<EnvironmentObject>& env) {
+void Interpreter::eval_args(const Object& parent_form, Arguments* args, const std::shared_ptr<EnvironmentObject>& env) {
   for (auto& arg : args->unnamed) {
-    arg = eval_with_rewind(arg, env);
+    arg = eval_with_rewind(parent_form, arg, env);
   }
 
   for (auto& kv : args->named) {
-    kv.second = eval_with_rewind(kv.second, env);
+    kv.second = eval_with_rewind(parent_form, kv.second, env);
   }
 
   for (auto& arg : args->rest) {
-    arg = eval_with_rewind(arg, env);
+    arg = eval_with_rewind(parent_form, arg, env);
   }
 }
 
@@ -2521,10 +2525,10 @@ Object Interpreter::eval_reader_p(const Object & form, Arguments & args, const s
 // Apply 
 // ==============================================
 
-Object Interpreter::eval_apply(const Object& obj, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_apply(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
 
     if (args.unnamed.size() < 2) {
-        throw_eval_error(obj, "apply: expected function and list of arguments");
+        throw_eval_error(form, "apply: expected function and list of arguments");
     }
 
     Object head = args.unnamed[0]; // Это может быть символ 'vector или объект LAMBDA
@@ -2543,11 +2547,11 @@ Object Interpreter::eval_apply(const Object& obj, Arguments& args, const std::sh
                 builtin_args.unnamed.push_back(it.as_pair()->car);
             }
             // Вызываем встроенную функцию напрямую
-            return ((*this).*(kv_b->second))(obj, builtin_args, env);
+            return ((*this).*(kv_b->second))(form, builtin_args, env);
         }
         
         // Если не нашли в билтинах, вычисляем символ, чтобы получить Лямбду
-        head = eval_with_rewind(head, env);
+        head = eval_with_rewind(form, head, env);
     }
 
     // 2. Если это Лямбда (или результат вычисления символа стал Лямбдой)
@@ -2566,12 +2570,12 @@ Object Interpreter::eval_apply(const Object& obj, Arguments& args, const std::sh
         lam_env->parent_env = lam->parent_env;
         
         // Используем твою функцию привязки аргументов
-        set_args_in_env(obj, lam_args, lam->args, lam_env);
+        set_args_in_env(form, lam_args, lam->args, lam_env);
         
         return eval_list_return_last(lam->body, lam->body, lam_env);
     }
 
-    throw_eval_error(obj, "apply: head didn't evaluate to a callable function");
+    throw_eval_error(form, "apply: head didn't evaluate to a callable function");
     return get_nil();
 }
 // ==============================================
@@ -2977,7 +2981,7 @@ Object Interpreter::eval_read_file(const Object& form, Arguments& args, const st
 Object Interpreter::eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
     Object code = m_reader.read_from_file({ args.unnamed[0].as_string()->data }, true, true);
-    return eval_with_rewind(code, env);
+    return eval_with_rewind(form, code, env);
 }
 
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3178,7 +3182,7 @@ Object Interpreter::eval_gensym(const Object & form, Arguments & args, const std
 
 Object Interpreter::eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return eval_with_rewind(args.unnamed[0], env);
+    return eval_with_rewind(form, args.unnamed[0], env);
 }
 
 Object Interpreter::eval_set_car(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3536,10 +3540,17 @@ std::string Interpreter::get_all_symbols_matching(const std::string& prefix) {
 Object Interpreter::eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     // Ждем один аргумент — любую форму (символ, число или cons-пару)
-    vararg_check(form, args, { ObjectType::PAIR }, { });
+    vararg_check(form, args, { {} }, { });
+
+    std::optional<ShortInfo> result;
 
     // Ищем информацию по адресу объекта в памяти
-    auto result = get_db().get_short_info_for(args.unnamed[0]);
+    if (args.unnamed[0].is_lambda()) {
+        auto lambda = args.unnamed[0].as_lambda();
+        result = get_db().get_short_info_for(lambda->body);
+    } else {
+        result = get_db().get_short_info_for(args.unnamed[0]);
+    }
     
     if (!result) { // Если форма вычислена динамически и её нет в БД
         return get_nil();
@@ -3551,6 +3562,36 @@ Object Interpreter::eval_source_info(const Object& form, Arguments& args, const 
         intern(":column"),  Object::make_integer(result->pos_in_line),
         intern(":text"),    Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
     });
+}
+
+Object Interpreter::eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Проверка аргумента (ожидаем INTEGER)
+    vararg_check(form, args, { ObjectType::INTEGER }, { });
+
+    int64_t ctx_index = args.unnamed[0].as_integer();
+    if (ctx_index < 0) {
+        throw_eval_error(form, "context-ref: index cannot be negative");
+    }
+
+    // Начинаем с самого верхнего кадра
+    ContextFrame* current = m_top_frame;
+    int64_t count = 0;
+
+    // Шагаем вглубь стека
+    while (current != nullptr) {
+        // Если мы нашли нужный индекс
+        if (count == ctx_index) {
+            // Возвращаем форму, сохраненную в этом кадре
+            return current->form;
+        }
+        
+        current = current->prev;
+        count++;
+    }
+
+    // Если индекс за пределами глубины стека, возвращаем null (или можно кинуть ошибку)
+    return Object::make_empty_list();
 }
 
 // ==============================================
