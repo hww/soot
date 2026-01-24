@@ -86,13 +86,26 @@ namespace script {
 		if (o.is_empty_list()) return;
 
 		ASSERT(o.is_pair());
-		//printf ("<item offset=[%d] item=%s>%s</item>\n", offset, o.inspect_short().c_str(), frag->get_text());
+		//fmt::print(fg(fmt::color::orange), 
+        //   "<item heap={:p} offset=[{}] item={}>{}\n", 
+        //   static_cast<void*>(o.heap_obj.get()), // Получаем сырой указатель из shared_ptr
+        //   offset, 
+        //   o.print(), // Заменил на print(), если inspect_short капризничает с const
+        //   frag->get_text());
 		TextRef ref;
 		ref.offset = offset;
 		ref.frag = std::move(frag);
 		m_map[o.heap_obj] = ref;
 	}
 
+	// Ассоцировать новый объект со старыми данными другого объекта
+	void TextDb::copy_link(const Object& from, const Object& to) {
+		if (from.is_empty_list() || to.is_empty_list()) return;
+		auto it = m_map.find(from.heap_obj);
+		if (it != m_map.end()) {
+			m_map[to.heap_obj] = it->second;
+		}
+	}
 	/**
 	 * @brief Генерирует детализированный строковый отчет о расположении объекта в исходном коде.
 	 * * Метод выполняет роль диспетчера: он определяет тип объекта (LexToken или Pair) и пытается 
@@ -114,6 +127,8 @@ namespace script {
 	 */
 	std::string TextDb::get_info_for(const Object& o, bool* terminate_compiler_error) const {
 		if (o.is_pair()) {
+			//fmt::print(fg(fmt::color::orange), "<item heap={:p}>\n", static_cast<void*>(o.heap_obj.get()));
+			
 			auto kv = m_map.find(o.heap_obj);
 			if (kv != m_map.end()) {
 				if (terminate_compiler_error) {
