@@ -32,9 +32,6 @@ namespace script
         m_type_system(std::make_unique<SootTypeSystem>(*this)),
         m_top_frame(nullptr)
     {
-        m_reader.set_lambda_caller([this](const Object& lambda, const std::vector<Object>& args) {
-                return this->call_lambda(lambda, args);
-            });
         // Инициализируем boolean объекты как символы
         m_object_true    = m_reader.get_symbol_table().core.object_true;
         m_object_false   = m_reader.get_symbol_table().core.object_false;
@@ -378,8 +375,8 @@ void Interpreter::execute_repl() {
     std::string input;
 
     //auto repl_env = std::make_shared<EnvironmentObject>();
-    fmt::print(fg(fmt::color::gray), "{}i Scriptable Object-Oriented Toolkit {} Core [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA);
-    fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit' to leave\n");
+    //fmt::print(fg(fmt::color::gray), "{}i Scriptable Object-Oriented Toolkit {} Core [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA);
+    //fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit' to leave\n");
 
     while (true) {
         std::cout << "sooti> ";
@@ -394,11 +391,9 @@ void Interpreter::execute_repl() {
 
         try {
             // read something from the user
-            Object code = m_reader.read_from_string(input, "repl");
-            fmt::print("Reader Returned: {}\n", pretty_print::to_string(code));
-            // evaluate
             m_top_frame = nullptr;
-            Object result = eval_with_rewind(code, m_global_environment.as_env_ptr());
+            // evaluate
+            Object result = eval_string(input, "repl");
             // Print
             printf("%s\n", result.print().c_str());
         }
@@ -429,13 +424,64 @@ void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
 
 Object Interpreter::eval_string(const std::string& expression, const std::string& filename)
 {
+    auto env = m_global_environment.as_env_ptr();
+    Object last_result = Object::make_empty_list();
     // read something from the user
-    Object code = m_reader.read_from_string(expression, true, filename);
-    m_top_frame = nullptr;
-    // evaluate
-    return eval_with_rewind(code, m_global_environment.as_env_ptr());
+    Object code = m_reader.read_from_string(expression, true, filename, 
+        [&](const ReaderEvent& evt) -> Object{
+        // evaluate
+        m_top_frame = nullptr;
+        switch (evt.type)
+        {
+        case ReaderEvent::Type::FORM_READ:
+            //fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} \n", evt.form.print());        
+            last_result = this->eval_with_rewind(evt.form, env); 
+            //fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} -> {}\n", evt.form.print(), last_result.print());
+            break;
+        case ReaderEvent::Type::MACRO_REQUEST:
+            //fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} \n", evt.token.print());        
+            last_result = this->call_lambda(evt.form, {evt.reader, evt.token}); 
+            //fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} -> {}\n", evt.token.print(), last_result.print());
+            break;       
+        default:
+            throw std::runtime_error("Undexpeted");
+            break;
+        }
+
+        return last_result;
+    });
+    return last_result;
 }
 
+Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path)
+{
+    auto env = m_global_environment.as_env_ptr();
+    Object last_result = Object::make_empty_list();
+
+    Object code = m_reader.read_from_file(file_path, true, true,
+    [&](const ReaderEvent& evt) -> Object{
+        // evaluate
+        switch (evt.type)
+        {
+        case ReaderEvent::Type::FORM_READ:
+            //fmt::print("DEBUG: Interpreter::eval_file_internal FORM_READ {} \n", evt.form.print());
+            last_result = this->eval_with_rewind(evt.form, env); 
+            //fmt::print("DEBUG: Interpreter::eval_file_internal FORM_READ {} -> {}\n", evt.form.print(), last_result.print());
+            break;
+        case ReaderEvent::Type::MACRO_REQUEST:
+            //fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} \n", evt.token.print());
+            last_result = this->call_lambda(evt.form, {evt.reader, evt.token}); 
+            //fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} -> {}\n", evt.token.print(), last_result.print());
+            break;       
+        default:
+            throw std::runtime_error("Undexpeted");
+            break;
+        }
+
+        return last_result;
+    });
+    return last_result;
+}
 
 Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>& args) {
     m_top_frame = nullptr;
@@ -549,12 +595,12 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
                 if (info != "?") {
                     fmt::print("{}", info);
                     e.detailed_error_required = false;
+                    // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
                     fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
+                    e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
                 }
 
-                // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
-                e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
-
+    
             } else {
                 if (obj.is_pair()) {
                     auto info_opt = m_reader.get_db().get_short_info_for(obj);
@@ -573,6 +619,11 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
 
                     if (level == 0) fmt::print(fg(fmt::color::dim_gray), "\n");
                 }
+            }
+            if (!e.already_printed) {
+                // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
+                fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
+                e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
             }
         }
         throw;
@@ -726,7 +777,7 @@ Object Interpreter::eval_pair(const Object& parent_form, const Object& obj, cons
     // Пробуем применить как макрос (вычисленный или найденный по символу)
     if (eval_head.is_macro()) {
         const auto& macro = eval_head.as_macro();
-        Arguments args = get_args(obj, rest, macro->args);
+        Arguments args = get_args_with_spec(obj, rest, macro->args);
 
         auto mac_env_obj = std::make_shared<EnvironmentObject>();
         auto mac_env = mac_env_obj;
@@ -1348,7 +1399,7 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest, const ArgumentSpec& spec) {
     Arguments args;
     const Object* current = &rest;
-
+    //fmt::print("{}\n  {}\n", form.print(),  form.print());
     // 1. Обработка всех позиционных аргументов (обязательные + опциональные)
     for (const auto& p_spec : spec.unnamed) {
         if (!current->is_empty_list()) {
@@ -1607,6 +1658,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
 
         current = current.as_pair()->cdr;
     }
+    //fmt::print("DEBUG: ArgSpec {}\n", spec.print_full());
     return spec;
 }
 
@@ -2979,9 +3031,20 @@ Object Interpreter::eval_read_file(const Object& form, Arguments& args, const st
 
 // Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
 Object Interpreter::eval_load(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
-    Object code = m_reader.read_from_file({ args.unnamed[0].as_string()->data }, true, true);
-    return eval_with_rewind(form, code, env);
+    vararg_check(form, args, { {} }, {}); // Одна строка (имя файла)
+    Object last_result = get_nil();
+    
+    if (args.unnamed[0].is_string()) {
+        std::vector<std::string> path;
+        path.push_back(args.unnamed[0].as_string()->c_str());
+        return eval_file_internal(path);
+    } else if (args.unnamed[0].is_pair()) {
+        auto strings = args.unnamed[0].as_c_vector_of_strings(); 
+        return eval_file_internal(strings);
+    } else {
+        throw_eval_error(form, "load requires a string or list of strings");
+    }
+    return last_result;
 }
 
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {

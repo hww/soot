@@ -146,78 +146,85 @@ namespace script {
 		}
 	}
 
+	/*!
+	 * Read a stream. Предназначен исключительно для character-macro функционирования
+	 */
+	Object Reader::read_single_form(TextStream& ts, EvalCallback eval_callback) {
+		ts.seek_past_whitespace_and_comments();
+		if (!ts.text_remains()) return Object::make_empty_list();
+
+		auto tok = get_next_token(ts);
+		auto it = m_reader_macros.find(tok.text);
+
+		// --- ПУТЬ 1: МАКРОСЫ ---
+		if (it != m_reader_macros.end()) {
+			const auto& macro = it->second;
+
+			// А) Функциональный макрос (Лямбда)
+			if (macro.lambda.is_lambda()) {
+				if (eval_callback) {
+					ReaderEvent evt = {
+						type: ReaderEvent::Type::MACRO_REQUEST,
+						form: macro.lambda,
+						reader: Object::make_reader(&ts), // Поток СРАЗУ после знака макроса
+						token: Object::make_string(macro.shortcut)
+					};
+					return eval_callback(evt); 
+				}
+				// Если коллбэка нет, мы не можем запустить лямбду — это ошибка конфигурации
+				throw_reader_error(ts, "Execution callback required for functional macro: " + tok.text, 0);
+			} 
+
+			// Б) Простой префиксный макрос (например, ' -> quote)
+			if (!macro.replacement.empty()) {
+				// Читаем ТО, ЧТО ИДЕТ СЛЕДОМ за макросом (рекурсивно)
+				Object inner_obj = read_single_form(ts, eval_callback);
+				
+				Object sym = Object::make_symbol(&m_symbols, macro.replacement.c_str());
+				// Возвращаем либо (quote объект), либо просто символ замены
+				return macro.list ? script::build_list({ sym, inner_obj }) : sym;
+			}
+		}
+
+		// --- ПУТЬ 2: ОБЫЧНЫЕ ОБЪЕКТЫ (Если это не макрос) ---
+		Object result;
+		if (tok.text == "(") {
+			return read_list(ts, true, ")", eval_callback);
+		} else if (tok.text == "[") {
+			return read_list(ts, true, "]", eval_callback);
+		} else {
+			if (read_object(tok, ts, result)) {
+				return result;
+			}
+			throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
+		}
+		return Object::make_empty_list();
+	}
 
 	/*!
 	 * Read a string.
 	 */
-	Object Reader::read_from_string(const std::string& str,
+	Object Reader::read_from_string(
+		const std::string& str,
 		bool add_top_level,
-		const std::optional<std::string>& string_name)
+		const std::optional<std::string>& string_name,
+		EvalCallback eval_callback)
 	{
 		auto textFrag = std::make_shared<ProgramString>(str, string_name.value_or("Program string"));
 		m_db.insert(textFrag);
 
-		auto result = internal_read(textFrag, false, add_top_level);
+		auto result = internal_read(textFrag, false, add_top_level, eval_callback);
 		m_db.link(result, textFrag, 0);
-		return result;
-	}
-	/*!
-	 * Read a stream.
-	 */
-	Object Reader::read_single_form(TextStream& ts) {
-		ts.seek_past_whitespace_and_comments();
-		if (!ts.text_remains()) {
-			return Object::make_empty_list(); 
-		}
-
-		auto tok = get_next_token(ts);
-		
-		// Проверяем, не является ли первый токен макросом (например, ' или @)
-		std::vector<const ReaderMacro*> macro_stack;
-		auto it = m_reader_macros.find(tok.text);
-		while (it != m_reader_macros.end()) {
-			macro_stack.push_back(&it->second);
-			if (!ts.text_remains()) {
-				throw_reader_error(ts, "Something must follow a reader macro", 0);
-			}
-			tok = get_next_token(ts);
-			it = m_reader_macros.find(tok.text);
-		}
-
-		// Лямбда для применения накопленных макросов
-		auto apply_macros = [&](Object obj) -> Object {
-			for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
-				const ReaderMacro* m = *i;
-				if (!m->lambda.is_empty_list()) {
-					if (m_lambda_caller)
-						obj = m_lambda_caller(m->lambda, { Object::make_reader(&ts) });
-				} else if (!m->replacement.empty()) {
-					Object sym = Object::make_symbol(&m_symbols, m->replacement.c_str());
-					obj = m->list ? script::build_list({ sym, obj }) : sym;
-				}
-			}
-			return obj;
-		};
-
-		Object result;
-		if (tok.text == "(") {
-			// Читаем список и оборачиваем в макросы, если они были перед "("
-			result = apply_macros(read_list(ts, true));
-		} else {
-			// Читаем атомарный объект и оборачиваем в макросы
-			if (read_object(tok, ts, result)) {
-				result = apply_macros(std::move(result));
-			} else {
-				throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
-			}
-		}
-		
 		return result;
 	}
 	/*!
 	 * Read a file.
 	 */
-	Object Reader::read_from_file(const std::vector<std::string>& file_path, bool check_encoding, bool add_top_level) {
+	Object Reader::read_from_file(
+		const std::vector<std::string>& file_path, 
+		bool check_encoding, 
+		bool add_top_level,
+		EvalCallback eval_callback) {
 		std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
 		const auto joined_file_path = file_util::get_file_path(file_path);
 
@@ -228,32 +235,18 @@ namespace script {
 		auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
 		m_db.insert(textFrag);
 
-		auto result = internal_read(textFrag, check_encoding, add_top_level);
+		auto result = internal_read(textFrag, check_encoding, add_top_level, eval_callback);
 		m_db.link(result, textFrag, 0);
 		return result;
 	}
-    
-	Object Reader::read_one(TextStream& ts) {
-		ts.seek_past_whitespace_and_comments();
-		if (!ts.text_remains()) return Object::make_empty_list();
 
-		Token tok = get_next_token(ts);
-		Object obj;
-		
-		// ВАЖНО: read_object внутри себя должен проверять:
-		// если токен == "(", он вызывает read_list и читает ВЕСЬ список.
-		if (read_object(tok, ts, obj)) {
-			return obj;
-		}
-		
-		return Object::make_empty_list();
-	}
 	/*!
 	 * Common read for a SourceText
 	 */
 	Object Reader::internal_read(std::shared_ptr<SourceText> text,
 		bool check_encoding,
-		bool add_top_level) {
+		bool add_top_level,
+		EvalCallback eval_callback) {
 		if (check_encoding && (text->get_size() < 3 ||
 			(uint8_t)text->get_text()[0] != 0xEF ||
 			(uint8_t)text->get_text()[1] != 0xBB ||
@@ -273,18 +266,76 @@ namespace script {
 		ts.seek_past_whitespace_and_comments();
 
 		// read list!
+		ListBuilder full_program_builder;
+		auto empty_list = Object::make_empty_list();
+		Object eval_result = empty_list;
+
 		try {
-			auto objs = read_list(ts, false);
-			if (add_top_level) {
-				return Object::make_pair(Object::make_symbol(&m_symbols, "top-level"), objs);
+
+			while (true) {
+				ts.seek_past_whitespace_and_comments();
+				if (!ts.text_remains()) break;
+
+				// Читаем ровно одну форму (атом или список)
+				// Твой read_from_stream уже умеет это делать
+				Object form = read_single_form(ts, eval_callback);
+
+				// Если передан делегат (например, из load), исполняем форму СРАЗУ.
+				// Это позволяет макросам, определенным в начале файла, 
+				// работать для кода в конце того же файла.
+				if (eval_callback) {
+					ReaderEvent evt;
+					evt.type = ReaderEvent::FORM_READ;
+					evt.form = form;
+					evt.reader = empty_list; 
+					evt.token = empty_list;
+					
+					eval_result = eval_callback(evt);
+				}
+
+				full_program_builder.push_back(std::move(form));
 			}
-			else {
-				return objs;
-			}
+		} catch (const std::exception& e) {
+			// Здесь можно добавить логику восстановления после ошибки, 
+			// чтобы прочитать остаток файла, если нужно.
+			throw; 
 		}
-		catch (std::exception& e) {
-			throw;
+
+
+
+		auto result = full_program_builder.finalize();
+
+		if (add_top_level) {
+			return Object::make_pair(Object::make_symbol(&m_symbols, "top-level"), result);
 		}
+		return result;
+	}
+
+	Object Reader::read_one(TextStream& ts) {
+		ts.seek_past_whitespace_and_comments();
+		if (!ts.text_remains()) return Object::make_empty_list();
+
+		Token tok = get_next_token(ts);
+		Object obj;
+		
+		// Смотрим первый символ
+		char c = ts.peek();
+		if (c == '(') {
+			// Список
+			ts.read(); // съедаем '('
+			return read_list(ts, true, ")");
+		} else if (c == '[') {
+			// Список
+			ts.read(); // съедаем '['
+			return read_list(ts, true, "]");			
+		} else {
+			// Одиночный токен
+			auto tok = get_next_token(ts);
+			Object obj;
+			read_object(tok, ts, obj);
+			return obj;
+		}
+		return Object::make_empty_list();
 	}
 
 	// ==================== Token Reading ====================
@@ -516,131 +567,79 @@ namespace script {
 		return true;
 	}
 	// ==================== List Reading ====================
+	
 	/*!
 	 * Call this on the character after the open paren.
 	 */
-	Object Reader::read_list(TextStream& ts, bool expect_close_paren, std::string terminator) {
+	Object Reader::read_list(TextStream& ts, bool expect_close_paren, std::string terminator, EvalCallback eval_callback) {
     ts.seek_past_whitespace_and_comments();
-
     ListBuilder list_builder;
-    bool got_terminator = false;
+    int start_offset = ts.seek;
+    
     bool got_dot = false;
     bool got_thing_after_dot = false;
-    int start_offset = ts.seek;
+    bool got_terminator = false;
 
     while (ts.text_remains()) {
+        ts.seek_past_whitespace_and_comments();
+        int last_seek = ts.seek;
+
         auto tok = get_next_token(ts);
-        //std::cout << "DEBUG: current token is '" << tok.text << "'" << std::endl;
         if (tok.text.empty()) break;
 
-        // 1. ПРОВЕРКА ТЕРМИНАТОРА
-        if (tok.text == terminator || (expect_close_paren && tok.text == ")")) {
+        // 1. Проверка терминатора
+        if (tok.text == terminator) {
             got_terminator = true;
-            break;
+            break; 
         }
 
-        // 2. ОБРАБОТКА ТОЧКИ (Dotted Pair)
-        if (tok.text == "." && !got_dot) {
+        // 2. Обработка точки
+        if (tok.text == ".") {
             if (got_dot) throw_reader_error(ts, "Multiple dots in list", -1);
+            if (list_builder.size == 0) throw_reader_error(ts, "List cannot start with dot", -1);
             got_dot = true;
-            ts.seek_past_whitespace_and_comments();
             continue; 
         }
 
-        Object current_obj;
-        struct MacroInContext {
-            const ReaderMacro* macro;
-            std::shared_ptr<SourceText> src;
-            int offset;
-        };
-        std::vector<MacroInContext> macro_stack;
+        // 3. ЧТЕНИЕ ОБЪЕКТА
+        // Откатываемся, чтобы read_single_form прочитала токен сама (с учетом макросов)
+        ts.seek = last_seek; 
+        Object current_obj = read_single_form(ts, eval_callback);
 
-        // 3. СБОР ПРЕФИКСНЫХ МАКРОСОВ (', `, ,)
-        // Мы крутим цикл, пока токены являются текстовыми макросами без лямбд
-        auto it = m_reader_macros.find(tok.text);
-        while (it != m_reader_macros.end() && it->second.lambda.is_empty_list()) {
-            macro_stack.push_back({&it->second, tok.source_text, tok.source_offset});
-            tok = get_next_token(ts);
-            it = m_reader_macros.find(tok.text);
-        }
-
-        // 4. ЧТЕНИЕ БАЗОВОГО ОБЪЕКТА
-        // Теперь в tok лежит либо начало списка '(', либо макрос '[', либо просто данные
-        it = m_reader_macros.find(tok.text);
-        
-        if (it != m_reader_macros.end() && !it->second.lambda.is_empty_list()) {
-            // ФУНКЦИОНАЛЬНЫЙ МАКРОС (например, [ )
-			auto macro = it->second;
-			if (m_lambda_caller)
-            	current_obj = m_lambda_caller(macro.lambda, { Object::make_reader(&ts), Object::make_string(macro.shortcut) });
-        } else if (tok.text == "(") {
-            // ВЛОЖЕННЫЙ СПИСОК
-            current_obj = read_list(ts, true);
-        } else {
-            // ОБЫЧНЫЙ ОБЪЕКТ (число, символ)
-            if (!read_object(tok, ts, current_obj)) {
-                throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
-            }
-        }
-
-        // 5. ПРИМЕНЕНИЕ НАКОПЛЕННЫХ ПРЕФИКСОВ
-        for (auto i = macro_stack.rbegin(); i != macro_stack.rend(); ++i) {
-            const ReaderMacro* m = i->macro;
-            if (!m->replacement.empty()) {
-                Object sym = Object::make_symbol(&m_symbols, m->replacement.c_str());
-                current_obj = m->list ? script::build_list({ sym, current_obj }) : sym;
-                
-                // Если макрос создал список (например, (quote x)), линкуем эту новую пару
-                if (m->list && current_obj.is_pair()) {
-                    m_db.link(current_obj, i->src, i->offset);
-                }
-            }
-        }
-
-        // 6. ВСТАВКА В СПИСОК
+        // 4. ВСТАВКА В СПИСОК
         if (got_dot) {
-            if (got_thing_after_dot) throw_reader_error(ts, "Multiple entries after dot", -1);
+            if (got_thing_after_dot) throw_reader_error(ts, "Only one object allowed after dot", -1);
+            
+            // Ручное "пришивание" хвоста к CDR последней созданной Pair
+            if (list_builder.tail) {
+                list_builder.tail->cdr = current_obj;
+            }
             got_thing_after_dot = true;
-        }
-
-        // Вызываем push_back, который теперь возвращает PairObject
-        auto new_pair_ptr = list_builder.push_back(std::move(current_obj));
-
-        // Линкуем ячейку к позиции текущего элемента (или первого макроса перед ним)
-        if (new_pair_ptr) {
-            Object pair_wrapper;
-            pair_wrapper.type = ObjectType::PAIR;
-            pair_wrapper.heap_obj = new_pair_ptr;
-
-            // Используем координаты из начала цепочки (если были макросы) или самого токена
-            int final_offset = macro_stack.empty() ? tok.source_offset : macro_stack.front().offset;
-            m_db.link(pair_wrapper, tok.source_text, final_offset);
+        } else {
+            // Обычный push_back
+            list_builder.push_back(current_obj);
+            
+            // Линковка текущей ячейки Pair для БД
+            if (list_builder.tail) {
+                Object p;
+                p.type = ObjectType::PAIR;
+                p.heap_obj = list_builder.tail;
+                m_db.link(p, ts.text, last_seek);
+            }
         }
 
         ts.seek_past_whitespace_and_comments();
     }
 
-    // ВАЛИДАЦИЯ И СБОРКА (остается без изменений)
+    // Финальная проверка на закрывающую скобку
     if (expect_close_paren && !got_terminator) {
-        throw_reader_error(ts, fmt::format("Expected terminator '{}'", (terminator == ")" ? ")" : terminator)), 0);
-    }
-
-    // Обработка Dotted Pair
-    if (got_thing_after_dot) {
-        auto back = list_builder.pop_back();
-        list_builder.finalize();
-        auto rv = list_builder.head;
-        auto lst = rv;
-        while (lst.is_pair() && !lst.as_pair()->cdr.is_empty_list()) {
-            lst = lst.as_pair()->cdr;
-        }
-        if (lst.is_pair()) lst.as_pair()->cdr = back;
-        m_db.link(rv, ts.text, start_offset);
-        return rv;
+        throw_reader_error(ts, "Unclosed list: expected '" + terminator + "'", 0);
     }
 
     list_builder.finalize();
+    // Линкуем весь список целиком
     m_db.link(list_builder.head, ts.text, start_offset);
+    
     return list_builder.head;
 }
 	/*!
