@@ -78,10 +78,11 @@ namespace script
         void load_library();
 
         // Основные методы оценки
+        Object eval_string(const std::string& expression, const std::string& filename);
+        Object eval_file_internal(const std::vector<std::string>& file_path);
         Object eval(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_with_rewind(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
-        Object eval_string(const std::string& expression, const std::string& filename);
         Object call_lambda(const Object& lambda, const std::vector<Object>& args);
         void eval_args(const Object& parent_form, Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
 

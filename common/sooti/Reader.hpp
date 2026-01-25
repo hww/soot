@@ -50,10 +50,20 @@ namespace script {
         int source_line;
     };
 
-    using LambdaCaller = std::function<Object(const Object&, const std::vector<Object>&)>;
+    struct ReaderEvent {
+        enum Type { 
+            FORM_READ,     // Прочитано целое выражение (топ-левел)
+            MACRO_REQUEST  // Встречен функциональный макрос внутри списка
+        } type;
+
+        Object form;       // Лямбда макроса ИЛИ прочитанная форма
+        Object reader;     // Поток, чтобы макрос мог дочитать данные
+        Object token;      // Сам токен макроса (например, "#")
+    };
+    // Тип коллбэка для инкрементального выполнения
+    using EvalCallback = std::function<Object(const ReaderEvent&)>;
 
     class Reader {
-
         struct ReaderMacro {
             std::string shortcut;
             // Call lambda if defined
@@ -64,13 +74,18 @@ namespace script {
             bool list;
         };
 
+        struct MacroInContext {
+            const ReaderMacro* macro;
+            std::shared_ptr<SourceText> src;
+            int offset;
+        };
     public:
         Reader(Interpreter* interpeter = NULL);
 
         // ТОЧНО как у них:
-        Object read_single_form(TextStream& ts);
-        Object read_from_string(const std::string& str, bool add_top_level = true, const std::optional<std::string>& string_name = std::nullopt);
-        Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true, bool add_top_level = true);
+        Object read_single_form(TextStream& ts, EvalCallback eval_callback = nullptr);
+        Object read_from_string(const std::string& str, bool add_top_level = true, const std::optional<std::string>& string_name = std::nullopt, EvalCallback eval_callback = nullptr);
+        Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true, bool add_top_level = true, EvalCallback eval_callback = nullptr);
         Object read_one(TextStream& ts);
         // REPL метод (если нужен):
         //std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
@@ -87,14 +102,10 @@ namespace script {
         void remove_reader_macro(const std::string& shortcut);
         void throw_reader_error(TextStream& here, const std::string& err, int seek_offset = 0);
 
-        Object read_list(TextStream& ts, bool expect_close_paren = true, std::string terminator = ")");
-
-        void set_lambda_caller(LambdaCaller caller) {
-            m_lambda_caller = caller;
-        }
+        Object read_list(TextStream& ts, bool expect_close_paren = true, std::string terminator = ")", EvalCallback eval_callback = nullptr);
     private:
         // Внутренние методы как у них:
-        Object internal_read(std::shared_ptr<SourceText> text, bool check_encoding, bool add_top_level = true);
+        Object internal_read(std::shared_ptr<SourceText> text, bool check_encoding, bool add_top_level = true, EvalCallback eval_callback = nullptr);
 
         Token get_next_token(TextStream& stream);
         bool read_object(Token& tok, TextStream& ts, Object& obj);
@@ -117,7 +128,6 @@ namespace script {
         bool m_valid_symbols_chars[256];
         std::unordered_map<std::string, ReaderMacro> m_reader_macros;
         Interpreter* m_interpreter;
-        LambdaCaller m_lambda_caller;
     };
 
 } // namespace script
