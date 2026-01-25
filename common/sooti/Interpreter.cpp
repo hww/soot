@@ -3417,7 +3417,7 @@ Object Interpreter::eval_read(const Object& form, Arguments& args, const std::sh
 
     // Вызываем чтение одного объекта (чистого, без top-level)
     // Метод read_from_stream должен выполнять get_next_token + read_object + process_macros
-    return m_reader.read_from_stream(*(reader_obj->ts)); 
+    return m_reader.read_single_form(*(reader_obj->ts)); 
 }
 
 Object Interpreter::eval_read_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {

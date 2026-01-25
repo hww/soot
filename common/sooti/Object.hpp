@@ -253,6 +253,7 @@ namespace script
 
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
+        std::vector<std::string> as_c_vector_of_strings() const;
 
         // For pair access
         PairObject* as_pair() const;
@@ -560,6 +561,7 @@ namespace script
             Object string;
             Object pair;
             Object array;
+            Object hash_table;
             Object lambda;
             Object macro;
             Object environment;

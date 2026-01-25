@@ -46,6 +46,7 @@ namespace script
         core.string         = Object::make_symbol(this, "string");
         core.pair           = Object::make_symbol(this, "pair");
         core.array          = Object::make_symbol(this, "array");
+        core.hash_table     = Object::make_symbol(this, "hash-tabe");
         core.lambda         = Object::make_symbol(this, "lambda");
         core.macro          = Object::make_symbol(this, "macro");
         core.environment    = Object::make_symbol(this, "environment");
@@ -55,20 +56,21 @@ namespace script
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
         switch (type) {
-            case ObjectType::UNDEFINED:     return core.undefined;
-            case ObjectType::EMPTY_LIST:    return core.empty_list; // было EmptyList
-            case ObjectType::INTEGER:       return core.integer;    // было Integer
-            case ObjectType::FLOAT:         return core.float_pt;   // было Float
-            case ObjectType::CHAR:          return core.character;  // было Char
-            case ObjectType::SYMBOL:        return core.symbol;
-            case ObjectType::STRING:        return core.string;
-            case ObjectType::PAIR:          return core.pair;
-            case ObjectType::ARRAY:         return core.array;
-            case ObjectType::LAMBDA:        return core.lambda;
-            case ObjectType::MACRO:         return core.macro;
-            case ObjectType::ENVIRONMENT:   return core.environment;
-            case ObjectType::READER:        return core.reader;
-            default:                        return core.unknown;
+            case ObjectType::UNDEFINED:         return core.undefined;
+            case ObjectType::EMPTY_LIST:        return core.empty_list; // было EmptyList
+            case ObjectType::INTEGER:           return core.integer;    // было Integer
+            case ObjectType::FLOAT:             return core.float_pt;   // было Float
+            case ObjectType::CHAR:              return core.character;  // было Char
+            case ObjectType::SYMBOL:            return core.symbol;
+            case ObjectType::STRING:            return core.string;
+            case ObjectType::PAIR:              return core.pair;
+            case ObjectType::ARRAY:             return core.array;
+            case ObjectType::STRING_HASH_TABLE: return core.hash_table;
+            case ObjectType::LAMBDA:            return core.lambda;
+            case ObjectType::MACRO:             return core.macro;
+            case ObjectType::ENVIRONMENT:       return core.environment;
+            case ObjectType::READER:            return core.reader;
+            default:                            return core.unknown;
         }
     }
 
@@ -335,6 +337,8 @@ namespace script
     // String representations
     std::string Object::print() const {
         switch (type) {
+        case ObjectType::UNDEFINED:
+            return "udefined";
         case ObjectType::EMPTY_LIST:
             return "null";
         case ObjectType::INTEGER:
@@ -461,6 +465,25 @@ namespace script
         Object current = *this;
         while (current.is_pair()) {
             result.push_back(current.as_pair()->car);
+            current = current.as_pair()->cdr;
+        }
+        return result;
+    }
+  
+    std::vector<std::string> Object::as_c_vector_of_strings() const {
+        if (!is_list())
+            throw std::runtime_error("as_c_vector_of_strings called on a " + object_type_to_string(type) + " " + print());
+        std::vector<std::string> result;
+        Object current = *this;
+        while (current.is_pair()) {
+            auto item = current.as_pair()->car;
+            if (item.is_string())
+                result.push_back(item.as_string()->c_str());
+            else if (item.is_symbol())
+                result.push_back(item.as_symbol().c_str());
+            else
+                // fall back 
+                result.push_back(item.print());
             current = current.as_pair()->cdr;
         }
         return result;
