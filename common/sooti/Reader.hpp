@@ -68,7 +68,7 @@ namespace script {
         Reader(Interpreter* interpeter = NULL);
 
         // ТОЧНО как у них:
-        Object read_from_stream(TextStream& ts);
+        Object read_single_form(TextStream& ts);
         Object read_from_string(const std::string& str, bool add_top_level = true, const std::optional<std::string>& string_name = std::nullopt);
         Object read_from_file(const std::vector<std::string>& file_path, bool check_encoding = true, bool add_top_level = true);
         Object read_one(TextStream& ts);

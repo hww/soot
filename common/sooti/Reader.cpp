@@ -164,7 +164,7 @@ namespace script {
 	/*!
 	 * Read a stream.
 	 */
-	Object Reader::read_from_stream(TextStream& ts) {
+	Object Reader::read_single_form(TextStream& ts) {
 		ts.seek_past_whitespace_and_comments();
 		if (!ts.text_remains()) {
 			return Object::make_empty_list(); 
