@@ -44,6 +44,20 @@ namespace script
             Object form;
             ContextFrame* prev;
         };
+        struct FrameGuard {
+            ContextFrame** top_frame_ptr;
+            ContextFrame* old_frame;
+
+            FrameGuard(ContextFrame** ptr, ContextFrame* new_val) 
+                : top_frame_ptr(ptr), old_frame(*ptr) 
+            {
+                *top_frame_ptr = new_val;
+            }
+
+            ~FrameGuard() {
+                *top_frame_ptr = old_frame;
+            }
+        };
     public:
     
         Interpreter(const std::string& username = "user", bool load_libs = false);
@@ -75,19 +89,51 @@ namespace script
             // Добавляем в вектор (предполагается, что m_custom_forms хранит std::pair или структуру)
             m_custom_forms.push_back({key, form}); 
         }
-        void load_library();
 
         // Основные методы оценки
         Object eval_string(const std::string& expression, const std::string& filename);
+
+        Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
+
+        // --- Доступ к приватным членам -------
+        // Запуск REPL
+        void execute_repl();
+        // Лоступ к Reader
+        Reader& get_reader() { return m_reader; }
+
+        // Лоступ к окружению
+        Object get_global_environment() { return m_global_environment; }
+        SymbolTable& get_symbols() { return m_reader.get_symbol_table(); }
+        TextDb& get_db() { return m_reader.get_db(); }
+
+        // --- Для REPL и LSP -------------------
+        std::string get_all_symbols_matching(const std::string& prefix);
+
+        // --- Константы ------------------------
+        Object get_nil() { return m_object_nil; }
+        Object get_true() { return m_object_true; }
+        Object get_false() { return m_object_false; }
+        // Boolean helpers (используют символы)
+        Object true_or_false(bool value) { return value ? m_object_true : m_object_false; }
+
+        // --- Predicates -----------------------
+        // Check if value is true
+        bool truthy(const Object& o)  const { return o.truthy(m_object_false.as_symbol()); }
+        // Помощники для чисел
+        bool is_number(const Object& obj);
+        int64_t number_to_integer(const Object& obj);
+        double number_to_float(const Object& obj);
+
+    private:
+
+        Object call_lambda_internal(const Object& lambda, const std::vector<Object>& args);
         Object eval_file_internal(const std::vector<std::string>& file_path);
         Object eval(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
-        Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
         Object eval_with_rewind(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
-        Object call_lambda(const Object& lambda, const std::vector<Object>& args);
+        
         void eval_args(const Object& parent_form, Arguments* args, const std::shared_ptr<EnvironmentObject>& env);
 
-        // Для REPL и LSP
-        std::string get_all_symbols_matching(const std::string& prefix);
+        void load_library();
 
         // Символы и окружение
         Object intern(const std::string& name);
@@ -109,29 +155,6 @@ namespace script
         // Обработка ошибок
         void throw_eval_error(const Object& o, const std::string& err);
 
-        // REPL
-        void execute_repl();
-
-        // --- Доступ к приватным членам -------
-        // Лоступ к Reader
-        Reader& get_reader() { return m_reader; }
-        // Лоступ к окружению
-        Object get_global_environment() { return m_global_environment; }
-        SymbolTable& get_symbols() { return m_reader.get_symbol_table(); }
-        TextDb& get_db() { return m_reader.get_db(); }
-        // Константы
-        Object get_nil() { return m_object_nil; }
-        Object get_true() { return m_object_true; }
-        Object get_false() { return m_object_false; }
-        // Boolean helpers (используют символы)
-        Object true_or_false(bool value) { return value ? m_object_true : m_object_false; }
-        // Check if value is true
-        bool truthy(const Object& o)  const { return o.truthy(m_object_false.as_symbol()); }
-
-        // Помощники для чисел
-        bool is_number(const Object& obj);
-        int64_t number_to_integer(const Object& obj);
-        double number_to_float(const Object& obj);
 
     private:
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===

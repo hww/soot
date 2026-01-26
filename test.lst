@@ -1,0 +1,16 @@
+0000 | bla:            | 
+0000 |   18 0A         | jr blo
+0002 |   78            | ld a, b
+0003 | bli:            | 
+0003 |   18 07         | jr blo
+0005 |   0E 04         | ld c, 4
+0007 | ble:            | 
+0007 |   0E 04         | ld c, 4
+0009 |   0E 04         | ld c, 4
+000B | blu:            | 
+000B |   79            | ld a, c
+000C | blo:            | 
+000C | blubber:        | 
+000C |   79            | ld a, c
+000D |   18 FD         | jr blo
+000F |   18 FA         | jr blu

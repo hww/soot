@@ -390,9 +390,7 @@ void Interpreter::execute_repl() {
         if (input == "quit" || input == "exit") break;
 
         try {
-            // read something from the user
-            m_top_frame = nullptr;
-            // evaluate
+            // read something from the user and evaluate
             Object result = eval_string(input, "repl");
             // Print
             printf("%s\n", result.print().c_str());
@@ -430,7 +428,7 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
     Object code = m_reader.read_from_string(expression, true, filename, 
         [&](const ReaderEvent& evt) -> Object{
         // evaluate
-        m_top_frame = nullptr;
+        FrameGuard stack_guard(&m_top_frame, m_top_frame);
         switch (evt.type)
         {
         case ReaderEvent::Type::FORM_READ:
@@ -440,7 +438,7 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
             break;
         case ReaderEvent::Type::MACRO_REQUEST:
             //fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} \n", evt.token.print());        
-            last_result = this->call_lambda(evt.form, {evt.reader, evt.token}); 
+            last_result = this->call_lambda_internal(evt.form, {evt.reader, evt.token}); 
             //fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} -> {}\n", evt.token.print(), last_result.print());
             break;       
         default:
@@ -460,6 +458,7 @@ Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path
 
     Object code = m_reader.read_from_file(file_path, true, true,
     [&](const ReaderEvent& evt) -> Object{
+        FrameGuard stack_guard(&m_top_frame, m_top_frame);
         // evaluate
         switch (evt.type)
         {
@@ -470,7 +469,7 @@ Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path
             break;
         case ReaderEvent::Type::MACRO_REQUEST:
             //fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} \n", evt.token.print());
-            last_result = this->call_lambda(evt.form, {evt.reader, evt.token}); 
+            last_result = this->call_lambda_internal(evt.form, {evt.reader, evt.token}); 
             //fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} -> {}\n", evt.token.print(), last_result.print());
             break;       
         default:
@@ -483,8 +482,8 @@ Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path
     return last_result;
 }
 
-Object Interpreter::call_lambda(const Object& lambda,  const std::vector<Object>& args) {
-    m_top_frame = nullptr;
+Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vector<Object>& args) {
+
     if (!lambda.is_lambda()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
