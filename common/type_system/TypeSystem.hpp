@@ -202,17 +202,17 @@ public:
 
     bool is_array_data_access(const TypeSpec& array_type, int offset) const {
         if (array_type.base_type() == "array" && array_type.has_single_arg()) {
-            return offset >= ARRAY_DATA_OFFSET;
+            return offset >= m_config.array_data_offset;
         }
         return false;
     }
 
     int get_array_data_offset() const {
-        return ARRAY_DATA_OFFSET;
+        return  m_config.array_data_offset;
     }
 
     int get_pointer_size() const {
-        return POINTER_SIZE;
+        return  m_config.pointer_size;
     }
     // ========================================================================
     // Method System
@@ -352,6 +352,16 @@ public:
     // ========================================================================
 
     void add_builtin_types();
+    void add_builtin_types_z80();
+
+    void clear() {
+        m_types.clear();
+        m_forward_declared_types.clear();
+        m_forward_declared_method_counts.clear();
+        m_old_types.clear();
+        m_types_allowed_to_be_redefined.clear();
+        m_allow_redefinition = false;
+    }
 
     // ========================================================================
     // Debugging and Inspection
@@ -456,6 +466,7 @@ private:
     bool m_allow_redefinition = false;
     public:
     static int verbose;
+    TargetConfig m_config;
 };
 
 // ============================================================================

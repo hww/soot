@@ -19,26 +19,26 @@ TEST(TypeSystem, DefaultMethods) {
     ts.add_builtin_types();
 
     // check that default methods have the right ID's used by the kernel
-    ts.assert_method_id("object", "new", GOAL_NEW_METHOD);
-    ts.assert_method_id("object", "delete", GOAL_DEL_METHOD);
-    ts.assert_method_id("object", "print", GOAL_PRINT_METHOD);
-    ts.assert_method_id("object", "inspect", GOAL_INSPECT_METHOD);
-    ts.assert_method_id("object", "length", GOAL_LENGTH_METHOD);
-    ts.assert_method_id("object", "asize-of", GOAL_ASIZE_METHOD);
-    ts.assert_method_id("object", "copy", GOAL_COPY_METHOD);
-    ts.assert_method_id("object", "relocate", GOAL_RELOC_METHOD);
-    ts.assert_method_id("object", "mem-usage", GOAL_MEMUSAGE_METHOD);
+    ts.assert_method_id("object", "new", SOOT_NEW_METHOD);
+    ts.assert_method_id("object", "delete", SOOT_DEL_METHOD);
+    ts.assert_method_id("object", "print", SOOT_PRINT_METHOD);
+    ts.assert_method_id("object", "inspect", SOOT_INSPECT_METHOD);
+    ts.assert_method_id("object", "length", SOOT_LENGTH_METHOD);
+    ts.assert_method_id("object", "asize-of", SOOT_ASIZE_METHOD);
+    ts.assert_method_id("object", "copy", SOOT_COPY_METHOD);
+    ts.assert_method_id("object", "relocate", SOOT_RELOC_METHOD);
+    ts.assert_method_id("object", "mem-usage", SOOT_MEMUSAGE_METHOD);
 
     // check that they are inherited.
-    ts.assert_method_id("function", "new", GOAL_NEW_METHOD);
-    ts.assert_method_id("function", "delete", GOAL_DEL_METHOD);
-    ts.assert_method_id("function", "print", GOAL_PRINT_METHOD);
-    ts.assert_method_id("function", "inspect", GOAL_INSPECT_METHOD);
-    ts.assert_method_id("function", "length", GOAL_LENGTH_METHOD);
-    ts.assert_method_id("function", "asize-of", GOAL_ASIZE_METHOD);
-    ts.assert_method_id("function", "copy", GOAL_COPY_METHOD);
-    ts.assert_method_id("function", "relocate", GOAL_RELOC_METHOD);
-    ts.assert_method_id("function", "mem-usage", GOAL_MEMUSAGE_METHOD);
+    ts.assert_method_id("function", "new", SOOT_NEW_METHOD);
+    ts.assert_method_id("function", "delete", SOOT_DEL_METHOD);
+    ts.assert_method_id("function", "print", SOOT_PRINT_METHOD);
+    ts.assert_method_id("function", "inspect", SOOT_INSPECT_METHOD);
+    ts.assert_method_id("function", "length", SOOT_LENGTH_METHOD);
+    ts.assert_method_id("function", "asize-of", SOOT_ASIZE_METHOD);
+    ts.assert_method_id("function", "copy", SOOT_COPY_METHOD);
+    ts.assert_method_id("function", "relocate", SOOT_RELOC_METHOD);
+    ts.assert_method_id("function", "mem-usage", SOOT_MEMUSAGE_METHOD);
 }
 
 TEST(TypeSystemReverse, NestedInlineWeird) {
@@ -244,7 +244,7 @@ TEST(TypeSystem, AddMethodAndLookupMethod) {
             ts.make_function_typespec({ "integer" }, "string"), false);
 
     EXPECT_EQ(parent_info.id, child_info_same.id);
-    EXPECT_EQ(parent_info.id, GOAL_MEMUSAGE_METHOD + 1);
+    EXPECT_EQ(parent_info.id, SOOT_MEMUSAGE_METHOD + 1);
 
     // any amount of fiddling with method types should cause an error
     EXPECT_ANY_THROW(ts.declare_method(ts.lookup_type("basic"), "test-method-1", "test docstring",

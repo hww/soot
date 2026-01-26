@@ -250,11 +250,12 @@ namespace script
 
 
     // Type system
-    m_type_system->init_type_system();
+    m_type_system->init_type_system(SootTypeSystem::BaseTyles::Z80);
 
     add_special_form("defenum",   &Interpreter::eval_ts_defenum_special);   // does not return anything
     add_special_form("deftype",   &Interpreter::eval_ts_deftype_special);   // does not return anything
     add_special_form("typespec",  &Interpreter::eval_ts_typespec_special);  // return s-expression of typespec
+    add_builtin_form("init-types",&Interpreter::eval_ts_init_types);        // does not return anything
     add_builtin_form("type-info", &Interpreter::eval_ts_type_to_lisp);      // return s-expression of type
     add_builtin_form("type-list", &Interpreter::eval_ts_types_list);        // return s-expression list of types
 
@@ -264,7 +265,7 @@ namespace script
 
 void Interpreter::load_library() {
     auto cmd = "(load-file \"lib.sot\")";
-    eval_with_rewind(m_reader.read_from_string(cmd), m_global_environment.as_env_ptr());
+    eval_form(m_reader.read_from_string(cmd), m_global_environment.as_env_ptr());
 }
 
 void Interpreter::init_builtin_forms(const std::unordered_map<std::string, BuiltinFormMethod>& forms) {
@@ -428,12 +429,11 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
     Object code = m_reader.read_from_string(expression, true, filename, 
         [&](const ReaderEvent& evt) -> Object{
         // evaluate
-        FrameGuard stack_guard(&m_top_frame, m_top_frame);
         switch (evt.type)
         {
         case ReaderEvent::Type::FORM_READ:
             //fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} \n", evt.form.print());        
-            last_result = this->eval_with_rewind(evt.form, env); 
+            last_result = this->eval_form(evt.form, env); 
             //fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} -> {}\n", evt.form.print(), last_result.print());
             break;
         case ReaderEvent::Type::MACRO_REQUEST:
@@ -458,13 +458,13 @@ Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path
 
     Object code = m_reader.read_from_file(file_path, true, true,
     [&](const ReaderEvent& evt) -> Object{
-        FrameGuard stack_guard(&m_top_frame, m_top_frame);
+
         // evaluate
         switch (evt.type)
         {
         case ReaderEvent::Type::FORM_READ:
             //fmt::print("DEBUG: Interpreter::eval_file_internal FORM_READ {} \n", evt.form.print());
-            last_result = this->eval_with_rewind(evt.form, env); 
+            last_result = this->eval_form(evt.form, env); 
             //fmt::print("DEBUG: Interpreter::eval_file_internal FORM_READ {} -> {}\n", evt.form.print(), last_result.print());
             break;
         case ReaderEvent::Type::MACRO_REQUEST:
@@ -480,6 +480,11 @@ Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path
         return last_result;
     });
     return last_result;
+}
+
+// Same as method befor but for cases wher are no parent form
+Object Interpreter::eval_form(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
+    return eval_with_rewind(obj, obj, env, self_eval_place);
 }
 
 Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vector<Object>& args) {
@@ -524,9 +529,13 @@ Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vecto
     // 4. Биндим аргументы
     Object dummy_form = Object::make_symbol(&m_reader.get_symbol_table(), "call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
-    
+
+
     // 5. Выполняем тело
-    return eval_list_return_last(lam->body, lam->body, lam_env);
+    
+    auto result =  eval_list_return_last(lam->body, lam->body, lam_env);
+   
+    return result;
 }
 
 // ==============================================
@@ -554,8 +563,9 @@ std::string truncate_obj(std::string str, size_t max_len) {
  * and if possible what file/line "obj" comes from.
  */
 Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
-    ContextFrame frame = { m_top_frame == nullptr ? 0 : m_top_frame->depth+1, parent_form, m_top_frame }; 
-    m_top_frame = &frame; 
+    ContextFrame frame = { depth: m_top_frame == nullptr ? 0 : m_top_frame->depth+1, form: obj, prev: m_top_frame }; 
+    m_top_frame = &frame;
+    //fmt::print("<Interpreter::eval_with_rewind frame={}\n", frame.print());
     try {
         //fmt::print(">>>> parent: {}\n    obj: {}\n    src: {}\n", 
         //    parent_form.print().c_str(), 
@@ -603,20 +613,20 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
             } else {
                 if (obj.is_pair()) {
                     auto info_opt = m_reader.get_db().get_short_info_for(obj);
-                    bool level = m_top_frame == nullptr ? 0 : m_top_frame->depth;
+                    int current_depth = frame.depth;
                     // Печатаем "at ..", только если есть реальный файл и строка > 0
 
                     int max_size = 80;
                     auto obj_string = truncate_obj(obj.print(), max_size);
                     if (info_opt && info_opt->line_idx_to_display > 0) {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n", 
-                                level, obj_string, info_opt->filename, info_opt->line_idx_to_display);
+                                current_depth, obj_string, info_opt->filename, info_opt->line_idx_to_display);
                     } else {
                         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", 
-                                level, obj_string);
+                                current_depth, obj_string);
                     }
 
-                    if (level == 0) fmt::print(fg(fmt::color::dim_gray), "\n");
+                    if (current_depth == 0) fmt::print(fg(fmt::color::dim_gray), "\n");
                 }
             }
             if (!e.already_printed) {
@@ -625,6 +635,7 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
                 e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
             }
         }
+
         throw;
     }
     catch (const std::exception& e) {
@@ -632,11 +643,6 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
         throw; // Пробрасываем в самый верх (в main loop)
     }
 
-}
-
-// Same as method befor but for cases wher are no parent form
-Object Interpreter::eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
-    return eval_with_rewind(obj, obj, env, self_eval_place);
 }
 
 // ==============================================
@@ -3788,6 +3794,9 @@ Object Interpreter::eval_ts_deftype_special(const Object& form, const Object& re
 }
 Object Interpreter::eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     return m_type_system->eval_typespec_special(form, rest, env);
+}
+Object Interpreter::eval_ts_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    return m_type_system->eval_init_types(form, args, env);
 }
 Object Interpreter::eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     return m_type_system->eval_type_to_lisp(form, args, env);

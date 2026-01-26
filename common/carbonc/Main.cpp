@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  lg::info("OpenGOAL Compiler {}.{}", versions::GOAL_VERSION_MAJOR, versions::GOAL_VERSION_MINOR);
+  lg::info("OpenGOAL Compiler {}.{}", versions::SOOT_VERSION_MAJOR, versions::SOOT_VERSION_MINOR);
 
   std::unique_ptr<Compiler> compiler;
   ReplStatus status = ReplStatus::OK;

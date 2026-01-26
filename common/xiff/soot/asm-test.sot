@@ -1,7 +1,44 @@
 ﻿(load "common/xiff/soot/asm.sot")
 
+(init-types 'z80)
+
+(defenum test-enum
+        :type uint8
+        (red   0) 
+        (green 1)
+        (blue  2))
+
+(defenum test-mask
+        :bitfield #t
+        :type uint8
+        (bit0 1)
+        (bit1 2)
+        (bit2 4)
+        (bit3 8)
+        (bit4 #x10)
+        (bit5 #x20)
+        (bit6 #x40)
+        (bit7 #x80)        
+        )
+
+
+(deftype test-struct (basic)
+  ((test_i8   int8 1) 
+   (test_i16  int16 2)))
+
+(deftype test-vector (basic)
+  ((x   int8 1) 
+   (y   int8 2))
+  (:methods
+      (new (int8 int8) object)
+      (set (int8 int8) none)
+      (len () int8)
+      ))
+
+        
 (defmacro subroutine (name &rest code)
    `(list (lab ',name) ,@code))
+
 
 (defparameter 
    test 

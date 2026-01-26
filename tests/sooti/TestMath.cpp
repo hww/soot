@@ -12,7 +12,7 @@ protected:
 
     Object eval(const std::string& code) {
         Object obj = interp.get_reader().read_from_string(code, "test");
-        return interp.eval_with_rewind(obj, env);
+        return interp.eval_form(obj, env);
     }
 
     Interpreter interp;

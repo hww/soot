@@ -14,11 +14,19 @@ class SootTypeSystem
 {
     friend class Interpreter;
 
+    enum class BaseTyles {
+        Undefined,
+        Default,
+        Z80,
+    };
+
 public:
     SootTypeSystem() = default;
     SootTypeSystem(Interpreter& interpreter);
     ~SootTypeSystem();
-    void init_type_system();
+
+    void init_type_system(BaseTyles types);
+    BaseTyles is_initialized() { return m_type; }
 
     Object eval_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
@@ -27,6 +35,7 @@ public:
     Object eval_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
     Object eval_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+    Object eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
     private:
     Object type_spec_to_lisp(const TypeSpec& ts) const;
@@ -35,5 +44,6 @@ public:
     
     std::unique_ptr<TypeSystem> m_type_system;
     Interpreter& m_interpreter;
+    BaseTyles m_type;
 };
 }

@@ -192,13 +192,13 @@ TEST_F(TypeSystemTest, MethodConstantsUsage) {
 
     // Проверяем, что методы имеют правильные ID
     MethodInfo new_method = ts->lookup_method("object", "new");
-    EXPECT_EQ(new_method.id, GOAL_NEW_METHOD);
+    EXPECT_EQ(new_method.id, SOOT_NEW_METHOD);
 
     MethodInfo print_method = ts->lookup_method("object", "print");
-    EXPECT_EQ(print_method.id, GOAL_PRINT_METHOD);
+    EXPECT_EQ(print_method.id, SOOT_PRINT_METHOD);
 
     // Проверяем поиск по ID с константами
-    MethodInfo method_by_id = ts->lookup_method("object", GOAL_NEW_METHOD);
+    MethodInfo method_by_id = ts->lookup_method("object", SOOT_NEW_METHOD);
     EXPECT_EQ(method_by_id.name, "new");
 }
 

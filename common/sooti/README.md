@@ -537,16 +537,17 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 
 ### **Reader Functions**
 
-| Function                   | Arguments                    | Description                                 |
-|----------------------------|------------------------------|---------------------------------------------|
-| `set-macro-character`      | `pattern replacement/lambda` | Define reader macro                         |
-| `remove-macro-character`   | `pattern`                    | Remove reader macro                         |
-| `get-macro-character`      | `pattern`                    | Get reader macro definition                 |
-| `read`                     | `reader`                     | Read one object from reader                 |
-| `read-char`                | `reader`                     | Read one character from reader              |
-| `peek-char`                | `reader`                     | Peek next character without consuming       |
-| `read-delimited-list`      | `terminator reader`          | Read list until terminator                  |
-
+| Function                 | Arguments                    | Description                                         |
+|--------------------------|------------------------------|-----------------------------------------------------|
+| `set-macro-character`    | `pattern replacement/lambda` | Define reader macro                                 |
+| `remove-macro-character` | `pattern`                    | Remove reader macro                                 |
+| `get-macro-character`    | `pattern`                    | Get reader macro definition                         |
+| `read`                   | `reader`                     | Read one object from reader                         |
+| `read-char`              | `reader`                     | Read one character from reader                      |
+| `peek-char`              | `reader`                     | Peek next character without consuming               |
+| `read-delimited-list`    | `terminator reader`          | Read list until terminator                          |
+| `source-info`            | `pair`                       | Get information about source code of the expression |
+| `get-context`            | `integer stack offset`       | Get the expression of stack frame offset            |
 
 **Examples:**
 
@@ -559,11 +560,49 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
   (lambda (r s)
     (let ((lis (read-delimited-list #\] r)))
       (apply 'vector lis))))
+```
 
-;; Lex tokens
-(define token (make-lextoken :type 'identifier :value 'x))
-(lextoken-type token)         ; → identifier
-(lextoken-info token)         ; → ("repl" 1 5)
+Get the source info from the expression.
+
+```lisp
+soot> (source-info '())
+=> null
+soot> (source-info '(1))
+=> (:file "repl" :line 0 :column 14 :text "(source-info '(1))")
+soot> (source-info      '(1))
+=> (:file "repl" :line 0 :column 19 :text "(source-info      '(1))")
+```
+
+Get the stack frame expression
+
+```lisp
+soot> (defun foo () (fmt #t "Context: {}\n" (get-context 0)))   ; Take this frame
+=> #<unnamed lambda>
+soot> (defun bar () (foo))
+=> #<unnamed lambda>
+soot> (bar)
+Context: (get-context 0)                                        ; Context is (get-context 0)
+=> null
+soot> (defun foo () (fmt #t "Context: {}\n" (get-context 1)))   ; Take parent frame
+=> #<unnamed lambda>
+soot> (bar)
+Context: (fmt #t "<<{}>>" (get-context 1))                      ; Context is (fmt #t "<<{}>>" (get-context 1))
+=> null
+soot> (defun foo () (fmt #t "Context: {}>>\n" (get-context 2))) ; Take parent of parent frame
+=> #<unnamed lambda>
+soot> (bar)
+Context: (foo)                                                  ; Context is (foo)
+=> null
+```
+
+Get the location of conext
+
+```lisp
+soot> (defun foo () (fmt #t "Context: {}\n" (source-info (get-context 4))))
+=> #<unnamed lambda>
+soot> (bar)
+Context: (:file "repl" :line 0 :column 0 :text "(bar)")
+=> null
 ```
 
 ## 🔄 **Macro System**
@@ -765,6 +804,26 @@ Registers an enumeration in the global type database.
 - **Syntax:** `(defenum Color (red 0) (green 1) (blue 2))`
 - **Note:** Enum symbols are treated as constants by the assembler.
 
+```lisp
+(defenum color
+        :type uint32
+        (red 0) 
+        (green 1)
+        (blue 2))
+```
+
+For the bitfields.
+
+```lisp
+(defenum color-mask
+        :bitfield #t
+        :type uint32
+        (off 0)
+        (red 1)
+        (green 2)
+        (blue 4))
+```
+
 ### `(deftype name (parent) (fields...))`
 
 Defines a new structure or basic type. The C++ backend automatically calculates field offsets, alignment, and total size based on the target architecture (Z80).
@@ -772,10 +831,10 @@ Defines a new structure or basic type. The C++ backend automatically calculates 
 **Example:**
 
 ```lisp
-(deftype Sprite ()
-  (x uint8)
-  (y uint8)
-  (data (pointer uint8)))
+(deftype sprite (basic)
+  ((x int32)
+   (y int32)
+  (data (pointer uint8))))
 
 ```
 

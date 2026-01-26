@@ -21,7 +21,7 @@ void Wrapper::print_welcome_message(const std::vector<std::string>& loaded_proje
   message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "     .:-----------:.\n");
   message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "         .-----.");
   message += fmt::format(fmt::emphasis::bold, "         Welcome to OpenGOAL {}.{} [{}]",
-                         versions::GOAL_VERSION_MAJOR, versions::GOAL_VERSION_MINOR,
+                         versions::SOOT_VERSION_MAJOR, versions::SOOT_VERSION_MINOR,
                          fmt::format(fg(fmt::color::gray), "{}", build_revision()));
   if (!username.empty() && username != "#f" && username != "unknown") {
     message += fmt::format(fg(fmt::color::light_green), " {}", username);
@@ -231,7 +231,7 @@ std::string find_repl_username() {
   // 1. look for the `user.txt` file, which should only contain the username
   // 2. if this is absent AND there is a single folder inside the "user" folder, use that as the
   // username
-  auto user_dir = file_util::get_jak_project_dir() / "goal_src" / "user";
+  auto user_dir = file_util::get_jak_project_dir() / "SOOT_src" / "user";
   auto dirs = file_util::find_directories_in_dir(user_dir);
   if (dirs.size() == 1) {
     return dirs.at(0).filename().string();
@@ -251,12 +251,12 @@ std::string find_repl_username() {
 
 fs::path get_startup_file_path(const std::string& username, const GameVersion game_version) {
   // - first check to see if there is a game version specific startup file to prefer
-  auto game_specific_path = file_util::get_jak_project_dir() / "goal_src" / "user" / username /
+  auto game_specific_path = file_util::get_jak_project_dir() / "SOOT_src" / "user" / username /
                             fmt::format("startup-{}.gc", version_to_game_name(game_version));
   if (file_util::file_exists(game_specific_path.string())) {
     return game_specific_path;
   }
-  return file_util::get_jak_project_dir() / "goal_src" / "user" / username / "startup.gc";
+  return file_util::get_jak_project_dir() / "SOOT_src" / "user" / username / "startup.gc";
 }
 
 StartupFile load_user_startup_file(const std::string& username, const GameVersion game_version) {
@@ -285,7 +285,7 @@ REPL::Config load_repl_config(const std::string& username,
                               const GameVersion game_version,
                               const int nrepl_port) {
   auto repl_config_path =
-      file_util::get_jak_project_dir() / "goal_src" / "user" / username / "repl-config.json";
+      file_util::get_jak_project_dir() / "SOOT_src" / "user" / username / "repl-config.json";
   REPL::Config loaded_config(game_version);
   if (file_util::file_exists(repl_config_path.string())) {
     try {
