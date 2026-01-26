@@ -868,7 +868,7 @@ namespace script {
 	 * Used for reader errors, like "missing close paren" or similar.
 	 */
 	void Reader::throw_reader_error(TextStream& here, const std::string& err, int seek_offset) {
-		throw std::runtime_error("Reader error:\n" + err + "\nat " +
+		throw std::runtime_error(err + "\n" + // Убрали "at "
 			m_db.get_info_for(here.text, here.seek + seek_offset));
 	}
 	/*!

@@ -185,6 +185,9 @@ namespace script {
 	 * Given a source text and an offset, print a description of where it is.
 	 */
 	std::string TextDb::get_info_for(const std::shared_ptr<SourceText>& frag, int offset) const {
+		// ЗАЩИТА: Если смещение вылетело за пределы, прижимаем его к последнему символу
+    	offset = std::max(0, std::min(offset, (int)frag->get_size() - 1));
+
 		int line_idx = frag->get_line_idx(offset);
 		
 		// Формат: "filename:line" (выделяем тусклым)
