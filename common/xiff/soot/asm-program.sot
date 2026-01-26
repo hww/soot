@@ -122,7 +122,8 @@
   (op null)
   (arg1 (make-lextoken :type null))
   (arg2 (make-lextoken :type null))
-  (arg3 (make-lextoken :type null)))
+  (arg3 (make-lextoken :type null))
+  (ctx null))
 
 ;; Найти opcode для инструкции
 (defun get-inst (inst)
@@ -147,12 +148,12 @@
   (ltable (make-hash-table))  ;;
   (ilc 0))                    ;;
 
-(defun get-label (label prog)
+(defun get-label (label prog &optional ctx)
   (let ((val (hash-table-try-ref (asm-prog-ltable prog) label)))
     ;(fmt #t "LOOKUP LABEL: name={} found-val={}\n" label val)
     (if (car val)
       (cdr val)
-      (error (fmt #f "Can't find label {} in {}" label in (source-info label)))
+      (error (fmt #f "Can't find label {}" label) ctx)
     )))
 
 (defun shift-label (label value prog)
@@ -400,7 +401,8 @@
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    ;; МАГИЯ: связываем имя геттера с самим объектом
                                    (inst-op inst)
-                                   (size ,size)) 
+                                   (size ,size)
+                                   (ctx (inst-ctx inst))) 
                                    ;(inspect-inst "pass1" inst-op size r1 r2 r3)                                   
                                ,pass1))
                     :pass2 (lambda (inst prog) 
@@ -409,7 +411,8 @@
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    ;; МАГИЯ: теперь (struct-set! inst-op ...) сработает
                                    (inst-op inst)
-                                   (size ,size))  
+                                   (size ,size)  
+                                   (ctx (inst-ctx inst))) 
                                    ;(inspect-inst "pass2" inst-op size r1 r2 r3)                                 
                                ,pass2))
                     :pass3 (lambda (inst prog) 
@@ -417,7 +420,8 @@
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    (inst-op inst)
-                                   (size ,size))
+                                   (size ,size)
+                                   (ctx (inst-ctx inst))) 
                                    ;(inspect-inst "pass3" inst-op size r1 r2 r3)
                                ,pass3))))
 
@@ -429,7 +433,9 @@
              (bla3 (*parse* a3)))
          (make-inst :op ',sym :arg1 bla1
                               :arg2 bla2
-                              :arg3 bla3)))))
+                              :arg3 bla3
+                              ;; should acqure the context of expresiion in the ASM source
+                              :ctx (get-context 3))))))
 
 ;; Es ist immer ein bisschen laestig, alles doppelt hinzuschreiben, wenn
 ;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer

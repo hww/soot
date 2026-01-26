@@ -1145,12 +1145,12 @@ TEST(GoosSpecialForms, Define) {
     e(i, "(define :env *goal-env* x 20)");
     EXPECT_EQ(e(i, "x"), "10");
 
-    Object goal_env;
-    EXPECT_TRUE(i.get_global_variable_by_name("*goal-env*", &goal_env));
+    Object SOOT_env;
+    EXPECT_TRUE(i.get_global_variable_by_name("*goal-env*", &SOOT_env));
 
-    auto x_in_goal_env = goal_env.as_env()->vars.lookup(i.intern("x").as_symbol());
-    EXPECT_TRUE(x_in_goal_env);
-    EXPECT_EQ(x_in_goal_env->print(), "20");
+    auto x_in_SOOT_env = SOOT_env.as_env()->vars.lookup(i.intern("x").as_symbol());
+    EXPECT_TRUE(x_in_SOOT_env);
+    EXPECT_EQ(x_in_SOOT_env->print(), "20");
 
     // test automatic environment of define
     e(i, "(begin (desfun test-define () (define x 500)) (test-define))");

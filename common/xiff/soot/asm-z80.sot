@@ -1256,7 +1256,7 @@
 ;; PASS 3 Returns instructions bytes
 (operand jmp 3
      "Virtual JMP"
-     :pass2 (let* ((target (get-label r1 prog)) ;; Тут добавим проверку (if (null? target) ...)
+     :pass2 (let* ((target (get-label r1 prog ctx)) ;; Тут добавим проверку (if (null? target) ...)
                    (offset (if target (- target (asm-prog-ilc prog)) 0)))
               (if (and target (< offset 129) (> offset -126))
                   (begin 

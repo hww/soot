@@ -34,9 +34,18 @@ namespace script
     SootTypeSystem::SootTypeSystem(Interpreter &interpreter) : m_type_system(std::make_unique<TypeSystem>()), m_interpreter(interpreter) {}
     SootTypeSystem::~SootTypeSystem() = default;
 
-    void SootTypeSystem::init_type_system()
+    void SootTypeSystem::init_type_system(BaseTyles types)
     {
-        m_type_system.get()->add_builtin_types();
+        m_type_system.get()->clear();
+        switch (types) 
+        {
+            case BaseTyles::Z80:
+                m_type_system.get()->add_builtin_types_z80();
+                break;
+            default:
+                m_type_system.get()->add_builtin_types();
+                break;
+        }
     }
 
     Object SootTypeSystem::eval_defenum_special(const Object &form, const Object &rest, const std::shared_ptr<EnvironmentObject> &env)
@@ -83,6 +92,17 @@ namespace script
     Object SootTypeSystem::eval_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env)
     {
         return m_type_system.get()->get_all_type_names_as_objects();
+    }
+    Object SootTypeSystem::eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env)
+    {
+        m_interpreter.vararg_check(form, args, { ObjectType::SYMBOL }, {}); 
+        if (args.unnamed[0].as_symbol() == "default")
+            init_type_system(BaseTyles::Default);
+        else if (args.unnamed[0].as_symbol() == "z80")
+            init_type_system(BaseTyles::Z80);
+        else
+             m_interpreter.throw_eval_error(form, "init-types: arg 1 expects symbol 'default or 'z80");
+        return m_interpreter.get_nil();
     }
     // --- Helpers ----------------------------------------------------------------------
     // В файле реализации SootTypeSystem.cpp:

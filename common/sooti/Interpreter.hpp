@@ -43,10 +43,19 @@ namespace script
             int depth;
             Object form;
             ContextFrame* prev;
+
+            std::string print()
+            {
+                return fmt::format("<ContextFrame depth={} form={} prev={:p}>", 
+                    depth, 
+                    form.print(), 
+                    static_cast<void*>(prev));
+            }
         };
+
         struct FrameGuard {
             ContextFrame** top_frame_ptr;
-            ContextFrame* old_frame;
+            ContextFrame*  old_frame;
 
             FrameGuard(ContextFrame** ptr, ContextFrame* new_val) 
                 : top_frame_ptr(ptr), old_frame(*ptr) 
@@ -56,6 +65,15 @@ namespace script
 
             ~FrameGuard() {
                 *top_frame_ptr = old_frame;
+            }
+
+            std::string print()
+            {
+                ContextFrame* current = top_frame_ptr ? *top_frame_ptr : nullptr;
+                return fmt::format("<FrameGuard current={:p} old={:p} ptr={:p}>",
+                    static_cast<void*>(current),
+                    static_cast<void*>(old_frame),
+                    static_cast<void*>(top_frame_ptr));
             }
         };
     public:
@@ -93,7 +111,7 @@ namespace script
         // Основные методы оценки
         Object eval_string(const std::string& expression, const std::string& filename);
 
-        Object eval_with_rewind(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
+        Object eval_form(const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place = true);
 
         // --- Доступ к приватным членам -------
         // Запуск REPL
@@ -340,6 +358,7 @@ namespace script
         Object eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ts_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ts_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

@@ -34,23 +34,30 @@ class TypeSpec;
 // ============================================================================
 
 enum class RegClass {
+    GPR_8,
+    GPR_16,
+    GPR_32,
     GPR_64,
     FPR,
     INVALID
 };
 
-constexpr u32 GOAL_NEW_METHOD = 0;       // method ID of GOAL new
-constexpr u32 GOAL_DEL_METHOD = 1;       // method ID of GOAL delete
-constexpr u32 GOAL_PRINT_METHOD = 2;     // method ID of GOAL print
-constexpr u32 GOAL_INSPECT_METHOD = 3;   // method ID of GOAL inspect
-constexpr u32 GOAL_LENGTH_METHOD = 4;    // method ID of GOAL length
-constexpr u32 GOAL_ASIZE_METHOD = 5;     // method ID of GOAL size
-constexpr u32 GOAL_COPY_METHOD = 6;      // method ID of GOAL copy
-constexpr u32 GOAL_RELOC_METHOD = 7;     // method ID of GOAL relocate
-constexpr u32 GOAL_MEMUSAGE_METHOD = 8;  // method ID of GOAL mem-usage
+constexpr u32 SOOT_NEW_METHOD = 0;       // method ID of GOAL new
+constexpr u32 SOOT_DEL_METHOD = 1;       // method ID of GOAL delete
+constexpr u32 SOOT_PRINT_METHOD = 2;     // method ID of GOAL print
+constexpr u32 SOOT_INSPECT_METHOD = 3;   // method ID of GOAL inspect
+constexpr u32 SOOT_LENGTH_METHOD = 4;    // method ID of GOAL length
+constexpr u32 SOOT_ASIZE_METHOD = 5;     // method ID of GOAL size
+constexpr u32 SOOT_COPY_METHOD = 6;      // method ID of GOAL copy
+constexpr u32 SOOT_RELOC_METHOD = 7;     // method ID of GOAL relocate
+constexpr u32 SOOT_MEMUSAGE_METHOD = 8;  // method ID of GOAL mem-usage
 
-constexpr int POINTER_SIZE = 4;
-constexpr int ARRAY_DATA_OFFSET = 16;    // как в оригинале
+struct TargetConfig {
+    int pointer_size = 4;
+    int array_data_offset = 12;
+    int default_alignment = 4;
+    // Можно добавить порядок байт (Endianness) и т.д.
+};
 
 // ============================================================================
 // Definition Metadata
