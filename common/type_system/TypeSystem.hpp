@@ -7,7 +7,7 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
-#include "common/type_system/Aliasable.hpp"
+#include "common/sooti/Aliasable.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 
@@ -457,6 +457,9 @@ public:
     Object to_alias() {
         return Object::make_native_ref(shared_from_this());
     }
+
+    TargetConfig& get_config() { return m_config; }
+
 private:
     // ========================================================================
     // Private Implementation

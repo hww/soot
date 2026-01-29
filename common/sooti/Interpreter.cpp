@@ -3,6 +3,7 @@
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/sooti/Object.hpp"
+#include "common/sooti/Aliasable.hpp"
 
 #include "common/type_system/TypeSystem.hpp"
 
@@ -250,6 +251,9 @@ namespace script
             {"source-info",         &Interpreter::eval_source_info, nullptr},
             {"get-context",         &Interpreter::eval_get_context, nullptr},
             {"make-alias",          &Interpreter::eval_make_alias, nullptr},
+
+            // Buffer
+            {"buffer-write",        &Interpreter::eval_buffer_write, nullptr},
         });
 
 
@@ -3857,4 +3861,89 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
     return current;
 }
 
+// ==============================================
+// Alias
+// ==============================================
+Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // Валидация аргументов: [buffer] [offset] [value] :as [type]
+    vararg_check(form, args, 
+        {{ObjectType::NATIVE_REF}, 
+         {ObjectType::INTEGER},
+         {}}, // value может быть чем угодно
+        {{"as", {true, ObjectType::SYMBOL}}});
+
+    auto config = m_type_system.get()->get_ts()->get_config();
+    
+    // 1. Получаем целевой буфер
+    auto* buf_heap_obj = args.unnamed[0].as_heap_object();
+    auto* buf = dynamic_cast<StaticBuffer*>(buf_heap_obj);
+    if (!buf) {
+        throw_eval_error(form, "arg 1 expected static-buffer native reference");
+        return get_null();
+    }
+
+    // 2. Параметры записи
+    int offset = args.unnamed[1].as_integer();
+    Object value = args.unnamed[2];
+    std::string type_tag = args.named["as"].to_std_string();
+
+    // 3. Логика записи по типам
+    if (type_tag == "uint8") {
+        buf->write_u8(offset, static_cast<uint8_t>(value.as_integer()));
+    } 
+    else if (type_tag == "uint16") {
+        buf->write_u16(offset, static_cast<uint16_t>(value.as_integer()));
+    } 
+    else if (type_tag == "uint32") {
+        // ИСПРАВЛЕНО: теперь вызываем write_u32
+        buf->write_u32(offset, static_cast<uint32_t>(value.as_integer()));
+    }     
+    else if (type_tag == "symbol") {
+        if (value.is_symbol()) {
+            std::string str = value.as_symbol().name_ptr;
+            auto crc = util::compute_crc32(str);
+            
+            // Записываем размер согласно конфигу системы
+            if (config.symbol_src_size == 1) buf->write_u8(offset, crc);
+            else if (config.symbol_src_size == 2) buf->write_u16(offset, crc);
+            else buf->write_u32(offset, crc);
+        } else {
+            throw_eval_error(form, "Type :as 'symbol expects a symbol as value");
+            return get_null();
+        }
+    }
+    else if (type_tag == "string") {
+        // Принимаем и строки, и символы (как имена строк)
+        buf->write_string(offset, value.to_std_string());
+    }
+    else if (type_tag == "pointer") {
+        // ИСПРАВЛЕНО: Релокация
+        if (value.is_heap_object()) {
+            auto* target_heap = value.as_heap_object();
+            auto* target_buf = dynamic_cast<StaticBuffer*>(target_heap);
+
+            if (target_buf) {
+                // Регистрируем релокацию на другой буфер по его имени типа
+                std::string str = target_buf->type_name();
+                buf->add_reloc(offset, RelocType::ABS_ADDR, str);
+                
+                // Записываем временный 0 (заполнитель)
+                // Для Z80 это обычно 2 байта, для x64 - 4 или 8.
+                buf->write_u16(offset, 0); 
+            } else {
+                throw_eval_error(form, "Pointer value must be a StaticBuffer");
+                return get_null();
+            }
+        } else if (value.is_symbol()) {
+            // Релокация на глобальный символ (например, адрес функции или переменной)
+            std::string str = value.as_symbol().name_ptr;
+            buf->add_reloc(offset, RelocType::ABS_ADDR, str);
+            buf->write_u16(offset, 0);
+        }
+    } else {
+        throw_eval_error(form, "Unknown write type: " + type_tag);
+    }
+
+    return Object::make_undefined();
+}
 } // namespace script

@@ -15,7 +15,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/sooti/Export.hpp"
-#include "Aliasable.hpp"
+#include "common/sooti/Aliasable.hpp"
 
 // Forward declarations
 class Type;
@@ -59,6 +59,7 @@ struct TargetConfig {
     int pointer_size = 4;
     int array_data_offset = 12;
     int default_alignment = 4;
+    int symbol_src_size = 4;
     // Можно добавить порядок байт (Endianness) и т.д.
 };
 

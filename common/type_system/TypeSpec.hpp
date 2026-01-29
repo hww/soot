@@ -10,7 +10,7 @@
 #include <optional>
 #include <memory>
 
-#include "Aliasable.hpp"
+#include "common/sooti/Aliasable.hpp"
 
 
 namespace script
