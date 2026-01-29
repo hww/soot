@@ -1,9 +1,14 @@
 #include "common/type_system/TypeSpec.hpp"
 #include "common/util/Assert.hpp"
+#include "common/sooti/Printer.hpp"
+#include "common/sooti/Object.hpp"
 #include "fmt/format.h"
 
 #include <stdexcept>
 #include <algorithm>
+#include <functional>
+
+using namespace script;
 
 // ============================================================================
 // TypeSpec constructors
@@ -297,6 +302,95 @@ void TypeSpec::delete_tag(const std::string& tag_name) {
 //    return in;
 //}
 
+// ============================================================================
+// Alias 
+// ============================================================================
+
+void TypeSpec::define_all_aliases() {
+    // 1. Имя базового типа (например, "pointer")
+    define_alias("base-type", [](Aliasable* self) {
+        return Object::make_string(static_cast<TypeSpec*>(self)->base_type());
+    });
+
+    // 2. Количество аргументов
+    define_alias("args-count", [](Aliasable* self) {
+        return Object::make_integer(static_cast<TypeSpec*>(self)->get_args_count());
+    });
+
+    // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
+    define_alias("args", [](Aliasable* self) {
+        auto ts = static_cast<TypeSpec*>(self);
+        // Здесь можно либо вернуть список, либо специальный объект-итератор.
+        // Пока оставим заглушку или вернем строку для отладки.
+        return Object::make_string(ts->print()); 
+    });
+
+    // 4. Количество тегов
+    define_alias("tags-count", [](Aliasable* self) {
+        return Object::make_integer(static_cast<TypeSpec*>(self)->get_tags_count());
+    });
+}
+
+Object TypeSpec::make_step_alias(const Object& key) {
+    // Сначала проверяем: может быть ключ — это число (индекс аргумента)?
+    // Это позволит писать (-> some-type-spec 0) чтобы получить первый аргумент
+    if (key.is_integer()) {
+        int64_t idx = key.as_integer();
+        if (idx >= 0 && idx < (int64_t)get_args_count()) {
+            // Возвращаем аргумент, обернутый в NativeRef, чтобы по нему можно было идти дальше
+            return Object::make_native_ref(std::make_shared<TypeSpec>(get_arg(idx)));
+        }
+        return Object::make_empty_list();
+    }
+
+    // Если ключ — символ (например, 'base-type), используем стандартную карту Aliasable
+    Object meta = Aliasable::make_step_alias(key);
+    
+    // Если Aliasable ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
+    return meta.is_undefined() ? Object::make_empty_list() : meta;
+}
+
+// Вспомогательная функция для преобразования TypeSpec
+Object TypeSpec::inspect(SymbolTable& symbols) const
+{
+        if (base_type() == "none" || base_type().empty())
+        {
+            return Object::make_empty_list();
+        }
+
+        Object base = symbols.make_symbol(base_type());
+
+        // Если нет ни аргументов, ни тегов — возвращаем просто символ (атом)
+        if (get_args_count() == 0 && get_tags_count() == 0)
+        {
+            return base;
+        }
+
+        // Если есть хоть что-то — строим список (base args... tags...)
+        std::vector<Object> list_elements;
+        list_elements.push_back(base);
+
+        // 1. Добавляем вложенные TypeSpec (аргументы)
+        for (size_t i = 0; i < get_args_count(); ++i)
+        {
+            list_elements.push_back(get_arg(i).inspect(symbols));
+        }
+
+        // 2. Добавляем теги в формате :key value
+        for (const auto &tag : get_tags())
+        {
+            // Превращаем имя тега в ключевое слово (например, "foo" -> ":foo")
+            std::string keyword = ":" + tag.name;
+            list_elements.push_back(symbols.make_symbol(keyword));
+
+            // Значение тега (предполагаем, что это может быть имя типа или строка)
+            // Если значение выглядит как число, можно было бы парсить,
+            // но пока оставим как символ/строку для простоты
+            list_elements.push_back(symbols.make_symbol(tag.value));
+        }
+
+        return pretty_print::build_list(list_elements);
+}
 // ============================================================================
 // typespec namespace Implementation
 // ============================================================================

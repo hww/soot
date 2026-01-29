@@ -7,6 +7,7 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
+#include "common/type_system/Aliasable.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 
@@ -152,7 +153,7 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem {
+class TypeSystem : public Aliasable {
 public:
     TypeSystem();
     ~TypeSystem() = default;
@@ -367,6 +368,8 @@ public:
     // Debugging and Inspection
     // ========================================================================
 
+    std::string print() const { return "<type-system>"; }
+    script::Object inspect(script::SymbolTable& symbols) const;
     std::string print_all_type_information() const;
     script::Object get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string& type) const;
@@ -417,6 +420,8 @@ public:
 
     EnumType* try_enum_lookup(const std::string& type_name) const;
     EnumType* try_enum_lookup(const TypeSpec& type) const;
+    
+    int get_types_count() { return m_types.size(); }
 
     // ========================================================================
     // Utility Functions
@@ -440,6 +445,18 @@ public:
 
     Field lookup_field(const std::string& type_name, const std::string& field_name) const;
 
+    // ========================================================================
+    // Aliases Functions
+    // ========================================================================
+
+    void define_all_aliases() override;
+    
+    // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
+    Object make_step_alias(const Object& key) override;
+    
+    Object to_alias() {
+        return Object::make_native_ref(shared_from_this());
+    }
 private:
     // ========================================================================
     // Private Implementation
