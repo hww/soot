@@ -730,6 +730,59 @@ void StructureType::override_field_type(const std::string& field_name, const Typ
     }
 }
 
+
+void StructureType::define_all_aliases() {
+    // 1. Поднимаем цепочку: ReferenceType -> Type
+    ReferenceType::define_all_aliases();
+
+    // 2. Специфические свойства структуры
+    define_alias("dynamic?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<StructureType*>(s)->is_dynamic() ? 1 : 0);
+    });
+
+    define_alias("packed?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<StructureType*>(s)->is_packed() ? 1 : 0);
+    });
+
+    define_alias("always-stack-singleton?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<StructureType*>(s)->is_always_stack_singleton() ? 1 : 0);
+    });
+
+    define_alias("fields-count", [](Aliasable* s) {
+        return Object::make_integer(static_cast<StructureType*>(s)->fields().size());
+    });
+
+    define_alias("first-unique-field-idx", [](Aliasable* s) {
+        return Object::make_integer(static_cast<StructureType*>(s)->first_unique_field_idx());
+    });
+}
+
+Object StructureType::make_step_alias(const Object& key) {
+    // 1. Сначала ищем в m_props (dynamic?, size, и т.д.)
+    Object meta = Aliasable::make_step_alias(key);
+    if (!meta.is_undefined()) return meta;
+
+    // 2. Если не нашли, ищем среди ПОЛЕЙ структуры
+    if (key.is_symbol() || key.is_string()) {
+        std::string name = key.to_std_string();
+        for (const auto& field : m_fields) {
+            if (field.name() == name) {
+                return Object::make_native_ref(std::make_shared<Field>(field));
+            }
+        }
+    }
+
+    // 3. Доступ по индексу (числу)
+    if (key.is_integer()) {
+        size_t idx = key.as_integer();
+        if (idx < m_fields.size()) {
+            return Object::make_native_ref(std::make_shared<Field>(m_fields[idx]));
+        }
+    }
+
+    return Object::make_empty_list();
+}
+
 // ============================================================================
 // BasicType Implementation
 // ============================================================================
@@ -776,6 +829,19 @@ std::string BasicType::diff_impl(const Type& other) const {
     return result;
 }
 
+void BasicType::define_all_aliases() {
+    // Поднимаем всю цепочку: StructureType -> ReferenceType -> Type
+    StructureType::define_all_aliases();
+
+    define_alias("final?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<BasicType*>(s)->final() ? 1 : 0);
+    });
+    
+    define_alias("class-name", [](Aliasable* s) {
+        return Object::make_string(static_cast<BasicType*>(s)->get_class_name());
+    });
+}
+
 // ============================================================================
 // BitField Implementation
 // ============================================================================
@@ -801,6 +867,34 @@ std::string BitField::print() const {
 
 bool BitField::operator!=(const BitField& other) const {
     return !(*this == other);
+}
+
+void BitField::define_all_aliases() {
+    // BitField наследуется напрямую от HeapObject/Aliasable, 
+    // поэтому вызывать родительский define_all_aliases не обязательно, 
+    // если в Aliasable он пустой.
+
+    define_alias("name", [](Aliasable* s) {
+        return Object::make_string(static_cast<BitField*>(s)->name());
+    });
+
+    define_alias("type", [](Aliasable* s) {
+        auto bf = static_cast<BitField*>(s);
+        // Оборачиваем TypeSpec в NativeRef для рекурсивного доступа
+        return Object::make_native_ref(std::make_shared<TypeSpec>(bf->type()));
+    });
+
+    define_alias("offset", [](Aliasable* s) {
+        return Object::make_integer(static_cast<BitField*>(s)->offset());
+    });
+
+    define_alias("size", [](Aliasable* s) {
+        return Object::make_integer(static_cast<BitField*>(s)->size());
+    });
+
+    define_alias("skip-decomp?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<BitField*>(s)->skip_in_decomp() ? 1 : 0);
+    });
 }
 
 // ============================================================================
@@ -854,6 +948,48 @@ std::string BitFieldType::diff_impl(const Type& other) const {
     return result;
 }
 
+void BitFieldType::define_all_aliases() {
+    // 1. Подтягиваем базовые свойства (size, sign-extend, reg-class)
+    ValueType::define_all_aliases();
+
+    // 2. Регистрируем только мета-свойства самого типа BitField
+    define_alias("fields-count", [](Aliasable* s) {
+        return Object::make_integer(static_cast<BitFieldType*>(s)->fields().size());
+    });
+}
+
+Object BitFieldType::make_step_alias(const Object& key) {
+    // 1. Сначала ищем в m_props (метаданные типа: name, size, fields-count...)
+    Object meta = Aliasable::make_step_alias(key);
+    if (!meta.is_undefined()) {
+        return meta;
+    }
+
+    // 2. Если не нашли в метаданных, ищем среди БИТОВЫХ ПОЛЕЙ
+    // Поддерживаем доступ по имени (символ или строка)
+    if (key.is_symbol() || key.is_string()) {
+        std::string name = key.to_std_string();
+        for (const auto& field : m_fields) {
+            if (field.name() == name) {
+                // Возвращаем BitField как NativeRef для дальнейшей навигации
+                return Object::make_native_ref(std::make_shared<BitField>(field));
+            }
+        }
+    }
+
+    // 3. Поддерживаем доступ по индексу (числу)
+    // Позволяет делать (-> my-bitfield-type 0)
+    if (key.is_integer()) {
+        size_t idx = static_cast<size_t>(key.as_integer());
+        if (idx < m_fields.size()) {
+            return Object::make_native_ref(std::make_shared<BitField>(m_fields[idx]));
+        }
+    }
+
+    // Если ничего не нашли — возвращаем пустой список (nil для Лиспов)
+    return Object::make_empty_list();
+}
+
 // ============================================================================
 // EnumType Implementation
 // ============================================================================
@@ -899,6 +1035,48 @@ std::string EnumType::diff_impl(const Type& other) const {
     }
 
     return result;
+}
+
+void EnumType::define_all_aliases() {
+    // 1. Базовые свойства (name, size, и т.д.)
+    ValueType::define_all_aliases();
+
+    // 2. Метаданные энума
+    define_alias("bitfield-enum?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<EnumType*>(s)->is_bitfield());
+    });
+
+    define_alias("entries-count", [](Aliasable* s) {
+        return Object::make_integer(static_cast<EnumType*>(s)->entries().size());
+    });
+}
+
+Object EnumType::make_step_alias(const Object& key) {
+    // Сначала ищем в m_props (метаданные типа)
+    Object meta = Aliasable::make_step_alias(key);
+    if (!meta.is_undefined()) return meta;
+
+    // 1. Поиск ЗНАЧЕНИЯ по ИМЕНИ: (-> my-enum 'SOME_VAL)
+    if (key.is_symbol() || key.is_string()) {
+        std::string name = key.to_std_string();
+        auto it = m_entries.find(name);
+        if (it != m_entries.end()) {
+            return Object::make_integer(it->second);
+        }
+    }
+
+    // 2. Поиск ИМЕНИ по ЗНАЧЕНИЮ: (-> my-enum 3)
+    // Это невероятно полезно для логирования!
+    if (key.is_integer()) {
+        int64_t val = key.as_integer();
+        for (const auto& [name, value] : m_entries) {
+            if (value == val) {
+                return Object::make_string(name);
+            }
+        }
+    }
+
+    return Object::make_empty_list();
 }
 
 // ============================================================================
