@@ -1990,6 +1990,47 @@ void TypeSystem::builtin_structure_inherit(StructureType* st) {
 }
 
 // ============================================================================
+// Aliases
+// ============================================================================
+void TypeSystem::define_all_aliases() {
+    define_alias("all-types-count", [](Aliasable* s) {
+        return Object::make_integer(static_cast<TypeSystem*>(s)->get_types_count());
+    });
+
+    define_alias("pointer-size", [](Aliasable* s) {
+        return Object::make_integer(static_cast<TypeSystem*>(s)->get_pointer_size());
+    });
+}
+
+Object TypeSystem::make_step_alias(const Object& key) {
+    // 1. Сначала свойства (мета-данные системы типов)
+    Object base_attempt = Aliasable::make_step_alias(key);
+    if (!base_attempt.is_undefined()) return base_attempt;
+
+    // 2. Трактуем ключ как имя типа
+    std::string type_name;
+    if (key.is_symbol()) {
+        type_name = key.to_std_string();
+    } else if (key.is_string()) {
+        type_name = key.to_std_string();
+    } else {
+        return Object::make_undefined(); // Или бросай ошибку, если хочешь строгости
+    }
+
+    // 3. Ищем тип
+    // Предполагаем, что lookup_type возвращает какой-то указатель или shared_ptr
+    auto type_ptr = lookup_type_no_throw(type_name);
+    
+    if (type_ptr) {
+        // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
+        // Если как unique_ptr, то возвращай NativeRef с пустым делетером (но помни о рисках!)
+        return Object::make_native_ref(std::shared_ptr<Type>(type_ptr, [](Type*){}));
+    }
+
+    return Object::make_undefined();
+}
+
+// ============================================================================
 // Reverse field lookup (упрощенные заглушки)
 // ============================================================================
 
@@ -2263,4 +2304,11 @@ std::string FieldReverseLookupOutput::Token::print() const {
     default:
         return "?";
     }
+}
+
+script::Object TypeSystem::inspect(script::SymbolTable& symbols) const {
+    return pretty_print::build_list(
+        symbols.make_symbol("type-system"), 
+        symbols.make_symbol(":size"), 
+        Object::make_integer(m_types.size()));
 }

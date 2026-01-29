@@ -30,10 +30,10 @@ namespace script
     }
 
     void SymbolTable::init_core_symbols() {
-        core.undefined      = Object::make_symbol(this, "undefined");
-        core.object_true    = Object::make_symbol(this, "#t");
-        core.object_false   = Object::make_symbol(this, "#f");
-        core.object_nil     = Object::make_empty_list();
+        constants.obj_null = Object::make_empty_list();
+        core.sym_undefined  = Object::make_symbol(this, ":undefined");
+        core.sym_true       = Object::make_symbol(this, "#t");
+        core.sym_false      = Object::make_symbol(this, "#f");
         core.optional       = Object::make_symbol(this, ":optional");
         core.key            = Object::make_symbol(this, ":key");
         core.rest           = Object::make_symbol(this, ":rest");
@@ -53,10 +53,12 @@ namespace script
         core.reader         = Object::make_symbol(this, "reader");
         core.lextoken       = Object::make_symbol(this, "lextoken");
         core.unknown        = Object::make_symbol(this, "unknown");
+        core.cell           = Object::make_symbol(this, "cell");
+        core.native_ref     = Object::make_symbol(this, "native-ref");
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
         switch (type) {
-            case ObjectType::UNDEFINED:         return core.undefined;
+            case ObjectType::UNDEFINED:         return core.sym_undefined;
             case ObjectType::EMPTY_LIST:        return core.empty_list; // было EmptyList
             case ObjectType::INTEGER:           return core.integer;    // было Integer
             case ObjectType::FLOAT:             return core.float_pt;   // было Float
@@ -70,6 +72,8 @@ namespace script
             case ObjectType::MACRO:             return core.macro;
             case ObjectType::ENVIRONMENT:       return core.environment;
             case ObjectType::READER:            return core.reader;
+            case ObjectType::CELL:              return core.cell;
+            case ObjectType::NATIVE_REF:        return core.native_ref;
             default:                            return core.unknown;
         }
     }
@@ -209,6 +213,10 @@ namespace script
         return "[string-hash-table]";
         case ObjectType::READER:
         return "[reader]";
+        case ObjectType::CELL:
+        return "[cell]";
+        case ObjectType::NATIVE_REF:
+        return "[native-ref]";
         default:
             throw std::runtime_error(fmt::format("unknown object type {} in object_type_to_string", (int)type));
         }
@@ -218,6 +226,43 @@ namespace script
         throw std::runtime_error("Type error: expected " + expected +
             ", got " + object_type_to_string(type));
     }
+
+    Object Object::step(const Object& key) const {
+        // Если тип объекта предполагает наличие HeapObject (CELL, NATIVE_REF, TYPE и т.д.)
+        if (this->is_heap_object()) { 
+            return this->as_heap_object()->make_step_alias(key);
+        }
+        
+        throw std::runtime_error(fmt::format("Type {} does not support '->' operator", this->type_name()));
+    }
+        
+    // ============================================================================
+    // Object factory
+    // ============================================================================
+
+    // 1. Для оператора (-> base key)
+    // По умолчанию объект не дает в себя "зайти".
+    Object HeapObject::make_step_alias(const Object& key) {
+        (void)key;
+        throw std::runtime_error(fmt::format("Object {} is not navigable", this->print()));
+    }
+
+    // 2. Для автоматического eval и явного (deref obj)
+    // По умолчанию объект разыменовывается в самого себя.
+    Object HeapObject::deref() {
+        return Object::make_native_ref(shared_from_this());
+    }
+
+    // 3. Для (set! obj val)
+    // По умолчанию объекты в куче неизменяемы (кроме ячеек).
+    void HeapObject::assign(const Object& value) {
+        (void)value;
+        throw std::runtime_error(fmt::format("Object {} is not assignable", this->print()));
+    }
+
+    // ============================================================================
+    // Object factory
+    // ============================================================================
 
     // Constructors
     Object Object::make_integer(IntType value) {
@@ -313,6 +358,35 @@ namespace script
         obj.heap_obj = std::make_shared<ReaderObject>(textStream);
         return obj;    
     }
+        
+    Object Object::make_native_ref(std::shared_ptr<HeapObject> heap_object)
+    {
+        Object obj;
+        obj.type = ObjectType::NATIVE_REF;
+        obj.heap_obj = std::move(heap_object);
+        return obj;    
+    }
+
+    Object Object::make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type)
+    {
+        Object obj;
+        obj.type = ObjectType::CELL;
+        
+        // Сначала настраиваем данные внутри MemoryCell
+        if (cell) {
+            cell->m_kind = type;
+        }
+        
+        // И только в самом конце отдаем владение объекту Object
+        obj.heap_obj = std::move(cell); 
+        return obj;
+    }
+
+    Object Object::make_cell(void* raw_ptr, MemoryAccessKind type) {
+        // Создаем НОВЫЙ объект ячейки в куче, который будет смотреть на raw_ptr
+        auto cell = std::make_shared<MemoryCell>(raw_ptr);
+        return make_cell(std::move(cell), type);
+    }
 
     Object Object::make_lambda(const ArgumentSpec& args, const Object& body,
         const std::shared_ptr<EnvironmentObject>& env) {
@@ -387,6 +461,16 @@ namespace script
         return static_cast<StringObject*>(heap_obj.get());
     }
 
+    std::string Object::to_std_string() const {
+        if (type == ObjectType::STRING) 
+            return static_cast<StringObject*>(heap_obj.get())->data;
+        if (type == ObjectType::SYMBOL) 
+            return  symbol_obj.value.c_str();
+
+        throw std::runtime_error("as_std_string called on a " + object_type_to_string(type) + " " +
+                print());
+        return nullptr;
+    }
 
     LambdaObject* Object::as_lambda() const {
         if (type != ObjectType::LAMBDA) {
@@ -494,13 +578,32 @@ namespace script
         return integer_obj;
     }
 
+    MemoryCell* Object::as_cell() const {
+        if (type != ObjectType::CELL) {
+            throw std::runtime_error("as_cell called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<MemoryCell*>(heap_obj.get());
+    }
+  
+    HeapObject* Object::as_heap_object() const {
+        if (type != ObjectType::NATIVE_REF) {
+            throw std::runtime_error("as_reference called on a " + object_type_to_string(type) +
+                " " + print());
+        }
+        return dynamic_cast<HeapObject*>(heap_obj.get());
+    }
+
     // Comparison
     bool Object::operator==(const Object& other) const {
         if (type != other.type) return false;
 
         switch (type) {
-        case ObjectType::EMPTY_LIST:
-            return true;
+        case ObjectType::UNDEFINED:
+            return false;
+            
+        case ObjectType::STRING:
+            return as_string()->data == other.as_string()->data;
         case ObjectType::INTEGER:
             return integer_obj.value == other.integer_obj.value;
         case ObjectType::FLOAT:
@@ -509,8 +612,16 @@ namespace script
             return char_obj.value == other.char_obj.value;
         case ObjectType::SYMBOL:
             return symbol_obj.value.name_ptr == other.symbol_obj.value.name_ptr;
-        case ObjectType::STRING:
-            return as_string() == other.as_string();
+        
+        case ObjectType::ENVIRONMENT:
+        case ObjectType::LAMBDA:
+        case ObjectType::MACRO:
+        case ObjectType::READER:
+            return heap_obj == other.heap_obj;
+        
+        case ObjectType::EMPTY_LIST:
+            return true;
+
         case ObjectType::PAIR:
             return as_pair()->car == other.as_pair()->car && as_pair()->cdr == other.as_pair()->cdr;
         case ObjectType::ARRAY: {
@@ -519,8 +630,13 @@ namespace script
             if (!this_arr || !other_arr) return false;
             return this_arr->data == other_arr->data;
         }
+
+        case ObjectType::STRING_HASH_TABLE:
+            return as_hash_table()->data == other.as_hash_table()->data;
+
         default:
-            return heap_obj.get() == other.heap_obj.get();
+            throw std::runtime_error("equality not implemented for " + print());
+
         }
     }
 
@@ -648,6 +764,141 @@ namespace script
         return lb.finalize();
     }
 
+    ArgumentSpec ArgumentSpec::create(
+            const std::vector<std::string>& required,
+            const std::map<std::string, Object>& optional,
+            const std::map<std::string, Object>& keys,
+            const std::string& rest_name 
+        ) {
+            ArgumentSpec spec;
+            spec.keys = !keys.empty();
+            spec.rest = rest_name;
+            spec.varargs = false; // Мы явно задаем структуру
+
+            // 1. Обязательные позиционные аргументы
+            for (const auto& name : required) {
+                PositionalArg arg;
+                arg.name = name;
+                arg.is_optional = false;
+                spec.unnamed.push_back(arg);
+            }
+
+            // 2. Опциональные позиционные аргументы (с дефолтами)
+            for (const auto& [name, default_val] : optional) {
+                PositionalArg arg;
+                arg.name = name;
+                arg.is_optional = !default_val.is_undefined();
+                arg.default_value = default_val;
+                spec.unnamed.push_back(arg);
+            }
+
+            // 3. Ключевые аргументы (&key с дефолтами)
+            for (const auto& [name, default_val] : keys) {
+                NamedArg arg;
+                arg.has_default = !default_val.is_undefined();
+                arg.default_value = default_val;
+                spec.named[name] = arg;
+            }
+
+            return spec;
+        }
+        
+    // ============================================================================
+    // Memory Cell
+    // ============================================================================
+        
+    Object MemoryCell::inspect(SymbolTable& symbols) const {
+        ListBuilder lb{symbols};
+
+        lb.push_back(symbols.core.cell); // Символ 'cell
+        
+        // Вместо "base" и "key" мы показываем физику:
+        lb.push_kv(symbols, "address", Object::make_integer((uintptr_t)m_ptr)); 
+        
+        // Показываем текущее значение, раз мы "арестовали" этот участок памяти
+        try {
+            lb.push_kv(symbols, "value", const_cast<MemoryCell*>(this)->get());
+        } catch (...) {
+            lb.push_kv(symbols, "value", symbols.core.unknown);
+        }
+
+        return lb.finalize();
+    }
+
+    Object MemoryCell::make_step_alias(const Object& key) {
+        (void) key;
+        // Пытаемся привести базовый Type* к StructType*
+        throw std::runtime_error("Can't make step alias on the MemoryCell");
+        return Object::make_undefined();
+    }
+    
+    Object MemoryCell::get() {
+        if (!m_ptr) return Object::make_undefined();
+
+        switch (m_kind) {
+            case MemoryAccessKind::SINT8:   return Object::make_integer(*(int8_t*)m_ptr);
+            case MemoryAccessKind::UINT8:   return Object::make_integer(*(uint8_t*)m_ptr);
+            
+            case MemoryAccessKind::SINT16:  return Object::make_integer(*(int16_t*)m_ptr);
+            case MemoryAccessKind::UINT16:  return Object::make_integer(*(uint16_t*)m_ptr);
+            
+            case MemoryAccessKind::SINT32:  return Object::make_integer(*(int32_t*)m_ptr);
+            case MemoryAccessKind::UINT32:  return Object::make_integer(*(uint32_t*)m_ptr);
+            
+            case MemoryAccessKind::SINT64:  return Object::make_integer(*(int64_t*)m_ptr);
+            case MemoryAccessKind::UINT64:  return Object::make_integer((int64_t)*(uint64_t*)m_ptr); // Каст к знаковому для Лиспа
+
+            case MemoryAccessKind::FLOAT:   return Object::make_float(*(float*)m_ptr);
+            case MemoryAccessKind::DOUBLE:  return Object::make_float((float)*(double*)m_ptr);
+
+            case MemoryAccessKind::POINTER: 
+                return Object::make_integer((uintptr_t)*(void**)m_ptr);
+
+            case MemoryAccessKind::STRING: {
+                // В OpenGOAL строка — это часто указатель на начало char данных
+                char* str_ptr = *(char**)m_ptr;
+                return str_ptr ? Object::make_string(str_ptr) : Object::make_empty_list();
+            }
+
+            default:
+                return Object::make_undefined();
+        }
+    }
+
+    void MemoryCell::set(const Object& val) {
+        if (!m_ptr) return;
+
+        switch (m_kind) {
+            case MemoryAccessKind::SINT8:   *(int8_t*)m_ptr  = (int8_t)val.as_integer(); break;
+            case MemoryAccessKind::UINT8:   *(uint8_t*)m_ptr  = (uint8_t)val.as_integer(); break;
+            
+            case MemoryAccessKind::SINT16:  *(int16_t*)m_ptr = (int16_t)val.as_integer(); break;
+            case MemoryAccessKind::UINT16:  *(uint16_t*)m_ptr = (uint16_t)val.as_integer(); break;
+            
+            case MemoryAccessKind::SINT32:  *(int32_t*)m_ptr = (int32_t)val.as_integer(); break;
+            case MemoryAccessKind::UINT32:  *(uint32_t*)m_ptr = (uint32_t)val.as_integer(); break;
+            
+            case MemoryAccessKind::SINT64:  *(int64_t*)m_ptr = (int64_t)val.as_integer(); break;
+            case MemoryAccessKind::UINT64:  *(uint64_t*)m_ptr = (uint64_t)val.as_integer(); break;
+
+            case MemoryAccessKind::FLOAT:   *(float*)m_ptr   = val.as_float(); break;
+            case MemoryAccessKind::DOUBLE:  *(double*)m_ptr  = (double)val.as_float(); break;
+
+            case MemoryAccessKind::POINTER: 
+                *(uintptr_t*)m_ptr = (uintptr_t)val.as_integer(); 
+                break;
+
+            case MemoryAccessKind::STRING:
+                // Внимание: запись в строки обычно требует аллокации, 
+                // здесь мы просто меняем указатель, если это допустимо.
+                *(char**)m_ptr = const_cast<char*>(val.to_std_string().c_str()); 
+                break;
+
+            default:
+                throw std::runtime_error("Unsupported memory write operation");
+        }
+    }
+
     // -- PRINTS --------------------------------------------------------------
     /**
      * Вспомогательная функция для безопасного строкового представления объекта
@@ -676,7 +927,6 @@ namespace script
     std::string ArgumentSpec::print_full(size_t max_len, size_t max_arg_len) const {
 
         std::stringstream ss;
-        bool print_optional = true;
 
         ss << "(";
 
@@ -731,7 +981,6 @@ namespace script
     std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {
 
         std::stringstream ss;
-        bool print_optional = true;
 
         ss << "(";
 
@@ -801,6 +1050,10 @@ namespace script
 
         ss << ")";
         return ss.str();
+    }
+
+    std::string MemoryCell::print() const  { 
+        return fmt::format("#<cell addr={:p}>", m_ptr); 
     }
 
     // -- INSPECTORS --------------------------------------------------------------

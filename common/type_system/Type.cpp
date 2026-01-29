@@ -45,6 +45,52 @@ bool MethodInfo::operator!=(const MethodInfo& other) const {
     return !(*this == other);
 }
 
+void MethodInfo::define_all_aliases() {
+    // Регистрация базовых полей
+    define_alias("id", [](Aliasable* s) {
+        return Object::make_integer(static_cast<MethodInfo*>(s)->id);
+    });
+    
+    define_alias("name", [](Aliasable* s) {
+        return Object::make_string(static_cast<MethodInfo*>(s)->name);
+    });
+    
+    define_alias("defined-in", [](Aliasable* s) {
+        return Object::make_string(static_cast<MethodInfo*>(s)->defined_in_type);
+    });
+    
+    define_alias("type-name", [](Aliasable* s) {
+        return Object::make_string(static_cast<MethodInfo*>(s)->type_name);
+    });
+
+    // Навигация в TypeSpec
+    define_alias("type", [](Aliasable* s) {
+        auto m = static_cast<MethodInfo*>(s);
+        // Оборачиваем TypeSpec в NativeRef. 
+        // Это позволит нам писать (-> method 'type 'base-type)
+        return Object::make_native_ref(std::make_shared<TypeSpec>(m->type));
+    });
+
+    // Флаги и опциональные поля
+    define_alias("virtual?", [](Aliasable* s) {
+        return Object::make_integer(!static_cast<MethodInfo*>(s)->no_virtual);
+    });
+    
+    define_alias("overrides?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<MethodInfo*>(s)->overrides_parent);
+    });
+
+    define_alias("doc", [](Aliasable* s) {
+        auto m = static_cast<MethodInfo*>(s);
+        return m->docstring ? Object::make_string(*m->docstring) : Object::make_empty_list();
+    });
+
+    define_alias("overlay", [](Aliasable* s) {
+        auto m = static_cast<MethodInfo*>(s);
+        return m->overlay_name ? Object::make_string(*m->overlay_name) : Object::make_empty_list();
+    });
+}
+
 // ============================================================================
 // Field Implementation  
 // ============================================================================
@@ -100,6 +146,43 @@ void Field::mark_as_user_placed() {
 
 bool Field::operator!=(const Field& other) const {
     return !(*this == other);
+}
+
+void Field::define_all_aliases() {
+
+    define_alias("name", [](Aliasable* s) {
+            return Object::make_string(static_cast<Field*>(s)->name());
+        });
+    define_alias("offset", [](Aliasable* s) {
+            return Object::make_integer(static_cast<Field*>(s)->offset());
+        });
+    define_alias("alignment", [](Aliasable* s) {
+            return Object::make_integer(static_cast<Field*>(s)->alignment());
+        });
+    define_alias("type", [](Aliasable* s) {
+            auto f = static_cast<Field*>(s);
+            // Возвращаем TypeSpec как NativeRef для дальнейшей навигации
+            return Object::make_native_ref(std::make_shared<TypeSpec>(f->type()));
+        });
+        // Флаги состояния поля
+    define_alias("inline?", [](Aliasable* s) {
+            return Object::make_integer(static_cast<Field*>(s)->is_inline() ? 1 : 0);
+        });
+    define_alias("dynamic?", [](Aliasable* s) {
+            return Object::make_integer(static_cast<Field*>(s)->is_dynamic() ? 1 : 0);
+        });
+    define_alias("array?", [](Aliasable* s) {
+            return Object::make_integer(static_cast<Field*>(s)->is_array() ? 1 : 0);
+        });
+    define_alias("array-size", [](Aliasable* s) {
+            auto f = static_cast<Field*>(s);
+            return f->is_array() ? Object::make_integer(f->array_size()) : Object::make_integer(0);
+        });
+        // Комментарии и документация
+    define_alias("comment", [](Aliasable* s) {
+            auto f = static_cast<Field*>(s);
+            return f->has_comment() ? Object::make_string(f->comment()) : Object::make_empty_list();
+        });     
 }
 
 // ============================================================================
@@ -288,6 +371,35 @@ std::string Type::get_runtime_name() const {
     return m_runtime_name;
 }
 
+void Type::define_all_aliases() {
+    // В базовом Type мы не вызываем родителя (Aliasable), так как там пусто.
+    // Просто регистрируем общие для всех типов поля.
+    
+    define_alias("name", [](Aliasable* s) {
+        return Object::make_string(static_cast<Type*>(s)->get_name());
+    });
+
+    define_alias("parent", [](Aliasable* s) {
+        return Object::make_string(static_cast<Type*>(s)->get_parent());
+    });
+
+    define_alias("size", [](Aliasable* s) {
+        return Object::make_integer(static_cast<Type*>(s)->get_size_in_memory());
+    });
+
+    define_alias("alignment", [](Aliasable* s) {
+        return Object::make_integer(static_cast<Type*>(s)->get_in_memory_alignment());
+    });
+
+    define_alias("boxed?", [](Aliasable* s) {
+        return Object::make_integer(static_cast<Type*>(s)->is_boxed() ? 1 : 0);
+    });
+
+    define_alias("methods-count", [](Aliasable* s) {
+        return Object::make_integer(static_cast<Type*>(s)->get_num_methods());
+    });
+}
+
 // ============================================================================
 // NullType Implementation
 // ============================================================================
@@ -344,6 +456,15 @@ std::string NullType::diff_impl(const Type& other) const {
     return (*this == other) ? "" : "NullType comparison failed";
 }
 
+void NullType::define_all_aliases() {
+    Type::define_all_aliases();
+
+    // Мы можем добавить свойство-маркер, чтобы в Лиспе было ясно, что это Null
+    define_alias("null?", [](Aliasable* /*s*/) {
+        return Object::make_integer(1); 
+    });
+}
+
 // ============================================================================
 // ValueType Implementation  
 // ============================================================================
@@ -355,7 +476,6 @@ ValueType::ValueType(std::string parent, std::string name, bool is_boxed,
     m_sign_extend(sign_extend),
     m_reg_kind(reg) {
 }
-
 
 int ValueType::get_offset() const {
     return m_offset;
@@ -447,6 +567,30 @@ RegClass ValueType::get_preferred_reg_class() const {
     return m_reg_kind;
 }
 
+void ValueType::define_all_aliases() {
+    // 1. Сначала вызываем метод родителя. 
+    // Это наполнит m_props базовыми свойствами (name, parent и т.д.)
+    Type::define_all_aliases();
+    
+    // 2. Добавляем свойства конкретно этого класса прямо в m_props
+    define_alias("size", [](Aliasable* s) { 
+        return Object::make_integer(static_cast<ValueType*>(s)->m_size); 
+    });
+    
+    define_alias("sign-extend?", [](Aliasable* s) { 
+        return Object::make_integer(static_cast<ValueType*>(s)->m_sign_extend ? 1 : 0); 
+    });
+
+    define_alias("reg-class", [](Aliasable* s) { 
+        // Здесь можно вызвать вспомогательную функцию преобразования enum в строку
+        return Object::make_string("some-reg"); 
+    });
+    
+    define_alias("offset", [](Aliasable* s) { 
+        return Object::make_integer(static_cast<ValueType*>(s)->m_offset); 
+    });
+}
+
 // ============================================================================
 // ReferenceType Implementation
 // ============================================================================
@@ -460,6 +604,25 @@ std::string ReferenceType::print() const {
         m_name, m_parent, m_is_boxed, print_method_info());
 }
 
+void ReferenceType::define_all_aliases() {
+    // 1. Вызываем родителя (Type), чтобы он наполнил таблицу 
+    // своими базовыми свойствами (name, size, alignment и т.д.)
+    Type::define_all_aliases();
+
+    // 2. Добавляем специфику именно ссылочных типов
+    define_alias("heap-base", [](Aliasable* s) {
+        return Object::make_integer(static_cast<ReferenceType*>(s)->heap_base());
+    });
+
+    define_alias("pointer?", [](Aliasable* s) {
+        // Для ReferenceType это всегда истина
+        return Object::make_integer(1);
+    });
+
+    define_alias("load-size", [](Aliasable* s) {
+        return Object::make_integer(static_cast<ReferenceType*>(s)->get_load_size());
+    });
+}
 // ============================================================================
 // StructureType Implementation
 // ============================================================================

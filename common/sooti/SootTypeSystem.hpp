@@ -1,49 +1,45 @@
 #pragma once
 
-#include "common/sooti/Reader.hpp"
-#include "common/sooti/Object.hpp"
-#include "common/sooti/Interpreter.hpp"
+#include <memory>
+// Нам нужны полные определения Object и Arguments для сигнатур методов
+#include "common/sooti/Object.hpp" 
 
 class TypeSystem;
-class Type;
-class TypeSpec;
 
 namespace script {
 
-class SootTypeSystem
-{
-    friend class Interpreter;
+class Interpreter;
+class EnvironmentObject;
 
+class SootTypeSystem {
+public:
     enum class BaseTyles {
         Undefined,
         Default,
         Z80,
     };
 
-public:
-    SootTypeSystem() = default;
     SootTypeSystem(Interpreter& interpreter);
     ~SootTypeSystem();
 
     void init_type_system(BaseTyles types);
-    BaseTyles is_initialized() { return m_type; }
+    BaseTyles get_initialization_type() const { return m_type; }
 
     Object eval_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
 
-    Object eval_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-
+    // Убедись, что Arguments& здесь соответствует реализации
     Object eval_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
     Object eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
-    private:
-    Object type_spec_to_lisp(const TypeSpec& ts) const;
-    Object type_to_lisp(const Type* type) const;
-    Object build_list(const std::vector<Object>& objects) const;
-    
-    std::unique_ptr<TypeSystem> m_type_system;
+    TypeSystem* get_ts() { return m_type_system.get(); }
+    std::shared_ptr<TypeSystem> get_shared_ts() { return m_type_system; }
+
+private:
+    std::shared_ptr<TypeSystem> m_type_system;
     Interpreter& m_interpreter;
-    BaseTyles m_type;
+    BaseTyles m_type = BaseTyles::Undefined;
 };
-}
+
+} // namespace script

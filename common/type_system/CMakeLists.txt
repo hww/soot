@@ -6,6 +6,7 @@ add_library(libtypesys
     common/type_system/Defenum.cpp
     common/type_system/Deftype.cpp
     common/type_system/State.cpp
+    common/type_system/Aliasable.cpp
 )
 
 # Линкуем fmt если нужно

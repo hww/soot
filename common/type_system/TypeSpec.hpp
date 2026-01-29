@@ -10,6 +10,16 @@
 #include <optional>
 #include <memory>
 
+#include "Aliasable.hpp"
+
+
+namespace script
+{
+    class Object;    
+}; // namespace script
+
+using namespace script;
+
 // ============================================================================
 // Type Tag
 // ============================================================================
@@ -29,7 +39,7 @@ struct TypeTag {
 // TypeSpec
 // ============================================================================
 
-class TypeSpec {
+class TypeSpec : public Aliasable {
 public:
     // Constructors
     TypeSpec() = default;
@@ -54,6 +64,8 @@ public:
 
     // Printing
     std::string print() const;
+    Object inspect(SymbolTable& symbols) const;
+
 
     // Argument management
     void add_arg(const TypeSpec& ts);
@@ -87,6 +99,8 @@ public:
     const std::vector<TypeTag>& tags() const { return m_tags; }
     std::vector<TypeTag>& tags() { return m_tags; }
 
+    void define_all_aliases() override;
+    Object make_step_alias(const Object& key) override;
 private:
     std::string m_type;
     std::unique_ptr<std::vector<TypeSpec>> m_arguments;
@@ -113,4 +127,4 @@ namespace typespec {
     TypeSpec function();
     TypeSpec pointer(const TypeSpec& element);
     TypeSpec inline_array(const TypeSpec& element);
-}
+};

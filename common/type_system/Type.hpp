@@ -15,6 +15,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/sooti/Export.hpp"
+#include "Aliasable.hpp"
 
 // Forward declarations
 class Type;
@@ -28,6 +29,8 @@ class Field;
 class BitField;
 class MethodInfo;
 class TypeSpec;
+
+using namespace script;
 
 // ============================================================================
 // Common Constants
@@ -65,7 +68,7 @@ struct TargetConfig {
 
 struct DefinitionMetadata {
     // Близко к оригиналу, но с удобными методами
-    std::optional<script::ShortInfo> definition_info;
+    std::optional<ShortInfo> definition_info;
     std::optional<std::string> docstring;
 
     // Добавляем только convenience методы без изменения структуры данных
@@ -84,9 +87,21 @@ struct DefinitionMetadata {
 // Method Information
 // ============================================================================
 
-class MethodInfo {
+class MethodInfo : public Aliasable {
     
 public:
+    MethodInfo(){}
+    MethodInfo(int id, std::string name, TypeSpec type, 
+               std::string defined_in, std::string type_name,
+               bool no_virtual, bool overrides, bool only_doc,
+               std::optional<std::string> doc,
+               std::optional<std::string> overlay)
+        : id(id), name(std::move(name)), type(std::move(type)),
+          defined_in_type(std::move(defined_in)), type_name(std::move(type_name)),
+          no_virtual(no_virtual), overrides_parent(overrides),
+          only_overrides_docstring(only_doc), docstring(std::move(doc)),
+          overlay_name(std::move(overlay)) {}
+
     int id = -1;
     std::string name;
     TypeSpec type;
@@ -102,13 +117,21 @@ public:
     bool operator!=(const MethodInfo& other) const;
     std::string print_one_line() const;
     std::string diff(const MethodInfo& other) const;
+
+    std::string print() const override { return "<method-info>"; }
+    Object inspect(SymbolTable& symbols) const override { return symbols.make_symbol("method-info"); }
+
+    void define_all_aliases() override;
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }
 };
 
 // ============================================================================
 // Field Definition
 // ============================================================================
 
-class Field {
+class Field : public Aliasable {
 public:
     Field() = default;
     Field(std::string name, TypeSpec type);
@@ -121,6 +144,8 @@ public:
     void mark_as_user_placed();
 
     std::string print() const;
+    Object inspect(SymbolTable& symbols) const { return symbols.make_symbol("field");  }
+
     const TypeSpec& type() const { return m_type; }
     TypeSpec& type() { return m_type; }
     bool is_inline() const { return m_inline; }
@@ -154,6 +179,11 @@ public:
     void set_field_score(double value) { m_field_score = value; }
     void set_decomp_as_ts(const TypeSpec& ts) { m_decomp_as_ts = ts; }
 
+    void define_all_aliases() override;
+
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }    
 private:
     friend class TypeSystem;
     void set_alignment(int alignment) { m_alignment = alignment; }
@@ -180,7 +210,7 @@ private:
 // BitField Definition
 // ============================================================================
 
-class BitField {
+class BitField : public Aliasable {
 public:
     BitField() = default;
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
@@ -194,6 +224,9 @@ public:
     bool operator==(const BitField& other) const;
     bool operator!=(const BitField& other) const;
     std::string print() const;
+    Object inspect(SymbolTable& /*symbols*/) const override { 
+        return Object::make_empty_list(); 
+    }
     std::string diff(const BitField& other) const;
 
 private:
@@ -208,12 +241,14 @@ private:
 // Base Type Definition
 // ============================================================================
 
-class Type {
+class Type : public Aliasable {
 public:
     static int verbose;
 public:
     Type(std::string parent, std::string name, bool is_boxed, int heap_base);
     virtual ~Type() = default;
+
+    virtual std::string get_class_name() const = 0;
 
     // Core type properties - PURE VIRTUAL
     virtual bool is_reference() const = 0;
@@ -233,6 +268,12 @@ public:
     // Printing and debugging
     virtual std::string print() const = 0;
     std::string diff(const Type& other) const;
+    void define_all_aliases() override;
+
+    // Обязательно разрешаем базовую навигацию
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }
 
     // Method system
     bool get_my_method(const std::string& name, MethodInfo* out) const;
@@ -324,6 +365,8 @@ class NullType : public Type {
 public:
     NullType(std::string name);
 
+    std::string get_class_name() const override { return "null"; }
+
     bool is_reference() const override;
     int get_load_size() const override;
     bool get_load_signed() const override;
@@ -335,8 +378,14 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
+    void define_all_aliases() override;
+
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }
 protected:
     std::string diff_impl(const Type& other) const override;
 };
@@ -349,6 +398,8 @@ class ValueType : public Type {
 public:
     ValueType(std::string parent, std::string name, bool is_boxed, int size, bool sign_extend, RegClass reg);
 
+    std::string get_class_name() const override { return "value"; }
+
     bool is_reference() const override;
     int get_load_size() const override;
     bool get_load_signed() const override;
@@ -360,10 +411,16 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     void inherit(const ValueType* parent);
 
+    void define_all_aliases() override;
+
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }
 protected:
     friend class TypeSystem;
     void set_offset(int offset) { m_offset = offset; }
@@ -382,6 +439,8 @@ protected:
 class ReferenceType : public Type {
 public:
     ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base);
+    
+    std::string get_class_name() const override { return "reference"; }
 
     bool is_reference() const override { return true; }
     int get_load_size() const override { return 4; } // pointers are 4 bytes
@@ -389,6 +448,12 @@ public:
     RegClass get_preferred_reg_class() const override { return RegClass::GPR_64; }
 
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    
+    void define_all_aliases() override;
+    Object make_step_alias(const Object& key) override {
+        return Aliasable::make_step_alias(key);
+    }
 
     // These remain pure virtual - must be implemented by derived classes
     int get_size_in_memory() const override = 0;
@@ -406,7 +471,10 @@ class StructureType : public ReferenceType {
 public:
     StructureType(std::string parent, std::string name, bool boxed, bool dynamic, bool pack, int heap_base);
 
+    std::string get_class_name() const override { return "structure"; }
+
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
     void inherit(StructureType* parent);
     bool operator==(const Type& other) const override;
 
@@ -463,10 +531,13 @@ protected:
 class BasicType : public StructureType {
 public:
     BasicType(std::string parent, std::string name, bool dynamic, int heap_base);
+    
+    std::string get_class_name() const override { return "basic"; }
 
     int get_offset() const override { return 0; } // BASIC_OFFSET
     int get_inline_array_start_alignment() const override { return 16; }
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     bool final() const { return m_final; }
@@ -485,6 +556,8 @@ protected:
 class BitFieldType : public ValueType {
 public:
     BitFieldType(std::string parent, std::string name, int size, bool sign_extend);
+
+    std::string get_class_name() const override { return "bitfield"; }
 
     bool lookup_field(const std::string& name, BitField* out) const;
     std::string print() const override;
@@ -509,7 +582,10 @@ public:
     EnumType(const ValueType* parent, std::string name, bool is_bitfield,
         const std::unordered_map<std::string, int64_t>& entries);
 
+    std::string get_class_name() const override { return "enum"; }
+
     std::string print() const override;
+    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     const std::unordered_map<std::string, int64_t>& entries() const { return m_entries; }

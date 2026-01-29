@@ -33,9 +33,21 @@ namespace script
         SYMBOL, STRING, 
         LAMBDA, MACRO, 
         ENVIRONMENT, 
-        READER
+        READER,
+        NATIVE_REF,
+        CELL
     };
 
+    enum class MemoryAccessKind {
+        SINT8, UINT8, 
+        SINT16, UINT16, 
+        SINT32, UINT32, 
+        SINT64, UINT64, 
+        FLOAT, DOUBLE,
+        POINTER,      // Просто адрес
+        STRING        // Специфично для OpenGOAL (адрес на символы)
+    };
+    
     std::string object_type_to_string(ObjectType type);
 
     // Forward declarations
@@ -51,9 +63,9 @@ namespace script
     class TextStream;
     class ReaderObject;
     class Reader;
-    class LextokenObject;
     class PlaceObject;
     class Object;
+    class MemoryCell;
 
     struct ArgumentSpec;
 
@@ -137,12 +149,24 @@ namespace script
     using SymbolObject = FixedObject<InternedSymbolPtr>;
 
     // Базовый класс для heap-allocated объектов
-    class HeapObject {
+    class HeapObject : public std::enable_shared_from_this<HeapObject> {
     public:
         virtual ~HeapObject() = default;
         virtual std::string print() const = 0;
         virtual std::string printc() const { return print(); }
         virtual Object inspect(SymbolTable& symbols) const = 0;
+
+        // 1. Для оператора (-> base key)
+        // По умолчанию объект не дает в себя "зайти".
+        virtual Object make_step_alias(const Object& key);
+
+        // 2. Для автоматического eval и явного (deref obj)
+        // По умолчанию объект разыменовывается в самого себя.
+        virtual Object deref();
+
+        // 3. Для (set! obj val)
+        // По умолчанию объекты в куче неизменяемы (кроме ячеек).
+        virtual void assign(const Object& value);
     };
 
     // Main Object class
@@ -162,7 +186,11 @@ namespace script
         // For heap types (reference semantics)
         std::shared_ptr<HeapObject> heap_obj;
 
+        // адресация к объекту -> key
+        Object step(const Object& key) const;
+        
         // Constructors for fixed types
+        static Object make_undefined() { return { type: ObjectType::UNDEFINED }; }
         static Object make_integer(IntType value);
         static Object make_float(FloatType value);
         static Object make_char(char value);
@@ -179,7 +207,9 @@ namespace script
         static Object make_macro(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
         static Object make_hash_table(int size = 16);
         static Object make_reader(TextStream* textStream);
-        static Object make_lextoken(const Object& type, const Object& value, const TextRef& info);
+        static Object make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type);
+        static Object make_cell(void* raw_ptr, MemoryAccessKind type);
+        static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
 
         // String representation
         std::string print() const;
@@ -199,6 +229,8 @@ namespace script
         bool is_keyword() const { return type == ObjectType::SYMBOL && symbol_obj.value.starts_with_colon(); }
         bool is_string() const { return type == ObjectType::STRING; }
         bool is_pair() const { return type == ObjectType::PAIR; }
+        bool is_cell() const { return type == ObjectType::CELL; }
+        bool is_native_ref() const { return type == ObjectType::NATIVE_REF; }
         bool is_array() const { return type == ObjectType::ARRAY; }
         bool is_empty_list() const { return type == ObjectType::EMPTY_LIST; }
         bool is_list() const { return is_empty_list() || is_pair(); }
@@ -246,10 +278,12 @@ namespace script
         LambdaObject*               as_lambda() const;
         EnvironmentObject*          as_env() const;
         ReaderObject*               as_reader() const;
-        LextokenObject*             as_lextoken() const;
+        MemoryCell*                 as_cell() const;
+        HeapObject*                 as_heap_object() const;
         const IntegerObject&        as_integer_obj() const;
         const InternedSymbolPtr&    as_symbol() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
+        std::string                 to_std_string() const;
 
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
@@ -324,18 +358,6 @@ namespace script
         const char* c_str() const {
             return data.c_str();
         }
-
-        // Операторы сравнения
-        bool operator==(const std::string& other) const {
-            return data == other;
-        }
-
-        bool operator==(const char* other) const {
-            return data == other;  // std::string умеет сравниваться с const char*
-        }
-
-        bool operator!=(const std::string& other) const { return !(*this == other); }
-        bool operator!=(const char* other) const { return !(*this == other); }
     };
 
     class ArrayObject : public HeapObject {
@@ -552,6 +574,9 @@ namespace script
 
     class SymbolTable {
     public:
+        struct TypeConstants {
+            Object obj_null;
+        } constants;
         struct TypeSymbols {
             Object empty_list;
             Object integer;
@@ -569,13 +594,16 @@ namespace script
             Object lextoken;
             Object place;
             Object unknown;
-            Object undefined;
-            Object object_true;
-            Object object_false;
-            Object object_nil;
+            Object cell;
+            Object sym_undefined;
+            Object sym_true;
+            Object sym_false;
             Object optional;
             Object key;
             Object rest;
+            Object native_ref;
+
+            Object true_or_false(bool val) { return val ? sym_true : sym_false; }
         } core;
         void init_core_symbols();
         Object object_type_to_symbol(ObjectType type);
@@ -586,6 +614,8 @@ namespace script
         ~SymbolTable();
 
         InternedSymbolPtr intern(const char* str);
+        Object make_symbol(const char* str) { return Object::make_symbol(this, str); }
+        Object make_symbol(const std::string str) { return Object::make_symbol(this, str.c_str()); }
 
         // Метод для итерации по символам
         template<typename F>
@@ -792,8 +822,15 @@ namespace script
 
         std::string print() const;
         std::string print_full(size_t max_len = 512, size_t max_arg_len = 64) const;
-    };
 
+        static ArgumentSpec create(
+            const std::vector<std::string>& required,
+            const std::map<std::string, Object>& optional = {},
+            const std::map<std::string, Object>& keys = {},
+            const std::string& rest_name = ""
+        );
+    };
+ 
     class LambdaObject : public HeapObject {
     public:
         std::string name;
@@ -865,7 +902,25 @@ namespace script
         Object inspect(SymbolTable& symbols) const override;
     };
 
+    class MemoryCell : public HeapObject {
+    public:
+        void*               m_ptr;       // Прямой адрес в памяти (base_addr + offset)
+        MemoryAccessKind    m_kind;      // Метаданные (как именно читать этот кусок памяти)
+    
+        MemoryCell(void* ptr) : m_ptr(ptr), m_kind(MemoryAccessKind::UINT32) {}
 
+        Object get();
+
+        void set(const Object& val);
+
+        virtual Object make_step_alias(const Object& key);
+
+        std::string print() const override;
+        Object inspect(SymbolTable& symbols) const override;
+
+    };
+
+      
 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);

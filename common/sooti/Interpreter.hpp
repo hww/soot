@@ -87,25 +87,53 @@ namespace script
         // Для стандартных функций (аргументы уже вычислены)
         using BuiltinFormMethod = Object(Interpreter::*)(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
+        struct SpecialFormMethodRec { 
+            SpecialFormMethodRec() {}
+            SpecialFormMethodRec(SpecialFormMethod method) : method(method), specs(false, true) {};
+            SpecialFormMethodRec(SpecialFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};
+            SpecialFormMethod method; 
+            ArgumentSpec specs; 
+        };
+
+        struct BuiltinFormMethodRec { 
+            BuiltinFormMethodRec() {}
+            BuiltinFormMethodRec(BuiltinFormMethod method) : method(method), specs(false, true) {}
+            BuiltinFormMethodRec(BuiltinFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};            
+            BuiltinFormMethod method; 
+            ArgumentSpec specs; 
+        };
+        struct BuiltinEntry {
+            std::string name;
+            BuiltinFormMethod method;
+            ArgumentSpec* spec;
+        };
+
+        struct SpecialEntry {
+            std::string name;
+            SpecialFormMethod method;
+            ArgumentSpec* spec;
+        };
+
         // --- Методы регистрации ---
-        void add_special_form(std::string name, SpecialFormMethod form) {
+        void add_special_form(std::string name, SpecialFormMethod method, ArgumentSpec* specs = nullptr) {
             void* key = (void*)intern_ptr(name).name_ptr;           
-            m_special_forms[key] = form; // Теперь это map
+            m_special_forms[key] = (specs != nullptr) ? SpecialFormMethodRec(method, specs) : SpecialFormMethodRec(method); 
         }
 
-        void add_builtin_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
-            (void)allow_keys;
+        void add_builtin_form(std::string name, BuiltinFormMethod method, ArgumentSpec* specs = nullptr) {
             void* key = (void*)intern_ptr(name).name_ptr;           
-            m_builtin_forms[key] = form;
+            m_builtin_forms[key] = (specs != nullptr) ? BuiltinFormMethodRec(method, specs) : BuiltinFormMethodRec(method); 
         }
 
-        void add_custom_form(std::string name, BuiltinFormMethod form, bool allow_keys = false) {
-            (void)allow_keys;
+        void add_custom_form(std::string name, BuiltinFormMethod method, ArgumentSpec* specs = nullptr) {
             // Интернируем имя, чтобы получить стабильный указатель для поиска
             void* key = (void*)intern_ptr(name).name_ptr;           
             
             // Добавляем в вектор (предполагается, что m_custom_forms хранит std::pair или структуру)
-            m_custom_forms.push_back({key, form}); 
+            if (specs != nullptr)
+                m_custom_forms.push_back({key, BuiltinFormMethodRec(method, specs)}); 
+            else 
+                m_custom_forms.push_back({key, BuiltinFormMethodRec(method)}); 
         }
 
         // Основные методы оценки
@@ -128,15 +156,16 @@ namespace script
         std::string get_all_symbols_matching(const std::string& prefix);
 
         // --- Константы ------------------------
-        Object get_nil() { return m_object_nil; }
-        Object get_true() { return m_object_true; }
-        Object get_false() { return m_object_false; }
+        Object get_undefined() { return m_undefined; }
+        Object get_null() { return m_null; }
+        Object get_true() { return m_sym_true; }
+        Object get_false() { return m_sym_false; }
         // Boolean helpers (используют символы)
-        Object true_or_false(bool value) { return value ? m_object_true : m_object_false; }
+        Object true_or_false(bool value) { return value ? m_sym_true : m_sym_false; }
 
         // --- Predicates -----------------------
         // Check if value is true
-        bool truthy(const Object& o)  const { return o.truthy(m_object_false.as_symbol()); }
+        bool truthy(const Object& o)  const { return o.truthy(m_sym_false.as_symbol()); }
         // Помощники для чисел
         bool is_number(const Object& obj);
         int64_t number_to_integer(const Object& obj);
@@ -234,7 +263,6 @@ namespace script
 
         // Сравнение
         Object eval_equals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_eqv(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Строки
         Object eval_string_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -357,38 +385,43 @@ namespace script
         Object eval_ts_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_ts_types_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_ts_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
+        Object eval_make_alias(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_deref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
         // --- Инициализация Хранилища ---       
-        void init_special_forms(const std::unordered_map<std::string, SpecialFormMethod>& forms);
-        void init_builtin_forms(const std::unordered_map<std::string, BuiltinFormMethod>& forms);        
+        void init_special_forms(const std::initializer_list<SpecialEntry> forms);
+        void init_builtin_forms(const std::initializer_list<BuiltinEntry> forms);        
         // --- Хранилища ---
         // Быстрый поиск для базовых вещей
-        std::unordered_map<void*, SpecialFormMethod> m_special_forms;
-        std::unordered_map<void*, BuiltinFormMethod> m_builtin_forms;
+        std::unordered_map<void*, SpecialFormMethodRec> m_special_forms;
+        std::unordered_map<void*, BuiltinFormMethodRec> m_builtin_forms;
 
         // Вектор для кастомных форм (если важен порядок перехвата)
-        std::vector<std::pair<void*, BuiltinFormMethod>> m_custom_forms;
+        std::vector<std::pair<void*, BuiltinFormMethodRec>> m_custom_forms;
 
         // Типы и Сеттеры
         std::unordered_map<std::string, ObjectType> m_string_to_type;
         std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
             
         // Состояние
-        Object      m_object_true;
-        Object      m_object_false;
+        Object      m_sym_true;
+        Object      m_sym_false;
+        Object      m_sym_undefined;
         const char* m_symbol_true;
         const char* m_symbol_false;
-        Object      m_object_nil;
+        const char* m_symbol_undefined;
+        Object      m_null;
+        Object      m_undefined;
         int         m_gensym_id = 0;
         Object      m_global_environment;
         Object      m_comp_env;
         bool        m_disable_printing = false;
-        std::unique_ptr<SootTypeSystem> m_type_system; // Реализатор
+        std::shared_ptr<SootTypeSystem> m_type_system; // Реализатор
         Reader      m_reader;
         ContextFrame* m_top_frame;
     };
