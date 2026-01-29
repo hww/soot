@@ -100,7 +100,9 @@ public:
           defined_in_type(std::move(defined_in)), type_name(std::move(type_name)),
           no_virtual(no_virtual), overrides_parent(overrides),
           only_overrides_docstring(only_doc), docstring(std::move(doc)),
-          overlay_name(std::move(overlay)) {}
+          overlay_name(std::move(overlay)) {
+                define_all_aliases();
+          }
 
     int id = -1;
     std::string name;
@@ -119,12 +121,9 @@ public:
     std::string diff(const MethodInfo& other) const;
 
     std::string print() const override { return "<method-info>"; }
-    Object inspect(SymbolTable& symbols) const override { return symbols.make_symbol("method-info"); }
+    Object inspect() const override { return EnvContext::make_symbol("method-info"); }
 
     void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 };
 
 // ============================================================================
@@ -133,7 +132,7 @@ public:
 
 class Field : public Aliasable {
 public:
-    Field() = default;
+    Field() { define_all_aliases(); };
     Field(std::string name, TypeSpec type);
     Field(std::string name, TypeSpec type, int offset);
 
@@ -144,7 +143,7 @@ public:
     void mark_as_user_placed();
 
     std::string print() const;
-    Object inspect(SymbolTable& symbols) const { return symbols.make_symbol("field");  }
+    Object inspect() const { return EnvContext::make_symbol("field");  }
 
     const TypeSpec& type() const { return m_type; }
     TypeSpec& type() { return m_type; }
@@ -181,9 +180,6 @@ public:
 
     void define_all_aliases() override;
 
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }    
 private:
     friend class TypeSystem;
     void set_alignment(int alignment) { m_alignment = alignment; }
@@ -212,7 +208,7 @@ private:
 
 class BitField : public Aliasable {
 public:
-    BitField() = default;
+    BitField() { define_all_aliases(); };
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
 
     const std::string name() const { return m_name; }
@@ -224,16 +220,13 @@ public:
     bool operator==(const BitField& other) const;
     bool operator!=(const BitField& other) const;
     std::string print() const;
-    Object inspect(SymbolTable& /*symbols*/) const override { 
+    Object inspect() const override { 
         return Object::make_empty_list(); 
     }
     std::string diff(const BitField& other) const;
 
     void define_all_aliases() override;
 
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 private:
     TypeSpec m_type;
     std::string m_name;
@@ -274,11 +267,6 @@ public:
     virtual std::string print() const = 0;
     std::string diff(const Type& other) const;
     void define_all_aliases() override;
-
-    // Обязательно разрешаем базовую навигацию
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 
     // Method system
     bool get_my_method(const std::string& name, MethodInfo* out) const;
@@ -383,14 +371,11 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     void define_all_aliases() override;
 
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 protected:
     std::string diff_impl(const Type& other) const override;
 };
@@ -416,16 +401,13 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     void inherit(const ValueType* parent);
 
     void define_all_aliases() override;
 
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 protected:
     friend class TypeSystem;
     void set_offset(int offset) { m_offset = offset; }
@@ -453,12 +435,9 @@ public:
     RegClass get_preferred_reg_class() const override { return RegClass::GPR_64; }
 
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     
     void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }
 
     // These remain pure virtual - must be implemented by derived classes
     int get_size_in_memory() const override = 0;
@@ -479,7 +458,7 @@ public:
     std::string get_class_name() const override { return "structure"; }
 
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     void inherit(StructureType* parent);
     bool operator==(const Type& other) const override;
 
@@ -506,7 +485,7 @@ public:
     void override_field_type(const std::string& field_name, const TypeSpec& new_type);
 
     void define_all_aliases() override;
-    Object make_step_alias(const Object& key);
+    Object make_step_alias(const Object& key) override;
 protected:
     friend class TypeSystem;
     void override_offset(int offset) { m_offset = offset; }
@@ -544,16 +523,14 @@ public:
     int get_offset() const override { return 0; } // BASIC_OFFSET
     int get_inline_array_start_alignment() const override { return 16; }
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     bool final() const { return m_final; }
     void set_final() { m_final = true; }
 
     void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override {
-        return Aliasable::make_step_alias(key);
-    }    
+
 protected:
     std::string diff_impl(const Type& other) const override;
 
@@ -572,7 +549,7 @@ public:
 
     bool lookup_field(const std::string& name, BitField* out) const;
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     const std::vector<BitField>& fields() const { return m_fields; }
@@ -599,7 +576,7 @@ public:
     std::string get_class_name() const override { return "enum"; }
 
     std::string print() const override;
-    Object inspect(SymbolTable& symbols) const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_empty_list(); }
     bool operator==(const Type& other) const override;
 
     const std::unordered_map<std::string, int64_t>& entries() const { return m_entries; }

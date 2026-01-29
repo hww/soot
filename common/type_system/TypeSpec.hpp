@@ -64,7 +64,7 @@ public:
 
     // Printing
     std::string print() const;
-    Object inspect(SymbolTable& symbols) const;
+    Object inspect() const;
 
 
     // Argument management

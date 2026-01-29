@@ -122,7 +122,7 @@ namespace script
              return fixed_to_string(value); 
         }
 
-        Object inspect(SymbolTable& symbols) const;
+        Object inspect() const;
 
         bool operator==(const FixedObject<T>& other) const {
             return value == other.value;
@@ -154,7 +154,7 @@ namespace script
         virtual ~HeapObject() = default;
         virtual std::string print() const = 0;
         virtual std::string printc() const { return print(); }
-        virtual Object inspect(SymbolTable& symbols) const = 0;
+        virtual Object inspect() const = 0;
 
         // 1. Для оператора (-> base key)
         // По умолчанию объект не дает в себя "зайти".
@@ -201,6 +201,9 @@ namespace script
         static Object make_symbol(SymbolTable* table, const char* name);
         static Object make_symbol(SymbolTable& table, const char* name) { return make_symbol(&table, name);} 
         static Object make_keyword(SymbolTable* table, const char* name);
+        static Object make_symbol(const char* name);
+        static Object make_keyword(const char* name);
+        static Object make_boolean(bool v) { return v ? make_symbol("#t") : make_symbol("#f"); };
         static Object make_string(const std::string& text);
         static Object make_pair(const Object& car, const Object& cdr);
         static Object make_lambda(const ArgumentSpec& args, const Object& body, const std::shared_ptr<EnvironmentObject>& env);
@@ -214,8 +217,8 @@ namespace script
         // String representation
         std::string print() const;
         std::string printc() const { return is_heap_object() && heap_obj ? heap_obj->printc() : print(); } // сырой формат например без "" для строки
-        std::string inspect_short(SymbolTable& symbols) const;
-        Object inspect(SymbolTable& symbols) const;
+        std::string inspect_short() const;
+        Object inspect() const;
 
         std::string type_name() const { return object_type_to_string(type); }
 
@@ -309,7 +312,7 @@ namespace script
         ~PairObject() override = default;
 
         std::string print() const override;
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
 
         int lenght() {
             int count = 1;
@@ -343,7 +346,7 @@ namespace script
             return data;
         }
 
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
 
         // Неявное преобразование в std::string
         operator std::string() const {
@@ -387,7 +390,7 @@ namespace script
             return result + ")";
         }
 
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
 
     };
 
@@ -421,7 +424,7 @@ namespace script
             return result;
         }
 
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
 
         // Метод получения: возвращает ссылку на объект. 
         // Если ключа нет, unordered_map создаст объект по умолчанию.
@@ -614,7 +617,7 @@ namespace script
         ~SymbolTable();
 
         InternedSymbolPtr intern(const char* str);
-        Object make_symbol(const char* str) { return Object::make_symbol(this, str); }
+        Object make_symbol(const char* str)       { return Object::make_symbol(this, str); }
         Object make_symbol(const std::string str) { return Object::make_symbol(this, str.c_str()); }
 
         // Метод для итерации по символам
@@ -693,7 +696,7 @@ namespace script
                 (void*)this);
         }
 
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
     };
 
     // Аргументы функций
@@ -703,7 +706,7 @@ namespace script
         std::vector<Object> rest;
         bool has_rest = false;
 
-        Object inspect(SymbolTable& symbols) const;
+        Object inspect() const;
 
         Object get_named(const std::string& name, const Object& default_value) {
             auto it = named.find(name);
@@ -783,8 +786,8 @@ namespace script
         
         bool empty() const { return unnamed.empty() && named.empty(); }
 
-        Object to_object(SymbolTable& symbols) const;
-        Object inspect(SymbolTable& symbols) const;
+        Object to_object() const;
+        Object inspect() const;
 
         const PositionalArg& operator[](size_t index) const {
             if (index >= unnamed.size()) throw std::out_of_range("ArgumentSpec index out of range");
@@ -852,7 +855,7 @@ namespace script
             return name.empty() ? "#<unnamed lambda>" : "<lambda " + name + ">";
         }
         
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
     };
 
     class MacroObject : public HeapObject {
@@ -876,7 +879,7 @@ namespace script
             return name.empty() ? "#<unnamed macro>" : "#<macro " + name + ">";
         }
 
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
     };
 
     class ReaderObject : public HeapObject {
@@ -899,7 +902,7 @@ namespace script
         // Проверка на конец файла
         bool is_eof() const;
         std::string print() const override;
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
     };
 
     class MemoryCell : public HeapObject {
@@ -916,11 +919,41 @@ namespace script
         virtual Object make_step_alias(const Object& key);
 
         std::string print() const override;
-        Object inspect(SymbolTable& symbols) const override;
+        Object inspect() const override;
 
     };
 
-      
+
+    /**
+     * Глобальный контекст окружения. 
+     * Позволяет получать доступ к текущей таблице символов из любой точки кода.
+     */
+    class EnvContext {
+    public:
+        // Доступ к синглтону
+        static EnvContext& instance();
+
+        // Установка активной таблицы символов
+        void set_current_table(SymbolTable* table);
+        
+        // Получение ссылки на текущую таблицу
+        SymbolTable& table();
+
+        // Статические хелперы для удобства
+        static SymbolTable& symbol_table();
+        static Object make_symbol(const std::string& name);
+        static InternedSymbolPtr intern_ptr(const std::string& name);
+        static Object lisp_bool(bool value);
+
+    private:
+        EnvContext(); // Приватный конструктор
+        
+        // Запрещаем копирование
+        EnvContext(const EnvContext&) = delete;
+        EnvContext& operator=(const EnvContext&) = delete;
+
+        SymbolTable* m_current_table = nullptr;
+    };
 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);

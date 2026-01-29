@@ -14,6 +14,50 @@
 
 namespace script
 {
+
+    // ============================================================================
+    // EnvContext
+    // ============================================================================
+
+    EnvContext::EnvContext() : m_current_table(nullptr) {}
+
+    EnvContext& EnvContext::instance() {
+        static EnvContext inst;
+        return inst;
+    }
+
+    void EnvContext::set_current_table(SymbolTable* table) {
+        m_current_table = table;
+    }
+
+    SymbolTable& EnvContext::table() {
+        if (!m_current_table) {
+            throw std::runtime_error("EnvContext: SymbolTable is not initialized! Call set_current_table() first.");
+        }
+        return *m_current_table;
+    }
+
+    SymbolTable& EnvContext::symbol_table() {
+        return instance().table();
+    }
+
+    Object EnvContext::make_symbol(const std::string& name) {
+        return instance().table().make_symbol(name);
+    }
+
+    InternedSymbolPtr EnvContext::intern_ptr(const std::string& name) {
+        return instance().table().intern(name.c_str());
+    }
+
+    Object EnvContext::lisp_bool(bool value) {
+        // В GOAL #t и #f — это зарезервированные символы
+        return value ? make_symbol("#t") : make_symbol("#f");
+    }
+    
+    // ============================================================================
+    // SymbolTable
+    // ============================================================================
+
     SymbolTable::SymbolTable() {
         m_power_of_two_size = 1;  // 2 ^ 1 = 2
         m_entries.resize(2);
@@ -141,6 +185,9 @@ namespace script
         m_next_resize = kMaxUsed * m_entries.size();
     }
 
+    // ============================================================================
+    // SymbolTable
+    // ============================================================================
 
     // Специализации fixed_to_string
     template <>
@@ -182,6 +229,10 @@ namespace script
     std::string fixed_to_string<InternedSymbolPtr>(InternedSymbolPtr x) {
         return x.name_ptr ? std::string(x.name_ptr) : "";
     }
+
+    // ============================================================================
+    // Type Strings
+    // ============================================================================
 
     std::string object_type_to_string(ObjectType type) {
     switch (type) {
@@ -317,6 +368,14 @@ namespace script
         }
 
         return obj;
+    }
+
+    Object Object::make_symbol(const char* name) {
+        return make_symbol(&EnvContext::symbol_table(), name);
+    }
+
+    Object Object::make_keyword(const char* name) {
+        return make_keyword(&EnvContext::symbol_table(), name);
     }
 
     Object Object::make_string(const std::string& text) {
@@ -731,12 +790,13 @@ namespace script
         return !ts || !ts->text_remains();
     }
 
-    Object ArgumentSpec::to_object(SymbolTable& symbols) const {
-        ListBuilder lb{};
+    Object ArgumentSpec::to_object() const {
+        auto& symbols = EnvContext::symbol_table();
+        ListBuilder lb{symbols};
 
         // 1. Позиционные аргументы
         for (const auto& arg : unnamed) {
-            lb.push_back(Object::make_symbol(&symbols, arg.name.c_str()));
+            lb.push_back(Object::make_symbol(arg.name.c_str()));
         }
 
         // 2. Именованные аргументы (Keyword arguments)
@@ -746,19 +806,19 @@ namespace script
                 if (spec.has_default) {
                     // Если есть дефолт: (name default)
                     ListBuilder entry{};
-                    entry.push_back(Object::make_symbol(&symbols, name.c_str()));
+                    entry.push_back(Object::make_symbol(name.c_str()));
                     entry.push_back(spec.default_value);
                     lb.push_back(entry.finalize());
                 } else {
-                    lb.push_back(Object::make_symbol(&symbols, name.c_str()));
+                    lb.push_back(Object::make_symbol(name.c_str()));
                 }
             }
         }
 
         // 3. Rest аргумент (вариативность)
         if (!rest.empty()) {
-            lb.push_back(Object::make_symbol(&symbols, "rest")); // Маркер &rest
-            lb.push_back(Object::make_symbol(&symbols, rest.c_str()));
+            lb.push_back(Object::make_symbol("rest")); // Маркер &rest
+            lb.push_back(Object::make_symbol(rest.c_str()));
         }
 
         return lb.finalize();
@@ -807,7 +867,8 @@ namespace script
     // Memory Cell
     // ============================================================================
         
-    Object MemoryCell::inspect(SymbolTable& symbols) const {
+    Object MemoryCell::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
         ListBuilder lb{symbols};
 
         lb.push_back(symbols.core.cell); // Символ 'cell
@@ -1058,10 +1119,12 @@ namespace script
 
     // -- INSPECTORS --------------------------------------------------------------
 
-    std::string Object::inspect_short(SymbolTable& symbols) const { 
+    std::string Object::inspect_short() const { 
+        auto& symbols = EnvContext::symbol_table();
+
         const int max_len = 64;
         // 1. Получаем S-expression инспекта
-        Object info = this->inspect(symbols); 
+        Object info = this->inspect(); 
         
         // 2. Превращаем структуру в строку для отображения
         std::string str = info.print(); 
@@ -1070,69 +1133,78 @@ namespace script
         return str.substr(0, max_len - 3) + "...";
     }
 
-    Object Object::inspect(SymbolTable& symbols) const {
+    Object Object::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         switch (type) {
             case ObjectType::EMPTY_LIST:
-                return Object::make_symbol(&symbols, "nil");
+                return Object::make_symbol("nil");
 
             case ObjectType::INTEGER: {
                 ListBuilder lb{symbols};
-                lb.push_back(Object::make_symbol(&symbols, "integer"));
+                lb.push_back(Object::make_symbol("integer"));
                 lb.push_kv(symbols, "value", *this);
                 return lb.finalize();
             }
 
             case ObjectType::FLOAT: {
                 ListBuilder lb{symbols};
-                lb.push_back(Object::make_symbol(&symbols, "float"));
+                lb.push_back(Object::make_symbol("float"));
                 lb.push_kv(symbols, "value", *this);
                 return lb.finalize();
             }
 
             case ObjectType::SYMBOL: {
                 ListBuilder lb{symbols};
-                lb.push_back(Object::make_symbol(&symbols, "symbol"));
+                lb.push_back(Object::make_symbol("symbol"));
                 lb.push_kv(symbols, "name", *this);
                 return lb.finalize();
             }
 
             default:
                 if (is_heap_object() && heap_obj) {
-                    return heap_obj->inspect(symbols); 
+                    return heap_obj->inspect(); 
                 }
-                return Object::make_symbol(&symbols, "error-unknown");
+                return Object::make_symbol("error-unknown");
         }
     }
 
-    Object PairObject::inspect(SymbolTable& symbols) const {
+    Object PairObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "pair"));
+        lb.push_back(Object::make_symbol("pair"));
         lb.push_kv(symbols, "car", this->car);
         lb.push_kv(symbols, "cdr", this->cdr);
         return lb.finalize();
     }
 
-    Object StringObject::inspect(SymbolTable& symbols) const {
+    Object StringObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "string"));
+        lb.push_back(Object::make_symbol("string"));
         lb.push_kv(symbols, "value", Object::make_string(print().c_str()));
         lb.push_kv(symbols, "length", Object::make_integer(data.length()));
         return lb.finalize();
     }
 
     template <typename T>
-    Object FixedObject<T>::inspect(SymbolTable& symbols) const {
+    Object FixedObject<T>::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, type_as_string().c_str()));
+        lb.push_back(Object::make_symbol(type_as_string().c_str()));
         lb.push_kv(symbols, "value", Object(value)); // Убрали & перед symbols
         return lb.finalize();
     }
 
-    Object ArrayObject::inspect(SymbolTable& symbols) const {
+    Object ArrayObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
         ListBuilder lb{symbols};
         
         // 1. Имя типа
-        lb.push_back(Object::make_symbol(&symbols, "array"));
+        lb.push_back(Object::make_symbol("array"));
         
         // 2. Метаданные
         lb.push_kv(symbols, "length", Object::make_integer(data.size()));
@@ -1146,7 +1218,7 @@ namespace script
         }
         
         if (data.size() > 10) {
-            elements_lb.push_back(Object::make_symbol(&symbols, "..."));
+            elements_lb.push_back(Object::make_symbol("..."));
         }
 
         lb.push_kv(symbols, "data", elements_lb.finalize());
@@ -1155,9 +1227,11 @@ namespace script
     }
 
     // Удалено дублирующееся определение HashTableObject::inspect. Оставили одно:
-    Object HashTableObject::inspect(SymbolTable& symbols) const {
+    Object HashTableObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "hash-table"));
+        lb.push_back(Object::make_symbol("hash-table"));
         lb.push_kv(symbols, "size", Object::make_integer(data.size()));
         
         ListBuilder entries_lb{symbols};
@@ -1171,10 +1245,12 @@ namespace script
         return lb.finalize();
     }
 
-    Object EnvironmentObject::inspect(SymbolTable& symbols) const {
+    Object EnvironmentObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "environment"));
-        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
+        lb.push_back(Object::make_symbol("environment"));
+        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
         
         if (parent_env) {
             lb.push_kv(symbols, "parent", Object::make_string(parent_env->print().c_str()));
@@ -1186,28 +1262,32 @@ namespace script
         return lb.finalize();
     }
 
-    Object LambdaObject::inspect(SymbolTable& symbols) const {
+    Object LambdaObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "lambda"));
-        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
-        lb.push_kv(symbols, "args", args.to_object(symbols)); 
+        lb.push_back(Object::make_symbol("lambda"));
+        lb.push_kv(symbols, "name", name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
+        lb.push_kv(symbols, "args", args.to_object()); 
         lb.push_kv(symbols, "body", body);
         return lb.finalize();
     }
 
-    Object MacroObject::inspect(SymbolTable& symbols) const {
+    Object MacroObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
         
         // 1. Заголовок типа
-        lb.push_back(Object::make_symbol(&symbols, "macro"));
+        lb.push_back(Object::make_symbol("macro"));
         
         // 2. Имя макроса (если есть)
         lb.push_kv(symbols, "name", name.empty() ? 
-            Object::make_symbol(&symbols, "anonymous") : Object::make_string(name.c_str()));
+            Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
         
         // 3. Спецификация аргументов
         // Вызываем to_object, который возвращает структуру аргументов (списки имён и т.д.)
-        lb.push_kv(symbols, "args", args.to_object(symbols));
+        lb.push_kv(symbols, "args", args.to_object());
         
         // 4. Тело макроса (исходный код)
         lb.push_kv(symbols, "body", body);
@@ -1218,24 +1298,30 @@ namespace script
         return lb.finalize();
     }
 
-    Object ReaderObject::inspect(SymbolTable& symbols) const {
+    Object ReaderObject::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "reader"));
+        lb.push_back(Object::make_symbol("reader"));
         lb.push_kv(symbols, "line", Object::make_integer(ts ? ts->line_count : 0));
         return lb.finalize();
     }
 
-    Object ArgumentSpec::inspect(SymbolTable& symbols) const {
+    Object ArgumentSpec::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "argument-spec"));
-        lb.push_kv(symbols, "has-rest", rest.empty() ? Object::make_empty_list() : Object::make_symbol(&symbols, "t"));
-        lb.push_kv(symbols, "structure", this->to_object(symbols));
+        lb.push_back(Object::make_symbol("argument-spec"));
+        lb.push_kv(symbols, "has-rest", rest.empty() ? Object::make_empty_list() : Object::make_symbol("#t"));
+        lb.push_kv(symbols, "structure", this->to_object());
         return lb.finalize();
     }
 
-    Object Arguments::inspect(SymbolTable& symbols) const {
+    Object Arguments::inspect() const {
+        auto& symbols = EnvContext::symbol_table();
+
         ListBuilder lb{symbols};
-        lb.push_back(Object::make_symbol(&symbols, "arguments-instance"));
+        lb.push_back(Object::make_symbol("arguments-instance"));
 
         ListBuilder u_list{symbols};
         for (const auto& obj : unnamed) u_list.push_back(obj);

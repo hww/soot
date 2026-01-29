@@ -57,6 +57,9 @@ namespace script::pretty_print {
         // Преобразование Object в Node
         Node to_node(const Object& obj) {
             switch (obj.type) {
+            case ObjectType::UNDEFINED:
+                return Node(":undefined");
+
             case ObjectType::EMPTY_LIST:
                 return Node("null");
 

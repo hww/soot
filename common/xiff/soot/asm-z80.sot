@@ -1240,20 +1240,20 @@
 ;;;;;;;;;;;;;;;;;;;;; Jump group ;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Im ersten Pass wissen wir noch nicht wie gross und wie weit wir
-;; springen, im zweiten Pass, wo schon alle Symbole bekannt sind,
-;; koennen wir einigermassen gut wissen, wie weit wir springen.
-;; Dementsprechend wir der Befehl "mutiert", so dass er in der dritten
-;; Phase das richtige Ergebniss bringt. Falls wir zu JR mutieren (JR ist
-;; kuerzer als JP), werden alle nachfolgende Labels um 1 byte geschiftet.
-;; Fruehere umgeschriebene Jumps kuemmert es nicht, da sie in der dritten
-;; Phase erst diesen Wert kriegen werden. Es kann allerdings durchaus
-;; sein, das ein JMP der als longjump erkannt wurde, durch intensives
-;; Shiften besser haette zu einem shortjump gemacht werden sollen, sowas
-;; ist allerdings sehr haarig rauszufinden
-;; PASS 1 Returns instruction size
-;; PASS 2 Returns instruction size after when size can be changed
-;; PASS 3 Returns instructions bytes
+;; In the first pass, we do not yet know the size or the distance of the jumps.
+;; In the second pass, once all symbols are known, we can reasonably determine 
+;; the jump distance. Accordingly, the instruction is "mutated" so that it 
+;; produces the correct result in the third phase. 
+;; If we mutate to a JR (since JR is shorter than JP), all subsequent labels 
+;; are shifted by 1 byte. Previously rewritten jumps are not affected, as 
+;; they will only receive their final values in the third phase. 
+;; However, it is entirely possible that a JMP identified as a long jump 
+;; could have been a short jump due to intensive shifting; identifying 
+;; such cases, however, is a very hairy problem to solve.
+
+;; PASS 1: Returns initial instruction size
+;; PASS 2: Returns instruction size after potential mutations/size changes
+;; PASS 3: Returns the actual instruction bytes
 (operand jmp 3
      "Virtual JMP"
      :pass2 (let* ((target (get-label r1 prog ctx)) ;; Тут добавим проверку (if (null? target) ...)

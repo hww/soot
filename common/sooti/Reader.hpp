@@ -90,7 +90,6 @@ namespace script {
         // REPL метод (если нужен):
         //std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
 
-        SymbolTable& get_symbol_table() { return m_symbols; }
         TextDb& get_db() { return m_db; }
 
         // Проверка завершения

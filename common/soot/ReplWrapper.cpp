@@ -936,7 +936,7 @@ void ReplWrapper::inspect_text_db() {
 }
 
 void ReplWrapper::inspect_symbol_table() {
-    auto& st = reader_.get_symbol_table();
+    auto& st = script::EnvContext::symbol_table();
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "=== Symbol Table ===\n");
 
