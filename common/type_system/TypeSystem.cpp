@@ -954,7 +954,7 @@ void TypeSystem::add_builtin_types_z80() {
     m_config.pointer_size = 2;
     m_config.array_data_offset = 2;
     m_config.default_alignment = 1;
-
+    m_config.symbol_src_size = 2;
     // 1. Технические типы
     add_type("none",   std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));

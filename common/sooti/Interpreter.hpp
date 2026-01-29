@@ -392,6 +392,8 @@ namespace script
         Object eval_make_alias(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_navigation_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
 
+        Object eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+    
         // --- Инициализация Хранилища ---       
         void init_special_forms(const std::initializer_list<SpecialEntry> forms);
         void init_builtin_forms(const std::initializer_list<BuiltinEntry> forms);        
