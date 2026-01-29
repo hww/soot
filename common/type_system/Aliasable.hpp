@@ -79,3 +79,40 @@ public:
      */
     Object make_step_alias(const Object& key) override;
 };
+
+
+class StaticBuffer : public Aliasable {
+public:
+    // Конструктор: привязываем буфер к конкретному типу из TypeSystem
+    StaticBuffer(std::string type_name, int size, uint32_t origin = 0)
+        : m_type_name(std::move(type_name)), m_origin(origin) {
+        m_data.resize(size, 0); // Обнуляем память
+        define_all_aliases();
+    }
+
+    // --- Интерфейс для C++ ---
+    uint32_t origin() const { return m_origin; }
+    size_t size() const { return m_data.size(); }
+    uint8_t* data() { return m_data.data(); }
+    const std::string& type_name() const { return m_type_name; }
+
+    // Механизм записи (Endian-aware запись добавим позже)
+    void write_u8(size_t offset, uint8_t value) {
+        if (offset < m_data.size()) m_data[offset] = value;
+    }
+
+    // --- Реализация Aliasable для Лиспа ---
+    void define_all_aliases() override;
+
+    // Печать для REPL
+    std::string print() const override {
+        return "<static-buffer " + m_type_name + " at " + std::to_string(m_origin) + ">";
+    }
+
+private:
+    std::string m_type_name;     // Ссылка на тип в TypeSystem
+    uint32_t m_origin;           // Базовый адрес (например, #x2000)
+    std::vector<uint8_t> m_data; // Сырые байты
+    
+    // В будущем: std::vector<Relocation> m_relocs;
+};

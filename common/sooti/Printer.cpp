@@ -41,19 +41,11 @@ namespace script::pretty_print {
         }
     }
 
-    std::unique_ptr<script::Reader> pretty_printer_reader;
     std::mutex pretty_printer_reader_mutex;
-
-    script::Reader& get_pretty_printer_reader() {
-        if (!pretty_printer_reader) {
-            pretty_printer_reader = std::make_unique<script::Reader>();
-        }
-        return *pretty_printer_reader;
-    }
 
     script::Object to_symbol(const std::string& str) {
         std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
-        return script::Object::make_symbol(&get_pretty_printer_reader().get_symbol_table(), str.c_str());
+        return EnvContext::instance().make_symbol(str.c_str());
     }
 
     script::Object new_string(const std::string& str) {

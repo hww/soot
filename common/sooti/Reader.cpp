@@ -180,7 +180,7 @@ namespace script {
 				// Читаем ТО, ЧТО ИДЕТ СЛЕДОМ за макросом (рекурсивно)
 				Object inner_obj = read_single_form(ts, eval_callback);
 				
-				Object sym = Object::make_symbol(&m_symbols, macro.replacement.c_str());
+				Object sym = EnvContext::make_symbol(macro.replacement.c_str());
 				// Возвращаем либо (quote объект), либо просто символ замены
 				return macro.list ? script::build_list({ sym, inner_obj }) : sym;
 			}
@@ -306,7 +306,7 @@ namespace script {
 		auto result = full_program_builder.finalize();
 
 		if (add_top_level) {
-			return Object::make_pair(Object::make_symbol(&m_symbols, "top-level"), result);
+			return Object::make_pair(EnvContext::make_symbol("top-level"), result);
 		}
 		return result;
 	}
@@ -563,7 +563,7 @@ namespace script {
 			}
 		}
 
-		obj = Object::make_symbol(&m_symbols, tok.text.c_str());
+		obj = EnvContext::make_symbol(tok.text.c_str());
 		return true;
 	}
 	// ==================== List Reading ====================

@@ -97,10 +97,12 @@ void MethodInfo::define_all_aliases() {
 
 Field::Field(std::string name, TypeSpec ts)
     : m_name(std::move(name)), m_type(std::move(ts)) {
+    define_all_aliases();
 }
 
 Field::Field(std::string name, TypeSpec ts, int offset)
     : m_name(std::move(name)), m_type(std::move(ts)), m_offset(offset) {
+    define_all_aliases();
 }
 
 std::string Field::print() const {
@@ -166,13 +168,13 @@ void Field::define_all_aliases() {
         });
         // Флаги состояния поля
     define_alias("inline?", [](Aliasable* s) {
-            return Object::make_integer(static_cast<Field*>(s)->is_inline() ? 1 : 0);
+            return Object::make_boolean(static_cast<Field*>(s)->is_inline());
         });
     define_alias("dynamic?", [](Aliasable* s) {
-            return Object::make_integer(static_cast<Field*>(s)->is_dynamic() ? 1 : 0);
+            return Object::make_boolean(static_cast<Field*>(s)->is_dynamic());
         });
     define_alias("array?", [](Aliasable* s) {
-            return Object::make_integer(static_cast<Field*>(s)->is_array() ? 1 : 0);
+            return Object::make_boolean(static_cast<Field*>(s)->is_array());
         });
     define_alias("array-size", [](Aliasable* s) {
             auto f = static_cast<Field*>(s);
@@ -195,6 +197,7 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
     m_is_boxed(is_boxed),
     m_heap_base(heap_base) {
     m_runtime_name = m_name;
+    define_all_aliases(); 
 }
 
 
@@ -392,7 +395,7 @@ void Type::define_all_aliases() {
     });
 
     define_alias("boxed?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<Type*>(s)->is_boxed() ? 1 : 0);
+        return Object::make_boolean(static_cast<Type*>(s)->is_boxed());
     });
 
     define_alias("methods-count", [](Aliasable* s) {
@@ -406,6 +409,7 @@ void Type::define_all_aliases() {
 
 NullType::NullType(std::string name)
     : Type("object", std::move(name), false, 0) {
+    define_all_aliases();         
 }
 
 bool NullType::is_reference() const {
@@ -475,6 +479,7 @@ ValueType::ValueType(std::string parent, std::string name, bool is_boxed,
     m_size(size),
     m_sign_extend(sign_extend),
     m_reg_kind(reg) {
+    define_all_aliases(); 
 }
 
 int ValueType::get_offset() const {
@@ -578,7 +583,7 @@ void ValueType::define_all_aliases() {
     });
     
     define_alias("sign-extend?", [](Aliasable* s) { 
-        return Object::make_integer(static_cast<ValueType*>(s)->m_sign_extend ? 1 : 0); 
+        return Object::make_boolean(static_cast<ValueType*>(s)->m_sign_extend); 
     });
 
     define_alias("reg-class", [](Aliasable* s) { 
@@ -597,6 +602,7 @@ void ValueType::define_all_aliases() {
 
 ReferenceType::ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base)
     : Type(std::move(parent), std::move(name), is_boxed, heap_base) {
+    define_all_aliases();
 }
 
 std::string ReferenceType::print() const {
@@ -737,15 +743,15 @@ void StructureType::define_all_aliases() {
 
     // 2. Специфические свойства структуры
     define_alias("dynamic?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<StructureType*>(s)->is_dynamic() ? 1 : 0);
+        return Object::make_boolean(static_cast<StructureType*>(s)->is_dynamic());
     });
 
     define_alias("packed?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<StructureType*>(s)->is_packed() ? 1 : 0);
+        return Object::make_boolean(static_cast<StructureType*>(s)->is_packed());
     });
 
     define_alias("always-stack-singleton?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<StructureType*>(s)->is_always_stack_singleton() ? 1 : 0);
+        return Object::make_boolean(static_cast<StructureType*>(s)->is_always_stack_singleton());
     });
 
     define_alias("fields-count", [](Aliasable* s) {
@@ -789,6 +795,7 @@ Object StructureType::make_step_alias(const Object& key) {
 
 BasicType::BasicType(std::string parent, std::string name, bool dynamic, int heap_base)
     : StructureType(std::move(parent), std::move(name), true, dynamic, false, heap_base) {
+    define_all_aliases();       
 }
 
 std::string BasicType::print() const {
@@ -834,7 +841,7 @@ void BasicType::define_all_aliases() {
     StructureType::define_all_aliases();
 
     define_alias("final?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<BasicType*>(s)->final() ? 1 : 0);
+        return Object::make_boolean(static_cast<BasicType*>(s)->final());
     });
     
     define_alias("class-name", [](Aliasable* s) {
@@ -852,6 +859,7 @@ BitField::BitField(TypeSpec type, std::string name, int offset, int size, bool s
     m_offset(offset),
     m_size(size),
     m_skip_in_static_decomp(skip_in_decomp) {
+    define_all_aliases();        
 }
 
 bool BitField::operator==(const BitField& other) const {
@@ -893,7 +901,7 @@ void BitField::define_all_aliases() {
     });
 
     define_alias("skip-decomp?", [](Aliasable* s) {
-        return Object::make_integer(static_cast<BitField*>(s)->skip_in_decomp() ? 1 : 0);
+        return Object::make_boolean(static_cast<BitField*>(s)->skip_in_decomp());
     });
 }
 
@@ -903,6 +911,7 @@ void BitField::define_all_aliases() {
 
 BitFieldType::BitFieldType(std::string parent, std::string name, int size, bool sign_extend)
     : ValueType(std::move(parent), std::move(name), false, size, sign_extend, RegClass::GPR_64) {
+    define_all_aliases();        
 }
 
 bool BitFieldType::lookup_field(const std::string& name, BitField* out) const {
@@ -1001,6 +1010,7 @@ EnumType::EnumType(const ValueType* parent, std::string name, bool is_bitfield,
         parent->get_preferred_reg_class()),
     m_is_bitfield(is_bitfield),
     m_entries(entries) {
+    define_all_aliases();        
 }
 
 std::string EnumType::print() const {

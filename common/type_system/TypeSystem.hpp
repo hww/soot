@@ -369,7 +369,7 @@ public:
     // ========================================================================
 
     std::string print() const { return "<type-system>"; }
-    script::Object inspect(script::SymbolTable& symbols) const;
+    script::Object inspect() const;
     std::string print_all_type_information() const;
     script::Object get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string& type) const;

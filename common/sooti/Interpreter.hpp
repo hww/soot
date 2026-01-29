@@ -149,7 +149,6 @@ namespace script
 
         // Лоступ к окружению
         Object get_global_environment() { return m_global_environment; }
-        SymbolTable& get_symbols() { return m_reader.get_symbol_table(); }
         TextDb& get_db() { return m_reader.get_db(); }
 
         // --- Для REPL и LSP -------------------
@@ -391,7 +390,7 @@ namespace script
         Object eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_make_alias(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_deref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_navigation_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
 
         // --- Инициализация Хранилища ---       
         void init_special_forms(const std::initializer_list<SpecialEntry> forms);

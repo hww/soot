@@ -34,10 +34,10 @@ namespace script
         m_top_frame(nullptr)
     {
         // Инициализируем boolean объекты как символы
-        m_null             = m_reader.get_symbol_table().constants.obj_null;
-        m_sym_true         = m_reader.get_symbol_table().core.sym_true;
-        m_sym_false        = m_reader.get_symbol_table().core.sym_false;
-        m_sym_undefined    = m_reader.get_symbol_table().core.sym_undefined;
+        m_null             = EnvContext::instance().table().constants.obj_null;
+        m_sym_true         = EnvContext::instance().table().core.sym_true;
+        m_sym_false        = EnvContext::instance().table().core.sym_false;
+        m_sym_undefined    = EnvContext::instance().table().core.sym_undefined;
         m_symbol_true      = m_sym_true.as_symbol().name_ptr;
         m_symbol_false     = m_sym_false.as_symbol().name_ptr;
         m_symbol_undefined = m_sym_undefined.as_symbol().name_ptr;
@@ -57,7 +57,7 @@ namespace script
         define_var_in_env(m_comp_env, m_comp_env, "*comp-env*");
         define_var_in_env(m_comp_env, m_global_environment, "*global-env*");
 
-        auto user = Object::make_symbol(m_reader.get_symbol_table(), username.c_str());
+        auto user = EnvContext::make_symbol(username.c_str());
         define_var_in_env(m_global_environment, user, "*user*");
 
         // Инициализация string_to_type для type?
@@ -93,7 +93,7 @@ namespace script
             {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
             {"while", &Interpreter::eval_while_special, nullptr},
             {"top-level", &Interpreter::eval_begin_special, nullptr}, // top level evaluation
-
+            {"navigation", &Interpreter::eval_navigation_special, nullptr},
             });
 
         // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -250,7 +250,6 @@ namespace script
             {"source-info",         &Interpreter::eval_source_info, nullptr},
             {"get-context",         &Interpreter::eval_get_context, nullptr},
             {"make-alias",          &Interpreter::eval_make_alias, nullptr},
-            {"deref",               &Interpreter::eval_deref, nullptr},
         });
 
 
@@ -363,11 +362,11 @@ void Interpreter::define_var_in_env(const Object& env, const Object& var, const 
 // ==============================================
 
 Object Interpreter::intern(const std::string& name) {
-    return Object::make_symbol(&m_reader.get_symbol_table(), name.c_str());
+    return EnvContext::make_symbol(name.c_str());
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
-    return m_reader.get_symbol_table().intern(name.c_str());
+    return EnvContext::intern_ptr(name.c_str());
 }
 
 // ==============================================
@@ -531,7 +530,7 @@ Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vecto
     auto lam_env = lam_env_obj.as_env_ptr();
     
     // 4. Биндим аргументы
-    Object dummy_form = Object::make_symbol(&m_reader.get_symbol_table(), "call-lambda");
+    Object dummy_form = EnvContext::make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
 
 
@@ -1818,7 +1817,7 @@ Object Interpreter::eval_inspect(const Object& form, Arguments& args, const std:
 
     // Вызываем метод inspect, который теперь (благодаря нашим правкам) 
     // возвращает структуру данных (List/Pair), а не строку.
-    return target.inspect(m_reader.get_symbol_table());
+    return target.inspect();
 }
 
 Object Interpreter::eval_fmt(const Object& form,
@@ -2490,7 +2489,7 @@ Object Interpreter::eval_type_of(const Object & form, Arguments & args, const st
     (void)env;
     vararg_check(form, args, { {} }, {});
 
-    return m_reader.get_symbol_table().object_type_to_symbol(args.unnamed[0].type);
+    return EnvContext::symbol_table().object_type_to_symbol(args.unnamed[0].type);
 }
 
 Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
@@ -2750,7 +2749,7 @@ Object Interpreter::eval_string_split(const Object& form,
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
-    return Object::make_symbol(&m_reader.get_symbol_table(), args.unnamed[0].as_string()->c_str());
+    return EnvContext::make_symbol(args.unnamed[0].as_string()->c_str());
 }
 
 Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3247,7 +3246,7 @@ Object Interpreter::eval_gensym(const Object & form, Arguments & args, const std
     vararg_check(form, args, {}, {}); // Без аргументов
 
     std::string name = "gensym" + std::to_string(m_gensym_id++);
-    return Object::make_symbol(&m_reader.get_symbol_table(), name.c_str());
+    return EnvContext::make_symbol(name.c_str());
 }
 
 Object Interpreter::eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3781,7 +3780,7 @@ Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const s
     auto it = m_setter_map.find(getter);
     if (it != m_setter_map.end()) {
         // Если нашли, создаем объект-символ из сохраненного указателя
-        return Object::make_symbol(m_reader.get_symbol_table(), it->second.c_str());
+        return EnvContext::make_symbol(it->second.c_str());
     }
 
     // Если ничего не нашли, возвращаем пустой список (nil)
@@ -3822,18 +3821,40 @@ Object Interpreter::eval_make_alias(const Object& form, Arguments& args, const s
     
     return m_sym_undefined; // nil логичнее пустой коллекции
 }
-Object Interpreter::eval_deref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    vararg_check(form, args, {{ }}, {});
-    auto obj = args.unnamed[0];
-
-    if (obj.type == ObjectType::CELL) {
-        return obj.as_cell()->get(); 
-    }
+Object Interpreter::eval_navigation_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env)
+{
+    Object iterator = rest; // Пропускаем само имя 'navigation'
     
-    if (obj.type == ObjectType::NATIVE_REF) {
-        return obj.as_heap_object()->deref();
+    // 1. ПЕРВЫЙ аргумент вычисляем обязательно (это корень навигации)
+    if (!iterator.is_pair()) {
+        throw_eval_error(form, "expects pair");
+        return get_null();
     }
+    auto iterator_pair = iterator.as_pair();
+    Object current = eval_with_rewind(form, iterator_pair->car, env);   
+    iterator = iterator_pair->cdr;
 
-    return obj;
+    while (!iterator.is_empty_list()) {
+        if (!iterator.is_pair()) {
+            throw_eval_error(form, "expects pair");
+            return get_null();
+        }
+        iterator_pair = iterator.as_pair();
+        Object key_form = iterator_pair->car;
+        Object key;
+
+        // Если это символ (например, size), превращаем его в ключ-символ без eval
+        if (key_form.is_symbol()) {
+            key = key_form; 
+        } else {
+            // Если это что-то другое (например, вызов функции или число), вычисляем
+            key = eval_with_rewind(form, key_form, env);
+        }
+
+        current = current.step(key);
+        iterator = iterator_pair->cdr;
+    }
+    return current;
 }
+
 } // namespace script

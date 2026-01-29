@@ -14,7 +14,9 @@ using namespace script;
 // TypeSpec constructors
 // ============================================================================
 
-TypeSpec::TypeSpec(std::string type) : m_type(std::move(type)) {}
+TypeSpec::TypeSpec(std::string type) : m_type(std::move(type)) {
+    define_all_aliases();
+}
 
 TypeSpec::TypeSpec(std::string type, std::vector<TypeSpec> arguments)
     : m_type(std::move(type))
@@ -351,14 +353,14 @@ Object TypeSpec::make_step_alias(const Object& key) {
 }
 
 // Вспомогательная функция для преобразования TypeSpec
-Object TypeSpec::inspect(SymbolTable& symbols) const
+Object TypeSpec::inspect() const
 {
         if (base_type() == "none" || base_type().empty())
         {
             return Object::make_empty_list();
         }
 
-        Object base = symbols.make_symbol(base_type());
+        Object base = EnvContext::make_symbol(base_type());
 
         // Если нет ни аргументов, ни тегов — возвращаем просто символ (атом)
         if (get_args_count() == 0 && get_tags_count() == 0)
@@ -373,7 +375,7 @@ Object TypeSpec::inspect(SymbolTable& symbols) const
         // 1. Добавляем вложенные TypeSpec (аргументы)
         for (size_t i = 0; i < get_args_count(); ++i)
         {
-            list_elements.push_back(get_arg(i).inspect(symbols));
+            list_elements.push_back(get_arg(i).inspect());
         }
 
         // 2. Добавляем теги в формате :key value
@@ -381,12 +383,12 @@ Object TypeSpec::inspect(SymbolTable& symbols) const
         {
             // Превращаем имя тега в ключевое слово (например, "foo" -> ":foo")
             std::string keyword = ":" + tag.name;
-            list_elements.push_back(symbols.make_symbol(keyword));
+            list_elements.push_back(EnvContext::make_symbol(keyword));
 
             // Значение тега (предполагаем, что это может быть имя типа или строка)
             // Если значение выглядит как число, можно было бы парсить,
             // но пока оставим как символ/строку для простоты
-            list_elements.push_back(symbols.make_symbol(tag.value));
+            list_elements.push_back(EnvContext::make_symbol(tag.value));
         }
 
         return pretty_print::build_list(list_elements);

@@ -27,6 +27,7 @@ namespace {
 // ============================================================================
 
 TypeSystem::TypeSystem() : m_config() {
+    define_all_aliases();
     // Add basic null types
     // add_type("none", std::make_unique<NullType>("none"));
     // add_type("_type_", std::make_unique<NullType>("_type_"));
@@ -1993,7 +1994,7 @@ void TypeSystem::builtin_structure_inherit(StructureType* st) {
 // Aliases
 // ============================================================================
 void TypeSystem::define_all_aliases() {
-    define_alias("all-types-count", [](Aliasable* s) {
+    define_alias("types-count", [](Aliasable* s) {
         return Object::make_integer(static_cast<TypeSystem*>(s)->get_types_count());
     });
 
@@ -2306,9 +2307,9 @@ std::string FieldReverseLookupOutput::Token::print() const {
     }
 }
 
-script::Object TypeSystem::inspect(script::SymbolTable& symbols) const {
+script::Object TypeSystem::inspect() const {
     return pretty_print::build_list(
-        symbols.make_symbol("type-system"), 
-        symbols.make_symbol(":size"), 
+        EnvContext::make_symbol("type-system"), 
+        EnvContext::make_symbol(":size"), 
         Object::make_integer(m_types.size()));
 }

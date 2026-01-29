@@ -90,8 +90,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; List of all assembler instructions
-(defparameter
-  *optable* (make-hash-table '() 200)
+(defparameter *optable* (make-hash-table '() 200)
   "Opcode table for the assembler")
 
 (defun hash-opcode (opc)
