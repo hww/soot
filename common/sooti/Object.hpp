@@ -35,7 +35,9 @@ namespace script
         ENVIRONMENT, 
         READER,
         NATIVE_REF,
-        CELL
+        CELL,
+        STATIC_BUFFER,
+        STATIC_WRITER
     };
 
     enum class MemoryAccessKind {
@@ -227,6 +229,7 @@ namespace script
         static Object make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type);
         static Object make_cell(void* raw_ptr, MemoryAccessKind type);
         static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
+        static Object make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type);
 
         // String representation
         std::string print() const;
@@ -257,6 +260,8 @@ namespace script
         bool is_hash_table() const { return type == ObjectType::STRING_HASH_TABLE; }
         bool is_env() const { return type == ObjectType::ENVIRONMENT; }
         bool is_reader() const { return type == ObjectType::READER; }
+        bool is_static_buffer() const { return type == ObjectType::STATIC_BUFFER; }
+        bool is_buffer_writer() const { return type == ObjectType::STATIC_WRITER; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
 
         // Evaluates the truthiness of an object. Since the Object class lacks access 
@@ -630,6 +635,8 @@ namespace script
             Object key;
             Object rest;
             Object native_ref;
+            Object static_buffer;
+            Object static_writer;
 
             Object true_or_false(bool val) { return val ? sym_true : sym_false; }
         } core;
