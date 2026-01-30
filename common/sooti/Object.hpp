@@ -310,7 +310,7 @@ namespace script
         template <typename T>
         std::shared_ptr<T> as_native_ref() const {
             // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
-            if (!is_native_ref()) {
+            if (!heap_obj) {
                 return nullptr;
             }
 

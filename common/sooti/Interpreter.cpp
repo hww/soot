@@ -264,7 +264,8 @@ namespace script
             {"make-static-buffer",   &Interpreter::eval_make_static_buffer, nullptr},
             {"make-static-writer",   &Interpreter::eval_make_static_writer, nullptr},
             {"write-to-buffer",      &Interpreter::eval_static_buffer_write, nullptr},
-            {"write-with-writer",    &Interpreter::eval_static_writer_write, nullptr},
+            {"write-to-writer",      &Interpreter::eval_static_writer_write, nullptr},
+            {"static-buffer-dump",   &Interpreter::eval_static_buffer_dump, nullptr},
         });
 
 
@@ -3947,6 +3948,25 @@ Object Interpreter::eval_make_static_writer(const Object& form, Arguments& args,
     auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
     auto writer = std::make_shared<StaticWriter>(buffer, m_type_system);
     return Object::make_heap_object(writer, ObjectType::STATIC_WRITER);
+}
+
+
+Object Interpreter::eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{ObjectType::STATIC_BUFFER},
+        {ObjectType::INTEGER},
+        {ObjectType::INTEGER},
+        {ObjectType::SYMBOL},
+        {ObjectType::INTEGER}},
+     {});
+    auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
+    auto start_offset = args.unnamed[1].as_integer();
+    auto bytes_to_dump = args.unnamed[2].as_integer();
+    bool show_ascii = args.unnamed[3].as_symbol();
+    int bytes_per_line = args.unnamed[4].as_integer();
+    auto str = buffer->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
+
+
+    return Object::make_string(str);
 }
 
 Object Interpreter::eval_static_writer_write(const Object& form, Arguments& args, 

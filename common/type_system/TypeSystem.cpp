@@ -955,6 +955,7 @@ void TypeSystem::add_builtin_types_z80() {
     m_config.array_data_offset = 2;
     m_config.default_alignment = 1;
     m_config.crc_value_size = 2;
+    
     // 1. Технические типы
     add_type("none",   std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));
@@ -964,43 +965,152 @@ void TypeSystem::add_builtin_types_z80() {
         std::make_unique<ValueType>("object", "object", false, 2, true, RegClass::GPR_16));
     add_builtin_value_type("object", "pointer", 2);
 
-    // 3. Числа (Только то, что реально тянет Z80)
+    // 3. Числа
     add_builtin_value_type("object", "number", 2);
     add_builtin_value_type("number", "integer", 2);
+    
     // signed integers
     add_builtin_value_type("integer", "int8", 1, false, true, RegClass::GPR_8);
     add_builtin_value_type("integer", "int16", 2, false, true, RegClass::GPR_16);
     add_builtin_value_type("integer", "int", 2, false, true, RegClass::GPR_16);
-    // unsigned integers
+    
+    // unsigned integers  
     add_builtin_value_type("integer", "uint8", 1, false, false, RegClass::GPR_8);
     add_builtin_value_type("integer", "uint16", 2, false, false, RegClass::GPR_16);
     add_builtin_value_type("integer", "uint", 2, false, false, RegClass::GPR_16);
 
-    // Костыль для парсера (чтобы не падал)
+    // Костыль для парсера
     auto i64 = add_builtin_value_type("integer", "int64", 8);
     i64->disallow_in_runtime();
 
     // 4. Структуры
     auto structure_type = add_builtin_structure("object", "structure");
     auto basic_type = add_builtin_basic("structure", "basic");
+    
+    // 5. Basic типы
+    auto symbol_type = add_builtin_basic("basic", "symbol");
+    auto string_type = add_builtin_basic("basic", "string");
+    string_type->set_final();  // string не имеет виртуальных методов в Z80
     auto type_type = add_builtin_basic("basic", "type");
+    auto function_type = add_builtin_basic("basic", "function");
 
-    add_builtin_basic("basic", "function"); 
-    add_builtin_basic("basic", "symbol");
-    add_builtin_basic("basic", "string");
-
-    // ВАЖНО: Связываем basic с его типом (первые 2 байта)
-    add_field_to_type(basic_type, "type", make_typespec("type"));
-
-    // 5. Минимальные метаданные для 'type'
+    // ============================================================================
+    // КРИТИЧЕСКИ ВАЖНЫЕ ПОЛЯ ДЛЯ BASIC ТИПОВ
+    // ============================================================================
+    
+    // BASIC: первые 2 байта - type tag (тип объекта)
+    add_field_to_type(basic_type, "type", make_typespec("type"), 0, false, false, 0, 2);
+    
+    // SYMBOL для Z80 (упрощенная версия)
+    // symbol имеет: type (2), value (2) = всего 4 байта
+    builtin_structure_inherit(symbol_type);
+    add_field_to_type(symbol_type, "value", make_typespec("object"), 2); // offset 2
+    
+    // STRING для Z80 (упрощенная версия)
+    // string имеет: type (2), length (2), data (указатель или inline) = 4+ байта
+    builtin_structure_inherit(string_type);
+    add_field_to_type(string_type, "length", make_typespec("uint16"), 2); // offset 2
+    add_field_to_type(string_type, "data", make_typespec("uint8"), 4, false, true); // offset 4, dynamic
+    
+    // TYPE для Z80
     builtin_structure_inherit(type_type);
-    add_field_to_type(type_type, "parent", make_typespec("type"));
-    add_field_to_type(type_type, "size",   make_typespec("uint16"));
-    add_field_to_type(type_type, "method-table", make_typespec("function"), false, true);
+    add_field_to_type(type_type, "parent", make_typespec("type"), 2);    // offset 2
+    add_field_to_type(type_type, "size", make_typespec("uint16"), 4);    // offset 4
+    add_field_to_type(type_type, "psize", make_typespec("uint16"), 6);   // offset 6 (placeholder)
+    add_field_to_type(type_type, "heap-base", make_typespec("uint16"), 8); // offset 8
+    
+    // FUNCTION для Z80
+    builtin_structure_inherit(function_type);
+    // function в Z80 может быть просто указателем на код
 
-    // 6. Только один критический метод
+    // ============================================================================
+    // КРИТИЧЕСКИ ВАЖНЫЕ МЕТОДЫ
+    // ============================================================================
+    
+    // OBJECT методы
     declare_method(obj_type, "new", {}, false,
         make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
+    declare_method(obj_type, "delete", {}, false, 
+        make_function_typespec({ "_type_" }, "none"), false);
+    declare_method(obj_type, "print", {}, false, 
+        make_function_typespec({ "_type_" }, "_type_"), false);
+    
+    // STRUCTURE методы
+    declare_method(structure_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type" }, "_type_"), false);
+    
+    // BASIC методы (наследует от structure)
+    declare_method(basic_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type" }, "_type_"), false);
+    
+    // SYMBOL методы (нельзя создавать new)
+    declare_method(symbol_type, "new", {}, false,
+        make_function_typespec({}, "none"), false);
+    
+    // STRING методы (специальный конструктор)
+    declare_method(string_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type", "int", "string" }, "_type_"), false);
+    
+    // TYPE методы
+    declare_method(type_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
+    
+    // ============================================================================
+    // ДОПОЛНИТЕЛЬНЫЕ ТИПЫ ДЛЯ Z80
+    // ============================================================================
+    
+    // pair для cons-ячеек
+    auto pair_type = add_builtin_structure("object", "pair", true);
+    pair_type->override_offset(2); // специальное смещение для pair
+    add_field_to_type(pair_type, "car", make_typespec("object"), 0);
+    add_field_to_type(pair_type, "cdr", make_typespec("object"), 2);
+    declare_method(pair_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type", "object", "object" }, "_type_"), false);
+    
+    // array для массивов
+    auto array_type = add_builtin_basic("basic", "array");
+    builtin_structure_inherit(array_type);
+    add_field_to_type(array_type, "length", make_typespec("int16"), 2);
+    add_field_to_type(array_type, "data", make_typespec("uint8"), 4, false, true);
+    declare_method(array_type, "new", {}, false,
+        make_function_typespec({ "symbol", "type", "type", "int" }, "_type_"), false);
+    
+    // bitfield для аппаратных регистров
+    add_builtin_value_type("object", "bitfield", 2);
+    
+    // enum для перечислений (наследует от соответствующих integer типов)
+    // Определяются динамически через defenum
+    
+    // ============================================================================
+    // ПРОВЕРКА РАЗМЕРОВ
+    // ============================================================================
+    
+    // Проверяем что размеры типов правильные для Z80
+    verify_type_sizes_z80();
+}
+
+void TypeSystem::verify_type_sizes_z80() {
+    // Проверяем критические размеры
+    auto check_size = [&](const std::string& name, size_t expected) {
+        Type* type = lookup_type(name);
+        if (type && type->get_size_in_memory() != expected) {
+            fmt::print("[WARNING] Type '{}' has size {} but expected {}\n",
+                      name, type->get_size_in_memory(), expected);
+        }
+    };
+    
+    check_size("object", 2);
+    check_size("int8", 1);
+    check_size("int16", 2);
+    check_size("int", 2);
+    check_size("uint8", 1);
+    check_size("uint16", 2);
+    check_size("uint", 2);
+    check_size("basic", 2); // только type tag
+    check_size("symbol", 4); // type (2) + value (2)
+    check_size("string", 4); // type (2) + length (2), data отдельно
+    check_size("type", 10); // type (2) + поля
+    check_size("pair", 4); // car (2) + cdr (2)
 }
 
 // ============================================================================
