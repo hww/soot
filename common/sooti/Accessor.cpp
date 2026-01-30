@@ -1,12 +1,14 @@
-#include "Aliasable.hpp"
+#include "Accessor.hpp"
+
+namespace script {
 
 // ============================================================================
-// Aliasable
+// Accessor
 // ============================================================================
 
-Object Aliasable::make_step_alias(const Object& key) {
+Object Accessor::make_step_alias(const Object& key) {
 
-    if (!key.is_symbol()) return Object::make_empty_list();
+    if (!key.is_symbol()) return Object::make_null();
     
     std::string sym_name = key.to_std_string(); // Используем метод получения имени
     const auto& props = get_property_map();
@@ -25,21 +27,4 @@ Object Aliasable::make_step_alias(const Object& key) {
     return Object::make_undefined();
 }
 
-// ============================================================================
-// StaticBuffer
-// ============================================================================
-
-// --- Реализация Aliasable для Лиспа ---
-void StaticBuffer::define_all_aliases() {
-    // Свойства самого буфера
-    define_alias("origin", [](Aliasable* s) {
-        return Object::make_integer(static_cast<StaticBuffer*>(s)->m_origin);
-    });
-    define_alias("size", [](Aliasable* s) {
-        return Object::make_integer(static_cast<StaticBuffer*>(s)->m_data.size());
-    });
-    define_alias("type", [](Aliasable* s) {
-        return EnvContext::make_symbol(static_cast<StaticBuffer*>(s)->m_type_name);
-    });
-    // Можно добавить "data", который вернет массив Лиспа, если нужно
 }

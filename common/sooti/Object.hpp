@@ -77,14 +77,25 @@ namespace script
             return name_ptr && name_ptr[0] != '\0' && name_ptr[0] == ':';
         }
 
-        const char* c_str() const { return name_ptr; }
-        std::string as_string() { return std::string(name_ptr); }
 
         struct hash {
             auto operator()(const InternedSymbolPtr& x) const {
                 return std::hash<const void*>()((const void*)x.name_ptr);
             }
         };
+
+        const char* c_str() const { return name_ptr; }
+        std::string as_string() { return std::string(name_ptr); }
+
+        // Добавляем этот оператор
+        operator std::string() const {
+            return name_ptr ? std::string(name_ptr) : std::string();
+        }
+        
+        // И, возможно, этот, чтобы можно было передавать в функции типа printf или fmod
+        operator const char*() const {
+            return name_ptr;
+        }
 
         bool operator==(const char* msg) const { return strcmp(msg, name_ptr) == 0; }
         bool operator!=(const char* msg) const { return strcmp(msg, name_ptr) != 0; }
@@ -186,23 +197,26 @@ namespace script
         // For heap types (reference semantics)
         std::shared_ptr<HeapObject> heap_obj;
 
+        // Тот самый делегат который сообщает о текущей таблицк
+        static void set_symbol_table(SymbolTable* table) { s_table = table; }
+        static SymbolTable& symbol_table() { return *s_table; }
+        static InternedSymbolPtr intern(const char* name);
         // адресация к объекту -> key
         Object step(const Object& key) const;
         
         // Constructors for fixed types
-        static Object make_undefined() { return { type: ObjectType::UNDEFINED }; }
+        static Object make_undefined();
         static Object make_integer(IntType value);
         static Object make_float(FloatType value);
         static Object make_char(char value);
-        static Object make_empty_list();
+        static Object make_null();
         static Object make_list(const std::vector<Object>& elements);
         static Object make_array(const std::vector<Object>& elements);
         static Object make_vector(const std::vector<Object>& elements);
-        static Object make_symbol(SymbolTable* table, const char* name);
-        static Object make_symbol(SymbolTable& table, const char* name) { return make_symbol(&table, name);} 
-        static Object make_keyword(SymbolTable* table, const char* name);
         static Object make_symbol(const char* name);
         static Object make_keyword(const char* name);
+        static Object make_symbol(std::string name) { return make_symbol(name.c_str()); }
+        static Object make_keyword(std::string name) { return make_keyword(name.c_str()); }
         static Object make_boolean(bool v) { return v ? make_symbol("#t") : make_symbol("#f"); };
         static Object make_string(const std::string& text);
         static Object make_pair(const Object& car, const Object& cdr);
@@ -235,8 +249,8 @@ namespace script
         bool is_cell() const { return type == ObjectType::CELL; }
         bool is_native_ref() const { return type == ObjectType::NATIVE_REF; }
         bool is_array() const { return type == ObjectType::ARRAY; }
-        bool is_empty_list() const { return type == ObjectType::EMPTY_LIST; }
-        bool is_list() const { return is_empty_list() || is_pair(); }
+        bool is_null() const { return type == ObjectType::EMPTY_LIST; }
+        bool is_list() const { return is_null() || is_pair(); }
         bool is_lambda() const { return type == ObjectType::LAMBDA; }
         bool is_macro() const { return type == ObjectType::MACRO; }
         bool is_vector() const { return type == ObjectType::ARRAY; }
@@ -250,7 +264,7 @@ namespace script
         // For better performance, the Interpreter uses its own 'truthy()' method, 
         // which compares pre-interned symbols directly.
         bool as_boolean() const { 
-            if (is_empty_list()) return false;
+            if (is_null()) return false;
             return !(is_symbol() && as_symbol() == "#f"); 
         }
         /**
@@ -266,7 +280,7 @@ namespace script
         bool truthy(InternedSymbolPtr false_symbol) const 
         { 
             // Ложь — это если объект является пустым списком ИЛИ символом #f
-            if (is_empty_list()) return false;
+            if (is_null()) return false;
             return !(is_symbol() && as_symbol().name_ptr == false_symbol.name_ptr); 
         }
         
@@ -287,6 +301,23 @@ namespace script
         const InternedSymbolPtr&    as_symbol() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
         std::string                 to_std_string() const;
+    
+        template <typename T>
+        std::shared_ptr<T> as_native_ref() const {
+            // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
+            if (!is_native_ref()) {
+                return nullptr;
+            }
+
+            // 2. Извлекаем базовый указатель на HeapObject (или твой базовый класс для нативов)
+            // Предполагаем, что m_data.heap_obj хранит shared_ptr
+            auto base_ptr = heap_obj; 
+
+            // 3. Пытаемся безопасно привести к целевому типу T
+            auto casted_ptr = std::dynamic_pointer_cast<T>(base_ptr);
+            
+            return casted_ptr; 
+        }
 
         // C++ идеоматичные методы
         std::vector<Object> as_c_vector() const;
@@ -300,6 +331,7 @@ namespace script
 
     private:
         void throw_type_error(const std::string& expected) const;
+        static SymbolTable* s_table; // Просто статический указатель
     };
 
     // Now define PairObject AFTER Object
@@ -350,15 +382,10 @@ namespace script
 
         // Неявное преобразование в std::string
         operator std::string() const {
-            return data;
+            return data; 
         }
 
         operator const char*() const {
-            return data.c_str();
-        }
-
-        // Дополнительно: можно добавить преобразование в const char*
-        const char* c_str() const {
             return data.c_str();
         }
     };
@@ -573,13 +600,11 @@ namespace script
         int m_next_resize = 0;
         uint32_t m_mask = 0;
         static constexpr float kMaxUsed = 0.7;
+
     };
 
     class SymbolTable {
     public:
-        struct TypeConstants {
-            Object obj_null;
-        } constants;
         struct TypeSymbols {
             Object empty_list;
             Object integer;
@@ -617,8 +642,10 @@ namespace script
         ~SymbolTable();
 
         InternedSymbolPtr intern(const char* str);
-        Object make_symbol(const char* str)       { return Object::make_symbol(this, str); }
-        Object make_symbol(const std::string str) { return Object::make_symbol(this, str.c_str()); }
+        Object make_symbol(const char* name);
+        Object make_keyword(const char* name);
+        Object make_symbol(std::string name);
+        Object make_keyword(std::string name);
 
         // Метод для итерации по символам
         template<typename F>
@@ -924,36 +951,6 @@ namespace script
     };
 
 
-    /**
-     * Глобальный контекст окружения. 
-     * Позволяет получать доступ к текущей таблице символов из любой точки кода.
-     */
-    class EnvContext {
-    public:
-        // Доступ к синглтону
-        static EnvContext& instance();
-
-        // Установка активной таблицы символов
-        void set_current_table(SymbolTable* table);
-        
-        // Получение ссылки на текущую таблицу
-        SymbolTable& table();
-
-        // Статические хелперы для удобства
-        static SymbolTable& symbol_table();
-        static Object make_symbol(const std::string& name);
-        static InternedSymbolPtr intern_ptr(const std::string& name);
-        static Object lisp_bool(bool value);
-
-    private:
-        EnvContext(); // Приватный конструктор
-        
-        // Запрещаем копирование
-        EnvContext(const EnvContext&) = delete;
-        EnvContext& operator=(const EnvContext&) = delete;
-
-        SymbolTable* m_current_table = nullptr;
-    };
 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);

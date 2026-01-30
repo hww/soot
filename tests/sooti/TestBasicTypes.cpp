@@ -65,7 +65,7 @@ TEST_F(BasicTypesTest, CharLiterals) {
 // Тест 5: Пустой список
 TEST_F(BasicTypesTest, EmptyList) {
     Object obj = eval("()");
-    EXPECT_TRUE(obj.is_empty_list());
+    EXPECT_TRUE(obj.is_null());
 }
 
 // Тест 6: Строки

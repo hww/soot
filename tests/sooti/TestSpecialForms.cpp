@@ -58,7 +58,7 @@ TEST_F(SpecialFormsTest, IfExpression) {
     EXPECT_EQ(obj.as_integer(), 1);
 
     obj = eval("(if #f 1)");
-    EXPECT_TRUE(obj.is_empty_list());
+    EXPECT_TRUE(obj.is_null());
 }
 
 // Тест lambda

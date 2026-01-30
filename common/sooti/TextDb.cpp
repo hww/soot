@@ -83,7 +83,7 @@ namespace script {
 	 * The object _must_ be a pair or empty list.
 	 */
 	void TextDb::link(const Object& o, std::shared_ptr<SourceText> frag, int offset) {
-		if (o.is_empty_list()) return;
+		if (o.is_null()) return;
 
 		ASSERT(o.is_pair());
 		//fmt::print(fg(fmt::color::orange), 
@@ -100,7 +100,7 @@ namespace script {
 
 	// Ассоцировать новый объект со старыми данными другого объекта
 	void TextDb::copy_link(const Object& from, const Object& to) {
-		if (from.is_empty_list() || to.is_empty_list()) return;
+		if (from.is_null() || to.is_null()) return;
 		auto it = m_map.find(from.heap_obj);
 		if (it != m_map.end()) {
 			m_map[to.heap_obj] = it->second;

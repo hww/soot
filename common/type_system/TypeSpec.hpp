@@ -10,7 +10,7 @@
 #include <optional>
 #include <memory>
 
-#include "common/sooti/Aliasable.hpp"
+#include "common/sooti/Accessor.hpp"
 
 
 namespace script
@@ -39,7 +39,7 @@ struct TypeTag {
 // TypeSpec
 // ============================================================================
 
-class TypeSpec : public Aliasable {
+class TypeSpec : public Accessor {
 public:
     // Constructors
     TypeSpec() = default;

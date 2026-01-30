@@ -338,7 +338,7 @@ void ReplWrapper::show_history() {
 
 void ReplWrapper::load_file(const std::string& filename) {
     fmt::print(fg(fmt::color::cyan), "✓ Running script: {}\n", filename);
-    script::Object result = script::Object::make_empty_list();
+    script::Object result = script::Object::make_null();
     try {
         // Предполагаем, что у интерпретатора есть метод для загрузки файла
         result = interpreter_.eval_string(fmt::format("(load \"{}\")", filename), "script");
@@ -936,7 +936,7 @@ void ReplWrapper::inspect_text_db() {
 }
 
 void ReplWrapper::inspect_symbol_table() {
-    auto& st = script::EnvContext::symbol_table();
+    auto& st = interpreter_.symbol_table();
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "=== Symbol Table ===\n");
 

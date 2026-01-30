@@ -78,7 +78,7 @@ namespace script::pretty_print {
 
                     if (first_str == "quote") {
                         auto second = obj.as_pair()->cdr;
-                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                        if (second.is_pair() && second.as_pair()->cdr.is_null()) {
                             Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::QUOTE);
                             return result;
@@ -86,7 +86,7 @@ namespace script::pretty_print {
                     }
                     else if (first_str == "unquote") {
                         auto second = obj.as_pair()->cdr;
-                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                        if (second.is_pair() && second.as_pair()->cdr.is_null()) {
                             Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::UNQUOTE);
                             return result;
@@ -94,7 +94,7 @@ namespace script::pretty_print {
                     }
                     else if (first_str == "quasiquote") {
                         auto second = obj.as_pair()->cdr;
-                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                        if (second.is_pair() && second.as_pair()->cdr.is_null()) {
                             Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::QUASIQUOTE);
                             return result;
@@ -102,7 +102,7 @@ namespace script::pretty_print {
                     }
                     else if (first_str == "unquote-splicing") {
                         auto second = obj.as_pair()->cdr;
-                        if (second.is_pair() && second.as_pair()->cdr.is_empty_list()) {
+                        if (second.is_pair() && second.as_pair()->cdr.is_null()) {
                             Node result = to_node(second.as_pair()->car);
                             result.quotes.push_back(Node::QuoteKind::UNQUOTE_SPLICING);
                             return result;
@@ -118,7 +118,7 @@ namespace script::pretty_print {
                     if (to_print.is_pair()) {
                         children.push_back(to_node(to_print.as_pair()->car));
                         to_print = to_print.as_pair()->cdr;
-                        if (to_print.is_empty_list()) {
+                        if (to_print.is_null()) {
                             return Node(std::move(children), true);
                         }
                     }

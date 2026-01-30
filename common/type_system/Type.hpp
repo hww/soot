@@ -14,8 +14,8 @@
 #include <optional>
 #include "common/CommonTypes.hpp"
 #include "common/type_system/TypeSpec.hpp"
+
 #include "common/sooti/Export.hpp"
-#include "common/sooti/Aliasable.hpp"
 
 // Forward declarations
 class Type;
@@ -59,7 +59,7 @@ struct TargetConfig {
     int pointer_size = 4;
     int array_data_offset = 12;
     int default_alignment = 4;
-    int symbol_src_size = 4;
+    int crc_value_size = 4;
     // Можно добавить порядок байт (Endianness) и т.д.
 };
 
@@ -88,7 +88,7 @@ struct DefinitionMetadata {
 // Method Information
 // ============================================================================
 
-class MethodInfo : public Aliasable {
+class MethodInfo : public Accessor {
     
 public:
     MethodInfo(){}
@@ -122,7 +122,7 @@ public:
     std::string diff(const MethodInfo& other) const;
 
     std::string print() const override { return "<method-info>"; }
-    Object inspect() const override { return EnvContext::make_symbol("method-info"); }
+    Object inspect() const override { return Object::make_symbol("method-info"); }
 
     void define_all_aliases() override;
 };
@@ -131,7 +131,7 @@ public:
 // Field Definition
 // ============================================================================
 
-class Field : public Aliasable {
+class Field : public Accessor {
 public:
     Field() { define_all_aliases(); };
     Field(std::string name, TypeSpec type);
@@ -144,7 +144,7 @@ public:
     void mark_as_user_placed();
 
     std::string print() const;
-    Object inspect() const { return EnvContext::make_symbol("field");  }
+    Object inspect() const { return Object::make_symbol("field");  }
 
     const TypeSpec& type() const { return m_type; }
     TypeSpec& type() { return m_type; }
@@ -207,7 +207,7 @@ private:
 // BitField Definition
 // ============================================================================
 
-class BitField : public Aliasable {
+class BitField : public Accessor {
 public:
     BitField() { define_all_aliases(); };
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
@@ -222,7 +222,7 @@ public:
     bool operator!=(const BitField& other) const;
     std::string print() const;
     Object inspect() const override { 
-        return Object::make_empty_list(); 
+        return Object::make_null(); 
     }
     std::string diff(const BitField& other) const;
 
@@ -240,7 +240,7 @@ private:
 // Base Type Definition
 // ============================================================================
 
-class Type : public Aliasable {
+class Type : public Accessor {
 public:
     static int verbose;
 public:
@@ -248,6 +248,8 @@ public:
     virtual ~Type() = default;
 
     virtual std::string get_class_name() const = 0;
+    uint32_t get_type_tag() { return util::compute_crc32(get_name());}
+
 
     // Core type properties - PURE VIRTUAL
     virtual bool is_reference() const = 0;
@@ -372,7 +374,7 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
     void define_all_aliases() override;
@@ -402,7 +404,7 @@ public:
     int get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
     void inherit(const ValueType* parent);
@@ -436,7 +438,7 @@ public:
     RegClass get_preferred_reg_class() const override { return RegClass::GPR_64; }
 
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     
     void define_all_aliases() override;
 
@@ -459,7 +461,7 @@ public:
     std::string get_class_name() const override { return "structure"; }
 
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     void inherit(StructureType* parent);
     bool operator==(const Type& other) const override;
 
@@ -524,7 +526,7 @@ public:
     int get_offset() const override { return 0; } // BASIC_OFFSET
     int get_inline_array_start_alignment() const override { return 16; }
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
     bool final() const { return m_final; }
@@ -550,7 +552,7 @@ public:
 
     bool lookup_field(const std::string& name, BitField* out) const;
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
     const std::vector<BitField>& fields() const { return m_fields; }
@@ -577,7 +579,7 @@ public:
     std::string get_class_name() const override { return "enum"; }
 
     std::string print() const override;
-    Object inspect() const { return Object::make_empty_list(); }
+    Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
     const std::unordered_map<std::string, int64_t>& entries() const { return m_entries; }

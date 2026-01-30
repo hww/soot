@@ -25,7 +25,7 @@ namespace script {
             iter = &lap->cdr;
         }
 
-        ASSERT(iter->is_empty_list());
+        ASSERT(iter->is_null());
     }
 
     int list_length(const Object& list);

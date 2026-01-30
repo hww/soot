@@ -753,7 +753,7 @@ std::string TypeSystem::print_all_type_information() const {
 }
 
 script::Object TypeSystem::get_all_type_information() const {
-    script::Object result = script::Object::make_empty_list();
+    script::Object result = script::Object::make_null();
     for (const auto& kv : m_types) {
         result = script::Object::make_pair(script::Object::make_string(kv.second->print()), result);
     }
@@ -954,7 +954,7 @@ void TypeSystem::add_builtin_types_z80() {
     m_config.pointer_size = 2;
     m_config.array_data_offset = 2;
     m_config.default_alignment = 1;
-    m_config.symbol_src_size = 2;
+    m_config.crc_value_size = 2;
     // 1. Технические типы
     add_type("none",   std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));
@@ -1465,7 +1465,7 @@ std::vector<std::string> TypeSystem::get_all_type_names() {
 }
 
 script::Object TypeSystem::get_all_type_names_as_objects() const {
-    script::Object result = script::Object::make_empty_list();
+    script::Object result = script::Object::make_null();
     for (const auto& kv : m_types) {
         result = script::Object::make_pair(script::Object::make_string(kv.first.c_str()), result);
     }
@@ -1994,18 +1994,18 @@ void TypeSystem::builtin_structure_inherit(StructureType* st) {
 // Aliases
 // ============================================================================
 void TypeSystem::define_all_aliases() {
-    define_alias("types-count", [](Aliasable* s) {
+    define_alias("types-count", [](Accessor* s) {
         return Object::make_integer(static_cast<TypeSystem*>(s)->get_types_count());
     });
 
-    define_alias("pointer-size", [](Aliasable* s) {
+    define_alias("pointer-size", [](Accessor* s) {
         return Object::make_integer(static_cast<TypeSystem*>(s)->get_pointer_size());
     });
 }
 
 Object TypeSystem::make_step_alias(const Object& key) {
     // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = Aliasable::make_step_alias(key);
+    Object base_attempt = Accessor::make_step_alias(key);
     if (!base_attempt.is_undefined()) return base_attempt;
 
     // 2. Трактуем ключ как имя типа
@@ -2309,7 +2309,7 @@ std::string FieldReverseLookupOutput::Token::print() const {
 
 script::Object TypeSystem::inspect() const {
     return pretty_print::build_list(
-        EnvContext::make_symbol("type-system"), 
-        EnvContext::make_symbol(":size"), 
+        Object::make_symbol("type-system"), 
+        Object::make_symbol(":size"), 
         Object::make_integer(m_types.size()));
 }

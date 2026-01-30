@@ -84,7 +84,7 @@ namespace runtime::files {
             }
 
             // Проверяем правильное завершение
-            if (!iterator.is_empty_list()) {
+            if (!iterator.is_null()) {
                 throw std::runtime_error("Malformed DCI file - improper list termination");
             }
 
@@ -107,7 +107,7 @@ namespace runtime::files {
 
             // Проверяем что список содержит только один элемент
             auto rest = size_list.as_pair()->cdr;
-            if (!rest.is_empty_list()) {
+            if (!rest.is_null()) {
                 throw std::runtime_error("Binary size list should contain exactly one integer");
             }
 
@@ -157,7 +157,7 @@ namespace runtime::files {
             }
 
             // Проверяем правильное завершение списка
-            if (!list.is_empty_list()) {
+            if (!list.is_null()) {
                 throw std::runtime_error("Malformed import/export list");
             }
         }
