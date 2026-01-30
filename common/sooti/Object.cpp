@@ -61,6 +61,8 @@ namespace script
         core.unknown        = make_symbol("unknown");
         core.cell           = make_symbol("cell");
         core.native_ref     = make_symbol("native-ref");
+        core.static_buffer  = make_symbol("static-buffer");
+        core.static_writer  = make_symbol("static-writer");
     }
     Object SymbolTable::object_type_to_symbol(ObjectType type) {
         switch (type) {
@@ -80,6 +82,8 @@ namespace script
             case ObjectType::READER:            return core.reader;
             case ObjectType::CELL:              return core.cell;
             case ObjectType::NATIVE_REF:        return core.native_ref;
+            case ObjectType::STATIC_BUFFER:     return core.static_buffer;
+            case ObjectType::STATIC_WRITER:     return core.static_writer;
             default:                            return core.unknown;
         }
     }
@@ -256,6 +260,10 @@ namespace script
         return "[cell]";
         case ObjectType::NATIVE_REF:
         return "[native-ref]";
+        case ObjectType::STATIC_BUFFER:
+        return "[static-buffer]";
+        case ObjectType::STATIC_WRITER:
+        return "[static-writer]";
         default:
             throw std::runtime_error(fmt::format("unknown object type {} in object_type_to_string", (int)type));
         }
@@ -308,6 +316,15 @@ namespace script
         obj.type = ObjectType::UNDEFINED;
         return obj;        
     }
+
+    Object Object::make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type)
+    {
+        Object obj;
+        obj.type = type;
+        obj.heap_obj = std::move(heap_object);
+        return obj;     
+    }
+
     // Constructors
     Object Object::make_integer(IntType value) {
         Object obj;

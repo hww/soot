@@ -36,6 +36,7 @@ public:
     StaticBuffer(const std::string& type_name, int size, uint32_t origin = 0)
     : m_type_name(type_name), m_origin(origin) {
         m_data.resize(size, 0); // Обнуляем память
+        define_all_aliases();
     }
     
     void set_endian(Endian e) { m_endian = e; }
@@ -82,7 +83,7 @@ public:
         else 
             return read_u64_be(offset);
     }
-    
+
     // --- Реализация записи различных данных ---
 
     void write_u8(size_t offset, uint8_t value) {

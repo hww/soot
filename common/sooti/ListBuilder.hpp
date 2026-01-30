@@ -76,6 +76,38 @@ namespace script {
             }
             return head; 
         }
+
+        // --- Fluent API Методы ---
+        
+        ListBuilder& add_object(Object o) {
+            push_back(std::move(o));
+            return *this;
+        }
+
+        ListBuilder& add_symbol(const std::string& name) {
+            return add_object(Object::make_symbol(name));
+        }
+
+        ListBuilder& add_keyword(const std::string& name) {
+            // Если у тебя ключи — это символы начинающиеся с ':', используй make_keyword
+            return add_object(Object::make_keyword(name.c_str()));
+        }
+
+        ListBuilder& add_integer(int64_t val) {
+            return add_object(Object::make_integer(val));
+        }
+
+        ListBuilder& add_float(double val) {
+            return add_object(Object::make_float(val));
+        }
+
+        ListBuilder& add_string(const std::string& val) {
+            return add_object(Object::make_string(val));
+        }
+
+        ListBuilder& add_native_ref(std::shared_ptr<HeapObject> ptr) {
+            return add_object(Object::make_native_ref(ptr));
+        }
     };
 
 } // namespace script

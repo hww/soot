@@ -1,27 +1,61 @@
 #include "StaticBufferUtils.hpp"
+#include "Printer.hpp"
+#include <cstring>
+#include <stdexcept>
+#include <unordered_map>
 
 namespace script {
 
 // ========================================================================
-// Основной публичный интерфейс
+// Вспомогательные методы
+// ========================================================================
+
+void StaticBufferUtils::check_bounds(StaticBuffer* buf, size_t offset, size_t size,
+                                    const std::string& operation, const std::string& type_name) {
+    if (!buf) {
+        throw std::runtime_error("Buffer is null");
+    }
+    
+    if (offset + size > buf->size()) {
+        throw std::runtime_error(fmt::format(
+            "{} overflow for type '{}': offset {} + size {} > buffer size {}",
+            operation, type_name, offset, size, buf->size()
+        ));
+    }
+}
+
+Type* StaticBufferUtils::get_field_type(TypeSystem* ts, const Field& field) {
+    try {
+        return ts->lookup_type(field.type());
+    }
+    catch (const std::exception&) {
+        return nullptr;
+    }
+}
+
+bool StaticBufferUtils::is_compatible_types(TypeSystem* ts, Type* type1, Type* type2) {
+    // Упрощенная проверка - можно улучшить
+    return type1->get_name() == type2->get_name();
+}
+
+// ========================================================================
+// Основные методы записи
 // ========================================================================
 
 void StaticBufferUtils::write_recursive(TypeSystem* ts, StaticBuffer* dest,
                                        size_t offset, Type* type, const Object& source) {
-    // 1. Проверка аргументов
     if (!ts || !dest || !type) {
-        throw std::runtime_error("[StaticBuffer] Invalid arguments");
+        throw std::runtime_error("StaticBufferUtils: null arguments");
     }
     
-    // 2. Инициализация памяти под тип
+    // 1. Сначала подготавливаем память под этот тип (зануляем, пишем теги)
     write_from_type(ts, dest, offset, type);
     
-    // 3. Если источник null - возвращаем (оставляем значения по умолчанию)
     if (source.is_null()) {
-        return;
+        return; // Оставляем значения по умолчанию
     }
     
-    // 4. Определяем тип источника и вызываем соответствующий метод
+    // 2. Определяем источник и наполняем
     if (source.is_native_ref()) {
         auto src_buf = source.as_native_ref<StaticBuffer>();
         if (src_buf) {
@@ -34,155 +68,133 @@ void StaticBufferUtils::write_recursive(TypeSystem* ts, StaticBuffer* dest,
 
 void StaticBufferUtils::write_from_type(TypeSystem* ts, StaticBuffer* dest,
                                        size_t offset, Type* type) {
-    // 1. Проверка границ
+    if (!type || !dest) return;
+    
     size_t size = type->get_size_in_memory();
     check_bounds(dest, offset, size, "write_from_type", type->get_name());
     
-    // 2. Базовое зануление
+    // Базовое зануление (важно для padding!)
     std::memset(dest->data() + offset, 0, size);
     
-    // 3. Специфическая инициализация по категории типа
-    std::string class_name = type->get_class_name();
-    
-    if (class_name == "basic") {
-        initialize_basic_type(ts, dest, offset, type);
+    // Для basic типов пишем тип-тег
+    if (type->get_class_name() == "basic") {
+        auto& config = ts->get_config();
+        uint32_t type_tag = type->get_type_tag();
+        dest->write_u32(offset, type_tag);
+        
+        // Для некоторых basic типов есть heap_base
+        if (type->heap_base() != 0 && offset + 8 <= dest->size()) {
+            dest->write_u32(offset + 4, type->heap_base());
+        }
     }
-    else if (class_name == "structure") {
-        auto* struct_type = safe_dynamic_cast<StructureType>(type, "structure");
-        initialize_structure_type(ts, dest, offset, struct_type);
-    }
-    // Для value, enum, bitfield типов достаточно зануления
 }
 
 void StaticBufferUtils::write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
                                          size_t offset, Type* type, StaticBuffer* src) {
-    // 1. Проверка аргументов
     if (!src) {
-        throw std::runtime_error("[StaticBuffer] Source buffer is null");
+        throw std::runtime_error("Source buffer is null");
     }
     
-    // 2. Проверка границ
     size_t size = type->get_size_in_memory();
     check_bounds(dest, offset, size, "write_from_buffer", type->get_name());
     
     if (src->size() < size) {
         throw std::runtime_error(fmt::format(
-            "[StaticBuffer] Source buffer too small: {} < {}",
-            src->size(), size
+            "Source buffer too small: {} < {}", src->size(), size
         ));
     }
     
-    // 3. Копирование данных
+    // Простое копирование байтов
     std::memcpy(dest->data() + offset, src->data(), size);
     
-    // 4. Копирование релокаций
-    copy_relocations(dest, src, offset);
-    
-    // 5. Исправление тип-тега для basic типов
-    if (type->get_class_name() == "basic") {
-        fix_type_tag(ts, dest, offset, type);
+    // Копируем релокации с поправкой на смещение
+    for (const auto& reloc : src->get_relocations()) {
+        Relocation new_reloc = reloc;
+        new_reloc.offset += offset;
+        
+        // Проверяем, что релокация в пределах буфера
+        if (new_reloc.offset + 4 <= dest->size()) {
+            dest->add_reloc(new_reloc.offset, new_reloc.type, new_reloc.target_name);
+        }
     }
 }
 
 void StaticBufferUtils::write_from_data(TypeSystem* ts, StaticBuffer* dest,
                                        size_t offset, Type* type, const Object& source) {
-    // 1. Для null источника просто инициализируем тип
-    if (source.is_null()) {
-        write_from_type(ts, dest, offset, type);
-        return;
-    }
+    if (!type) return;
     
-    // 2. Маршрутизация по категориям типов
     std::string class_name = type->get_class_name();
     
     if (class_name == "value") {
-        auto* value_type = safe_dynamic_cast<ValueType>(type, "value");
-        write_value_data(ts, dest, offset, value_type, source);
+        auto* value_type = dynamic_cast<ValueType*>(type);
+        if (value_type) {
+            write_value_data(ts, dest, offset, value_type, source);
+        }
     }
     else if (class_name == "structure" || class_name == "basic") {
-        auto* struct_type = safe_dynamic_cast<StructureType>(type, class_name);
-        write_structure_data(ts, dest, offset, struct_type, source);
+        auto* struct_type = dynamic_cast<StructureType*>(type);
+        if (struct_type) {
+            write_structure_data(ts, dest, offset, struct_type, source);
+        }
     }
     else if (class_name == "enum") {
-        auto* enum_type = safe_dynamic_cast<EnumType>(type, "enum");
-        write_enum_data(ts, dest, offset, enum_type, source);
+        auto* enum_type = dynamic_cast<EnumType*>(type);
+        if (enum_type) {
+            write_enum_data(ts, dest, offset, enum_type, source);
+        }
     }
     else if (class_name == "bitfield") {
-        auto* bitfield_type = safe_dynamic_cast<BitFieldType>(type, "bitfield");
-        write_bitfield_data(ts, dest, offset, bitfield_type, source);
+        auto* bitfield_type = dynamic_cast<BitFieldType*>(type);
+        if (bitfield_type) {
+            write_bitfield_data(ts, dest, offset, bitfield_type, source);
+        }
     }
     else if (type->get_name() == "string" || type->get_name() == "symbol") {
         write_string_data(ts, dest, offset, type, source);
     }
     else {
-        throw std::runtime_error(fmt::format(
-            "[StaticBuffer] Unsupported type: {}", type->get_name()
-        ));
+        throw std::runtime_error("Unsupported type: " + type->get_name());
     }
 }
 
 // ========================================================================
-// Вспомогательные методы для write_from_type
-// ========================================================================
-
-void StaticBufferUtils::initialize_basic_type(TypeSystem* ts, StaticBuffer* dest,
-                                             size_t offset, Type* type) {
-    auto& config = ts->get_config();
-    
-    // Записываем CRC тип-тег
-    uint32_t type_tag = type->get_type_tag();
-    dest->write_u32(offset, type_tag);
-    
-    // Для некоторых basic типов есть heap_base
-    if (type->heap_base() != 0 && offset + 8 <= dest->size()) {
-        dest->write_u32(offset + 4, type->heap_base());
-    }
-}
-
-void StaticBufferUtils::initialize_structure_type(TypeSystem* ts, StaticBuffer* dest,
-                                                 size_t offset, StructureType* type) {
-    for (const auto& field : type->fields()) {
-        process_structure_field(ts, dest, offset, field);
-    }
-}
-
-void StaticBufferUtils::process_structure_field(TypeSystem* ts, StaticBuffer* dest,
-                                              size_t base_offset, const Field& field) {
-    size_t field_offset = base_offset + field.offset();
-    
-    if (field.is_inline()) {
-        // Рекурсивная инициализация inline структур
-        Type* field_type = get_field_type(ts, field);
-        if (field_type) {
-            write_from_type(ts, dest, field_offset, field_type);
-        }
-    }
-    else if (field.is_array()) {
-        // Инициализация массива
-        initialize_array_field(ts, dest, field_offset, field);
-    }
-    else if (field.is_dynamic()) {
-        // Динамические поля = nullptr
-        dest->write_u32(field_offset, 0);
-    }
-    // Обычные поля уже занулены
-}
-
-// ========================================================================
-// Вспомогательные методы для write_from_data
+// Запись примитивных типов
 // ========================================================================
 
 void StaticBufferUtils::write_value_data(TypeSystem* ts, StaticBuffer* dest,
                                         size_t offset, ValueType* type, const Object& source) {
+    if (!type) return;
+    
     int size = type->get_load_size();
+    bool is_signed = type->get_load_signed();
     
     if (source.is_integer()) {
         int64_t value = source.as_integer();
         
-        if (size == 1) dest->write_u8(offset, static_cast<uint8_t>(value));
-        else if (size == 2) dest->write_u16(offset, static_cast<uint16_t>(value));
-        else if (size == 4) dest->write_u32(offset, static_cast<uint32_t>(value));
-        else if (size == 8) dest->write_u64(offset, static_cast<uint64_t>(value));
+        if (size == 1) {
+            if (is_signed) {
+                dest->write_u8(offset, static_cast<uint8_t>(static_cast<int8_t>(value)));
+            } else {
+                dest->write_u8(offset, static_cast<uint8_t>(value));
+            }
+        }
+        else if (size == 2) {
+            if (is_signed) {
+                dest->write_u16(offset, static_cast<uint16_t>(static_cast<int16_t>(value)));
+            } else {
+                dest->write_u16(offset, static_cast<uint16_t>(value));
+            }
+        }
+        else if (size == 4) {
+            if (is_signed) {
+                dest->write_u32(offset, static_cast<uint32_t>(static_cast<int32_t>(value)));
+            } else {
+                dest->write_u32(offset, static_cast<uint32_t>(value));
+            }
+        }
+        else if (size == 8) {
+            dest->write_u64(offset, static_cast<uint64_t>(value));
+        }
     }
     else if (source.is_float()) {
         double value = source.as_float();
@@ -196,35 +208,35 @@ void StaticBufferUtils::write_value_data(TypeSystem* ts, StaticBuffer* dest,
         else if (size == 8) {
             uint64_t bits;
             std::memcpy(&bits, &value, 8);
-            dest->write_u32(offset, static_cast<uint32_t>(bits));
-            dest->write_u32(offset + 4, static_cast<uint32_t>(bits >> 32));
+            dest->write_u64(offset, bits);
         }
     }
     else {
-        throw std::runtime_error(fmt::format(
-            "[StaticBuffer] Expected number for value type '{}'",
-            type->get_name()
-        ));
+        throw std::runtime_error("Expected number for value type");
     }
 }
 
+// ========================================================================
+// Запись структур
+// ========================================================================
+
 void StaticBufferUtils::write_structure_data(TypeSystem* ts, StaticBuffer* dest,
                                             size_t offset, StructureType* type, const Object& source) {
-    // 1. Базовая инициализация
+    if (!type) return;
+    
+    // Сначала базовая инициализация
     write_from_type(ts, dest, offset, type);
     
-    // 2. Определяем формат источника
+    if (source.is_null()) {
+        return; // Оставляем нули
+    }
+    
+    // Если источник - список (alist)
     if (source.is_list()) {
         write_from_alist(ts, dest, offset, type, source);
     }
-    else if (source.is_hash_table()) {
-        write_from_hash_table(ts, dest, offset, type, source);
-    }
     else {
-        throw std::runtime_error(fmt::format(
-            "[StaticBuffer] Unsupported source format for structure '{}'",
-            type->get_name()
-        ));
+        throw std::runtime_error("Unsupported source format for structure");
     }
 }
 
@@ -236,11 +248,12 @@ void StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
     
     while (current.is_pair()) {
         auto pair = current.as_pair();
-        Object item = pair->car;
-        if (item.is_pair()) {
-            auto item_pair = item.as_pair();
-            Object key = item_pair->car;
-            Object value = item_pair->cdr;
+        Object key = pair->car;
+        Object rest = pair->cdr;
+        
+        if (rest.is_pair()) {
+            auto value_pair = rest.as_pair();
+            Object value = value_pair->car;
             
             if (key.is_symbol() || key.is_string()) {
                 field_values[key.to_std_string()] = value;
@@ -249,7 +262,7 @@ void StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
         current = pair->cdr;
     }
     
-    // Заполняем поля
+    // Заполняем поля структуры
     for (const auto& field : type->fields()) {
         auto it = field_values.find(field.name());
         if (it != field_values.end()) {
@@ -258,68 +271,515 @@ void StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
                 write_from_data(ts, dest, offset + field.offset(), field_type, it->second);
             }
         }
+        // Если поле не указано - остается значение по умолчанию (0)
     }
 }
 
 // ========================================================================
-// Общие утилиты
+// Запись enum типов
 // ========================================================================
 
-void StaticBufferUtils::check_bounds(StaticBuffer* dest, size_t offset, size_t size,
-                                    const std::string& operation, const std::string& type_name) {
-    if (offset + size > dest->size()) {
-        throw std::runtime_error(fmt::format(
-            "[StaticBuffer] {} overflow for type '{}': offset {} + size {} > buffer size {}",
-            operation, type_name, offset, size, dest->size()
-        ));
-    }
-}
-
-Type* StaticBufferUtils::get_field_type(TypeSystem* ts, const Field& field) {
-    try {
-        return ts->lookup_type(field.type());
-    }
-    catch (const std::exception& e) {
-        throw std::runtime_error(fmt::format(
-            "[StaticBuffer] Cannot lookup type for field '{}': {}",
-            field.name(), e.what()
-        ));
-    }
-}
-
-// ========================================================================
-// Доступ к полям структуры
-// ========================================================================
-
-Object StaticBufferUtils::read_field(TypeSystem* ts, StaticBuffer* dest, size_t base_offset, Type* type, const std::string& field_name) {
-    if (auto* struct_type = dynamic_cast<StructureType*>(type)) {
-        Field field;
-        if (struct_type->lookup_field(field_name, &field)) {
-            size_t field_offset = base_offset + field.offset();
-            Type* field_type = ts->lookup_type(field.type());
-
-            // Вызываем атомарное чтение в зависимости от типа поля
-            return read_primitive(ts, dest, field_offset, field_type);
+void StaticBufferUtils::write_enum_data(TypeSystem* ts, StaticBuffer* dest,
+                                       size_t offset, EnumType* type, const Object& source) {
+    if (!type) return;
+    
+    int64_t enum_value = 0;
+    
+    if (source.is_symbol() || source.is_string()) {
+        // Поиск по имени
+        std::string name = source.to_std_string();
+        const auto& entries = type->entries();
+        
+        auto it = entries.find(name);
+        if (it != entries.end()) {
+            enum_value = it->second;
+        } else {
+            throw std::runtime_error("Unknown enum value: " + name);
         }
     }
+    else if (source.is_integer()) {
+        // Прямое числовое значение
+        enum_value = source.as_integer();
+    }
+    else {
+        throw std::runtime_error("Invalid source for enum");
+    }
+    
+    // Записываем как обычное значение
+    write_value_data(ts, dest, offset, type, Object::make_integer(enum_value));
+}
+
+// ========================================================================
+// Запись битовых полей
+// ========================================================================
+
+void StaticBufferUtils::write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
+                                           size_t offset, BitFieldType* type, const Object& source) {
+    if (!type) return;
+    
+    uint32_t bitfield_value = 0;
+    
+    if (source.is_integer()) {
+        // Прямое числовое значение
+        bitfield_value = static_cast<uint32_t>(source.as_integer());
+    }
+    else if (source.is_list()) {
+        // Список флагов
+        Object current = source;
+        while (current.is_pair()) {
+            auto pair = current.as_pair();
+            Object item = pair->car;
+            
+            if (item.is_symbol() || item.is_string()) {
+                std::string flag_name = item.to_std_string();
+                
+                // Ищем флаг в полях битового типа
+                for (const auto& field : type->fields()) {
+                    if (field.name() == flag_name) {
+                        int bit_offset = field.offset();
+                        int bit_size = field.size();
+                        uint32_t mask = ((1u << bit_size) - 1) << bit_offset;
+                        bitfield_value |= mask;
+                        break;
+                    }
+                }
+            }
+            current = pair->cdr;
+        }
+    }
+    else {
+        throw std::runtime_error("Invalid source for bitfield");
+    }
+    
+    // Записываем как обычное значение
+    write_value_data(ts, dest, offset, type, Object::make_integer(bitfield_value));
+}
+
+// ========================================================================
+// Запись строк и символов
+// ========================================================================
+
+void StaticBufferUtils::write_string_data(TypeSystem* ts, StaticBuffer* dest,
+                                         size_t offset, Type* type, const Object& source) {
+    if (!source.is_string() && !source.is_symbol()) {
+        throw std::runtime_error("Expected string or symbol");
+    }
+    
+    std::string str = source.to_std_string();
+    
+    if (type->get_name() == "string") {
+        dest->write_string(offset, str, true);
+    }
+    else if (type->get_name() == "symbol") {
+        dest->write_string(offset, str, true);
+        // Добавляем релокацию для символа
+        dest->add_reloc(offset, RelocType::SYMBOL_CRC, str);
+    }
+}
+
+// ========================================================================
+// Основные методы чтения (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+Object StaticBufferUtils::read_value(TypeSystem* ts, StaticBuffer* src,
+                                    size_t offset, Type* type) {
+    if (!ts || !src || !type) {
+        return Object::make_null();
+    }
+    
+    // Проверка границ
+    size_t size = type->get_size_in_memory();
+    try {
+        check_bounds(src, offset, size, "read_value", type->get_name());
+    }
+    catch (const std::exception&) {
+        return Object::make_null();
+    }
+    
+    // Маршрутизация по категориям типов
+    std::string class_name = type->get_class_name();
+    
+    if (class_name == "value") {
+        auto* value_type = dynamic_cast<ValueType*>(type);
+        if (value_type) {
+            return read_primitive_value(ts, src, offset, value_type);
+        }
+    }
+    else if (class_name == "structure" || class_name == "basic") {
+        auto* struct_type = dynamic_cast<StructureType*>(type);
+        if (struct_type) {
+            return read_structure(ts, src, offset, struct_type);
+        }
+    }
+    else if (class_name == "enum") {
+        auto* enum_type = dynamic_cast<EnumType*>(type);
+        if (enum_type) {
+            return read_enum_value(ts, src, offset, enum_type);
+        }
+    }
+    else if (class_name == "bitfield") {
+        auto* bitfield_type = dynamic_cast<BitFieldType*>(type);
+        if (bitfield_type) {
+            return read_bitfield_value(ts, src, offset, bitfield_type);
+        }
+    }
+    else if (type->get_name() == "string" || type->get_name() == "symbol") {
+        return read_string_value(ts, src, offset, type);
+    }
+    
     return Object::make_null();
 }
 
-Object StaticBufferUtils::read_primitive(TypeSystem* ts, StaticBuffer* dest, size_t offset, Type* type) {
+Object StaticBufferUtils::read_field(TypeSystem* ts, StaticBuffer* src,
+                                    size_t base_offset, Type* type,
+                                    const std::string& field_name) {
+    if (!ts || !src || !type) {
+        return Object::make_null();
+    }
+    
+    auto* struct_type = dynamic_cast<StructureType*>(type);
+    if (!struct_type) {
+        return Object::make_null();
+    }
+    
+    // Поиск поля
+    Field field;
+    if (!struct_type->lookup_field(field_name, &field)) {
+        return Object::make_null();
+    }
+    
+    // Чтение значения поля
+    size_t field_offset = base_offset + field.offset();
+    Type* field_type = get_field_type(ts, field);
+    if (!field_type) {
+        return Object::make_null();
+    }
+    
+    return read_value(ts, src, field_offset, field_type);
+}
+
+Object StaticBufferUtils::read_structure(TypeSystem* ts, StaticBuffer* src,
+                                        size_t offset, StructureType* type) {
+    if (!type) {
+        return Object::make_null();
+    }
+    
+    // Создаем ассоциативный список для результата
+    Object result = Object::make_null();
+    
+    // Проходим по полям в обратном порядке для построения списка
+    for (auto it = type->fields().rbegin(); it != type->fields().rend(); ++it) {
+        const auto& field = *it;
+        
+        // Читаем значение поля
+        Object field_value = read_field(ts, src, offset, type, field.name());
+        if (field_value.is_null()) {
+            continue;
+        }
+        
+        // Создаем пару (field_name . field_value)
+        Object field_name_obj = Object::make_symbol(field.name());
+        Object pair = Object::make_pair(field_name_obj, field_value);
+        
+        // Добавляем в список
+        if (result.is_null()) {
+            result = Object::make_pair(pair, Object::make_null());
+        } else {
+            result = Object::make_pair(pair, result);
+        }
+    }
+    
+    return result;
+}
+
+Object StaticBufferUtils::buffer_to_object(TypeSystem* ts, StaticBuffer* src,
+                                          size_t offset, Type* type) {
+    return read_value(ts, src, offset, type);
+}
+
+// ========================================================================
+// Чтение примитивных типов (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+Object StaticBufferUtils::read_primitive_value(TypeSystem* ts, StaticBuffer* src,
+                                              size_t offset, ValueType* type) {
     int size = type->get_load_size();
     bool is_signed = type->get_load_signed();
+    
+    switch (size) {
+        case 1: {
+            uint8_t value = src->read_u8(offset);
+            if (is_signed) {
+                return Object::make_integer(static_cast<int8_t>(value));
+            } else {
+                return Object::make_integer(value);
+            }
+        }
+        
+        case 2: {
+            uint16_t value = src->read_u16(offset);
+            if (is_signed) {
+                return Object::make_integer(static_cast<int16_t>(value));
+            } else {
+                return Object::make_integer(value);
+            }
+        }
+        
+        case 4: {
+            uint32_t value = src->read_u32(offset);
+            
+            // Проверяем, не является ли это float
+            if (type->get_name() == "float") {
+                float float_value;
+                std::memcpy(&float_value, &value, 4);
+                return Object::make_float(float_value);
+            }
+            
+            if (is_signed) {
+                return Object::make_integer(static_cast<int32_t>(value));
+            } else {
+                return Object::make_integer(value);
+            }
+        }
+        
+        case 8: {
+            uint64_t value = src->read_u64(offset);
+            
+            // Проверяем, не является ли это double
+            if (type->get_name() == "double") {
+                double double_value;
+                std::memcpy(&double_value, &value, 8);
+                return Object::make_float(double_value);
+            }
+            
+            if (is_signed) {
+                return Object::make_integer(static_cast<int64_t>(value));
+            } else {
+                return Object::make_integer(static_cast<int64_t>(value));
+            }
+        }
+        
+        default:
+            return Object::make_null();
+    }
+}
 
-    // Используем твои новые методы read_u32_le / read_u64_le
-    if (type->get_class_name() == "value") {
-        if (size == 4) return Object::make_integer(dest->read_u32_le(offset));
-        if (size == 8) return Object::make_integer(dest->read_u64_le(offset));
-        // ... и так далее
+// ========================================================================
+// Чтение enum типов (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+Object StaticBufferUtils::read_enum_value(TypeSystem* ts, StaticBuffer* src,
+                                         size_t offset, EnumType* type) {
+    // Сначала читаем как обычное значение
+    Object numeric_value = read_primitive_value(ts, src, offset, type);
+    if (!numeric_value.is_integer()) {
+        return numeric_value;
     }
-    if (type->get_name() == "string") {
-        // Читаем как строку до нулевого байта
-        return Object::make_string(dest->read_string(offset));
+    
+    int64_t value = numeric_value.as_integer();
+    
+    // Пытаемся найти символьное имя
+    const auto& entries = type->entries();
+    for (const auto& entry : entries) {
+        if (entry.second == value) {
+            return Object::make_symbol(entry.first);
+        }
     }
-    return Object::make_null();
+    
+    // Если не нашли имя, возвращаем числовое значение
+    return numeric_value;
+}
+
+// ========================================================================
+// Чтение битовых полей (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+Object StaticBufferUtils::read_bitfield_value(TypeSystem* ts, StaticBuffer* src,
+                                             size_t offset, BitFieldType* type) {
+    // Сначала читаем как обычное значение
+    Object numeric_value = read_primitive_value(ts, src, offset, type);
+    if (!numeric_value.is_integer()) {
+        return numeric_value;
+    }
+    
+    uint32_t value = static_cast<uint32_t>(numeric_value.as_integer());
+    
+    // Если тип является битовым полем, создаем список флагов
+    Object result_list = Object::make_null();
+    const auto& fields = type->fields();
+    
+    // Проверяем каждый возможный флаг
+    for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
+        const auto& field = *it;
+        
+        // Получаем маску для этого поля
+        uint32_t mask = 0;
+        int bit_offset = field.offset();
+        int bit_size = field.size();
+        
+        if (bit_size > 0 && bit_offset >= 0) {
+            mask = ((1u << bit_size) - 1) << bit_offset;
+            
+            // Проверяем, установлен ли этот флаг
+            if ((value & mask) == mask) {
+                Object flag_symbol = Object::make_symbol(field.name());
+                if (result_list.is_null()) {
+                    result_list = Object::make_pair(flag_symbol, Object::make_null());
+                } else {
+                    result_list = Object::make_pair(flag_symbol, result_list);
+                }
+            }
+        }
+    }
+    
+    // Если нет установленных флагов, возвращаем числовое значение
+    if (result_list.is_null()) {
+        return numeric_value;
+    }
+    
+    return result_list;
+}
+
+// ========================================================================
+// Чтение строк и символов (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+Object StaticBufferUtils::read_string_value(TypeSystem* ts, StaticBuffer* src,
+                                           size_t offset, Type* type) {
+    // Проверяем границы для минимальной безопасности
+    if (offset >= src->size()) {
+        return Object::make_string("");
+    }
+    
+    // Ищем нулевой терминатор
+    size_t max_len = src->size() - offset;
+    size_t len = 0;
+    
+    while (len < max_len && src->data()[offset + len] != 0) {
+        len++;
+    }
+    
+    if (len == 0) {
+        return Object::make_string("");
+    }
+    
+    // Создаем строку
+    std::string str(reinterpret_cast<const char*>(src->data() + offset), len);
+    
+    if (type->get_name() == "symbol") {
+        return Object::make_symbol(str);
+    } else {
+        return Object::make_string(str);
+    }
+}
+
+// ========================================================================
+// Утилиты конвертации и сравнения (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+void StaticBufferUtils::copy_with_conversion(TypeSystem* ts,
+                                            StaticBuffer* dest, size_t dest_offset, Type* dest_type,
+                                            StaticBuffer* src, size_t src_offset, Type* src_type) {
+    // 1. Если типы идентичны - простое копирование
+    if (is_compatible_types(ts, src_type, dest_type) &&
+        src_type->get_size_in_memory() == dest_type->get_size_in_memory()) {
+        size_t size = src_type->get_size_in_memory();
+        std::memcpy(dest->data() + dest_offset, src->data() + src_offset, size);
+        return;
+    }
+    
+    // 2. Чтение из источника и запись в приемник
+    Object value = read_value(ts, src, src_offset, src_type);
+    write_from_data(ts, dest, dest_offset, dest_type, value);
+}
+
+bool StaticBufferUtils::compare_data(TypeSystem* ts,
+                                    StaticBuffer* buf1, size_t offset1, Type* type1,
+                                    StaticBuffer* buf2, size_t offset2, Type* type2) {
+    // 1. Простое сравнение байтов для совместимых типов
+    if (is_compatible_types(ts, type1, type2) &&
+        type1->get_size_in_memory() == type2->get_size_in_memory()) {
+        size_t size = type1->get_size_in_memory();
+        return std::memcmp(buf1->data() + offset1, 
+                          buf2->data() + offset2, 
+                          size) == 0;
+    }
+    
+    // 2. Сравнение через значения
+    Object val1 = read_value(ts, buf1, offset1, type1);
+    Object val2 = read_value(ts, buf2, offset2, type2);
+    return val1 == val2;
+}
+
+// ========================================================================
+// Отладочные функции (ТО, ЧТО УЖЕ ЕСТЬ У ТЕБЯ)
+// ========================================================================
+
+std::string StaticBufferUtils::dump_value(TypeSystem* ts, StaticBuffer* src,
+                                         size_t offset, Type* type, int indent) {
+    std::string indent_str(indent, ' ');
+    
+    if (!type) {
+        return indent_str + "<null-type>";
+    }
+    
+    try {
+        Object value = read_value(ts, src, offset, type);
+        
+        std::string result = indent_str + fmt::format("{}: ", type->get_name());
+        
+        if (value.is_integer()) {
+            result += fmt::format("{} (0x{:x})", 
+                                 value.as_integer(),
+                                 static_cast<uint64_t>(value.as_integer()));
+        }
+        else if (value.is_float()) {
+            result += fmt::format("{}", value.as_float());
+        }
+        else if (value.is_string()) {
+            result += fmt::format("\"{}\"", value.as_string()->data);
+        }
+        else if (value.is_symbol()) {
+            result += fmt::format("'{}", value.as_string()->data);
+        }
+        else if (value.is_pair()) {
+            result += "alist";
+        }
+        else if (value.is_null()) {
+            result += "null";
+        }
+        else {
+            result += value.print();
+        }
+        
+        return result;
+    }
+    catch (const std::exception& e) {
+        return indent_str + fmt::format("{}: ERROR - {}", 
+                                       type->get_name(), e.what());
+    }
+}
+
+// ========================================================================
+// Отладочные функции структуры
+// ========================================================================
+
+std::string StaticBufferUtils::dump_structure(TypeSystem* ts, StaticBuffer* src,
+                                             size_t offset, StructureType* type) {
+    std::string result;
+    
+    if (!type) {
+        return "<null-structure>";
+    }
+    
+    result += fmt::format("Structure {}:\n", type->get_name());
+    
+    for (const auto& field : type->fields()) {
+        Object field_value = read_field(ts, src, offset, type, field.name());
+        result += fmt::format("  {}: {}\n", field.name(), field_value.print());
+    }
+    
+    return result;
 }
 
 } // namespace script

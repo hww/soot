@@ -1,5 +1,6 @@
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/StaticBuffer.hpp"
+#include "common/sooti/StaticBufferUtils.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Printer.hpp"
@@ -260,8 +261,10 @@ namespace script
             {"make-alias",          &Interpreter::eval_make_alias, nullptr},
 
             // Buffer
-            {"make-buffer",         &Interpreter::eval_make_buffer, nullptr},
-            {"buffer-write",        &Interpreter::eval_buffer_write, nullptr},
+            {"make-static-buffer",   &Interpreter::eval_make_static_buffer, nullptr},
+            {"make-static-writer",   &Interpreter::eval_make_static_writer, nullptr},
+            {"write-to-buffer",      &Interpreter::eval_static_buffer_write, nullptr},
+            {"write-with-writer",    &Interpreter::eval_static_writer_write, nullptr},
         });
 
 
@@ -3924,104 +3927,111 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
 // ==============================================
 // Alias
 // ==============================================
-Object Interpreter::eval_make_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+
+Object Interpreter::eval_make_static_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, 
-        {{ObjectType::STRING},  // тип
-         {ObjectType::INTEGER}, // размер
+        {{ObjectType::STRING},   // тип
+         {ObjectType::INTEGER},  // размер
          {ObjectType::INTEGER}}, // origin
         {});
 
     std::string type_name = args.unnamed[0].as_string()->data;
     int size = args.unnamed[1].as_integer();
     uint32_t origin = static_cast<uint32_t>(args.unnamed[2].as_integer()); // исправлено имя и тип
-
-    // Явно создаем shared_ptr
     auto buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
-    buffer.get()->define_all_aliases();
-    return Object::make_native_ref(buffer);
+    return Object::make_heap_object(buffer, ObjectType::STATIC_BUFFER);
 }
 
-Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // Валидация аргументов: [buffer] [offset] [value] :as [type]
-    vararg_check(form, args, 
-        {{ObjectType::NATIVE_REF}, 
-         {ObjectType::INTEGER},
-         {}}, // value может быть чем угодно
-        {{"as", {true, ObjectType::SYMBOL}}});
+Object Interpreter::eval_make_static_writer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
+    auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
+    auto writer = std::make_shared<StaticWriter>(buffer, m_type_system);
+    return Object::make_heap_object(writer, ObjectType::STATIC_WRITER);
+}
 
-    auto config = m_type_system->get_config();
-    
-    // 1. Получаем целевой буфер
-    auto* buf_heap_obj = args.unnamed[0].as_heap_object();
-    auto* buf = dynamic_cast<StaticBuffer*>(buf_heap_obj);
-    if (!buf) {
-        throw_eval_error(form, "arg 1 expected static-buffer native reference");
+Object Interpreter::eval_static_writer_write(const Object& form, Arguments& args, 
+                                           const std::shared_ptr<EnvironmentObject>& env) {
+    // Проверка аргументов: writer value [:as type]
+    vararg_check(form, args, 
+        {
+            {ObjectType::STATIC_WRITER},  // writer
+            {}                            // value (любой тип)
+        },
+        {
+            {"as", {false, ObjectType::SYMBOL}}  // опциональный тип
+        });
+
+    // Получаем writer
+    auto writer = args.unnamed[0].as_native_ref<StaticWriter>();
+    if (!writer) {
+        throw_eval_error(form, "First argument must be a static-writer");
         return get_null();
     }
 
-    // 2. Параметры записи
-    int offset = args.unnamed[1].as_integer();
+    Object value = args.unnamed[1];
+    
+    // Получаем тип из аргумента :as (ОБЯЗАТЕЛЬНЫЙ!)
+    if (!args.named.count("as")) {
+        throw_eval_error(form, "Missing required keyword argument :as <type>");
+        return get_null();
+    }
+    
+    std::string type_name = args.named["as"].to_std_string();
+    
+    // Проверяем, что тип существует в системе типов
+    if (!m_type_system->fully_defined_type_exists(type_name)) {
+        throw_eval_error(form, "Type not found in type system: " + type_name);
+        return get_null();
+    }
+
+    try {
+        // Вызываем write через StaticBufferUtils
+        size_t pos = writer->write(type_name, value); 
+        return Object::make_integer(static_cast<int64_t>(pos));
+    }
+    catch (const std::exception& e) {
+        throw_eval_error(form, std::string("Write failed: ") + e.what());
+        return get_null();
+    }
+}
+
+Object Interpreter::eval_static_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // [buffer] [offset] [value] :as [type]
+    vararg_check(form, args, {
+        {ObjectType::STATIC_BUFFER},
+        {ObjectType::INTEGER},
+        {}  // любое значение
+    }, {
+        {"as", {true, ObjectType::SYMBOL}}
+    });
+    
+    // Получаем аргументы
+    auto* buffer = dynamic_cast<StaticBuffer*>(args.unnamed[0].as_heap_object());
+    size_t offset = args.unnamed[1].as_integer();
     Object value = args.unnamed[2];
     std::string type_tag = args.named["as"].to_std_string();
-
-    // 3. Логика записи по типам
-    if (type_tag == "uint8") {
-        buf->write_u8(offset, static_cast<uint8_t>(value.as_integer()));
-    } 
-    else if (type_tag == "uint16") {
-        buf->write_u16(offset, static_cast<uint16_t>(value.as_integer()));
-    } 
-    else if (type_tag == "uint32") {
-        // ИСПРАВЛЕНО: теперь вызываем write_u32
-        buf->write_u32(offset, static_cast<uint32_t>(value.as_integer()));
-    }     
-    else if (type_tag == "symbol") {
-        if (value.is_symbol()) {
-            std::string str = value.as_symbol().name_ptr;
-            auto crc = util::compute_crc32(str);
-            
-            // Записываем размер согласно конфигу системы
-            if (config.crc_value_size == 1) buf->write_u8(offset, crc);
-            else if (config.crc_value_size == 2) buf->write_u16(offset, crc);
-            else buf->write_u32(offset, crc);
-        } else {
-            throw_eval_error(form, "Type :as 'symbol expects a symbol as value");
-            return get_null();
-        }
+    
+    if (!buffer) {
+        throw_eval_error(form, "First argument must be static buffer");
+        return get_null();
     }
-    else if (type_tag == "string") {
-        // Принимаем и строки, и символы (как имена строк)
-        buf->write_string(offset, value.to_std_string());
+    
+    // Находим тип
+    Type* type = m_type_system->lookup_type(type_tag);
+    if (!type) {
+        throw_eval_error(form, "Unknown type: " + type_tag);
+        return get_null();
     }
-    else if (type_tag == "pointer") {
-        // ИСПРАВЛЕНО: Релокация
-        if (value.is_heap_object()) {
-            auto* target_heap = value.as_heap_object();
-            auto* target_buf = dynamic_cast<StaticBuffer*>(target_heap);
-
-            if (target_buf) {
-                // Регистрируем релокацию на другой буфер по его имени типа
-                std::string str = target_buf->type_name();
-                buf->add_reloc(offset, RelocType::ABS_ADDR, str);
-                
-                // Записываем временный 0 (заполнитель)
-                if (config.crc_value_size == 2) buf->write_u16(offset, 0);
-                else buf->write_u32(offset, 0);
-            } else {
-                throw_eval_error(form, "Pointer value must be a StaticBuffer");
-                return get_null();
-            }
-        } else if (value.is_symbol()) {
-            // Релокация на глобальный символ (например, адрес функции или переменной)
-            std::string str = value.as_symbol().name_ptr;
-            buf->add_reloc(offset, RelocType::ABS_ADDR, str);
-            buf->write_u16(offset, 0);
-        }
-    } else {
-        throw_eval_error(form, "Unknown write type: " + type_tag);
+    
+    // ВСЁ! Один вызов для всех типов
+    try {
+        StaticBufferUtils::write_recursive(m_type_system.get(), buffer, offset, type, value);
+        return Object::make_undefined();
     }
-
-    return Object::make_undefined();
+    catch (const std::exception& e) {
+        throw_eval_error(form, std::string("Write failed: ") + e.what());
+        return get_null();
+    }
 }
 
 } // namespace script
