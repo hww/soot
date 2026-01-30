@@ -17,7 +17,8 @@ class EnvironmentObject;
 enum class RelocType {
     ABS_ADDR,   // Абсолютный адрес (16/32 бита в зависимости от архитектуры)
     SYMBOL_CRC, // Запись CRC32/16 имени символа
-    RELATIVE    // Относительный адрес (jump/call)
+    RELATIVE,    // Относительный адрес (jump/call)
+    SYMBOL_TABLE_REF
 };
 
 struct Relocation {
@@ -26,15 +27,84 @@ struct Relocation {
     std::string target_name; // Имя типа или символа
 };
 
+class StaticBuffer;
+
+class StaticSymbolTable {
+private:
+    struct SymbolEntry {
+        uint32_t crc32;
+        uint32_t string_offset;  // offset в string pool
+        std::string name;
+    };
+    
+    std::vector<SymbolEntry> m_symbols;
+    std::string m_string_pool;
+    std::unordered_map<uint32_t, size_t> m_crc_to_index; // для быстрого поиска
+    
+public:
+    StaticSymbolTable() = default;
+    
+    // Добавить символ, возвращает индекс
+    size_t add_symbol(const std::string& name) {
+        uint32_t crc = util::compute_crc32(name);
+        
+        // Проверяем, не добавлен ли уже
+        auto it = m_crc_to_index.find(crc);
+        if (it != m_crc_to_index.end()) {
+            return it->second;
+        }
+        
+        // Добавляем в string pool
+        uint32_t string_offset = static_cast<uint32_t>(m_string_pool.size());
+        m_string_pool.append(name);
+        m_string_pool.push_back('\0');
+        
+        // Добавляем запись
+        SymbolEntry entry{crc, string_offset, name};
+        size_t index = m_symbols.size();
+        m_symbols.push_back(entry);
+        m_crc_to_index[crc] = index;
+        
+        return index;
+    }
+    
+    // Получить CRC32 по индексу
+    uint32_t get_crc32(size_t index) const {
+        if (index >= m_symbols.size()) return 0;
+        return m_symbols[index].crc32;
+    }
+    
+    // Получить смещение строки
+    uint32_t get_string_offset(size_t index) const {
+        if (index >= m_symbols.size()) return 0;
+        return m_symbols[index].string_offset;
+    }
+    
+    // Найти по CRC32
+    std::optional<size_t> find_by_crc32(uint32_t crc) const {
+        auto it = m_crc_to_index.find(crc);
+        if (it != m_crc_to_index.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+    
+    // Записать таблицу в буфер
+    size_t write_to_buffer(StaticBuffer* dest, size_t offset);
+
+    size_t size() const { return m_symbols.size(); }
+    size_t string_pool_size() const { return m_string_pool.size(); }
+};
+
 class StaticBuffer : public Accessor {
 
 public:
     enum class Endian { Little, Big };
 
-
     // Конструктор: привязываем буфер к конкретному типу из TypeSystem
     StaticBuffer(const std::string& type_name, int size, uint32_t origin = 0)
-    : m_type_name(type_name), m_origin(origin) {
+    : m_type_name(type_name), m_origin(origin),
+      m_symbol_table(std::make_unique<StaticSymbolTable>()) {
         m_data.resize(size, 0); // Обнуляем память
         define_all_aliases();
     }
@@ -47,6 +117,8 @@ public:
     const std::string& type_name() const { return m_type_name; }
 
     Object inspect() const override;
+    std::string hex_dump(size_t start_offset = 0, size_t bytes_to_dump = 0,
+                            bool show_ascii = true, size_t bytes_per_line = 16) const;
 
     // --- Реализация Accessor для Лиспа ---
     void define_all_aliases() override;
@@ -110,6 +182,13 @@ public:
         else 
             write_u64_be(offset, value);
     }
+
+    void write_crc32(size_t offset, uint32_t value, int symbol_size) {
+        if (symbol_size == 2)
+            write_u16(offset, value);
+        else
+            write_u32(offset, value);
+    }
     /**
      * Записывает C-строку (массив байт) заданной длины.
      * Не добавляет нулевой терминатор автоматически.
@@ -143,6 +222,19 @@ public:
         }
     }
 
+    void write_bytes(size_t offset, const uint8_t* data, int len) {
+        if (!data || len <= 0) return;
+        
+        // Проверка, чтобы не выйти за пределы вектора
+        if (offset + len > m_data.size()) {
+            len = m_data.size() - offset; // Обрезаем, если строка не влезает
+        }
+
+        if (len > 0) {
+            std::memcpy(m_data.data() + offset, data, len);
+        }
+    }
+
     // --- Реализация реалокиции указателей ---
 
 public:
@@ -159,6 +251,40 @@ public:
     // Очистить (если нужно пересобрать буфер)
     void clear_relocs() {
         m_relocations.clear();
+    }
+
+    public:
+    // Добавить символ в таблицу
+    uint32_t add_symbol(const std::string& name) {
+        if (!m_symbol_table) {
+            m_symbol_table = std::make_unique<StaticSymbolTable>();
+        }
+        size_t index = m_symbol_table->add_symbol(name);
+        return m_symbol_table->get_crc32(index);
+    }
+    
+    // Записать таблицу символов в буфер
+    size_t write_symbol_table(size_t offset) {
+        if (!m_symbol_table || m_symbol_table->size() == 0) {
+            return 0;
+        }
+        
+        return m_symbol_table->write_to_buffer(this, offset);
+    }
+    
+    // Получить смещение для таблицы символов
+    size_t get_symbol_table_offset() const {
+        // Можно положить в конец буфера
+        return m_data.size() - calculate_symbol_table_size();
+    }
+
+private:
+
+    size_t calculate_symbol_table_size() const {
+        if (!m_symbol_table) return 0;
+        
+        // Заголовок 32 байта + записи + string pool
+        return 32 + (m_symbol_table->size() * 8) + m_symbol_table->string_pool_size();
     }
 
 private:
@@ -277,6 +403,7 @@ private:
     std::vector<uint8_t> m_data; // Сырые байты
     Endian m_endian = Endian::Little; // По умолчанию для Z80
     std::vector<Relocation> m_relocations;
+    std::unique_ptr<StaticSymbolTable> m_symbol_table;
 };
 
 

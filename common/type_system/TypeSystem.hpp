@@ -355,6 +355,7 @@ public:
 
     void add_builtin_types();
     void add_builtin_types_z80();
+    void verify_type_sizes_z80();
 
     void clear() {
         m_types.clear();

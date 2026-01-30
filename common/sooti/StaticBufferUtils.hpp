@@ -39,25 +39,25 @@ public:
      * @param type Тип данных
      * @param source Источник данных (null, буфер, или Lisp данные)
      */
-    static void write_recursive(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_recursive(TypeSystem* ts, StaticBuffer* dest,
                                size_t offset, Type* type, const Object& source);
     
     /**
      * Инициализация памяти под указанный тип (зануление + тип-теги).
      */
-    static void write_from_type(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_from_type(TypeSystem* ts, StaticBuffer* dest,
                                size_t offset, Type* type);
     
     /**
      * Копирование данных из другого буфера.
      */
-    static void write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
                                  size_t offset, Type* type, StaticBuffer* src);
     
     /**
      * Запись данных из Lisp объекта.
      */
-    static void write_from_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_from_data(TypeSystem* ts, StaticBuffer* dest,
                                size_t offset, Type* type, const Object& source);
     
     // ========================================================================
@@ -128,22 +128,22 @@ private:
     // ПРИВАТНЫЕ МЕТОДЫ ЗАПИСИ
     // ========================================================================
     
-    static void write_value_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_value_data(TypeSystem* ts, StaticBuffer* dest,
                                 size_t offset, ValueType* type, const Object& source);
     
-    static void write_structure_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_structure_data(TypeSystem* ts, StaticBuffer* dest,
                                     size_t offset, StructureType* type, const Object& source);
     
-    static void write_enum_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_enum_data(TypeSystem* ts, StaticBuffer* dest,
                                size_t offset, EnumType* type, const Object& source);
     
-    static void write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
                                    size_t offset, BitFieldType* type, const Object& source);
     
-    static void write_string_data(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_string_data(TypeSystem* ts, StaticBuffer* dest,
                                  size_t offset, Type* type, const Object& source);
     
-    static void write_from_alist(TypeSystem* ts, StaticBuffer* dest,
+    static size_t write_from_alist(TypeSystem* ts, StaticBuffer* dest,
                                 size_t offset, StructureType* type, const Object& alist);
     
     // ========================================================================
@@ -205,10 +205,9 @@ public:
         define_all_aliases();
     }
 
-    // Основной метод записи
     size_t write(Type* type, const Object& data) {
-        if (!m_buffer || !type) {
-            throw std::runtime_error("[BufferWriter] Buffer or type is null");
+        if (!m_buffer || !type || !m_ts) {
+            throw std::runtime_error("[BufferWriter] Not initialized");
         }
         
         // 1. Выравнивание
@@ -219,28 +218,23 @@ public:
         
         size_t start = m_cursor;
         
-        // 2. Проверка границ
-        size_t type_size = type->get_size_in_memory();
-        if (start + type_size > m_buffer->size()) {
+        // 2. Запись и получение фактического размера
+        size_t written = StaticBufferUtils::write_recursive(
+            m_ts.get(), m_buffer.get(), start, type, data
+        );
+        
+        if (written == 0) {
             throw std::runtime_error(fmt::format(
-                "[BufferWriter] Buffer overflow: writing {} bytes at offset {}, buffer size {}",
-                type_size, start, m_buffer->size()
+                "[BufferWriter] Failed to write type '{}'", type->get_name()
             ));
         }
         
-        // 3. Запись данных
-        if (m_ts) {
-            StaticBufferUtils::write_recursive(m_ts.get(), m_buffer.get(), start, type, data);
-        } else {
-            throw std::runtime_error("[BufferWriter] TypeSystem not set");
-        }
-        
-        // 4. Обновление курсора
-        m_cursor += type_size;
+        // 3. Обновление курсора
+        m_cursor += written;
         return start;
     }
     
-    // Перегрузка для записи по имени типа
+    // Перегрузка для имени типа
     size_t write(const std::string& type_name, const Object& data) {
         if (!m_ts) {
             throw std::runtime_error("[BufferWriter] TypeSystem not set");
@@ -254,6 +248,25 @@ public:
         }
         
         return write(type, data);
+    }
+    
+    // ТОЛЬКО сырая запись байтов остается
+    size_t write_raw(const void* data, size_t size) {
+        if (!m_buffer) {
+            throw std::runtime_error("[BufferWriter] Buffer is null");
+        }
+        
+        size_t start = m_cursor;
+        if (start + size > m_buffer->size()) {
+            throw std::runtime_error(fmt::format(
+                "[BufferWriter] Not enough space: needed {} bytes, available {}",
+                size, m_buffer->size() - start
+            ));
+        }
+        
+        std::memcpy(m_buffer->data() + start, data, size);
+        m_cursor += size;
+        return start;
     }
     
     // Методы управления курсором
@@ -323,59 +336,20 @@ public:
         return StaticBufferUtils::read_field(m_ts.get(), m_buffer.get(), base_offset, type, field_name);
     }
     
-    // Методы для удобной работы
-    size_t write_string(const std::string& str, bool null_terminated = true) {
-        if (!m_buffer) {
-            throw std::runtime_error("[BufferWriter] Buffer is null");
-        }
-        
-        size_t start = m_cursor;
-        size_t bytes_needed = str.length() + (null_terminated ? 1 : 0);
-        
-        if (start + bytes_needed > m_buffer->size()) {
-            throw std::runtime_error(fmt::format(
-                "[BufferWriter] Not enough space for string: needed {} bytes, available {}",
-                bytes_needed, m_buffer->size() - start
-            ));
-        }
-        
-        m_buffer->write_string(start, str, null_terminated);
-        m_cursor += bytes_needed;
-        return start;
-    }
-    
-    size_t write_raw(const void* data, size_t size) {
-        if (!m_buffer) {
-            throw std::runtime_error("[BufferWriter] Buffer is null");
-        }
-        
-        size_t start = m_cursor;
-        if (start + size > m_buffer->size()) {
-            throw std::runtime_error(fmt::format(
-                "[BufferWriter] Not enough space: needed {} bytes, available {}",
-                size, m_buffer->size() - start
-            ));
-        }
-        
-        std::memcpy(m_buffer->data() + start, data, size);
-        m_cursor += size;
-        return start;
-    }
-    
     // Методы печати и инспекции
     std::string print() const override {
         if (!m_buffer) {
-            return "#<buffer-writer:empty>";
+            return "#<static-writer:empty>";
         }
         
-        return fmt::format("#<buffer-writer :pos {} :total {} :used {:.1f}%>",
+        return fmt::format("#<static-writer :pos {} :total {} :used {:.1f}%>",
                           m_cursor, m_buffer->size(), usage_percent());
     }
     
     Object inspect() const override {
         if (!m_buffer) {
             return Object::make_list({
-                Object::make_symbol("buffer-writer"),
+                Object::make_symbol("static-writer"),
                 Object::make_symbol(":status"),
                 Object::make_string("empty")
             });
@@ -391,7 +365,7 @@ public:
         
         // Создаем подробный список
         std::vector<Object> items = {
-            Object::make_symbol("buffer-writer"),
+            Object::make_symbol("static-writer"),
             Object::make_symbol(":status"),
             Object::make_string(status),
             Object::make_symbol(":cursor"),

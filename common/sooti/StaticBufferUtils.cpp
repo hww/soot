@@ -39,36 +39,40 @@ bool StaticBufferUtils::is_compatible_types(TypeSystem* ts, Type* type1, Type* t
 }
 
 // ========================================================================
-// Основные методы записи
+// Основные методы записи (возвращают размер)
 // ========================================================================
-
-void StaticBufferUtils::write_recursive(TypeSystem* ts, StaticBuffer* dest,
-                                       size_t offset, Type* type, const Object& source) {
+size_t StaticBufferUtils::write_recursive(TypeSystem* ts, StaticBuffer* dest,
+                                         size_t offset, Type* type, const Object& source) {
     if (!ts || !dest || !type) {
         throw std::runtime_error("StaticBufferUtils: null arguments");
     }
     
+    size_t total_written_by_type = 0;
+    size_t total_written_by_data = 0;
+    
     // 1. Сначала подготавливаем память под этот тип (зануляем, пишем теги)
-    write_from_type(ts, dest, offset, type);
+    total_written_by_type += write_from_type(ts, dest, offset, type);
     
     if (source.is_null()) {
-        return; // Оставляем значения по умолчанию
+        return total_written_by_type; // Оставляем значения по умолчанию
     }
     
     // 2. Определяем источник и наполняем
     if (source.is_native_ref()) {
         auto src_buf = source.as_native_ref<StaticBuffer>();
         if (src_buf) {
-            write_from_buffer(ts, dest, offset, type, src_buf.get());
+            total_written_by_data += write_from_buffer(ts, dest, offset, type, src_buf.get());
         }
     } else {
-        write_from_data(ts, dest, offset, type, source);
+        total_written_by_data += write_from_data(ts, dest, offset, type, source);
     }
+    
+    return total_written_by_type;
 }
 
-void StaticBufferUtils::write_from_type(TypeSystem* ts, StaticBuffer* dest,
-                                       size_t offset, Type* type) {
-    if (!type || !dest) return;
+size_t StaticBufferUtils::write_from_type(TypeSystem* ts, StaticBuffer* dest,
+                                         size_t offset, Type* type) {
+    if (!type || !dest) return 0;
     
     size_t size = type->get_size_in_memory();
     check_bounds(dest, offset, size, "write_from_type", type->get_name());
@@ -80,17 +84,24 @@ void StaticBufferUtils::write_from_type(TypeSystem* ts, StaticBuffer* dest,
     if (type->get_class_name() == "basic") {
         auto& config = ts->get_config();
         uint32_t type_tag = type->get_type_tag();
-        dest->write_u32(offset, type_tag);
+        
+        if (config.crc_value_size == 4) {
+            dest->write_u32(offset, type_tag);
+        } else if (config.crc_value_size == 2) {
+            dest->write_u16(offset, static_cast<uint16_t>(type_tag));
+        }
         
         // Для некоторых basic типов есть heap_base
         if (type->heap_base() != 0 && offset + 8 <= dest->size()) {
             dest->write_u32(offset + 4, type->heap_base());
         }
     }
+    
+    return size; // Возвращаем размер типа
 }
 
-void StaticBufferUtils::write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
-                                         size_t offset, Type* type, StaticBuffer* src) {
+size_t StaticBufferUtils::write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
+                                           size_t offset, Type* type, StaticBuffer* src) {
     if (!src) {
         throw std::runtime_error("Source buffer is null");
     }
@@ -117,56 +128,186 @@ void StaticBufferUtils::write_from_buffer(TypeSystem* ts, StaticBuffer* dest,
             dest->add_reloc(new_reloc.offset, new_reloc.type, new_reloc.target_name);
         }
     }
+    
+    return size; // Возвращаем скопированный размер
 }
 
-void StaticBufferUtils::write_from_data(TypeSystem* ts, StaticBuffer* dest,
-                                       size_t offset, Type* type, const Object& source) {
-    if (!type) return;
+size_t StaticBufferUtils::write_from_data(TypeSystem* ts, StaticBuffer* dest,
+                                         size_t offset, Type* type, const Object& source) {
+    if (!type) return 0;
+    
+    std::string type_name = type->get_name();
+    
+    // 1. Сначала специальные типы с особой семантикой
+    if (type_name == "string" || type_name == "symbol") {
+        return write_string_data(ts, dest, offset, type, source);
+    }
     
     std::string class_name = type->get_class_name();
     
+    // 2. Затем общие категории типов
     if (class_name == "value") {
         auto* value_type = dynamic_cast<ValueType*>(type);
         if (value_type) {
-            write_value_data(ts, dest, offset, value_type, source);
+            return write_value_data(ts, dest, offset, value_type, source);
         }
     }
     else if (class_name == "structure" || class_name == "basic") {
         auto* struct_type = dynamic_cast<StructureType*>(type);
         if (struct_type) {
-            write_structure_data(ts, dest, offset, struct_type, source);
+            return write_structure_data(ts, dest, offset, struct_type, source);
         }
     }
     else if (class_name == "enum") {
         auto* enum_type = dynamic_cast<EnumType*>(type);
         if (enum_type) {
-            write_enum_data(ts, dest, offset, enum_type, source);
+            return write_enum_data(ts, dest, offset, enum_type, source);
         }
     }
     else if (class_name == "bitfield") {
         auto* bitfield_type = dynamic_cast<BitFieldType*>(type);
         if (bitfield_type) {
-            write_bitfield_data(ts, dest, offset, bitfield_type, source);
+            return write_bitfield_data(ts, dest, offset, bitfield_type, source);
         }
     }
-    else if (type->get_name() == "string" || type->get_name() == "symbol") {
-        write_string_data(ts, dest, offset, type, source);
-    }
     else {
-        throw std::runtime_error("Unsupported type: " + type->get_name());
+        throw std::runtime_error("Unsupported type: " + type_name);
     }
+    
+    return 0;
 }
 
 // ========================================================================
-// Запись примитивных типов
+// Запись строк и символов (возвращает ФАКТИЧЕСКИЙ размер)
 // ========================================================================
 
-void StaticBufferUtils::write_value_data(TypeSystem* ts, StaticBuffer* dest,
-                                        size_t offset, ValueType* type, const Object& source) {
-    if (!type) return;
+size_t StaticBufferUtils::write_string_data(TypeSystem* ts, StaticBuffer* dest,
+                                           size_t offset, Type* type, const Object& source) {
+    if (!source.is_string() && !source.is_symbol()) {
+        throw std::runtime_error("Expected string or symbol");
+    }
+
+    std::string str = source.to_std_string();
+    size_t total_written = 0;
+    
+    if (type->get_name() == "string") {
+        // Для Z80 string - это структура! Используем write_structure_data
+        
+        // 1. Получаем структуру string
+        auto* string_type = dynamic_cast<StructureType*>(type);
+        if (!string_type) {
+            throw std::runtime_error("string type is not a StructureType");
+        }
+        
+        // 2. Проверяем поля string
+        Field length_field;
+        Field data_field;
+        
+        bool has_length = string_type->lookup_field("length", &length_field);
+        bool has_data = string_type->lookup_field("data", &data_field);
+        
+        fmt::print("[DEBUG] String fields: length={}, data={}\n",
+                  has_length, has_data);
+        
+        // 3. Создаем alist для записи
+        Object alist = Object::make_null();
+        
+        if (has_length) {
+            // Добавляем length поле
+            Object length_pair = Object::make_pair(
+                Object::make_symbol("length"),
+                Object::make_integer(str.length())
+            );
+            alist = Object::make_pair(length_pair, alist);
+        }
+        
+        // 4. Записываем структуру
+        size_t struct_written = write_structure_data(ts, dest, offset, string_type, alist);
+        
+        // 5. Записываем данные строки
+        if (has_data) {
+            if (data_field.is_inline()) {
+                // Данные inline в структуре
+                Type* data_type = ts->lookup_type(data_field.type());
+                if (data_type && data_type->get_name() == "uint8") {
+                    // Записываем в поле data структуры
+                    size_t data_offset = offset + data_field.offset();
+                    dest->write_string(data_offset, str, true);
+                    fmt::print("[DEBUG] Inline string data at offset {}\n", data_offset);
+                }
+            } else {
+                // Данные dynamic - после структуры
+                size_t data_offset = offset + string_type->get_size_in_memory();
+                dest->write_string(data_offset, str, true);
+                fmt::print("[DEBUG] Dynamic string data at offset {}\n", data_offset);
+                
+                // Для dynamic данных возвращаем полный размер
+                return struct_written + str.length() + 1;
+            }
+        } else {
+            // Нет поля data - записываем просто после структуры
+            size_t data_offset = offset + string_type->get_size_in_memory();
+            dest->write_string(data_offset, str, true);
+            fmt::print("[DEBUG] String data after struct at offset {}\n", data_offset);
+            
+            return struct_written + str.length() + 1;
+        }
+        
+        return struct_written;
+    }
+    else if (type->get_name() == "symbol") {
+        // Для символа: структура символа + имя
+        size_t struct_size = 24; // symbol struct size
+        size_t name_size = str.length() + 1;
+        
+        check_bounds(dest, offset, struct_size + name_size,
+                    "write_symbol", type->get_name());
+        
+        uint32_t crc32 = dest->add_symbol(str);
+        auto sym_size = ts->get_config().crc_value_size;
+        
+        if (type->get_class_name() == "basic") {
+            // Basic header
+            dest->write_crc32(offset, type->get_type_tag(), sym_size);
+            dest->write_u32(offset + 4, 0);
+            
+            // Symbol fields
+            dest->write_crc32(offset + 8, crc32, sym_size); // name pointer (CRC)
+            dest->write_crc32(offset + 12, 0, sym_size);    // value
+            dest->write_crc32(offset + 16, 0, sym_size);    // package
+            dest->write_crc32(offset + 20, 0, sym_size);    // plist
+        } else {
+            // Просто CRC32
+            dest->write_crc32(offset, crc32, sym_size);
+        }
+        
+        // Имя символа (после структуры)
+        size_t name_offset = offset + struct_size;
+        dest->write_string(name_offset, str, true);
+        
+        // Релокация
+        dest->add_reloc(offset, RelocType::SYMBOL_TABLE_REF, str);
+        
+        total_written = struct_size + name_size;
+    }
+    
+    return total_written;
+}
+
+// ========================================================================
+// Запись примитивных типов (возвращает размер типа)
+// ========================================================================
+
+size_t StaticBufferUtils::write_value_data(TypeSystem* ts, StaticBuffer* dest,
+                                          size_t offset, ValueType* type, const Object& source) {
+    if (!type) return 0;
     
     int size = type->get_load_size();
     bool is_signed = type->get_load_signed();
+    
+    // ВАЖНО: проверяем границы по размеру загрузки, а не по размеру в памяти
+    check_bounds(dest, offset, type->get_size_in_memory(), 
+                "write_value", type->get_name());
     
     if (source.is_integer()) {
         int64_t value = source.as_integer();
@@ -214,34 +355,56 @@ void StaticBufferUtils::write_value_data(TypeSystem* ts, StaticBuffer* dest,
     else {
         throw std::runtime_error("Expected number for value type");
     }
+    
+    // ВОЗВРАЩАЕМ РАЗМЕР ТИПА В ПАМЯТИ
+    return type->get_size_in_memory();
 }
 
 // ========================================================================
-// Запись структур
+// Запись структур (возвращает размер структуры)
 // ========================================================================
 
-void StaticBufferUtils::write_structure_data(TypeSystem* ts, StaticBuffer* dest,
-                                            size_t offset, StructureType* type, const Object& source) {
-    if (!type) return;
+size_t StaticBufferUtils::write_structure_data(TypeSystem* ts, StaticBuffer* dest,
+                                              size_t offset, StructureType* type, const Object& source) {
+    if (!type) return 0;
     
-    // Сначала базовая инициализация
+    size_t struct_size = type->get_size_in_memory();
+    check_bounds(dest, offset, struct_size, "write_structure", type->get_name());
+    
+    // 1. Сначала базовая инициализация
     write_from_type(ts, dest, offset, type);
     
     if (source.is_null()) {
-        return; // Оставляем нули
+        return struct_size; // Записали только базовую инициализацию
     }
     
-    // Если источник - список (alist)
+    // 2. Записываем поля из source
+    size_t fields_written = 0;
+    
     if (source.is_list()) {
-        write_from_alist(ts, dest, offset, type, source);
+        // Если источник - alist
+        fields_written = write_from_alist(ts, dest, offset, type, source);
+    } 
+    else if (source.is_native_ref()) {
+        // Если источник - другой буфер
+        auto src_buf = source.as_native_ref<StaticBuffer>();
+        if (src_buf) {
+            fields_written = write_from_buffer(ts, dest, offset, type, src_buf.get());
+        }
     }
-    else {
-        throw std::runtime_error("Unsupported source format for structure");
+    else if (source.is_static_buffer()) {
+        // Если источник - объект структуры (нужно добавить этот тип в Object!)
+        // fields_written = write_from_structure_object(...);
     }
+    
+    // Возвращаем размер структуры (не суммарный размер полей)
+    return struct_size;
 }
 
-void StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
-                                        size_t offset, StructureType* type, const Object& alist) {
+size_t StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
+                                         size_t offset, StructureType* type, const Object& alist) {
+    size_t total_written = 0;
+    
     // Строим map полей из alist
     std::unordered_map<std::string, Object> field_values;
     Object current = alist;
@@ -268,21 +431,33 @@ void StaticBufferUtils::write_from_alist(TypeSystem* ts, StaticBuffer* dest,
         if (it != field_values.end()) {
             Type* field_type = get_field_type(ts, field);
             if (field_type) {
-                write_from_data(ts, dest, offset + field.offset(), field_type, it->second);
+                // ЗАПИСЫВАЕМ значение поля и получаем размер
+                size_t field_written = write_from_data(ts, dest, 
+                    offset + field.offset(), field_type, it->second);
+                
+                // Проверяем что записалось правильно
+                if (field_written > 0) {
+                    total_written = std::max(total_written, 
+                        field.offset() + field_written);
+                }
             }
         }
-        // Если поле не указано - остается значение по умолчанию (0)
     }
+    
+    return total_written;
 }
 
 // ========================================================================
 // Запись enum типов
 // ========================================================================
 
-void StaticBufferUtils::write_enum_data(TypeSystem* ts, StaticBuffer* dest,
+size_t StaticBufferUtils::write_enum_data(TypeSystem* ts, StaticBuffer* dest,
                                        size_t offset, EnumType* type, const Object& source) {
-    if (!type) return;
+    if (!type) return 0;
     
+    size_t enum_size = type->get_size_in_memory();
+    check_bounds(dest, offset, enum_size, "write_enum", type->get_name());
+
     int64_t enum_value = 0;
     
     if (source.is_symbol() || source.is_string()) {
@@ -307,16 +482,21 @@ void StaticBufferUtils::write_enum_data(TypeSystem* ts, StaticBuffer* dest,
     
     // Записываем как обычное значение
     write_value_data(ts, dest, offset, type, Object::make_integer(enum_value));
+
+    return enum_size;
 }
 
 // ========================================================================
 // Запись битовых полей
 // ========================================================================
 
-void StaticBufferUtils::write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
+size_t StaticBufferUtils::write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
                                            size_t offset, BitFieldType* type, const Object& source) {
-    if (!type) return;
+    if (!type) return 0;
     
+    size_t bitfield_size = type->get_size_in_memory();
+    check_bounds(dest, offset, bitfield_size, "write_bitfield", type->get_name());
+
     uint32_t bitfield_value = 0;
     
     if (source.is_integer()) {
@@ -353,28 +533,8 @@ void StaticBufferUtils::write_bitfield_data(TypeSystem* ts, StaticBuffer* dest,
     
     // Записываем как обычное значение
     write_value_data(ts, dest, offset, type, Object::make_integer(bitfield_value));
-}
 
-// ========================================================================
-// Запись строк и символов
-// ========================================================================
-
-void StaticBufferUtils::write_string_data(TypeSystem* ts, StaticBuffer* dest,
-                                         size_t offset, Type* type, const Object& source) {
-    if (!source.is_string() && !source.is_symbol()) {
-        throw std::runtime_error("Expected string or symbol");
-    }
-    
-    std::string str = source.to_std_string();
-    
-    if (type->get_name() == "string") {
-        dest->write_string(offset, str, true);
-    }
-    else if (type->get_name() == "symbol") {
-        dest->write_string(offset, str, true);
-        // Добавляем релокацию для символа
-        dest->add_reloc(offset, RelocType::SYMBOL_CRC, str);
-    }
+    return bitfield_size;
 }
 
 // ========================================================================
