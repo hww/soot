@@ -88,7 +88,7 @@ bool XiffCompiler::finalize_and_inject() {
 
             // Вызываем Lisp функцию, которую мы определили в xiff-core.sot
             // Предположим, она называется (xiff-generate-content) и возвращает строку
-            auto generate_exp = fmt::format("(xiff-generate \"{}\" \"{}\")\n", type_str->c_str(), path_str->c_str());
+            auto generate_exp = fmt::format("(xiff-generate \"{}\" \"{}\")\n", type_str->data, path_str->data);
             auto generate_res = m_interp.eval_string(generate_exp, "finalize_and_inject");
             
             if (!generate_res.is_string()) {
@@ -96,7 +96,7 @@ bool XiffCompiler::finalize_and_inject() {
                 return false;
             }
 
-            auto res = m_injector.inject(path_str->c_str(), "xiff", generate_res.as_string()->c_str(), f);
+            auto res = m_injector.inject(path_str->data, "xiff", generate_res.as_string()->data, f);
             if (!res.success) {
                 fmt::print(stderr, "[ERR] [XiffCompiler] xiff-generate injection is not sucessfull.\n");
                 return false;

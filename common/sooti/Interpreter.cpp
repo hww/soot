@@ -1,11 +1,15 @@
 #include "common/sooti/Interpreter.hpp"
+#include "common/sooti/StaticBuffer.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sooti/Aliasable.hpp"
+#include "common/sooti/Accessor.hpp"
 
 #include "common/type_system/TypeSystem.hpp"
+#include "common/type_system/Deftype.hpp"
+#include "common/type_system/Defenum.hpp"
+#include "common/type_system/TypeSpec.hpp"
 
 #include "fmt/args.h"
 #include "fmt/base.h"
@@ -31,14 +35,17 @@ namespace script
     Interpreter::Interpreter(const std::string& username, bool load_libs) 
     :   m_reader(this), 
         m_setter_map(),
-        m_type_system(std::make_unique<SootTypeSystem>(*this)),
-        m_top_frame(nullptr)
+        m_top_frame(nullptr),
+        m_type_system(std::make_shared<TypeSystem>()),
+        m_symbol_table()
     {
+        script::Object::set_symbol_table(&m_symbol_table);
+
         // Инициализируем boolean объекты как символы
-        m_null             = EnvContext::instance().table().constants.obj_null;
-        m_sym_true         = EnvContext::instance().table().core.sym_true;
-        m_sym_false        = EnvContext::instance().table().core.sym_false;
-        m_sym_undefined    = EnvContext::instance().table().core.sym_undefined;
+        m_null             = Object::make_null();
+        m_sym_true         = m_symbol_table.core.sym_true;
+        m_sym_false        = m_symbol_table.core.sym_false;
+        m_sym_undefined    = m_symbol_table.core.sym_undefined;
         m_symbol_true      = m_sym_true.as_symbol().name_ptr;
         m_symbol_false     = m_sym_false.as_symbol().name_ptr;
         m_symbol_undefined = m_sym_undefined.as_symbol().name_ptr;
@@ -58,7 +65,7 @@ namespace script
         define_var_in_env(m_comp_env, m_comp_env, "*comp-env*");
         define_var_in_env(m_comp_env, m_global_environment, "*global-env*");
 
-        auto user = EnvContext::make_symbol(username.c_str());
+        auto user = make_symbol(username.c_str());
         define_var_in_env(m_global_environment, user, "*user*");
 
         // Инициализация string_to_type для type?
@@ -253,17 +260,18 @@ namespace script
             {"make-alias",          &Interpreter::eval_make_alias, nullptr},
 
             // Buffer
+            {"make-buffer",         &Interpreter::eval_make_buffer, nullptr},
             {"buffer-write",        &Interpreter::eval_buffer_write, nullptr},
         });
 
 
     // Type system
-    m_type_system->init_type_system(SootTypeSystem::BaseTyles::Z80);
+    init_type_system(TypeSystemVariant::Z80);
 
-    add_special_form("defenum",   &Interpreter::eval_ts_defenum_special);   // does not return anything
-    add_special_form("deftype",   &Interpreter::eval_ts_deftype_special);   // does not return anything
-    add_special_form("typespec",  &Interpreter::eval_ts_typespec_special);  // return s-expression of typespec
-    add_builtin_form("init-types",&Interpreter::eval_ts_init_types);        // does not return anything
+    add_special_form("defenum",   &Interpreter::eval_defenum_special);   // does not return anything
+    add_special_form("deftype",   &Interpreter::eval_deftype_special);   // does not return anything
+    add_special_form("typespec",  &Interpreter::eval_typespec_special);  // return s-expression of typespec
+    add_builtin_form("init-types",&Interpreter::eval_init_types);        // does not return anything
 
     // load the standard library
     if (load_libs) load_library();
@@ -331,22 +339,22 @@ void Interpreter::set_args_in_env(const Object& form,
 
     // unnamed args
     for (size_t i = 0; i < arg_spec.unnamed.size(); i++) {
-        env->vars.set(intern_ptr(arg_spec.unnamed.at(i).name), args.unnamed.at(i));
+        env->vars.set(intern(arg_spec.unnamed.at(i).name), args.unnamed.at(i));
     }
 
     // named args
     for (const auto& kv : arg_spec.named) {
-        env->vars.set(intern_ptr(kv.first), args.named.at(kv.first));
+        env->vars.set(intern(kv.first), args.named.at(kv.first));
     }
 
     // rest args
     if (!arg_spec.rest.empty()) {
         // will correctly handle the '() case
-        Object rest_list = Object::make_empty_list();
+        Object rest_list = Object::make_null();
         for (auto it = args.rest.rbegin(); it != args.rest.rend(); ++it) {
             rest_list = Object::make_pair(*it, rest_list);
         }
-        env->vars.set(intern_ptr(arg_spec.rest), rest_list);
+        env->vars.set(intern(arg_spec.rest), rest_list);
     }
     else {
         if (!args.rest.empty()) {
@@ -358,19 +366,23 @@ void Interpreter::set_args_in_env(const Object& form,
  * In env, set the variable named "name" to the value var.
  */
 void Interpreter::define_var_in_env(const Object& env, const Object& var, const char* name) {
-    env.as_env()->vars.set(InternedSymbolPtr{ intern_ptr(name) }, var);
+    env.as_env()->vars.set(InternedSymbolPtr{ intern(name) }, var);
 }
 
 // ==============================================
 // Tools and utilities 
 // ==============================================
 
-Object Interpreter::intern(const std::string& name) {
-    return EnvContext::make_symbol(name.c_str());
+Object Interpreter::make_symbol(const char* name) {
+    return m_symbol_table.make_symbol(name);
 }
 
-InternedSymbolPtr Interpreter::intern_ptr(const std::string& name) {
-    return EnvContext::intern_ptr(name.c_str());
+Object Interpreter::make_symbol(const std::string& name) {
+    return m_symbol_table.make_symbol(name.c_str());
+}
+
+InternedSymbolPtr Interpreter::intern(const std::string& name) {
+    return m_symbol_table.intern(name.c_str());
 }
 
 // ==============================================
@@ -431,7 +443,7 @@ void Interpreter::throw_eval_error(const Object& o, const std::string& err) {
 Object Interpreter::eval_string(const std::string& expression, const std::string& filename)
 {
     auto env = m_global_environment.as_env_ptr();
-    Object last_result = Object::make_empty_list();
+    Object last_result = Object::make_null();
     // read something from the user
     Object code = m_reader.read_from_string(expression, true, filename, 
         [&](const ReaderEvent& evt) -> Object{
@@ -461,7 +473,7 @@ Object Interpreter::eval_string(const std::string& expression, const std::string
 Object Interpreter::eval_file_internal(const std::vector<std::string>& file_path)
 {
     auto env = m_global_environment.as_env_ptr();
-    Object last_result = Object::make_empty_list();
+    Object last_result = Object::make_null();
 
     Object code = m_reader.read_from_file(file_path, true, true,
     [&](const ReaderEvent& evt) -> Object{
@@ -534,7 +546,7 @@ Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vecto
     auto lam_env = lam_env_obj.as_env_ptr();
     
     // 4. Биндим аргументы
-    Object dummy_form = EnvContext::make_symbol("call-lambda");
+    Object dummy_form = m_symbol_table.make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
 
 
@@ -683,7 +695,7 @@ Object Interpreter::eval(const Object& parent_form, const Object& obj, const std
     default:
         throw_eval_error(obj, "cannot evaluate this object");
     }
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 // ==============================================
@@ -699,7 +711,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
         current = current.as_pair()->cdr;
     }
 
-    if (!current.is_empty_list()) {
+    if (!current.is_null()) {
         throw_eval_error(list, "malformed argument list");
     }
 
@@ -709,7 +721,7 @@ std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared
 // Запуск функции
 Object Interpreter::eval_list_return_last(const Object& form, Object rest, const std::shared_ptr<EnvironmentObject>& env) {
 
-    if (rest.is_empty_list()) {
+    if (rest.is_null()) {
         return rest;
     }
 
@@ -718,7 +730,7 @@ Object Interpreter::eval_list_return_last(const Object& form, Object rest, const
         const Object* next = &iter->as_pair()->cdr;
         const Object* item = &iter->as_pair()->car;
 
-        if (next->is_empty_list()) {
+        if (next->is_null()) {
             return eval_with_rewind(form, *item, env);
         }
         else {
@@ -877,7 +889,7 @@ Object Interpreter::eval_lambda_special(const Object& form, const Object& rest, 
 
     ArgumentSpec args = parse_arg_spec(form, params_obj);
 
-    if (body_obj.is_empty_list()) {
+    if (body_obj.is_null()) {
         throw_eval_error(form, "lambda: expected body after parameter list");
     }
 
@@ -897,7 +909,7 @@ Object Interpreter::eval_macro_special(const Object& form, const Object& rest, c
     }
 
     Object arg_list = rest.as_pair()->car;
-    if (!arg_list.is_pair() && !arg_list.is_empty_list()) {
+    if (!arg_list.is_pair() && !arg_list.is_null()) {
         throw_eval_error(form, "macro argument list must be a list");
     }
 
@@ -979,7 +991,7 @@ Object Interpreter::eval_cond_special(const Object& form, const Object& rest, co
         current_clause = current_clause.as_pair()->cdr;
     }
 
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_if_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1005,7 +1017,7 @@ Object Interpreter::eval_if_special(const Object& form, const Object& rest, cons
             return eval_with_rewind(form, else_part.as_pair()->car, env);
         }
         else {
-            return Object::make_empty_list();
+            return Object::make_null();
         }
     }
 }
@@ -1083,7 +1095,7 @@ Object Interpreter::eval_let_star_special(const Object& form, const Object& rest
         current_binding = current_binding.as_pair()->cdr;
     }
 
-    Object result = Object::make_empty_list();
+    Object result = Object::make_null();
     Object current_body = body_obj;
     while (current_body.is_pair()) {
         result = eval_with_rewind(form, current_body.as_pair()->car, current_env);
@@ -1131,7 +1143,7 @@ Object Interpreter::eval_let_special(const Object& form, const Object& rest, con
         current_binding = current_binding.as_pair()->cdr;
     }
 
-    Object result = Object::make_empty_list();
+    Object result = Object::make_null();
     Object current_body = body_obj;
 
     while (current_body.is_pair()) {
@@ -1153,7 +1165,7 @@ Object Interpreter::eval_while_special(const Object& form, const Object& rest, c
         throw_eval_error(form, "while requires a body");
     }
 
-    Object result = Object::make_empty_list();
+    Object result = Object::make_null();
 
     while (true) {
         Object condition_result = eval_with_rewind(form, condition_obj, env);
@@ -1333,7 +1345,7 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 
     // loop over forms in list
     const Object* current = &rest;
-    while (!current->is_empty_list()) {
+    while (!current->is_null()) {
         const auto& arg = current->as_pair()->car;
 
         // did we get a ":keyword"
@@ -1353,7 +1365,7 @@ Arguments Interpreter::get_args(const Object& form, const Object& rest, const Ar
 
             // check for well-formed :key value expression
             current = &current->as_pair()->cdr;
-            if (current->is_empty_list()) {
+            if (current->is_null()) {
                 throw_eval_error(form, "Key argument didn't have a value");
             }
 
@@ -1418,7 +1430,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
     //fmt::print("{}\n  {}\n", form.print(),  form.print());
     // 1. Обработка всех позиционных аргументов (обязательные + опциональные)
     for (const auto& p_spec : spec.unnamed) {
-        if (!current->is_empty_list()) {
+        if (!current->is_null()) {
             // Если в вызове есть данные — просто забираем их.
             // Мы не проверяем на ключевые слова, так как позиция имеет приоритет.
             const auto& val = current->as_pair()->car;
@@ -1439,7 +1451,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
     }
 
     // 2. Теперь обрабатываем то, что осталось (Keyword или Rest)
-    while (!current->is_empty_list()) {
+    while (!current->is_null()) {
         const auto& arg = current->as_pair()->car;
 
         auto is_keyword = arg.is_keyword();
@@ -1461,7 +1473,7 @@ Arguments Interpreter::get_args_with_spec(const Object& form, const Object& rest
 
             // Переходим к значению
             current = &current->as_pair()->cdr;
-            if (current->is_empty_list()) {
+            if (current->is_null()) {
                 throw_eval_error(form, fmt::format("Key {} is missing a value in {}", key_name, spec.print_full()));
             }
 
@@ -1506,7 +1518,7 @@ Arguments Interpreter::get_args_no_named(const Object& form,
 
   // loop over forms in list
   Object current = rest;
-  while (!current.is_empty_list()) {
+  while (!current.is_null()) {
     auto arg = current.as_pair()->car;
 
     // not a keyword. Add to unnamed or rest, depending on what we expect
@@ -1566,7 +1578,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
     bool parsing_optional = false; 
     Object current = rest;
 
-    while (!current.is_empty_list()) {
+    while (!current.is_null()) {
         auto arg = current.as_pair()->car;
 
         // 1. Пытаемся понять, не встретили ли мы спец-символ (&key или &rest)
@@ -1587,7 +1599,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
             if (!rest_name_obj.is_symbol()) throw_eval_error(form, "rest name must be a symbol");
             
             spec.rest = rest_name_obj.as_symbol().name_ptr;
-            if (!current.as_pair()->cdr.is_empty_list()) throw_eval_error(form, "rest must be the last argument");
+            if (!current.as_pair()->cdr.is_null()) throw_eval_error(form, "rest must be the last argument");
             break; 
         }
         
@@ -1798,7 +1810,7 @@ Object Interpreter::eval_print(const Object & form, Arguments & args, const std:
     if (!m_disable_printing) {
         printf("%s\n", args.unnamed.at(0).print().c_str());
     }
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1808,7 +1820,7 @@ Object Interpreter::eval_pprint(const Object& form, Arguments& args, const std::
     if (!m_disable_printing) {
         std::cout << pretty_print::to_string(args.unnamed.at(0), 100) << std::endl;
     }
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -1964,7 +1976,7 @@ Object Interpreter::eval_error(const Object& form,
     // Вызываем стандартный механизм исключений с учетом контекста
     throw_eval_error(context_form, message);
 
-    return Object::make_empty_list(); // Сюда мы никогда не дойдем
+    return Object::make_null(); // Сюда мы никогда не дойдем
 }
 
 // ==============================================
@@ -2236,7 +2248,7 @@ Object Interpreter::eval_ash(const Object& form, Arguments& args, const std::sha
     {
         throw_eval_error(form, fmt::format("Shift amount {} is out of range", sa));
     }
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 // ==============================================
@@ -2421,7 +2433,7 @@ Object Interpreter::eval_list_func(const Object& form, Arguments& args, const st
     (void)env;
     vararg_check(form, args, {}, {}); 
 
-    Object result = Object::make_empty_list();
+    Object result = Object::make_null();
     for (auto it = args.unnamed.rbegin(); it != args.unnamed.rend(); ++it) {
         result = Object::make_pair(*it, result);
     }
@@ -2440,7 +2452,7 @@ Object Interpreter::eval_length(const Object& form, Arguments& args, const std::
         lst = lst.as_pair()->cdr;
     }
 
-    if (!lst.is_empty_list()) {
+    if (!lst.is_null()) {
         throw_eval_error(form, "length requires a proper list");
     }
 
@@ -2451,7 +2463,7 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
     (void)env;
     (void)form;
     if (args.unnamed.empty()) {
-        return Object::make_empty_list();
+        return Object::make_null();
     }
 
     Object result = args.unnamed.back();
@@ -2459,7 +2471,7 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
     for (int i = args.unnamed.size() - 2; i >= 0; --i) {
         Object current = args.unnamed[i];
 
-        Object reversed = Object::make_empty_list();
+        Object reversed = Object::make_null();
         while (current.is_pair()) {
             reversed = Object::make_pair(current.as_pair()->car, reversed);
             current = current.as_pair()->cdr;
@@ -2493,7 +2505,7 @@ Object Interpreter::eval_type_of(const Object & form, Arguments & args, const st
     (void)env;
     vararg_check(form, args, { {} }, {});
 
-    return EnvContext::symbol_table().object_type_to_symbol(args.unnamed[0].type);
+    return m_symbol_table.object_type_to_symbol(args.unnamed[0].type);
 }
 
 Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
@@ -2512,7 +2524,7 @@ Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std
 Object Interpreter::eval_null_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
     vararg_check(form, args, { {} }, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_empty_list());
+    return true_or_false(args.unnamed[0].is_null());
 }
 
 Object Interpreter::eval_pair_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2753,7 +2765,7 @@ Object Interpreter::eval_string_split(const Object& form,
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
-    return EnvContext::make_symbol(args.unnamed[0].as_string()->c_str());
+    return make_symbol(args.unnamed[0].as_string()->data);
 }
 
 Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2818,7 +2830,7 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
     // Рекурсивная функция для построения списка
     std::function<Object(int)> build_list = [&](int index) -> Object {
         if (index >= array->size()) {
-            return Object::make_empty_list();
+            return Object::make_null();
         }
         return Object::make_pair(array->get(index), build_list(index + 1));
     };
@@ -2859,13 +2871,13 @@ Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, 
     }
 
     // Устанавливаем значения по умолчанию
-    Object initial_data = Object::make_empty_list();
+    Object initial_data = Object::make_null();
     int size = 8;
 
     // Разбираем позиционные аргументы
     if (args.unnamed.size() >= 1) {
         initial_data = args.unnamed.at(0);
-        if (!initial_data.is_empty_list() && !initial_data.is_pair()) {
+        if (!initial_data.is_null() && !initial_data.is_pair()) {
             throw_eval_error(form, "make-hash-table: first argument (data) must be a list of pairs");
         }
     }
@@ -2927,7 +2939,7 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
     }
 
 
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2962,7 +2974,7 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form, Arguments & arg
         const auto& it = table->data.find(key);
         if (it == table->data.end()) {
             // not in table
-            return Object::make_pair(get_false(), Object::make_empty_list());
+            return Object::make_pair(get_false(), Object::make_null());
         } else {
             return Object::make_pair(get_true(), it->second);
         }
@@ -2987,7 +2999,7 @@ Object Interpreter::eval_hash_table_to_list(const Object& form, Arguments& args,
     vararg_check(form, args, { {} }, {});
 
     auto ht = args.unnamed[0].as_hash_table();
-    Object result = Object::make_empty_list();
+    Object result = Object::make_null();
     
     // Итерируемся по unordered_map
     for (const auto& [key, value] : ht->data) {
@@ -3046,7 +3058,7 @@ Object Interpreter::eval_load(const Object& form, Arguments& args, const std::sh
     
     if (args.unnamed[0].is_string()) {
         std::vector<std::string> path;
-        path.push_back(args.unnamed[0].as_string()->c_str());
+        path.push_back(args.unnamed[0].as_string()->data);
         return eval_file_internal(path);
     } else if (args.unnamed[0].is_pair()) {
         auto strings = args.unnamed[0].as_c_vector_of_strings(); 
@@ -3085,7 +3097,7 @@ Object Interpreter::eval_get_env(const Object& form, Arguments& args, const std:
         return Object::make_string(value);
     }
     else {
-        return Object::make_empty_list();
+        return Object::make_null();
     }
 }
 
@@ -3133,7 +3145,7 @@ Object Interpreter::eval_find_file(const Object& form, Arguments& args, const st
 
     std::string path = args.unnamed[0].as_string()->data;
     auto found = file_util::find_config_file(path);
-    return found.empty() ? Object::make_empty_list() : Object::make_string(found.string());
+    return found.empty() ? Object::make_null() : Object::make_string(found.string());
 }
 
 Object Interpreter::eval_write_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3141,7 +3153,7 @@ Object Interpreter::eval_write_binary_file(const Object& form, Arguments& args, 
     // Путь — строка, Данные — любой тип (массив или список)
     vararg_check(form, args, { ObjectType::STRING, {} }, {});
 
-    std::string path = args.unnamed[0].as_string()->c_str();
+    std::string path = args.unnamed[0].as_string()->data;
     Object data = args.unnamed[1];
 
     std::ofstream file(path, std::ios::binary | std::ios::out);
@@ -3250,7 +3262,7 @@ Object Interpreter::eval_gensym(const Object & form, Arguments & args, const std
     vararg_check(form, args, {}, {}); // Без аргументов
 
     std::string name = "gensym" + std::to_string(m_gensym_id++);
-    return EnvContext::make_symbol(name.c_str());
+    return make_symbol(name.c_str());
 }
 
 Object Interpreter::eval_eval(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3336,7 +3348,7 @@ Object Interpreter::eval_string_to_number(const Object& form, Arguments& args, c
         }
     }
     catch (const std::exception&) {
-        return Object::make_empty_list();
+        return Object::make_null();
     }
 }
 
@@ -3444,7 +3456,7 @@ Object Interpreter::eval_set_macro_character(const Object& form, Arguments& args
         throw_eval_error(form, "set-reader-macro: second argument must be string or symbol");
     }
 
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_remove_macro_character(const Object& form, Arguments& args,
@@ -3458,7 +3470,7 @@ Object Interpreter::eval_remove_macro_character(const Object& form, Arguments& a
     m_reader.remove_reader_macro(shortcut); 
     
     
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args,
@@ -3471,8 +3483,8 @@ Object Interpreter::eval_get_macro_character(const Object& form, Arguments& args
     
     auto macro = m_reader.find_reader_macro(shortcut); 
     if (macro == nullptr) 
-        return Object::make_empty_list();
-    else if (!macro->lambda.is_empty_list())
+        return Object::make_null();
+    else if (!macro->lambda.is_null())
         return macro->lambda;
     else
         return Object::make_string(macro->replacement);
@@ -3501,7 +3513,7 @@ Object Interpreter::eval_read_char(const Object& form, Arguments& args, const st
     auto ts = reader_obj->ts;
 
     if (!ts || !ts->text_remains()) {
-        return Object::make_empty_list(); // EOF
+        return Object::make_null(); // EOF
     }
 
     // Используем метод твоего TextStream, который двигает seek и считает строки
@@ -3517,7 +3529,7 @@ Object Interpreter::eval_peek_char(const Object& form, Arguments& args, const st
     auto ts = reader_obj->ts;
 
     if (!ts || !ts->text_remains()) {
-        return Object::make_empty_list(); // EOF
+        return Object::make_null(); // EOF
     }
 
     // Используем твой ts->peek(), который просто берет char по текущему индексу
@@ -3531,7 +3543,7 @@ Object Interpreter::eval_read_delimited_list(const Object& form, Arguments& args
     vararg_check(form, args, {{ ObjectType::STRING }, { ObjectType::READER }}, {});
 
     // 3. Определяем терминатор (по умолчанию ")")
-    std::string terminator = args.unnamed[0].as_string()->c_str();
+    std::string terminator = args.unnamed[0].as_string()->data;
 
     // 2. Извлекаем ReaderObject
     if (!args.unnamed[1].is_reader()) {
@@ -3630,10 +3642,10 @@ Object Interpreter::eval_source_info(const Object& form, Arguments& args, const 
     }
 
     return pretty_print::build_list({
-        intern(":file"),    Object::make_string(result->filename),
-        intern(":line"),    Object::make_integer(result->line_idx_to_display),
-        intern(":column"),  Object::make_integer(result->pos_in_line),
-        intern(":text"),    Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
+        make_symbol(":file"),    Object::make_string(result->filename),
+        make_symbol(":line"),    Object::make_integer(result->line_idx_to_display),
+        make_symbol(":column"),  Object::make_integer(result->pos_in_line),
+        make_symbol(":text"),    Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
     });
 }
 
@@ -3664,7 +3676,7 @@ Object Interpreter::eval_get_context(const Object& form, Arguments& args, const 
     }
 
     // Если индекс за пределами глубины стека, возвращаем null (или можно кинуть ошибку)
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
 // ==============================================
@@ -3784,24 +3796,72 @@ Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const s
     auto it = m_setter_map.find(getter);
     if (it != m_setter_map.end()) {
         // Если нашли, создаем объект-символ из сохраненного указателя
-        return EnvContext::make_symbol(it->second.c_str());
+        return make_symbol(it->second.c_str());
     }
 
     // Если ничего не нашли, возвращаем пустой список (nil)
-    return Object::make_empty_list();
+    return Object::make_null();
 }
 
-Object Interpreter::eval_ts_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    return m_type_system->eval_defenum_special(form, rest, env);
+// ==============================================
+// Type System
+// ==============================================
+
+void Interpreter::init_type_system(TypeSystemVariant types) {
+    m_type_system.get()->clear();
+    
+    switch (types) {
+        case TypeSystemVariant::Z80:
+            m_type_system->add_builtin_types_z80();
+            break;
+        case TypeSystemVariant::Default:
+        default:
+            m_type_system->add_builtin_types();
+            break;
+    }
+
+    define_var_in_env(get_global_environment(), 
+                    m_type_system->to_alias(), 
+                    "*type-system*");
 }
-Object Interpreter::eval_ts_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    return m_type_system->eval_deftype_special(form, rest, env);
+
+Object Interpreter::eval_typespec_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    if (rest.is_null()) return get_null();
+
+    Object spec_input = rest.as_pair()->car;
+    auto ts = std::make_shared<TypeSpec>(parse_typespec(m_type_system.get(), spec_input));
+    
+    return Object::make_native_ref(ts);
 }
-Object Interpreter::eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
-    return m_type_system->eval_typespec_special(form, rest, env);
+
+Object Interpreter::eval_deftype_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    auto env_ptr = get_global_environment().as_env();
+    parse_deftype(rest, m_type_system.get(), &env_ptr->vars);
+    return get_null();
 }
-Object Interpreter::eval_ts_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    return m_type_system->eval_init_types(form, args, env);
+
+Object Interpreter::eval_defenum_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    parse_defenum(rest, m_type_system.get(), nullptr);
+    return get_null();
+}
+
+Object Interpreter::eval_types_to_lisp(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    return m_type_system->get_all_type_names_as_objects();
+}
+
+Object Interpreter::eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Здесь должна быть логика из твоего старого кода для init-types
+    if (args.unnamed.size() > 0 && args.unnamed[0].as_symbol() == "z80") {
+        init_type_system(TypeSystemVariant::Z80);
+    } else {
+        init_type_system(TypeSystemVariant::Default);
+    }
+    return get_null();
 }
 
 // ==============================================
@@ -3838,7 +3898,7 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
     Object current = eval_with_rewind(form, iterator_pair->car, env);   
     iterator = iterator_pair->cdr;
 
-    while (!iterator.is_empty_list()) {
+    while (!iterator.is_null()) {
         if (!iterator.is_pair()) {
             throw_eval_error(form, "expects pair");
             return get_null();
@@ -3864,6 +3924,23 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
 // ==============================================
 // Alias
 // ==============================================
+Object Interpreter::eval_make_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, 
+        {{ObjectType::STRING},  // тип
+         {ObjectType::INTEGER}, // размер
+         {ObjectType::INTEGER}}, // origin
+        {});
+
+    std::string type_name = args.unnamed[0].as_string()->data;
+    int size = args.unnamed[1].as_integer();
+    uint32_t origin = static_cast<uint32_t>(args.unnamed[2].as_integer()); // исправлено имя и тип
+
+    // Явно создаем shared_ptr
+    auto buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
+    buffer.get()->define_all_aliases();
+    return Object::make_native_ref(buffer);
+}
+
 Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     // Валидация аргументов: [buffer] [offset] [value] :as [type]
     vararg_check(form, args, 
@@ -3872,7 +3949,7 @@ Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const
          {}}, // value может быть чем угодно
         {{"as", {true, ObjectType::SYMBOL}}});
 
-    auto config = m_type_system.get()->get_ts()->get_config();
+    auto config = m_type_system->get_config();
     
     // 1. Получаем целевой буфер
     auto* buf_heap_obj = args.unnamed[0].as_heap_object();
@@ -3904,8 +3981,8 @@ Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const
             auto crc = util::compute_crc32(str);
             
             // Записываем размер согласно конфигу системы
-            if (config.symbol_src_size == 1) buf->write_u8(offset, crc);
-            else if (config.symbol_src_size == 2) buf->write_u16(offset, crc);
+            if (config.crc_value_size == 1) buf->write_u8(offset, crc);
+            else if (config.crc_value_size == 2) buf->write_u16(offset, crc);
             else buf->write_u32(offset, crc);
         } else {
             throw_eval_error(form, "Type :as 'symbol expects a symbol as value");
@@ -3928,8 +4005,8 @@ Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const
                 buf->add_reloc(offset, RelocType::ABS_ADDR, str);
                 
                 // Записываем временный 0 (заполнитель)
-                // Для Z80 это обычно 2 байта, для x64 - 4 или 8.
-                buf->write_u16(offset, 0); 
+                if (config.crc_value_size == 2) buf->write_u16(offset, 0);
+                else buf->write_u32(offset, 0);
             } else {
                 throw_eval_error(form, "Pointer value must be a StaticBuffer");
                 return get_null();
@@ -3946,4 +4023,5 @@ Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const
 
     return Object::make_undefined();
 }
+
 } // namespace script

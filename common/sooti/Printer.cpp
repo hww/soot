@@ -45,7 +45,7 @@ namespace script::pretty_print {
 
     script::Object to_symbol(const std::string& str) {
         std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
-        return EnvContext::instance().make_symbol(str.c_str());
+        return Object::make_symbol(str.c_str());
     }
 
     script::Object new_string(const std::string& str) {
@@ -57,12 +57,12 @@ namespace script::pretty_print {
     }
 
     script::Object build_list(const script::Object& obj) {
-        return Object::make_pair(obj, script::Object::make_empty_list());
+        return Object::make_pair(obj, script::Object::make_null());
     }
 
     script::Object build_list(const std::vector<script::Object>& objects) {
         if (objects.empty()) {
-            return script::Object::make_empty_list();
+            return script::Object::make_null();
         }
         else {
             return build_list(objects.data(), objects.size());
@@ -72,7 +72,7 @@ namespace script::pretty_print {
     // build a list out of an array of forms
     script::Object build_list(const script::Object* objects, int count) {
         ASSERT(count);
-        script::Object result = script::Object::make_empty_list();
+        script::Object result = script::Object::make_null();
         for (int i = count; i-- > 0;) {
             result = Object::make_pair(objects[i], result);
         }
@@ -83,7 +83,7 @@ namespace script::pretty_print {
     // build a list out of a vector of strings that are converted to symbols
     script::Object build_list(const std::vector<std::string>& symbols) {
         if (symbols.empty()) {
-            return script::Object::make_empty_list();
+            return script::Object::make_null();
         }
         std::vector<script::Object> f;
         f.reserve(symbols.size());
@@ -95,7 +95,7 @@ namespace script::pretty_print {
 
     void append(script::Object& _in, const script::Object& add) {
         auto* in = &_in;
-        while (in->is_pair() && !in->as_pair()->cdr.is_empty_list()) {
+        while (in->is_pair() && !in->as_pair()->cdr.is_null()) {
             in = &in->as_pair()->cdr;
         }
 

@@ -2,7 +2,7 @@
 
 #include "common/sooti/Reader.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sooti/SootTypeSystem.hpp"
+#include "common/type_system/TypeSystem.hpp"
 #include <iostream>
 #include <functional>
 #include <unordered_map>
@@ -21,6 +21,8 @@ namespace std {
     };
 }
 
+class TypeSystem;
+
 namespace script
 {
     class ExitException : public std::exception {
@@ -34,6 +36,12 @@ namespace script
         const char* what() const noexcept override {
             return message.c_str(); // Теперь это безопасно
         }
+    };
+
+    enum class TypeSystemVariant {
+        Undefined,
+        Default,
+        Z80,
     };
 
     class Interpreter  {
@@ -89,18 +97,18 @@ namespace script
 
         struct SpecialFormMethodRec { 
             SpecialFormMethodRec() {}
-            SpecialFormMethodRec(SpecialFormMethod method) : method(method), specs(false, true) {};
+            SpecialFormMethodRec(SpecialFormMethod method) : method(method), specs(true, true) {};
             SpecialFormMethodRec(SpecialFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};
             SpecialFormMethod method; 
-            ArgumentSpec specs; 
+            ArgumentSpec specs {}; 
         };
 
         struct BuiltinFormMethodRec { 
             BuiltinFormMethodRec() {}
-            BuiltinFormMethodRec(BuiltinFormMethod method) : method(method), specs(false, true) {}
+            BuiltinFormMethodRec(BuiltinFormMethod method) : method(method), specs(true, true) {}
             BuiltinFormMethodRec(BuiltinFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};            
             BuiltinFormMethod method; 
-            ArgumentSpec specs; 
+            ArgumentSpec specs {}; 
         };
         struct BuiltinEntry {
             std::string name;
@@ -116,18 +124,18 @@ namespace script
 
         // --- Методы регистрации ---
         void add_special_form(std::string name, SpecialFormMethod method, ArgumentSpec* specs = nullptr) {
-            void* key = (void*)intern_ptr(name).name_ptr;           
+            void* key = (void*)intern(name).name_ptr;           
             m_special_forms[key] = (specs != nullptr) ? SpecialFormMethodRec(method, specs) : SpecialFormMethodRec(method); 
         }
 
         void add_builtin_form(std::string name, BuiltinFormMethod method, ArgumentSpec* specs = nullptr) {
-            void* key = (void*)intern_ptr(name).name_ptr;           
+            void* key = (void*)intern(name).name_ptr;           
             m_builtin_forms[key] = (specs != nullptr) ? BuiltinFormMethodRec(method, specs) : BuiltinFormMethodRec(method); 
         }
 
         void add_custom_form(std::string name, BuiltinFormMethod method, ArgumentSpec* specs = nullptr) {
             // Интернируем имя, чтобы получить стабильный указатель для поиска
-            void* key = (void*)intern_ptr(name).name_ptr;           
+            void* key = (void*)intern(name).name_ptr;           
             
             // Добавляем в вектор (предполагается, что m_custom_forms хранит std::pair или структуру)
             if (specs != nullptr)
@@ -150,13 +158,15 @@ namespace script
         // Лоступ к окружению
         Object get_global_environment() { return m_global_environment; }
         TextDb& get_db() { return m_reader.get_db(); }
+        SymbolTable& symbol_table() { return m_symbol_table; }
+        TypeSystem& type_system() { return *(m_type_system.get()); }
 
         // --- Для REPL и LSP -------------------
         std::string get_all_symbols_matching(const std::string& prefix);
 
         // --- Константы ------------------------
         Object get_undefined() { return m_undefined; }
-        Object get_null() { return m_null; }
+        Object get_null() { return m_null; } 
         Object get_true() { return m_sym_true; }
         Object get_false() { return m_sym_false; }
         // Boolean helpers (используют символы)
@@ -182,8 +192,9 @@ namespace script
         void load_library();
 
         // Символы и окружение
-        Object intern(const std::string& name);
-        InternedSymbolPtr intern_ptr(const std::string& name);
+        Object make_symbol(const char* name);
+        Object make_symbol(const std::string& name);
+        InternedSymbolPtr intern(const std::string& name);
         bool try_symbol_lookup(const Object& sym, const std::shared_ptr<EnvironmentObject>& env, Object* dest);
         Object eval_symbol(const Object& parent_form, const Object& sym, const std::shared_ptr<EnvironmentObject>& env);
         void define_var_in_env(const Object& env, const Object& var, const char* name);
@@ -380,11 +391,11 @@ namespace script
             const std::vector<std::optional<ObjectType>>& unnamed,
             const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
 
-        Object eval_ts_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_ts_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_ts_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_ts_type_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_ts_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_typespec_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_types_to_lisp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -393,7 +404,10 @@ namespace script
         Object eval_navigation_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
 
         Object eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-    
+        Object eval_make_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // --- Инициализация системы типов ---          
+        void init_type_system(TypeSystemVariant types);
         // --- Инициализация Хранилища ---       
         void init_special_forms(const std::initializer_list<SpecialEntry> forms);
         void init_builtin_forms(const std::initializer_list<BuiltinEntry> forms);        
@@ -422,9 +436,10 @@ namespace script
         Object      m_global_environment;
         Object      m_comp_env;
         bool        m_disable_printing = false;
-        std::shared_ptr<SootTypeSystem> m_type_system; // Реализатор
         Reader      m_reader;
         ContextFrame* m_top_frame;
+        std::shared_ptr<TypeSystem>  m_type_system;
+        SymbolTable m_symbol_table;
     };
 
     fmt::terminal_color string_to_color(const std::string& name);

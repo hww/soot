@@ -16,14 +16,14 @@ namespace script {
         int size = 0;
 
         // Конструкторы
-        ListBuilder() { head = Object::make_empty_list(); }
+        ListBuilder() { head = Object::make_null(); }
         // Добавляем этот, чтобы lb{symbols} работало (даже если symbols не используется)
-        ListBuilder(SymbolTable& /*symbols*/) { head = Object::make_empty_list(); }
+        ListBuilder(SymbolTable& /*symbols*/) { head = Object::make_null(); }
 
         // Твой старый добрый push_back (rvalue)
         std::shared_ptr<PairObject> push_back(Object&& o) {
             size++;
-            std::shared_ptr<PairObject> next = std::make_shared<PairObject>(std::move(o), Object::make_empty_list());
+            std::shared_ptr<PairObject> next = std::make_shared<PairObject>(std::move(o), Object::make_null());
             if (!tail) {
                 head.type = ObjectType::PAIR;
                 head.heap_obj = next;
@@ -45,12 +45,12 @@ namespace script {
 
         // Исправленный push_kv: убираем лишний &, если symbols уже ссылка
         void push_kv(SymbolTable& symbols, const char* key_name, Object value) {
-            push_back(Object::make_keyword(&symbols, key_name));
+            push_back(Object::make_keyword(key_name));
             push_back(std::move(value));
         }
 
         Object pop_back() {
-            if (!tail) return Object::make_empty_list(); // Защита от пустого списка
+            if (!tail) return Object::make_null(); // Защита от пустого списка
 
             Object obj = tail->car;
             
@@ -60,19 +60,19 @@ namespace script {
 
             // Если список стал пустым после удаления
             if (!tail) {
-                head = Object::make_empty_list();
+                head = Object::make_null();
             } else {
                 // Зачищаем ссылку на удаленный элемент в новом хвосте
-                tail->cdr = Object::make_empty_list();
+                tail->cdr = Object::make_null();
             }
 
             return obj;
         }
         Object finalize() {
             if (tail) {
-                tail->cdr = Object::make_empty_list();
+                tail->cdr = Object::make_null();
             } else {
-                head = Object::make_empty_list();
+                head = Object::make_null();
             }
             return head; 
         }

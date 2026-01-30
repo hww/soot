@@ -7,9 +7,10 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
-#include "common/sooti/Aliasable.hpp"
+#include "common/sooti/Accessor.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
+#include "common/util/Crc32.hpp"
 
 #include <memory>
 #include <optional>
@@ -25,7 +26,7 @@
  // ============================================================================
 
 struct ReverseLookupNode;
-class script::Object;
+
 
 struct TypeFlags {
     union {
@@ -153,7 +154,7 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public Aliasable {
+class TypeSystem : public Accessor {
 public:
     TypeSystem();
     ~TypeSystem() = default;

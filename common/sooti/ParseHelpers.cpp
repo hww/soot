@@ -8,7 +8,7 @@ namespace script {
         Arguments args;
         // loop over forms in list
         Object current = rest;
-        while (!current.is_empty_list()) {
+        while (!current.is_null()) {
             auto arg = current.as_pair()->car;
 
             // did we get a ":keyword"
@@ -23,7 +23,7 @@ namespace script {
 
                 // check for well-formed :key value expression
                 current = current.as_pair()->cdr;
-                if (current.is_empty_list()) {
+                if (current.is_null()) {
                     *err_string = "Key argument didn't have a value";
                     return false;
                 }
@@ -44,7 +44,7 @@ namespace script {
         Arguments args;
         // loop over forms in list
         Object current = rest;
-        while (!current.is_empty_list()) {
+        while (!current.is_null()) {
             args.unnamed.push_back(current.as_pair()->car);
             current = current.as_pair()->cdr;
         }

@@ -58,7 +58,7 @@ TEST_F(ListTest, ListOperations) {
     EXPECT_EQ(third.as_integer(), 3);
 
     Object end = obj.as_pair()->cdr.as_pair()->cdr.as_pair()->cdr;
-    EXPECT_TRUE(end.is_empty_list());
+    EXPECT_TRUE(end.is_null());
 }
 
 // Тест length

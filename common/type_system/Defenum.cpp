@@ -102,7 +102,7 @@ EnumType* parse_defenum(const script::Object& defenum,
     }
 
     // Парсим опции (начинаются с :)
-    while (!iter->is_empty_list() && iter->is_pair()) {
+    while (!iter->is_null() && iter->is_pair()) {
         auto& current = iter->as_pair()->car;
 
         if (!current.is_keyword()) {
@@ -112,7 +112,7 @@ EnumType* parse_defenum(const script::Object& defenum,
         auto option_name = symbol_string(current);
         iter = &iter->as_pair()->cdr;
 
-        if (iter->is_empty_list() || !iter->is_pair()) {
+        if (iter->is_null() || !iter->is_pair()) {
             throw std::runtime_error("Option " + option_name + " needs value");
         }
 
@@ -152,7 +152,7 @@ EnumType* parse_defenum(const script::Object& defenum,
     auto type = ts->lookup_type(base_type);
     int64_t highest = -1;
 
-    while (!iter->is_empty_list()) {
+    while (!iter->is_null()) {
         if (!iter->is_pair()) {
             throw std::runtime_error("invalid list structure in defenum entries");
         }
@@ -185,7 +185,7 @@ EnumType* parse_defenum(const script::Object& defenum,
             }
 
             // Получаем значение
-            if (field_pair.cdr.is_empty_list()) {
+            if (field_pair.cdr.is_null()) {
                 // Авто-инкремент: (name)
                 entries[entry_name] = ++highest;
             }

@@ -151,7 +151,7 @@ namespace script {
 	 */
 	Object Reader::read_single_form(TextStream& ts, EvalCallback eval_callback) {
 		ts.seek_past_whitespace_and_comments();
-		if (!ts.text_remains()) return Object::make_empty_list();
+		if (!ts.text_remains()) return Object::make_null();
 
 		auto tok = get_next_token(ts);
 		auto it = m_reader_macros.find(tok.text);
@@ -180,7 +180,7 @@ namespace script {
 				// Читаем ТО, ЧТО ИДЕТ СЛЕДОМ за макросом (рекурсивно)
 				Object inner_obj = read_single_form(ts, eval_callback);
 				
-				Object sym = EnvContext::make_symbol(macro.replacement.c_str());
+				Object sym = Object::make_symbol(macro.replacement.c_str());
 				// Возвращаем либо (quote объект), либо просто символ замены
 				return macro.list ? script::build_list({ sym, inner_obj }) : sym;
 			}
@@ -198,7 +198,7 @@ namespace script {
 			}
 			throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
 		}
-		return Object::make_empty_list();
+		return Object::make_null();
 	}
 
 	/*!
@@ -267,7 +267,7 @@ namespace script {
 
 		// read list!
 		ListBuilder full_program_builder;
-		auto empty_list = Object::make_empty_list();
+		auto empty_list = Object::make_null();
 		Object eval_result = empty_list;
 
 		try {
@@ -306,14 +306,14 @@ namespace script {
 		auto result = full_program_builder.finalize();
 
 		if (add_top_level) {
-			return Object::make_pair(EnvContext::make_symbol("top-level"), result);
+			return Object::make_pair(Object::make_symbol("top-level"), result);
 		}
 		return result;
 	}
 
 	Object Reader::read_one(TextStream& ts) {
 		ts.seek_past_whitespace_and_comments();
-		if (!ts.text_remains()) return Object::make_empty_list();
+		if (!ts.text_remains()) return Object::make_null();
 
 		Token tok = get_next_token(ts);
 		Object obj;
@@ -335,7 +335,7 @@ namespace script {
 			read_object(tok, ts, obj);
 			return obj;
 		}
-		return Object::make_empty_list();
+		return Object::make_null();
 	}
 
 	// ==================== Token Reading ====================
@@ -422,7 +422,7 @@ namespace script {
 		m.shortcut = shortcut;
 		m.replacement = std::move(replacement);
 		m.list = list; 
-		m.lambda = Object::make_empty_list(); 
+		m.lambda = Object::make_null(); 
 		m_reader_macros[shortcut] = m;
 	}
 	
@@ -547,7 +547,7 @@ namespace script {
 			}
 			
 			// Создаем ключевое слово (убираем ведущий ':')
-			obj = Object::make_keyword(&m_symbols, tok.text.c_str());
+			obj = Object::make_keyword(tok.text.c_str());
 			return true;
 		}
 
@@ -563,7 +563,7 @@ namespace script {
 			}
 		}
 
-		obj = EnvContext::make_symbol(tok.text.c_str());
+		obj = Object::make_symbol(tok.text.c_str());
 		return true;
 	}
 	// ==================== List Reading ====================

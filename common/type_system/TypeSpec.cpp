@@ -310,17 +310,17 @@ void TypeSpec::delete_tag(const std::string& tag_name) {
 
 void TypeSpec::define_all_aliases() {
     // 1. Имя базового типа (например, "pointer")
-    define_alias("base-type", [](Aliasable* self) {
+    define_alias("base-type", [](Accessor* self) {
         return Object::make_string(static_cast<TypeSpec*>(self)->base_type());
     });
 
     // 2. Количество аргументов
-    define_alias("args-count", [](Aliasable* self) {
+    define_alias("args-count", [](Accessor* self) {
         return Object::make_integer(static_cast<TypeSpec*>(self)->get_args_count());
     });
 
     // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
-    define_alias("args", [](Aliasable* self) {
+    define_alias("args", [](Accessor* self) {
         auto ts = static_cast<TypeSpec*>(self);
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
@@ -328,7 +328,7 @@ void TypeSpec::define_all_aliases() {
     });
 
     // 4. Количество тегов
-    define_alias("tags-count", [](Aliasable* self) {
+    define_alias("tags-count", [](Accessor* self) {
         return Object::make_integer(static_cast<TypeSpec*>(self)->get_tags_count());
     });
 }
@@ -342,14 +342,14 @@ Object TypeSpec::make_step_alias(const Object& key) {
             // Возвращаем аргумент, обернутый в NativeRef, чтобы по нему можно было идти дальше
             return Object::make_native_ref(std::make_shared<TypeSpec>(get_arg(idx)));
         }
-        return Object::make_empty_list();
+        return Object::make_null();
     }
 
-    // Если ключ — символ (например, 'base-type), используем стандартную карту Aliasable
-    Object meta = Aliasable::make_step_alias(key);
+    // Если ключ — символ (например, 'base-type), используем стандартную карту Accessor
+    Object meta = Accessor::make_step_alias(key);
     
-    // Если Aliasable ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
-    return meta.is_undefined() ? Object::make_empty_list() : meta;
+    // Если Accessor ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
+    return meta.is_undefined() ? Object::make_null() : meta;
 }
 
 // Вспомогательная функция для преобразования TypeSpec
@@ -357,10 +357,10 @@ Object TypeSpec::inspect() const
 {
         if (base_type() == "none" || base_type().empty())
         {
-            return Object::make_empty_list();
+            return Object::make_null();
         }
 
-        Object base = EnvContext::make_symbol(base_type());
+        Object base = Object::make_symbol(base_type());
 
         // Если нет ни аргументов, ни тегов — возвращаем просто символ (атом)
         if (get_args_count() == 0 && get_tags_count() == 0)
@@ -383,12 +383,12 @@ Object TypeSpec::inspect() const
         {
             // Превращаем имя тега в ключевое слово (например, "foo" -> ":foo")
             std::string keyword = ":" + tag.name;
-            list_elements.push_back(EnvContext::make_symbol(keyword));
+            list_elements.push_back(Object::make_symbol(keyword));
 
             // Значение тега (предполагаем, что это может быть имя типа или строка)
             // Если значение выглядит как число, можно было бы парсить,
             // но пока оставим как символ/строку для простоты
-            list_elements.push_back(EnvContext::make_symbol(tag.value));
+            list_elements.push_back(Object::make_symbol(tag.value));
         }
 
         return pretty_print::build_list(list_elements);

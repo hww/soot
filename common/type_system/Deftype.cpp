@@ -38,7 +38,7 @@ namespace {
 
         auto parent = list.as_pair()->car;
         auto rest = list.as_pair()->cdr;
-        if (!rest.is_empty_list()) {
+        if (!rest.is_null()) {
             throw std::runtime_error("invalid parent list in deftype - can only have one parent");
         }
 
@@ -103,7 +103,7 @@ namespace {
         Field override_field;
         bool override = false;
 
-        if (!rest->is_empty_list()) {
+        if (!rest->is_null()) {
             if (car(rest).is_integer()) {
                 array_size = car(rest).as_integer();
                 rest = cdr(rest);
@@ -113,7 +113,7 @@ namespace {
                 rest = cdr(rest);
             }
 
-            while (!rest->is_empty_list()) {
+            while (!rest->is_null()) {
                 auto opt_name = symbol_string(car(rest));
                 rest = cdr(rest);
 
@@ -147,13 +147,13 @@ namespace {
                     }
                     else if (param.is_pair() && symbol_string(car(&param)) == "->") {
                         auto name_it = cdr(&param);
-                        if (name_it->is_empty_list()) {
+                        if (name_it->is_null()) {
                             throw std::runtime_error(
                                 fmt::format("Field list for overlay-at in {} was empty", name));
                         }
                         auto type_to_use = structure;
                         offset_override = 0;
-                        while (!name_it->is_empty_list()) {
+                        while (!name_it->is_null()) {
                             const auto& deref_field = car(name_it);
                             if (deref_field.is_integer()) {
                                 auto ref_array_field = !type_to_use && !overlay_field.is_inline()
@@ -264,8 +264,8 @@ namespace {
         int size_override = -1;
         bool skip_in_decomp = false;
 
-        if (!rest->is_empty_list()) {
-            while (!rest->is_empty_list()) {
+        if (!rest->is_null()) {
+            while (!rest->is_null()) {
                 auto opt_name = symbol_string(car(rest));
                 rest = cdr(rest);
 
@@ -389,7 +389,7 @@ namespace {
             method_name = symbol_string(car(obj));
             obj = cdr(obj);
 
-            if (!obj->is_empty_list() && car(obj).is_keyword())
+            if (!obj->is_null() && car(obj).is_keyword())
             { 
                 auto kw =  symbol_string(car(obj));
                 if (kw == ":override-doc") {
@@ -424,7 +424,7 @@ namespace {
                 // this int is assumed to be the id, and always at the end!
                 //
                 // Doing it like this makes the ordering not critical
-                while (!obj->is_empty_list() && car(obj).is_keyword()) {
+                while (!obj->is_null() && car(obj).is_keyword()) {
                     const auto& keyword = car(obj).as_symbol();
                     if (keyword.name_ptr == ":no-virtual") {
                         no_virtual = true;
@@ -435,11 +435,11 @@ namespace {
                     else if (keyword.name_ptr == ":state") {
                         function_typespec = TypeSpec("state");
                         // parse state docstrings if available
-                        if (!cdr(obj)->is_empty_list() && car(cdr(obj)).is_list()) {
+                        if (!cdr(obj)->is_null() && car(cdr(obj)).is_list()) {
                             obj = cdr(obj);
                             auto docstring_list = &car(obj);
                             auto elem = docstring_list;
-                            while (!elem->is_empty_list() && car(elem).is_symbol()) {
+                            while (!elem->is_null() && car(elem).is_symbol()) {
                                 const auto& handler = car(elem).as_symbol();
                                 const auto handler_kind = handler_keyword_to_kind(handler.name_ptr);
 
@@ -486,7 +486,7 @@ namespace {
                 function_typespec.add_arg(parse_typespec(type_system, return_type));
             }
 
-            if (!obj->is_empty_list()) {
+            if (!obj->is_null()) {
                 throw std::runtime_error(fmt::format("found unknown data in a method declaration:\n{}\n\n{}",
                     obj->print(), _obj.print()));
             }
@@ -558,11 +558,11 @@ namespace {
                 // (name [(:event "docstring"...)] ,@args)
                 auto state_name = symbol_string(car(obj));
 
-                if (!cdr(obj)->is_empty_list() && car(cdr(obj)).is_list()) {
+                if (!cdr(obj)->is_null() && car(cdr(obj)).is_list()) {
                     obj = cdr(obj);
                     auto docstring_list = &car(obj);
                     auto elem = docstring_list;
-                    while (!elem->is_empty_list() && car(elem).is_symbol()) {
+                    while (!elem->is_null() && car(elem).is_symbol()) {
                         const auto& handler = car(elem).as_symbol();
                         const auto handler_kind = handler_keyword_to_kind(handler.name_ptr);
 
@@ -622,7 +622,7 @@ namespace {
         uint64_t flag_assert = 0;
         bool flag_assert_set = false;
         bool set_heapbase = false;
-        while (!rest->is_empty_list()) {
+        while (!rest->is_null()) {
             if (car(rest).is_pair()) {
                 auto opt_list = &car(rest);
                 auto& first = car(opt_list);
@@ -766,7 +766,7 @@ namespace {
         int method_count_assert = -1;
         uint64_t flag_assert = 0;
         bool flag_assert_set = false;
-        while (!rest->is_empty_list()) {
+        while (!rest->is_null()) {
             if (car(rest).is_pair()) {
                 auto opt_list = &car(rest);
                 auto& first = car(opt_list);
