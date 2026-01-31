@@ -179,8 +179,8 @@ class NoExecDeathTest;
 class FinalSuccessChecker;
 class GTestFlagSaver;
 class StreamingListenerTest;
-class TestResultAccessor;
-class TestEventListenersAccessor;
+class TestResultHeapObject;
+class TestEventListenersHeapObject;
 class TestEventRepeater;
 class UnitTestRecordPropertyTestHelper;
 class WindowsDeathTest;
@@ -437,7 +437,7 @@ class GTEST_API_ TestResult {
   friend class UnitTest;
   friend class internal::DefaultGlobalTestPartResultReporter;
   friend class internal::ExecDeathTest;
-  friend class internal::TestResultAccessor;
+  friend class internal::TestResultHeapObject;
   friend class internal::UnitTestImpl;
   friend class internal::WindowsDeathTest;
   friend class internal::FuchsiaDeathTest;
@@ -1045,7 +1045,7 @@ class GTEST_API_ TestEventListeners {
   friend class TestInfo;
   friend class internal::DefaultGlobalTestPartResultReporter;
   friend class internal::NoExecDeathTest;
-  friend class internal::TestEventListenersAccessor;
+  friend class internal::TestEventListenersHeapObject;
   friend class internal::UnitTestImpl;
 
   // Returns repeater that broadcasts the TestEventListener events to all
@@ -1246,7 +1246,7 @@ class GTEST_API_ UnitTest {
   // total_test_suite_count() - 1. If i is not in that range, returns NULL.
   TestSuite* GetMutableTestSuite(int i);
 
-  // Accessors for the implementation object.
+  // HeapObjects for the implementation object.
   internal::UnitTestImpl* impl() { return impl_; }
   const internal::UnitTestImpl* impl() const { return impl_; }
 

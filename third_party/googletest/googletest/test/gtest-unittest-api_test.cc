@@ -102,10 +102,10 @@ TYPED_TEST(TestSuiteWithCommentTest, Dummy) {}
 const int kTypedTestSuites = 1;
 const int kTypedTests = 1;
 
-// We can only test the accessors that do not change value while tests run.
-// Since tests can be run in any order, the values the accessors that track
+// We can only test the HeapObjects that do not change value while tests run.
+// Since tests can be run in any order, the values the HeapObjects that track
 // test execution (such as failed_test_count) can not be predicted.
-TEST(ApiTest, UnitTestImmutableAccessorsWork) {
+TEST(ApiTest, UnitTestImmutableHeapObjectsWork) {
   UnitTest* unit_test = UnitTest::GetInstance();
 
   ASSERT_EQ(2 + kTypedTestSuites, unit_test->total_test_suite_count());
@@ -136,7 +136,7 @@ AssertionResult IsNull(const char* str) {
   return AssertionSuccess();
 }
 
-TEST(ApiTest, TestSuiteImmutableAccessorsWork) {
+TEST(ApiTest, TestSuiteImmutableHeapObjectsWork) {
   const TestSuite* test_suite = UnitTestHelper::FindTestSuite("ApiTest");
   ASSERT_TRUE(test_suite != nullptr);
 
@@ -155,19 +155,19 @@ TEST(ApiTest, TestSuiteImmutableAccessorsWork) {
   EXPECT_TRUE(IsNull(tests[0]->type_param()));
   EXPECT_FALSE(tests[0]->should_run());
 
-  EXPECT_STREQ("TestSuiteDisabledAccessorsWork", tests[1]->name());
+  EXPECT_STREQ("TestSuiteDisabledHeapObjectsWork", tests[1]->name());
   EXPECT_STREQ("ApiTest", tests[1]->test_suite_name());
   EXPECT_TRUE(IsNull(tests[1]->value_param()));
   EXPECT_TRUE(IsNull(tests[1]->type_param()));
   EXPECT_TRUE(tests[1]->should_run());
 
-  EXPECT_STREQ("TestSuiteImmutableAccessorsWork", tests[2]->name());
+  EXPECT_STREQ("TestSuiteImmutableHeapObjectsWork", tests[2]->name());
   EXPECT_STREQ("ApiTest", tests[2]->test_suite_name());
   EXPECT_TRUE(IsNull(tests[2]->value_param()));
   EXPECT_TRUE(IsNull(tests[2]->type_param()));
   EXPECT_TRUE(tests[2]->should_run());
 
-  EXPECT_STREQ("UnitTestImmutableAccessorsWork", tests[3]->name());
+  EXPECT_STREQ("UnitTestImmutableHeapObjectsWork", tests[3]->name());
   EXPECT_STREQ("ApiTest", tests[3]->test_suite_name());
   EXPECT_TRUE(IsNull(tests[3]->value_param()));
   EXPECT_TRUE(IsNull(tests[3]->type_param()));
@@ -197,7 +197,7 @@ TEST(ApiTest, TestSuiteImmutableAccessorsWork) {
   delete[] tests;
 }
 
-TEST(ApiTest, TestSuiteDisabledAccessorsWork) {
+TEST(ApiTest, TestSuiteDisabledHeapObjectsWork) {
   const TestSuite* test_suite = UnitTestHelper::FindTestSuite("DISABLED_Test");
   ASSERT_TRUE(test_suite != nullptr);
 
@@ -271,7 +271,7 @@ class FinalSuccessChecker : public Environment {
     EXPECT_STREQ("ApiTest", tests[0]->test_suite_name());
     EXPECT_FALSE(tests[0]->should_run());
 
-    EXPECT_STREQ("TestSuiteDisabledAccessorsWork", tests[1]->name());
+    EXPECT_STREQ("TestSuiteDisabledHeapObjectsWork", tests[1]->name());
     EXPECT_STREQ("ApiTest", tests[1]->test_suite_name());
     EXPECT_TRUE(IsNull(tests[1]->value_param()));
     EXPECT_TRUE(IsNull(tests[1]->type_param()));
@@ -279,7 +279,7 @@ class FinalSuccessChecker : public Environment {
     EXPECT_TRUE(tests[1]->result()->Passed());
     EXPECT_EQ(0, tests[1]->result()->test_property_count());
 
-    EXPECT_STREQ("TestSuiteImmutableAccessorsWork", tests[2]->name());
+    EXPECT_STREQ("TestSuiteImmutableHeapObjectsWork", tests[2]->name());
     EXPECT_STREQ("ApiTest", tests[2]->test_suite_name());
     EXPECT_TRUE(IsNull(tests[2]->value_param()));
     EXPECT_TRUE(IsNull(tests[2]->type_param()));
@@ -287,7 +287,7 @@ class FinalSuccessChecker : public Environment {
     EXPECT_TRUE(tests[2]->result()->Passed());
     EXPECT_EQ(0, tests[2]->result()->test_property_count());
 
-    EXPECT_STREQ("UnitTestImmutableAccessorsWork", tests[3]->name());
+    EXPECT_STREQ("UnitTestImmutableHeapObjectsWork", tests[3]->name());
     EXPECT_STREQ("ApiTest", tests[3]->test_suite_name());
     EXPECT_TRUE(IsNull(tests[3]->value_param()));
     EXPECT_TRUE(IsNull(tests[3]->type_param()));

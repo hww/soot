@@ -181,10 +181,10 @@ contexts:
   identifiers:
     - match: '{{identifier}}\s*(::)\s*'
       captures:
-        1: punctuation.accessor.c++
+        1: punctuation.HeapObject.c++
     - match: '(?:(::)\s*)?{{identifier}}'
       captures:
-        1: punctuation.accessor.c++
+        1: punctuation.HeapObject.c++
 
   function-specifiers:
     - match: \b(const|final|noexcept|override)\b
@@ -604,11 +604,11 @@ contexts:
           scope: storage.type.template.c++
         - match: '(?:(::)\s*)?{{identifier}}\s*(::)\s*'
           captures:
-            1: punctuation.accessor.double-colon.c++
-            2: punctuation.accessor.double-colon.c++
+            1: punctuation.HeapObject.double-colon.c++
+            2: punctuation.HeapObject.double-colon.c++
         - match: (?:(::)\s*)?({{identifier}})\s*(<)
           captures:
-            1: punctuation.accessor.double-colon.c++
+            1: punctuation.HeapObject.double-colon.c++
             2: variable.function.c++
             3: punctuation.section.generic.begin.c++
           push:
@@ -618,7 +618,7 @@ contexts:
             - include: expressions-minus-generic-type-function-call
         - match: (?:(::)\s*)?({{identifier}})\s*(\()
           captures:
-            1: punctuation.accessor.double-colon.c++
+            1: punctuation.HeapObject.double-colon.c++
             2: variable.function.c++
             3: punctuation.section.group.begin.c++
           set:
@@ -678,12 +678,12 @@ contexts:
         - match: '(?:(::)\s*)?{{identifier}}\s*(::)\s*'
           scope: variable.function.c++
           captures:
-            1: punctuation.accessor.c++
-            2: punctuation.accessor.c++
+            1: punctuation.HeapObject.c++
+            2: punctuation.HeapObject.c++
         - match: '(?:(::)\s*)?{{identifier}}'
           scope: variable.function.c++
           captures:
-            1: punctuation.accessor.c++
+            1: punctuation.HeapObject.c++
         - match: '\('
           scope: meta.group.c++ punctuation.section.group.begin.c++
           set:
@@ -700,8 +700,8 @@ contexts:
       pop: true
     - include: expressions
 
-  members-after-accessor-junction:
-    # After we've seen an accessor (dot or arrow), this context decides what
+  members-after-HeapObject-junction:
+    # After we've seen an HeapObject (dot or arrow), this context decides what
     # kind of entity we're accessing.
     - include: comments
     - match: \btemplate\b
@@ -762,8 +762,8 @@ contexts:
     - match: ({{identifier}})\s*(::)
       captures:
         1: variable.other.base-class.c++
-        2: punctuation.accessor.double-colon.c++
-      set: members-after-accessor-junction # reset
+        2: punctuation.HeapObject.double-colon.c++
+      set: members-after-HeapObject-junction # reset
     # Just a regular member variable
     - match: '{{identifier}}'
       scope: variable.other.readwrite.member.c++
@@ -775,16 +775,16 @@ contexts:
     # early-expressions-after-generic-type context. This means triple dots
     # (i.e. "..." or "variadic") is attempted first.
     - match: \.
-      scope: punctuation.accessor.dot.c++
-      push: members-after-accessor-junction
+      scope: punctuation.HeapObject.dot.c++
+      push: members-after-HeapObject-junction
 
   members-arrow:
     # This needs to be before operators in the
     # early-expressions-after-generic-type context because otherwise the "->"
     # from the C language will match.
     - match: ->
-      scope: punctuation.accessor.arrow.c++
-      push: members-after-accessor-junction
+      scope: punctuation.HeapObject.arrow.c++
+      push: members-after-HeapObject-junction
 
   typedef:
     - match: \btypedef\b
@@ -980,7 +980,7 @@ contexts:
   global-function-identifier-generic:
     - include: angle-brackets
     - match: '::'
-      scope: punctuation.accessor.c++
+      scope: punctuation.HeapObject.c++
     - match: '(?={{identifier}}<.*>\s*\()'
       push:
         - meta_content_scope: entity.name.function.c++
@@ -1306,7 +1306,7 @@ contexts:
     - match: '(?:{{identifier}}\s*(::)\s*)?~{{identifier}}(?=\s*(\(|$))'
       scope: meta.method.destructor.c++ entity.name.function.destructor.c++
       captures:
-        1: punctuation.accessor.c++
+        1: punctuation.HeapObject.c++
       set: method-definition-params
     # It's a macro, not a constructor if there is no type in the first param
     - match: '({{identifier}})\s*(\()(?=\s*(?!void){{identifier}}\s*[),])'
@@ -1329,7 +1329,7 @@ contexts:
     - match: '({{identifier}}\s*(::)\s*{{identifier}})(?=\s*\()'
       captures:
         1: meta.method.constructor.c++ entity.name.function.constructor.c++
-        2: punctuation.accessor.c++
+        2: punctuation.HeapObject.c++
       push: method-definition-params
     - match: '(?=\S)'
       set: data-structures-type
@@ -1840,12 +1840,12 @@ contexts:
     - match: '(?:(::)\s*)?{{identifier}}\s*(::)\s*'
       scope: variable.function.c++
       captures:
-        1: punctuation.accessor.c++
-        2: punctuation.accessor.c++
+        1: punctuation.HeapObject.c++
+        2: punctuation.HeapObject.c++
     - match: '(?:(::)\s*)?{{identifier}}'
       scope: variable.function.c++
       captures:
-        1: punctuation.accessor.c++
+        1: punctuation.HeapObject.c++
     - match: '\('
       scope: meta.group.c++ punctuation.section.group.begin.c++
       set: preprocessor-if-branch-function-call-arguments

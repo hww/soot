@@ -1,7 +1,6 @@
 // test_parsers.h
 #pragma once
 #include "common/sooti/Object.hpp"
-#include "common/sooti/Accessor.hpp"
 #include "common/sooti/Reader.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/ParseHelpers.hpp"

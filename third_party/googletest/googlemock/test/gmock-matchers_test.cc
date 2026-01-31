@@ -924,7 +924,7 @@ class Unprintable {
   Unprintable() : c_('a') {}
 
   bool operator==(const Unprintable& /* rhs */) const { return true; }
-  // -Wunused-private-field: dummy accessor for `c_`.
+  // -Wunused-private-field: dummy HeapObject for `c_`.
   char dummy_c() { return c_; }
  private:
   char c_;
@@ -5404,7 +5404,7 @@ TEST(WhenSortedTest, WorksForVectorConstRefMatcher) {
 }
 
 // Deliberately bare pseudo-container.
-// Offers only begin() and end() accessors, yielding InputIterator.
+// Offers only begin() and end() HeapObjects, yielding InputIterator.
 template <typename T>
 class Streamlike {
  private:

@@ -55,13 +55,28 @@ constexpr u32 SOOT_COPY_METHOD = 6;      // method ID of GOAL copy
 constexpr u32 SOOT_RELOC_METHOD = 7;     // method ID of GOAL relocate
 constexpr u32 SOOT_MEMUSAGE_METHOD = 8;  // method ID of GOAL mem-usage
 
-struct TargetConfig {
-    int pointer_size = 4;
-    int array_data_offset = 12;
-    int default_alignment = 4;
-    int crc_value_size = 4;
-    // Можно добавить порядок байт (Endianness) и т.д.
+
+struct TypeConfig {
+    static RegClass pointer_reg_class;
+    static int pointer_size;
+    static int array_data_offset;
+    static int default_alignment;
+    static int crc_value_size;
+    static int struct_alignment;
+    static int struct_array_stride_alignment;
+    static int struct_array_start_alignment;
+    static int basic_array_start_alignment;
 };
+
+inline RegClass TypeConfig::pointer_reg_class = RegClass::GPR_64;
+inline int TypeConfig::pointer_size = 4;
+inline int TypeConfig::array_data_offset = 12;
+inline int TypeConfig::default_alignment = 4;
+inline int TypeConfig::crc_value_size = 4;
+inline int TypeConfig::struct_alignment = 16;
+inline int TypeConfig::struct_array_stride_alignment = 16;
+inline int TypeConfig::struct_array_start_alignment = 16;
+inline int TypeConfig::basic_array_start_alignment = 16;
 
 // ============================================================================
 // Definition Metadata
@@ -88,7 +103,7 @@ struct DefinitionMetadata {
 // Method Information
 // ============================================================================
 
-class MethodInfo : public Accessor {
+class MethodInfo : public HeapObject {
     
 public:
     MethodInfo(){}
@@ -102,7 +117,7 @@ public:
           no_virtual(no_virtual), overrides_parent(overrides),
           only_overrides_docstring(only_doc), docstring(std::move(doc)),
           overlay_name(std::move(overlay)) {
-                define_all_aliases();
+
           }
 
     int id = -1;
@@ -124,16 +139,16 @@ public:
     std::string print() const override { return "<method-info>"; }
     Object inspect() const override { return Object::make_symbol("method-info"); }
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 };
 
 // ============================================================================
 // Field Definition
 // ============================================================================
 
-class Field : public Accessor {
+class Field : public HeapObject {
 public:
-    Field() { define_all_aliases(); };
+    Field() {  };
     Field(std::string name, TypeSpec type);
     Field(std::string name, TypeSpec type, int offset);
 
@@ -179,7 +194,7 @@ public:
     void set_field_score(double value) { m_field_score = value; }
     void set_decomp_as_ts(const TypeSpec& ts) { m_decomp_as_ts = ts; }
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
 private:
     friend class TypeSystem;
@@ -207,9 +222,9 @@ private:
 // BitField Definition
 // ============================================================================
 
-class BitField : public Accessor {
+class BitField : public HeapObject {
 public:
-    BitField() { define_all_aliases(); };
+    BitField() {  };
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
 
     const std::string name() const { return m_name; }
@@ -226,7 +241,7 @@ public:
     }
     std::string diff(const BitField& other) const;
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
 private:
     TypeSpec m_type;
@@ -240,7 +255,7 @@ private:
 // Base Type Definition
 // ============================================================================
 
-class Type : public Accessor {
+class Type : public HeapObject {
 public:
     static int verbose;
 public:
@@ -261,7 +276,7 @@ public:
     virtual int get_in_memory_alignment() const = 0;
     virtual int get_inline_array_stride_alignment() const = 0;
     virtual int get_inline_array_start_alignment() const = 0;
-
+    
     // Comparison
     virtual bool operator==(const Type& other) const = 0;
     bool operator!=(const Type& other) const { return !(*this == other); }
@@ -269,7 +284,7 @@ public:
     // Printing and debugging
     virtual std::string print() const = 0;
     std::string diff(const Type& other) const;
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
     // Method system
     bool get_my_method(const std::string& name, MethodInfo* out) const;
@@ -298,7 +313,7 @@ public:
     const std::vector<MethodInfo>& get_methods_defined_for_type() const { return m_methods; }
     const std::map<std::string, TypeSpec>& get_states_declared_for_type() const { return m_states; }
 
-    // Accessors
+    // HeapObjects
     void set_runtime_type(std::string name) { m_runtime_name = std::move(name); }
     std::string get_name() const { return m_name; }
     std::string get_runtime_name() const;
@@ -377,7 +392,7 @@ public:
     Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
 protected:
     std::string diff_impl(const Type& other) const override;
@@ -409,7 +424,7 @@ public:
 
     void inherit(const ValueType* parent);
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
 protected:
     friend class TypeSystem;
@@ -433,14 +448,14 @@ public:
     std::string get_class_name() const override { return "reference"; }
 
     bool is_reference() const override { return true; }
-    int get_load_size() const override { return 4; } // pointers are 4 bytes
+    int get_load_size() const override { return TypeConfig::pointer_size; } // pointers are 4 bytes
     bool get_load_signed() const override { return false; }
-    RegClass get_preferred_reg_class() const override { return RegClass::GPR_64; }
+    RegClass get_preferred_reg_class() const override { return TypeConfig::pointer_reg_class; }
 
     std::string print() const override;
     Object inspect() const { return Object::make_null(); }
     
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
     // These remain pure virtual - must be implemented by derived classes
     int get_size_in_memory() const override = 0;
@@ -467,9 +482,9 @@ public:
 
     int get_size_in_memory() const override { return m_size_in_mem; }
     int get_offset() const override { return m_offset; }
-    int get_in_memory_alignment() const override { return 16; } // STRUCTURE_ALIGNMENT
-    int get_inline_array_stride_alignment() const override { return m_pack ? 1 : 16; }
-    int get_inline_array_start_alignment() const override { return (m_pack || m_allow_misalign) ? 1 : 16; }
+    int get_in_memory_alignment() const override { return TypeConfig::struct_alignment; } // STRUCTURE_ALIGNMENT
+    int get_inline_array_stride_alignment() const override { return m_pack ? 1 : TypeConfig::struct_array_stride_alignment; }
+    int get_inline_array_start_alignment() const override { return (m_pack || m_allow_misalign) ? 1 : TypeConfig::struct_array_start_alignment; }
 
     bool lookup_field(const std::string& name, Field* out);
     bool is_dynamic() const { return m_dynamic; }
@@ -487,8 +502,7 @@ public:
     int size() const { return m_size_in_mem; }
     void override_field_type(const std::string& field_name, const TypeSpec& new_type);
 
-    void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override;
+    Object make_step_accessor(const Object& key) override;
 protected:
     friend class TypeSystem;
     void override_offset(int offset) { m_offset = offset; }
@@ -524,7 +538,7 @@ public:
     std::string get_class_name() const override { return "basic"; }
 
     int get_offset() const override { return 0; } // BASIC_OFFSET
-    int get_inline_array_start_alignment() const override { return 16; }
+    int get_inline_array_start_alignment() const override { return TypeConfig::basic_array_start_alignment; }
     std::string print() const override;
     Object inspect() const { return Object::make_null(); }
     bool operator==(const Type& other) const override;
@@ -532,7 +546,7 @@ public:
     bool final() const { return m_final; }
     void set_final() { m_final = true; }
 
-    void define_all_aliases() override;
+    Object make_step_accessor(const Object& key) override;
 
 protected:
     std::string diff_impl(const Type& other) const override;
@@ -558,8 +572,7 @@ public:
     const std::vector<BitField>& fields() const { return m_fields; }
     void set_gen_inspect(bool gen_inspect) { m_generate_inspect = gen_inspect; }
 
-    void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override;
+    Object make_step_accessor(const Object& key) override;
 protected:
     friend class TypeSystem;
     std::string diff_impl(const Type& other) const override;
@@ -585,8 +598,7 @@ public:
     const std::unordered_map<std::string, int64_t>& entries() const { return m_entries; }
     bool is_bitfield() const { return m_is_bitfield; }
 	
-	void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override;
+    Object make_step_accessor(const Object& key) override;
 protected:
     friend class TypeSystem;
     std::string diff_impl(const Type& other) const override;

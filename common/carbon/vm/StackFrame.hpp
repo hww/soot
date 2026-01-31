@@ -60,6 +60,8 @@ namespace runtime::vm {
         StackFrame(ByteCode* bytecode, StackFrame* parent = nullptr,
             FrameType frame_type = FrameType::GENERIC, StringId name = SID("null"));
 
+        virtual ~StackFrame(){}
+
         /// Вызывается при выходе из области видимости фрейма
         virtual void exit() {}
 

@@ -497,11 +497,11 @@ struct is_back_insert_iterator<
 template <typename OutputIt>
 inline FMT_CONSTEXPR20 auto get_container(OutputIt it) ->
     typename OutputIt::container_type& {
-  struct accessor : OutputIt {
-    FMT_CONSTEXPR20 accessor(OutputIt base) : OutputIt(base) {}
+  struct HeapObject : OutputIt {
+    FMT_CONSTEXPR20 HeapObject(OutputIt base) : OutputIt(base) {}
     using OutputIt::container;
   };
-  return *accessor(it).container;
+  return *HeapObject(it).container;
 }
 }  // namespace detail
 

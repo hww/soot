@@ -1406,9 +1406,9 @@ To test them, we use the following special techniques:
 
 *   Private class members are only accessible from within the class or by
     friends. To access a class' private members, you can declare your test
-    fixture as a friend to the class and define accessors in your fixture. Tests
+    fixture as a friend to the class and define HeapObjects in your fixture. Tests
     using the fixture can then access the private members of your production
-    class via the accessors in the fixture. Note that even though your fixture
+    class via the HeapObjects in the fixture. Note that even though your fixture
     is a friend to your production class, your tests are not automatically
     friends to it, as they are technically defined in sub-classes of the
     fixture.

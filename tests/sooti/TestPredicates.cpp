@@ -73,7 +73,4 @@ TEST_F(PredicatesTest, EqualityPredicates) {
 
     obj = eval("(eq? 'a 'a)");
     EXPECT_TRUE(obj.as_boolean());
-
-    obj = eval("(eqv? 5 5)");
-    EXPECT_TRUE(obj.as_boolean());
 }

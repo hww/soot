@@ -934,7 +934,7 @@ class MockDeathTestFactory : public DeathTestFactory {
   void SetParameters(bool create, DeathTest::TestRole role,
                      int status, bool passed);
 
-  // Accessors.
+  // HeapObjects.
   int AssumeRoleCalls() const { return assume_role_calls_; }
   int WaitCalls() const { return wait_calls_; }
   size_t PassedCalls() const { return passed_args_.size(); }

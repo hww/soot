@@ -1,0 +1,34 @@
+﻿(init-types 'z80)
+
+(deftype inner (basic) (
+    (val int8 1)
+)) 
+
+;; 1. Обновляем чертеж: добавляем поле для тега
+(deftype outer (basic) (
+    (tag  int8  1)  ;; Теперь поле 'tag существует!
+    (data inner 1)
+))
+
+;; 2. Запускаем запись снова
+(let* ((buf (make-static-buffer "test" 100 0))
+       (wr (make-static-writer buf)))
+        
+   (write-to-buffer wr 
+                    '((tag  . #x55) 
+                      (data . ((val . #x7F)))) 
+                    :as 'outer)
+      
+   (fmt #t "Dump:\n{}\n" (static-buffer-dump buf 0 16 #t 8))
+   
+   
+   ;; Чтение (слайсинг)
+   (let ((obj (read-from-buffer buf :as 'outer :at 0)))
+    ;; obj сейчас — это TypeCell, так как 'outer это структура
+    
+    (let ((val-cell (-> obj 'data 'val)))
+       (fmt #t "Value is: {}\n" (cell-get val-cell)))
+    
+    (let ((tag-cell (-> obj 'tag)))
+       (fmt #t "Tag is: #x{:x}\n" (cell-get tag-cell))))
+   )

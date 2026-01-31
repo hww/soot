@@ -9,13 +9,17 @@ add_library(libsoticore
     common/sooti/ParseHelpers.cpp
     common/sooti/PrinterEnv.cpp
     common/sooti/PrettyPrinter.cpp
-    common/sooti/Accessor.cpp
 )
 # 3. Высокоуровневый интерпретатор и мост к типам
 add_library(libsoti
     common/sooti/Interpreter.cpp
-    common/sooti/StaticBuffer.cpp
-    common/sooti/StaticBufferUtils.cpp
+    common/sooti/static_buffer/TypeCell.cpp
+    common/sooti/static_buffer/StaticWriter.cpp
+    common/sooti/static_buffer/StaticBuffer.cpp
+    common/sooti/static_buffer/StaticBufferFactory.cpp
+    common/sooti/static_buffer/StaticBufferBlitter.cpp
+    common/sooti/static_buffer/StaticBufferReader.cpp
+    common/sooti/static_buffer/StaticBufferWriter.cpp
 )
 
 target_link_libraries(libsoticore PRIVATE fmt::fmt libsootutils)

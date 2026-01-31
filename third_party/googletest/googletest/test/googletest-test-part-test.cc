@@ -71,7 +71,7 @@ TEST_F(TestPartResultTest, ConstructorWorks) {
   EXPECT_STREQ("something is terribly wrong", result.summary());
 }
 
-TEST_F(TestPartResultTest, ResultAccessorsWork) {
+TEST_F(TestPartResultTest, ResultHeapObjectsWork) {
   const TestPartResult success(TestPartResult::kSuccess,
                                "file.cc",
                                42,

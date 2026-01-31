@@ -10,7 +10,7 @@
 #include <optional>
 #include <memory>
 
-#include "common/sooti/Accessor.hpp"
+#include "common/sooti/Object.hpp"
 
 
 namespace script
@@ -39,7 +39,7 @@ struct TypeTag {
 // TypeSpec
 // ============================================================================
 
-class TypeSpec : public Accessor {
+class TypeSpec : public HeapObject {
 public:
     // Constructors
     TypeSpec() = default;
@@ -85,7 +85,7 @@ public:
     // Type substitution for method calls
     TypeSpec substitute_for_method_call(const std::string& method_type) const;
 
-    // Accessors
+    // HeapObjects
     const std::string& base_type() const { return m_type; }
     bool has_single_arg() const;
     const TypeSpec& get_single_arg() const;
@@ -99,8 +99,7 @@ public:
     const std::vector<TypeTag>& tags() const { return m_tags; }
     std::vector<TypeTag>& tags() { return m_tags; }
 
-    void define_all_aliases() override;
-    Object make_step_alias(const Object& key) override;
+    Object make_step_accessor(const Object& key) override;
 private:
     std::string m_type;
     std::unique_ptr<std::vector<TypeSpec>> m_arguments;

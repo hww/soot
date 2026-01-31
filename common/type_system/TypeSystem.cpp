@@ -26,8 +26,8 @@ namespace {
 // TypeSystem Constructor
 // ============================================================================
 
-TypeSystem::TypeSystem() : m_config() {
-    define_all_aliases();
+TypeSystem::TypeSystem() {
+
     // Add basic null types
     // add_type("none", std::make_unique<NullType>("none"));
     // add_type("_type_", std::make_unique<NullType>("_type_"));
@@ -178,10 +178,10 @@ Type* TypeSystem::lookup_type(const std::string& name) const {
 
     auto fd = m_forward_declared_types.find(name);
     if (fd != m_forward_declared_types.end()) {
-        throw_typesystem_error("Type {} is not fully defined", name);
+        throw_typesystem_error("Type `{}` is not fully defined", name);
     }
     else {
-        throw_typesystem_error("Type {} is not defined", name);
+        throw_typesystem_error("Type `{}` is not defined", name);
     }
 
     return nullptr;
@@ -821,9 +821,16 @@ ValueType* TypeSystem::add_builtin_value_type(const std::string& parent,
 // └── ...
 // ============================================================================
 void TypeSystem::add_builtin_types() {
-    m_config.array_data_offset = 12;
-    m_config.default_alignment = 4;
-    m_config.pointer_size = 4;
+    TypeConfig::pointer_reg_class = RegClass::GPR_64;
+    TypeConfig::pointer_size = 4;
+    TypeConfig::array_data_offset = 12;
+    TypeConfig::default_alignment = 4;
+    TypeConfig::crc_value_size = 4;
+    TypeConfig::struct_alignment = 16;
+    TypeConfig::struct_array_stride_alignment = 16;
+    TypeConfig::struct_array_start_alignment = 16;
+    TypeConfig::basic_array_start_alignment = 16;
+
 
     // Проверяем что базовые типы еще не инициализированы
     if (!m_types.empty() && m_types.find("object") != m_types.end()) {
@@ -836,49 +843,49 @@ void TypeSystem::add_builtin_types() {
     add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
 
     // OBJECT - корневой тип
-    auto obj_type = add_type(
-        "object", std::make_unique<ValueType>("object", "object", false, 4, true, RegClass::GPR_64));
+    auto obj_type = add_type("object", std::make_unique<ValueType>("object", "object", false, 4, true, RegClass::GPR_64));
 
     add_builtin_value_type("object", "pointer", 4);
 
     // Базовые структурные типы
     auto structure_type = add_builtin_structure("object", "structure");
-    auto basic_type = add_builtin_basic("structure", "basic");
+    auto basic_type     = add_builtin_basic("structure", "basic");
 
     // BitFieldType должен быть создан ПЕРЕД другими типами, так как они могут на него ссылаться
     // Создаем BitFieldType как ValueType с правильными параметрами
-    auto bitfield_type = add_type("bitfield",
-        std::make_unique<ValueType>("object", "bitfield", false, 4, false, RegClass::GPR_64));
+    auto bitfield_type = add_type("bitfield", std::make_unique<ValueType>("object", "bitfield", false, 4, false, RegClass::GPR_64));
 
     // Базовые типы
-    auto symbol_type = add_builtin_basic("basic", "symbol");
-    auto type_type = add_builtin_basic("basic", "type");
-    auto string_type = add_builtin_basic("basic", "string");
+    auto symbol_type   = add_builtin_basic("basic", "symbol");
+    auto type_type     = add_builtin_basic("basic", "type");
+    auto string_type   = add_builtin_basic("basic", "string");
     auto function_type = add_builtin_basic("basic", "function");
+
+
 
     // Матричный тип для тестов
     auto matrix_type = add_builtin_structure("structure", "matrix");
 
     // ПРАВИЛЬНАЯ числовая иерархия как в OpenGOAL:
     // object -> number -> integer -> sinteger -> int32/int64
-    auto number_type = add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
+    auto number_type  = add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
 
     // float
-    auto float_type = add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
+    auto float_type   = add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
 
     // integer
     auto integer_type = add_builtin_value_type("number", "integer", 8, false, false, RegClass::GPR_64);
 
     // signed integers
     auto sinteger_type = add_builtin_value_type("integer", "sinteger", 8, false, true, RegClass::GPR_64);
-    auto int8_type = add_builtin_value_type("sinteger", "int8", 1, false, true);
+    auto int8_type  = add_builtin_value_type("sinteger", "int8", 1, false, true);
     auto int16_type = add_builtin_value_type("sinteger", "int16", 2, false, true);
     auto int32_type = add_builtin_value_type("sinteger", "int32", 4, false, true);
     auto int64_type = add_builtin_value_type("sinteger", "int64", 8, false, true);
 
     // unsigned integers
     auto uinteger_type = add_builtin_value_type("integer", "uinteger", 8, false, false, RegClass::GPR_64);
-    auto uint8_type = add_builtin_value_type("uinteger", "uint8", 1, false, false);
+    auto uint8_type  = add_builtin_value_type("uinteger", "uint8", 1, false, false);
     auto uint16_type = add_builtin_value_type("uinteger", "uint16", 2, false, false);
     auto uint32_type = add_builtin_value_type("uinteger", "uint32", 4, false, false);
     auto uint64_type = add_builtin_value_type("uinteger", "uint64", 8, false, false);
@@ -918,17 +925,51 @@ void TypeSystem::add_builtin_types() {
 
     // TYPE
     builtin_structure_inherit(type_type);
-    declare_method(type_type, "new", {}, false, make_function_typespec({ "symbol", "type", "int" }, "_type_"), false);
     add_field_to_type(type_type, "symbol", make_typespec("symbol"));
     add_field_to_type(type_type, "parent", make_typespec("type"));
-    add_field_to_type(type_type, "size",  make_typespec("uint16"));  // actually u16
-    add_field_to_type(type_type, "psize", make_typespec("uint16"));  // todo, u16 or s16. what really is this?
-    add_field_to_type(type_type, "heap-base", make_typespec("uint16"));         // todo
+    add_field_to_type(type_type, "size",   make_typespec("uint16"));  // actually u16
+    add_field_to_type(type_type, "psize",  make_typespec("uint16"));  // todo, u16 or s16. what really is this?
+    add_field_to_type(type_type, "heap-base",        make_typespec("uint16"));         // todo
     add_field_to_type(type_type, "allocated-length", make_typespec("uint16"));  // todo
-    add_field_to_type(type_type, "method-table", make_typespec("function"), false, true);
+    add_field_to_type(type_type, "method-table",     make_typespec("function"), false, true);
+
+    builtin_structure_inherit(symbol_type);
+    add_field_to_type(symbol_type, "value", make_typespec("object"), 4);
+
+    builtin_structure_inherit(string_type);
+    add_field_to_type(string_type, "length", make_typespec("int32"), 4);
+    add_field_to_type(string_type, "data", make_pointer_typespec("uint8"), 8, false, true); // dynamic
+
+
+
     if (Type::verbose)
         fmt::print("DEBUG: Builtin types initialized successfully\n");
+    verify_type_sizes();
 }
+
+void TypeSystem::verify_type_sizes() {
+    // Проверяем критические размеры
+    auto check_size = [&](const std::string& name, size_t expected) {
+        Type* type = lookup_type(name);
+        if (type && type->get_size_in_memory() != expected) {
+            fmt::print("[WARNING] Type '{}' has size {} but expected {}\n",
+                      name, type->get_size_in_memory(), expected);
+        }
+    };
+    
+    check_size("object", 4);
+    check_size("int8", 1);
+    check_size("int16", 2);
+    check_size("int", 8);
+    check_size("uint8", 1);
+    check_size("uint16", 2);
+    check_size("uint", 8);
+    check_size("basic", 4); 
+    check_size("symbol", 8);
+    check_size("string", 12);
+    check_size("type", 20); 
+}
+
 // ============================================================================
 // Builtin Types Tree (Z80 Optimized)
 // object [2 bytes: pointer/offset]
@@ -951,11 +992,16 @@ void TypeSystem::add_builtin_types() {
 // └── bitfield          [for hardware registers/flags]
 // ============================================================================
 void TypeSystem::add_builtin_types_z80() {
-    m_config.pointer_size = 2;
-    m_config.array_data_offset = 2;
-    m_config.default_alignment = 1;
-    m_config.crc_value_size = 2;
-    
+    TypeConfig::pointer_reg_class = RegClass::GPR_16;
+    TypeConfig::pointer_size = 2;
+    TypeConfig::array_data_offset = 2;
+    TypeConfig::default_alignment = 1;
+    TypeConfig::crc_value_size = 2;
+    TypeConfig::struct_alignment = 2;
+    TypeConfig::struct_array_stride_alignment = 2;
+    TypeConfig::struct_array_start_alignment = 2;
+    TypeConfig::basic_array_start_alignment = 2;
+
     // 1. Технические типы
     add_type("none",   std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));
@@ -988,18 +1034,18 @@ void TypeSystem::add_builtin_types_z80() {
     auto basic_type = add_builtin_basic("structure", "basic");
     
     // 5. Basic типы
-    auto symbol_type = add_builtin_basic("basic", "symbol");
-    auto string_type = add_builtin_basic("basic", "string");
-    string_type->set_final();  // string не имеет виртуальных методов в Z80
-    auto type_type = add_builtin_basic("basic", "type");
+    auto symbol_type   = add_builtin_basic("basic", "symbol");
+    auto string_type   = add_builtin_basic("basic", "string");
+    auto type_type     = add_builtin_basic("basic", "type");
     auto function_type = add_builtin_basic("basic", "function");
+    string_type->set_final();  // string не имеет виртуальных методов в Z80
 
     // ============================================================================
     // КРИТИЧЕСКИ ВАЖНЫЕ ПОЛЯ ДЛЯ BASIC ТИПОВ
     // ============================================================================
     
     // BASIC: первые 2 байта - type tag (тип объекта)
-    add_field_to_type(basic_type, "type", make_typespec("type"), 0, false, false, 0, 2);
+    add_field_to_type(basic_type, "type", make_typespec("type"));
     
     // SYMBOL для Z80 (упрощенная версия)
     // symbol имеет: type (2), value (2) = всего 4 байта
@@ -1010,7 +1056,7 @@ void TypeSystem::add_builtin_types_z80() {
     // string имеет: type (2), length (2), data (указатель или inline) = 4+ байта
     builtin_structure_inherit(string_type);
     add_field_to_type(string_type, "length", make_typespec("uint16"), 2); // offset 2
-    add_field_to_type(string_type, "data", make_typespec("uint8"), 4, false, true); // offset 4, dynamic
+    add_field_to_type(string_type, "data", make_pointer_typespec("uint8"), 4, false, true); // offset 4, dynamic
     
     // TYPE для Z80
     builtin_structure_inherit(type_type);
@@ -1108,7 +1154,7 @@ void TypeSystem::verify_type_sizes_z80() {
     check_size("uint", 2);
     check_size("basic", 2); // только type tag
     check_size("symbol", 4); // type (2) + value (2)
-    check_size("string", 4); // type (2) + length (2), data отдельно
+    check_size("string", 6); // type (2) + length (2), data отдельно
     check_size("type", 10); // type (2) + поля
     check_size("pair", 4); // car (2) + cdr (2)
 }
@@ -1234,9 +1280,9 @@ DerefInfo TypeSystem::get_deref_info(const TypeSpec& ts) const {
 
         if (result_type->is_reference()) {
             // Array of pointers - ИСПОЛЬЗУЕМ POINTER_SIZE
-            info.stride = m_config.pointer_size;
+            info.stride = TypeConfig::pointer_size;
             info.sign_extend = false;
-            info.load_size = m_config.pointer_size;
+            info.load_size = TypeConfig::pointer_size;
         }
         else {
             // Array of values
@@ -1740,7 +1786,7 @@ int TypeSystem::get_type_method_count(const std::string& name) const {
     if (result) {
         return *result;
     }
-    throw_typesystem_error("Tried to find the number of methods on type {}, but it is not defined.", name);
+    throw_typesystem_error("Tried to find the number of methods on type `{}`, but it is not defined.", name);
     return -1;
 }
 
@@ -2026,7 +2072,7 @@ int align(int value, int alignment) {
 int TypeSystem::get_alignment_in_type(const Field& field) {
     auto field_type = lookup_type_allow_partial_def(field.type());
 
-    int alignment = m_config.pointer_size;
+    int alignment = TypeConfig::pointer_size;
 
     if (field.is_inline()) {
         if (field.is_array()) {
@@ -2064,7 +2110,7 @@ int TypeSystem::get_size_in_type(const Field& field) const {
         else {
             // Обычные массивы (указатели)
             if (field_type->is_reference()) {
-                return field.array_size() * m_config.pointer_size;
+                return field.array_size() * TypeConfig::pointer_size;
             }
             else {
                 // ВАЖНО: выравниваем каждый элемент!
@@ -2082,7 +2128,7 @@ int TypeSystem::get_size_in_type(const Field& field) const {
         else {
             // Обычное поле
             if (field_type->is_reference()) {
-                return m_config.pointer_size;
+                return TypeConfig::pointer_size;
             }
             else {
                 // ВАЖНО: выравниваем размер поля!
@@ -2103,34 +2149,31 @@ void TypeSystem::builtin_structure_inherit(StructureType* st) {
 // ============================================================================
 // Aliases
 // ============================================================================
-void TypeSystem::define_all_aliases() {
-    define_alias("types-count", [](Accessor* s) {
-        return Object::make_integer(static_cast<TypeSystem*>(s)->get_types_count());
-    });
 
-    define_alias("pointer-size", [](Accessor* s) {
-        return Object::make_integer(static_cast<TypeSystem*>(s)->get_pointer_size());
-    });
-}
-
-Object TypeSystem::make_step_alias(const Object& key) {
+Object TypeSystem::make_step_accessor(const Object& key) {
     // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = Accessor::make_step_alias(key);
+    Object base_attempt = HeapObject::make_step_accessor(key);
     if (!base_attempt.is_undefined()) return base_attempt;
 
     // 2. Трактуем ключ как имя типа
-    std::string type_name;
+    std::string name;
     if (key.is_symbol()) {
-        type_name = key.to_std_string();
+        name = key.to_std_string();
     } else if (key.is_string()) {
-        type_name = key.to_std_string();
+        name = key.to_std_string();
     } else {
         return Object::make_undefined(); // Или бросай ошибку, если хочешь строгости
     }
+    if (name == "types-count") {
+        return Object::make_integer(get_types_count());
+    }
 
+    if (name == "pointer-size") {
+        return Object::make_integer(get_pointer_size());
+    }
     // 3. Ищем тип
     // Предполагаем, что lookup_type возвращает какой-то указатель или shared_ptr
-    auto type_ptr = lookup_type_no_throw(type_name);
+    auto type_ptr = lookup_type_no_throw(name);
     
     if (type_ptr) {
         // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
@@ -2263,7 +2306,7 @@ FieldReverseLookupOutput TypeSystem::reverse_field_lookup(const FieldReverseLook
     if (Type::verbose) {
         fmt::print("=== REVERSE LOOKUP START ===\n");
         fmt::print("DEBUG: Reverse lookup for type {} at offset {}, stride: {}, pointer_size: {}\n",
-            input.base_type.print(), input.offset, input.stride, m_config.pointer_size);
+            input.base_type.print(), input.offset, input.stride, TypeConfig::pointer_size);
     }
     Type* base_type = lookup_type_allow_partial_def(input.base_type);
     if (!base_type) {

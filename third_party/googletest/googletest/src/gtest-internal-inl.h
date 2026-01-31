@@ -1026,7 +1026,7 @@ bool ParseNaturalNumber(const ::std::string& str, Integer* number) {
 //
 // This class is supplied only for the purpose of testing Google Test's own
 // constructs. Do not use it in user tests, either directly or indirectly.
-class TestResultAccessor {
+class TestResultHeapObject {
  public:
   static void RecordProperty(TestResult* test_result,
                              const std::string& xml_element,

@@ -876,7 +876,7 @@ TEST(base_test, no_repeated_format_string_conversions) {
 #endif
 }
 
-TEST(base_test, format_context_accessors) {
+TEST(base_test, format_context_HeapObjects) {
   class copier {
     static fmt::format_context copy(fmt::appender app,
                                     const fmt::format_context& ctx) {
