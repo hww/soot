@@ -15,7 +15,7 @@
 * **Mutation:** Use `!` for functions with side effects (`set-car!`, `vector-set!`).
 * **Conversion:** Use `->` for transformations (`number->string`). Avoid `to`.
 * **Constructors:** Use `make-` prefix (`make-hash-table`).
-* **Accessors:** Getters use `object-field` (`lextoken-type`). Setters use `set-object-field!`.
+* **HeapObjects:** Getters use `object-field` (`lextoken-type`). Setters use `set-object-field!`.
 
 ---
 

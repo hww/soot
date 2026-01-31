@@ -15,7 +15,7 @@ using namespace script;
 // ============================================================================
 
 TypeSpec::TypeSpec(std::string type) : m_type(std::move(type)) {
-    define_all_aliases();
+
 }
 
 TypeSpec::TypeSpec(std::string type, std::vector<TypeSpec> arguments)
@@ -308,32 +308,30 @@ void TypeSpec::delete_tag(const std::string& tag_name) {
 // Alias 
 // ============================================================================
 
-void TypeSpec::define_all_aliases() {
-    // 1. Имя базового типа (например, "pointer")
-    define_alias("base-type", [](Accessor* self) {
-        return Object::make_string(static_cast<TypeSpec*>(self)->base_type());
-    });
+Object TypeSpec::make_step_accessor(const Object& key) {
+    auto name = key.to_std_string();
+       // 1. Имя базового типа (например, "pointer")
+    if (name == "base-type") {
+        return Object::make_string(base_type());
+    }
 
     // 2. Количество аргументов
-    define_alias("args-count", [](Accessor* self) {
-        return Object::make_integer(static_cast<TypeSpec*>(self)->get_args_count());
-    });
+    if (name == "args-count") {
+        return Object::make_integer(get_args_count());
+    }
 
     // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
-    define_alias("args", [](Accessor* self) {
-        auto ts = static_cast<TypeSpec*>(self);
+    if (name == "args") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
-        return Object::make_string(ts->print()); 
-    });
+        return Object::make_string(print()); 
+    }
 
     // 4. Количество тегов
-    define_alias("tags-count", [](Accessor* self) {
-        return Object::make_integer(static_cast<TypeSpec*>(self)->get_tags_count());
-    });
-}
+    if (name == "tags-count") {
+        return Object::make_integer(get_tags_count());
+    };
 
-Object TypeSpec::make_step_alias(const Object& key) {
     // Сначала проверяем: может быть ключ — это число (индекс аргумента)?
     // Это позволит писать (-> some-type-spec 0) чтобы получить первый аргумент
     if (key.is_integer()) {
@@ -345,10 +343,10 @@ Object TypeSpec::make_step_alias(const Object& key) {
         return Object::make_null();
     }
 
-    // Если ключ — символ (например, 'base-type), используем стандартную карту Accessor
-    Object meta = Accessor::make_step_alias(key);
+    // Если ключ — символ (например, 'base-type), используем стандартную карту HeapObject
+    Object meta = HeapObject::make_step_accessor(key);
     
-    // Если Accessor ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
+    // Если HeapObject ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
     return meta.is_undefined() ? Object::make_null() : meta;
 }
 

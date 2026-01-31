@@ -1,0 +1,62 @@
+#pragma once
+
+#include "common/type_system/TypeSystem.hpp"
+#include "StaticBuffer.hpp"
+#include "TypeCell.hpp"
+#include <fmt/format.h>
+
+namespace script {
+
+class StaticWriter : public HeapObject {
+private:
+    size_t m_position = 0;
+    std::shared_ptr<StaticBuffer> m_buffer;
+    std::shared_ptr<TypeSystem> m_ts;
+
+public:
+    StaticWriter(const std::shared_ptr<StaticBuffer>& buffer, 
+                 const std::shared_ptr<TypeSystem>& ts)
+        : m_buffer(buffer), m_ts(ts), m_position(0) {}
+
+    /**
+     * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
+     */
+    Object allocate(const std::string& type_name);
+
+    // Методы управления
+    void seek(size_t pos) { m_position = std::min(pos, m_buffer->size()); }
+    size_t tell() const { return m_position; }
+    void align(size_t a) { m_position = (m_position + a - 1) & ~(a - 1); }
+    size_t remaining() const { return m_buffer->size() - m_position; }
+
+    // Инспекция (упрощенная)
+    std::string print() const override {
+        return fmt::format("#<static-writer :at {}/{} :used {:.1f}%>", 
+            m_position, m_buffer->size(), 
+            (float)m_position / m_buffer->size() * 100.f);
+    }
+
+    Object make_step_accessor(const Object& key) override {
+        std::string name = key.to_std_string();
+        if (name == "size")   return Object::make_integer(m_buffer->size());
+        if (name == "origin") return Object::make_integer(m_buffer->origin());
+        if (name == "type")   return Object::make_string(m_buffer->type_name());
+        if (name == "position") return Object::make_integer(m_position);
+        if (name == "remaining") return Object::make_integer(remaining());
+
+        // Если просят тип по имени, считаем это аллокацией
+        // Пример: (-> writer 'my-struct-type) -> вернет TypeCell
+        return allocate(name);
+    }
+
+    Object inspect() const override {
+        ListBuilder lb{};
+        lb.add_symbol("static-writer");
+        lb.add_keyword(":cursor");
+        lb.add_integer(m_position);
+
+        return lb.finalize();
+    }
+};
+
+} // namespace script

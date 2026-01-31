@@ -3,7 +3,6 @@
 #include <memory>
 // Нам нужны полные определения Object и Arguments для сигнатур методов
 #include "common/sooti/Object.hpp" 
-#include "common/sooti/Accessor.hpp" 
 
 class Type;
 class TypeSystem;
@@ -96,7 +95,7 @@ public:
     size_t string_pool_size() const { return m_string_pool.size(); }
 };
 
-class StaticBuffer : public Accessor {
+class StaticBuffer : public HeapObject {
 
 public:
     enum class Endian { Little, Big };
@@ -106,7 +105,6 @@ public:
     : m_type_name(type_name), m_origin(origin),
       m_symbol_table(std::make_unique<StaticSymbolTable>()) {
         m_data.resize(size, 0); // Обнуляем память
-        define_all_aliases();
     }
     
     void set_endian(Endian e) { m_endian = e; }
@@ -120,13 +118,29 @@ public:
     std::string hex_dump(size_t start_offset = 0, size_t bytes_to_dump = 0,
                             bool show_ascii = true, size_t bytes_per_line = 16) const;
 
-    // --- Реализация Accessor для Лиспа ---
-    void define_all_aliases() override;
-
     // Печать для REPL
     std::string print() const override {
         return fmt::format("<static-buffer '{}' :size {} :origin {:#x}>", 
         m_type_name, m_data.size(), m_origin);
+    }
+
+    Object make_step_accessor(const Object& key) override {
+        std::string name = key.to_std_string();
+        if (name == "size")   return Object::make_integer(size());
+        if (name == "origin") return Object::make_integer(origin());
+        if (name == "type")   return Object::make_string(type_name());
+
+        // 2. Доступ по оффсету (если ключ — это число или строка-число)
+        // Например: (-> buffer #x40 'my-type)
+        // Но подожди, в `->` (navigation) у нас обычно пары: ключ -> тип.
+        // Давай сделаем так: если мы передаем число, это смещение.
+        if (key.is_integer()) {
+            size_t offset = static_cast<size_t>(key.as_integer());
+            // Здесь есть проблема: мы не знаем ТИП, просто имея оффсет.
+            // Поэтому для буфера лучше использовать (static-cell buffer offset 'type)
+        }
+
+        return Object::make_undefined();
     }
 
     // --- Реализация записи различных данных ---
@@ -406,25 +420,5 @@ private:
     std::unique_ptr<StaticSymbolTable> m_symbol_table;
 };
 
-
-class InstanceRef : public Accessor {
-public:
-    InstanceRef(TypeSystem* ts, StaticBuffer* buf, size_t offset, StructureType* type)
-        : m_ts(ts), m_buffer(buf), m_offset(offset), m_type(type) {
-        define_all_aliases();
-    }
-
-    void define_all_aliases() override;
-
-    std::string print() const override;
-
-    Object inspect() const override;
-
-private:
-    TypeSystem* m_ts; 
-    StaticBuffer* m_buffer;
-    size_t m_offset;
-    StructureType* m_type;
-};
 
 } // namespace script

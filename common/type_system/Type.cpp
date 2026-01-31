@@ -1,22 +1,22 @@
 #include "common/type_system/Type.hpp"
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
+#include "common/sooti/ListBuilder.hpp"
 
 
 #include <stdexcept>
 #include <algorithm>
 
 namespace {
-
-    std::string reg_kind_to_string(RegClass kind) {
-        switch (kind) {
-        case RegClass::GPR_64:
-            return "gpr64";
-        case RegClass::FPR:
-            return "float";
-        case RegClass::INVALID:
-        default:
-            return "invalid";
+    std::string reg_kind_to_string(RegClass reg_class) {
+        switch (reg_class) {
+            case RegClass::GPR_8:   return "gpr8";
+            case RegClass::GPR_16:  return "gpr16";
+            case RegClass::GPR_32:  return "gpr32";
+            case RegClass::GPR_64:  return "gpr64";
+            case RegClass::FPR:     return "float";
+            case RegClass::INVALID: return "invalid";
+            default:                return "unknown";
         }
     }
 
@@ -45,51 +45,36 @@ std::string MethodInfo::print_one_line() const {
 bool MethodInfo::operator!=(const MethodInfo& other) const {
     return !(*this == other);
 }
+Object MethodInfo::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-void MethodInfo::define_all_aliases() {
-    // Регистрация базовых полей
-    define_alias("id", [](Accessor* s) {
-        return Object::make_integer(static_cast<MethodInfo*>(s)->id);
-    });
+    // 1. Простые поля
+    if (name == "id")           return Object::make_integer(this->id);
+    if (name == "name")         return Object::make_string(this->name);
+    if (name == "defined-in")   return Object::make_string(this->defined_in_type);
+    if (name == "type-name")    return Object::make_string(this->type_name);
     
-    define_alias("name", [](Accessor* s) {
-        return Object::make_string(static_cast<MethodInfo*>(s)->name);
-    });
-    
-    define_alias("defined-in", [](Accessor* s) {
-        return Object::make_string(static_cast<MethodInfo*>(s)->defined_in_type);
-    });
-    
-    define_alias("type-name", [](Accessor* s) {
-        return Object::make_string(static_cast<MethodInfo*>(s)->type_name);
-    });
+    // 2. Сложные поля (создаем объекты на лету)
+    if (name == "type") {
+        // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
+        // потому что у TypeSpec тоже будет свой make_step_accessor
+        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type));
+    }
 
-    // Навигация в TypeSpec
-    define_alias("type", [](Accessor* s) {
-        auto m = static_cast<MethodInfo*>(s);
-        // Оборачиваем TypeSpec в NativeRef. 
-        // Это позволит нам писать (-> method 'type 'base-type)
-        return Object::make_native_ref(std::make_shared<TypeSpec>(m->type));
-    });
+    // 3. Флаги и логика
+    if (name == "virtual?")     return Object::make_boolean(!this->no_virtual);
+    if (name == "overrides?")   return Object::make_boolean(this->overrides_parent);
 
-    // Флаги и опциональные поля
-    define_alias("virtual?", [](Accessor* s) {
-        return Object::make_integer(!static_cast<MethodInfo*>(s)->no_virtual);
-    });
-    
-    define_alias("overrides?", [](Accessor* s) {
-        return Object::make_integer(static_cast<MethodInfo*>(s)->overrides_parent);
-    });
+    // 4. Опциональные поля
+    if (name == "doc") {
+        return this->docstring ? Object::make_string(*this->docstring) : Object::make_null();
+    }
+    if (name == "overlay") {
+        return this->overlay_name ? Object::make_string(*this->overlay_name) : Object::make_null();
+    }
 
-    define_alias("doc", [](Accessor* s) {
-        auto m = static_cast<MethodInfo*>(s);
-        return m->docstring ? Object::make_string(*m->docstring) : Object::make_null();
-    });
-
-    define_alias("overlay", [](Accessor* s) {
-        auto m = static_cast<MethodInfo*>(s);
-        return m->overlay_name ? Object::make_string(*m->overlay_name) : Object::make_null();
-    });
+    // Если ничего не подошло — отдаем undefined
+    return Object::make_undefined();
 }
 
 // ============================================================================
@@ -98,12 +83,12 @@ void MethodInfo::define_all_aliases() {
 
 Field::Field(std::string name, TypeSpec ts)
     : m_name(std::move(name)), m_type(std::move(ts)) {
-    define_all_aliases();
+
 }
 
 Field::Field(std::string name, TypeSpec ts, int offset)
     : m_name(std::move(name)), m_type(std::move(ts)), m_offset(offset) {
-    define_all_aliases();
+
 }
 
 std::string Field::print() const {
@@ -151,41 +136,35 @@ bool Field::operator!=(const Field& other) const {
     return !(*this == other);
 }
 
-void Field::define_all_aliases() {
+Object Field::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    define_alias("name", [](Accessor* s) {
-            return Object::make_string(static_cast<Field*>(s)->name());
-        });
-    define_alias("offset", [](Accessor* s) {
-            return Object::make_integer(static_cast<Field*>(s)->offset());
-        });
-    define_alias("alignment", [](Accessor* s) {
-            return Object::make_integer(static_cast<Field*>(s)->alignment());
-        });
-    define_alias("type", [](Accessor* s) {
-            auto f = static_cast<Field*>(s);
-            // Возвращаем TypeSpec как NativeRef для дальнейшей навигации
-            return Object::make_native_ref(std::make_shared<TypeSpec>(f->type()));
-        });
-        // Флаги состояния поля
-    define_alias("inline?", [](Accessor* s) {
-            return Object::make_boolean(static_cast<Field*>(s)->is_inline());
-        });
-    define_alias("dynamic?", [](Accessor* s) {
-            return Object::make_boolean(static_cast<Field*>(s)->is_dynamic());
-        });
-    define_alias("array?", [](Accessor* s) {
-            return Object::make_boolean(static_cast<Field*>(s)->is_array());
-        });
-    define_alias("array-size", [](Accessor* s) {
-            auto f = static_cast<Field*>(s);
-            return f->is_array() ? Object::make_integer(f->array_size()) : Object::make_integer(0);
-        });
-        // Комментарии и документация
-    define_alias("comment", [](Accessor* s) {
-            auto f = static_cast<Field*>(s);
-            return f->has_comment() ? Object::make_string(f->comment()) : Object::make_null();
-        });     
+    // 1. Базовые свойства
+    if (name == "name")      return Object::make_string(this->name());
+    if (name == "offset")    return Object::make_integer(this->offset());
+    if (name == "alignment") return Object::make_integer(this->alignment());
+
+    // 2. Тип (TypeSpec) — создаем NativeRef для дальнейшей навигации
+    if (name == "type") {
+        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
+    }
+
+    // 3. Флаги состояния (теперь возвращают логический тип)
+    if (name == "inline?")   return Object::make_boolean(this->is_inline());
+    if (name == "dynamic?")  return Object::make_boolean(this->is_dynamic());
+    if (name == "array?")    return Object::make_boolean(this->is_array());
+
+    // 4. Специфичные поля
+    if (name == "array-size") {
+        return Object::make_integer(this->is_array() ? this->array_size() : 0);
+    }
+
+    if (name == "comment") {
+        return this->has_comment() ? Object::make_string(this->comment()) : Object::make_null();
+    }
+
+    // Если ключ не найден, возвращаем undefined, чтобы navigation понял, что пути нет
+    return Object::make_undefined();
 }
 
 // ============================================================================
@@ -198,7 +177,7 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
     m_is_boxed(is_boxed),
     m_heap_base(heap_base) {
     m_runtime_name = m_name;
-    define_all_aliases(); 
+
 }
 
 
@@ -375,33 +354,20 @@ std::string Type::get_runtime_name() const {
     return m_runtime_name;
 }
 
-void Type::define_all_aliases() {
-    // В базовом Type мы не вызываем родителя (Accessor), так как там пусто.
-    // Просто регистрируем общие для всех типов поля.
-    
-    define_alias("name", [](Accessor* s) {
-        return Object::make_string(static_cast<Type*>(s)->get_name());
-    });
+Object Type::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    define_alias("parent", [](Accessor* s) {
-        return Object::make_string(static_cast<Type*>(s)->get_parent());
-    });
+    // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
+    if (name == "name")          return Object::make_string(this->get_name());
+    if (name == "parent")        return Object::make_string(this->get_parent());
+    if (name == "size")          return Object::make_integer(this->get_size_in_memory());
+    if (name == "alignment")     return Object::make_integer(this->get_in_memory_alignment());
+    if (name == "boxed?")        return Object::make_boolean(this->is_boxed());
+    if (name == "methods-count") return Object::make_integer(this->get_num_methods());
 
-    define_alias("size", [](Accessor* s) {
-        return Object::make_integer(static_cast<Type*>(s)->get_size_in_memory());
-    });
-
-    define_alias("alignment", [](Accessor* s) {
-        return Object::make_integer(static_cast<Type*>(s)->get_in_memory_alignment());
-    });
-
-    define_alias("boxed?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<Type*>(s)->is_boxed());
-    });
-
-    define_alias("methods-count", [](Accessor* s) {
-        return Object::make_integer(static_cast<Type*>(s)->get_num_methods());
-    });
+    // Для специфических типов (например, StructureType) мы переопределим этот метод 
+    // и вызовем Type::make_step_accessor(key) в конце, если ничего не нашли.
+    return Object::make_undefined();
 }
 
 // ============================================================================
@@ -410,7 +376,7 @@ void Type::define_all_aliases() {
 
 NullType::NullType(std::string name)
     : Type("object", std::move(name), false, 0) {
-    define_all_aliases();         
+       
 }
 
 bool NullType::is_reference() const {
@@ -461,13 +427,17 @@ std::string NullType::diff_impl(const Type& other) const {
     return (*this == other) ? "" : "NullType comparison failed";
 }
 
-void NullType::define_all_aliases() {
-    Type::define_all_aliases();
+Object NullType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    // Мы можем добавить свойство-маркер, чтобы в Лиспе было ясно, что это Null
-    define_alias("null?", [](Accessor* /*s*/) {
-        return Object::make_integer(1); 
-    });
+    // 1. Сначала проверяем свои специфичные свойства
+    if (name == "null?") {
+        return Object::make_boolean(true); // Используем boolean вместо integer 1
+    }
+
+    // 2. Если это не наше свойство, пробрасываем вызов родителю (Type)
+    // Это и есть настоящая мощь наследования в нашей системе аксессоров.
+    return Type::make_step_accessor(key);
 }
 
 // ============================================================================
@@ -480,7 +450,7 @@ ValueType::ValueType(std::string parent, std::string name, bool is_boxed,
     m_size(size),
     m_sign_extend(sign_extend),
     m_reg_kind(reg) {
-    define_all_aliases(); 
+
 }
 
 int ValueType::get_offset() const {
@@ -573,28 +543,22 @@ RegClass ValueType::get_preferred_reg_class() const {
     return m_reg_kind;
 }
 
-void ValueType::define_all_aliases() {
-    // 1. Сначала вызываем метод родителя. 
-    // Это наполнит m_props базовыми свойствами (name, parent и т.д.)
-    Type::define_all_aliases();
-    
-    // 2. Добавляем свойства конкретно этого класса прямо в m_props
-    define_alias("size", [](Accessor* s) { 
-        return Object::make_integer(static_cast<ValueType*>(s)->m_size); 
-    });
-    
-    define_alias("sign-extend?", [](Accessor* s) { 
-        return Object::make_boolean(static_cast<ValueType*>(s)->m_sign_extend); 
-    });
+Object ValueType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    define_alias("reg-class", [](Accessor* s) { 
-        // Здесь можно вызвать вспомогательную функцию преобразования enum в строку
-        return Object::make_string("some-reg"); 
-    });
+    // 1. Проверяем специфичные поля ValueType
+    if (name == "size")          return Object::make_integer(this->m_size);
+    if (name == "sign-extend?")  return Object::make_boolean(this->m_sign_extend);
+    if (name == "offset")        return Object::make_integer(this->m_offset);
     
-    define_alias("offset", [](Accessor* s) { 
-        return Object::make_integer(static_cast<ValueType*>(s)->m_offset); 
-    });
+    if (name == "reg-class") {
+        // Допустим, у нас есть маппинг энума в строку
+        return Object::make_string(reg_kind_to_string(this->get_preferred_reg_class()));
+    }
+
+    // 2. Если это не наше поле, просим родителя (Type) ответить.
+    // Тот проверит "name", "parent", "alignment" и т.д.
+    return Type::make_step_accessor(key);
 }
 
 // ============================================================================
@@ -603,7 +567,7 @@ void ValueType::define_all_aliases() {
 
 ReferenceType::ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base)
     : Type(std::move(parent), std::move(name), is_boxed, heap_base) {
-    define_all_aliases();
+
 }
 
 std::string ReferenceType::print() const {
@@ -611,25 +575,22 @@ std::string ReferenceType::print() const {
         m_name, m_parent, m_is_boxed, print_method_info());
 }
 
-void ReferenceType::define_all_aliases() {
-    // 1. Вызываем родителя (Type), чтобы он наполнил таблицу 
-    // своими базовыми свойствами (name, size, alignment и т.д.)
-    Type::define_all_aliases();
+Object ReferenceType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    // 2. Добавляем специфику именно ссылочных типов
-    define_alias("heap-base", [](Accessor* s) {
-        return Object::make_integer(static_cast<ReferenceType*>(s)->heap_base());
-    });
-
-    define_alias("pointer?", [](Accessor* s) {
-        // Для ReferenceType это всегда истина
-        return Object::make_integer(1);
-    });
-
-    define_alias("load-size", [](Accessor* s) {
-        return Object::make_integer(static_cast<ReferenceType*>(s)->get_load_size());
-    });
+    // 1. Сначала проверяем то, что специфично для ссылок
+    if (name == "heap-base") return Object::make_integer(this->heap_base());
+    if (name == "pointer?")  return Object::make_boolean(true);
+    if (name == "load-size") return Object::make_integer(this->get_load_size());
+    if (name == "reg-class") {
+        // Допустим, у нас есть маппинг энума в строку
+        return Object::make_string(reg_kind_to_string(this->get_preferred_reg_class()));
+    }
+    // 2. Если это не наше, просим ответить базовый класс Type
+    // Важно: мы ВОЗВРАЩАЕМ результат этого вызова
+    return Type::make_step_accessor(key);
 }
+
 // ============================================================================
 // StructureType Implementation
 // ============================================================================
@@ -738,56 +699,51 @@ void StructureType::override_field_type(const std::string& field_name, const Typ
 }
 
 
-void StructureType::define_all_aliases() {
-    // 1. Поднимаем цепочку: ReferenceType -> Type
-    ReferenceType::define_all_aliases();
+Object StructureType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    // 2. Специфические свойства структуры
-    define_alias("dynamic?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<StructureType*>(s)->is_dynamic());
-    });
-
-    define_alias("packed?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<StructureType*>(s)->is_packed());
-    });
-
-    define_alias("always-stack-singleton?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<StructureType*>(s)->is_always_stack_singleton());
-    });
-
-    define_alias("fields-count", [](Accessor* s) {
-        return Object::make_integer(static_cast<StructureType*>(s)->fields().size());
-    });
-
-    define_alias("first-unique-field-idx", [](Accessor* s) {
-        return Object::make_integer(static_cast<StructureType*>(s)->first_unique_field_idx());
-    });
-}
-
-Object StructureType::make_step_alias(const Object& key) {
-    // 1. Сначала ищем в m_props (dynamic?, size, и т.д.)
-    Object meta = Accessor::make_step_alias(key);
-    if (!meta.is_undefined()) return meta;
-
-    // 2. Если не нашли, ищем среди ПОЛЕЙ структуры
-    if (key.is_symbol() || key.is_string()) {
-        std::string name = key.to_std_string();
-        for (const auto& field : m_fields) {
-            if (field.name() == name) {
-                return Object::make_native_ref(std::make_shared<Field>(field));
-            }
+    // 1. Специфические свойства структуры (динамическая проверка)
+    if (name == "dynamic?")                return Object::make_boolean(this->is_dynamic());
+    if (name == "packed?")                 return Object::make_boolean(this->is_packed());
+    if (name == "always-stack-singleton?") return Object::make_boolean(this->is_always_stack_singleton());
+    if (name == "fields-count")            return Object::make_integer(this->fields().size());
+    if (name == "first-unique-field-idx")  return Object::make_integer(this->first_unique_field_idx());
+    if (name == "fields") {
+        ListBuilder lb;
+        for (auto& field : m_fields) {
+            // 1. Приводим к неконстантному указателю (const_cast), 
+            // так как NativeRef ожидает владения, но мы его обманем.
+            // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
+            auto field_ptr = std::shared_ptr<Field>(const_cast<Field*>(&field), [](Field*){});
+            lb.add(Object::make_native_ref(field_ptr));
         }
+        return lb.finalize();
     }
+    if (name == "methods") {
+        ListBuilder lb;
 
-    // 3. Доступ по индексу (числу)
-    if (key.is_integer()) {
-        size_t idx = key.as_integer();
-        if (idx < m_fields.size()) {
-            return Object::make_native_ref(std::make_shared<Field>(m_fields[idx]));
+        // 1. Добавляем специальный метод 'new', если он определен
+        if (m_new_method_info_defined) {
+            auto method_ptr = std::shared_ptr<MethodInfo>(
+                const_cast<MethodInfo*>(&m_new_method_info), [](MethodInfo*){}
+            );
+            lb.add(Object::make_native_ref(method_ptr));
         }
-    }
 
-    return Object::make_null();
+        // 2. Добавляем все остальные методы из вектора
+        for (auto& method : m_methods) {
+            auto method_ptr = std::shared_ptr<MethodInfo>(
+                const_cast<MethodInfo*>(&method), [](MethodInfo*){}
+            );
+            lb.add(Object::make_native_ref(method_ptr));
+        }
+
+        return lb.finalize();
+    }
+    // 2. Если это не "структурное" свойство, передаем запрос родителю.
+    // ReferenceType проверит "heap-base", "pointer?", "load-size".
+    // Если и он не найдет, запрос уйдет в Type за "name", "size" и т.д.
+    return ReferenceType::make_step_accessor(key);
 }
 
 // ============================================================================
@@ -796,7 +752,7 @@ Object StructureType::make_step_alias(const Object& key) {
 
 BasicType::BasicType(std::string parent, std::string name, bool dynamic, int heap_base)
     : StructureType(std::move(parent), std::move(name), true, dynamic, false, heap_base) {
-    define_all_aliases();       
+   
 }
 
 std::string BasicType::print() const {
@@ -837,17 +793,17 @@ std::string BasicType::diff_impl(const Type& other) const {
     return result;
 }
 
-void BasicType::define_all_aliases() {
-    // Поднимаем всю цепочку: StructureType -> ReferenceType -> Type
-    StructureType::define_all_aliases();
+Object BasicType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    define_alias("final?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<BasicType*>(s)->final());
-    });
-    
-    define_alias("class-name", [](Accessor* s) {
-        return Object::make_string(static_cast<BasicType*>(s)->get_class_name());
-    });
+    // 1. Сначала проверяем свойства, специфичные для BasicType
+    if (name == "final?")      return Object::make_boolean(this->final());
+    if (name == "class-name")  return Object::make_string(this->get_class_name());
+
+    // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
+    // BasicType -> StructureType -> ReferenceType -> Type
+    // ОБЯЗАТЕЛЬНО используем return, чтобы результат прошел обратно к пользователю.
+    return StructureType::make_step_accessor(key);
 }
 
 // ============================================================================
@@ -860,7 +816,7 @@ BitField::BitField(TypeSpec type, std::string name, int offset, int size, bool s
     m_offset(offset),
     m_size(size),
     m_skip_in_static_decomp(skip_in_decomp) {
-    define_all_aliases();        
+       
 }
 
 bool BitField::operator==(const BitField& other) const {
@@ -877,33 +833,23 @@ std::string BitField::print() const {
 bool BitField::operator!=(const BitField& other) const {
     return !(*this == other);
 }
+Object BitField::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-void BitField::define_all_aliases() {
-    // BitField наследуется напрямую от HeapObject/Accessor, 
-    // поэтому вызывать родительский define_all_aliases не обязательно, 
-    // если в Accessor он пустой.
+    // 1. Прямые свойства BitField
+    if (name == "name")           return Object::make_string(this->name());
+    if (name == "offset")         return Object::make_integer(this->offset());
+    if (name == "size")           return Object::make_integer(this->size());
+    if (name == "skip-decomp?")   return Object::make_boolean(this->skip_in_decomp());
 
-    define_alias("name", [](Accessor* s) {
-        return Object::make_string(static_cast<BitField*>(s)->name());
-    });
+    // 2. Сложные поля (рекурсия через NativeRef)
+    if (name == "type") {
+        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
+    }
 
-    define_alias("type", [](Accessor* s) {
-        auto bf = static_cast<BitField*>(s);
-        // Оборачиваем TypeSpec в NativeRef для рекурсивного доступа
-        return Object::make_native_ref(std::make_shared<TypeSpec>(bf->type()));
-    });
-
-    define_alias("offset", [](Accessor* s) {
-        return Object::make_integer(static_cast<BitField*>(s)->offset());
-    });
-
-    define_alias("size", [](Accessor* s) {
-        return Object::make_integer(static_cast<BitField*>(s)->size());
-    });
-
-    define_alias("skip-decomp?", [](Accessor* s) {
-        return Object::make_boolean(static_cast<BitField*>(s)->skip_in_decomp());
-    });
+    // 3. Базовый класс (если BitField наследуется от HeapObject/HeapObject)
+    // Просто возвращаем undefined, так как у родителя нет свойств.
+    return Object::make_undefined();
 }
 
 // ============================================================================
@@ -912,7 +858,7 @@ void BitField::define_all_aliases() {
 
 BitFieldType::BitFieldType(std::string parent, std::string name, int size, bool sign_extend)
     : ValueType(std::move(parent), std::move(name), false, size, sign_extend, RegClass::GPR_64) {
-    define_all_aliases();        
+        
 }
 
 bool BitFieldType::lookup_field(const std::string& name, BitField* out) const {
@@ -958,46 +904,31 @@ std::string BitFieldType::diff_impl(const Type& other) const {
     return result;
 }
 
-void BitFieldType::define_all_aliases() {
-    // 1. Подтягиваем базовые свойства (size, sign-extend, reg-class)
-    ValueType::define_all_aliases();
+Object BitFieldType::make_step_accessor(const Object& key)  {
+    std::string name = key.to_std_string();
 
-    // 2. Регистрируем только мета-свойства самого типа BitField
-    define_alias("fields-count", [](Accessor* s) {
-        return Object::make_integer(static_cast<BitFieldType*>(s)->fields().size());
-    });
-}
-
-Object BitFieldType::make_step_alias(const Object& key) {
-    // 1. Сначала ищем в m_props (метаданные типа: name, size, fields-count...)
-    Object meta = Accessor::make_step_alias(key);
-    if (!meta.is_undefined()) {
-        return meta;
+    // 1. Проверяем специфику BitFieldType
+    if (name == "fields-count") {
+        return Object::make_integer(this->fields().size());
     }
 
-    // 2. Если не нашли в метаданных, ищем среди БИТОВЫХ ПОЛЕЙ
-    // Поддерживаем доступ по имени (символ или строка)
-    if (key.is_symbol() || key.is_string()) {
-        std::string name = key.to_std_string();
-        for (const auto& field : m_fields) {
-            if (field.name() == name) {
-                // Возвращаем BitField как NativeRef для дальнейшей навигации
-                return Object::make_native_ref(std::make_shared<BitField>(field));
-            }
+    // 2. Если пользователь хочет получить список всех бит-полей
+    if (name == "fields") {
+        ListBuilder lb;
+        for (const auto& bf : m_fields) {
+            // Создаем NativeRef на BitField. 
+            // Используем shared_ptr, чтобы объект жил, пока на него ссылается Лисп.
+            // Если BitField хранятся в векторе по значению, создаем копию в куче:
+            auto bf_ptr = std::make_shared<BitField>(bf);
+            lb.add(Object::make_heap_object(bf_ptr, ObjectType::NATIVE_REF));
         }
+        return lb.finalize();
     }
 
-    // 3. Поддерживаем доступ по индексу (числу)
-    // Позволяет делать (-> my-bitfield-type 0)
-    if (key.is_integer()) {
-        size_t idx = static_cast<size_t>(key.as_integer());
-        if (idx < m_fields.size()) {
-            return Object::make_native_ref(std::make_shared<BitField>(m_fields[idx]));
-        }
-    }
-
-    // Если ничего не нашли — возвращаем пустой список (nil для Лиспов)
-    return Object::make_null();
+    // 3. Пробрасываем запрос ВВЕРХ: ValueType -> Type
+    // Теперь цепочка полная: (-> bitfield-type 'size) придет сюда, 
+    // поймет что это не fields-count, и уйдет в ValueType.
+    return ValueType::make_step_accessor(key);
 }
 
 // ============================================================================
@@ -1011,7 +942,6 @@ EnumType::EnumType(const ValueType* parent, std::string name, bool is_bitfield,
         parent->get_preferred_reg_class()),
     m_is_bitfield(is_bitfield),
     m_entries(entries) {
-    define_all_aliases();        
 }
 
 std::string EnumType::print() const {
@@ -1048,46 +978,23 @@ std::string EnumType::diff_impl(const Type& other) const {
     return result;
 }
 
-void EnumType::define_all_aliases() {
-    // 1. Базовые свойства (name, size, и т.д.)
-    ValueType::define_all_aliases();
+Object EnumType::make_step_accessor(const Object& key) {
+    std::string name = key.to_std_string();
 
-    // 2. Метаданные энума
-    define_alias("bitfield-enum?", [](Accessor* s) {
-        return Object::make_integer(static_cast<EnumType*>(s)->is_bitfield());
-    });
+    // 1. Специфические свойства EnumType
+    if (name == "bitfield-enum?") return Object::make_boolean(this->is_bitfield());
+    if (name == "entries-count")  return Object::make_integer(this->entries().size());
 
-    define_alias("entries-count", [](Accessor* s) {
-        return Object::make_integer(static_cast<EnumType*>(s)->entries().size());
-    });
-}
-
-Object EnumType::make_step_alias(const Object& key) {
-    // Сначала ищем в m_props (метаданные типа)
-    Object meta = Accessor::make_step_alias(key);
-    if (!meta.is_undefined()) return meta;
-
-    // 1. Поиск ЗНАЧЕНИЯ по ИМЕНИ: (-> my-enum 'SOME_VAL)
-    if (key.is_symbol() || key.is_string()) {
-        std::string name = key.to_std_string();
-        auto it = m_entries.find(name);
-        if (it != m_entries.end()) {
-            return Object::make_integer(it->second);
-        }
+    // 2. Возможность получить конкретное значение по имени из Лиспа
+    // Например: (-> my-enum 'MY_VALUE) вернет число
+    auto it = this->entries().find(name);
+    if (it != this->entries().end()) {
+        return Object::make_integer(it->second);
     }
 
-    // 2. Поиск ИМЕНИ по ЗНАЧЕНИЮ: (-> my-enum 3)
-    // Это невероятно полезно для логирования!
-    if (key.is_integer()) {
-        int64_t val = key.as_integer();
-        for (const auto& [name, value] : m_entries) {
-            if (value == val) {
-                return Object::make_string(name);
-            }
-        }
-    }
-
-    return Object::make_null();
+    // 3. Если это не мета-свойство и не элемент энума, идем вверх:
+    // EnumType -> ValueType -> Type
+    return ValueType::make_step_accessor(key);
 }
 
 // ============================================================================

@@ -41,13 +41,14 @@ namespace script
     };
 
     enum class MemoryAccessKind {
-        SINT8, UINT8, 
+        SINT8,  UINT8, 
         SINT16, UINT16, 
         SINT32, UINT32, 
         SINT64, UINT64, 
-        FLOAT, DOUBLE,
+        FLOAT,  DOUBLE,
         POINTER,      // Просто адрес
-        STRING        // Специфично для OpenGOAL (адрес на символы)
+        STRING,       // Специфично для OpenGOAL (адрес на символы)
+        CUSTOM        // hardcoded by child class
     };
     
     std::string object_type_to_string(ObjectType type);
@@ -171,7 +172,7 @@ namespace script
 
         // 1. Для оператора (-> base key)
         // По умолчанию объект не дает в себя "зайти".
-        virtual Object make_step_alias(const Object& key);
+        virtual Object make_step_accessor(const Object& key);
 
         // 2. Для автоматического eval и явного (deref obj)
         // По умолчанию объект разыменовывается в самого себя.
@@ -201,7 +202,8 @@ namespace script
 
         // Тот самый делегат который сообщает о текущей таблицк
         static void set_symbol_table(SymbolTable* table) { s_table = table; }
-        static SymbolTable& symbol_table() { return *s_table; }
+        static inline SymbolTable& symbol_table() { return *get_symbol_table(); }
+        static inline SymbolTable* get_symbol_table();
         static InternedSymbolPtr intern(const char* name);
         // адресация к объекту -> key
         Object step(const Object& key) const;
@@ -240,6 +242,7 @@ namespace script
         std::string type_name() const { return object_type_to_string(type); }
 
         // Type checking
+        bool is_type(ObjectType atype) const { return type == atype; }
         bool is_undefined() const { return type == ObjectType::UNDEFINED; }
         bool is_heap_object() const { return heap_obj != nullptr; }
         bool is_integer() const { return type == ObjectType::INTEGER; }
@@ -360,6 +363,29 @@ namespace script
             }
             return count;
         }
+        
+        Object make_step_accessor(const Object& key) override {
+            if (key.is_integer()) {
+                int index = key.as_integer();
+                if (index < 0) return Object::make_undefined();
+
+                auto current = this; 
+                
+                // Шагаем по списку
+                for (int i = 0; i < index; ++i) {
+                    Object next = current->cdr; // Предполагаю, что поле называется cdr
+                    if (next.is_pair()) {
+                        current = next.as_pair();
+                    } else {
+                        // Список закончился раньше, чем мы дошли до нужного индекса
+                        return Object::make_undefined();
+                    }
+                }
+
+                return current->car; // Предполагаю, что поле называется car
+            }
+            return Object::make_undefined();
+        }
     };
 
     class StringObject : public HeapObject {
@@ -424,6 +450,24 @@ namespace script
 
         Object inspect() const override;
 
+        Object make_step_accessor(const Object& key) {
+            if (key.is_integer()) {
+                int index = key.as_integer();
+                
+                // Защита от выхода за границы
+                if (index >= 0 && index < static_cast<int>(data.size())) {
+                    return data[index];
+                }
+                return Object::make_undefined(); 
+            }
+
+            // Можно добавить свойство 'length' для массива
+            if (key.is_symbol() && key.to_std_string() == "length") {
+                return Object::make_integer(data.size());
+            }
+
+            return Object::make_undefined();
+        }
     };
 
     class HashTableObject : public HeapObject {
@@ -943,14 +987,15 @@ namespace script
     public:
         void*               m_ptr;       // Прямой адрес в памяти (base_addr + offset)
         MemoryAccessKind    m_kind;      // Метаданные (как именно читать этот кусок памяти)
-    
+
         MemoryCell(void* ptr) : m_ptr(ptr), m_kind(MemoryAccessKind::UINT32) {}
+        MemoryCell(void* ptr, MemoryAccessKind kind) : m_ptr(ptr), m_kind(kind) {}
 
-        Object get();
+        virtual Object get();
 
-        void set(const Object& val);
+        virtual void set(const Object& val);
 
-        virtual Object make_step_alias(const Object& key);
+        virtual Object make_step_accessor(const Object& key);
 
         std::string print() const override;
         Object inspect() const override;

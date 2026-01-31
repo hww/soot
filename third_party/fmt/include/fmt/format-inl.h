@@ -266,9 +266,9 @@ inline auto divide_by_10_to_kappa_plus_1(uint64_t n) noexcept -> uint64_t {
 }
 
 // Various subroutines using pow10 cache
-template <typename T> struct cache_accessor;
+template <typename T> struct cache_HeapObject;
 
-template <> struct cache_accessor<float> {
+template <> struct cache_HeapObject<float> {
   using carrier_uint = float_info<float>::carrier_uint;
   using cache_entry_type = uint64_t;
 
@@ -362,7 +362,7 @@ template <> struct cache_accessor<float> {
   }
 };
 
-template <> struct cache_accessor<double> {
+template <> struct cache_HeapObject<double> {
   using carrier_uint = float_info<double>::carrier_uint;
   using cache_entry_type = uint128_fallback;
 
@@ -1137,7 +1137,7 @@ template <> struct cache_accessor<double> {
 };
 
 FMT_FUNC auto get_cached_power(int k) noexcept -> uint128_fallback {
-  return cache_accessor<double>::get_cached_power(k);
+  return cache_HeapObject<double>::get_cached_power(k);
 }
 
 // Various integer checks
@@ -1217,12 +1217,12 @@ FMT_INLINE decimal_fp<T> shorter_interval_case(int exponent) noexcept {
   const int beta = exponent + floor_log2_pow10(-minus_k);
 
   // Compute xi and zi
-  using cache_entry_type = typename cache_accessor<T>::cache_entry_type;
-  const cache_entry_type cache = cache_accessor<T>::get_cached_power(-minus_k);
+  using cache_entry_type = typename cache_HeapObject<T>::cache_entry_type;
+  const cache_entry_type cache = cache_HeapObject<T>::get_cached_power(-minus_k);
 
-  auto xi = cache_accessor<T>::compute_left_endpoint_for_shorter_interval_case(
+  auto xi = cache_HeapObject<T>::compute_left_endpoint_for_shorter_interval_case(
       cache, beta);
-  auto zi = cache_accessor<T>::compute_right_endpoint_for_shorter_interval_case(
+  auto zi = cache_HeapObject<T>::compute_right_endpoint_for_shorter_interval_case(
       cache, beta);
 
   // If the left endpoint is not an integer, increase it
@@ -1240,7 +1240,7 @@ FMT_INLINE decimal_fp<T> shorter_interval_case(int exponent) noexcept {
 
   // Otherwise, compute the round-up of y
   ret_value.significand =
-      cache_accessor<T>::compute_round_up_for_shorter_interval_case(cache,
+      cache_HeapObject<T>::compute_round_up_for_shorter_interval_case(cache,
                                                                     beta);
   ret_value.exponent = minus_k;
 
@@ -1260,7 +1260,7 @@ template <typename T> auto to_decimal(T x) noexcept -> decimal_fp<T> {
   // Step 1: integer promotion & Schubfach multiplier calculation.
 
   using carrier_uint = typename float_info<T>::carrier_uint;
-  using cache_entry_type = typename cache_accessor<T>::cache_entry_type;
+  using cache_entry_type = typename cache_HeapObject<T>::cache_entry_type;
   auto br = bit_cast<carrier_uint>(x);
 
   // Extract significand bits and exponent bits.
@@ -1291,12 +1291,12 @@ template <typename T> auto to_decimal(T x) noexcept -> decimal_fp<T> {
 
   // Compute k and beta.
   const int minus_k = floor_log10_pow2(exponent) - float_info<T>::kappa;
-  const cache_entry_type cache = cache_accessor<T>::get_cached_power(-minus_k);
+  const cache_entry_type cache = cache_HeapObject<T>::get_cached_power(-minus_k);
   const int beta = exponent + floor_log2_pow10(-minus_k);
 
   // Compute zi and deltai.
   // 10^kappa <= deltai < 10^(kappa + 1)
-  const uint32_t deltai = cache_accessor<T>::compute_delta(cache, beta);
+  const uint32_t deltai = cache_HeapObject<T>::compute_delta(cache, beta);
   const carrier_uint two_fc = significand << 1;
 
   // For the case of binary32, the result of integer check is not correct for
@@ -1309,8 +1309,8 @@ template <typename T> auto to_decimal(T x) noexcept -> decimal_fp<T> {
   // cause a problem when we need to perform integer check for the center.
   // Fortunately, with these inputs, that branch is never executed, so we are
   // fine.
-  const typename cache_accessor<T>::compute_mul_result z_mul =
-      cache_accessor<T>::compute_mul((two_fc | 1) << beta, cache);
+  const typename cache_HeapObject<T>::compute_mul_result z_mul =
+      cache_HeapObject<T>::compute_mul((two_fc | 1) << beta, cache);
 
   // Step 2: Try larger divisor; remove trailing zeros if necessary.
 
@@ -1332,8 +1332,8 @@ template <typename T> auto to_decimal(T x) noexcept -> decimal_fp<T> {
     goto small_divisor_case_label;
   } else {
     // r == deltai; compare fractional parts.
-    const typename cache_accessor<T>::compute_mul_parity_result x_mul =
-        cache_accessor<T>::compute_mul_parity(two_fc - 1, cache, beta);
+    const typename cache_HeapObject<T>::compute_mul_parity_result x_mul =
+        cache_HeapObject<T>::compute_mul_parity(two_fc - 1, cache, beta);
 
     if (!(x_mul.parity | (x_mul.is_integer & include_left_endpoint)))
       goto small_divisor_case_label;
@@ -1369,7 +1369,7 @@ small_divisor_case_label:
   // Since there are only 2 possibilities, we only need to care about the
   // parity. Also, zi and r should have the same parity since the divisor
   // is an even number.
-  const auto y_mul = cache_accessor<T>::compute_mul_parity(two_fc, cache, beta);
+  const auto y_mul = cache_HeapObject<T>::compute_mul_parity(two_fc, cache, beta);
 
   // If z^(f) >= epsilon^(f), we might have a tie when z^(f) == epsilon^(f),
   // or equivalently, when y is an integer.

@@ -150,7 +150,7 @@ TEST_F(StreamingListenerTest, OnTestPartResult) {
 
 // Provides access to otherwise private parts of the TestEventListeners class
 // that are needed to test it.
-class TestEventListenersAccessor {
+class TestEventListenersHeapObject {
  public:
   static TestEventListener* GetRepeater(TestEventListeners* listeners) {
     return listeners->repeater();
@@ -255,8 +255,8 @@ using testing::internal::ShuffleRange;
 using testing::internal::SkipPrefix;
 using testing::internal::StreamableToString;
 using testing::internal::String;
-using testing::internal::TestEventListenersAccessor;
-using testing::internal::TestResultAccessor;
+using testing::internal::TestEventListenersHeapObject;
+using testing::internal::TestResultHeapObject;
 using testing::internal::UnitTestImpl;
 using testing::internal::WideStringToUtf8;
 using testing::internal::edit_distance::CalculateOptimalEdits;
@@ -326,7 +326,7 @@ TEST(GetNextRandomSeedTest, WorksForValidInput) {
 }
 
 static void ClearCurrentTestPartResults() {
-  TestResultAccessor::ClearTestPartResults(
+  TestResultHeapObject::ClearTestPartResults(
       GetUnitTestImpl()->current_test_result());
 }
 
@@ -1409,9 +1409,9 @@ class TestResultTest : public Test {
     // test_part_results() returns a const reference to this vector.
     // We cast it to a non-const object s.t. it can be modified
     TPRVector* results1 = const_cast<TPRVector*>(
-        &TestResultAccessor::test_part_results(*r1));
+        &TestResultHeapObject::test_part_results(*r1));
     TPRVector* results2 = const_cast<TPRVector*>(
-        &TestResultAccessor::test_part_results(*r2));
+        &TestResultHeapObject::test_part_results(*r2));
 
     // r0 is an empty TestResult.
 
@@ -1489,7 +1489,7 @@ TEST(TestResultPropertyTest, NoPropertiesFoundWhenNoneAreAdded) {
 TEST(TestResultPropertyTest, OnePropertyFoundWhenAdded) {
   TestResult test_result;
   TestProperty property("key_1", "1");
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property);
   ASSERT_EQ(1, test_result.test_property_count());
   const TestProperty& actual_property = test_result.GetTestProperty(0);
   EXPECT_STREQ("key_1", actual_property.key());
@@ -1501,8 +1501,8 @@ TEST(TestResultPropertyTest, MultiplePropertiesFoundWhenAdded) {
   TestResult test_result;
   TestProperty property_1("key_1", "1");
   TestProperty property_2("key_2", "2");
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_1);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_2);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_1);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_2);
   ASSERT_EQ(2, test_result.test_property_count());
   const TestProperty& actual_property_1 = test_result.GetTestProperty(0);
   EXPECT_STREQ("key_1", actual_property_1.key());
@@ -1520,10 +1520,10 @@ TEST(TestResultPropertyTest, OverridesValuesForDuplicateKeys) {
   TestProperty property_2_1("key_2", "2");
   TestProperty property_1_2("key_1", "12");
   TestProperty property_2_2("key_2", "22");
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_1_1);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_2_1);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_1_2);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_2_2);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_1_1);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_2_1);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_1_2);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_2_2);
 
   ASSERT_EQ(2, test_result.test_property_count());
   const TestProperty& actual_property_1 = test_result.GetTestProperty(0);
@@ -1541,9 +1541,9 @@ TEST(TestResultPropertyTest, GetTestProperty) {
   TestProperty property_1("key_1", "1");
   TestProperty property_2("key_2", "2");
   TestProperty property_3("key_3", "3");
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_1);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_2);
-  TestResultAccessor::RecordProperty(&test_result, "testcase", property_3);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_1);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_2);
+  TestResultHeapObject::RecordProperty(&test_result, "testcase", property_3);
 
   const TestProperty& fetched_property_1 = test_result.GetTestProperty(0);
   const TestProperty& fetched_property_2 = test_result.GetTestProperty(1);
@@ -6881,7 +6881,7 @@ class TestListener : public EmptyTestEventListener {
 TEST(TestEventListenersTest, ConstructionWorks) {
   TestEventListeners listeners;
 
-  EXPECT_TRUE(TestEventListenersAccessor::GetRepeater(&listeners) != nullptr);
+  EXPECT_TRUE(TestEventListenersHeapObject::GetRepeater(&listeners) != nullptr);
   EXPECT_TRUE(listeners.default_result_printer() == nullptr);
   EXPECT_TRUE(listeners.default_xml_generator() == nullptr);
 }
@@ -6901,9 +6901,9 @@ TEST(TestEventListenersTest, DestructionWorks) {
 
   {
     TestEventListeners listeners;
-    TestEventListenersAccessor::SetDefaultResultPrinter(&listeners,
+    TestEventListenersHeapObject::SetDefaultResultPrinter(&listeners,
                                                         default_result_printer);
-    TestEventListenersAccessor::SetDefaultXmlGenerator(&listeners,
+    TestEventListenersHeapObject::SetDefaultXmlGenerator(&listeners,
                                                        default_xml_printer);
     listeners.Append(extra_listener);
   }
@@ -6921,7 +6921,7 @@ TEST(TestEventListenersTest, Append) {
   {
     TestEventListeners listeners;
     listeners.Append(listener);
-    TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+    TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
         *UnitTest::GetInstance());
     EXPECT_EQ(1, on_start_counter);
   }
@@ -6975,7 +6975,7 @@ TEST(EventListenerTest, AppendKeepsOrder) {
   listeners.Append(new SequenceTestingListener(&vec, "2nd"));
   listeners.Append(new SequenceTestingListener(&vec, "3rd"));
 
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
   ASSERT_EQ(3U, vec.size());
   EXPECT_STREQ("1st.OnTestProgramStart", vec[0].c_str());
@@ -6983,7 +6983,7 @@ TEST(EventListenerTest, AppendKeepsOrder) {
   EXPECT_STREQ("3rd.OnTestProgramStart", vec[2].c_str());
 
   vec.clear();
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramEnd(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramEnd(
       *UnitTest::GetInstance());
   ASSERT_EQ(3U, vec.size());
   EXPECT_STREQ("3rd.OnTestProgramEnd", vec[0].c_str());
@@ -6991,7 +6991,7 @@ TEST(EventListenerTest, AppendKeepsOrder) {
   EXPECT_STREQ("1st.OnTestProgramEnd", vec[2].c_str());
 
   vec.clear();
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestIterationStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestIterationStart(
       *UnitTest::GetInstance(), 0);
   ASSERT_EQ(3U, vec.size());
   EXPECT_STREQ("1st.OnTestIterationStart", vec[0].c_str());
@@ -6999,7 +6999,7 @@ TEST(EventListenerTest, AppendKeepsOrder) {
   EXPECT_STREQ("3rd.OnTestIterationStart", vec[2].c_str());
 
   vec.clear();
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestIterationEnd(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestIterationEnd(
       *UnitTest::GetInstance(), 0);
   ASSERT_EQ(3U, vec.size());
   EXPECT_STREQ("3rd.OnTestIterationEnd", vec[0].c_str());
@@ -7020,7 +7020,7 @@ TEST(TestEventListenersTest, Release) {
     TestEventListeners listeners;
     listeners.Append(listener);
     EXPECT_EQ(listener, listeners.Release(listener));
-    TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+    TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
         *UnitTest::GetInstance());
     EXPECT_TRUE(listeners.Release(listener) == nullptr);
   }
@@ -7036,10 +7036,10 @@ TEST(EventListenerTest, SuppressEventForwarding) {
 
   TestEventListeners listeners;
   listeners.Append(listener);
-  ASSERT_TRUE(TestEventListenersAccessor::EventForwardingEnabled(listeners));
-  TestEventListenersAccessor::SuppressEventForwarding(&listeners);
-  ASSERT_FALSE(TestEventListenersAccessor::EventForwardingEnabled(listeners));
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  ASSERT_TRUE(TestEventListenersHeapObject::EventForwardingEnabled(listeners));
+  TestEventListenersHeapObject::SuppressEventForwarding(&listeners);
+  ASSERT_FALSE(TestEventListenersHeapObject::EventForwardingEnabled(listeners));
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
   EXPECT_EQ(0, on_start_counter);
 }
@@ -7048,7 +7048,7 @@ TEST(EventListenerTest, SuppressEventForwarding) {
 // death test subprocesses.
 TEST(EventListenerDeathTest, EventsNotForwardedInDeathTestSubprecesses) {
   EXPECT_DEATH_IF_SUPPORTED({
-      GTEST_CHECK_(TestEventListenersAccessor::EventForwardingEnabled(
+      GTEST_CHECK_(TestEventListenersHeapObject::EventForwardingEnabled(
           *GetUnitTestImpl()->listeners())) << "expected failure";},
       "expected failure");
 }
@@ -7062,25 +7062,25 @@ TEST(EventListenerTest, default_result_printer) {
   TestListener* listener = new TestListener(&on_start_counter, &is_destroyed);
 
   TestEventListeners listeners;
-  TestEventListenersAccessor::SetDefaultResultPrinter(&listeners, listener);
+  TestEventListenersHeapObject::SetDefaultResultPrinter(&listeners, listener);
 
   EXPECT_EQ(listener, listeners.default_result_printer());
 
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
 
   EXPECT_EQ(1, on_start_counter);
 
   // Replacing default_result_printer with something else should remove it
   // from the list and destroy it.
-  TestEventListenersAccessor::SetDefaultResultPrinter(&listeners, nullptr);
+  TestEventListenersHeapObject::SetDefaultResultPrinter(&listeners, nullptr);
 
   EXPECT_TRUE(listeners.default_result_printer() == nullptr);
   EXPECT_TRUE(is_destroyed);
 
   // After broadcasting an event the counter is still the same, indicating
   // the listener is not in the list anymore.
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
   EXPECT_EQ(1, on_start_counter);
 }
@@ -7096,14 +7096,14 @@ TEST(EventListenerTest, RemovingDefaultResultPrinterWorks) {
   TestListener* listener = new TestListener(&on_start_counter, &is_destroyed);
   {
     TestEventListeners listeners;
-    TestEventListenersAccessor::SetDefaultResultPrinter(&listeners, listener);
+    TestEventListenersHeapObject::SetDefaultResultPrinter(&listeners, listener);
 
     EXPECT_EQ(listener, listeners.Release(listener));
     EXPECT_TRUE(listeners.default_result_printer() == nullptr);
     EXPECT_FALSE(is_destroyed);
 
     // Broadcasting events now should not affect default_result_printer.
-    TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+    TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
         *UnitTest::GetInstance());
     EXPECT_EQ(0, on_start_counter);
   }
@@ -7121,25 +7121,25 @@ TEST(EventListenerTest, default_xml_generator) {
   TestListener* listener = new TestListener(&on_start_counter, &is_destroyed);
 
   TestEventListeners listeners;
-  TestEventListenersAccessor::SetDefaultXmlGenerator(&listeners, listener);
+  TestEventListenersHeapObject::SetDefaultXmlGenerator(&listeners, listener);
 
   EXPECT_EQ(listener, listeners.default_xml_generator());
 
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
 
   EXPECT_EQ(1, on_start_counter);
 
   // Replacing default_xml_generator with something else should remove it
   // from the list and destroy it.
-  TestEventListenersAccessor::SetDefaultXmlGenerator(&listeners, nullptr);
+  TestEventListenersHeapObject::SetDefaultXmlGenerator(&listeners, nullptr);
 
   EXPECT_TRUE(listeners.default_xml_generator() == nullptr);
   EXPECT_TRUE(is_destroyed);
 
   // After broadcasting an event the counter is still the same, indicating
   // the listener is not in the list anymore.
-  TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+  TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
       *UnitTest::GetInstance());
   EXPECT_EQ(1, on_start_counter);
 }
@@ -7155,14 +7155,14 @@ TEST(EventListenerTest, RemovingDefaultXmlGeneratorWorks) {
   TestListener* listener = new TestListener(&on_start_counter, &is_destroyed);
   {
     TestEventListeners listeners;
-    TestEventListenersAccessor::SetDefaultXmlGenerator(&listeners, listener);
+    TestEventListenersHeapObject::SetDefaultXmlGenerator(&listeners, listener);
 
     EXPECT_EQ(listener, listeners.Release(listener));
     EXPECT_TRUE(listeners.default_xml_generator() == nullptr);
     EXPECT_FALSE(is_destroyed);
 
     // Broadcasting events now should not affect default_xml_generator.
-    TestEventListenersAccessor::GetRepeater(&listeners)->OnTestProgramStart(
+    TestEventListenersHeapObject::GetRepeater(&listeners)->OnTestProgramStart(
         *UnitTest::GetInstance());
     EXPECT_EQ(0, on_start_counter);
   }

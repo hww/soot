@@ -7,7 +7,7 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
-#include "common/sooti/Accessor.hpp"
+#include "common/sooti/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/util/Crc32.hpp"
@@ -154,7 +154,7 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public Accessor {
+class TypeSystem : public HeapObject {
 public:
     TypeSystem();
     ~TypeSystem() = default;
@@ -204,17 +204,17 @@ public:
 
     bool is_array_data_access(const TypeSpec& array_type, int offset) const {
         if (array_type.base_type() == "array" && array_type.has_single_arg()) {
-            return offset >= m_config.array_data_offset;
+            return offset >= TypeConfig::array_data_offset;
         }
         return false;
     }
 
     int get_array_data_offset() const {
-        return  m_config.array_data_offset;
+        return  TypeConfig::array_data_offset;
     }
 
     int get_pointer_size() const {
-        return  m_config.pointer_size;
+        return  TypeConfig::pointer_size;
     }
     // ========================================================================
     // Method System
@@ -354,6 +354,7 @@ public:
     // ========================================================================
 
     void add_builtin_types();
+    void verify_type_sizes();
     void add_builtin_types_z80();
     void verify_type_sizes_z80();
 
@@ -451,16 +452,12 @@ public:
     // Aliases Functions
     // ========================================================================
 
-    void define_all_aliases() override;
-    
     // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
-    Object make_step_alias(const Object& key) override;
+    Object make_step_accessor(const Object& key) override;
     
     Object to_alias() {
         return Object::make_native_ref(shared_from_this());
     }
-
-    TargetConfig& get_config() { return m_config; }
 
 private:
     // ========================================================================
@@ -488,7 +485,6 @@ private:
     bool m_allow_redefinition = false;
     public:
     static int verbose;
-    TargetConfig m_config;
 };
 
 // ============================================================================

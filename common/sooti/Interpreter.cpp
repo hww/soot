@@ -1,11 +1,9 @@
 #include "common/sooti/Interpreter.hpp"
-#include "common/sooti/StaticBuffer.hpp"
-#include "common/sooti/StaticBufferUtils.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sooti/Accessor.hpp"
+#include "common/sooti/static_buffer/Export.hpp"
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/type_system/Deftype.hpp"
@@ -258,14 +256,19 @@ namespace script
             // Отладка 
             {"source-info",         &Interpreter::eval_source_info, nullptr},
             {"get-context",         &Interpreter::eval_get_context, nullptr},
-            {"make-alias",          &Interpreter::eval_make_alias, nullptr},
+
+            //
+            {"make-accessor",       &Interpreter::eval_make_accessor, nullptr},
+            {"cell-get",            &Interpreter::eval_cell_get, nullptr},
+            {"cell-set",            &Interpreter::eval_cell_set, nullptr},
 
             // Buffer
             {"make-static-buffer",   &Interpreter::eval_make_static_buffer, nullptr},
             {"make-static-writer",   &Interpreter::eval_make_static_writer, nullptr},
-            {"write-to-buffer",      &Interpreter::eval_static_buffer_write, nullptr},
-            {"write-to-writer",      &Interpreter::eval_static_writer_write, nullptr},
+            {"make-buffer-cell",     &Interpreter::eval_make_buffer_cell, nullptr},
             {"static-buffer-dump",   &Interpreter::eval_static_buffer_dump, nullptr},
+            {"write-to-buffer",      &Interpreter::eval_write_static, nullptr},
+            {"read-from-buffer",      &Interpreter::eval_read_static, nullptr},
         });
 
 
@@ -3819,8 +3822,8 @@ void Interpreter::init_type_system(TypeSystemVariant types) {
             m_type_system->add_builtin_types_z80();
             break;
         case TypeSystemVariant::Default:
-        default:
             m_type_system->add_builtin_types();
+        default:
             break;
     }
 
@@ -3871,7 +3874,24 @@ Object Interpreter::eval_init_types(const Object& form, Arguments& args, const s
 // ==============================================
 // Alias
 // ==============================================
-Object Interpreter::eval_make_alias(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+/**
+ * @brief Примитив создания "окна" доступа (Шаг навигации).
+ * * * Роль в системе: 
+ * Это атомарная операция перехода, на которой базируется макрос `->`. 
+ * Она "склеивает" логику метаданных с адресацией в памяти.
+ * * * Принцип работы:
+ * Превращает пару (Объект, Ключ) в новую точку доступа (Alias).
+ * - Если база — NativeRef (метаданные), извлекает свойства типа.
+ * - Если база — TypeCell (память), вычисляет адрес поля и возвращает дочерний TypeCell.
+ * * * Использование в Lisp (неявное):
+ * Используется внутри функций навигации. Например, в выражении:
+ * (-> cell 'x 'y) 
+ * Интерпретатор дважды вызовет `make-alias`:
+ * 1. (make-accessor cell 'x) -> вернет ячейку поля x
+ * 2. (make-accessor cell_x 'y) -> вернет ячейку поля y внутри x
+ * * @return Object (TypeCell со смещением или метаданные из NativeRef)
+ */
+Object Interpreter::eval_make_accessor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{ }, { }}, {});
 
     auto base = args.unnamed[0];
@@ -3879,16 +3899,33 @@ Object Interpreter::eval_make_alias(const Object& form, Arguments& args, const s
 
     // 1. Стартовая точка: База — это NATIVE_REF (например, TypeSpec или Instance)
     if (base.is_native_ref()) {
-        return base.as_heap_object()->make_step_alias(key); 
+        return base.as_heap_object()->make_step_accessor(key); 
     }
     
     // 2. Продолжение пути: База — это уже созданный CELL (MemoryCell)
     if (base.is_cell()) {
-        return base;
+        return base.as_heap_object()->make_step_accessor(key); // Теперь навигация пойдет вглубь!
     }
     
     return m_sym_undefined; // nil логичнее пустой коллекции
 }
+/**
+ * @brief Специальная форма глубокой навигации (Макрос `->`).
+ * * * Роль в системе:
+ * Последовательно применяет цепочку ключей к объекту, "проваливаясь" внутрь 
+ * структур, массивов или метаданных. Реализует высокоуровневый синтаксис доступа.
+ * * * Особенности реализации:
+ * 1. Первый аргумент вычисляется (eval) — это корень (например, переменная с TypeCell).
+ * 2. Последующие аргументы-символы трактуются как имена полей БЕЗ вычисления.
+ * 3. Аргументы-списки или числа вычисляются (позволяет динамические индексы).
+ * * * Синтаксис в Lisp: (-> root field1 index field2)
+ * Пример: 
+ * (-> my-vec 'x)           ; корень my-vec, шаг к полю x
+ * (-> my-buf 10 'int)      ; корень my-buf, вычислить индекс 10, шаг к типу int
+ * (-> obj (get-idx) 'name) ; индекс вычисляется вызовом функции
+ * * * @param rest Список аргументов навигации.
+ * * @return Конечный объект (TypeCell, значение или метаданные) после прохождения всего пути.
+ */
 Object Interpreter::eval_navigation_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env)
 {
     Object iterator = rest; // Пропускаем само имя 'navigation'
@@ -3924,11 +3961,59 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
     }
     return current;
 }
-
+/**
+ * @brief Чтение значения из ячейки памяти (Dereference).
+ * * * Роль: Преобразует сырые байты из буфера в объект интерпретатора.
+ * Использует метаданные типа, хранящиеся в TypeCell, чтобы понять, 
+ * сколько байт читать и как их интерпретировать (как число, строку или энум).
+ * * * Lisp Logic:
+ * (cell-get cell) -> возвращает значение.
+ * Обычно используется автоматически при обращении к ячейке в контексте выражения.
+ * * * @param args[0] Объект TypeCell.
+ * @return Object (Число, строка или другой примитив).
+ */
+Object Interpreter::eval_cell_get(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{ObjectType::CELL}}, {});
+    auto cell = args.unnamed[0].as_native_ref<TypeCell>();
+    return cell->get(); // Использует StaticBufferReader внутри
+}
+/**
+ * @brief Запись значения в ячейку памяти (Assignment).
+ * * * Роль: Сериализует объект интерпретатора в сырые байты буфера.
+ * Это "физический" уровень записи. Функция берет TypeCell, находит 
+ * связанный с ней StaticBuffer и записывает данные по адресу TypeCell->ptr.
+ * * * Особенности:
+ * - Учитывает порядок байтов (Endianness) целевой платформы (Z80).
+ * - Выполняет проверку типов (нельзя записать строку в ячейку int8).
+ * * * Lisp Logic:
+ * (cell-set! cell value) 
+ * (set! (-> my-struct 'field) 10) ; Внутри развернется в call-set!
+ * * * @param args[0] Объект TypeCell (куда писать).
+ * @param args[1] Значение (что писать).
+ * @return undefined
+ */
+Object Interpreter::eval_cell_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{ObjectType::CELL}, {}}, {}); // Ячейка и любое значение
+    auto cell = args.unnamed[0].as_native_ref<TypeCell>();
+    cell->set(args.unnamed[1]); // Использует StaticBufferWriter внутри
+    return get_undefined();
+}
 // ==============================================
 // Alias
 // ==============================================
-
+/**
+ * @brief Создание статического буфера памяти (Холст).
+ * * * Роль: Выделяет блок "сырой" памяти фиксированного размера, который 
+ * имитирует адресное пространство целевой платформы (например, RAM Z80).
+ * * * Параметры:
+ * 1. name (String) — имя буфера для логов и отладки.
+ * 2. size (Integer) — физический размер в байтах.
+ * 3. origin (Integer) — базовый адрес (VMA). Если origin = 0x100, 
+ * то запись в начало буфера будет трактоваться как запись по адресу 0x100.
+ * * * Lisp Logic:
+ * (make-static-buffer "main-ram" 1024 #x0000)
+ * * * @return Object (HeapObject типа STATIC_BUFFER).
+ */
 Object Interpreter::eval_make_static_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, 
         {{ObjectType::STRING},   // тип
@@ -3942,15 +4027,72 @@ Object Interpreter::eval_make_static_buffer(const Object& form, Arguments& args,
     auto buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
     return Object::make_heap_object(buffer, ObjectType::STATIC_BUFFER);
 }
-
+/**
+ * @brief Создание курсора записи (Поток/Врайтер).
+ * * * Роль: Обертка над буфером, которая управляет "текущей позицией" записи.
+ * Позволяет писать данные последовательно, не вычисляя каждый раз оффсет вручную.
+ * Хранит ссылку на TypeSystem для автоматического выравнивания (alignment) типов.
+ * * * Особенности:
+ * - Связывает физический буфер с логикой типов.
+ * - Позволяет выполнять автоматическую аллокацию места под структуры.
+ * * * Lisp Logic:
+ * (make-static-writer my-buf)
+ * * * @param args[0] Существующий объект STATIC_BUFFER.
+ * @return Object (HeapObject типа STATIC_WRITER).
+ */
 Object Interpreter::eval_make_static_writer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
     auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
     auto writer = std::make_shared<StaticWriter>(buffer, m_type_system);
     return Object::make_heap_object(writer, ObjectType::STATIC_WRITER);
 }
+/**
+ * @brief Фабрика ячеек памяти (Типизированный указатель).
+ * * * Роль: Создает объект TypeCell, который связывает конкретный адрес в памяти с типом.
+ * Поддерживает два режима работы:
+ * 1. Через Writer: (static-cell writer 'type)
+ * - Автоматически выделяет место в текущей позиции врайтера.
+ * - Сдвигает курсор врайтера с учетом выравнивания (alignment).
+ * 2. Через Buffer: (static-cell buffer offset 'type)
+ * - Создает "окно" по фиксированному смещению без изменения состояния буфера.
+ * * * Lisp Logic:
+ * (define cell (static-cell wr 'test-vector)) ; Аллокация и создание ссылки
+ * (define cell (static-cell buf #x10 'int8))  ; Прямой доступ по адресу
+ * * * @return Object (TypeCell).
+ */
+Object Interpreter::eval_make_buffer_cell(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+     vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
+    // (static-cell buffer offset 'type) ИЛИ (static-cell writer 'type)
+    if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
+        auto writer = args.unnamed[0].as_native_ref<StaticWriter>();
+        std::string type_name = args.unnamed[1].as_symbol();
+        return writer->allocate(type_name); // Возвращает TypeCell через HeapObject
+    } 
+    
+    auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
+    size_t offset = static_cast<size_t>(args.unnamed[1].as_integer());
+    std::string type_name = args.unnamed[2].as_symbol();
 
+    Type* type = m_type_system->lookup_type(type_name);
+    void* ptr = buffer->data() + offset;
 
+    auto cell = std::make_shared<TypeCell>(m_type_system.get(), ptr, type);
+    return Object::make_heap_object(cell, ObjectType::CELL);
+}
+/**
+ * @brief Визуализация содержимого памяти (Hex Dump).
+ * * * Роль: Генерирует форматированную строку, представляющую сырые байты буфера 
+ * в человекочитаемом виде (шестнадцатеричный код + ASCII).
+ * * * Параметры:
+ * 1. buffer         — целевой буфер.
+ * 2. start_offset   — начальная точка чтения.
+ * 3. bytes_to_dump  — количество байт для отображения.
+ * 4. show_ascii     — флаг включения символьного представления (справа).
+ * 5. bytes_per_line — ширина строки дампа (обычно 8 или 16).
+ * * * Lisp Logic:
+ * (fmt #t (static-buffer-dump buf 0 256 #t 16))
+ * * * @return Object (String с отформатированным дампом).
+ */
 Object Interpreter::eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{ObjectType::STATIC_BUFFER},
         {ObjectType::INTEGER},
@@ -3968,90 +4110,153 @@ Object Interpreter::eval_static_buffer_dump(const Object& form, Arguments& args,
 
     return Object::make_string(str);
 }
-
-Object Interpreter::eval_static_writer_write(const Object& form, Arguments& args, 
-                                           const std::shared_ptr<EnvironmentObject>& env) {
-    // Проверка аргументов: writer value [:as type]
-    vararg_check(form, args, 
-        {
-            {ObjectType::STATIC_WRITER},  // writer
-            {}                            // value (любой тип)
-        },
-        {
-            {"as", {false, ObjectType::SYMBOL}}  // опциональный тип
-        });
-
-    // Получаем writer
-    auto writer = args.unnamed[0].as_native_ref<StaticWriter>();
-    if (!writer) {
-        throw_eval_error(form, "First argument must be a static-writer");
-        return get_null();
-    }
-
-    Object value = args.unnamed[1];
-    
-    // Получаем тип из аргумента :as (ОБЯЗАТЕЛЬНЫЙ!)
-    if (!args.named.count("as")) {
-        throw_eval_error(form, "Missing required keyword argument :as <type>");
-        return get_null();
-    }
-    
-    std::string type_name = args.named["as"].to_std_string();
-    
-    // Проверяем, что тип существует в системе типов
-    if (!m_type_system->fully_defined_type_exists(type_name)) {
-        throw_eval_error(form, "Type not found in type system: " + type_name);
-        return get_null();
-    }
-
-    try {
-        // Вызываем write через StaticBufferUtils
-        size_t pos = writer->write(type_name, value); 
-        return Object::make_integer(static_cast<int64_t>(pos));
-    }
-    catch (const std::exception& e) {
-        throw_eval_error(form, std::string("Write failed: ") + e.what());
-        return get_null();
-    }
-}
-
-Object Interpreter::eval_static_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-    // [buffer] [offset] [value] :as [type]
-    vararg_check(form, args, {
-        {ObjectType::STATIC_BUFFER},
-        {ObjectType::INTEGER},
-        {}  // любое значение
-    }, {
-        {"as", {true, ObjectType::SYMBOL}}
+/**
+ * @brief Высокоуровневая команда записи в статическую память.
+ * * * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур) 
+ * в буфер или через врайтер. Автоматически управляет типами и смещениями.
+ * * * Режимы работы:
+ * 1. Через Writer (Stream mode): (write-to wr val :as 'type)
+ * - Автоматически выделяет место (allocate).
+ * - Позволяет записывать "теги" (маркеры), просто вызывая запись констант по очереди.
+ * 2. Через Buffer (Random access): (write-to buf val :as 'type :at offset)
+ * - Записывает данные строго по указанному адресу.
+ * * * Особенности:
+ * - Использует временную или постоянную TypeCell для выполнения физической записи.
+ * - Возвращает смещение (offset), по которому были записаны данные, что удобно 
+ * для построения таблиц перекрестных ссылок.
+ * * * Lisp Logic:
+ * (write-to-buffer wr #xAA :as 'int)       ; Запись тега-маркера
+ * (write-to-buffer wr 10 :as 'test-enum)   ; Запись значения по типу
+ * * * @return Object (Integer — итоговый offset записи).
+ */
+Object Interpreter::eval_write_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{}, {}}, {
+        {"as", {true, ObjectType::SYMBOL}},
+        {"at", {false, ObjectType::INTEGER}}
     });
-    
-    // Получаем аргументы
-    auto* buffer = dynamic_cast<StaticBuffer*>(args.unnamed[0].as_heap_object());
-    size_t offset = args.unnamed[1].as_integer();
-    Object value = args.unnamed[2];
-    std::string type_tag = args.named["as"].to_std_string();
-    
-    if (!buffer) {
-        throw_eval_error(form, "First argument must be static buffer");
-        return get_null();
-    }
-    
-    // Находим тип
-    Type* type = m_type_system->lookup_type(type_tag);
-    if (!type) {
-        throw_eval_error(form, "Unknown type: " + type_tag);
-        return get_null();
-    }
-    
-    // ВСЁ! Один вызов для всех типов
+
+    Object target = args.unnamed[0];
+    Object value = args.unnamed[1];
+    std::string type_name = args.named["as"].to_std_string();
+    fmt::print("{}\n", pretty_print::to_string(value, 80).c_str());
     try {
-        StaticBufferUtils::write_recursive(m_type_system.get(), buffer, offset, type, value);
-        return Object::make_undefined();
+        TypeCell* cell_ptr = nullptr;
+        std::shared_ptr<TypeCell> managed_cell;
+        size_t write_offset = 0;
+
+        // 1. Подготовка ячейки (Слайса)
+        if (target.is_type(ObjectType::STATIC_WRITER)) {
+            auto writer = target.as_native_ref<StaticWriter>();
+            Object cell_obj = writer->allocate(type_name);
+            managed_cell = cell_obj.as_native_ref<TypeCell>();
+            cell_ptr = managed_cell.get();
+            write_offset = writer->tell() - cell_ptr->m_type->get_size_in_memory();
+        } else {
+            // Режим буфера с :at
+            if (!args.named.count("at")) {
+                throw_eval_error(form, "Keyword :at required for buffer write");
+                return get_null();
+            }
+            auto buffer = target.as_native_ref<StaticBuffer>();
+            write_offset = static_cast<size_t>(args.named["at"].as_integer());
+            Type* type = m_type_system->lookup_type(type_name);
+            managed_cell = std::make_shared<TypeCell>(m_type_system.get(), buffer->data() + write_offset, type);
+            cell_ptr = managed_cell.get();
+        }
+
+        // 2. САМА ЗАПИСЬ (Магия пакетов)
+        if (value.is_pair()) {
+            // Если value — это список пар ((key . val) ...)
+            auto items = value; 
+            while (items.is_pair()) {
+                auto entry = items.as_pair()->car;
+                if (entry.is_pair()) {
+                    auto f_key = entry.as_pair()->car; // 'data
+                    auto f_val = entry.as_pair()->cdr; // '((val . #x7F))
+                    
+                    // 1. Делаем шаг "вглубь" (тот самый accessor/slice)
+                    Object sub_cell = cell_ptr->make_step_accessor(f_key);
+                    if (sub_cell.is_undefined()) 
+                    {
+                        throw_eval_error(form, fmt::format("write_static the cell {} does not have field `{}`", cell_ptr->print(), f_key.print()));
+                    }
+                    // 2. РЕКУРСИЯ: вызываем write-to-buffer для этой под-ячейки
+                    // Или просто вызываем логику записи для f_val в sub_cell
+                    recursive_write(sub_cell, f_val); 
+                }
+                items = items.as_pair()->cdr;
+            }
+        } else {
+            // Если пришло одиночное значение — пишем как раньше
+            cell_ptr->set(value);
+        }
+
+        return Object::make_integer(write_offset);
     }
     catch (const std::exception& e) {
-        throw_eval_error(form, std::string("Write failed: ") + e.what());
-        return get_null();
+        throw_eval_error(form, fmt::format("Static write failed: {}", e.what()));
+    }
+    return get_null();
+}
+
+void Interpreter::recursive_write(Object cell_obj, Object value) {
+    if (!cell_obj.is_type(ObjectType::CELL)) return;
+    auto cell = cell_obj.as_native_ref<TypeCell>();
+
+    // 1. Если это ПУСТОЙ список — просто выходим, это конец обхода
+    if (value.is_null()) {
+        return; 
+    }
+    if (value.is_pair() && !value.as_pair()->car.is_pair()) {
+        int index = 0;
+        Object current_list = value;
+        
+        while (!current_list.is_null()) {
+            // 1. Создаем ячейку для i-го элемента массива
+            // Мы используем наш новый make_step_accessor(index)
+            Object element_cell = cell->make_step_accessor(Object::make_integer(index));
+            
+            // 2. Рекурсивно пишем значение в эту ячейку
+            recursive_write(element_cell, current_list.as_pair()->car);
+            
+            // 3. Переходим к следующему элементу списка
+            current_list = current_list.as_pair()->cdr;
+            index++;
+        }
+        return; // Завершили запись массива
+    }
+
+    // --- ОБРАБОТКА СТРУКТУРЫ (alist) ---
+    if (value.is_pair() && value.as_pair()->car.is_pair()) {
+        // Твоя текущая логика итерации по полям...
+        // (key . val) -> recursive_write(cell->make_step_accessor(key), val)
+    }
+    
+    // --- ОБРАБОТКА ПРИМИТИВА ---
+    // Если это не список, значит это конечное значение (int, float, etc.)
+    if (!value.is_pair()) {
+        cell->set(value); // Запись в память через Cell-Set
     }
 }
 
+Object Interpreter::eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, {{}}, {
+        {"as", {true, ObjectType::SYMBOL}},
+        {"at", {true, ObjectType::INTEGER}}
+    });
+
+    auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
+    std::string type_name = args.named["as"].to_std_string();
+    size_t offset = static_cast<size_t>(args.named["at"].as_integer());
+
+    Type* type = m_type_system->lookup_type(type_name);
+    if (!type) throw std::runtime_error("Unknown type: " + type_name);
+
+    // Создаем ячейку-окно
+    auto cell = std::make_shared<TypeCell>(m_type_system.get(), buffer->data() + offset, type);
+    
+    // Если это простая переменная (int, float), возвращаем значение сразу.
+    // Если структура — возвращаем TypeCell, чтобы юзер мог делать (-> cell 'field)
+    return cell->get();
+}
 } // namespace script

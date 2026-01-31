@@ -4606,7 +4606,7 @@ process.umask = function() { return 0; };
 
   // A mostly-internal function to generate callbacks that can be applied
   // to each element in a collection, returning the desired result — either
-  // identity, an arbitrary callback, a property matcher, or a property accessor.
+  // identity, an arbitrary callback, a property matcher, or a property HeapObject.
   var cb = function(value, context, argCount) {
     if (value == null) return _.identity;
     if (_.isFunction(value)) return optimizeCb(value, context, argCount);
@@ -6035,7 +6035,7 @@ process.umask = function() { return 0; };
     };
   });
 
-  // Add all accessor Array functions to the wrapper.
+  // Add all HeapObject Array functions to the wrapper.
   _.each(['concat', 'join', 'slice'], function(name) {
     var method = ArrayProto[name];
     _.prototype[name] = function() {

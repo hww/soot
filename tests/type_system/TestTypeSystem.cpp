@@ -18,7 +18,6 @@ protected:
 
 // Базовые тесты системы типов
 TEST_F(TypeSystemTest, BasicTypeCreation) {
-    ts->add_builtin_types();
 
     // Проверяем иерархию КАК В ОРИГИНАЛЕ
     Type* int_type = ts->lookup_type("int");

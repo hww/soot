@@ -17,8 +17,6 @@ namespace script {
 
         // Конструкторы
         ListBuilder() { head = Object::make_null(); }
-        // Добавляем этот, чтобы lb{symbols} работало (даже если symbols не используется)
-        ListBuilder(SymbolTable& /*symbols*/) { head = Object::make_null(); }
 
         // Твой старый добрый push_back (rvalue)
         std::shared_ptr<PairObject> push_back(Object&& o) {
@@ -44,7 +42,7 @@ namespace script {
         }
 
         // Исправленный push_kv: убираем лишний &, если symbols уже ссылка
-        void push_kv(SymbolTable& symbols, const char* key_name, Object value) {
+        void push_kv(const char* key_name, Object value) {
             push_back(Object::make_keyword(key_name));
             push_back(std::move(value));
         }
@@ -69,9 +67,11 @@ namespace script {
             return obj;
         }
         Object finalize() {
-            if (tail) {
+            // Закрываем список нулем только если cdr всё еще пустой.
+            // Если там уже что-то есть (от точки), значит список уже завершен.
+            if (tail && tail->cdr.is_null()) {
                 tail->cdr = Object::make_null();
-            } else {
+            } else if (!tail) {
                 head = Object::make_null();
             }
             return head; 
@@ -79,34 +79,34 @@ namespace script {
 
         // --- Fluent API Методы ---
         
-        ListBuilder& add_object(Object o) {
+        ListBuilder& add(Object o) {
             push_back(std::move(o));
             return *this;
         }
 
         ListBuilder& add_symbol(const std::string& name) {
-            return add_object(Object::make_symbol(name));
+            return add(Object::make_symbol(name));
         }
 
         ListBuilder& add_keyword(const std::string& name) {
             // Если у тебя ключи — это символы начинающиеся с ':', используй make_keyword
-            return add_object(Object::make_keyword(name.c_str()));
+            return add(Object::make_keyword(name.c_str()));
         }
 
         ListBuilder& add_integer(int64_t val) {
-            return add_object(Object::make_integer(val));
+            return add(Object::make_integer(val));
         }
 
         ListBuilder& add_float(double val) {
-            return add_object(Object::make_float(val));
+            return add(Object::make_float(val));
         }
 
         ListBuilder& add_string(const std::string& val) {
-            return add_object(Object::make_string(val));
+            return add(Object::make_string(val));
         }
 
         ListBuilder& add_native_ref(std::shared_ptr<HeapObject> ptr) {
-            return add_object(Object::make_native_ref(ptr));
+            return add(Object::make_native_ref(ptr));
         }
     };
 

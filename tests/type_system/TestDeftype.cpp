@@ -45,7 +45,6 @@ protected:
         auto& deftype_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
         return parse_deftype(deftype_form, ts, nullptr);
     }
-
     TypeSystem* ts;
     script::Reader reader;
 };

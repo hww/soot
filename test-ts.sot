@@ -1,78 +1,77 @@
 ﻿(init-types 'z80)
 
+;; --- Стенд данных ---
 
-(defenum test-enum
-        :type uint8
-        (red   0) 
-        (green 1)
-        (blue  2))
+(defenum color-type :type uint8
+  (red   0) 
+  (green 1)
+  (blue  2))
 
-(defenum test-mask
-        :bitfield #t
-        :type uint8
-        (bit0 1)
-        (bit1 2)
-        (bit2 4)
-        (bit3 8)
-        (bit4 #x10)
-        (bit5 #x20)
-        (bit6 #x40)
-        (bit7 #x80)        
-        )
+(defenum permissions :bitfield #t :type uint8
+  (read  1)
+  (write 2)
+  (exec  4))
 
+;; Структура с дефолтными значениями (test_i8 = 1, test_i16 = 2)
 (deftype test-struct (basic)
-  ((test_i8   int8 1) 
+  ((test_i8   int8  1) 
    (test_i16  int16 2)))
 
 (deftype test-vector (basic)
-  ((x   int8 1) 
-   (y   int8 2))
+  ((x   int8 5)  ;; дефолт 5
+   (y   int8 10)) ;; дефолт 10
   (:methods
       (new (int8 int8) object)
-      (set (int8 int8) none)
-      (len () int8)
-      ))
+      (len () int8)))
 
-(let* ((buf (make-static-buffer "test" 200 #x100))
+;; --- Тестовая логика ---
+
+(let* ((buf (make-static-buffer "test" 512 #x100))
        (wr (make-static-writer buf)))
-   ;; 1. Простые типы
-  (write-to-writer wr #xAA :as 'int)
-  (write-to-writer wr #xBB :as 'int)
   
-  ;; 2. String
-  (write-to-writer wr "Hello" :as 'string)
-  ;; 3. test-struct с alist
-  (write-to-writer wr '((test_i8 . 10) (test_i16 . 1000)) :as 'test-struct)
+  (fmt #t "--- Starting Advanced TS Test ---\n")
+
+  ;; 1. Проверка инициализации дефолтов
+  ;; Просто пишем пустой список, ожидая, что сработают дефолты из deftype
+  (write-to-buffer wr '() :as 'test-struct)
+  (write-to-buffer wr '() :as 'test-vector)
   
-  ;; 4. test-vector с alist  
-  (write-to-writer wr '((x . 5) (y . 10)) :as 'test-vector)
-  ;; 5. Проверяем чтение полей
-  (fmt #t "=== Чтение полей ===\n")
+  ;; 2. Проверка частичной перезаписи
+  ;; Пишем только 'y', 'x' должен остаться дефолтным (5)
+  (write-to-buffer wr '((y . 99)) :as 'test-vector)
+
+;; 3. Смешанная запись (Enum + Mask)
+  ;; Передаем символы, которые enum должен уметь распознать
+  (write-to-buffer wr 'blue :as 'color-type)
+  (write-to-buffer wr 5 :as 'permissions) ;; (read | exec) = 1 | 4 = 5
+
+  ;; 4. Маркеры для визуального контроля (AAAAs)
+  (write-to-buffer wr #xAAAA :as 'uint16)
+
+  ;; --- Валидация ---
   
-  ;; Читаем test_i8 из test-struct
- ;(let ((test_i8 (static-buffer-read-field buf 0 'test-struct "test_i8")))
- ;  (fmt #t "test_i8 = {}\n" test_i8))
- ;
- ;;; Читаем x из test-vector
- ;(let ((x (static-buffer-read-field buf 
- ;          (+ (type-size (lookup-type (current-type-system) 'test-struct))
- ;             (type-size (lookup-type (current-type-system) 'string)))
- ;          'test-vector "x")))
- ;  (fmt #t "test-vector.x = {}\n" x))
+  ;; Создаем объект-адаптер над буфером, чтобы прочитать данные обратно
+  (let ((s-obj (read-from-buffer buf :as 'test-struct :at 0))
+        (v-obj (read-from-buffer buf :as 'test-vector :at 4)) ;; учитываем смещение
+        (v-partial (read-from-buffer buf :as 'test-vector :at 8)))
 
+    (fmt #t "\n[ASSERTION LOG]\n")
+    
+    ;; Проверяем дефолты первой структуры
+    (fmt #t "Struct Defaults: i8={} (expected 1), i16={} (expected 2)\n" 
+         (cell-get (-> s-obj 'test_i8)) 
+         (cell-get (-> s-obj 'test_i16)))
 
-(write-to-writer wr #x0155 :as 'int) 
-;;
-(write-to-writer wr 1 :as 'test-enum)
-;;
-(write-to-writer wr #x0155 :as 'int) 
-(write-to-writer wr 1 :as 'test-mask)
-;;
-(write-to-writer wr #x0455 :as 'int) 
-(write-to-writer wr 1 :as 'test-struct)
-;;
-(write-to-writer wr #x0555 :as 'int) 
+    ;; Проверяем дефолты вектора
+    (fmt #t "Vector Defaults: x={} (expected 5), y={} (expected 10)\n" 
+         (cell-get (-> v-obj 'x)) 
+         (cell-get (-> v-obj 'y)))
 
-(static-buffer-dump buf 0 1024 #t 16))
+    ;; Проверяем частичную запись
+    (fmt #t "Vector Partial:  x={} (expected 5), y={} (expected 99)\n" 
+         (cell-get (-> v-partial 'x)) 
+         (cell-get (-> v-partial 'y))))
 
-
+  ;; Финальный дамп
+  (fmt #t "\n--- Final Buffer Memory Dump ---\n")
+  (static-buffer-dump buf 0 64 #t 16))
