@@ -31,6 +31,8 @@ namespace script {
             , m_path(std::move(path))
         {
         }
+    
+        Type* get_type() const { return m_type; }
 
         Object get() override;
 
