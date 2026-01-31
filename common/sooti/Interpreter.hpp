@@ -412,6 +412,7 @@ namespace script
         Object eval_static_writer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object lookup_in_alist(Object list, const std::string& key);
         void recursive_write(Object cell_obj, Object value);
 
         // --- Инициализация системы типов ---          

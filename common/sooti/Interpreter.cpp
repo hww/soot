@@ -4222,7 +4222,7 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
             // 3. Переходим к следующему элементу списка
             current_list = current_list.as_pair()->cdr;
             index++;
-        }
+    }
         return; // Завершили запись массива
     }
 
