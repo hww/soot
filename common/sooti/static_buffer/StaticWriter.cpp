@@ -7,9 +7,9 @@ namespace script {
      * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
      */
     Object StaticWriter::allocate(const std::string& type_name) {
-        if (!m_ts || !m_buffer) return Object::make_undefined();
+        if (!m_buffer) return Object::make_undefined();
 
-        Type* type = m_ts->lookup_type(type_name);
+        Type* type = TypeSystem::instance().lookup_type(type_name);
         if (!type) return Object::make_undefined();
 
         // 1. Выравниваем курсор под требования типа
@@ -26,7 +26,7 @@ namespace script {
         void* ptr = m_buffer->data() + m_position;
         
         // 4. Создаем TypeCell на это место
-        auto cell = std::make_shared<TypeCell>(m_ts.get(), ptr, type);
+        auto cell = std::make_shared<TypeCell>(ptr, type);
         
         // 5. Двигаем курсор вперед
         m_position += size;

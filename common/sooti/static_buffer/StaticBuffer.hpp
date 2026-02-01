@@ -14,9 +14,9 @@ class Interpreter;
 class EnvironmentObject;
 
 enum class RelocType {
-    ABS_ADDR,   // Абсолютный адрес (16/32 бита в зависимости от архитектуры)
-    SYMBOL_CRC, // Запись CRC32/16 имени символа
-    RELATIVE,    // Относительный адрес (jump/call)
+    ABS_ADDR,           // Абсолютный адрес (16/32 бита в зависимости от архитектуры)
+    SYMBOL_CRC,         // Запись CRC32/16 имени символа
+    RELATIVE,           // Относительный адрес (jump/call)
     SYMBOL_TABLE_REF
 };
 
@@ -103,7 +103,9 @@ public:
     // Конструктор: привязываем буфер к конкретному типу из TypeSystem
     StaticBuffer(const std::string& type_name, int size, uint32_t origin = 0)
     : m_type_name(type_name), m_origin(origin),
-      m_symbol_table(std::make_unique<StaticSymbolTable>()) {
+      m_symbol_table(std::make_unique<StaticSymbolTable>()),
+      m_labels() 
+    {
         m_data.resize(size, 0); // Обнуляем память
     }
     
@@ -124,24 +126,7 @@ public:
         m_type_name, m_data.size(), m_origin);
     }
 
-    Object make_step_accessor(const Object& key) override {
-        std::string name = key.to_std_string();
-        if (name == "size")   return Object::make_integer(size());
-        if (name == "origin") return Object::make_integer(origin());
-        if (name == "type")   return Object::make_string(type_name());
-
-        // 2. Доступ по оффсету (если ключ — это число или строка-число)
-        // Например: (-> buffer #x40 'my-type)
-        // Но подожди, в `->` (navigation) у нас обычно пары: ключ -> тип.
-        // Давай сделаем так: если мы передаем число, это смещение.
-        if (key.is_integer()) {
-            size_t offset = static_cast<size_t>(key.as_integer());
-            // Здесь есть проблема: мы не знаем ТИП, просто имея оффсет.
-            // Поэтому для буфера лучше использовать (static-cell buffer offset 'type)
-        }
-
-        return Object::make_undefined();
-    }
+    Object make_step_accessor(const Object& key) override;
 
     // --- Реализация записи различных данных ---
 
@@ -301,6 +286,45 @@ private:
         return 32 + (m_symbol_table->size() * 8) + m_symbol_table->string_pool_size();
     }
 
+public:
+
+// --- Реализация меток  ---
+
+/**
+ * Добавляет метку на определенный офсет.
+ * Если метка уже существует, выбрасывает исключение (переопределение метки запрещено).
+ */
+void add_label(const std::string& name, size_t offset) {
+    if (m_labels.find(name) != m_labels.end()) {
+        throw std::runtime_error("Label already defined: " + name);
+    }
+    
+    // Проверка границ буфера для безопасности
+    if (offset >= m_data.size()) {
+        throw std::runtime_error("Label offset out of bounds: " + std::to_string(offset));
+    }
+
+    m_labels[name] = offset;
+}
+
+/**
+ * Возвращает офсет метки по её имени.
+ */
+size_t get_label_offset(const std::string& name) const {
+    auto it = m_labels.find(name);
+    if (it == m_labels.end()) {
+        throw std::runtime_error("Label not found: " + name);
+    }
+    return it->second;
+}
+
+/**
+ * Проверяет наличие метки.
+ */
+bool has_label(const std::string& name) const {
+    return m_labels.find(name) != m_labels.end();
+}
+    
 private:
     // --- 64-битные значения (8 байта) ---
 
@@ -412,12 +436,13 @@ private:
         m_data[offset + 1] = (value & 0xFF);
     } 
 private:
-    std::string m_type_name;     // Ссылка на тип в TypeSystem
-    uint32_t m_origin;           // Базовый адрес (например, #x2000)
-    std::vector<uint8_t> m_data; // Сырые байты
-    Endian m_endian = Endian::Little; // По умолчанию для Z80
+    std::string m_type_name;            // Ссылка на тип в TypeSystem
+    uint32_t m_origin;                  // Базовый адрес (например, #x2000)
+    std::vector<uint8_t> m_data;        // Сырые байты
+    Endian m_endian = Endian::Little;   // По умолчанию для Z80
     std::vector<Relocation> m_relocations;
     std::unique_ptr<StaticSymbolTable> m_symbol_table;
+    std::unordered_map<std::string, size_t> m_labels;
 };
 
 

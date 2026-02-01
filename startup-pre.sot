@@ -3,3 +3,5 @@
 (define debug-mode #t)
 (define version "1.0.0")
 (cfmt #t 'gray "✓ Startup Pre : Network services initialized\n")
+;(load "test-writer.sot")
+(load "test-buffer-labels.sot")

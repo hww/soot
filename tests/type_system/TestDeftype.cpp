@@ -28,12 +28,12 @@ void expect_deftype_throws(const std::function<void()>& func) {
 class DefTypeTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ts = new TypeSystem();
+        ts = &TypeSystem::instance();
         ts->add_builtin_types();
     }
 
     void TearDown() override {
-        delete ts;
+        ts = nullptr;
     }
     // Хелпер для парсинга как в оригинале
     DeftypeResult parse_deftype_string(const std::string& code) {

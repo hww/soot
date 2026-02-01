@@ -5,11 +5,11 @@
 namespace script {
 
 Object TypeCell::get() {
-    if (!m_ptr || !m_type || !m_ts) return Object::make_undefined();
+    if (!m_ptr || !m_type) return Object::make_undefined();
 
     // 1. Примитивы, Enum, Bitfield
     if (!m_type->is_reference()) {
-        return StaticBufferReader::read_value_at_ptr(m_ts.get(), m_ptr, m_type);
+        return StaticBufferReader::read_value_at_ptr(&TypeSystem::instance(), m_ptr, m_type);
     }
 
     // 2. Строки и Символы
@@ -20,12 +20,13 @@ Object TypeCell::get() {
     // 3. Структуры — возвращаем саму ячейку (для дальнейшей навигации через ->)
     return Object::make_heap_object(shared_from_this(), ObjectType::CELL);
 }
+
 void TypeCell::set(const Object& val) {
     if (!m_ptr || !m_type) return;
 
     try {
         // Выполняем физическую запись в буфер (учитывая тип: LE/BE, string и т.д.)
-        StaticBufferWriter::write_value_at_ptr(m_ts.get(), m_ptr, m_type, val);
+        StaticBufferWriter::write_value_at_ptr(m_ptr, m_type, val);
 
         std::string valhex;
         if (val.is_integer())
@@ -43,8 +44,9 @@ void TypeCell::set(const Object& val) {
         fmt::print(stderr, "[Error] Write failed for {}: {}\n", m_path, e.what());
     }
 }
+
 Object TypeCell::make_step_accessor(const Object& key) {
-    if (!m_ptr || !m_type || !m_ts) return Object::make_undefined();
+    if (!m_ptr || !m_type) return Object::make_undefined();
 
     // --- ЛОГИКА МАССИВОВ (Индексация по числу) ---
     if (key.is_integer()) {
@@ -64,7 +66,7 @@ Object TypeCell::make_step_accessor(const Object& key) {
         
         // Мы НЕ меняем тип, так как мы просто перешли к i-му элементу ТОГО ЖЕ типа
         return Object::make_heap_object(
-            std::make_shared<TypeCell>(m_ts.get(), next_ptr, m_type, fmt::format("{}[{}]", m_path, index)),
+            std::make_shared<TypeCell>(next_ptr, m_type, fmt::format("{}[{}]", m_path, index)),
             ObjectType::CELL
         );
     }
@@ -81,7 +83,7 @@ Object TypeCell::make_step_accessor(const Object& key) {
         std::string field_name = key.to_std_string();
         
         if (struct_type->lookup_field(field_name, &field)) {
-            Type* next_type_raw = m_ts->lookup_type(field.type());
+            Type* next_type_raw = TypeSystem::instance().lookup_type(field.type());
             if (!next_type_raw) {
                 throw std::runtime_error("Unknown field type: " + field.type().print());
             }
@@ -89,7 +91,7 @@ Object TypeCell::make_step_accessor(const Object& key) {
             uint8_t* next_ptr = static_cast<uint8_t*>(m_ptr) + field.offset();
             std::string next_path = m_path.empty() ? field_name : m_path + "." + field_name;
 
-            auto next_cell = std::make_shared<TypeCell>(m_ts.get(), next_ptr, next_type_raw, next_path);
+            auto next_cell = std::make_shared<TypeCell>(next_ptr, next_type_raw, next_path);
             return Object::make_heap_object(next_cell, ObjectType::CELL);
         }
     }
@@ -98,8 +100,9 @@ Object TypeCell::make_step_accessor(const Object& key) {
 }
 
 std::string TypeCell::print() const {
-    return fmt::format("#<type-cell {} @ {:p}>", 
-                      m_path.empty() ? m_type->get_name() : m_path, m_ptr);
+    auto value = const_cast<TypeCell*>(this)->get().print();
+    return fmt::format("#<type-cell {} @ {:p} :value {}>", 
+                      m_path.empty() ? m_type->get_name() : m_path, m_ptr, value.c_str());
 }
 
 Object TypeCell::inspect() const {

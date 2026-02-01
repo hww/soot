@@ -35,7 +35,6 @@ namespace script
     :   m_reader(this), 
         m_setter_map(),
         m_top_frame(nullptr),
-        m_type_system(std::make_shared<TypeSystem>()),
         m_symbol_table()
     {
         script::Object::set_symbol_table(&m_symbol_table);
@@ -268,7 +267,8 @@ namespace script
             {"make-buffer-cell",     &Interpreter::eval_make_buffer_cell, nullptr},
             {"static-buffer-dump",   &Interpreter::eval_static_buffer_dump, nullptr},
             {"write-to-buffer",      &Interpreter::eval_write_static, nullptr},
-            {"read-from-buffer",      &Interpreter::eval_read_static, nullptr},
+            {"read-from-buffer",     &Interpreter::eval_read_static, nullptr},
+            {"buffer-label",         &Interpreter::eval_add_buffer_label, nullptr},
         });
 
 
@@ -864,23 +864,41 @@ Object Interpreter::eval_define_special(const Object& form, const Object& rest, 
 
 Object Interpreter::eval_set_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     auto args = get_args(form, rest, ArgumentSpec(false, true));
-    vararg_check(form, args, {ObjectType::SYMBOL, {}}, {});
+    vararg_check(form, args, {{}, {}}, {});
     auto to_define = args.unnamed.at(0);
     Object to_set = eval_with_rewind(form, args.unnamed.at(1), env);
+    if (to_define.is_symbol()) {
+        std::shared_ptr<EnvironmentObject> search_env = env;
+        for (;;) {
+            auto kv = search_env->vars.lookup(to_define.as_symbol());
+            if (kv) {
+                search_env->vars.set(to_define.as_symbol(), to_set);
+                return to_set;
+            }
 
-    std::shared_ptr<EnvironmentObject> search_env = env;
-    for (;;) {
-        auto kv = search_env->vars.lookup(to_define.as_symbol());
-        if (kv) {
-            search_env->vars.set(to_define.as_symbol(), to_set);
-            return to_set;
+            auto pe = search_env->parent_env;
+            if (pe) {
+                search_env = pe;
+            } else {
+                throw_eval_error(to_define, "symbol is not defined " + std::string(to_define.as_symbol().c_str()));
+            }
         }
-
-        auto pe = search_env->parent_env;
-        if (pe) {
-            search_env = pe;
+    } else {
+        Object computet_to_define;
+        if (to_define.is_pair())
+            computet_to_define = eval_with_rewind(form, to_define, env);
+        else 
+            computet_to_define = to_define;
+        
+        if (computet_to_define.is_cell()) {
+            try {
+                computet_to_define.as_native_ref<MemoryCell>().get()->set(to_set);
+                return to_set;
+            } catch (const std::exception& e) { 
+                throw_eval_error(to_define, "set! for a cell completed with error: " + std::string(e.what()));
+            }     
         } else {
-            throw_eval_error(to_define, "symbol is not defined " + std::string(to_define.as_symbol().c_str()));
+            throw_eval_error(to_define, "set! expects symbol or cell, got " + to_define.print());
         }
     }
 }
@@ -3815,20 +3833,20 @@ Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const s
 // ==============================================
 
 void Interpreter::init_type_system(TypeSystemVariant types) {
-    m_type_system.get()->clear();
+    TypeSystem::instance().clear();
     
     switch (types) {
         case TypeSystemVariant::Z80:
-            m_type_system->add_builtin_types_z80();
+            TypeSystem::instance().add_builtin_types_z80();
             break;
         case TypeSystemVariant::Default:
-            m_type_system->add_builtin_types();
+            TypeSystem::instance().add_builtin_types();
         default:
             break;
     }
 
     define_var_in_env(get_global_environment(), 
-                    m_type_system->to_alias(), 
+                    TypeSystem::instance().to_alias(), 
                     "*type-system*");
 }
 
@@ -3837,7 +3855,7 @@ Object Interpreter::eval_typespec_special(const Object&, const Object& rest, con
     if (rest.is_null()) return get_null();
 
     Object spec_input = rest.as_pair()->car;
-    auto ts = std::make_shared<TypeSpec>(parse_typespec(m_type_system.get(), spec_input));
+    auto ts = std::make_shared<TypeSpec>(parse_typespec(&TypeSystem::instance(), spec_input));
     
     return Object::make_native_ref(ts);
 }
@@ -3845,19 +3863,19 @@ Object Interpreter::eval_typespec_special(const Object&, const Object& rest, con
 Object Interpreter::eval_deftype_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     auto env_ptr = get_global_environment().as_env();
-    parse_deftype(rest, m_type_system.get(), &env_ptr->vars);
+    parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
     return get_null();
 }
 
 Object Interpreter::eval_defenum_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    parse_defenum(rest, m_type_system.get(), nullptr);
+    parse_defenum(rest, nullptr);
     return get_null();
 }
 
 Object Interpreter::eval_types_to_lisp(const Object&, Arguments&, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    return m_type_system->get_all_type_names_as_objects();
+    return TypeSystem::instance().get_all_type_names_as_objects();
 }
 
 Object Interpreter::eval_init_types(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -4043,7 +4061,7 @@ Object Interpreter::eval_make_static_buffer(const Object& form, Arguments& args,
 Object Interpreter::eval_make_static_writer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
     auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
-    auto writer = std::make_shared<StaticWriter>(buffer, m_type_system);
+    auto writer = std::make_shared<StaticWriter>(buffer);
     return Object::make_heap_object(writer, ObjectType::STATIC_WRITER);
 }
 /**
@@ -4061,7 +4079,7 @@ Object Interpreter::eval_make_static_writer(const Object& form, Arguments& args,
  * * * @return Object (TypeCell).
  */
 Object Interpreter::eval_make_buffer_cell(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
-     vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
+    vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
     // (static-cell buffer offset 'type) ИЛИ (static-cell writer 'type)
     if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
         auto writer = args.unnamed[0].as_native_ref<StaticWriter>();
@@ -4073,11 +4091,49 @@ Object Interpreter::eval_make_buffer_cell(const Object& form, Arguments& args, c
     size_t offset = static_cast<size_t>(args.unnamed[1].as_integer());
     std::string type_name = args.unnamed[2].as_symbol();
 
-    Type* type = m_type_system->lookup_type(type_name);
+    Type* type = TypeSystem::instance().lookup_type(type_name);
     void* ptr = buffer->data() + offset;
 
-    auto cell = std::make_shared<TypeCell>(m_type_system.get(), ptr, type);
+    auto cell = std::make_shared<TypeCell>(ptr, type);
     return Object::make_heap_object(cell, ObjectType::CELL);
+}   
+// (buffer-label writer 'foo)
+// (buffer-label buffer 'foo :address address)
+Object Interpreter::eval_add_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // Проверяем аргументы: 2 обязательных, 1 именованный "address"
+    vararg_check(form, args, {{}, {ObjectType::SYMBOL}}, {{"address", {false, ObjectType::INTEGER}}});
+
+    auto label_name = args.unnamed.at(1).to_std_string();
+    auto first_arg = args.unnamed.at(0);
+
+    if (first_arg.is_buffer_writer()) {
+        // Форма: (buffer-label writer 'foo)
+        auto writer = first_arg.as_native_ref<StaticWriter>();
+        
+        // Берем текущий оффсет из писателя и регистрируем в его буфере
+        writer->get_buffer()->add_label(label_name, writer->tell());
+
+    } else if (first_arg.is_static_buffer()) {
+        // Форма: (buffer-label buffer 'foo :address 100)
+        if (!args.has_named("address")) {
+            throw_eval_error(form, "Direct buffer labeling requires a :address parameter");
+        }
+
+        auto buffer = first_arg.as_native_ref<StaticBuffer>();
+        int64_t address = args.get_named("address").as_integer();
+
+        if (address < 0) {
+            throw_eval_error(form, "Label address cannot be negative");
+        }
+
+        buffer->add_label(label_name, static_cast<size_t>(address));
+
+    } else {
+        throw_eval_error(form, "First argument must be a static-writer or static-buffer, got " + first_arg.print());
+    }
+
+    // Возвращаем символ метки (традиционно для Lisp)
+    return args.unnamed.at(1);
 }
 /**
  * @brief Визуализация содержимого памяти (Hex Dump).
@@ -4159,8 +4215,8 @@ Object Interpreter::eval_write_static(const Object& form, Arguments& args, const
             }
             auto buffer = target.as_native_ref<StaticBuffer>();
             write_offset = static_cast<size_t>(args.named["at"].as_integer());
-            Type* type = m_type_system->lookup_type(type_name);
-            managed_cell = std::make_shared<TypeCell>(m_type_system.get(), buffer->data() + write_offset, type);
+            Type* type = TypeSystem::instance().lookup_type(type_name);
+            managed_cell = std::make_shared<TypeCell>(buffer->data() + write_offset, type);
             cell_ptr = managed_cell.get();
         }
 
@@ -4228,10 +4284,29 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
 
     // --- ОБРАБОТКА СТРУКТУРЫ (alist) ---
     if (value.is_pair() && value.as_pair()->car.is_pair()) {
-        // Твоя текущая логика итерации по полям...
-        // (key . val) -> recursive_write(cell->make_step_accessor(key), val)
+        Object current = value;
+        while (current.is_pair()) {
+            Object entry = current.as_pair()->car;
+            if (entry.is_pair()) {
+                Object key = entry.as_pair()->car;   // Например, 'tag'
+                Object val = entry.as_pair()->cdr;   // Например, #x55
+
+                try {
+                    // Создаем "дочернюю" ячейку для конкретного поля
+                    // make_step_accessor сам вычислит смещение поля внутри структуры
+                    Object field_cell = cell_obj.as_native_ref<TypeCell>()->make_step_accessor(key);
+                    
+                    // Рекурсивно пишем значение в это поле
+                    recursive_write(field_cell, val);
+                } catch (const std::exception& e) {
+                    // Если поля не существует или ошибка смещения
+                    throw_eval_error(key, "StaticWrite error in field '" + key.print() + "': " + e.what());
+                }
+            }
+            current = current.as_pair()->cdr;
+        }
+        return; // Завершаем обработку структуры
     }
-    
     // --- ОБРАБОТКА ПРИМИТИВА ---
     // Если это не список, значит это конечное значение (int, float, etc.)
     if (!value.is_pair()) {
@@ -4240,6 +4315,7 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
 }
 
 Object Interpreter::eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
     vararg_check(form, args, {{}}, {
         {"as", {true, ObjectType::SYMBOL}},
         {"at", {true, ObjectType::INTEGER}}
@@ -4249,11 +4325,11 @@ Object Interpreter::eval_read_static(const Object& form, Arguments& args, const 
     std::string type_name = args.named["as"].to_std_string();
     size_t offset = static_cast<size_t>(args.named["at"].as_integer());
 
-    Type* type = m_type_system->lookup_type(type_name);
+    Type* type = TypeSystem::instance().lookup_type(type_name);
     if (!type) throw std::runtime_error("Unknown type: " + type_name);
 
     // Создаем ячейку-окно
-    auto cell = std::make_shared<TypeCell>(m_type_system.get(), buffer->data() + offset, type);
+    auto cell = std::make_shared<TypeCell>(buffer->data() + offset, type);
     
     // Если это простая переменная (int, float), возвращаем значение сразу.
     // Если структура — возвращаем TypeCell, чтобы юзер мог делать (-> cell 'field)
