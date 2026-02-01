@@ -4,9 +4,10 @@
 
 namespace script {
 
-void StaticBufferWriter::write_value_at_ptr(TypeSystem* ts, void* ptr, Type* type, const Object& val) {
+void StaticBufferWriter::write_value_at_ptr(void* ptr, Type* type, const Object& val) {
     if (!ptr || !type) return;
-
+    TypeSystem* ts = &TypeSystem::instance();
+    
     // Специальная обработка строк (так как они могут быть "string" или "symbol")
     const std::string& type_name = type->get_name();
     if (type_name == "string" || type_name == "symbol") {

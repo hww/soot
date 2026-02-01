@@ -23,18 +23,6 @@ namespace {
 }  // namespace
 
 // ============================================================================
-// TypeSystem Constructor
-// ============================================================================
-
-TypeSystem::TypeSystem() {
-
-    // Add basic null types
-    // add_type("none", std::make_unique<NullType>("none"));
-    // add_type("_type_", std::make_unique<NullType>("_type_"));
-    // add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
-}
-
-// ============================================================================
 // Type Management
 // ============================================================================
 

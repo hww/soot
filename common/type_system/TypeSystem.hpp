@@ -155,9 +155,15 @@ struct TypeSearchFieldInput {
 // ============================================================================
 
 class TypeSystem : public HeapObject {
+    TypeSystem() = default; // Закрытый конструктор
 public:
-    TypeSystem();
     ~TypeSystem() = default;
+    
+    // Точка доступа к единственному экземпляру
+    static TypeSystem& instance() {
+        static std::shared_ptr<TypeSystem> inst = std::shared_ptr<TypeSystem>(new TypeSystem());
+        return *inst;
+    }
 
     // ========================================================================
     // Type Management

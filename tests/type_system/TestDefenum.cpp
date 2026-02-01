@@ -7,12 +7,12 @@
 class DefEnumTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ts = new TypeSystem();
+        ts =  &TypeSystem::instance();
         ts->add_builtin_types();
     }
 
     void TearDown() override {
-        delete ts;
+        ts = nullptr;
     }
     // Хелпер для парсинга как в оригинале
     EnumType* parse_deftype_string(const std::string& code, DefinitionMetadata* metda_data = nullptr) {

@@ -2,9 +2,10 @@
 #include "common/sooti/Interpreter.hpp" 
 #include "common/sooti/Object.hpp"
 #include "common/type_system/Type.hpp"
-
+#include "common/sooti/static_buffer/TypeCell.hpp"
 
 namespace script {
+
 
     // Записать таблицу в буфер
     size_t StaticSymbolTable::write_to_buffer(StaticBuffer* dest, size_t offset) {
@@ -44,6 +45,38 @@ namespace script {
 // StaticBuffer
 // ============================================================================
 
+Object StaticBuffer::make_step_accessor(const Object& key) {
+    // 1. Системные свойства (возвращаем как обычные значения)
+    if (key.is_symbol()) {
+        std::string name = key.to_std_string();
+        if (name == "size")   return Object::make_integer(size());
+        if (name == "origin") return Object::make_integer(origin());
+        if (name == "type")   return Object::make_string(type_name());
+
+        // 2. Доступ по метке
+        if (has_label(name)) {
+            size_t offset = get_label_offset(name);
+            auto b_cell = std::make_shared<BufferCell>(
+                std::static_pointer_cast<StaticBuffer>(shared_from_this()), 
+                offset
+            );
+            return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
+        }
+    }
+
+    // 3. Доступ по оффсету напрямую
+    if (key.is_integer()) {
+        size_t offset = static_cast<size_t>(key.as_integer());
+        auto b_cell = std::make_shared<BufferCell>(
+            std::static_pointer_cast<StaticBuffer>(shared_from_this()), 
+            offset
+        );
+        return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
+    }
+
+    return Object::make_undefined();
+}
+
 Object StaticBuffer::inspect() const {
     std::vector<Object> bytes;
     size_t limit = std::min(m_data.size(), (size_t)1024);
@@ -62,6 +95,7 @@ Object StaticBuffer::inspect() const {
         pretty_print::build_list(Object::make_symbol(":size"),   Object::make_integer(m_data.size())),
         pretty_print::build_list(Object::make_symbol(":origin"), Object::make_integer(m_origin)),
         pretty_print::build_list(Object::make_symbol(":endian"), Object::make_string(m_endian == Endian::Little ? "little" : "big")),
+        pretty_print::build_list(Object::make_symbol(":labels"), Object::make_integer(m_labels.size())),
         pretty_print::build_list(Object::make_symbol(":data"),   Object::make_list(bytes))
     );
 }

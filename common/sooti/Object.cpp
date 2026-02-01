@@ -26,7 +26,8 @@ namespace script
             if (!s_table) s_table = new SymbolTable();
             return s_table;
     }
-
+    SymbolTable& Object::symbol_table() { return *get_symbol_table(); }
+    
     SymbolTable::SymbolTable() {
         m_power_of_two_size = 1;  // 2 ^ 1 = 2
         m_entries.resize(2);
@@ -280,18 +281,9 @@ namespace script
     }
 
     Object Object::step(const Object& key) const {
-        // Если тип объекта предполагает наличие HeapObject (CELL, NATIVE_REF, TYPE и т.д.)
-        if (this->is_pair()) { 
-            return this->as_pair()->make_step_accessor(key);
-        }
-        if (this->is_array()) { 
-            return this->as_array()->make_step_accessor(key);
-        }
-        if (this->is_cell()) { 
-            return this->as_native_ref<MemoryCell>()->make_step_accessor(key);
-        }
-        if (this->is_heap_object()) { 
-            return this->as_heap_object()->make_step_accessor(key);
+        // Для всего, что живет в куче (NativeRef, Cell, Buffer, Array, String)
+        if (this->heap_obj) {
+            return this->heap_obj->make_step_accessor(key);
         }
         
         throw std::runtime_error(fmt::format("Type {} does not support '->' operator", this->type_name()));
@@ -341,7 +333,43 @@ namespace script
         return obj;     
     }
 
-    // Constructors
+    Object Object::make_reader(TextStream* textStream)
+    {
+        Object obj;
+        obj.type = ObjectType::READER;
+        obj.heap_obj = std::make_shared<ReaderObject>(textStream);
+        return obj;    
+    }
+        
+    Object Object::make_native_ref(std::shared_ptr<HeapObject> heap_object)
+    {
+        Object obj;
+        obj.type = ObjectType::NATIVE_REF;
+        obj.heap_obj = std::move(heap_object);
+        return obj;    
+    }
+
+    Object Object::make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type)
+    {
+        Object obj;
+        obj.type = ObjectType::CELL;
+        
+        // Сначала настраиваем данные внутри MemoryCell
+        if (cell) {
+            cell->m_kind = type;
+        }
+        
+        // И только в самом конце отдаем владение объекту Object
+        obj.heap_obj = std::move(cell); 
+        return obj;
+    }
+
+    Object Object::make_cell(void* raw_ptr, MemoryAccessKind type) {
+        // Создаем НОВЫЙ объект ячейки в куче, который будет смотреть на raw_ptr
+        auto cell = std::make_shared<MemoryCell>(raw_ptr);
+        return make_cell(std::move(cell), type);
+    }
+
     Object Object::make_integer(IntType value) {
         Object obj;
         obj.type = ObjectType::INTEGER;
@@ -372,7 +400,7 @@ namespace script
     Object Object::make_list(const std::vector<Object>& elements) {
         return build_list(elements);
     }
-    
+
     InternedSymbolPtr Object::intern(const char* name) { 
         if (get_symbol_table()) 
             return get_symbol_table()->intern(name);
@@ -423,42 +451,6 @@ namespace script
         return obj;
     }
     
-    Object Object::make_reader(TextStream* textStream)
-    {
-        Object obj;
-        obj.type = ObjectType::READER;
-        obj.heap_obj = std::make_shared<ReaderObject>(textStream);
-        return obj;    
-    }
-        
-    Object Object::make_native_ref(std::shared_ptr<HeapObject> heap_object)
-    {
-        Object obj;
-        obj.type = ObjectType::NATIVE_REF;
-        obj.heap_obj = std::move(heap_object);
-        return obj;    
-    }
-
-    Object Object::make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type)
-    {
-        Object obj;
-        obj.type = ObjectType::CELL;
-        
-        // Сначала настраиваем данные внутри MemoryCell
-        if (cell) {
-            cell->m_kind = type;
-        }
-        
-        // И только в самом конце отдаем владение объекту Object
-        obj.heap_obj = std::move(cell); 
-        return obj;
-    }
-
-    Object Object::make_cell(void* raw_ptr, MemoryAccessKind type) {
-        // Создаем НОВЫЙ объект ячейки в куче, который будет смотреть на raw_ptr
-        auto cell = std::make_shared<MemoryCell>(raw_ptr);
-        return make_cell(std::move(cell), type);
-    }
 
     Object Object::make_lambda(const ArgumentSpec& args, const Object& body,
         const std::shared_ptr<EnvironmentObject>& env) {

@@ -202,8 +202,8 @@ namespace script
 
         // Тот самый делегат который сообщает о текущей таблицк
         static void set_symbol_table(SymbolTable* table) { s_table = table; }
-        static inline SymbolTable& symbol_table() { return *get_symbol_table(); }
         static inline SymbolTable* get_symbol_table();
+        static inline SymbolTable& symbol_table();
         static InternedSymbolPtr intern(const char* name);
         // адресация к объекту -> key
         Object step(const Object& key) const;

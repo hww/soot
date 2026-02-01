@@ -11,7 +11,7 @@ public:
      * Главная точка входа для записи значения по указателю.
      * Используется TypeCell::set().
      */
-    static void write_value_at_ptr(TypeSystem* ts, void* ptr, Type* type, const Object& val);
+    static void write_value_at_ptr(void* ptr, Type* type, const Object& val);
 
 private:
     static void write_primitive_at_ptr(void* ptr, ValueType* type, const Object& val);

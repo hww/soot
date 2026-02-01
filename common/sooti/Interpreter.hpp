@@ -159,7 +159,6 @@ namespace script
         Object get_global_environment() { return m_global_environment; }
         TextDb& get_db() { return m_reader.get_db(); }
         SymbolTable& symbol_table() { return m_symbol_table; }
-        TypeSystem& type_system() { return *(m_type_system.get()); }
 
         // --- Для REPL и LSP -------------------
         std::string get_all_symbols_matching(const std::string& prefix);
@@ -410,6 +409,7 @@ namespace script
         Object eval_make_static_writer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_write_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_static_writer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_add_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object lookup_in_alist(Object list, const std::string& key);
@@ -447,7 +447,6 @@ namespace script
         bool        m_disable_printing = false;
         Reader      m_reader;
         ContextFrame* m_top_frame;
-        std::shared_ptr<TypeSystem>  m_type_system;
         SymbolTable m_symbol_table;
     };
 

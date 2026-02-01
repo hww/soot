@@ -5,15 +5,15 @@
 class TypeSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ts = std::make_unique<TypeSystem>();
+        ts = &TypeSystem::instance();
         ts->add_builtin_types();
     }
 
     void TearDown() override {
-        ts.reset();
+        ts = nullptr;
     }
 
-    std::unique_ptr<TypeSystem> ts;
+    TypeSystem* ts;
 };
 
 // Базовые тесты системы типов

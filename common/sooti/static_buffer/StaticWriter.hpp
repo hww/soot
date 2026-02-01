@@ -11,12 +11,10 @@ class StaticWriter : public HeapObject {
 private:
     size_t m_position = 0;
     std::shared_ptr<StaticBuffer> m_buffer;
-    std::shared_ptr<TypeSystem> m_ts;
 
 public:
-    StaticWriter(const std::shared_ptr<StaticBuffer>& buffer, 
-                 const std::shared_ptr<TypeSystem>& ts)
-        : m_buffer(buffer), m_ts(ts), m_position(0) {}
+    StaticWriter(const std::shared_ptr<StaticBuffer>& buffer)
+        : m_buffer(buffer), m_position(0) {}
 
     /**
      * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
@@ -28,6 +26,7 @@ public:
     size_t tell() const { return m_position; }
     void align(size_t a) { m_position = (m_position + a - 1) & ~(a - 1); }
     size_t remaining() const { return m_buffer->size() - m_position; }
+    std::shared_ptr<script::StaticBuffer> get_buffer() { return m_buffer; }
 
     // Инспекция (упрощенная)
     std::string print() const override {
