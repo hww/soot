@@ -6,7 +6,7 @@
         :type uint8
         (red   0) 
         (green 1)
-        (blue  2))
+        (label4e  2))
 
 (defenum test-mask
         :bitfield #t
@@ -42,28 +42,33 @@
 (defparameter 
    test 
    (lzasm-z80 
-
-$bla
-      (jmp 'blo)
+      (org #x8000)
+$start
+     (jp 'label3)
+      (db 22)
+      (db (list 22 33 44))
+      (dw 64)
+      (ds 8)
+      (dw 'start)
+      (dw '(1 2 3))
+      (ascii "Hello World\n")
+      (align 16)
+$label1
+      (jmp 'label1)
+      (jmp 'label2)
       (ld @a @b) 
-$bli
-      (jmp 'blo)
+$label2
+      (jmp 'label1)
+      (jmp 'label3)
       (ld @c (+ 1 3)) 
-$ble
-      (ld @c (+ 1 3)) 
-      (ld @c (+ 1 3)) 
-$blu
-      (ld @a @c)
-$blo
-
-(subroutine blubber
+(subroutine label3
       (ld @a @c))
-      (jmp 'blo)
-      (jmp 'blu)
+      (jmp 'label1)
+      (jmp 'label2)
+      (jmp 'label3)
+      (jp 'label1)
   )
 )
-
-;(assemble test)
 
 (let* ((result (assemble test))
        (bin-data (cdr (assoc :bin result)))

@@ -26,34 +26,34 @@
 
 ;; --- Тестовая логика ---
 
-(let* ((buf (make-static-buffer "test" 512 #x100))
-       (wr (make-static-writer buf)))
+(let* ((buf (make-buffer "test" 512 #x100))
+       (wr (make-buffer-writer buf)))
   
   (fmt #t "--- Starting Advanced TS Test ---\n")
 
   ;; 1. Проверка инициализации дефолтов
   ;; Просто пишем пустой список, ожидая, что сработают дефолты из deftype
-  (write-to-buffer wr '() :as 'test-struct)
-  (write-to-buffer wr '() :as 'test-vector)
+  (buffer-write wr '() :as 'test-struct)
+  (buffer-write wr '() :as 'test-vector)
   
   ;; 2. Проверка частичной перезаписи
   ;; Пишем только 'y', 'x' должен остаться дефолтным (5)
-  (write-to-buffer wr '((y . 99)) :as 'test-vector)
+  (buffer-write wr '((y . 99)) :as 'test-vector)
 
 ;; 3. Смешанная запись (Enum + Mask)
   ;; Передаем символы, которые enum должен уметь распознать
-  (write-to-buffer wr 'blue :as 'color-type)
-  (write-to-buffer wr 5 :as 'permissions) ;; (read | exec) = 1 | 4 = 5
+  (buffer-write wr 'blue :as 'color-type)
+  (buffer-write wr 5 :as 'permissions) ;; (read | exec) = 1 | 4 = 5
 
   ;; 4. Маркеры для визуального контроля (AAAAs)
-  (write-to-buffer wr #xAAAA :as 'uint16)
+  (buffer-write wr #xAAAA :as 'uint16)
 
   ;; --- Валидация ---
   
   ;; Создаем объект-адаптер над буфером, чтобы прочитать данные обратно
-  (let ((s-obj (read-from-buffer buf :as 'test-struct :at 0))
-        (v-obj (read-from-buffer buf :as 'test-vector :at 4)) ;; учитываем смещение
-        (v-partial (read-from-buffer buf :as 'test-vector :at 8)))
+  (let ((s-obj (buffer-read buf :as 'test-struct :at 0))
+        (v-obj (buffer-read buf :as 'test-vector :at 4)) ;; учитываем смещение
+        (v-partial (buffer-read buf :as 'test-vector :at 8)))
 
     (fmt #t "\n[ASSERTION LOG]\n")
     
@@ -74,4 +74,4 @@
 
   ;; Финальный дамп
   (fmt #t "\n--- Final Buffer Memory Dump ---\n")
-  (static-buffer-dump buf 0 64 #t 16))
+  (buffer-dump buf 0 64 #t 16))

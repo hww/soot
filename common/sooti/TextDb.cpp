@@ -30,7 +30,7 @@ namespace script {
 
 	std::string SourceText::get_line_containing_offset(int offset) {
 		auto range = get_containing_line(offset);
-		int start_offset = range.first > 0 ? 1 : 0;
+		int start_offset = 0;//range.first == 0 ? 1 : 0;
 		return m_text.substr(range.first + start_offset,
 			std::max(0, range.second - range.first - start_offset));
 	}

@@ -12,42 +12,36 @@
 ))
 
 ;; 2. Создаем буфер и "писателя"
-(define buf (make-static-buffer "DRV_SEG" 64 0))
-(define wr  (make-static-writer buf))
+(define buf (make-buffer "DRV_SEG" 64 0))
+(define wr  (make-buffer-writer buf))
 
-    (fmt #t "--- Шаг 1: Запись начальных данных ---\n")
-    
-    ;; Ставим метку в самом начале
-    (buffer-label wr 'segment-start)
-    
-    ;; Записываем структуру через alist
-    (write-to-buffer wr 
-        '((name . (#x41 #x42 #x43 #x00)) ;; "ABC\0"
-          (config . ((id . #x1234) 
-                     (version . 1) 
-                     (flags . #x80))))
-        :as 'device-header)
+(fmt #t "--- Шаг 1: Запись начальных данных ---\n")
 
-    (fmt #t "--- Шаг 2: Использование меток ---\n")
+;; Ставим метку в самом начале
+(buffer-add-label wr "segment-start")
 
-    ;; Допустим, здесь начинается какой-то код инициализации
-    ;; Мы ставим метку через курсор
-    (buffer-label wr 'init-routine)
-    
-    ;; Пишем пару "пустых" команд (например, NOP = 0)
-    (write-to-buffer wr 0 :as 'uint8)
-    (write-to-buffer wr 0 :as 'uint8)
+;; Записываем структуру через alist
+(buffer-write wr 
+    '((name . (#x41 #x42 #x43 #x00)) ;; "ABC\0"
+      (config . ((id . #x1234) 
+                 (version . 1) 
+                 (flags . #x80))))
+    :as 'device-header)
+(fmt #t "--- Шаг 2: Использование меток ---\n")
+;; Допустим, здесь начинается какой-то код инициализации
+;; Мы ставим метку через курсор
+(buffer-add-label wr "init-routine")
 
-    ;; А теперь ставим метку вручную на фиксированный адрес
-    ;; (например, системный обработчик Z80 на адресе #x0038)
-    (buffer-label buf 'rst-handler :address #x38)
-
-    (fmt #t "--- Шаг 3: Проверка результатов ---\n")
-
-    ;; Выводим оффсеты меток, чтобы убедиться, что они зацепились
-    (fmt #t "Метка 'segment-start' на: {}\n" (buffer-get-label-offset buf 'segment-start))
-    (fmt #t "Метка 'init-routine'  на: {}\n" (buffer-get-label-offset buf 'init-routine))
-    (fmt #t "Метка 'rst-handler'   на: {}\n" (buffer-get-label-offset buf 'rst-handler))
-
-    ;; Дамп буфера
-    (fmt #t "Dump of DRV_SEG:\n{}\n" (static-buffer-dump buf 0 32 #t 8))
+;; Пишем пару "пустых" команд (например, NOP = 0)
+(buffer-write wr 0 :as 'uint8)
+(buffer-write wr 0 :as 'uint8)
+;; А теперь ставим метку вручную на фиксированный адрес
+;; (например, системный обработчик Z80 на адресе #x0038)
+(buffer-add-label buf 'rst-handler :address #x38)
+(fmt #t "--- Шаг 3: Проверка результатов ---\n")
+;; Выводим оффсеты меток, чтобы убедиться, что они зацепились
+(fmt #t "Метка 'segment-start' на: {}\n" (-> buf 'segment-start))
+(fmt #t "Метка 'init-routine'  на: {}\n" (-> buf 'init-routine))
+(fmt #t "Метка 'rst-handler'   на: {}\n" (-> buf 'rst-handler))
+;; Дамп буфера
+(fmt #t "Dump of DRV_SEG:\n{}\n" (buffer-dump buf 0 32 #t 8))

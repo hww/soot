@@ -97,7 +97,7 @@ namespace script
 
         struct SpecialFormMethodRec { 
             SpecialFormMethodRec() {}
-            SpecialFormMethodRec(SpecialFormMethod method) : method(method), specs(true, true) {};
+            SpecialFormMethodRec(SpecialFormMethod method) : method(method), specs(false, true) {};
             SpecialFormMethodRec(SpecialFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};
             SpecialFormMethod method; 
             ArgumentSpec specs {}; 
@@ -105,7 +105,7 @@ namespace script
 
         struct BuiltinFormMethodRec { 
             BuiltinFormMethodRec() {}
-            BuiltinFormMethodRec(BuiltinFormMethod method) : method(method), specs(true, true) {}
+            BuiltinFormMethodRec(BuiltinFormMethod method) : method(method), specs(false, true) {}
             BuiltinFormMethodRec(BuiltinFormMethod method, ArgumentSpec* spec) : method(method), specs(*spec) {};            
             BuiltinFormMethod method; 
             ArgumentSpec specs {}; 
@@ -283,6 +283,7 @@ namespace script
         Object eval_string_starts_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_ends_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_split(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Векторы
         Object eval_vector(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -299,7 +300,8 @@ namespace script
         Object eval_hash_table_try_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-
+        Object eval_hash_table_containsp(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env);
+        
         // Системные и ввод-вывод
         Object eval_print(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -369,6 +371,21 @@ namespace script
         Object eval_lshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_rshift(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
+        // Математика и округление
+        Object eval_floor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_ceiling(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_round(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_mod(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Тригонометрия
+        Object eval_sin(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_cos(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_tan(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_atan(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+        // Константы
+        Object eval_pi(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
         // Время
         Object eval_time_seconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_time_milliseconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -385,10 +402,11 @@ namespace script
         ArgumentSpec parse_arg_spec(const Object& form, Object& rest);
         void set_args_in_env(const Object& form, const Arguments& args,
         const ArgumentSpec& arg_spec, const std::shared_ptr<EnvironmentObject>& env);
-        void vararg_check(const Object& form,
+        void vararg_check(
+            const Object& form,
             const Arguments& args,
-            const std::vector<std::optional<ObjectType>>& unnamed,
-            const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named);
+            const std::vector<std::vector<ObjectType>>& unnamed,
+            const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>>& named);
 
         Object eval_defenum_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
@@ -407,11 +425,13 @@ namespace script
 
         Object eval_make_static_buffer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_make_static_writer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_write_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_static_writer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_add_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_reloc(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_buffer_link(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object lookup_in_alist(Object list, const std::string& key);
         void recursive_write(Object cell_obj, Object value);
 

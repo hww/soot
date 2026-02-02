@@ -80,8 +80,13 @@ namespace script
             {"macro", ObjectType::MACRO},
             {"environment", ObjectType::ENVIRONMENT},
             {"reader", ObjectType::READER},
+            {"cell", ObjectType::CELL},
+            {"static-buffer", ObjectType::STATIC_BUFFER},
+            {"static-writer", ObjectType::STATIC_WRITER},
         };
-        
+
+        ArgumentSpec args_with_keys(true,true);
+
         // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
         init_special_forms({
             {"define", &Interpreter::eval_define_special, nullptr},
@@ -158,6 +163,7 @@ namespace script
             {"string-starts-with?", &Interpreter::eval_string_starts_with, nullptr},
             {"string-ends-with?",   &Interpreter::eval_string_ends_with, nullptr},
             {"string-split",        &Interpreter::eval_string_split, nullptr},
+            {"string->list",        &Interpreter::eval_string_to_list, nullptr},
 
             // Векторы
             {"vector",              &Interpreter::eval_vector, nullptr},
@@ -170,6 +176,7 @@ namespace script
             {"make-hash-table",     &Interpreter::eval_make_hash_table, nullptr},
             {"hash-table-set!",     &Interpreter::eval_hash_table_set, nullptr},
             {"hash-table-ref",      &Interpreter::eval_hash_table_ref, nullptr},
+            {"hash-table-contains?",&Interpreter::eval_hash_table_containsp, nullptr},
             {"hash-table-try-ref",  &Interpreter::eval_hash_table_try_ref, nullptr},
             {"hash-table-length",   &Interpreter::eval_hash_table_length, nullptr},
             {"hash-table->list",    &Interpreter::eval_hash_table_to_list, nullptr},
@@ -240,6 +247,22 @@ namespace script
             {"sqrt",                &Interpreter::eval_sqrt, nullptr},
             {"ash",                 &Interpreter::eval_ash, nullptr},
 
+            // Математика: округление и остаток
+            {"floor",               &Interpreter::eval_floor, nullptr},
+            {"ceiling",             &Interpreter::eval_ceiling, nullptr},
+            {"round",               &Interpreter::eval_round, nullptr},
+            {"mod",                 &Interpreter::eval_mod, nullptr},
+            {"abs",                 &Interpreter::eval_abs, nullptr},
+
+            // Тригонометрия
+            {"sin",                 &Interpreter::eval_sin, nullptr},
+            {"cos",                 &Interpreter::eval_cos, nullptr},
+            {"tan",                 &Interpreter::eval_tan, nullptr},
+            {"atan",                &Interpreter::eval_atan, nullptr},
+
+            // Константы
+            {"pi",                  &Interpreter::eval_pi, nullptr},
+
             {"logand",              &Interpreter::eval_logand, nullptr},
             {"logior",              &Interpreter::eval_logior, nullptr},
             {"logxor",              &Interpreter::eval_logxor, nullptr},
@@ -262,13 +285,15 @@ namespace script
             {"cell-set",            &Interpreter::eval_cell_set, nullptr},
 
             // Buffer
-            {"make-static-buffer",   &Interpreter::eval_make_static_buffer, nullptr},
-            {"make-static-writer",   &Interpreter::eval_make_static_writer, nullptr},
+            {"make-buffer",          &Interpreter::eval_make_static_buffer, nullptr},
+            {"make-buffer-writer",   &Interpreter::eval_make_static_writer, nullptr},
             {"make-buffer-cell",     &Interpreter::eval_make_buffer_cell, nullptr},
-            {"static-buffer-dump",   &Interpreter::eval_static_buffer_dump, nullptr},
-            {"write-to-buffer",      &Interpreter::eval_write_static, nullptr},
-            {"read-from-buffer",     &Interpreter::eval_read_static, nullptr},
-            {"buffer-label",         &Interpreter::eval_add_buffer_label, nullptr},
+            {"buffer-dump",          &Interpreter::eval_buffer_dump, nullptr},
+            {"buffer-write",         &Interpreter::eval_buffer_write, &args_with_keys},
+            {"buffer-read",          &Interpreter::eval_buffer_read, &args_with_keys},
+            {"buffer-add-label",     &Interpreter::eval_buffer_label, &args_with_keys},
+            {"buffer-write-reloc",   &Interpreter::eval_buffer_reloc, nullptr},
+            {"buffer-link",          &Interpreter::eval_buffer_link, nullptr},
         });
 
 
@@ -1730,6 +1755,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
  *
  * UNNAMED ARGUMENT PATTERNS:
  *   {}                    - Any number of arguments allowed (variadic)
+ *   {{Type::INT, Type::FLOAT}} - One of two types
  *   {{}}                  - Exactly one argument, any type
  *   {{}, {}}              - Exactly two arguments, any types
  *   {ObjectType::INTEGER} - Exactly one INTEGER argument
@@ -1774,52 +1800,70 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object& form, Object& rest) {
 void Interpreter::vararg_check(
     const Object& form,
     const Arguments& args,
-    const std::vector<std::optional<ObjectType>>& unnamed,
-    const std::unordered_map<std::string, std::pair<bool, std::optional<ObjectType>>>& named) {
+    const std::vector<std::vector<ObjectType>>& unnamed,
+    const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>>& named) {
 
-    // Проверка unnamed аргументов
+    // 1. Проверка unnamed аргументов
     if (!unnamed.empty()) {
         if (args.unnamed.size() != unnamed.size()) {
-            std::string argstr = args.print_full();
             throw_eval_error(form, fmt::format("expected {} unnamed arguments, got {} in args {}",
-                unnamed.size(), args.unnamed.size(), argstr));
+                unnamed.size(), args.unnamed.size(), args.print_full()));
         }
 
         for (size_t i = 0; i < unnamed.size(); ++i) {
-            if (unnamed[i].has_value() && args.unnamed[i].type != unnamed[i].value()) {
-                std::string expected = object_type_to_string(unnamed[i].value());
+            const auto& allowed_types = unnamed[i];
+            if (allowed_types.empty()) continue; // Разрешен любой тип
+
+            // Проверяем, входит ли тип аргумента в список разрешенных
+            bool type_ok = false;
+            for (auto type : allowed_types) {
+                if (args.unnamed[i].type == type) {
+                    type_ok = true;
+                    break;
+                }
+            }
+
+            if (!type_ok) {
+                std::string expected;
+                for (auto t : allowed_types) expected += object_type_to_string(t) + " ";
                 std::string got = object_type_to_string(args.unnamed[i].type);
-                std::string argstr = args.print_full();
-                throw_eval_error(form, fmt::format("argument {}: expected {}, got {} in args {}", i, expected, got, argstr));
+                throw_eval_error(form, fmt::format("argument {}: expected one of [{}], got {} in args {}", 
+                    i, expected, got, args.print_full()));
             }
         }
     }
-    // ЕСЛИ unnamed пустой - ЛЮБОЕ количество аргументов разрешено (не проверяем количество)
 
-    // Проверка named аргументов
+    // 2. Проверка named аргументов
     for (const auto& [name, spec] : named) {
         auto it = args.named.find(name);
-        if (spec.first) { // required
-            if (it == args.named.end()) {
-                std::string argstr = args.print_full();                
-                throw_eval_error(form, fmt::format("required named argument '{}' missing in arga {}", name, argstr));
-            }
+        bool required = spec.first;
+        const auto& allowed_types = spec.second;
+
+        if (required && it == args.named.end()) {
+            throw_eval_error(form, fmt::format("required named argument '{}' missing in args {}", name, args.print_full()));
         }
 
-        if (it != args.named.end() && spec.second.has_value() &&
-            it->second.type != spec.second.value()) {
-            std::string expected = object_type_to_string(spec.second.value());
-            std::string got = object_type_to_string(it->second.type);
-            std::string argstr = args.print_full();
-            throw_eval_error(form, fmt::format("named argument '{}': expected {}, got {} in arga {}", name, expected, got, argstr));
+        if (it != args.named.end() && !allowed_types.empty()) {
+            bool type_ok = false;
+            for (auto type : allowed_types) {
+                if (it->second.type == type) {
+                    type_ok = true;
+                    break;
+                }
+            }
+            if (!type_ok) {
+                std::string expected;
+                for (auto t : allowed_types) expected += object_type_to_string(t) + " ";
+                throw_eval_error(form, fmt::format("named argument '{}': expected one of [{}], got {}", 
+                    name, expected, object_type_to_string(it->second.type)));
+            }
         }
     }
 
-    // Проверка лишних named аргументов
+    // 3. Проверка лишних named (оставляем как было)
     for (const auto& [name, _] : args.named) {
         if (named.find(name) == named.end()) {
-            std::string argstr = args.print_full();            
-            throw_eval_error(form, fmt::format("unexpected named argument '{}'", name, argstr));
+            throw_eval_error(form, fmt::format("unexpected named argument '{}' in args {}", name, args.print_full()));
         }
     }
 }
@@ -1990,7 +2034,7 @@ Object Interpreter::eval_error(const Object& form,
     // Проверяем аргументы: 
     // 1-й обязательно STRING. 
     // 2-й опционально ЛЮБОЙ (поэтому пустые скобки {} во втором векторе)
-    vararg_check(form, args, { ObjectType::STRING, {} }, {});
+    vararg_check(form, args, { {ObjectType::STRING}, {} }, {});
 
     std::string message = args.unnamed.at(0).as_string()->data;
     
@@ -2276,6 +2320,81 @@ Object Interpreter::eval_ash(const Object& form, Arguments& args, const std::sha
     return Object::make_null();
 }
 
+// --- Floor / Ceiling / Round ---
+Object Interpreter::eval_floor(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+    return Object::make_integer(static_cast<int64_t>(std::floor(args.unnamed[0].as_float())));
+}
+
+Object Interpreter::eval_ceiling(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+    return Object::make_integer(static_cast<int64_t>(std::ceil(args.unnamed[0].as_float())));
+}
+
+Object Interpreter::eval_round(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+    return Object::make_integer(static_cast<int64_t>(std::round(args.unnamed[0].as_float())));
+}
+
+// --- Modulo (целочисленный) ---
+Object Interpreter::eval_mod(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER}, {ObjectType::INTEGER} }, {});
+    
+    int64_t a = args.unnamed[0].as_integer();
+    int64_t b = args.unnamed[1].as_integer();
+    if (b == 0) throw_eval_error(form, "mod: division by zero");
+    
+    return Object::make_integer(a % b);
+}
+
+// --- Trigonometry ---
+Object Interpreter::eval_sin(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+    return Object::make_float(std::sin(args.unnamed[0].as_float()));
+}
+
+Object Interpreter::eval_cos(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+    return Object::make_float(std::cos(args.unnamed[0].as_float()));
+}
+
+Object Interpreter::eval_atan(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    size_t num_args = args.unnamed.size();
+
+    if (num_args == 1) {
+        vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+        return Object::make_float(std::atan(args.unnamed[0].as_float()));
+    } 
+    else if (num_args == 2) {
+        vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT}, {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+        return Object::make_float(std::atan2(args.unnamed[0].as_float(), args.unnamed[1].as_float()));
+    } 
+    else {
+        throw_eval_error(form, fmt::format("atan: expected 1 or 2 arguments, got {}", num_args));
+    }
+}
+
+Object Interpreter::eval_tan(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    // Тангенс всегда принимает ровно один аргумент (угол в радианах)
+    vararg_check(form, args, { {ObjectType::INTEGER, ObjectType::FLOAT} }, {});
+
+    return Object::make_float(std::tan(args.unnamed[0].as_float()));
+}
+
+Object Interpreter::eval_pi(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env; (void)form;
+    vararg_check(form, args, {}, {}); // pi вызывается как (pi)
+    return Object::make_float(M_PI);
+}
+
 // ==============================================
 // Bit operations
 // ==============================================
@@ -2436,7 +2555,7 @@ Object Interpreter::eval_cons(const Object & form, Arguments & args, const std::
 
 Object Interpreter::eval_car(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::PAIR }, {}); // Один pair
+    vararg_check(form, args, { {ObjectType::PAIR} }, {}); // Один pair
 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "car requires a pair argument");
@@ -2446,7 +2565,7 @@ Object Interpreter::eval_car(const Object& form, Arguments& args, const std::sha
 
 Object Interpreter::eval_cdr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::PAIR }, {}); // Один pair
+    vararg_check(form, args, { {ObjectType::PAIR} }, {}); // Один pair
 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "cdr requires a pair argument");
@@ -2535,7 +2654,7 @@ Object Interpreter::eval_type_of(const Object & form, Arguments & args, const st
 
 Object Interpreter::eval_type_p(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
-    vararg_check(form, args, { {}, ObjectType::SYMBOL }, {});
+    vararg_check(form, args, { {}, {ObjectType::SYMBOL} }, {});
 
     auto type_name = args.unnamed[1].as_symbol().name_ptr;
     auto kv = m_string_to_type.find(type_name);
@@ -2699,13 +2818,13 @@ Object Interpreter::eval_equals(const Object& form, Arguments& args, const std::
 
 Object Interpreter::eval_string_length(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка
     return Object::make_integer(args.unnamed[0].as_string()->length());
 }
 
 Object Interpreter::eval_string_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING, ObjectType::INTEGER }, {}); // Строка и индекс
+    vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::INTEGER} }, {}); // Строка и индекс
 
     const std::string& str = args.unnamed[0].as_string()->data;
     int64_t index = args.unnamed[1].as_integer();
@@ -2733,7 +2852,7 @@ Object Interpreter::eval_string_append(const Object& form, Arguments& args, cons
 
 Object Interpreter::eval_string_substr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING, ObjectType::INTEGER, ObjectType::INTEGER }, {}); // Строка, начало, конец
+    vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::INTEGER}, {ObjectType::INTEGER} }, {}); // Строка, начало, конец
 
     const std::string& str = args.unnamed[0].as_string()->data;
     int64_t start = args.unnamed[1].as_integer();
@@ -2751,7 +2870,7 @@ Object Interpreter::eval_string_starts_with(const Object& form,
                                             Arguments& args,
                                             const std::shared_ptr<EnvironmentObject>& env) {
   (void)env;
-  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::STRING} }, {});
   auto& str = args.unnamed.at(0).as_string()->data;
   auto& suffix = args.unnamed.at(1).as_string()->data;
 
@@ -2765,7 +2884,7 @@ Object Interpreter::eval_string_ends_with(const Object& form,
                                           Arguments& args,
                                           const std::shared_ptr<EnvironmentObject>& env) {
   (void)env;
-  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  vararg_check(form, args,  { {ObjectType::STRING}, {ObjectType::STRING} }, {});
   auto& str = args.unnamed.at(0).as_string()->data;
   auto& suffix = args.unnamed.at(1).as_string()->data;
 
@@ -2779,23 +2898,40 @@ Object Interpreter::eval_string_split(const Object& form,
                                       Arguments& args,
                                       const std::shared_ptr<EnvironmentObject>& env) {
   (void)env;
-  vararg_check(form, args, {ObjectType::STRING, ObjectType::STRING}, {});
+  vararg_check(form, args,  { {ObjectType::STRING}, {ObjectType::STRING} }, {});
   auto& str = args.unnamed.at(0).as_string()->data;
   auto& delim = args.unnamed.at(1).as_string()->data;
   auto list = str_util::split(str, delim.at(0));
   return pretty_print::build_list(list);
 }
 
+Object Interpreter::eval_string_to_list(const Object& form,
+                                      Arguments& args,
+                                      const std::shared_ptr<EnvironmentObject>& env) {
+(void)env;
+  vararg_check(form, args, { {ObjectType::STRING} }, {});
+  
+  // Берем данные строки
+  const auto& str = args.unnamed.at(0).as_string()->data;
+  ListBuilder lb;
+
+  for (char c : str) { // Исправлен синтаксис цикла
+      // Превращаем каждый char в числовой объект (код символа)
+      lb.add_integer(static_cast<uint8_t>(c));
+  }                                    
+  
+  return lb.finalize();
+}
 
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка
     return make_symbol(args.unnamed[0].as_string()->data);
 }
 
 Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::SYMBOL }, {}); // Один символ
+    vararg_check(form, args, {{ ObjectType::SYMBOL }}, {}); // Один символ
     return Object::make_string(args.unnamed[0].as_symbol().name_ptr ?
         args.unnamed[0].as_symbol().name_ptr : "");
 }
@@ -2813,7 +2949,7 @@ Object Interpreter::eval_vector(const Object & form, Arguments & args, const std
 
 Object Interpreter::eval_vector_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::ARRAY, ObjectType::INTEGER }, {}); // Вектор и индекс
+    vararg_check(form, args, { {ObjectType::ARRAY}, {ObjectType::INTEGER} }, {}); // Вектор и индекс
 
     auto elements = args.unnamed[0].as_array();
     int64_t index = args.unnamed[1].as_integer();
@@ -2827,7 +2963,7 @@ Object Interpreter::eval_vector_ref(const Object& form, Arguments& args, const s
 
 Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::ARRAY, ObjectType::INTEGER, {} }, {}); // Вектор, индекс, значение
+    vararg_check(form, args, { {ObjectType::ARRAY}, {ObjectType::INTEGER}, {} }, {}); // Вектор, индекс, значение
 
     auto array = args.unnamed[0].as_array();
 
@@ -2842,13 +2978,13 @@ Object Interpreter::eval_vector_set(const Object& form, Arguments& args, const s
 
 Object Interpreter::eval_vector_length(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::ARRAY }, {}); // Один вектор
+    vararg_check(form, args, { {ObjectType::ARRAY} }, {}); // Один вектор
     return Object::make_integer(args.unnamed[0].as_array()->size());
 }
 
 Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::ARRAY }, {});
+    vararg_check(form, args, { {ObjectType::ARRAY} }, {});
 
     auto array = args.unnamed[0].as_array();
     
@@ -2953,7 +3089,7 @@ Object Interpreter::eval_make_hash_table(const Object & form, Arguments & args, 
 
 Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {}, {} }, {}); // Таблица, ключ, значение
+    vararg_check(form, args, { {ObjectType::STRING_HASH_TABLE}, {}, {} }, {}); // Таблица, ключ, значение
 
     auto ht = args.unnamed[0].as_hash_table();
     const char* key = get_hash_key(args.unnamed.at(1));
@@ -2969,7 +3105,7 @@ Object Interpreter::eval_hash_table_set(const Object& form, Arguments& args, con
 
 Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {} }, {}); // Таблица и ключ
+    vararg_check(form, args, { {ObjectType::STRING_HASH_TABLE}, {} }, {}); // Таблица и ключ
 
     auto ht = args.unnamed[0].as_hash_table();
     const char* key = get_hash_key(args.unnamed.at(1));
@@ -2990,7 +3126,7 @@ Object Interpreter::eval_hash_table_ref(const Object& form, Arguments& args, con
 
 Object Interpreter::eval_hash_table_try_ref(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
 
-    vararg_check(form, args, { ObjectType::STRING_HASH_TABLE, {} }, {});
+    vararg_check(form, args, { {ObjectType::STRING_HASH_TABLE}, {} }, {});
 
     const auto* table = args.unnamed.at(0).as_hash_table();
 
@@ -3002,6 +3138,28 @@ Object Interpreter::eval_hash_table_try_ref(const Object & form, Arguments & arg
             return Object::make_pair(get_false(), Object::make_null());
         } else {
             return Object::make_pair(get_true(), it->second);
+        }
+    }
+    else {
+        throw_eval_error(form, "Hash table must use symbol or string as the key.");
+    }
+    return get_null();
+}
+
+Object Interpreter::eval_hash_table_containsp(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env) {
+
+    vararg_check(form, args, { {ObjectType::STRING_HASH_TABLE}, {} }, {});
+
+    const auto* table = args.unnamed.at(0).as_hash_table();
+
+    const char* key = get_hash_key(args.unnamed.at(1));
+    if (key != nullptr) {
+        const auto& it = table->data.find(key);
+        if (it == table->data.end()) {
+            // not in table
+            return get_false();
+        } else {
+            return get_true();
         }
     }
     else {
@@ -3053,7 +3211,7 @@ Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const
 // Читает весь файл как текст.
 Object Interpreter::eval_read_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (имя файла)
 
     std::string filename = args.unnamed[0].as_string()->data;
     return Object::make_string(file_util::read_text(filename));
@@ -3062,14 +3220,14 @@ Object Interpreter::eval_read_str(const Object& form, Arguments& args, const std
 // Превращает строку в список команд: (top-level .. ). Удобно для eval.
 Object Interpreter::eval_parse_str(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка
     return m_reader.read_from_string(args.unnamed[0].as_string()->data, true, "read string");
 }
 
 // Читает весь файл как данные, обернутые в top-level.
 Object Interpreter::eval_read_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (имя файла)
 
     std::string filename = args.unnamed[0].as_string()->data;
     std::string content = file_util::read_text(filename);
@@ -3096,7 +3254,7 @@ Object Interpreter::eval_load(const Object& form, Arguments& args, const std::sh
 
 Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя файла)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (имя файла)
 
     std::string filename = args.unnamed[0].as_string()->data;
     std::ifstream file(filename);
@@ -3113,7 +3271,7 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
 
 Object Interpreter::eval_get_env(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (имя переменной)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (имя переменной)
 
     std::string var_name = args.unnamed[0].as_string()->data;
     const char* value = std::getenv(var_name.c_str());
@@ -3128,7 +3286,7 @@ Object Interpreter::eval_get_env(const Object& form, Arguments& args, const std:
 
 Object Interpreter::eval_system(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (команда)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (команда)
 
     std::string command = args.unnamed[0].as_string()->data;
     int result = std::system(command.c_str());
@@ -3148,7 +3306,7 @@ Object Interpreter::eval_exit(const Object& form, Arguments& args, const std::sh
 
 Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::SYMBOL }, {}); // Один символ
+    vararg_check(form, args, {{ ObjectType::SYMBOL }}, {}); // Один символ
     std::string sym = args.unnamed[0].as_symbol().name_ptr;
     file_util::PathType select;
     if (sym == "cwd")             select = file_util::PathType::CWD;
@@ -3166,7 +3324,7 @@ Object Interpreter::eval_get_path(const Object& form, Arguments& args, const std
 
 Object Interpreter::eval_find_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); // Одна строка (команда)
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка (команда)
 
     std::string path = args.unnamed[0].as_string()->data;
     auto found = file_util::find_config_file(path);
@@ -3176,7 +3334,7 @@ Object Interpreter::eval_find_file(const Object& form, Arguments& args, const st
 Object Interpreter::eval_write_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
 (void)env;
     // Путь — строка, Данные — любой тип (массив или список)
-    vararg_check(form, args, { ObjectType::STRING, {} }, {});
+    vararg_check(form, args, { {ObjectType::STRING}, {} }, {});
 
     std::string path = args.unnamed[0].as_string()->data;
     Object data = args.unnamed[1];
@@ -3212,7 +3370,7 @@ Object Interpreter::eval_write_binary_file(const Object& form, Arguments& args, 
 // Gets file path andh the read mode 
 Object Interpreter::eval_read_binary_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, {}); 
+    vararg_check(form, args, {{ ObjectType::STRING }}, {}); 
 
     std::string path = args.unnamed[0].as_string()->data;
     
@@ -3243,7 +3401,7 @@ Object Interpreter::eval_read_binary_file(const Object& form, Arguments& args, c
 Object Interpreter::eval_write_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     // Ждем две строки: путь и контент
-    vararg_check(form, args, { ObjectType::STRING, ObjectType::STRING }, {});
+    vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::STRING} }, {});
 
     std::string path = args.unnamed[0].as_string()->data;
     std::string content = args.unnamed[1].as_string()->data;
@@ -3262,7 +3420,7 @@ Object Interpreter::eval_write_text_file(const Object& form, Arguments& args, co
 Object Interpreter::eval_read_text_file(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     // Ждем один аргумент — путь к файлу
-    vararg_check(form, args, { ObjectType::STRING }, {});
+    vararg_check(form, args, {{ ObjectType::STRING }}, {});
 
     std::string path = args.unnamed[0].as_string()->data;
     
@@ -3297,7 +3455,7 @@ Object Interpreter::eval_eval(const Object& form, Arguments& args, const std::sh
 
 Object Interpreter::eval_set_car(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::PAIR, {} }, {}); // Пара и значение
+    vararg_check(form, args, { {ObjectType::PAIR}, {} }, {}); // Пара и значение
 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "set-car! requires a pair as first argument");
@@ -3308,7 +3466,7 @@ Object Interpreter::eval_set_car(const Object& form, Arguments& args, const std:
 
 Object Interpreter::eval_set_cdr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::PAIR, {} }, {}); // Пара и значение
+    vararg_check(form, args, { {ObjectType::PAIR}, {} }, {}); // Пара и значение
 
     if (!args.unnamed[0].is_pair()) {
         throw_eval_error(form, "set-cdr! requires a pair as first argument");
@@ -3323,7 +3481,7 @@ Object Interpreter::eval_set_cdr(const Object& form, Arguments& args, const std:
 
 Object Interpreter::eval_number_to_string(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
-    vararg_check(form, args, { {} }, { {"base", {false, ObjectType::INTEGER}} });
+    vararg_check(form, args, { {} }, { {"base", {false, {ObjectType::INTEGER}}} });
 
     // Проверяем что это ЧИСЛО (любое)
     if (!is_number(args.unnamed[0])) {
@@ -3350,7 +3508,7 @@ Object Interpreter::eval_number_to_string(const Object & form, Arguments & args,
 
 Object Interpreter::eval_string_to_number(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::STRING }, { {"base", {false, ObjectType::INTEGER}} }); // Строка и опционально основание
+    vararg_check(form, args, {{ ObjectType::STRING }}, { {"base", {false, {ObjectType::INTEGER}}} }); // Строка и опционально основание
 
     std::string str = args.unnamed[0].as_string()->data;
     int base = 10;
@@ -3379,13 +3537,13 @@ Object Interpreter::eval_string_to_number(const Object& form, Arguments& args, c
 
 Object Interpreter::eval_char_to_integer(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::CHAR }, {}); // Один символ
+    vararg_check(form, args, { {ObjectType::CHAR} }, {}); // Один символ
     return Object::make_integer(static_cast<int64_t>(args.unnamed[0].as_char()));
 }
 
 Object Interpreter::eval_integer_to_char(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { ObjectType::INTEGER }, {}); // Одно целое
+    vararg_check(form, args, { {ObjectType::INTEGER} }, {}); // Одно целое
 
     int64_t code = args.unnamed[0].as_integer();
     if (code < 0 || code > 255) {
@@ -3677,7 +3835,7 @@ Object Interpreter::eval_source_info(const Object& form, Arguments& args, const 
 Object Interpreter::eval_get_context(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     // Проверка аргумента (ожидаем INTEGER)
-    vararg_check(form, args, { ObjectType::INTEGER }, { });
+    vararg_check(form, args, { {ObjectType::INTEGER} }, { });
 
     int64_t ctx_index = args.unnamed[0].as_integer();
     if (ctx_index < 0) {
@@ -3869,7 +4027,7 @@ Object Interpreter::eval_deftype_special(const Object&, const Object& rest, cons
 
 Object Interpreter::eval_defenum_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    parse_defenum(rest, nullptr);
+    parse_defenum(rest, &TypeSystem::instance(), nullptr);
     return get_null();
 }
 
@@ -4099,11 +4257,14 @@ Object Interpreter::eval_make_buffer_cell(const Object& form, Arguments& args, c
 }   
 // (buffer-label writer 'foo)
 // (buffer-label buffer 'foo :address address)
-Object Interpreter::eval_add_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_buffer_label(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     // Проверяем аргументы: 2 обязательных, 1 именованный "address"
-    vararg_check(form, args, {{}, {ObjectType::SYMBOL}}, {{"address", {false, ObjectType::INTEGER}}});
-
-    auto label_name = args.unnamed.at(1).to_std_string();
+    vararg_check(form, args, {{}, {}}, {{"address", {false, {ObjectType::INTEGER}}}});
+    auto arg1 = args.unnamed.at(1);
+    if (!(arg1.is_string() || arg1.is_symbol())){
+        throw_eval_error(form, "arg1 expects string or symbol got " + arg1.print()); 
+    }
+    auto label_name = arg1.to_std_string();
     auto first_arg = args.unnamed.at(0);
 
     if (first_arg.is_buffer_writer()) {
@@ -4149,7 +4310,7 @@ Object Interpreter::eval_add_buffer_label(const Object& form, Arguments& args, c
  * (fmt #t (static-buffer-dump buf 0 256 #t 16))
  * * * @return Object (String с отформатированным дампом).
  */
-Object Interpreter::eval_static_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_buffer_dump(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{ObjectType::STATIC_BUFFER},
         {ObjectType::INTEGER},
         {ObjectType::INTEGER},
@@ -4185,10 +4346,10 @@ Object Interpreter::eval_static_buffer_dump(const Object& form, Arguments& args,
  * (write-to-buffer wr 10 :as 'test-enum)   ; Запись значения по типу
  * * * @return Object (Integer — итоговый offset записи).
  */
-Object Interpreter::eval_write_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_buffer_write(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, {{}, {}}, {
-        {"as", {true, ObjectType::SYMBOL}},
-        {"at", {false, ObjectType::INTEGER}}
+        {"as", {true,  {ObjectType::SYMBOL}}},
+        {"at", {false, {ObjectType::INTEGER}}}
     });
 
     Object target = args.unnamed[0];
@@ -4314,11 +4475,11 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
     }
 }
 
-Object Interpreter::eval_read_static(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_buffer_read(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, {{}}, {
-        {"as", {true, ObjectType::SYMBOL}},
-        {"at", {true, ObjectType::INTEGER}}
+        {"as", {true, {ObjectType::SYMBOL}}},
+        {"at", {true, {ObjectType::INTEGER}}}
     });
 
     auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
@@ -4334,5 +4495,43 @@ Object Interpreter::eval_read_static(const Object& form, Arguments& args, const 
     // Если это простая переменная (int, float), возвращаем значение сразу.
     // Если структура — возвращаем TypeCell, чтобы юзер мог делать (-> cell 'field)
     return cell->get();
+}
+
+/**
+ * (define buf (make-static-buffer "ROM" 1024))
+ *
+ * ;; Записываем код, который прыгает на обработчик, которого еще нет
+ * (buffer-write-u8 buf 0 #xC3) ;; Код инструкции JP
+ * (buffer-write-reloc buf 1 "irq_handler") ;; Релокация на 1-й байт (адрес для JP)
+ * 
+ * ;; ... где-то позже или в другом файле ...
+ * (buffer-add-label buf "irq_handler" #x0100)
+ */
+
+Object Interpreter::eval_buffer_reloc(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::STATIC_BUFFER}, {ObjectType::INTEGER},  {ObjectType::STRING}}, {});
+
+    auto buf = args.unnamed[0].as_native_ref<StaticBuffer>();
+    size_t offset = args.unnamed[1].as_integer();
+    std::string target = args.unnamed[2].to_std_string();
+    
+    // По умолчанию считаем ABS_ADDR 16-бит (Z80 style), 
+    // но можно расширить аргументами
+    buf->write_reloc(offset, target, RelocType::ABS_ADDR);
+    
+    return Object::make_undefined();
+}
+Object Interpreter::eval_buffer_link(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    (void)env;
+    vararg_check(form, args, { {ObjectType::STATIC_BUFFER} }, {});
+
+    auto buf = args.unnamed[0].as_native_ref<StaticBuffer>();
+    
+    // По умолчанию считаем ABS_ADDR 16-бит (Z80 style), 
+    // но можно расширить аргументами
+    buf->link_internal();
+    
+    return Object::make_undefined();
 }
 } // namespace script
