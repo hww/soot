@@ -1,0 +1,43 @@
+﻿(init-types 'z80)
+
+;; 1. Создаем буфер для кода Z80 (origin по адресу #x8000)
+(define buf (make-buffer "CODE_SEG" 64 #x8000))
+
+(fmt #t "--- Шаг 1: Запись кода с релокациями ---\n")
+
+;; Представим, что мы пишем инструкцию LD HL, (DATA_ADDR)
+;; Код для Z80: #x21 <address_low> <address_high>
+(buffer-write buf #x21 :at 0 :as 'uint8) 
+
+;; Мы еще не знаем, где будет метка 'app-version', но обещаем её найти
+;; Используем нашу новую функцию write-reloc
+(buffer-write-reloc buf 1 "app-version")
+
+;; 2. Записываем инструкцию JP (прыжок) на процедуру инициализации
+(buffer-write buf #xC3 :at 3 :as 'uint8)
+(buffer-write-reloc buf 4 "init-routine")
+
+(fmt #t "Состояние буфера до линковки (ожидаем нули в адресах):\n")
+(fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+
+(fmt #t "--- Шаг 2: Определение меток ---\n")
+
+;; Теперь ставим метки. 'app-version' будет в конце кода, 'init-routine' чуть раньше.
+(buffer-add-label buf "init-routine" :address #x10)
+(buffer-add-label buf "app-version"  :address #x20)
+
+;; Запишем по этим адресам какие-нибудь данные для наглядности
+(buffer-write buf #x0105 :at #x20 :as 'uint16) ; Version 1.5
+
+(fmt #t "--- Шаг 3: Линковка ---\n")
+
+;; Магический момент: проход по таблице релокаций и подстановка адресов
+(buffer-link buf)
+
+(fmt #t "Состояние буфера ПОСЛЕ линковки (адреса должны прошиться):\n")
+(fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+
+
+;; Проверка конкретных значений
+(define target-addr (buffer-read buf :at 1 :as 'uint8))
+(fmt #t "Прошитый адрес 'app-version': {:#x} (ожидаем #x8020)\n" target-addr)

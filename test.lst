@@ -1,16 +1,26 @@
-0000 | bla:            | 
-0000 |   18 0A         | jr blo
-0002 |   78            | ld a, b
-0003 | bli:            | 
-0003 |   18 07         | jr blo
-0005 |   0E 04         | ld c, 4
-0007 | ble:            | 
-0007 |   0E 04         | ld c, 4
-0009 |   0E 04         | ld c, 4
-000B | blu:            | 
-000B |   79            | ld a, c
-000C | blo:            | 
-000C | blubber:        | 
-000C |   79            | ld a, c
-000D |   18 FD         | jr blo
-000F |   18 FA         | jr blu
+8000 | [ORG SET]        | org 32768
+8000 | start:          
+8000 |    C3 3B 80      | jp label3
+8003 |    16            | db 22
+8004 |    16 21 2C      | db (22 33 44)
+8007 |    40 00         | dw 64
+8009 |    00 00 00 00 00 00 00 00  | ds 8
+8011 |    00 80         | dw start
+8013 |    01 00 02 00 03 00  | dw (1 2 3)
+8019 |    48 65 6C 6C 6F 20 57 6F 72 6C 64 0A  | ascii Hello World
+
+8025 |    00 00 00 00 00 00 00 00 00 00 00  | align 16
+8030 | label1:         
+8030 |    18 FE         | jr label1
+8032 |    18 01         | jr label2
+8034 |    78            | ld a, b
+8035 | label2:         
+8035 |    18 F9         | jr label1
+8037 |    18 02         | jr label3
+8039 |    0E 04         | ld c, 4
+803B | label3:         
+803B |    79            | ld a, c
+803C |    18 F2         | jr label1
+803E |    18 F5         | jr label2
+8040 |    18 F9         | jr label3
+8042 |    C3 30 80      | jp label1

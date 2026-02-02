@@ -185,14 +185,11 @@
 (defun cdddr  (x) (cdr (cdr (cdr x))))
 (defun cadddr (x) (car (cdr (cdr (cdr x))))) ; 4-й элемент
 
-;; @doc (length lst) -> integer
-;; Итеративный подсчет длины списка (безопасно для стека).
-;(defun length (lst)
-;  (let ((n 0) (iter lst))
-;    (while (not (null? iter))
-;      (set! n (+ n 1))
-;      (set! iter (cdr iter)))
-;    n))
+;; Utility dunction
+(defun make-list (len val)
+  (if (<= len 0)
+      '()
+      (cons val (make-list (- len 1) val))))
 
 (defun copy-list (lis)
   (if (null? lis)
@@ -411,6 +408,20 @@
               (flat-map proc (cdr lis)))))
 
 ;=================================================================
+; Hash Table
+;=================================================================
+
+;; Получить все ключи хеш-таблицы
+(defun hash-table->keys (ht)
+  (mapcar (lambda (pair) (car pair)) 
+          (hash-table->list ht)))
+
+;; Получить все значения хеш-таблицы
+(defun hash-table->values (ht)
+  (mapcar (lambda (pair) (cdr pair)) 
+          (hash-table->list ht)))
+
+;=================================================================
 ; Mimic Common Lisp Library
 ;=================================================================
 
@@ -531,16 +542,14 @@
        ;; --- Конструктор ---
        ;; Используем &key, так как это Лисп-функция, она умеет в именованные аргументы
        (defun ,constructor (&key ,@normalized)
-         (make-hash-table 
-          (list 
-           ;; Теперь не нужно (list ':_type_ 's), можно проще:
-           (cons :_type_ ',struct-name-sym)
-           ,@(map (lambda (f-spec)
-                    (let ((f-name (car f-spec))
-                          (key (intern (concat ":" (symbol->string (car f-spec))))))
-                      ;; Генерируем (list :key f-name)
-                      `(cons ,key ,f-name)))
-                  normalized))))
+          (let ((h (make-hash-table))) ;; Создаем пустую таблицу
+            (hash-table-set! h :_type_ ',struct-name-sym) ;; Ставим тип
+            ,@(map (lambda (f-spec)
+                    (let* ((f-name (car f-spec))
+                            (key (intern (concat ":" (symbol->string f-name)))))
+                      `(hash-table-set! h ,key ,f-name))) ;; Заполняем поля
+                  normalized)
+            h))
 
        ;; --- Предикат типа ---
        (defun ,(intern (concat struct-name-str "?")) (obj)

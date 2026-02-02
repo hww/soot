@@ -171,6 +171,8 @@
                        :value arg))
     ((symbol? arg)
         (make-lextoken :type 'asmsym :value arg))
+    ((string? arg)  
+        (make-lextoken :type 'string :value arg))
     ((lextoken? arg) arg)
     ; lists to embed data into the assembler source code
     ((list? arg) (make-lextoken :type 'list :value arg))
@@ -1254,19 +1256,27 @@
 ;; PASS 1: Returns initial instruction size
 ;; PASS 2: Returns instruction size after potential mutations/size changes
 ;; PASS 3: Returns the actual instruction bytes
-(operand jmp 3
-     "Virtual JMP"
-     :pass2 (let* ((target (get-label r1 prog ctx)) ;; Тут добавим проверку (if (null? target) ...)
-                   (offset (if target (- target (asm-prog-ilc prog)) 0)))
-              (if (and target (< offset 129) (> offset -126))
-                  (begin 
-                     (setf (inst-op inst) 'jr)
-                     2) ;; Возвращаем честный размер
-                  (begin 
-                     (setf (inst-op inst) 'jp)
-                     3))) ;; Возвращаем честный размер
-     :pass3 (error "JMP should not be called in phase 3") 
-     :arg1 asmsym)
+(operand jmp 3 "Virtual JMP"
+  :arg1 asmsym
+  :pass1 3 ;; Всегда резервируем максимум, чтобы не было сюрпризов
+:pass2 (let* ((target (get-label-addr-optional r1 prog ctx)))
+         (if (and target (not (null? target)))
+             (let ((offset (- target (+ (get-abs-pc prog) 2))))
+               ;(cfmt #t 'yellow "JMP :r1 {} :r2 {} :r3 {} :target {} :offset {}" r1 r2 r3 target offset) 
+               (if (and (<= offset 120) (>= offset -120))
+                   (begin 
+                     (struct-set! inst :op 'jr) 
+                     2)
+                   (begin
+                     (struct-set! inst :op 'jp)
+                     3)))
+             ;; Если метки НЕТ (target == null), мы НЕ имеем права 
+             ;; мутировать в JR, так как не знаем дистанцию.
+             ;; Оставляем JP (3 байта) как безопасный вариант.
+             (begin
+               (struct-set! inst :op 'jp)
+               3)))
+  :pass3 (error "JMP should have been mutated in Pass 2" inst))
 
 (soperand jp 3 "JP nn"
      :relative #f ;; (по умолчанию #f)
@@ -1274,13 +1284,14 @@
      :arg1 variable)
 
 
-(soperand jr 2 
-     "JR e"
-     :relative #t
-     :pass3 (begin 
-          ;(cfmt #t 'yellow ":r1 {} :r2 {} :r3 {}" r1 r2 r3) 
-          (list #x18 r1)) ;; r1 автоматически станет смещением!
-     :arg1 variable)
+(soperand jr 2 "JR e"
+  :relative #t
+  :pass3 (begin
+           ;(cfmt #t 'yellow "JR :r1 {}" r1 ) 
+           (if (and (<= r1 127) (>= r1 -128))
+               (list #x18 (logand r1 #xFF))
+               (error (fmt #f "JR out of range: {}" r1) ctx)))
+  :arg1 variable)
 
 (soperand jr 2
      "JR c, e"
@@ -1411,4 +1422,91 @@
      "OTDR"
      :pass3 (list #b11101101 #b10111011))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;; ASM Dirrectives ;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(operand org 0 "Origin"
+  :arg1 number
+  :pass1 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
+  :pass2 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
+  :pass3 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) (quote null)))
+           
+;; Простой db для чисел и списков
+(soperand db 1 "Define Byte"
+  :arg1 variable
+  :pass1 1
+  :pass2 1
+  :pass3 (list (lower-byte r1))) ;; lower-byte на случай, если r1 — это 16-битный адрес
+
+(operand db 0 "Define Byte" 
+  :arg1 list
+  :pass1 (length r1)       ;; ВАЖНО: возвращаем длину списка для ILC
+  :pass2 (length r1)
+  :pass3  r1) ;; Возвращаем список из одного байта
+
+;; dw для чисел и меток
+(soperand dw 2 "Define Word"
+  :arg1 variable ;; Позволяет использовать и числа, и метки
+  :pass1 2
+  :pass2 2
+  :pass3 (let ((val r1)) ;; r1 тут уже будет абсолютным адресом из таблицы
+           (list (lower-byte val) 
+                 (higher-byte val))))
+
+(operand dw 0 "Define Word List"
+  :arg1 list
+  :pass1 (* (length r1) 2)   ;; Каждый элемент списка — это 2 байта
+  :pass2 (* (length r1) 2)
+  :pass3 (let ((output '()))
+           (begin
+             (mapcar (lambda (item)
+                       (let ((val (if (symbol? item) 
+                                      (get-label item prog) 
+                                      item)))
+                         (set! output (append output 
+                                              (list (lower-byte val) 
+                                                    (higher-byte val))))))
+                     r1)
+             output)))
+
+;; ds для резервирования места (заполнение нулями)
+;; Пример: (ds 10) -> резервирует 10 байт
+(operand ds 0 "Define Space (zeros)"
+  :arg1 number
+  :pass1 r1                 ;; Размер равен значению аргумента
+  :pass2 r1
+  :pass3 (make-list r1 0))  ;; Генерируем список из r1 нулей
+
+;; ds с указанием значения заполнителя
+;; Пример: (ds 10 #xFF) -> резервирует 10 байт, заполненных 255
+(operand ds 0 "Define Space (with fill byte)"
+  :arg1 number
+  :arg2 number
+  :pass1 r1                 ;; Размер всё равно r1
+  :pass2 r1
+  :pass3 (make-list r1 r2)) ;; Список из r1 элементов со значением r2
+
+(operand ascii 0 "Define ASCII string"
+  :arg1 string
+  :pass1 (string-length r1)
+  :pass2 (string-length r1)
+  :pass3 (string->list r1))
+                   
+(operand align 0 "Align ILC to N bytes"
+  :arg1 number
+  :pass1 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (rem (mod current-addr r1)))
+           (if (= rem 0) 
+               0 
+               (- r1 rem)))
+  :pass2 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (rem (mod current-addr r1)))
+           (if (= rem 0) 
+               0 
+               (- r1 rem)))
+  :pass3 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (rem (mod current-addr r1))
+                (size (if (= rem 0) 0 (- r1 rem))))
+           (make-list size 0)))
 (fmt #t "Loaded asm-z80\n")

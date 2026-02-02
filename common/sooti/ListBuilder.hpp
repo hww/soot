@@ -84,6 +84,10 @@ namespace script {
             return *this;
         }
 
+        ListBuilder& add(char c) {
+            return add(Object::make_char(c));
+        }
+
         ListBuilder& add_symbol(const std::string& name) {
             return add(Object::make_symbol(name));
         }

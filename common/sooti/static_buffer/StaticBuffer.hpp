@@ -3,6 +3,7 @@
 #include <memory>
 // Нам нужны полные определения Object и Arguments для сигнатур методов
 #include "common/sooti/Object.hpp" 
+#include "common/type_system/Type.hpp" 
 
 class Type;
 class TypeSystem;
@@ -128,7 +129,9 @@ public:
 
     Object make_step_accessor(const Object& key) override;
 
-    // --- Реализация записи различных данных ---
+    // ============================================================================
+    // --- Реализация чтения различных данных ---
+    // ============================================================================
 
     uint8_t read_u8(size_t offset) {
         return m_data[offset];
@@ -154,8 +157,10 @@ public:
         else 
             return read_u64_be(offset);
     }
-
+    
+    // ============================================================================
     // --- Реализация записи различных данных ---
+    // ============================================================================
 
     void write_u8(size_t offset, uint8_t value) {
         m_data[offset] = value;
@@ -234,7 +239,9 @@ public:
         }
     }
 
+    // ============================================================================
     // --- Реализация реалокиции указателей ---
+    // ============================================================================
 
 public:
     // API для добавления релокации
@@ -286,47 +293,104 @@ private:
         return 32 + (m_symbol_table->size() * 8) + m_symbol_table->string_pool_size();
     }
 
+    // ============================================================================
+    // --- Реализация меток  ---
+    // ============================================================================
+
+    public:
+
+    /**
+     * Добавляет метку на определенный офсет.
+     * Если метка уже существует, выбрасывает исключение (переопределение метки запрещено).
+     */
+    void add_label(const std::string& name, size_t offset) {
+        if (m_labels.find(name) != m_labels.end()) {
+            throw std::runtime_error("Label already defined: " + name);
+        }
+        
+        // Проверка границ буфера для безопасности
+        if (offset >= m_data.size()) {
+            throw std::runtime_error("Label offset out of bounds: " + std::to_string(offset));
+        }
+
+        m_labels[name] = offset;
+    }
+
+    /**
+     * Возвращает офсет метки по её имени.
+     */
+    size_t get_label_offset(const std::string& name) const {
+        auto it = m_labels.find(name);
+        if (it == m_labels.end()) {
+            throw std::runtime_error("Label not found: " + name);
+        }
+        return it->second;
+    }
+
+    /**
+     * Проверяет наличие метки.
+     */
+    bool has_label(const std::string& name) const {
+        return m_labels.find(name) != m_labels.end();
+    }
+
+    // ============================================================================
+    // --- Реализация указателей  ---
+    // ============================================================================
+
 public:
 
-// --- Реализация меток  ---
+    /**
+     * Записывает релоцируемое значение.
+     * @param offset Куда пишем в буфере
+     * @param target Имя метки или символа, на который ссылаемся
+     * @param type Тип релокации (абсолютный адрес, относительный и т.д.)
+     * @param size Размер места под адрес (обычно 2 для 16-бит или 4 для 32-бит)
+     */
+    void write_reloc(size_t offset, const std::string& target, RelocType type) {
+        // 1. Создаем запись о релокации
+        add_reloc(offset, type, target);
 
-/**
- * Добавляет метку на определенный офсет.
- * Если метка уже существует, выбрасывает исключение (переопределение метки запрещено).
- */
-void add_label(const std::string& name, size_t offset) {
-    if (m_labels.find(name) != m_labels.end()) {
-        throw std::runtime_error("Label already defined: " + name);
+        // 2. Записываем временную заглушку (0), чтобы место было зарезервировано
+        write_pointer(offset, 0);
     }
-    
-    // Проверка границ буфера для безопасности
-    if (offset >= m_data.size()) {
-        throw std::runtime_error("Label offset out of bounds: " + std::to_string(offset));
+
+    void write_pointer(size_t offset, uint64_t value) {
+        switch (TypeConfig::pointer_size) {
+            case 1: write_u8(offset, value); break;
+            case 2: write_u16(offset, value); break;
+            case 4: write_u32(offset, value); break;
+            default: write_u64(offset, value); break;
+        }
     }
 
-    m_labels[name] = offset;
-}
+    // ============================================================================
+    // Линковка
+    // ============================================================================
 
-/**
- * Возвращает офсет метки по её имени.
- */
-size_t get_label_offset(const std::string& name) const {
-    auto it = m_labels.find(name);
-    if (it == m_labels.end()) {
-        throw std::runtime_error("Label not found: " + name);
-    }
-    return it->second;
-}
+    void link_internal() {
+        for (auto& reloc : m_relocations) {
+            if (!has_label(reloc.target_name)) continue;
 
-/**
- * Проверяет наличие метки.
- */
-bool has_label(const std::string& name) const {
-    return m_labels.find(name) != m_labels.end();
-}
-    
-private:
+            size_t target_addr = get_label_offset(reloc.target_name) + m_origin;
+
+            if (reloc.type == RelocType::ABS_ADDR) {
+                write_pointer(reloc.offset, target_addr);
+            } 
+            else if (reloc.type == RelocType::RELATIVE) {
+                // Расчет прыжка относительно текущей позиции
+                int64_t diff = static_cast<int64_t>(target_addr) - 
+                            static_cast<int64_t>(reloc.offset + TypeConfig::pointer_size);
+                write_pointer(reloc.offset, static_cast<uint64_t>(diff));
+            }
+        }
+    } 
+ 
+    // ============================================================================
     // --- 64-битные значения (8 байта) ---
+    // ============================================================================
+
+    private:
 
     // --- Little Endian (LE) ---
     uint64_t read_u64_le(size_t offset) const {
@@ -354,7 +418,9 @@ private:
                 static_cast<uint64_t>(m_data[offset + 7]);
     }
 
+    // ============================================================================
     // --- 32-битные значения (4 байта) ---
+    // ============================================================================
 
     uint32_t read_u32_le(size_t offset) const {
         if (offset + 3 >= m_data.size()) return 0; // Или бросить исключение
@@ -372,7 +438,9 @@ private:
                static_cast<uint32_t>(m_data[offset + 3]);
     }
 
+    // ============================================================================
     // --- 16-битные значения (2 байта) ---
+    // ============================================================================
 
     uint16_t read_u16_le(size_t offset) const {
         if (offset + 1 >= m_data.size()) return 0;
@@ -386,7 +454,9 @@ private:
                static_cast<uint16_t>(m_data[offset + 1]);
     }
 
+    // ============================================================================
     // --- 64-битные значения (8 байта) ---
+    // ============================================================================
 
     void write_u64_le(size_t offset, uint64_t value) {
         if (offset + 7 >= m_data.size()) return;
@@ -404,7 +474,9 @@ private:
         }
     }
 
+    // ============================================================================
     // --- 32-битные значения (4 байта) ---
+    // ============================================================================
 
     void write_u32_le(size_t offset, uint32_t value) {
         if (offset + 3 >= m_data.size()) return; // Защита от выхода за границы
@@ -422,7 +494,9 @@ private:
         m_data[offset + 3] = (value & 0x000000FF);
     }
 
+    // ============================================================================
     // --- 16-битные значения (2 байта) ---
+    // ============================================================================
 
     void write_u16_le(size_t offset, uint16_t value) {
         if (offset + 1 >= m_data.size()) return;
@@ -435,7 +509,9 @@ private:
         m_data[offset]     = (value >> 8) & 0xFF;
         m_data[offset + 1] = (value & 0xFF);
     } 
+
 private:
+
     std::string m_type_name;            // Ссылка на тип в TypeSystem
     uint32_t m_origin;                  // Базовый адрес (например, #x2000)
     std::vector<uint8_t> m_data;        // Сырые байты

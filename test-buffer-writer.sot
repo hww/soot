@@ -14,10 +14,10 @@
 ))
 
 ;; 2. Запускаем запись снова
-(let* ((buf (make-static-buffer "test" 100 0))
-       (wr (make-static-writer buf)))
+(let* ((buf (make-buffer "test" 100 0))
+       (wr (make-buffer-writer buf)))
         
-   (write-to-buffer wr 
+   (buffer-write wr 
                     '((tag  . #x55) 
                       (data . ((val_i8 . #x7F)
                                 (val_i16 . #x7FFF)
@@ -25,11 +25,11 @@
                                 (val_u16 . #x7FFF)))) 
                     :as 'outer)
       
-   (fmt #t "Dump:\n{}\n" (static-buffer-dump buf 0 64 #t 8))
+   (fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
    
    
    ;; Чтение (слайсинг)
-   (let ((obj (read-from-buffer buf :as 'outer :at 0)))
+   (let ((obj (buffer-read buf :as 'outer :at 0)))
     ;; obj сейчас — это TypeCell, так как 'outer это структура
     
     (let ((val-cell (-> obj 'data 'val_i8)))
@@ -44,7 +44,7 @@
 
    )
    ;; Запист с переполнением
-   (let ((obj (read-from-buffer buf :as 'outer :at 0)))
+   (let ((obj (buffer-read buf :as 'outer :at 0)))
     ;; obj сейчас — это TypeCell, так как 'outer это структура
        
     (let ((val-cell (-> obj 'data 'val_i8)))
@@ -62,5 +62,5 @@
 
    )
    
-   (fmt #t "Dump:\n{}\n" (static-buffer-dump buf 0 64 #t 8))
+   (fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
    )
