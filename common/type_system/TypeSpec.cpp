@@ -139,11 +139,11 @@ bool TypeTag::operator!=(const TypeTag& other) const {
 std::string TypeSpec::print() const {
     // Simple case: no arguments and no tags
     if ((!m_arguments || m_arguments->empty()) && m_tags.empty()) {
-        return m_type;
+        return "<typspec " + m_type + ">";
     }
 
     // Complex case: with arguments and/or tags
-    std::string result = "(" + m_type;
+    std::string result = "<typspec (" + m_type;
 
     // Print arguments
     if (m_arguments) {
@@ -157,7 +157,7 @@ std::string TypeSpec::print() const {
         result += fmt::format(" :{} {}", tag.name, tag.value);
     }
 
-    return result + ")";
+    return result + ")>";
 }
 
 bool TypeSpec::operator==(const TypeSpec& other) const {
@@ -309,6 +309,7 @@ void TypeSpec::delete_tag(const std::string& tag_name) {
 // ============================================================================
 
 Object TypeSpec::make_step_accessor(const Object& key) {
+
     auto name = key.to_std_string();
        // 1. Имя базового типа (например, "pointer")
     if (name == "base-type") {
@@ -353,9 +354,12 @@ Object TypeSpec::make_step_accessor(const Object& key) {
 // Вспомогательная функция для преобразования TypeSpec
 Object TypeSpec::inspect() const
 {
+        std::vector<Object> list_elements;
+        list_elements.push_back(Object::make_symbol("type-spec"));
         if (base_type() == "none" || base_type().empty())
         {
-            return Object::make_null();
+            list_elements.push_back(Object::make_null());
+            return pretty_print::build_list(list_elements);
         }
 
         Object base = Object::make_symbol(base_type());
@@ -363,11 +367,11 @@ Object TypeSpec::inspect() const
         // Если нет ни аргументов, ни тегов — возвращаем просто символ (атом)
         if (get_args_count() == 0 && get_tags_count() == 0)
         {
-            return base;
+            list_elements.push_back(base);
+            return pretty_print::build_list(list_elements);
         }
 
         // Если есть хоть что-то — строим список (base args... tags...)
-        std::vector<Object> list_elements;
         list_elements.push_back(base);
 
         // 1. Добавляем вложенные TypeSpec (аргументы)

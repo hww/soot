@@ -655,12 +655,13 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
                 if (info != "?") {
                     fmt::print("{}", info);
                     e.detailed_error_required = false;
+
+                }
+                if (!e.already_printed) {
                     // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
                     fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
                     e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
                 }
-
-    
             } else {
                 if (obj.is_pair()) {
                     auto info_opt = m_reader.get_db().get_short_info_for(obj);
@@ -4018,10 +4019,14 @@ Object Interpreter::eval_typespec_special(const Object&, const Object& rest, con
     return Object::make_native_ref(ts);
 }
 
-Object Interpreter::eval_deftype_special(const Object&, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_deftype_special(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     auto env_ptr = get_global_environment().as_env();
-    parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
+    try {
+        parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
+    } catch (std::runtime_error ex) {
+        throw_eval_error(form, ex.what());
+    }
     return get_null();
 }
 
@@ -4132,7 +4137,29 @@ Object Interpreter::eval_navigation_special(const Object& form, const Object& re
             key = eval_with_rewind(form, key_form, env);
         }
 
-        current = current.step(key);
+        // --- ПРОВЕРКА КЛЮЧА ---
+        if (!key.is_symbol() && !key.is_string() && !key.is_integer()) {
+            // Если eval вернул какой-то HeapObject, который не является ключом
+            throw_eval_error(form, "Navigation key evaluated to invalid type: " + key.type_name() + 
+                                   " (value: " + key.print() + "). Expected symbol, string or int.");
+            return get_null();
+        }
+
+        // --- ПРОВЕРКА ТЕКУЩЕГО ОБЪЕКТА ---
+        if (current.is_undefined() || current.is_null()) {
+            throw_eval_error(form, "Broken navigation chain: trying to access '" + key.print() + 
+                                   "' on " + current.print());
+            return get_null(); 
+        }
+        // Пытаемся сделать шаг
+        Object next = current.step(key);
+        // --- ПРОВЕРКА РЕЗУЛЬТАТА ШАГА ---
+        if (next.is_undefined()) {
+            throw_eval_error(form, "Field or property '" + key.print() + 
+                                "' not found in object " + current.print());
+            return get_null();
+        }
+        current = next;
         iterator = iterator_pair->cdr;
     }
     return current;

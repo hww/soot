@@ -166,16 +166,15 @@
   definitions above."
   (cond
     ((null? arg) '())
-    ((number? arg)
-        (make-lextoken :type 'number
-                       :value arg))
-    ((symbol? arg)
-        (make-lextoken :type 'asmsym :value arg))
-    ((string? arg)  
-        (make-lextoken :type 'string :value arg))
     ((lextoken? arg) arg)
-    ; lists to embed data into the assembler source code
-    ((list? arg) (make-lextoken :type 'list :value arg))
+    ((number? arg)
+          (make-lextoken :type 'number :value arg))
+    ((symbol? arg)
+          (make-lextoken :type 'asmsym :value arg))
+    ((string? arg)  
+          (make-lextoken :type 'string :value arg))
+    ((list? arg) 
+          (make-lextoken :type 'list   :value arg)) ; lists to embed data into the assembler source code
     (#t 'XXX)))
   
 ; Set the assembler parse function to be parse-z80
@@ -278,7 +277,7 @@
      :arg1 8-register
      :arg2 de-indirect)
 
-(soperand ld 3
+(operand ld 3
      "LD A, (nn)"
      :pass3 (if (eq? r1 'a)
                 (list #b00111010 (lower-byte r2) (higher-byte r2)))
@@ -299,7 +298,7 @@
      :arg1 de-indirect
      :arg2 8-register)
 
-(soperand ld 3
+(operand ld 3
      "LD (nn), A"
      :pass3 (if (eq? r2 'a)
                 (list #b00110010 (lower-byte r1) (higher-byte r1)))
@@ -339,20 +338,20 @@
 ;;;;;;;;;;;;;;; 16-Bit Load group ;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(soperand ld 3
+(operand ld 3
      "LD dd, nn"
      :pass3 (list (logior #b00000001 (shift (reg-code r1) 4))
                   (lower-byte r2) (higher-byte r2))
      :arg1 16-register
      :arg2 variable)
 
-(soperand ld 4
+(operand ld 4
      "LD IX, nn"
      :pass3 (list #b11011101 #b00100001 (lower-byte r2) (higher-byte r2))
      :arg1 ix-register 
      :arg2 variable)
 
-(soperand ld 4
+(operand ld 4
      "LD IY, nn"
      :pass3 (list #b11111101 #b00100001 (lower-byte r2) (higher-byte r2))
      :arg1 iy-register 
@@ -360,13 +359,13 @@
 
 ; LD HL, und LD dd kollidieren, bei der ersten Phase LD durch LDHL
 ; ersetzen, und 3 (eigentliche Groesse) zurueckgeben
-(soperand ldhl 3
+(operand ldhl 3
      "LD HL, (nn)"
      :pass3 (list #b00101010 (lower-byte r2) (higher-byte r2))
      :arg1 16-register 
      :arg2 var-indirect)
 
-(soperand ld 4
+(operand ld 4
      "LD dd, (nn)"
      :pass1 (if (eq? r1 'hl)
                 (begin 
@@ -380,7 +379,7 @@
      :arg1 16-register 
      :arg2 var-indirect)     
 
-(soperand ld 4
+(operand ld 4
      "LD IX, (nn)"
      :pass3 (list #b11011101 #b00101010 
                   (lower-byte r2)
@@ -388,7 +387,7 @@
      :arg1 ix-register 
      :arg2 var-indirect)     
 
-(soperand ld 4
+(operand ld 4
      "LD IY, (nn)"
      :pass3 (list #b11111101 #b00101010 
                   (lower-byte r2)
@@ -396,12 +395,12 @@
      :arg1 iy-register
      :arg2 var-indirect)
 
-(soperand ld 3
+(operand ld 3
      "LD (nn), HL"
      :pass3 (list #b00100010 (lower-byte r1) (higher-byte r1))
      :arg1 var-indirect)
 
-(soperand ld 4
+(operand ld 4
      "LD (nn), dd"
      :pass3 (list #b11101101
                   (logior #b01000011 (lshift (reg-code r2) 4))
@@ -410,14 +409,14 @@
      :arg1 var-indirect
      :arg2 16-register)
 
-(soperand ld 4
+(operand ld 4
      "LD (nn), IX"
      :pass3 (list #b11011101 #b00100010
                   (lower-byte r1) (higher-byte r1))
      :arg1 var-indirect
      :arg2 ix-register)
 
-(soperand ld 4
+(operand ld 4
      "LD (nn), IY"
      :pass3 (list #b11111101 #b00100010
                   (lower-byte r1) (higher-byte r1))
@@ -1257,9 +1256,9 @@
 ;; PASS 2: Returns instruction size after potential mutations/size changes
 ;; PASS 3: Returns the actual instruction bytes
 (operand jmp 3 "Virtual JMP"
-  :arg1 asmsym
+  :arg1 variable
   :pass1 3 ;; Всегда резервируем максимум, чтобы не было сюрпризов
-:pass2 (let* ((target (get-label-addr-optional r1 prog ctx)))
+  :pass2 (let* ((target (get-label-addr-optional r1 prog ctx)))
          (if (and target (not (null? target)))
              (let ((offset (- target (+ (get-abs-pc prog) 2))))
                ;(cfmt #t 'yellow "JMP :r1 {} :r2 {} :r3 {} :target {} :offset {}" r1 r2 r3 target offset) 
@@ -1278,13 +1277,13 @@
                3)))
   :pass3 (error "JMP should have been mutated in Pass 2" inst))
 
-(soperand jp 3 "JP nn"
+(operand jp 3 "JP nn"
      :relative #f ;; (по умолчанию #f)
      :pass3 (list #xC3 (lower-byte r1) (higher-byte r1))
      :arg1 variable)
 
 
-(soperand jr 2 "JR e"
+(operand jr 2 "JR e"
   :relative #t
   :pass3 (begin
            ;(cfmt #t 'yellow "JR :r1 {}" r1 ) 
@@ -1293,7 +1292,7 @@
                (error (fmt #f "JR out of range: {}" r1) ctx)))
   :arg1 variable)
 
-(soperand jr 2
+(operand jr 2
      "JR c, e"
      :pass3 (case r1
                 ('c (list #b00111000 (- r2 (asm-prog-ilc prog) 2)))
@@ -1303,33 +1302,33 @@
      :arg1 asmsym
      :arg2 variable)
 
-(soperand jp 1
+(operand jp 1
      "JP (HL)"
      :pass3 (list #b11101001)
      :arg1 hl-indirect)
 
-(soperand jp 2
+(operand jp 2
      "JP (IX)"
      :pass3 (list #b11011101 #b11101001)
      :arg1 ix-indirect)
 
-(soperand jp 2
+(operand jp 2
      "JP (IY)"
      :pass3 (list #b11111101 #b11101001)
      :arg1 iy-indirect)
 
-(soperand djnz 2 
+(operand djnz 2 
      "DJNZ e"
      :relative #t
      :pass3 (list #x10 r1)
      :arg1 variable)
 
-(soperand call 3
+(operand call 3
      "CALL nn"
      :pass3 (list #b11001101 (lower-byte r1) (higher-byte r1))
      :arg1 variable)
 
-(soperand call 3
+(operand call 3
      "CALL c, nn"
      :pass3 (list (logior #b11000100 (lshift (con-code r1) 3))
                   (lower-byte r2) (higher-byte r2))
@@ -1431,9 +1430,9 @@
   :pass1 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
   :pass2 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
   :pass3 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) (quote null)))
-           
+
 ;; Простой db для чисел и списков
-(soperand db 1 "Define Byte"
+(operand db 1 "Define Byte"
   :arg1 variable
   :pass1 1
   :pass2 1
@@ -1446,7 +1445,7 @@
   :pass3  r1) ;; Возвращаем список из одного байта
 
 ;; dw для чисел и меток
-(soperand dw 2 "Define Word"
+(operand dw 2 "Define Word"
   :arg1 variable ;; Позволяет использовать и числа, и метки
   :pass1 2
   :pass2 2

@@ -42,6 +42,8 @@
 (defparameter 
    test 
    (lzasm-z80 
+      (org #x0000)
+$zero      
       (org #x8000)
 $start
      (jp 'label3)
@@ -66,7 +68,8 @@ $label2
       (jmp 'label1)
       (jmp 'label2)
       (jmp 'label3)
-      (jp 'label1)
+      (jmp 0)
+      (jmp 'zero)
   )
 )
 

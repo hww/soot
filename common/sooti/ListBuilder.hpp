@@ -88,6 +88,10 @@ namespace script {
             return add(Object::make_char(c));
         }
 
+        ListBuilder& add_boolean(const bool value) {
+            return add(value ? Object::make_symbol("#t") : Object::make_symbol("#f"));
+        }
+
         ListBuilder& add_symbol(const std::string& name) {
             return add(Object::make_symbol(name));
         }
