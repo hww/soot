@@ -279,11 +279,12 @@ namespace script
         Object eval_string_append(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_substr(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_starts_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_ends_with(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_string_split(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_string_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_containsp(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_string_replace(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_symbol_to_string(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Векторы
         Object eval_vector(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
@@ -302,6 +303,11 @@ namespace script
         Object eval_hash_table_to_list(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_containsp(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env);
         
+        // Итераторы
+        Object eval_string_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_vector_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_hash_table_for_each(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env);
+
         // Системные и ввод-вывод
         Object eval_print(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

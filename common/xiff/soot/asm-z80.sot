@@ -990,11 +990,17 @@
 
 ;; --- Строки и Выравнивание ---
 
+(defun string->byte-list (s)
+  (let ((res '()))
+    (begin
+      (string-for-each s (lambda (c) (set! res (cons c res))))
+      (reverse res))))
+
 (operand ascii 0 "Define ASCII string"
   :arg1 string
   :pass1 (string-length r1)
   :pass2 (string-length r1)
-  :pass3 (string->list r1))
+  :pass3 (string->byte-list r1))
                    
 (operand align 0 "Align ILC to N bytes"
   :arg1 number

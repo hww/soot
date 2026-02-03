@@ -74,18 +74,25 @@ $label2
       (ld [- iy 10] #xAA) ; Должно быть: FD 36 F6 AA
   )
 )
+(let* ((my-mod (make-new-module "TestMod"))
+       (test   (begin 
+                 (select-segment my-mod "MAIN")
+                 (module-current-segment my-mod))))
+  ;; теперь вызывай сборку модуля, а не сегмента
+  (assemble-module my-mod)
+  )
 
-(let* ((result (assemble test))
-       (bin-data (cdr (assoc :bin result)))
-       (lst-data (cdr (assoc :lst result))))
-  (begin
-    ;; 1. Записываем бинарник
-    (write-binary-file "test.bin" bin-data)
-
-    ;; 2. Сохраняем листинг
-    (save-listing "test.lst" lst-data)
-
-    ;; 3. Проверка
-    ;;(print "--- Verification from file ---")
-    ;;(print (read-text-file "test.lst"))
-    ))
+;(let* ((result (assemble test))
+;       (bin-data (cdr (assoc :bin result)))
+;       (lst-data (cdr (assoc :lst result))))
+;  (begin
+;    ;; 1. Записываем бинарник
+;    (write-binary-file "test.bin" bin-data)
+;
+;    ;; 2. Сохраняем листинг
+;    (save-listing "test.lst" lst-data)
+;
+;    ;; 3. Проверка
+;    ;;(print "--- Verification from file ---")
+;    ;;(print (read-text-file "test.lst"))
+;    ))

@@ -159,11 +159,12 @@ namespace script
             {"string-append",       &Interpreter::eval_string_append, nullptr},
             {"string-length",       &Interpreter::eval_string_length, nullptr},
             {"string-ref",          &Interpreter::eval_string_ref, nullptr},
+            {"string-replace",      &Interpreter::eval_string_replace, nullptr}, // было eval_substring
             {"string-substr",       &Interpreter::eval_string_substr, nullptr}, // было eval_substring
             {"string-starts-with?", &Interpreter::eval_string_starts_with, nullptr},
             {"string-ends-with?",   &Interpreter::eval_string_ends_with, nullptr},
+            {"string-contains?",    &Interpreter::eval_string_containsp, nullptr},
             {"string-split",        &Interpreter::eval_string_split, nullptr},
-            {"string->list",        &Interpreter::eval_string_to_list, nullptr},
 
             // Векторы
             {"vector",              &Interpreter::eval_vector, nullptr},
@@ -180,6 +181,11 @@ namespace script
             {"hash-table-try-ref",  &Interpreter::eval_hash_table_try_ref, nullptr},
             {"hash-table-length",   &Interpreter::eval_hash_table_length, nullptr},
             {"hash-table->list",    &Interpreter::eval_hash_table_to_list, nullptr},
+
+            // Итераторв
+            {"string-for-each",     &Interpreter::eval_string_for_each,     nullptr},
+            {"vector-for-each",     &Interpreter::eval_vector_for_each,     nullptr},
+            {"hash-table-for-each", &Interpreter::eval_hash_table_for_each, nullptr},
 
             // Системные и ввод-вывод
             {"print",               &Interpreter::eval_print, nullptr},
@@ -232,7 +238,7 @@ namespace script
 
 
             // Преобразования типов
-            {"number->string",      &Interpreter::eval_number_to_string, nullptr},
+            {"number->string",      &Interpreter::eval_number_to_string, &args_with_keys},
             {"string->number",      &Interpreter::eval_string_to_number, nullptr},
             {"char->integer",       &Interpreter::eval_char_to_integer, nullptr},
             {"integer->char",       &Interpreter::eval_integer_to_char, nullptr},
@@ -326,9 +332,9 @@ void Interpreter::init_special_forms(const std::initializer_list<SpecialEntry> f
         add_special_form(entry.name, entry.method, entry.spec);
     }
 }
-// ==============================================
+// ============================================================
 // Environment 
-// ==============================================
+// ============================================================
 
 bool Interpreter::try_symbol_lookup(const Object& sym,
     const std::shared_ptr<EnvironmentObject>& env,
@@ -401,9 +407,9 @@ void Interpreter::define_var_in_env(const Object& env, const Object& var, const 
     env.as_env()->vars.set(InternedSymbolPtr{ intern(name) }, var);
 }
 
-// ==============================================
+// ============================================================
 // Tools and utilities 
-// ==============================================
+// ============================================================
 
 Object Interpreter::make_symbol(const char* name) {
     return m_symbol_table.make_symbol(name);
@@ -417,9 +423,9 @@ InternedSymbolPtr Interpreter::intern(const std::string& name) {
     return m_symbol_table.intern(name.c_str());
 }
 
-// ==============================================
+// ============================================================
 // REPL
-// ==============================================
+// ============================================================
 /*!
  * Display the REPL, which will run until the user executes exit.
  */
@@ -589,9 +595,9 @@ Object Interpreter::call_lambda_internal(const Object& lambda,  const std::vecto
     return result;
 }
 
-// ==============================================
+// ============================================================
 // Eval With Rewind (Main Recursion)
-// ==============================================
+// ============================================================
 std::string truncate_obj(std::string str, size_t max_len) {
     // 1. Если строка слишком длинная — обрезаем и ставим "..."
     if (str.length() > max_len) {
@@ -697,9 +703,9 @@ Object Interpreter::eval_with_rewind(const Object& parent_form, const Object& ob
 
 }
 
-// ==============================================
+// ============================================================
 // Eval (Single Item)
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval(const Object& parent_form, const Object& obj, const std::shared_ptr<EnvironmentObject>& env, bool self_eval_place) {
     switch (obj.type) {
@@ -731,9 +737,9 @@ Object Interpreter::eval(const Object& parent_form, const Object& obj, const std
     return Object::make_null();
 }
 
-// ==============================================
+// ============================================================
 // Eval (Various Types)
-// ==============================================
+// ============================================================
 
 std::vector<Object> Interpreter::eval_list(const Object& list, const std::shared_ptr<EnvironmentObject>& env) {
     std::vector<Object> result;
@@ -1337,9 +1343,9 @@ Object Interpreter::quasiquote_helper(const Object& form,
     }
 }
 
-// ==============================================
+// ============================================================
 // Конвертирование типов lpres
-// ==============================================
+// ============================================================
 
 int64_t Interpreter::number_to_integer(const Object& obj) {
     if (obj.is_integer()) {
@@ -1371,9 +1377,9 @@ bool Interpreter::is_number(const Object& obj) {
     return obj.is_integer() || obj.is_float();
 }
 
-// ==============================================
+// ============================================================
 // Работа с аргументами
-// ==============================================
+// ============================================================
 
 /*!
  * Get arguments being passed to a form. Don't evaluate them. There are two modes, "varargs" and
@@ -1869,9 +1875,9 @@ void Interpreter::vararg_check(
     }
 }
 
-// ==============================================
+// ============================================================
 // Системные функции(print, pprint, inspect)
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_print(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
@@ -2049,9 +2055,9 @@ Object Interpreter::eval_error(const Object& form,
     return Object::make_null(); // Сюда мы никогда не дойдем
 }
 
-// ==============================================
+// ============================================================
 // Математические функции с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_plus(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
@@ -2396,9 +2402,9 @@ Object Interpreter::eval_pi(const Object& form, Arguments& args, const std::shar
     return Object::make_float(M_PI);
 }
 
-// ==============================================
+// ============================================================
 // Bit operations
-// ==============================================
+// ============================================================
 
 // (logand n1 n2 ..)
 Object Interpreter::eval_logand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2470,9 +2476,9 @@ Object Interpreter::eval_rshift(const Object& form, Arguments& args, const std::
     return Object::make_integer(val >> sa);
 }
 
-// ==============================================
+// ============================================================
 // Функции сравнения с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_numequals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -2544,9 +2550,9 @@ Object Interpreter::eval_geq(const Object& form, Arguments& args, const std::sha
     return true_or_false(a_val >= b_val);
 }
 
-// ==============================================
+// ============================================================
 // Функции работы со списками с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_cons(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
@@ -2631,9 +2637,9 @@ Object Interpreter::eval_append(const Object& form, Arguments& args, const std::
     return result;
 }
 
-// ==============================================
+// ============================================================
 // Предикаты типов с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_bound_p(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { {ObjectType::SYMBOL} }, {});
@@ -2746,9 +2752,9 @@ Object Interpreter::eval_reader_p(const Object & form, Arguments & args, const s
     return true_or_false(args.unnamed[0].is_reader());
 }
 
-// ==============================================
+// ============================================================
 // Apply 
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_apply(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
 
@@ -2803,18 +2809,18 @@ Object Interpreter::eval_apply(const Object& form, Arguments& args, const std::s
     throw_eval_error(form, "apply: head didn't evaluate to a callable function");
     return get_null();
 }
-// ==============================================
+// ============================================================
 // Функции сравнения
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_equals(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     vararg_check(form, args, { {}, {} }, {});
     return true_or_false(args.unnamed[0] == args.unnamed[1]);
 }
 
-// ==============================================
+// ============================================================
 // Строковые функции с проверками
-// ==============================================
+// ============================================================
 
 
 Object Interpreter::eval_string_length(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
@@ -2867,6 +2873,32 @@ Object Interpreter::eval_string_substr(const Object& form, Arguments& args, cons
 }
 
 
+Object Interpreter::eval_string_replace(const Object& form,
+                                            Arguments& args,
+                                            const std::shared_ptr<EnvironmentObject>& env) {
+  (void)env;
+  vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::STRING}, {ObjectType::STRING} }, {});
+  auto& str  = args.unnamed.at(0).as_string()->data;
+  auto& from = args.unnamed.at(1).as_string()->data;
+  auto& to   = args.unnamed.at(2).as_string()->data;
+  str_util::replace(str, from, to);
+  return Object::make_string(str);
+}
+
+Object Interpreter::eval_string_containsp(const Object& form,
+                                            Arguments& args,
+                                            const std::shared_ptr<EnvironmentObject>& env) {
+  (void)env;
+  vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::STRING} }, {});
+  auto& str = args.unnamed.at(0).as_string()->data;
+  auto& suffix = args.unnamed.at(1).as_string()->data;
+
+  if (str_util::contains(str, suffix)) {
+    return get_true();
+  }
+  return m_sym_false;
+}
+
 Object Interpreter::eval_string_starts_with(const Object& form,
                                             Arguments& args,
                                             const std::shared_ptr<EnvironmentObject>& env) {
@@ -2906,24 +2938,6 @@ Object Interpreter::eval_string_split(const Object& form,
   return pretty_print::build_list(list);
 }
 
-Object Interpreter::eval_string_to_list(const Object& form,
-                                      Arguments& args,
-                                      const std::shared_ptr<EnvironmentObject>& env) {
-(void)env;
-  vararg_check(form, args, { {ObjectType::STRING} }, {});
-  
-  // Берем данные строки
-  const auto& str = args.unnamed.at(0).as_string()->data;
-  ListBuilder lb;
-
-  for (char c : str) { // Исправлен синтаксис цикла
-      // Превращаем каждый char в числовой объект (код символа)
-      lb.add_integer(static_cast<uint8_t>(c));
-  }                                    
-  
-  return lb.finalize();
-}
-
 Object Interpreter::eval_string_to_symbol(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
     vararg_check(form, args, {{ ObjectType::STRING }}, {}); // Одна строка
@@ -2937,9 +2951,9 @@ Object Interpreter::eval_symbol_to_string(const Object& form, Arguments& args, c
         args.unnamed[0].as_symbol().name_ptr : "");
 }
 
-// ==============================================
+// ============================================================
 // Векторные функции с проверками
-// ==============================================
+// ============================================================
 
 
 Object Interpreter::eval_vector(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
@@ -3000,9 +3014,9 @@ Object Interpreter::eval_vector_to_list(const Object& form, Arguments& args, con
     return build_list(0);
 }
 
-// ==============================================
+// ============================================================
 // Хэш - таблицы с проверками
-// ==============================================
+// ============================================================
 
 const char* get_hash_key(Object item_pair) {
     if (item_pair.is_symbol()) {
@@ -3205,9 +3219,9 @@ Object Interpreter::eval_hash_table_p(const Object& form, Arguments& args, const
     return true_or_false(args.unnamed[0].is_hash_table());
 }
 
-// ==============================================
+// ============================================================
 // Системные функции с проверками
-// ==============================================
+// ============================================================
 
 // Читает весь файл как текст.
 Object Interpreter::eval_read_str(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3266,9 +3280,9 @@ Object Interpreter::eval_file_exists_p(const Object& form, Arguments& args, cons
 }
 
 
-// ==============================================
+// ============================================================
 // Системные методы
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_get_env(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -3437,9 +3451,9 @@ Object Interpreter::eval_read_text_file(const Object& form, Arguments& args, con
     // Возвращаем новую строку Лиспа
     return Object::make_string(buffer.str());
 }
-// ==============================================
+// ============================================================
 // Прочие функции с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_gensym(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)form; (void)args; (void)env;
@@ -3476,9 +3490,9 @@ Object Interpreter::eval_set_cdr(const Object& form, Arguments& args, const std:
     return args.unnamed[0];
 }
 
-// ==============================================
+// ============================================================
 // Функции преобразования типов с проверками
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_number_to_string(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>&env) {
     (void)env;
@@ -3554,9 +3568,9 @@ Object Interpreter::eval_integer_to_char(const Object& form, Arguments& args, co
     return Object::make_char(static_cast<char>(code));
 }
 
-// ==============================================
+// ============================================================
 // Функции времени
-// ==============================================
+// ============================================================
 
 // time-seconds: возвращает количество секунд с эпохи Unix
 Object Interpreter::eval_time_seconds(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -3610,9 +3624,9 @@ Object Interpreter::eval_time_nanoseconds(const Object& form, Arguments& args, c
     return Object::make_integer(static_cast<int64_t>(nanoseconds));
 }
 
-// ==============================================
+// ============================================================
 // Macro Character
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_set_macro_character(const Object& form, Arguments& args,
                                            const std::shared_ptr<EnvironmentObject>& env) {
@@ -3802,9 +3816,9 @@ std::string Interpreter::get_all_symbols_matching(const std::string& prefix) {
     return result;
 }
 
-// ==============================================
+// ============================================================
 // Lex Tokens
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_source_info(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -3863,9 +3877,9 @@ Object Interpreter::eval_get_context(const Object& form, Arguments& args, const 
     return Object::make_null();
 }
 
-// ==============================================
+// ============================================================
 // Macroexpand
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_macroexpand(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     // Проверяем наличие одного аргумента (формы для раскрытия)
@@ -3906,9 +3920,9 @@ Object Interpreter::eval_macroexpand(const Object& form, Arguments& args, const 
     return code;
 }
 
-// ==============================================
+// ============================================================
 // Log
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_log(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -3950,9 +3964,9 @@ Object Interpreter::eval_log(const Object& form, Arguments& args, const std::sha
     return Object::make_string(formatted);
 }
 
-// ==============================================
+// ============================================================
 // Таблица Setters для Getters
-// ==============================================
+// ============================================================
 
 Object Interpreter::eval_defsetf(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
@@ -3987,9 +4001,9 @@ Object Interpreter::eval_get_setter(const Object& form, Arguments& args, const s
     return Object::make_null();
 }
 
-// ==============================================
+// ============================================================
 // Type System
-// ==============================================
+// ============================================================
 
 void Interpreter::init_type_system(TypeSystemVariant types) {
     TypeSystem::instance().clear();
@@ -4052,9 +4066,9 @@ Object Interpreter::eval_init_types(const Object& form, Arguments& args, const s
     return get_null();
 }
 
-// ==============================================
+// ============================================================
 // Alias
-// ==============================================
+// ============================================================
 /**
  * @brief Примитив создания "окна" доступа (Шаг навигации).
  * * * Роль в системе: 
@@ -4201,9 +4215,9 @@ Object Interpreter::eval_cell_set(const Object& form, Arguments& args, const std
     cell->set(args.unnamed[1]); // Использует StaticBufferWriter внутри
     return get_undefined();
 }
-// ==============================================
+// ============================================================
 // Alias
-// ==============================================
+// ============================================================
 /**
  * @brief Создание статического буфера памяти (Холст).
  * * * Роль: Выделяет блок "сырой" памяти фиксированного размера, который 
@@ -4560,5 +4574,46 @@ Object Interpreter::eval_buffer_link(const Object& form, Arguments& args, const 
     buf->link_internal();
     
     return Object::make_undefined();
+}
+// ============================================================
+// Итераторы
+// ============================================================
+Object Interpreter::eval_string_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::STRING}, {ObjectType::LAMBDA} }, {});
+    
+    const std::string& str = args.unnamed[0].as_string()->data;
+    Object lambda = args.unnamed[1];
+
+    for (unsigned char c : str) {
+        // Передаем код символа как Integer
+        call_lambda_internal(lambda, { Object::make_integer(static_cast<int>(c)) });
+    }
+    return get_null();
+}
+Object Interpreter::eval_vector_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    // Проверяем типы: первый аргумент — массив (вектор), второй — лямбда
+    vararg_check(form, args, { {ObjectType::ARRAY}, {ObjectType::LAMBDA} }, {});
+    
+    const auto& vec = args.unnamed[0].as_array()->data;
+    Object lambda = args.unnamed[1];
+
+    for (const auto& item : vec) {
+        // Вызываем лямбду для каждого элемента вектора
+        call_lambda_internal(lambda, { item });
+    }
+
+    return get_null();
+}
+Object Interpreter::eval_hash_table_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::STRING_HASH_TABLE}, {ObjectType::LAMBDA} }, {});
+    
+    auto& table = args.unnamed[0].as_hash_table()->data;
+    Object lambda = args.unnamed[1];
+
+    for (auto const& [key, val] : table) {
+        // Мы просто передаем вектор объектов. Ключ и Значение.
+        call_lambda_internal(lambda, { Object::make_string(key), val });
+    }
+    return get_null();
 }
 } // namespace script
