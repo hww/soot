@@ -137,6 +137,22 @@
                 branches)))))
 
 ;;;; ===========================================================================
+;;;; Iterator
+;;;; ===========================================================================
+
+(defun for-each (container proc)
+  (cond
+    ;; 1. Первым делом проверяем на пустоту. 
+    ;; Если список пуст, мы просто выходим, не вызывая C++ итератор.
+    ((null? container)   null)
+    ;; 2. Только если список НЕ пустой и это список, вызываем C++
+    ((list? container)   (list-for-each container proc))
+    ((vector? container) (vector-for-each container proc))
+    ((string? container) (string-for-each container proc))
+    ((hash-table? container) (hash-table-for-each container proc))
+    (else (error (fmt #f "for-each: unsupported container type {}" container) container))))
+
+;;;; ===========================================================================
 ;;;; CASE MACRO
 ;;;; ===========================================================================
 ;;; Сравнивает результат выражения с набором константных ключей.

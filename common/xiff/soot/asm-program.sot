@@ -156,6 +156,8 @@
   (arg2 (make-lextoken :type null))
   (arg3 (make-lextoken :type null))
   (ctx null)
+  (ilc 0)
+  (bin null)
   (size 0))
 
 (defun get-inst (inst)
@@ -171,16 +173,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defstruct segment
-  "Assembler program, made of a list of instructions, a list of
-   functions created by the instructions a symbol table, and an ilc"
+  "Assembler program container"
   (name "undefined-segment-name")
   (insts null)
-  ;(ifuncs null)
-  (labs null)                 ;; Метки
-  (ltable (make-hash-table))  ;;
-  (ilc 0)
-  (origin 0)
-  (parent-module null))       ;;
+  (labs null)
+  (ltable (make-hash-table))
+  (ilc 0)          ;; Текущий ILC внутри прохода
+  (origin 0)       ;; Локальный origin (если есть ORG внутри)
+  (base-addr 0)    ;; Начальный адрес сегмента в модуле
+  (parent-module null))
+
+(defun emit (mod inst)
+  "Добавляет инструкцию в текущий сегмент модуля"
+  (let ((seg (module-current-segment mod)))
+    (if (not (null? seg))
+        (setf (segment-insts seg) (cons inst (segment-insts seg)))
+        (error "No segment selected! Use (select-segment mod name) first."))))
+
+(defun set-org! (seg addr) 
+    (segment-origin! seg addr) 
+    (segment-ilc!    seg addr))
 
 ;;; ------------------------------------------------------------------
 ;;; Внутренние утилиты (Private)
@@ -246,43 +258,6 @@
             (setf (module-segment-order mod) 
                   (append (module-segment-order mod) (list seg-name)))
             (setf (module-current-segment mod) new-seg))))))
-
-(defun assemble-module (mod)
-  "Главная функция сборки модуля. Проводит 3 прохода через все сегменты."
-  (let ((global-ilc 0))
-    (begin
-      ;; --- PASS 1 & 2: Рассчитываем адреса ---
-      (mapcar (lambda (pass-num)
-                (begin
-                  (set! global-ilc 0) ;; Начинаем с нуля (или с origin модуля)
-                  (mapcar (lambda (seg-name)
-                            (let ((seg (hash-table-ref (module-segments mod) seg-name)))
-                              (begin
-                                ;; Наследуем адрес от предыдущего сегмента
-                                (setf (segment-ilc seg) global-ilc)
-                                ;; Прогоняем инструкции сегмента
-                                (assemble-pass seg pass-num)
-                                ;; Запоминаем, где остановились
-                                (set! global-ilc (segment-ilc seg)))))
-                          (module-segment-order mod))))
-              '(1 2))
-
-      ;; --- PASS 3: Финальная генерация байтов ---
-      (let ((final-bin '())
-            (final-lst '()))
-        (begin
-          (set! global-ilc 0)
-          (mapcar (lambda (seg-name)
-                    (let* ((seg (hash-table-ref (module-segments mod) seg-name))
-                           (res (assemble seg))) ;; Твой старый assemble для сегмента
-                      (begin
-                        ;; Склеиваем бинарные данные и листинг
-                        (set! final-bin (append final-bin (cdr (assoc :bin res))))
-                        (set! final-lst (append final-lst (cdr (assoc :lst res)))))))
-                  (module-segment-order mod))
-          
-          ;; Возвращаем результат всего модуля
-          (list (cons :bin final-bin) (cons :lst final-lst)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Метки
@@ -352,192 +327,140 @@
                 info)) ;; возвращаем как есть, если это просто число
           (error (fmt #f "Undefined label: {}" name) ctx)))))
 
+
+
 (defun get-label-addr-optional (label seg ctx)
-  "Мягкое получение адреса из глобальной таблицы."
+  "Мягкое получение адреса: достает число из структуры asmsym-info, если она там есть."
   (if (number? label)
       label
       (let* ((name (%asm-extract-name label ctx))
              (mod  (segment-parent-module seg))
              (sym-table (if (not (null? mod)) (module-symbols mod) (segment-ltable seg)))
              (val (hash-table-try-ref sym-table name)))
-        (if (car val) (cdr val) #f))))
+        (if (car val) 
+            (let ((info (cdr val)))
+              (cond 
+                ;; Если это наша новая структура — вынимаем поле address
+                ((asmsym-info? info) (asmsym-info-address info))
+                ;; Если там просто число (старый формат) — возвращаем как есть
+                ((number? info) info)
+                (else #f)))
+            #f))))
+
 
 (defun get-rel-offset (label seg ctx &optional (pc-offset 2))
   "Расчет относительного смещения для Z80 (Target - (PC + offset)).
    Использует строгое получение адреса для генерации кода."
   (let ((target (get-label-addr label seg ctx))
         (current-pc (get-abs-pc seg)))
-    ;(cfmt #t 'yellow "get-rel-offset :target {} :current-pc {}" target current-pc) 
+    ;(cfmt #t 'yellow "get-rel-offset :target {} :current-pc {}\n" target current-pc) 
     (- target (+ current-pc pc-offset))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Утилиты для сохранения в list файл
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun arg->string (arg)
-  "Конвертировать аргумент в строку для записи в листинг файл"
-  (if (lextoken? arg)
-      (let ((val  (lextoken-value arg))
-            (type (lextoken-type arg)))
-        (cond 
-          ;; 1. Пустые аргументы
-          ((or (null? val) (eq? val 'null)) "")
-          
-          ;; 2. Индексная адресация (IX+d) / (IY+d)
-          ((eq? type 'ix-indexed) (fmt #f "(ix{:+})" val))
-          ((eq? type 'iy-indexed) (fmt #f "(iy{:+})" val))
-          
-          ;; 3. Косвенная адресация (HL), (BC) и т.д.
-          ((eq? type 'hl-indirect) "(hl)")
-          ((eq? type 'bc-indirect) "(bc)")
-          ((eq? type 'de-indirect) "(de)")
-          ((eq? type 'sp-indirect) "(sp)")
-          
-          ;; 4. Косвенная адресация по адресу (nn)
-          ((eq? type 'imm-indirect) (fmt #f "({:04X}h)" val))
-          ((eq? type 'asmsym-indirect) (fmt #f "({})" val))
-          
-          ;; 5. Обычные числа (в hex для красоты)
-          ((integer? val) (fmt #f "{:02X}h" val))
-          
-          ;; 6. Всё остальное (регистры, метки)
-          (#t (fmt #f "{}" val))))
-      ""))
-
-(defun inst->string (inst)
-  "Конвертировать инструкцию в строку для записи в листинг файл"
-  (let ((op (inst-op inst))
-        (a1 (arg->string (inst-arg1 inst)))
-        (a2 (arg->string (inst-arg2 inst)))
-        (a3 (arg->string (inst-arg3 inst))))
-    (if (eq? op 'lab)
-        (concat "label: " a1)
-        (concat (fmt #f "{}" op)
-                (if (not (string-empty? a1)) (concat " " a1) "")
-                (if (not (string-empty? a2)) (concat ", " a2) "")
-                (if (not (string-empty? a3)) (concat ", " a3) "")
-                ;"   "
-                ;(fmt #f "{}" (inspect inst))
-                ))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Выполняет проход с номером 1, 2 или 3
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun assemble-pass (seg pass-num)
-  (begin
-    (segment-ilc! seg (segment-origin seg))
-    ;(cfmt #t 'cyan "Start pass {}\n" pass-num)
-    
-    (mapcar (lambda (inst)
-              (let* ((opc      (get-inst inst))
-                     (old-size (struct-ref opc :size))
-                     ;; Берем лямбду прохода, если она есть
-                     (pass-f   (case pass-num
-                                 (1 (opcode-pass1 opc))
-                                 (2 (opcode-pass2 opc))
-                                 (t null)))
-                     ;; Вычисляем размер: либо через лямбду, либо берем default size
-                     (new-size (if (procedure? pass-f) 
-                                   (pass-f inst seg) 
-                                   old-size))
-                     ;; Если лямбда вернула что-то странное (null), страхуемся
-                     (final-sz (or new-size old-size)))
+(defun assemble-segment-pass (seg pass-num)
+  (let ((bin-list '()))
+    (begin
+      ;; Инициализируем ILC перед началом прохода
+      (segment-ilc! seg (segment-base-addr seg))
+      (segment-origin! seg (segment-base-addr seg))
 
-                (begin
-                  ;(cfmt #t 'red "pass {}: ilc {:04X} | size {}->{} | opcode {}\n" 
-                  ;      pass-num (segment-ilc seg) old-size final-sz (opcode-op opc))
-                  
-                  (segment-ilc! seg (+ (segment-ilc seg) final-sz))
-                  final-sz)))
-            (segment-insts seg))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Компиляция программы
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun assemble (seg)
-  (let ((bin-list '())
-        (listing '()))
-    
-    (assemble-pass seg 1)
-    (assemble-pass seg 2)
-
-    ;; 3. Pass 3: Сбрасываем в 0
-    (segment-ilc! seg 0)
-    (segment-origin! seg 0) 
-    
-    (mapcar (lambda (inst)
-          (let* ((op-name (struct-ref inst :op))
-                 (opc (get-inst inst)))
+      (for-each (segment-insts seg)
+        (lambda (inst)
+          (cond 
+            ;; 1. Обработка инструкции
+            ((inst? inst)
+             (let* ((opc (get-inst inst))
+                    (pass-f (case pass-num 
+                              (1 (opcode-pass1 opc)) 
+                              (2 (opcode-pass2 opc)) 
+                              (3 (opcode-pass3 opc))))
+                    ;; Вызываем функцию прохода
+                    (res (if (procedure? pass-f) (pass-f inst seg) null)))
+               (begin
+                  (inst-ilc! inst (segment-ilc seg))
+                  ;(cfmt #t "red" " 0x{:04X} \n" (inst-ilc inst))
+                  ;; На 3-м проходе собираем бинарник, если функция что-то родила
+                  (if (and (eq? pass-num 3) (not (null? res)))
+                      (begin
+                        ;; 1. Сохраняем байты (БЕЗ ELSE, это должно работать всегда)
+                        (inst-bin! inst res)
+                        (set! bin-list (append bin-list (if (list? res) res (list res))))
+                        ;; 2. Печатаем лог для отладки
+                        ;(cfmt #t "blue" "assemble-segment-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
+                        ))
+                 
+                 ;; ЛОГИКА ОПРЕДЕЛЕНИЯ ДЛИНЫ (sz):
+                 (let ((sz (cond 
+                             ;; Если функция вернула число (дельту)
+                             ((number? res) res)
+                             ;; Если функция вернула список байт — считаем их
+                             ((and (list? res) (not (null? res))) (length res))
+                             ;; ЕСЛИ ФУНКЦИЯ ВЕРНУЛА NULL ИЛИ НИЧЕГО:
+                             ;; Берем константу :size из самого операнда!
+                             (else (opcode-size opc)))))
+                   (begin
+                     ;(cfmt #t "blue" "assemble-segment-pass {} ilc 0x{:04X} op {} result {} normalized {}\n" pass-num (segment-ilc seg)  (inst-op inst) res sz)                 
+                     ;; Сохраняем вычисленную длину в саму инструкцию (для листинга/отладки)
+                     (struct-set! inst :size sz)
+                     ;; Двигаем ILC сегмента
+                     (segment-ilc! seg (+ (segment-ilc seg) sz)))))))
             
-            ;; 1. Обрабатываем ORG до генерации байтов
-            (if (eq? op-name 'org)
-              (let ((target-addr (lextoken-value (struct-ref inst :arg1))))
-                (segment-ilc! seg target-addr)))
+            ;; 2. Обработка метки
+            ((asmsym? inst) 
+             (if (eq? pass-num 1)
+                 (register-label (asmsym-name inst) (segment-ilc seg) seg)))
 
-            (let* ((v-addr (get-abs-pc seg))
-                   (bytes (if opc ((opcode-pass3 opc) inst seg) '()))
-                   (len (if (list? bytes) (length bytes) (if (integer? bytes) 1 0))))
-                
-                (begin
-                  (set! listing (append listing (list (list v-addr bytes (inst->string inst)))))
-                  
-                  ;; ИСПРАВЛЕННЫЙ БЛОК: фильтруем null и пустые списки
-                  (cond 
-                    ((list? bytes) (set! bin-list (append bin-list bytes)))
-                    ((integer? bytes) (set! bin-list (append bin-list (list bytes))))
-                    (#t #f)) ;; Всё остальное (null, '()) игнорируем
+            (else null))))
+      
+      ;; Возвращаем результат: для Pass 3 — байты, для остальных — финальный ILC
+      (if (eq? pass-num 3) bin-list (segment-ilc seg)))))
 
-                  ;; 3. Двигаем ILC
-                  (if (not (eq? op-name 'org))
-                      (segment-ilc! seg (+ (segment-ilc seg) len)))))))
-        (segment-insts seg))
+(defun assemble-module (mod)
+  (let ((current-addr 0)
+        (final-bin '()))
+    (begin
+      ;; 1. PASS 1: Сбор меток (Глобально)
+      (set! current-addr 0)
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let ((seg (hash-table-ref (module-segments mod) name)))
+            (begin
+              (segment-base-addr! seg current-addr)
+              (set! current-addr (assemble-segment-pass seg 1))))))
 
-    (list (cons :bin bin-list) (cons :lst listing))))
+      ;; 2. PASS 2: Мутации и расчет смещений (Глобально)
+      (set! current-addr 0)
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let ((seg (hash-table-ref (module-segments mod) name)))
+            (begin
+              (segment-base-addr! seg current-addr)
+              (set! current-addr (assemble-segment-pass seg 2))))))
+
+      ;; 3. PASS 3: Генерация байт
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let* ((seg (hash-table-ref (module-segments mod) name))
+                 (seg-bytes (assemble-segment-pass seg 3)))
+            (set! final-bin (append final-bin seg-bytes)))))
+
+      (save-module-symbols (fmt #f "{}.sym.sot" (module-name mod)) mod)
+      final-bin)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Запись результата
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun save-listing (path lst-data)
-  (let ((out ""))
-    (begin
-      (mapcar (lambda (row)
-                (let* ((addr   (car row))
-                       (bytes  (cadr row))
-                       (src    (caddr row))
-                       (is-lab (string-starts-with? src "label: "))
-                       (is-org (string-starts-with? src "org "))
-                       (b-str  ""))
-                  
-                  (cond 
-                    ;; 1. Если это МЕТКА
-                    (is-lab
-                     (let ((label-name (string-substr src 7 (string-length src))))
-                       (set! out (concat out (fmt #f "{:04X} | {:15} \n" addr (concat label-name ":"))))))
-                    
-                    ;; 2. ИНАЧЕ если это ORG
-                    (is-org
-                     (set! out (concat out (fmt #f "{:04X} | [ORG SET] {:6} | {}\n" addr "" src))))
-                    
-                    ;; 3. ИНАЧЕ это обычная инструкция
-                    (#t
-                     (begin
-                       (if (and (not (null? bytes)) (not (eq? bytes 'null)))
-                          (let ((b-list (if (list? bytes) bytes (list bytes))))
-                            (mapcar (lambda (b) 
-                                      ;; Используем logand, чтобы превратить -10 в F6
-                                      (let ((clean-byte (if (number? b) (logand b #xFF) 0)))
-                                        (set! b-str (concat b-str (fmt #f "{:02X} " clean-byte)))))
-                                    b-list)))
-                       (set! out (concat out (fmt #f "{:04X} |    {:13} | {}\n" addr b-str src))))))))
-              lst-data)
-      (write-text-file path out)
-      (fmt #t "{}" out)
-      null)))
+(load "common/xiff/soot/asm-save-list.sot")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Запись результата
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun assemble-to-file (seg bin-path lst-path)
   (let* ((res (assemble seg))
@@ -571,32 +494,30 @@
 ;;; Symbol Table Export
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun save-module-symbols (path mod)
-  "Сохраняет паспорт модуля в формате S-expression."
-  (let ((symbols-data '())
-        (exports '()))
+(defun %calculate-module-size (mod)
+  "Считает суммарный размер всех сегментов модуля."
+  (let ((total 0))
     (begin
-      (hash-table-map (lambda (name info)
-                        (let ((addr (asmsym-info-address info))
-                              (scope (asmsym-info-scope info))
-                              (type (asmsym-info-type info))
-                              (sig (asmsym-info-signature info))
-                              (seg (asmsym-info-segment-name info)))
-                          (begin
-                            ;; Формируем строку для отладочного списка
-                            (set! symbols-data 
-                                  (cons (list scope addr 0 name type seg sig) symbols-data))
-                            ;; Если публичный - добавляем в экспорт
-                            (if (eq? scope :public)
-                                (set! exports (cons (list name addr type sig) exports))))))
-                      (module-symbols mod))
-      
-      (let ((output (list (module-name mod)
-                          (list :size "??") ;; Нужно будет допилить расчет размера
-                          (cons :export exports)
-                          (cons :symbols symbols-data))))
-        (write-text-file path (fmt #f "{}" output))))))
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let ((seg (hash-table-ref (module-segments mod) name)))
+            ;; Размер сегмента — это разница между финальным ILC и базовым адресом
+            (set! total (+ total (- (segment-ilc seg) (segment-base-addr seg)))))))
+      total)))
 
+(load "common/xiff/soot/asm-save-symbols.sot")
+
+(defun get-module-binary (mod)
+  (let ((total-bin '()))
+    (begin
+      ;; Проходим по именам сегментов в правильном порядке
+      (vector-for-each (module-segment-order mod)
+        (lambda (seg-name)
+          (let* ((seg (hash-table-ref (module-segments mod) seg-name))
+                 (seg-bin (segment-binary-data seg))) ;; Тут лежат данные из pass3
+            (set! total-bin (append total-bin seg-bin)))))
+      total-bin)))
+      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; эти методы используются внутри макросов
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -693,7 +614,66 @@
              0))
   :pass3 '())
 
+(defmacro subroutine (name &rest code)
+   `(list (lab ',name) ,@code))
 
+
+
+
+(defparameter *current-module* null)
+
+(defmacro defmodule (name)
+  `(begin 
+    (define ,name (make-new-module ,(symbol->string name)))
+    (set! *current-module* ,name)))
+
+(defmacro in-module (name)
+  ;; Здесь можно добавить логику поиска модуля в глобальном реестре
+  `(set! *current-module* (find-module ,(symbol->string name))))
+
+(defmacro zasm (&rest body)
+  `(begin
+     (if (null? *current-module*) (error "No module selected! Use (defmodule ...)"))
+     ;; По умолчанию льем в "MAIN", если внутри нет директивы segment
+     (let ((current-seg-name "MAIN"))
+       (let ((insts (flatten (list ,@body))))
+         (begin
+           (if (not (hash-table-contains? (module-segments *current-module*) current-seg-name))
+               (select-segment *current-module* current-seg-name))
+           (let ((seg (hash-table-ref (module-segments *current-module*) current-seg-name)))
+             (setf (segment-insts seg) insts)
+             seg))))))
+
+(defun save-binary (mod &optional (seg-name null))
+  (if (null? seg-name)
+      ;; Сохраняем весь модуль (все сегменты подряд)
+      (write-binary-file (fmt #f "{}.bin" (module-name mod)) (assemble-module mod))
+      ;; Сохраняем конкретный сегмент
+      (let ((seg (hash-table-ref (module-segments mod) seg-name)))
+        (write-binary-file (fmt #f "{}-{}.bin" (module-name mod) seg-name) 
+                           (assemble-segment-pass seg 3)))))
+
+(defun save-symbols (mod)
+  (let ((filename (fmt #f "{}.sym.sot" (module-name mod))))
+    (begin
+      (save-module-symbols filename mod)
+      (cfmt #t "green" "Symbols saved: {}\n" filename))))
+
+(defmacro build (mod &key (with-listing #f) (print-listing #f))
+  `(begin
+     (assemble-module ,mod)
+     (cfmt #t "yellow" "\n──────────────────────────────────────────\n")
+     (cfmt #t "white"  " BUILD SUCCESSFUL: {:15} \n" (module-name ,mod))
+     (cfmt #t "yellow" "──────────────────────────────────────────\n")
+     (for-each (module-segment-order ,mod)
+       (lambda (name)
+         (let ((seg (hash-table-ref (module-segments ,mod) name)))
+           (cfmt #t "cyan" " Segment: {:10} | Base: #{:04X} | Size: {} bytes\n" 
+                 name (segment-base-addr seg) (segment-ilc seg)))))
+     (cfmt #t "yellow" "──────────────────────────────────────────\n")
+     ;; Добавляем запятые перед аргументами макроса:
+     (if ,with-listing
+       (generate-module-listing ,mod :print-listing ,print-listing))))
 
 (define *segmentram-loader* #t)
 

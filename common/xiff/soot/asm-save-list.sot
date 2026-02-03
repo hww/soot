@@ -1,0 +1,79 @@
+﻿
+(defun arg->string (arg)
+  "Конвертировать аргумент в строку для записи в листинг файл"
+  (if (lextoken? arg)
+      (let ((val  (lextoken-value arg))
+            (type (lextoken-type arg)))
+        (cond 
+          ;; 1. Пустые аргументы
+          ((or (null? val) (eq? val 'null)) "")
+          
+          ;; 2. Индексная адресация (IX+d) / (IY+d)
+          ((eq? type 'ix-indexed) (fmt #f "(ix{:+})" val))
+          ((eq? type 'iy-indexed) (fmt #f "(iy{:+})" val))
+          
+          ;; 3. Косвенная адресация (HL), (BC) и т.д.
+          ((eq? type 'hl-indirect) "(hl)")
+          ((eq? type 'bc-indirect) "(bc)")
+          ((eq? type 'de-indirect) "(de)")
+          ((eq? type 'sp-indirect) "(sp)")
+          
+          ;; 4. Косвенная адресация по адресу (nn)
+          ((eq? type 'imm-indirect) (fmt #f "({:04X}h)" val))
+          ((eq? type 'asmsym-indirect) (fmt #f "({})" val))
+          
+          ;; 5. Обычные числа (в hex для красоты)
+          ((integer? val) (fmt #f "{:02X}h" val))
+          
+          ;; 6. Всё остальное (регистры, метки)
+          (#t (fmt #f "{}" val))))
+      ""))
+
+(defun inst->string (inst)
+  "Конвертировать инструкцию в строку для записи в листинг файл"
+  (let ((op (inst-op inst))
+        (a1 (arg->string (inst-arg1 inst)))
+        (a2 (arg->string (inst-arg2 inst)))
+        (a3 (arg->string (inst-arg3 inst))))
+    (if (eq? op 'lab)
+        (concat "label: " a1)
+        (concat (fmt #f "{}" op)
+                (if (not (string-empty? a1)) (concat " " a1) "")
+                (if (not (string-empty? a2)) (concat ", " a2) "")
+                (if (not (string-empty? a3)) (concat ", " a3) "")
+                ;"   "
+                ;(fmt #f "{}" (inspect inst))
+                ))))
+(defun generate-module-listing (mod &key (print-listing #f))
+  (let ((out ""))
+    (begin
+      (for-each (module-segment-order mod)
+        (lambda (seg-name)
+          (let ((seg (hash-table-ref (module-segments mod) seg-name)))
+            (begin
+              (set! out (concat out (fmt #f "\n--- Segment: {} | Base: #{:04X} ---\n" 
+                                         seg-name (segment-base-addr seg))))
+              (for-each (segment-insts seg)
+                (lambda (inst)
+                  (let* ((addr   (or (struct-ref inst :ilc) 0))
+                         (bytes  (or (struct-ref inst :bin) '())) ;; Теперь тут не будет пусто
+                         (src    (inst->string inst))
+                         (is-lab (eq? (inst-op inst) 'lab))
+                         (is-dir (or (eq? (inst-op inst) 'org) (eq? (inst-op inst) 'align)))
+                         (b-str  ""))
+                    (begin
+                      (if (list? bytes)
+                          (for-each bytes (lambda (b) 
+                                      (set! b-str (concat b-str (fmt #f "{:02X} " (logand b #xFF)))))
+                                    ))
+                      (cond 
+                        (is-lab
+                            (let* ((val  (lextoken-value (inst-arg1 inst)))
+                                    (name (fmt #f "{}" val))) ;; Превращаем символ 'zero в строку "zero"
+                            (set! out (concat out (fmt #f "{:04X} | {:16} | \n" addr (concat name ":"))))))
+                        (is-dir
+                         (set! out (concat out (fmt #f "{:04X} | {:16} | {}\n" addr "--------" src))))
+                        (#t
+                         (set! out (concat out (fmt #f "{:04X} | {:16} | {}\n" addr b-str src)))))))))))))
+      (if print-listing (print out))
+      out)))

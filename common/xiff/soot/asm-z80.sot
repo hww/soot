@@ -185,10 +185,20 @@
 ; Set the assembler parse function to be parse-z80
 (set! *parse* parse-z80)
 
-(defun lzasm-z80 (&rest insts)
-  "Create a new z80 program"
-  (make-segment :insts (flatten insts)))
-
+(defun lzasm-z80 (module seg-name &rest insts)
+  "Наполняет сегмент в модуле, создавая его при необходимости"
+  (let* ((segments-map (module-segments module)))
+    ;; Сначала проверяем, существует ли сегмент
+    (if (not (hash-table-contains? segments-map seg-name))
+        ;; Если нет — создаем его через твой select-segment (он умеет регистрировать)
+        (select-segment module seg-name))
+    
+    (let ((seg (hash-table-ref segments-map seg-name)))
+      (begin
+        ;; Наполняем инструкциями
+        (setf (segment-insts seg) (flatten insts))
+        seg))))
+      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;; 8-Bit Load group ;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -825,6 +835,7 @@
   :pass2 (let* ((target (get-label-addr-optional r1 seg ctx)))
          (if (and target (not (null? target)))
              (let ((offset (- target (+ (get-abs-pc seg) 2))))
+               ;(cfmt #t "yellow" "JMP target {} offset {}\n" target offset)
                (if (and (<= offset 120) (>= offset -120))
                    (begin (struct-set! inst :op 'jr) 2)
                    (begin (struct-set! inst :op 'jp) 3)))
@@ -841,6 +852,8 @@
 (operand jr 2 "JR e"
   :arg1 variable :relative #t
   :pass3 (let ((rel (get-rel-offset r1 seg ctx 2))) ;; 2 — это размер JR
+           ;(cfmt #t "yellow" "JR r1 {} rel {:04X} seg {}\n" r1 rel (segment-name seg))
+
            (list #x18 rel)))
 
 ;; --- Conditional Jumps ---
@@ -947,15 +960,15 @@
 
 (operand org 0 "Origin: Set Program Counter"
   :arg1 number
-  :pass1 (begin (segment-origin! seg r1) (segment-ilc! seg r1) 0)
-  :pass2 (begin (segment-origin! seg r1) (segment-ilc! seg r1) 0)
-  :pass3 (begin (segment-origin! seg r1) (segment-ilc! seg r1) '()))
+  :pass1 (begin (set-org! seg r1) 0)
+  :pass2 (begin (set-org! seg r1) 0)
+  :pass3 (begin (set-org! seg r1) '()))
 
 ;; --- Определение данных (Bytes) ---
 
 (operand db 0 "Define Byte(s)"
   :arg1 variable
-  :pass1 (let ((vals (get-addr-list r1 seg ctx))) (length vals))
+  :pass1 0
   :pass2 (let ((vals (get-addr-list r1 seg ctx))) (length vals))
   :pass3 (mapcar lower-byte (get-addr-list r1 seg ctx)))
 
@@ -963,7 +976,7 @@
 
 (operand dw 0 "Define Word(s)"
   :arg1 variable
-  :pass1 (* (length (get-addr-list r1 seg ctx)) 2)
+  :pass1 0
   :pass2 (* (length (get-addr-list r1 seg ctx)) 2)
   :pass3 (let ((output '())
                (vals (get-addr-list r1 seg ctx)))

@@ -1,0 +1,28 @@
+﻿
+(defun save-module-symbols (path mod)
+  "Сохраняет паспорт модуля в формате S-expression."
+  (let ((symbols-data '())
+        (exports '()))
+    (begin
+      (hash-table-for-each (module-symbols mod)
+        (lambda (name info)
+          ;; Извлекаем данные, проверяя, структура это или число
+          (let ((is-struct (asmsym-info? info)))
+            (let ((addr  (if is-struct (asmsym-info-address info) info))
+                  (scope (if is-struct (asmsym-info-scope info) :private))
+                  (type  (if is-struct (asmsym-info-type info) :label))
+                  (sig   (if is-struct (asmsym-info-signature info) '()))
+                  (seg   (if is-struct (asmsym-info-segment-name info) "MAIN")))
+              (begin
+                ;; Формируем строку для отладочного списка
+                (set! symbols-data 
+                      (cons (list scope addr 0 name type seg sig) symbols-data))
+                ;; Если публичный - добавляем в экспорт
+                (if (eq? scope :public)
+                    (set! exports (cons (list name addr type sig) exports))))))))
+      
+      (let ((output (list (module-name mod)
+                          (list :size (%calculate-module-size mod)) ;; Добавил вызов размера
+                          (cons :export exports)
+                          (cons :symbols symbols-data))))
+        (write-text-file path (pfmt #f  output))))))
