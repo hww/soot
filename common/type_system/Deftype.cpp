@@ -898,6 +898,7 @@ TypeSpec parse_typespec(TypeSystem* type_system, const script::Object& src) {
 DeftypeResult parse_deftype(const script::Object& deftype,
     TypeSystem* ts,
     script::EnvironmentMap* constants) {
+    try {
     DefinitionMetadata symbol_metadata;
     script::EnvironmentMap no_consts;
 
@@ -1015,6 +1016,9 @@ DeftypeResult parse_deftype(const script::Object& deftype,
         result.type_info->m_state_definition_meta = structure_result->state_definitions;
         result.type_info->m_virtual_state_definition_meta = structure_result->virtual_state_definitions;
     }
-
     return result;
+    } catch (std::runtime_error& e) {
+        throw EvalException(deftype, e.what());
+    }
+
 }

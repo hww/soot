@@ -136,6 +136,42 @@ bool Field::operator!=(const Field& other) const {
     return !(*this == other);
 }
 
+Object Field::inspect() const { 
+    ListBuilder lb;
+    lb.add_symbol("field");
+    
+    lb.add_keyword("name");
+    lb.add_string(m_name);
+
+    lb.add_keyword("type");
+    lb.add_string(m_type.print());
+
+    lb.add_keyword("offset");
+    lb.add_integer(m_offset);
+
+    lb.add_keyword("inline");
+    lb.add_boolean(m_inline);
+
+    lb.add_keyword("dynamic");
+    lb.add_boolean(m_dynamic);
+
+    lb.add_keyword("array");
+    lb.add_boolean(m_array);
+
+    lb.add_keyword("array_size");
+    lb.add_integer(m_array_size);
+
+
+    lb.add_keyword("alignment");
+    lb.add_integer(m_alignment);
+    
+    lb.add_keyword("skip_in_static_decomp");
+    lb.add_boolean(m_skip_in_static_decomp);
+
+    return lb.finalize();  
+}
+
+
 Object Field::make_step_accessor(const Object& key) {
     std::string name = key.to_std_string();
 
@@ -708,7 +744,7 @@ Object StructureType::make_step_accessor(const Object& key) {
     if (name == "always-stack-singleton?") return Object::make_boolean(this->is_always_stack_singleton());
     if (name == "fields-count")            return Object::make_integer(this->fields().size());
     if (name == "first-unique-field-idx")  return Object::make_integer(this->first_unique_field_idx());
-    if (name == "fields") {
+    if (name == "fields-list") {
         ListBuilder lb;
         for (auto& field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast), 
@@ -719,7 +755,7 @@ Object StructureType::make_step_accessor(const Object& key) {
         }
         return lb.finalize();
     }
-    if (name == "methods") {
+    if (name == "methods-list") {
         ListBuilder lb;
 
         // 1. Добавляем специальный метод 'new', если он определен
@@ -739,6 +775,29 @@ Object StructureType::make_step_accessor(const Object& key) {
         }
 
         return lb.finalize();
+    }
+    if (name == "new") {
+        if (m_new_method_info_defined) {
+            auto method_ptr = std::shared_ptr<MethodInfo>(
+                const_cast<MethodInfo*>(&m_new_method_info), [](MethodInfo*){}
+            );
+            return Object::make_native_ref(method_ptr);
+        }
+        return Object::make_undefined();
+    } 
+    for (auto& field : m_fields) {
+        if (field.name() == name) {
+            auto field_ptr = std::shared_ptr<Field>(const_cast<Field*>(&field), [](Field*){});
+            return Object::make_native_ref(field_ptr);
+        }
+    }
+    for (auto& method : m_methods) {
+        if (method.name == name) {
+            auto method_ptr = std::shared_ptr<MethodInfo>(
+                const_cast<MethodInfo*>(&method), [](MethodInfo*){}
+            );
+            return Object::make_native_ref(method_ptr);
+        }
     }
     // 2. Если это не "структурное" свойство, передаем запрос родителю.
     // ReferenceType проверит "heap-base", "pointer?", "load-size".

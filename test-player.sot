@@ -1,0 +1,45 @@
+﻿(init-types 'z80)
+
+(deftype Player~ (basic)
+      ((id uint8 ) ;; 1 байт, по умолчанию 0
+      (hp uint16 ) ;; 2 байта, Little-endian, по умолчанию 100
+      (score uint16 ) ;; 4 байта
+      (pos-x uint16 ) ;; 2 байта
+      (pos-y uint16 ))) 
+
+(define buf (make-buffer "DRV_SEG" 64 0))
+(define wr  (make-buffer-writer buf))
+
+(buffer-write buf '((id . 1)) :at 0 :as 'Player~)
+
+(fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+
+(defmacro def-asm-struct (name &rest fields)
+  (let* ((type-lit (string->symbol (fmt #f "{}" name)))
+         (type (-> *type-system* type-lit))
+         (const-forms '())
+         )
+    
+    ;; Генерируем deftype, передавая fields как список
+    (push! `(deftype ,name (basic) ,@fields) const-forms)
+
+    ;; Константа размера
+    (push! `(define ,(string->symbol (fmt #f "{}::type::size" name)) 
+                    (-> *type-system* ,type-lit size)) const-forms)
+
+    ;; Константы полей
+    (dolist (f (car fields))
+      (let* ((f-name (caar f))
+             (f-const (string->symbol (fmt #f "{}::{}" name f-name))))
+        (push! `(define ,f-const (-> *type-system* ,type-lit ,f-name offset)) const-forms)))
+
+    `(begin ,@(reverse const-forms))))
+
+(def-asm-struct Player
+  ((id uint8)
+  (hp uint16)
+  (score uint16)
+  (pos-x uint16)
+  (pos-y uint16)))
+
+(print (-> *type-system* Player))

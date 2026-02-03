@@ -9,3 +9,4 @@
 ;(load "test-buffer-rd-wr.sot")
 ;(load "test-buffer-link.sot")
 (load "common/xiff/soot/asm-test.sot")
+;(load "test-player.sot")

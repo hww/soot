@@ -531,6 +531,14 @@ namespace script
             std::advance(it, idx);
             return it->second;
         }
+
+        Object make_step_accessor(const Object& key) {
+            if (key.is_symbol() || key.is_string()) {
+                auto skey = key.to_std_string();
+                return data[skey];
+            }
+            return Object::make_undefined();
+        }
     };
 
     template <typename T>

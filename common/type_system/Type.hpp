@@ -159,7 +159,7 @@ public:
     void mark_as_user_placed();
 
     std::string print() const;
-    Object inspect() const { return Object::make_symbol("field");  }
+    Object inspect() const;
 
     const TypeSpec& type() const { return m_type; }
     TypeSpec& type() { return m_type; }

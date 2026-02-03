@@ -93,25 +93,56 @@
 (defparameter *optable* (make-hash-table '() 200)
   "Opcode table for the assembler")
 
-(defun hash-opcode (opc)
+(defun %make-raw-key (op-name a1 a2 a3)
+  "Создает строку ключа из названия и типов аргументов"
+  (fmt #f "{} {} {} {}" op-name a1 a2 a3))
+
+(defun %make-opcode-key (opc)
+  "Генерация строкового ключа для таблицы опкодов"
+  ;; Добавляем открывающую скобку перед fmt
+  (%make-raw-key 
+       (opcode-op opc)
+       (opcode-arg1 opc)
+       (opcode-arg2 opc)
+       (opcode-arg3 opc))) 
+
+(defun %normalize-type (type)
+  (cond 
+    ((or (eq? type 'number) (eq? type 'asmsym)) 'variable)
+    ((or (eq? type 'imm-indirect) (eq? type 'asmsym-indirect)) 'var-indirect)
+    (#t type)))
+
+(defun set-opcode (opc)
   "Enter an opcode into the assembler opcode table"
   (check-type opc opcode?)
-  (let ((key (fmt #f "{} {} {} {}"  (opcode-op opc)
-                                 (opcode-arg1 opc)
-                                 (opcode-arg2 opc)
-                                 (opcode-arg3 opc))))
-    ;(fmt #t "hash-opcode :key {} :opc {}\n" key opc)                       
+  (let ((key (%make-opcode-key opc)))
+    ;(fmt #t "set-opcode :key {} :opc {}\n" key opc)                       
     (hash-table-set! *optable* key opc)))
 
-(defun get-opc (opc &optional (arg1 null) (arg2 null) (arg3 null))
-  "Get the hash-table entry for the corresponding opcode"
-  (let* ((key (fmt #f "{} {} {} {}" opc  arg1 arg2 arg3)) 
-         (val (hash-table-try-ref *optable* key)))
-         ;(fmt #t "get-opc  :key {}\n" key)                       
-         (if (car val)
-          (cdr val)
-          (error (fmt #f "Can't find opcode {}" key) (source-info opc)))))
-
+(defun get-opcode (op-name &optional (arg1 null) (arg2 null) (arg3 null))
+  "Умный поиск: сначала Exact Match, затем Fallback к 'variable'"
+  (let* ((exact-key (%make-raw-key op-name arg1 arg2 arg3))
+         (val       (hash-table-try-ref *optable* exact-key)))
+    
+    (cond 
+      ;; 1. Нашли точное совпадение (например, LD A number)
+      ((car val) (cdr val))
+      
+      ;; 2. Если не нашли, пробуем нормализовать типы в 'variable
+      (#t 
+       (let* ((n-key (%make-raw-key op-name 
+                                   (%normalize-type arg1)
+                                   (%normalize-type arg2)
+                                   (%normalize-type arg3)))
+              (n-val (hash-table-try-ref *optable* n-key)))
+         
+         (if (car n-val)
+             (cdr n-val) ;; Нашли обобщенную версию
+             ;; 3. Ошибка, если вообще ничего не подошло
+             (error (fmt #f "Can't find opcode. Tried: '{}' and '{}'" 
+                         exact-key n-key) 
+                    (source-info op-name))))))))
+                    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Instruction это инструкция ассемблера
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -125,15 +156,13 @@
   (ctx null)
   (size 0))
 
-;; Найти opcode для инструкции
 (defun get-inst (inst)
-  "Get the hash-table entry for the corresponding instruction"
+  "Найти opcode для конкретной инструкции в программе"
   (check-type inst inst?)  
-  ;(print `(get-inst ,(inspect inst)))
-  (get-opc (inst-op inst) 
-           (lextoken-type (inst-arg1 inst))
-           (lextoken-type (inst-arg2 inst))
-           (lextoken-type (inst-arg3 inst))))
+  (get-opcode (inst-op inst) 
+              (lextoken-type (inst-arg1 inst))
+              (lextoken-type (inst-arg2 inst))
+              (lextoken-type (inst-arg3 inst))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Asm Prog контейнер програмы
@@ -205,9 +234,11 @@
 (defun get-label-addr-optional (label prog ctx)
   "Мягкое получение адреса. Возвращает #f, если метка еще не определена.
    Используется для предварительных расчетов в Pass 2."
-  (let* ((name (%asm-extract-name label ctx))
-         (val (hash-table-try-ref (asm-prog-ltable prog) name)))
-    (if (car val) (cdr val) #f)))
+  (if (number? label)
+    label ; вероятно уже число
+    (let* ((name (%asm-extract-name label ctx))
+          (val (hash-table-try-ref (asm-prog-ltable prog) name)))
+      (if (car val) (cdr val) #f))))
 
 (defun get-rel-offset (label prog ctx &optional (pc-offset 2))
   "Расчет относительного смещения для Z80 (Target - (PC + offset)).
@@ -283,6 +314,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Компиляция программы
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun assemble (prog)
   (let ((bin-list '())
         (listing '()))
@@ -408,10 +440,11 @@
                         (pass3 '()) 
                         (arg1 null)
                         (arg2 null)
-                        (arg3 null))
+                        (arg3 null)
+                        (relative #f))
                         
   `(begin
-     (hash-opcode (make-opcode 
+     (set-opcode (make-opcode 
                     :documentation ,documentation
                     :op ',sym 
                     :size ,size 
@@ -422,82 +455,52 @@
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
-                                   ;; МАГИЯ: связываем имя геттера с самим объектом
-                                   (inst-op inst)
-                                   (size ,size)
-                                   (ctx (inst-ctx inst))) 
-                                   ;(inspect-inst "pass1" inst-op size r1 r2 r3)                                   
+                                   (inst-op inst) (size ,size) (ctx (inst-ctx inst))) 
                                ,pass1))
                     :pass2 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
-                                   ;; МАГИЯ: теперь (struct-set! inst-op ...) сработает
-                                   (inst-op inst)
-                                   (size ,size)  
-                                   (ctx (inst-ctx inst))) 
-                                   ;(inspect-inst "pass2" inst-op size r1 r2 r3)                                 
+                                   (inst-op inst) (size ,size) (ctx (inst-ctx inst))) 
                                ,pass2))
                     :pass3 (lambda (inst prog) 
-                             (let ((r1 (lextoken-value (inst-arg1 inst))) 
-                                   (r2 (lextoken-value (inst-arg2 inst)))
-                                   (r3 (lextoken-value (inst-arg3 inst)))
-                                   (inst-op inst)
-                                   (size ,size)
-                                   (ctx (inst-ctx inst))) 
-                                   ;(inspect-inst "pass3" inst-op size r1 r2 r3)
-                               ,pass3))))
+                            (let* ((arg1-obj (inst-arg1 inst))
+                                    (arg2-obj (inst-arg2 inst))
+                                    (arg3-obj (inst-arg3 inst))
+                                    (v1 (lextoken-value arg1-obj)) 
+                                    (v2 (lextoken-value arg2-obj)) 
+                                    (v3 (lextoken-value arg3-obj))
+                                    (inst-op inst) (size ,size) (ctx (inst-ctx inst))
+                                    
+                                    ;; Проверка: является ли токен регистром (через список известных типов)
+                                    (is-reg? (lambda (obj)
+                                              (let ((t (lextoken-type obj)))
+                                                (or (eq? t '8-register)
+                                                    (eq? t '16-register)
+                                                    (eq? t 'index-register))))) ;; Добавь сюда другие, если есть
+
+                                    (resolve (lambda (val obj rel?)
+                                              (if (or (null? val) (eq? val 'null) 
+                                                      (list? val) (string? val)
+                                                      (is-reg? obj)) 
+                                                  val
+                                                  (if rel?
+                                                      (get-rel-offset val prog ctx ,size)
+                                                      (get-label-addr val prog ctx)))))
+
+                                    (r1 (resolve v1 arg1-obj ,relative))
+                                    (r2 (resolve v2 arg2-obj #f))
+                                    (r3 (resolve v3 arg3-obj #f)))
+                              ,pass3))
+                               
+                               ))
 
      (defun ,sym (&optional (a1 (make-lextoken :type null))
                             (a2 (make-lextoken :type null))
                             (a3 (make-lextoken :type null)))
-       (let ((bla1 (*parse* a1))
-             (bla2 (*parse* a2))
-             (bla3 (*parse* a3)))
-         (make-inst :op ',sym :arg1 bla1
-                              :arg2 bla2
-                              :arg3 bla3
-                              ;; should acqure the context of expresiion in the ASM source
-                              :ctx (get-context 3))))))
+       (let ((bla1 (*parse* a1)) (bla2 (*parse* a2)) (bla3 (*parse* a3)))
+         (make-inst :op ',sym :arg1 bla1 :arg2 bla2 :arg3 bla3 :ctx (get-context 3))))))
 
-;; Es ist immer ein bisschen laestig, alles doppelt hinzuschreiben, wenn
-;; ein Opcode eine Adresse als Argument annimmt (symbol oder numerischer
-;; Wert). Die Soperand Macro ersetzt sowas automatisch.
-(defmacro soperand (sym size documentation
-                    &key (pass1 size) (pass2 size) (pass3 '()) 
-                         (arg1 null) (arg2 null) (arg3 null) (relative #f))
-   (let* ((arg-list (list arg1 arg2 arg3))
-          ;; Выносим общую логику Pass 3 в переменную, чтобы не дублировать
-          (common-pass3 
-            `(let* ((r1-raw (get-label-addr r1 prog))
-                    (r2-raw (if (or (eq? ',arg2 'variable) (eq? ',arg2 'var-indirect)) 
-                                (get-label-addr r2 prog) r2))
-                    (r3-raw (if (or (eq? ',arg3 'variable) (eq? ',arg3 'var-indirect)) 
-                                (get-label-addr r3 prog) r3))
-                    ;; ГЛАВНЫЙ ФИКС: если флаг relative активен - считаем смещение ВСЕГДА
-                    (r1 ,(if relative 
-                            `(- r1-raw (+ (get-abs-pc prog) ,size))
-                             'r1-raw))
-                    (r2 r2-raw)
-                    (r3 r3-raw))
-               ,pass3))
-          (arglis  (nsubstitute 'asmsym-indirect 'var-indirect
-                    (nsubstitute 'asmsym 'variable (copy-list arg-list))))
-          (arglis1 (nsubstitute 'imm-indirect 'var-indirect
-                    (nsubstitute 'number 'variable (copy-list arg-list)))))
-               
-        `(begin
-            ;; ВАРИАНТ ДЛЯ МЕТОК
-            (operand ,sym ,size ,documentation
-                     :pass1 ,pass1 :pass2 ,pass2
-                     :arg1 ,(car arglis) :arg2 ,(cadr arglis) :arg3 ,(caddr arglis)
-                     :pass3 ,common-pass3)
-
-            ;; ВАРИАНТ ДЛЯ ЧИСЕЛ (Теперь тоже со смещением!)
-            (operand ,sym ,size ,documentation
-                     :pass1 ,pass1 :pass2 ,pass2
-                     :arg1 ,(car arglis1) :arg2 ,(cadr arglis1) :arg3 ,(caddr arglis1)
-                     :pass3 ,common-pass3))))
 
 (operand lab 0 "Label"
   :arg1 asmsym
