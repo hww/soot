@@ -173,6 +173,7 @@
 (defstruct segment
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
+  (name "undefined-segment-name")
   (insts null)
   ;(ifuncs null)
   (labs null)                 ;; Метки
@@ -227,57 +228,139 @@
 
 (defun select-segment (mod seg-name)
   "Переключает активный сегмент в модуле. Создает новый, если нужно."
-  (let ((existing-seg (hash-table-ref (module-segments mod) seg-name)))
-    (if (not (null? existing-seg))
-        ;; Если сегмент уже есть, просто делаем его активным
-        (setf (module-current-segment mod) existing-seg)
-        ;; Если нет — создаем новый сегмент (бывший asm-prog)
-        (let ((new-seg (make-segment :name seg-name :parent-module mod)))
+  ;; Используем try-ref, чтобы безопасно проверить наличие ключа
+  (let* ((segments-map (module-segments mod))
+         (val-pair (hash-table-try-ref segments-map seg-name)))
+    
+    (if (car val-pair)
+        ;; 1. Нашли! Просто делаем его активным
+        (setf (module-current-segment mod) (cdr val-pair))
+        
+        ;; 2. Не нашли — создаем с нуля
+        (let ((new-seg (make-segment :name seg-name 
+                                     :parent-module mod
+                                     :ltable (make-hash-table)))) ;; Не забываем инициализировать таблицу
           (begin
-            (hash-table-set! (module-segments mod) seg-name new-seg)
-            (setf (module-segment-order mod) (append (module-segment-order mod) (list seg-name)))
+            (hash-table-set! segments-map seg-name new-seg)
+            ;; Добавляем в список порядка, чтобы знать, кто за кем идет
+            (setf (module-segment-order mod) 
+                  (append (module-segment-order mod) (list seg-name)))
             (setf (module-current-segment mod) new-seg))))))
-            
 
-;;; ------------------------------------------------------------------
-;;; Публичное API (Public)
-;;; ------------------------------------------------------------------
+(defun assemble-module (mod)
+  "Главная функция сборки модуля. Проводит 3 прохода через все сегменты."
+  (let ((global-ilc 0))
+    (begin
+      ;; --- PASS 1 & 2: Рассчитываем адреса ---
+      (mapcar (lambda (pass-num)
+                (begin
+                  (set! global-ilc 0) ;; Начинаем с нуля (или с origin модуля)
+                  (mapcar (lambda (seg-name)
+                            (let ((seg (hash-table-ref (module-segments mod) seg-name)))
+                              (begin
+                                ;; Наследуем адрес от предыдущего сегмента
+                                (setf (segment-ilc seg) global-ilc)
+                                ;; Прогоняем инструкции сегмента
+                                (assemble-pass seg pass-num)
+                                ;; Запоминаем, где остановились
+                                (set! global-ilc (segment-ilc seg)))))
+                          (module-segment-order mod))))
+              '(1 2))
+
+      ;; --- PASS 3: Финальная генерация байтов ---
+      (let ((final-bin '())
+            (final-lst '()))
+        (begin
+          (set! global-ilc 0)
+          (mapcar (lambda (seg-name)
+                    (let* ((seg (hash-table-ref (module-segments mod) seg-name))
+                           (res (assemble seg))) ;; Твой старый assemble для сегмента
+                      (begin
+                        ;; Склеиваем бинарные данные и листинг
+                        (set! final-bin (append final-bin (cdr (assoc :bin res))))
+                        (set! final-lst (append final-lst (cdr (assoc :lst res)))))))
+                  (module-segment-order mod))
+          
+          ;; Возвращаем результат всего модуля
+          (list (cons :bin final-bin) (cons :lst final-lst)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Метки
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defstruct asmsym-info
+  (address 0)
+  (scope :private)  ;; :public или :private
+  (type :label)     ;; :function, :variable, :const
+  (signature '())   ;; (int int) и т.д.
+  (segment-name ""))
+
+(defun set-label-full! (name seg scope type sig ctx)
+  (let* ((mod (segment-parent-module seg))
+         (info (make-asmsym-info 
+                 :address (get-abs-pc seg)
+                 :scope scope
+                 :type type
+                 :signature sig
+                 :segment-name (segment-name seg))))
+    (cond
+      ;; Если модуль есть — пишем в глобальную таблицу
+      ((not (null? mod))
+       (hash-table-set! (module-symbols mod) name info))
+      ;; Если модуля нет (тестовый режим) — пишем в локальную таблицу сегмента
+      (#t 
+       (hash-table-set! (segment-ltable seg) name info)))))
+
+(defun get-meta (lst key)
+  "Ищет значение ключа в списке метаданных метки.
+   Пример: (get-meta '(my-func :scope :public) :scope) => :public"
+  (let ((found (member key lst)))
+    (if (and found (not (null? (cdr found))))
+        (cadr found)
+        null)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; управление метками
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun get-abs-pc (seg)
   "Возвращает текущий виртуальный адрес (только ILC)."
   (segment-ilc seg))
 
 (defun set-label-addr! (label seg ctx)
-  "Регистрирует метку по текущему виртуальному адресу."
-  (let ((name (%asm-extract-name label ctx))
-        (addr (get-abs-pc seg)))
-    ;(cfmt #t 'yellow "set-label-addr! :target {} :current-pc {:04X}" label addr) 
-    (setf (gethash name (segment-ltable seg)) addr)))
+  "Регистрирует метку в глобальной таблице модуля через текущий сегмент."
+  (let* ((name (%asm-extract-name label ctx))
+         (addr (get-abs-pc seg))
+         (mod  (segment-parent-module seg)))
+    (if (not (null? mod))
+        (setf (gethash name (module-symbols mod)) addr)
+        ;; Фолбек для тестов, если модуль не задан
+        (setf (gethash name (segment-ltable seg)) addr))))
 
 (defun get-label-addr (label seg &optional ctx)
-  (let ((name (%asm-extract-name label ctx)))
-    (cond
-      ;; 1. Если это число (уже готовый адрес), возвращаем его сразу
-      ((integer? name) name)
-      
-      ;; 2. Если это имя, ищем в таблице меток
-      ((or (string? name) (symbol? name))
-       (let ((val (hash-table-try-ref (segment-ltable seg) name)))
-         (if (car val)
-             (cdr val)
-             (error (fmt #f "Undefined label: {}" name) ctx))))
-      
-      ;; 3. Если что-то иное — это ошибка типа
-      (else (error (fmt #f "Invalid label type: {}" name) ctx)))))
+  (let* ((name (%asm-extract-name label ctx))
+         (mod  (segment-parent-module seg))
+         ;; Выбираем таблицу: либо модуля, либо сегмента
+         (sym-table (if (not (null? mod)) 
+                        (module-symbols mod) 
+                        (segment-ltable seg))))
+    (let ((val (hash-table-try-ref sym-table name)))
+      (if (car val)
+          (let ((info (cdr val)))
+            (if (asmsym-info? info) 
+                (asmsym-info-address info) 
+                info)) ;; возвращаем как есть, если это просто число
+          (error (fmt #f "Undefined label: {}" name) ctx)))))
 
 (defun get-label-addr-optional (label seg ctx)
-  "Мягкое получение адреса. Возвращает #f, если метка еще не определена.
-   Используется для предварительных расчетов в Pass 2."
+  "Мягкое получение адреса из глобальной таблицы."
   (if (number? label)
-    label ; вероятно уже число
-    (let* ((name (%asm-extract-name label ctx))
-          (val (hash-table-try-ref (segment-ltable seg) name)))
-      (if (car val) (cdr val) #f))))
+      label
+      (let* ((name (%asm-extract-name label ctx))
+             (mod  (segment-parent-module seg))
+             (sym-table (if (not (null? mod)) (module-symbols mod) (segment-ltable seg)))
+             (val (hash-table-try-ref sym-table name)))
+        (if (car val) (cdr val) #f))))
 
 (defun get-rel-offset (label seg ctx &optional (pc-offset 2))
   "Расчет относительного смещения для Z80 (Target - (PC + offset)).
@@ -485,6 +568,36 @@
       (assemble seg (lambda (byte) (write-byte byte bos)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Symbol Table Export
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun save-module-symbols (path mod)
+  "Сохраняет паспорт модуля в формате S-expression."
+  (let ((symbols-data '())
+        (exports '()))
+    (begin
+      (hash-table-map (lambda (name info)
+                        (let ((addr (asmsym-info-address info))
+                              (scope (asmsym-info-scope info))
+                              (type (asmsym-info-type info))
+                              (sig (asmsym-info-signature info))
+                              (seg (asmsym-info-segment-name info)))
+                          (begin
+                            ;; Формируем строку для отладочного списка
+                            (set! symbols-data 
+                                  (cons (list scope addr 0 name type seg sig) symbols-data))
+                            ;; Если публичный - добавляем в экспорт
+                            (if (eq? scope :public)
+                                (set! exports (cons (list name addr type sig) exports))))))
+                      (module-symbols mod))
+      
+      (let ((output (list (module-name mod)
+                          (list :size "??") ;; Нужно будет допилить расчет размера
+                          (cons :export exports)
+                          (cons :symbols symbols-data))))
+        (write-text-file path (fmt #f "{}" output))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; эти методы используются внутри макросов
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -564,11 +677,21 @@
          (make-inst :op ',sym :arg1 bla1 :arg2 bla2 :arg3 bla3 :ctx (get-context 3))))))
 
 
-(operand lab 0 "Label"
-  :arg1 asmsym
-  :pass1 (begin (set-label-addr! r1 seg ctx) 0)
-  :pass2 (begin (set-label-addr! r1 seg ctx) 0)
-  :pass3 '()) ;; В pass3 метка просто ничего не генерирует
+(operand lab 0 "Enhanced Label with Metadata"
+  :arg1 variable ;; r1 теперь может быть именем или списком (имя :scope :type :sig)
+  :pass1 (let* ((meta (if (list? r1) r1 (list r1))) ;; нормализуем к списку
+                (name (car meta))
+                (scope (or (get-meta meta :scope) :private))
+                (type  (or (get-meta meta :type)  :label))
+                (sig   (or (get-meta meta :sig)   '())))
+           (begin 
+             (set-label-full! name seg scope type sig ctx) 
+             0))
+  :pass2 (let ((name (if (list? r1) (car r1) r1)))
+           (begin 
+             (set-label-addr! name seg ctx) ;; Обновляем адрес на 2-м проходе
+             0))
+  :pass3 '())
 
 
 
