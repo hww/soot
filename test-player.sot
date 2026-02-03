@@ -1,5 +1,7 @@
 ﻿(init-types 'z80)
 
+(defmacro ts-> (&rest args) `(-> *type-system* ,@args))
+
 (deftype Player~ (basic)
       ((id uint8 ) ;; 1 байт, по умолчанию 0
       (hp uint16 ) ;; 2 байта, Little-endian, по умолчанию 100
@@ -15,25 +17,22 @@
 (fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
 
 (defmacro def-asm-struct (name &rest fields)
-  (let* ((type-lit (string->symbol (fmt #f "{}" name)))
-         (type (-> *type-system* type-lit))
-         (const-forms '())
-         )
+  (let* ((type-name (string->symbol (fmt #f "{}" name)))
+         (size-const (string->symbol (fmt #f "{}::type::size" name))))
     
-    ;; Генерируем deftype, передавая fields как список
-    (push! `(deftype ,name (basic) ,@fields) const-forms)
+    `(begin
+       ;; 1. Определяем тип в системе типов Soot
+       (deftype ,name (basic) ,@fields)
 
-    ;; Константа размера
-    (push! `(define ,(string->symbol (fmt #f "{}::type::size" name)) 
-                    (-> *type-system* ,type-lit size)) const-forms)
+       ;; 2. Определяем константу размера (вычисляется после регистрации типа)
+       (define ,size-const (-> *type-system* ,type-name size))
 
-    ;; Константы полей
-    (dolist (f (car fields))
-      (let* ((f-name (caar f))
-             (f-const (string->symbol (fmt #f "{}::{}" name f-name))))
-        (push! `(define ,f-const (-> *type-system* ,type-lit ,f-name offset)) const-forms)))
-
-    `(begin ,@(reverse const-forms))))
+       ;; 3. Генерируем константы смещений для каждого поля
+       ,@(mapcar (lambda (f)
+                   (let* ((f-name (caar f))
+                          (const-name (string->symbol (fmt #f "{}::{}" name f-name))))
+                     `(define ,const-name (-> *type-system* ,type-name ,f-name offset))))
+                 fields))))
 
 (def-asm-struct Player
   ((id uint8)
