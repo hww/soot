@@ -167,10 +167,10 @@
               (lextoken-type (inst-arg3 inst))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Asm Prog контейнер програмы
+;; Asm Segment контейнер 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct asm-prog
+(defstruct segment
   "Assembler program, made of a list of instructions, a list of
    functions created by the instructions a symbol table, and an ilc"
   (insts null)
@@ -178,7 +178,9 @@
   (labs null)                 ;; Метки
   (ltable (make-hash-table))  ;;
   (ilc 0)
-  (origin 0))                    ;;
+  (origin 0)
+  (parent-module null))       ;;
+
 ;;; ------------------------------------------------------------------
 ;;; Внутренние утилиты (Private)
 ;;; ------------------------------------------------------------------
@@ -202,22 +204,57 @@
     (else 
      (error (fmt #f "Expected label, name or address, got: {}" input) ctx))))
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Asm Module контейнер 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defstruct module
+  (name "unnamed")
+  (segments (make-hash-table))  ;; Хэш-таблица: имя-строка -> объект segment
+  (segment-order '())           ;; Список имен сегментов в порядке их появления
+  (symbols (make-hash-table))   ;; Глобальная таблица символов (имя -> адрес)
+  (current-segment null))       ;; Ссылка на активный в данный момент segment
+
+(defun make-new-module (name)
+  "Создает новый модуль и инициализирует его"
+  (make-module :name name
+               :segments (make-hash-table '() 20)
+               :symbols (make-hash-table '() 200)
+               :segment-order '()
+               :current-segment null))
+
+(defun select-segment (mod seg-name)
+  "Переключает активный сегмент в модуле. Создает новый, если нужно."
+  (let ((existing-seg (hash-table-ref (module-segments mod) seg-name)))
+    (if (not (null? existing-seg))
+        ;; Если сегмент уже есть, просто делаем его активным
+        (setf (module-current-segment mod) existing-seg)
+        ;; Если нет — создаем новый сегмент (бывший asm-prog)
+        (let ((new-seg (make-segment :name seg-name :parent-module mod)))
+          (begin
+            (hash-table-set! (module-segments mod) seg-name new-seg)
+            (setf (module-segment-order mod) (append (module-segment-order mod) (list seg-name)))
+            (setf (module-current-segment mod) new-seg))))))
+            
+
 ;;; ------------------------------------------------------------------
 ;;; Публичное API (Public)
 ;;; ------------------------------------------------------------------
 
-(defun get-abs-pc (prog)
+(defun get-abs-pc (seg)
   "Возвращает текущий виртуальный адрес (только ILC)."
-  (asm-prog-ilc prog))
+  (segment-ilc seg))
 
-(defun set-label-addr! (label prog ctx)
+(defun set-label-addr! (label seg ctx)
   "Регистрирует метку по текущему виртуальному адресу."
   (let ((name (%asm-extract-name label ctx))
-        (addr (get-abs-pc prog)))
+        (addr (get-abs-pc seg)))
     ;(cfmt #t 'yellow "set-label-addr! :target {} :current-pc {:04X}" label addr) 
-    (setf (gethash name (asm-prog-ltable prog)) addr)))
+    (setf (gethash name (segment-ltable seg)) addr)))
 
-(defun get-label-addr (label prog &optional ctx)
+(defun get-label-addr (label seg &optional ctx)
   (let ((name (%asm-extract-name label ctx)))
     (cond
       ;; 1. Если это число (уже готовый адрес), возвращаем его сразу
@@ -225,7 +262,7 @@
       
       ;; 2. Если это имя, ищем в таблице меток
       ((or (string? name) (symbol? name))
-       (let ((val (hash-table-try-ref (asm-prog-ltable prog) name)))
+       (let ((val (hash-table-try-ref (segment-ltable seg) name)))
          (if (car val)
              (cdr val)
              (error (fmt #f "Undefined label: {}" name) ctx))))
@@ -233,20 +270,20 @@
       ;; 3. Если что-то иное — это ошибка типа
       (else (error (fmt #f "Invalid label type: {}" name) ctx)))))
 
-(defun get-label-addr-optional (label prog ctx)
+(defun get-label-addr-optional (label seg ctx)
   "Мягкое получение адреса. Возвращает #f, если метка еще не определена.
    Используется для предварительных расчетов в Pass 2."
   (if (number? label)
     label ; вероятно уже число
     (let* ((name (%asm-extract-name label ctx))
-          (val (hash-table-try-ref (asm-prog-ltable prog) name)))
+          (val (hash-table-try-ref (segment-ltable seg) name)))
       (if (car val) (cdr val) #f))))
 
-(defun get-rel-offset (label prog ctx &optional (pc-offset 2))
+(defun get-rel-offset (label seg ctx &optional (pc-offset 2))
   "Расчет относительного смещения для Z80 (Target - (PC + offset)).
    Использует строгое получение адреса для генерации кода."
-  (let ((target (get-label-addr label prog ctx))
-        (current-pc (get-abs-pc prog)))
+  (let ((target (get-label-addr label seg ctx))
+        (current-pc (get-abs-pc seg)))
     ;(cfmt #t 'yellow "get-rel-offset :target {} :current-pc {}" target current-pc) 
     (- target (+ current-pc pc-offset))))
 
@@ -306,9 +343,9 @@
 ;; Выполняет проход с номером 1, 2 или 3
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun assemble-pass (prog pass-num)
+(defun assemble-pass (seg pass-num)
   (begin
-    (asm-prog-ilc! prog (asm-prog-origin prog))
+    (segment-ilc! seg (segment-origin seg))
     ;(cfmt #t 'cyan "Start pass {}\n" pass-num)
     
     (mapcar (lambda (inst)
@@ -321,33 +358,33 @@
                                  (t null)))
                      ;; Вычисляем размер: либо через лямбду, либо берем default size
                      (new-size (if (procedure? pass-f) 
-                                   (pass-f inst prog) 
+                                   (pass-f inst seg) 
                                    old-size))
                      ;; Если лямбда вернула что-то странное (null), страхуемся
                      (final-sz (or new-size old-size)))
 
                 (begin
                   ;(cfmt #t 'red "pass {}: ilc {:04X} | size {}->{} | opcode {}\n" 
-                  ;      pass-num (asm-prog-ilc prog) old-size final-sz (opcode-op opc))
+                  ;      pass-num (segment-ilc seg) old-size final-sz (opcode-op opc))
                   
-                  (asm-prog-ilc! prog (+ (asm-prog-ilc prog) final-sz))
+                  (segment-ilc! seg (+ (segment-ilc seg) final-sz))
                   final-sz)))
-            (asm-prog-insts prog))))
+            (segment-insts seg))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Компиляция программы
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun assemble (prog)
+(defun assemble (seg)
   (let ((bin-list '())
         (listing '()))
     
-    (assemble-pass prog 1)
-    (assemble-pass prog 2)
+    (assemble-pass seg 1)
+    (assemble-pass seg 2)
 
     ;; 3. Pass 3: Сбрасываем в 0
-    (asm-prog-ilc! prog 0)
-    (asm-prog-origin! prog 0) 
+    (segment-ilc! seg 0)
+    (segment-origin! seg 0) 
     
     (mapcar (lambda (inst)
           (let* ((op-name (struct-ref inst :op))
@@ -356,10 +393,10 @@
             ;; 1. Обрабатываем ORG до генерации байтов
             (if (eq? op-name 'org)
               (let ((target-addr (lextoken-value (struct-ref inst :arg1))))
-                (asm-prog-ilc! prog target-addr)))
+                (segment-ilc! seg target-addr)))
 
-            (let* ((v-addr (get-abs-pc prog))
-                   (bytes (if opc ((opcode-pass3 opc) inst prog) '()))
+            (let* ((v-addr (get-abs-pc seg))
+                   (bytes (if opc ((opcode-pass3 opc) inst seg) '()))
                    (len (if (list? bytes) (length bytes) (if (integer? bytes) 1 0))))
                 
                 (begin
@@ -373,8 +410,8 @@
 
                   ;; 3. Двигаем ILC
                   (if (not (eq? op-name 'org))
-                      (asm-prog-ilc! prog (+ (asm-prog-ilc prog) len)))))))
-        (asm-prog-insts prog))
+                      (segment-ilc! seg (+ (segment-ilc seg) len)))))))
+        (segment-insts seg))
 
     (list (cons :bin bin-list) (cons :lst listing))))
 
@@ -419,8 +456,8 @@
       (fmt #t "{}" out)
       null)))
 
-(defun assemble-to-file (prog bin-path lst-path)
-  (let* ((res (assemble prog))
+(defun assemble-to-file (seg bin-path lst-path)
+  (let* ((res (assemble seg))
          (bin-data (cdr (assoc :bin res)))
          (lst-data (cdr (assoc :lst res))))
     (begin
@@ -431,43 +468,43 @@
       (fmt #t "\nAssembly finished. Binary: {}, Listing: {}\n" bin-path lst-path)
       get_true)))
 
-(defun assemble-raw-byte (prog file)
+(defun assemble-raw-byte (seg file)
   (let ((bos (open file :direction :output
                         :if-does-not-exist :create
                         :element-type 'unsigned-byte
                         :if-exists :overwrite)))
        (if bos
            (begin 
-             (assemble prog (lambda (byte) (write-byte byte bos)))
+             (assemble seg (lambda (byte) (write-byte byte bos)))
              (close bos)
              (fmt t "Program written to file {}\n" file))
            (fmt t "Program could not be written to file {}\n" file))))
 
-(defun assemble-raw-byte (prog file)
+(defun assemble-raw-byte (seg file)
    (begin 
-      (assemble prog (lambda (byte) (write-byte byte bos)))))
+      (assemble seg (lambda (byte) (write-byte byte bos)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; эти методы используются внутри макросов
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Получить адрес (число или адрес метки)
-(defun get-addr (v prog ctx)
+(defun get-addr (v seg ctx)
  (cond 
   ((integer? v) v) 
-  ((symbol? v) (get-label-addr v prog ctx)) 
+  ((symbol? v) (get-label-addr v seg ctx)) 
   (else (error (fmt #f "Invalid address: {}" v) ctx))))
 
-(defun get-addr-list (v prog ctx)
+(defun get-addr-list (v seg ctx)
   (cond 
     ((null? v) '())
-    ((list? v) (mapcar (lambda (item) (get-addr item prog ctx)) v))
-    (#t (list (get-addr v prog ctx))))) ;; Используй t или else
+    ((list? v) (mapcar (lambda (item) (get-addr item seg ctx)) v))
+    (#t (list (get-addr v seg ctx))))) ;; Используй t или else
      
 ;; Получить относительное смещение для JR
-(defun get-rel-offset (label prog ctx inst-size)
-  (let* ((target (get-addr label prog ctx))
-         (current-pc (get-abs-pc prog))
+(defun get-rel-offset (label seg ctx inst-size)
+  (let* ((target (get-addr label seg ctx))
+         (current-pc (get-abs-pc seg))
          ;; Вычисляем дельту относительно адреса следующей инструкции
          (offset (- target (+ current-pc inst-size))))
     
@@ -501,19 +538,19 @@
                     :documentation ,documentation
                     :op ',sym :size ,size 
                     :arg1 ',arg1 :arg2 ',arg2 :arg3 ',arg3
-                    :pass1 (lambda (inst prog) 
+                    :pass1 (lambda (inst seg) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    (ctx (inst-ctx inst))) 
                                ,pass1))
-                    :pass2 (lambda (inst prog) 
+                    :pass2 (lambda (inst seg) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
                                    (ctx (inst-ctx inst))) 
                                ,pass2))
-                    :pass3 (lambda (inst prog) 
+                    :pass3 (lambda (inst seg) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
@@ -529,10 +566,12 @@
 
 (operand lab 0 "Label"
   :arg1 asmsym
-  :pass1 (begin (set-label-addr! r1 prog ctx) 0)
-  :pass2 (begin (set-label-addr! r1 prog ctx) 0)
+  :pass1 (begin (set-label-addr! r1 seg ctx) 0)
+  :pass2 (begin (set-label-addr! r1 seg ctx) 0)
   :pass3 '()) ;; В pass3 метка просто ничего не генерирует
 
-(define *asm-program-loader* #t)
 
-(fmt #t "Loaded asm-program-loader\n")
+
+(define *segmentram-loader* #t)
+
+(fmt #t "Loaded segmentram-loader\n")
