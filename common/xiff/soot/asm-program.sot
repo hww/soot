@@ -107,10 +107,12 @@
        (opcode-arg3 opc))) 
 
 (defun %normalize-type (type)
-  (cond 
-    ((or (eq? type 'number) (eq? type 'asmsym)) 'variable)
-    ((or (eq? type 'imm-indirect) (eq? type 'asmsym-indirect)) 'var-indirect)
-    (#t type)))
+  (cond
+    ((eq? type 'number)   'variable)
+    ((eq? type 'asmsym)   'variable)
+    ((eq? type 'list)     'variable) ;; <-- Вот этот парень спасет ситуацию
+    ((eq? type 'string)   'variable)
+    (else type))) ;; Регистры (a, hl, и т.д.) остаются как есть
 
 (defun set-opcode (opc)
   "Enter an opcode into the assembler opcode table"
@@ -254,12 +256,33 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun arg->string (arg)
-  "Конвертировать агрумнт в строку для записи в листинг файл"
+  "Конвертировать аргумент в строку для записи в листинг файл"
   (if (lextoken? arg)
-      (let ((val (lextoken-value arg)))
-        (if (or (null? val) (eq? val 'null))
-            ""
-            (fmt #f "{}" val)))
+      (let ((val  (lextoken-value arg))
+            (type (lextoken-type arg)))
+        (cond 
+          ;; 1. Пустые аргументы
+          ((or (null? val) (eq? val 'null)) "")
+          
+          ;; 2. Индексная адресация (IX+d) / (IY+d)
+          ((eq? type 'ix-indexed) (fmt #f "(ix{:+})" val))
+          ((eq? type 'iy-indexed) (fmt #f "(iy{:+})" val))
+          
+          ;; 3. Косвенная адресация (HL), (BC) и т.д.
+          ((eq? type 'hl-indirect) "(hl)")
+          ((eq? type 'bc-indirect) "(bc)")
+          ((eq? type 'de-indirect) "(de)")
+          ((eq? type 'sp-indirect) "(sp)")
+          
+          ;; 4. Косвенная адресация по адресу (nn)
+          ((eq? type 'imm-indirect) (fmt #f "({:04X}h)" val))
+          ((eq? type 'asmsym-indirect) (fmt #f "({})" val))
+          
+          ;; 5. Обычные числа (в hex для красоты)
+          ((integer? val) (fmt #f "{:02X}h" val))
+          
+          ;; 6. Всё остальное (регистры, метки)
+          (#t (fmt #f "{}" val))))
       ""))
 
 (defun inst->string (inst)
@@ -384,10 +407,12 @@
                     (#t
                      (begin
                        (if (and (not (null? bytes)) (not (eq? bytes 'null)))
-                           (let ((b-list (if (list? bytes) bytes (list bytes))))
-                             (mapcar (lambda (b) 
-                                       (set! b-str (concat b-str (fmt #f "{:02X} " b))))
-                                     b-list)))
+                          (let ((b-list (if (list? bytes) bytes (list bytes))))
+                            (mapcar (lambda (b) 
+                                      ;; Используем logand, чтобы превратить -10 в F6
+                                      (let ((clean-byte (if (number? b) (logand b #xFF) 0)))
+                                        (set! b-str (concat b-str (fmt #f "{:02X} " clean-byte)))))
+                                    b-list)))
                        (set! out (concat out (fmt #f "{:04X} |    {:13} | {}\n" addr b-str src))))))))
               lst-data)
       (write-text-file path out)
@@ -423,6 +448,37 @@
       (assemble prog (lambda (byte) (write-byte byte bos)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; эти методы используются внутри макросов
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Получить адрес (число или адрес метки)
+(defun get-addr (v prog ctx)
+ (cond 
+  ((integer? v) v) 
+  ((symbol? v) (get-label-addr v prog ctx)) 
+  (else (error (fmt #f "Invalid address: {}" v) ctx))))
+
+(defun get-addr-list (v prog ctx)
+  (cond 
+    ((null? v) '())
+    ((list? v) (mapcar (lambda (item) (get-addr item prog ctx)) v))
+    (#t (list (get-addr v prog ctx))))) ;; Используй t или else
+     
+;; Получить относительное смещение для JR
+(defun get-rel-offset (label prog ctx inst-size)
+  (let* ((target (get-addr label prog ctx))
+         (current-pc (get-abs-pc prog))
+         ;; Вычисляем дельту относительно адреса следующей инструкции
+         (offset (- target (+ current-pc inst-size))))
+    
+    ;; --- ПРОВЕРКА НА ПЕРЕПОЛНЕНИЕ ---
+    (if (or (< offset -128) (> offset 127))
+        (error (fmt #f "Relative jump to '{}' is out of range. Offset is {} bytes, but must be between -128 and 127." label offset) ctx)
+        
+        ;; Если всё ок, возвращаем байт (маскируем отрицательное число)
+        (logand offset #xFF))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Макросы для описания комманд ассемблера
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -438,62 +494,31 @@
                    &key (pass1 null) 
                         (pass2 null)
                         (pass3 '()) 
-                        (arg1 null)
-                        (arg2 null)
-                        (arg3 null)
+                        (arg1 null) (arg2 null) (arg3 null)
                         (relative #f))
-                        
   `(begin
      (set-opcode (make-opcode 
                     :documentation ,documentation
-                    :op ',sym 
-                    :size ,size 
-                    :arg1 ',arg1
-                    :arg2 ',arg2
-                    :arg3 ',arg3
+                    :op ',sym :size ,size 
+                    :arg1 ',arg1 :arg2 ',arg2 :arg3 ',arg3
                     :pass1 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
-                                   (inst-op inst) (size ,size) (ctx (inst-ctx inst))) 
+                                   (ctx (inst-ctx inst))) 
                                ,pass1))
                     :pass2 (lambda (inst prog) 
                              (let ((r1 (lextoken-value (inst-arg1 inst))) 
                                    (r2 (lextoken-value (inst-arg2 inst)))
                                    (r3 (lextoken-value (inst-arg3 inst)))
-                                   (inst-op inst) (size ,size) (ctx (inst-ctx inst))) 
+                                   (ctx (inst-ctx inst))) 
                                ,pass2))
                     :pass3 (lambda (inst prog) 
-                            (let* ((arg1-obj (inst-arg1 inst))
-                                    (arg2-obj (inst-arg2 inst))
-                                    (arg3-obj (inst-arg3 inst))
-                                    (v1 (lextoken-value arg1-obj)) 
-                                    (v2 (lextoken-value arg2-obj)) 
-                                    (v3 (lextoken-value arg3-obj))
-                                    (inst-op inst) (size ,size) (ctx (inst-ctx inst))
-                                    
-                                    ;; Проверка: является ли токен регистром (через список известных типов)
-                                    (is-reg? (lambda (obj)
-                                              (let ((t (lextoken-type obj)))
-                                                (or (eq? t '8-register)
-                                                    (eq? t '16-register)
-                                                    (eq? t 'index-register))))) ;; Добавь сюда другие, если есть
-
-                                    (resolve (lambda (val obj rel?)
-                                              (if (or (null? val) (eq? val 'null) 
-                                                      (list? val) (string? val)
-                                                      (is-reg? obj)) 
-                                                  val
-                                                  (if rel?
-                                                      (get-rel-offset val prog ctx ,size)
-                                                      (get-label-addr val prog ctx)))))
-
-                                    (r1 (resolve v1 arg1-obj ,relative))
-                                    (r2 (resolve v2 arg2-obj #f))
-                                    (r3 (resolve v3 arg3-obj #f)))
-                              ,pass3))
-                               
-                               ))
+                             (let ((r1 (lextoken-value (inst-arg1 inst))) 
+                                   (r2 (lextoken-value (inst-arg2 inst)))
+                                   (r3 (lextoken-value (inst-arg3 inst)))
+                                   (ctx (inst-ctx inst)))
+                               ,pass3))))
 
      (defun ,sym (&optional (a1 (make-lextoken :type null))
                             (a2 (make-lextoken :type null))

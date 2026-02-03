@@ -66,16 +66,21 @@
 ;;;   значение инвертируется.
 ;;;
 ;;; Примеры:
-;;;   (+ ix 10)          -> Результат: ix-indexed с value 10  => (IX+10)
-;;;   (- iy (-> Sp x))   -> Результат: iy-indexed с value -offset => (IY-offset)
+;;;   [+ ix 10]          -> Результат: ix-indexed с value 10  => (IX+10)
+;;;   [- iy (-> Sp x)]   -> Результат: iy-indexed с value -offset => (IY-offset)
 ;;;
 ;;; Примечание: В Z80 смещение IX/IY — это знаковое 8-битное число (-128..127).
 (defun make-indexed (sign reg val)
    "Create an indexed lextoken"
-   (let ((val (if (eq? sign '+) (eval val) (- 0 (eval val)))))
-        (case (lextoken-type reg)
+   (let ((val (if (eq? sign '+) (eval val) (- 0 (eval val))))
+         ;; Если reg - символ, пытаемся понять какой. Если токен - берем его тип.
+         (r-type (if (lextoken? reg) 
+                     (lextoken-type reg) 
+                     reg))) 
+        (case r-type
            ('ix (make-lextoken :type 'ix-indexed :value val))
-           ('iy (make-lextoken :type 'iy-indexed :value val)))))
+           ('iy (make-lextoken :type 'iy-indexed :value val))
+           (else (error "Unknown index register: ~A" reg)))))
 
 ;;;; ==========================================================================
 ;;;; Z80 Indirect Addressing & Indexing Parser
@@ -89,26 +94,26 @@
 ;;; Аргумент LIS: Список элементов внутри скобок.
 ;;;
 ;;; Примеры входных данных и поведение:
-;;;   (1234)       -> LIS: (1234)
+;;;   [1234]       -> LIS: (1234)
 ;;;                   FIRST: 1234 (fixnump)
 ;;;                   Результат: imm-indirect -> LD A, (1234)
 ;;;
-;;;   (hl)         -> LIS: (#<lextoken hl>)
+;;;   [hl]         -> LIS: (#<lextoken hl>)
 ;;;                   FIRST: #<lextoken> (typep lextoken)
 ;;;                   Результат: hl-indirect -> LD (HL), A
 ;;;
-;;;   (+ ix 5)     -> LIS: (+ #<lextoken ix> 5)
+;;;   [+ ix 5]     -> LIS: (+ #<lextoken ix> 5)
 ;;;                   FIRST: + (символ операции)
 ;;;                   Результат: Передает управление в make-indexed
 ;;;
-;;;   (MY_LABEL)   -> LIS: (MY_LABEL)
+;;;   [MY_LABEL]   -> LIS: (MY_LABEL)
 ;;;                   FIRST: MY_LABEL (symbol?)
 ;;;                   Результат: asmsym-indirect (адрес будет разрешен позже)
 (defun ind-reader (lis)
    "Read indirect adressing modes"
     (let ((first (car lis)))
         (cond 
-           ((fixnump first)
+           ((integer? first)
               (print lis)(print " ")(print (print first))
               (make-lextoken :type 'imm-indirect :value first))
            ((or (eq? '+ first) (eq? '- first))
@@ -187,1055 +192,613 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;; 8-Bit Load group ;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- Группа 8-bit Load ---
 
-(operand ld 1
-     "LD r, r'"
-     :pass3 (list (logior (logior #b01000000 (lshift (reg-code r1) 3))
-                          (reg-code r2)))
-     :arg1 8-register 
-     :arg2 8-register)
+(operand ld 1 "LD r, r'"
+     :arg1 8-register :arg2 8-register
+     :pass3 (list (logior #x40 (lshift (reg-code r1) 3) (reg-code r2))))
 
-(operand ld 2
-     "LD r, n"
-     :pass3 (list (logior #b00000110 (lshift (reg-code r1) 3)) r2)
-     :arg1 8-register
-     :arg2 number)
+(operand ld 2 "LD r, n"
+     :arg1 8-register :arg2 number
+     :pass3 (list (logior #x06 (lshift (reg-code r1) 3)) r2))
 
-(operand ld 1
-     "LD r, (HL)"
-     :pass3 (list (logior #b01000110 (lshift (reg-code r1) 3)))
-     :arg1 8-register
-     :arg2 hl-indirect)
+;; --- Косвенная адресация (HL, IX, IY) ---
 
-(operand ld 3
-     "LD r, (IX + d)"
-     :pass3 (list #b11011101
-                  (logior #b01000110 (lshift (reg-code r1) 3))
-                  r2)
-     :arg1 8-register
-     :arg2 ix-indexed) 
+(operand ld 1 "LD r, (HL)"
+     :arg1 8-register :arg2 hl-indirect
+     :pass3 (list (logior #x46 (lshift (reg-code r1) 3))))
 
-(operand ld 3
-     "LD r, (IY + d)"
-     :pass3 (list #b11111101
-                  (logior #b01000110 (lshift (reg-code r1) 3))
-                  r2)
-     :arg1 8-register
-     :arg2 iy-indexed) 
+(operand ld 3 "LD r, (IX + d)"
+     :arg1 8-register :arg2 ix-indexed
+     :pass3 (list #xDD (logior #x46 (lshift (reg-code r1) 3)) r2)) 
 
-(operand ld 1
-     "LD (HL), r"
-     :pass3 (list (logior #b01110000 (reg-code r1)))
-     :arg1 hl-indirect
-     :arg2 8-register)
+(operand ld 3 "LD r, (IY + d)"
+     :arg1 8-register :arg2 iy-indexed
+     :pass3 (list #xFD (logior #x46 (lshift (reg-code r1) 3)) r2)) 
 
-(operand ld 3
-     "LD (IX + d), r"
-     :pass3 (list #b11011101
-                  (logior #b01110000 (reg-code r1))
-                  r2)
-     :arg1 ix-indexed
-     :arg2 8-register)
+(operand ld 1 "LD (HL), r"
+     :arg1 hl-indirect :arg2 8-register
+     :pass3 (list (logior #x70 (reg-code r2))))
 
-(operand ld 3
-     "LD (IY + d), r"
-     :pass3 (list #b11111101
-                  (logior #b01110000 (reg-code r1))
-                  r2)
-     :arg1 iy-indexed
-     :arg2 8-register)
+(operand ld 3 "LD (IX + d), r"
+     :arg1 ix-indexed :arg2 8-register
+     :pass3 (list #xDD (logior #x70 (reg-code r2)) r1))
 
-(operand ld 2
-     "LD (HL), n"
-     :pass3 (list #b00110110 r1)
-     :arg1 hl-indirect
-     :arg2 number)
+(operand ld 3 "LD (IY + d), r"
+     :arg1 iy-indexed :arg2 8-register
+     :pass3 (list #xFD (logior #x70 (reg-code r2)) r1))
 
-(operand ld 4
-     "LD (IX + d), n"
-     :pass3 (list #b11011101 #b00110110 r1 r2)
-     :arg1 ix-indexed
-     :arg2 number)
+(operand ld 2 "LD (HL), n"
+     :arg1 hl-indirect :arg2 number
+     :pass3 (list #x36 r2))
 
-(operand ld 4
-     "LD (IY + d), n"
-     :pass3 (list #b11111101 #b00110110 r1 r2)
-     :arg1 ix-indexed
-     :arg2 number)
+(operand ld 4 "LD (IX + d), n"
+     :arg1 ix-indexed :arg2 number
+     :pass3 (list #xDD #x36 r1 r2))
 
-(operand ld 1
-     "LD A, (BC)"
-     :pass3 (if (eq? r2 'a)
-                '(#b00001010))
-     :arg1 8-register
-     :arg2 bc-indirect)
+(operand ld 4 "LD (IY + d), n"
+     :arg1 iy-indexed :arg2 number ;; исправлен тип на iy-indexed
+     :pass3 (list #xFD #x36 r1 r2))
 
-(operand ld 1
-     "LD A, (DE)"
+;; --- Аккумулятор и (BC), (DE), (nn) ---
+
+(operand ld 1 "LD A, (BC)"
+     :arg1 8-register :arg2 bc-indirect
+     :pass3 (if (eq? r1 'a) '(#x0A) (error "Only LD A, (BC) is allowed" ctx)))
+
+(operand ld 1 "LD A, (DE)"
+     :arg1 8-register :arg2 de-indirect
+     :pass3 (if (eq? r1 'a) '(#x1A) (error "Only LD A, (DE) is allowed" ctx)))
+
+(operand ld 3 "LD A, (nn)"
+     :arg1 8-register :arg2 var-indirect
      :pass3 (if (eq? r1 'a)
-                '(#b00011010))
-     :arg1 8-register
-     :arg2 de-indirect)
+                (let ((addr (get-addr r2 prog ctx)))
+                  (list #x3A (lower-byte addr) (higher-byte addr)))
+                (error "Only LD A, (nn) is allowed" ctx)))
 
-(operand ld 3
-     "LD A, (nn)"
-     :pass3 (if (eq? r1 'a)
-                (list #b00111010 (lower-byte r2) (higher-byte r2)))
-     :arg1 8-register
-     :arg2 var-indirect)
+(operand ld 1 "LD (BC), A"
+     :arg1 bc-indirect :arg2 8-register
+     :pass3 (if (eq? r2 'a) '(#x02) (error "Only LD (BC), A is allowed" ctx)))
 
-(operand ld 1
-     "LD (BC), A"
+(operand ld 1 "LD (DE), A"
+     :arg1 de-indirect :arg2 8-register
+     :pass3 (if (eq? r2 'a) '(#x12) (error "Only LD (DE), A is allowed" ctx)))
+
+(operand ld 3 "LD (nn), A"
+     :arg1 var-indirect :arg2 8-register
      :pass3 (if (eq? r2 'a)
-                '(#b00000010))
-     :arg1 bc-indirect
-     :arg2 8-register)
+                (let ((addr (get-addr r1 prog ctx)))
+                  (list #x32 (lower-byte addr) (higher-byte addr)))
+                (error "Only LD (nn), A is allowed" ctx)))
 
-(operand ld 1
-     "LD (DE), A"
-     :pass3 (if (eq? r2 'a)
-                '(#b00010010))
-     :arg1 de-indirect
-     :arg2 8-register)
+;; --- Специальные регистры (I, R) ---
 
-(operand ld 3
-     "LD (nn), A"
-     :pass3 (if (eq? r2 'a)
-                (list #b00110010 (lower-byte r1) (higher-byte r1)))
-     :arg1 var-indirect
-     :arg2 8-register)
+(operand ld 2 "LD A, I" 
+     :arg1 8-register :arg2 iv-register
+     :pass3 (if (eq? r1 'a) '(#xED #x57) (error "Target must be A" ctx)))
 
-(operand ld 2
-     "LD A, I" 
-     :pass3 (if (eq? r1 'a)
-                '(#b11101101 #b01010111))
-     :arg1 8-register
-     :arg2 iv-register)
+(operand ld 2 "LD A, R"
+     :arg1 8-register :arg2 mr-register
+     :pass3 (if (eq? r1 'a) '(#xED #x5F) (error "Target must be A" ctx)))
 
-(operand ld 2
-     "LD A, R"
-     :pass3 (if (eq? r1 'a)
-                '(#b11101101 #b01011111))
-     :arg1 8-register
-     :arg2 mr-register)
+(operand ld 2 "LD I, A"
+     :arg1 iv-register :arg2 8-register
+     :pass3 (if (eq? r2 'a) '(#xED #x47) (error "Source must be A" ctx)))
 
-(operand ld 2
-     "LD I, A"
-     :pass3 (if (eq? r2 'a)
-                '(#b11101101 #b01000111))
-     :arg1 iv-register
-     :arg2 8-register)
-
-(operand ld 2
-     "LD R, A"
-     :pass3 (if (eq? r2 'a)
-                '(#b11101101 #b01001111))
-     :arg1 mr-register
-     :arg2 8-register)
+(operand ld 2 "LD R, A"
+     :arg1 mr-register :arg2 8-register
+     :pass3 (if (eq? r2 'a) '(#xED #x4F) (error "Source must be A" ctx)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;; 16-Bit Load group ;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- 16-bit Immediate Load ---
 
-(operand ld 3
-     "LD dd, nn"
-     :pass3 (list (logior #b00000001 (shift (reg-code r1) 4))
-                  (lower-byte r2) (higher-byte r2))
-     :arg1 16-register
-     :arg2 variable)
+(operand ld 3 "LD dd, nn"
+     :arg1 16-register :arg2 variable
+     :pass3 (let ((val (get-addr r2 prog ctx)))
+              (list (logior #x01 (lshift (reg-code r1) 4))
+                    (lower-byte val) (higher-byte val))))
 
-(operand ld 4
-     "LD IX, nn"
-     :pass3 (list #b11011101 #b00100001 (lower-byte r2) (higher-byte r2))
-     :arg1 ix-register 
-     :arg2 variable)
+(operand ld 4 "LD IX, nn"
+     :arg1 ix-register :arg2 variable
+     :pass3 (let ((val (get-addr r2 prog ctx)))
+              (list #xDD #x21 (lower-byte val) (higher-byte val))))
 
-(operand ld 4
-     "LD IY, nn"
-     :pass3 (list #b11111101 #b00100001 (lower-byte r2) (higher-byte r2))
-     :arg1 iy-register 
-     :arg2 variable)
+(operand ld 4 "LD IY, nn"
+     :arg1 iy-register :arg2 variable
+     :pass3 (let ((val (get-addr r2 prog ctx)))
+              (list #xFD #x21 (lower-byte val) (higher-byte val))))
 
-; LD HL, und LD dd kollidieren, bei der ersten Phase LD durch LDHL
-; ersetzen, und 3 (eigentliche Groesse) zurueckgeben
-(operand ldhl 3
-     "LD HL, (nn)"
-     :pass3 (list #b00101010 (lower-byte r2) (higher-byte r2))
-     :arg1 16-register 
-     :arg2 var-indirect)
+;; --- 16-bit Memory Loads ---
 
-(operand ld 4
-     "LD dd, (nn)"
+;; Специальный случай для HL (оптимизированная команда 3 байта вместо 4)
+(operand ldhl 3 "LD HL, (nn)"
+     :arg1 16-register :arg2 var-indirect
+     :pass3 (if (eq? r1 'hl)
+                (let ((addr (get-addr r2 prog ctx)))
+                  (list #x2A (lower-byte addr) (higher-byte addr)))
+                (error "Internal error: ldhl called not for HL" ctx)))
+
+(operand ld 4 "LD dd, (nn)"
+     :arg1 16-register :arg2 var-indirect
      :pass1 (if (eq? r1 'hl)
                 (begin 
-                   (struct-set! inst-op :inst 'ldhl)
+                   (struct-set! inst :op 'ldhl) ;; исправлено: меняем :op в структуре inst
                    3)
                 4)
-     :pass3 (list #b11101101 
-                  (logior #b01001011 (lshift (reg-code r1) 4)) 
-                  (lower-byte r2)
-                  (higher-byte r2))
-     :arg1 16-register 
-     :arg2 var-indirect)     
+     :pass3 (let ((addr (get-addr r2 prog ctx)))
+              (list #xED (logior #x4B (lshift (reg-code r1) 4)) 
+                    (lower-byte addr) (higher-byte addr))))
 
-(operand ld 4
-     "LD IX, (nn)"
-     :pass3 (list #b11011101 #b00101010 
-                  (lower-byte r2)
-                  (higher-byte r2))
-     :arg1 ix-register 
-     :arg2 var-indirect)     
+(operand ld 4 "LD IX, (nn)"
+     :arg1 ix-register :arg2 var-indirect
+     :pass3 (let ((addr (get-addr r2 prog ctx)))
+              (list #xDD #x2A (lower-byte addr) (higher-byte addr))))
 
-(operand ld 4
-     "LD IY, (nn)"
-     :pass3 (list #b11111101 #b00101010 
-                  (lower-byte r2)
-                  (higher-byte r2))
+(operand ld 4 "LD IY, (nn)"
+     :arg1 iy-register :arg2 var-indirect
+     :pass3 (let ((addr (get-addr r2 prog ctx)))
+              (list #xFD #x2A (lower-byte addr) (higher-byte addr))))
+
+;; --- 16-bit Memory Stores ---
+
+(operand ld 3 "LD (nn), HL"
+     :arg1 var-indirect :arg2 16-register ;; добавил arg2 для порядка
+     :pass3 (if (eq? r2 'hl)
+                (let ((addr (get-addr r1 prog ctx)))
+                  (list #x22 (lower-byte addr) (higher-byte addr)))
+                (error "Use LD (nn), dd for non-HL registers" ctx)))
+
+(operand ld 4 "LD (nn), dd"
+     :arg1 var-indirect :arg2 16-register
+     :pass3 (let ((addr (get-addr r1 prog ctx)))
+              (list #xED (logior #x43 (lshift (reg-code r2) 4))
+                    (lower-byte addr) (higher-byte addr))))
+
+(operand ld 4 "LD (nn), IX"
+     :arg1 var-indirect :arg2 ix-register
+     :pass3 (let ((addr (get-addr r1 prog ctx)))
+              (list #xDD #x22 (lower-byte addr) (higher-byte addr))))
+
+(operand ld 4 "LD (nn), IY"
+     :arg1 var-indirect :arg2 iy-register
+     :pass3 (let ((addr (get-addr r1 prog ctx)))
+              (list #xFD #x22 (lower-byte addr) (higher-byte addr))))
+
+;; --- Stack Pointer Loads ---
+
+(operand ld 1 "LD SP, HL"
+     :arg1 sp-register :arg2 16-register ;; HL - это 16-register
+     :pass3 (if (eq? r2 'hl) '(#xF9) (error "Source must be HL" ctx)))
+
+(operand ld 2 "LD SP, IX"
+     :arg1 sp-register :arg2 ix-register
+     :pass3 '(#xDD #xF9))
+
+(operand ld 2 "LD SP, IY"
+     :arg1 sp-register :arg2 iy-register
+     :pass3 '(#xFD #xF9))
+
+;; --- PUSH / POP ---
+
+(operand zpush 1 "PUSH qq"
+     :arg1 16-register
+     :pass3 (list (logior #xC5 (lshift (reg-code r1) 4))))
+
+(operand zpush 2 "PUSH IX"
+     :arg1 ix-register
+     :pass3 '(#xDD #xE5))
+
+(operand zpush 2 "PUSH IY"
      :arg1 iy-register
-     :arg2 var-indirect)
+     :pass3 '(#xFD #xE5))
 
-(operand ld 3
-     "LD (nn), HL"
-     :pass3 (list #b00100010 (lower-byte r1) (higher-byte r1))
-     :arg1 var-indirect)
+(operand zpop 1 "POP qq"
+     :arg1 16-register
+     :pass3 (list (logior #xC1 (lshift (reg-code r1) 4))))
 
-(operand ld 4
-     "LD (nn), dd"
-     :pass3 (list #b11101101
-                  (logior #b01000011 (lshift (reg-code r2) 4))
-                  (lower-byte r1)
-                  (higher-byte r1))
-     :arg1 var-indirect
-     :arg2 16-register)
+(operand zpop 2 "POP IX"
+     :arg1 ix-register
+     :pass3 '(#xDD #xE1))
 
-(operand ld 4
-     "LD (nn), IX"
-     :pass3 (list #b11011101 #b00100010
-                  (lower-byte r1) (higher-byte r1))
-     :arg1 var-indirect
-     :arg2 ix-register)
-
-(operand ld 4
-     "LD (nn), IY"
-     :pass3 (list #b11111101 #b00100010
-                  (lower-byte r1) (higher-byte r1))
-     :arg1 var-indirect
-     :arg2 iy-register)
-
-(operand ld 1
-     "LD SP, HL"
-     :pass3 (list #b11111001)
-     :arg1 sp-register
-     :arg2 hl-register)
-
-(operand ld 2
-     "LD SP, IX"
-     :pass3 (list #b11011101 #b11111001)
-     :arg1 sp-register
-     :arg2 ix-register)
-
-(operand ld 2
-     "LD SP, IY"
-     :pass3 (list #b11111101 #b11111001)
-     :arg1 sp-register
-     :arg2 iy-register)
-
-(operand zpush 1
-     "PUSH qq"
-     :pass3 (list #b11000101 (logior (reg-code r1) 4))
-     :arg1 16-register)
-
-(operand zpush 2
-     "PUSH IX"
-     :pass3 (list #b11011101 #b11100101)
-     :arg1 ix-register)
-
-(operand zpush 2
-     "PUSH IY"
-     :pass3 (list #b11111101 #b11100101)
-     :arg1 iy-register)
-
-(operand zpop 1
-     "POP qq"
-     :pass3 (list #b11000001 (logior (reg-code r1) 4))
-     :arg1 16-register)
-
-(operand zpop 2
-     "POP IX"
-     :pass3 (list #b11011101 #b11100001)
-     :arg1 ix-register)
-
-(operand zpop 2
-     "POP IY"
-     :pass3 (list #b11111101 #b11100001)
-     :arg1 iy-register)
+(operand zpop 2 "POP IY"
+     :arg1 iy-register
+     :pass3 '(#xFD #xE1))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Exchange, Block Transfer, and Search Group ;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- Exchange Instructions ---
 
-(operand ex 1
-     "EX DE, HL"
+(operand ex 1 "EX DE, HL"
+     :arg1 16-register :arg2 16-register
      :pass3 (if (and (eq? r1 'de) (eq? r2 'hl))
-                (list #b11101011))
-     :arg1 16-register
-     :arg2 16-register)
+                '(#xEB)
+                (error "Invalid arguments for EX. Expected DE, HL" ctx)))
 
-(operand ex 1
-     "EX AF, AF'"
+(operand ex 1 "EX AF, AF'"
+     :arg1 16-register :arg2 16-register2
      :pass3 (if (and (eq? r1 'af) (eq? r2 'af2))
-                (list #b00001000))
-     :arg1 16-register
-     :arg2 16-register2)
+                '(#x08)
+                (error "Invalid arguments for EX. Expected AF, AF'" ctx)))
 
-(operand exx 1
-     "EXX"
-     :pass3 (list #b11011001))
+(operand exx 1 "EXX"
+     :pass3 '(#xD9))
 
-(operand ex 1
-     "EX (SP), HL"
-     :pass3 (if (eq? r2 'hl) (list #b11100011))
-     :arg1 sp-indirect
-     :arg2 16-register)
+(operand ex 1 "EX (SP), HL"
+     :arg1 sp-indirect :arg2 16-register
+     :pass3 (if (eq? r2 'hl) 
+                '(#xE3)
+                (error "Target for EX (SP) must be HL, IX, or IY" ctx)))
 
-(operand ex 2
-     "EX (SP), IX"
-     :pass3 (list #b11011101 11100011)
-     :arg1 sp-indirect
-     :arg2 ix-register)
+(operand ex 2 "EX (SP), IX"
+     :arg1 sp-indirect :arg2 ix-register
+     :pass3 '(#xDD #xE3))
 
-(operand ex 2
-     "EX (SP), IY"
-     :pass3 (list #b11111101 11100011)
-     :arg1 sp-indirect
-     :arg2 iy-register)
+(operand ex 2 "EX (SP), IY"
+     :arg1 sp-indirect :arg2 iy-register
+     :pass3 '(#xFD #xE3))
 
-(operand ldi 2
-     "LDI"
-     :pass3 (list #b11101101 #b10100000))
+;; --- Block Transfer Group ---
 
-(operand ldir 2
-     "LDIR"
-     :pass3 (list #b11101101 #b10110000))
+(operand ldi 2 "LDI"
+     :pass3 '(#xED #xA0))
 
-(operand ldd 2
-     "LDD"
-     :pass3 (list #b11101101 #b10101000))
+(operand ldir 2 "LDIR"
+     :pass3 '(#xED #xB0))
 
-(operand lddr 2
-     "LDDR"
-     :pass3 (list #b11101101 #b10111000))
+(operand ldd 2 "LDD"
+     :pass3 '(#xED #xA8))
 
-(operand cpi 2
-     "CPI"
-     :pass3 (list #b11101101 #b10100001))
+(operand lddr 2 "LDDR"
+     :pass3 '(#xED #xB8))
 
-(operand cpir 2
-     "CPIR"
-     :pass3 (list #b11101101 #b10110001))
+;; --- Block Search Group ---
 
-(operand cpd 2
-     "CPD"
-     :pass3 (list #b11101101 #b10101001))
+(operand cpi 2 "CPI"
+     :pass3 '(#xED #xA1))
 
-(operand cpdr 2
-     "CPDR"
-     :pass3 (list #b11101101 #b10111001))
+(operand cpir 2 "CPIR"
+     :pass3 '(#xED #xB1))
+
+(operand cpd 2 "CPD"
+     :pass3 '(#xED #xA9))
+
+(operand cpdr 2 "CPDR"
+     :pass3 '(#xED #xB9))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;; 8-bit Arithmetic Group ;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- 8-bit Arithmetic (ADD, ADC, SUB, SBC) ---
 
-(operand add 1
-     "ADD A, r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10000000 (reg-code r2))))
+(operand add 1 "ADD A, r"
+     :arg1 8-register :arg2 8-register
+     :pass3 (if (eq? r1 'a) (list (logior #x80 (reg-code r2))) (error "Dest must be A" ctx)))
+
+(operand add 2 "ADD A, n"
+     :arg1 8-register :arg2 number
+     :pass3 (if (eq? r1 'a) (list #xC6 r2) (error "Dest must be A" ctx)))
+
+(operand add 1 "ADD A, (HL)"
+     :arg1 8-register :arg2 hl-indirect
+     :pass3 (if (eq? r1 'a) '(#x86) (error "Dest must be A" ctx)))
+
+(operand add 3 "ADD A, (IX + d)"
+     :arg1 8-register :arg2 ix-indirect
+     :pass3 (if (eq? r1 'a) (list #xDD #x86 r2) (error "Dest must be A" ctx)))
+
+(operand add 3 "ADD A, (IY + d)"
+     :arg1 8-register :arg2 iy-indirect
+     :pass3 (if (eq? r1 'a) (list #xFD #x86 r2) (error "Dest must be A" ctx)))
+
+;; ADC и SBC аналогично, но с масками #x88 и #x98
+(operand adc 1 "ADC A, r"
+     :arg1 8-register :arg2 8-register
+     :pass3 (if (eq? r1 'a) (list (logior #x88 (reg-code r2))) (error "Dest must be A" ctx)))
+
+(operand sub 1 "SUB r"
+     :arg1 8-register ;; Здесь r1 — это то, что вычитаем (A подразумевается)
+     :pass3 (list (logior #x90 (reg-code r1))))
+
+(operand sub 2 "SUB n"
+     :arg1 number
+     :pass3 (list #xD6 r1))
+
+(operand sub 1 "SUB (HL)"
+     :arg1 hl-indirect
+     :pass3 '(#x96))
+
+(operand sbc 1 "SBC A, r"
+     :arg1 8-register :arg2 8-register
+     :pass3 (if (eq? r1 'a) (list (logior #x98 (reg-code r2))) (error "Dest must be A" ctx)))
+
+;; --- Logical Group (AND, OR, XOR, CP) ---
+
+(operand zand 1 "AND r"
+     :arg1 8-register :pass3 (list (logior #xA0 (reg-code r1))))
+
+(operand zand 2 "AND n"
+     :arg1 number :pass3 (list #xE6 r1))
+
+(operand zor 1 "OR r"
+     :arg1 8-register :pass3 (list (logior #xB0 (reg-code r1))))
+
+(operand zor 2 "OR n"
+     :arg1 number :pass3 (list #xF6 r1))
+
+(operand xor 1 "XOR r"
+     :arg1 8-register :pass3 (list (logior #xA8 (reg-code r1))))
+
+(operand xor 2 "XOR n"
+     :arg1 number :pass3 (list #xEE r1))
+
+(operand cp 1 "CP r"
+     :arg1 8-register :pass3 (list (logior #xB8 (reg-code r1))))
+
+(operand cp 2 "CP n"
+     :arg1 number :pass3 (list #xFE r1))
+
+(operand cp 1 "CP (HL)"
+     :arg1 hl-indirect :pass3 '(#xBE))
+
+(operand cp 3 "CP (IX + d)"
+     :arg1 ix-indirect :pass3 (list #xDD #xBE r1))
+
+;; --- Increment / Decrement ---
+
+(operand inc 1 "INC r"
      :arg1 8-register
-     :arg2 8-register)
+     :pass3 (list (logior #x04 (lshift (reg-code r1) 3))))
 
-(operand add 2
-     "ADD A, n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11000110 r2))
+(operand inc 1 "INC (HL)"
+     :arg1 hl-indirect :pass3 '(#x34))
+
+(operand inc 3 "INC (IX + d)"
+     :arg1 ix-indirect :pass3 (list #xDD #x34 r1))
+
+(operand dec 1 "DEC r"
      :arg1 8-register
-     :arg2 number)
+     :pass3 (list (logior #x05 (lshift (reg-code r1) 3))))
 
-(operand add 1
-     "ADD A, (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10000110))
-     :arg1 8-register
-     :arg2 hl-indirect)
+(operand dec 1 "DEC (HL)"
+     :arg1 hl-indirect :pass3 '(#x35))
 
-(operand add 3
-     "ADD A, (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10000110 r2))
-     :arg1 8-register
-     :arg2 ix-indirect)
-
-(operand add 3
-     "ADD A, (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10000110 r2))
-     :arg1 8-register
-     :arg2 iy-indirect)
-
-(operand adc 1
-     "ADC A, r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10001000 (reg-code r2))))
-     :arg1 8-register
-     :arg2 8-register)
-
-(operand adc 2
-     "ADC A, n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11001110 r2))
-     :arg1 8-register
-     :arg2 number)
-
-(operand adc 1
-     "ADC A, (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10001110))
-     :arg1 8-register
-     :arg2 hl-indirect)
-
-(operand adc 3
-     "ADC A, (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10001110 r2))
-     :arg1 8-register
-     :arg2 ix-indirect)
-
-(operand adc 3
-     "ADC A, (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10001110 r2))
-     :arg1 8-register
-     :arg2 iy-indirect)
-
-(operand sub 1
-     "SUB r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10010000 (reg-code r2))))
-     :arg1 8-register)
-
-(operand sub 2
-     "SUB n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11010110 r2))
-     :arg1 number)
-
-(operand sub 1
-     "SUB (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10010110))
-     :arg1 hl-indirect)
-
-(operand sub 3
-     "SUB (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10010110 r2))
-     :arg1 ix-indirect)
-
-(operand sub 3
-     "SUB (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10010110 r2))
-     :arg1 iy-indirect)
-
-(operand sbc 1
-     "SBC A, r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10011000 (reg-code r2))))
-     :arg1 8-register
-     :arg2 8-register)
-
-(operand sbc 2
-     "SBC A, n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011110 r2))
-     :arg1 8-register
-     :arg2 number)
-
-(operand sbc 1
-     "SBC A, (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10011110))
-     :arg1 8-register
-     :arg2 hl-indirect)
-
-(operand sbc 3
-     "SBC A, (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10011110 r2))
-     :arg1 8-register
-     :arg2 ix-indirect)
-
-(operand sbc 3
-     "SBC A, (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10011110 r2))
-     :arg1 8-register
-     :arg2 iy-indirect)
-
-(operand zand 1
-     "AND r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10100000 (reg-code r2))))
-     :arg1 8-register)
-
-(operand zand 2
-     "AND n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11100110 r2))
-     :arg1 number)
-
-(operand zand 1
-     "AND (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10100110))
-     :arg1 hl-indirect)
-
-(operand zand 3
-     "AND (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10100110 r2))
-     :arg1 ix-indirect)
-
-(operand zand 3
-     "AND (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10100110 r2))
-     :arg1 iy-indirect)
-
-(operand zor 1
-     "OR r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10110000 (reg-code r2))))
-     :arg1 8-register)
-
-(operand zor 2
-     "OR n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11110110 r2))
-     :arg1 number)
-
-(operand zor 1
-     "OR (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10110110))
-     :arg1 hl-indirect)
-
-(operand zor 3
-     "OR (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10110110 r2))
-     :arg1 ix-indirect)
-
-(operand zor 3
-     "OR (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11111101 #b10110110 r2))
-     :arg1 iy-indirect)
-
-(operand xor 1
-     "XOR r"
-     :pass3 (if (eq? r1 'a)
-                (list (logior #b10101000 (reg-code r2))))
-     :arg1 8-register)
-
-(operand xor 2
-     "XOR n"
-     :pass3 (if (eq? r1 'a)
-                (list #b11101110 r2))
-     :arg1 number)
-
-(operand xor 1
-     "XOR (HL)"
-     :pass3 (if (eq? r1 'a)
-                (list #b10101110))
-     :arg1 hl-indirect)
-
-(operand xor 3
-     "XOR (IX + d)"
-     :pass3 (if (eq? r1 'a)
-                (list #b11011101 #b10101110 r2))
-     :arg1 ix-indirect)
-
-(operand xor 3
-     "XOR (IY + d)"
-     :pass3 (if (eq? r1 'a)
-                 (list #b11111101 #b10101110 r2))
-     :arg1 iy-indirect)
-
-; XXX
-(operand cp 1
-     "CP r"
-     :pass3 (list (logior #b10111000 (reg-code r2)))
-     :arg1 8-register)
-
-(operand cp 2
-     "CP n"
-     :pass3 (list #b11111110 r1)
-     :arg1 number)
-
-(operand cp 1
-     "CP (HL)"
-     :pass3 (list #b10111110)
-     :arg1 hl-indirect)
-
-(operand cp 3
-     "CP (IX + d)"
-     :pass3 (list #b11011101 #b10111110 r2)
-     :arg1 ix-indirect)
-
-(operand cp 3
-     "CP (IY + d)"
-     :pass3 (list #b11111101 #b10111110 r2)
-     :arg1 iy-indirect)
-
-(operand inc 1
-     "INC r"
-     :pass3 (list (logior #b00000100 (lshift (reg-code r1) 3)))
-     :arg1 8-register)
-
-(operand inc 1
-     "INC (HL)"
-     :pass3 (list #b00110100)
-     :arg1 hl-indirect)
-
-(operand inc 3
-     "INC (IX + d)"
-     :pass3 (list #b11011101 #b00110100 r2)
-     :arg1 ix-indirect)
-
-(operand inc 3
-     "INC (IY + d)"
-     :pass3 (list #b11111101 #b00110100 r2)
-     :arg1 iy-indirect)
-
-(operand dec 1
-     "DEC r"
-     :pass3 (list (logior #b00000101 (lshift (reg-code r1) 3)))
-     :arg1 8-register)
-
-(operand dec 1
-     "DEC (HL)"
-     :pass3 (list #b00110101)
-     :arg1 hl-indirect)
-
-(operand dec 3
-     "DEC (IX + d)"
-     :pass3 (list #b11011101 #b00110101 r2)
-     :arg1 ix-indirect)
-
-(operand dec 3
-     "DEC (IY + d)"
-     :pass3 (list #b11111101 #b00110101 r2)
-     :arg1 iy-indirect)
+(operand dec 3 "DEC (IX + d)"
+     :arg1 ix-indirect :pass3 (list #xDD #x35 r1))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; General-purpose Arithmetic and CPU Control Group ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- Arithmetic & CPU Control ---
 
-(operand daa 1
-     "DAA"
-     :pass3 (list #b00100111))
+(operand daa 1 "Decimal Adjust Accumulator"
+     :pass3 '(#x27))
 
-(operand cpl 1
-     "CPL"
-     :pass3 (list #b00101111))
+(operand cpl 1 "Complement Accumulator (NOT)"
+     :pass3 '(#x2F))
 
-(operand neg 2
-     "NEG"
-     :pass3 (list #b11101101 #b01000100))
+(operand neg 2 "Negate Accumulator (2's complement)"
+     :pass3 '(#xED #x44))
 
-(operand ccf 1
-     "CCF"
-     :pass3 (list #b00111111))
+(operand ccf 1 "Complement Carry Flag"
+     :pass3 '(#x3F))
 
-(operand scf 1
-     "SCF"
-     :pass3 (list #b00110111))
+(operand scf 1 "Set Carry Flag"
+     :pass3 '(#x37))
 
-(operand nop 1
-     "NOP"
-     :pass3 (list #b00000000))
+;; --- System Control ---
 
-(operand halt 1
-     "HALT"
-     :pass3 (list #b01110110))
+(operand nop 1 "No Operation"
+     :pass3 '(#x00))
 
-(operand di 1
-     "DI"
-     :pass3 (list #b11110011))
+(operand halt 1 "Halt CPU"
+     :pass3 '(#x76))
 
-(operand ei 1
-     "EI"
-     :pass3 (list #b11111011))
+(operand di 1 "Disable Interrupts"
+     :pass3 '(#xF3))
 
-; XXX
-(operand im 2
-     "IM 0, IM 1, IM 2"
-     :pass3 (list #b11101101
+(operand ei 1 "Enable Interrupts"
+     :pass3 '(#xFB))
+
+;; --- Interrupt Mode ---
+
+(operand im 2 "Interrupt Mode (0, 1, 2)"
+     :arg1 number
+     :pass3 (list #xED
                   (case r1
-                     (0 #b01000110)
-                     (1 #b01010110)
-                     (2 #b01011110)))
-     :arg1 number)
-
+                    ((0) #x46)
+                    ((1) #x56)
+                    ((2) #x5E)
+                    (else (error (fmt #f "Invalid Interrupt Mode: {}" r1) ctx)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;; 16-bit Arithmetic Group ;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- 16-bit Addition ---
 
-(operand add 1
-     "ADD (HL), ss"
-     :pass3 (list (logior #b00001001 (lshift (reg-code r2) 4)))
-     :arg1 hl-indirect
-     :arg2 16-register)
+(operand add 1 "ADD HL, ss"
+     :arg1 16-register :arg2 16-register
+     :pass3 (if (eq? r1 'hl)
+                (list (logior #x09 (lshift (reg-code r2) 4)))
+                (error "Dest must be HL for 16-bit ADD" ctx)))
 
-(operand adc 2
-     "ADC (HL), ss"
-     :pass3 (list #b11101101 
-                  (logior #b01001010 (lshift (reg-code r2) 4)))
-     :arg1 hl-indirect
-     :arg2 16-register)
+(operand adc 2 "ADC HL, ss"
+     :arg1 16-register :arg2 16-register
+     :pass3 (if (eq? r1 'hl)
+                (list #xED (logior #x4A (lshift (reg-code r2) 4)))
+                (error "Dest must be HL" ctx)))
 
-(operand sbc 2
-     "SBC (HL), ss"
-     :pass3 (list #b11101101 
-                  (logior #b01000010 (lshift (reg-code r2) 4)))
-     :arg1 hl-indirect
-     :arg2 16-register)
+(operand sbc 2 "SBC HL, ss"
+     :arg1 16-register :arg2 16-register
+     :pass3 (if (eq? r1 'hl)
+                (list #xED (logior #x42 (lshift (reg-code r2) 4)))
+                (error "Dest must be HL" ctx)))
 
-(operand add 2
-     "ADD IX, pp"
-     :pass3 (list #b11011101
-                  (logior #b00001001 (lshift (reg-code r2) 4)))
+(operand add 2 "ADD IX, pp"
+     :arg1 ix-register :arg2 16-register
+     :pass3 (list #xDD (logior #x09 (lshift (reg-code r2) 4))))
+
+(operand add 2 "ADD IY, pp"
+     :arg1 iy-register :arg2 16-register
+     :pass3 (list #xFD (logior #x09 (lshift (reg-code r2) 4))))
+
+;; --- 16-bit Inc/Dec ---
+
+(operand inc 1 "INC ss"
+     :arg1 16-register
+     :pass3 (list (logior #x03 (lshift (reg-code r1) 4))))
+
+(operand inc 2 "INC IX"
      :arg1 ix-register
-     :arg2 16-register)
+     :pass3 '(#xDD #x23))
 
-(operand add 2
-     "ADD IY, pp"
-     :pass3 (list #b11111101
-                  (logior #b00001001 (lshift (reg-code r2) 4)))
+(operand inc 2 "INC IY"
      :arg1 iy-register
-     :arg2 16-register)
+     :pass3 '(#xFD #x23))
 
-(operand inc 1
-     "INC ss"
-     :pass3 (list (logior #b00000011 (lshift (reg-code r2) r)))
-     :arg1 16-register)
+(operand dec 1 "DEC ss"
+     :arg1 16-register
+     :pass3 (list (logior #x0B (lshift (reg-code r1) 4))))
 
-(operand inc 2
-     "INC IX"
-     :pass3 (list #b11011101 #b00100011)
-     :arg1 ix-register)
+(operand dec 2 "DEC IX"
+     :arg1 ix-register
+     :pass3 '(#xDD #x2B))
 
-(operand inc 2
-     "INC IY"
-     :pass3 (list #b11111101 #b00100011)
-     :arg1 iy-register)
-
-(operand dec 1
-     "DEC ss"
-     :pass3 (list (logior #b00001011 (lshift (reg-code r2) r)))
-     :arg1 16-register)
-
-(operand dec 2
-     "DEC IX"
-     :pass3 (list #b11011101 #b00101011)
-     :arg1 ix-register)
-
-(operand dec 2
-     "DEC IY"
-     :pass3 (list #b11111101 #b00101011)
-     :arg1 iy-register)
+(operand dec 2 "DEC IY"
+     :arg1 iy-register
+     :pass3 '(#xFD #x2B))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;; Rotate and shift group ;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(operand rlca 1
-     "RLCA"
-     :pass3 (list #b00000111))
+;; --- Fast Accumulator Rotates ---
 
-(operand rla 1
-     "RLA"
-     :pass3 (list #b00010111))
+(operand rlca 1 "Rotate Left Circular Accumulator" :pass3 '(#x07))
+(operand rla  1 "Rotate Left Accumulator (through Carry)" :pass3 '(#x17))
+(operand rrca 1 "Rotate Right Circular Accumulator" :pass3 '(#x0F))
+(operand rra  1 "Rotate Right Accumulator (through Carry)" :pass3 '(#x1F))
 
-(operand rrca 1
-     "RRCA"
-     :pass3 (list #b00001111))
+;; --- CB-prefix Rotates (RLC, RL, RRC, RR) ---
 
-(operand rra 1
-     "RRA"
-     :pass3 (list #b00011111))
+(operand rlc 2 "RLC r"
+     :arg1 8-register :pass3 (list #xCB (logior #x00 (reg-code r1))))
 
-(operand rlc 2
-     "RLC r"
-     :pass3 (list #b11001011
-                  (logior #b00000000 (reg-code r1)))
-     :arg1 8-register)
+(operand rlc 2 "RLC (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x06))
 
-(operand rlc 2
-     "RLC (HL)"
-     :pass3 (list #b11001011 #b00000110)
-     :arg1 hl-indexed)
+(operand rlc 4 "RLC (IX + d)"
+     :arg1 ix-indexed :pass3 (list #xDD #xCB r1 #x06))
 
-(operand rlc 4
-     "RLC (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00000110)
-     :arg1 ix-indexed)
+(operand rlc 4 "RLC (IY + d)"
+     :arg1 iy-indexed :pass3 (list #xFD #xCB r1 #x06))
 
-(operand rlc 4
-     "RLC (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00000110)
-     :arg1 iy-indexed)
+(operand rl 2 "RL r"
+     :arg1 8-register :pass3 (list #xCB (logior #x10 (reg-code r1))))
 
-(operand rl 2
-     "RL r"
-     :pass3 (list #b11001011
-                  (logior #b00010000 (reg-code r1)))
-     :arg1 8-register)
+(operand rl 2 "RL (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x16))
 
-(operand rl 2
-     "RL (HL)"
-     :pass3 (list #b11001011 #b00010110)
-     :arg1 hl-indexed)
+(operand rl 4 "RL (IX + d)"
+     :arg1 ix-indexed :pass3 (list #xDD #xCB r1 #x16))
 
-(operand rl 4
-     "RL (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00010110)
-     :arg1 ix-indexed)
+(operand rrc 2 "RRC r"
+     :arg1 8-register :pass3 (list #xCB (logior #x08 (reg-code r1))))
 
-(operand rl 4
-     "RL (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00010110)
-     :arg1 iy-indexed)
+(operand rrc 2 "RRC (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x0E))
 
-(operand rrc 2
-     "RRC r"
-     :pass3 (list #b11001011
-                  (logior #b00001000 (reg-code r1)))
-     :arg1 8-register)
+(operand rr 2 "RR r"
+     :arg1 8-register :pass3 (list #xCB (logior #x18 (reg-code r1))))
 
-(operand rrc 2
-     "RRC (HL)"
-     :pass3 (list #b11001011 #b00001110)
-     :arg1 hl-indexed)
+(operand rr 2 "RR (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x1E))
 
-(operand rrc 4
-     "RRC (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00001110)
-     :arg1 ix-indexed)
+;; --- Shifts (SLA, SRA, SRL) ---
 
-(operand rrc 4
-     "RRC (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00001110)
-     :arg1 iy-indexed)
+(operand sla 2 "SLA r"
+     :arg1 8-register :pass3 (list #xCB (logior #x20 (reg-code r1))))
 
-; XXX
-(operand rr 2
-     "RR r"
-     :pass3 (list #b11001011
-                  (logior #b00011000 (reg-code r1)))
-     :arg1 8-register)
+(operand sla 2 "SLA (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x26))
 
-(operand rr 2
-     "RR (HL)"
-     :pass3 (list #b11001011 #b00011110)
-     :arg1 hl-indexed)
+(operand sra 2 "SRA r"
+     :arg1 8-register :pass3 (list #xCB (logior #x28 (reg-code r1))))
 
-(operand rr 4
-     "RR (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00011110)
-     :arg1 ix-indexed)
+(operand sra 2 "SRA (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x2E))
 
-(operand rr 4
-     "RR (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00011110)
-     :arg1 iy-indexed)
+(operand srl 2 "SRL r"
+     :arg1 8-register :pass3 (list #xCB (logior #x38 (reg-code r1))))
 
-(operand sla 2
-     "SLA r"
-     :pass3 (list #b11001011
-                  (logior #b00100000 (reg-code r1)))
-     :arg1 8-register)
+(operand srl 2 "SRL (HL)"
+     :arg1 hl-indirect :pass3 '(#xCB #x3E))
 
-(operand sla 2
-     "SLA (HL)"
-     :pass3 (list #b11001011 #b00100110)
-     :arg1 hl-indexed)
+;; --- BCD Rotates (RLD, RRD) ---
 
-(operand sla 4
-     "SLA (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00100110)
-     :arg1 ix-indexed)
-
-(operand sla 4
-     "SLA (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00100110)
-     :arg1 iy-indexed)
-
-; XXX
-(operand sra 2
-     "SRA r"
-     :pass3 (list #b11001011
-                  (logior #b00101000 (reg-code r1)))
-     :arg1 8-register)
-
-(operand sra 2
-     "SRA (HL)"
-     :pass3 (list #b11001011 #b00101110)
-     :arg1 hl-indexed)
-
-(operand sra 4
-     "SRA (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00101110)
-     :arg1 ix-indexed)
-
-(operand sra 4
-     "SRA (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00101110)
-     :arg1 iy-indexed)
-
-(operand srl 2
-     "SRL r"
-     :pass3 (list #b11001011
-                  (logior #b00111000 (reg-code r1)))
-     :arg1 8-register)
-
-(operand srl 2
-     "SRL (HL)"
-     :pass3 (list #b11001011 #b00111110)
-     :arg1 hl-indexed)
-
-(operand srl 4
-     "SRL (IX + d)"
-     :pass3 (list #b11011101 #b11001011 r1 #b00111110)
-     :arg1 ix-indexed)
-
-(operand srl 4
-     "SRL (IY + d)"
-     :pass3 (list #b11111101 #b11001011 r1 #b00111110)
-     :arg1 iy-indexed)
-
-(operand rld 2
-     "RLD"
-     :pass3 (list #b11101101 #b01101111))
-
-(operand rrd 2
-     "RRD"
-     :pass3 (list #b11101101 #b01100111))
+(operand rld 2 "Rotate Left Decimal" :pass3 '(#xED #x6F))
+(operand rrd 2 "Rotate Right Decimal" :pass3 '(#xED #x67))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;; Bit Set, Reset and Test Group ;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- BIT: Тестирование бита ---
 
-(operand zbit 2
-     "BIT b, r"
-     :pass3 (begin (print "bla")(list #b11001011 
-                  (logior #b01000000 (lshift (logand r1 7) 3)
-                                     (reg-code r2))))
-     :arg1 number
-     :arg2 8-register)
+(operand zbit 2 "BIT b, r"
+     :arg1 number :arg2 8-register
+     :pass3 (list #xCB (logior #x40 (lshift (logand r1 7) 3) (reg-code r2))))
 
-(operand zbit 2
-     "BIT b, (HL)"
-     :pass3 (list #b11001011 
-                  (logior #b01000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 hl-register)
+(operand zbit 2 "BIT b, (HL)"
+     :arg1 number :arg2 hl-indirect
+     :pass3 (list #xCB (logior #x46 (lshift (logand r1 7) 3))))
 
-(operand zbit 4
-     "BIT b, (IX + d)"
-     :pass3 (list #b11011101
-                  #b11001011
-                  r2
-                  (logior #b01000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 ix-indirect)
+(operand zbit 4 "BIT b, (IX + d)"
+     :arg1 number :arg2 ix-indexed
+     :pass3 (list #xDD #xCB r2 (logior #x46 (lshift (logand r1 7) 3))))
 
-(operand zbit 4
-     "BIT b, (IY + d)"
-     :pass3 (list #b11111101
-                  #b11001011
-                  r2
-                  (logior #b01000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 iy-indirect)
+(operand zbit 4 "BIT b, (IY + d)"
+     :arg1 number :arg2 iy-indexed
+     :pass3 (list #xFD #xCB r2 (logior #x46 (lshift (logand r1 7) 3))))
 
-(operand zset 2
-     "SET b, r"
-     :pass3 (list #b11001011 
-                  (logior #b11000000 (lshift (logand r1 7) 3)
-                                     (reg-code r2)))
-     :arg1 number
-     :arg2 8-register)
+;; --- SET: Установка бита в 1 ---
 
-(operand zset 2
-     "SET b, (HL)"
-     :pass3 (list #b11001011 
-                  (logior #b11000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 hl-register)
+(operand zset 2 "SET b, r"
+     :arg1 number :arg2 8-register
+     :pass3 (list #xCB (logior #xC0 (lshift (logand r1 7) 3) (reg-code r2))))
 
-(operand zset 4
-     "SET b, (IX + d)"
-     :pass3 (list #b11011101
-                  #b11001011
-                  r2
-                  (logior #b11000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 ix-indirect)
+(operand zset 2 "SET b, (HL)"
+     :arg1 number :arg2 hl-indirect
+     :pass3 (list #xCB (logior #xC6 (lshift (logand r1 7) 3))))
 
-(operand zset 4
-     "SET b, (IY + d)"
-     :pass3 (list #b11111101
-                  #b11001011
-                  r2
-                  (logior #b11000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 iy-indirect)
+(operand zset 4 "SET b, (IX + d)"
+     :arg1 number :arg2 ix-indexed
+     :pass3 (list #xDD #xCB r2 (logior #xC6 (lshift (logand r1 7) 3))))
 
-(operand res 2
-     "RES b, r"
-     :pass3 (list #b11001011 
-                  (logior #b10000000 (lshift (logand r1 7) 3)
-                                     (reg-code r2)))
-     :arg1 number
-     :arg2 8-register)
+(operand zset 4 "SET b, (IY + d)"
+     :arg1 number :arg2 iy-indexed
+     :pass3 (list #xFD #xCB r2 (logior #xC6 (lshift (logand r1 7) 3))))
 
-(operand res 2
-     "RES b, (HL)"
-     :pass3 (list #b11001011 
-                  (logior #b10000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 hl-register)
+;; --- RES: Сброс бита в 0 ---
 
-(operand res 4
-     "RES b, (IX + d)"
-     :pass3 (list #b11011101
-                  #b11001011
-                  r2
-                  (logior #b10000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 ix-indirect)
+(operand res 2 "RES b, r"
+     :arg1 number :arg2 8-register
+     :pass3 (list #xCB (logior #x80 (lshift (logand r1 7) 3) (reg-code r2))))
 
-(operand res 4
-     "RES b, (IY + d)"
-     :pass3 (list #b11111101
-                  #b11001011
-                  r2
-                  (logior #b10000110 (lshift (logand r1 7) 3)))
-     :arg1 number
-     :arg2 iy-indirect)
+(operand res 2 "RES b, (HL)"
+     :arg1 number :arg2 hl-indirect
+     :pass3 (list #xCB (logior #x86 (lshift (logand r1 7) 3))))
+
+(operand res 4 "RES b, (IX + d)"
+     :arg1 number :arg2 ix-indexed
+     :pass3 (list #xDD #xCB r2 (logior #x86 (lshift (logand r1 7) 3))))
+
+(operand res 4 "RES b, (IY + d)"
+     :arg1 number :arg2 iy-indexed
+     :pass3 (list #xFD #xCB r2 (logior #x86 (lshift (logand r1 7) 3))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;; Jump group ;;;;;;;;;;;;;;;;;;;;
@@ -1255,236 +818,177 @@
 ;; PASS 1: Returns initial instruction size
 ;; PASS 2: Returns instruction size after potential mutations/size changes
 ;; PASS 3: Returns the actual instruction bytes
-(operand jmp 3 "Virtual JMP"
+;; --- Умная мутация JMP ---
+(operand jmp 3 "Virtual JMP (JP or JR)"
   :arg1 variable
-  :pass1 3 ;; Всегда резервируем максимум, чтобы не было сюрпризов
+  :pass1 3 
   :pass2 (let* ((target (get-label-addr-optional r1 prog ctx)))
          (if (and target (not (null? target)))
              (let ((offset (- target (+ (get-abs-pc prog) 2))))
-               ;(cfmt #t 'yellow "JMP :r1 {} :r2 {} :r3 {} :target {} :offset {}" r1 r2 r3 target offset) 
                (if (and (<= offset 120) (>= offset -120))
-                   (begin 
-                     (struct-set! inst :op 'jr) 
-                     2)
-                   (begin
-                     (struct-set! inst :op 'jp)
-                     3)))
-             ;; Если метки НЕТ (target == null), мы НЕ имеем права 
-             ;; мутировать в JR, так как не знаем дистанцию.
-             ;; Оставляем JP (3 байта) как безопасный вариант.
-             (begin
-               (struct-set! inst :op 'jp)
-               3)))
+                   (begin (struct-set! inst :op 'jr) 2)
+                   (begin (struct-set! inst :op 'jp) 3)))
+             (begin (struct-set! inst :op 'jp) 3)))
   :pass3 (error "JMP should have been mutated in Pass 2" inst))
 
-(operand jp 3 "JP nn"
-     :relative #f ;; (по умолчанию #f)
-     :pass3 (list #xC3 (lower-byte r1) (higher-byte r1))
-     :arg1 variable)
+;; --- Unconditional Jumps ---
 
+(operand jp 3 "JP nn"
+     :arg1 variable
+     :pass3 (let ((addr (get-addr r1 prog ctx)))
+              (list #xC3 (lower-byte addr) (higher-byte addr))))
 
 (operand jr 2 "JR e"
-  :relative #t
-  :pass3 (begin
-           ;(cfmt #t 'yellow "JR :r1 {}" r1 ) 
-           (if (and (<= r1 127) (>= r1 -128))
-               (list #x18 (logand r1 #xFF))
-               (error (fmt #f "JR out of range: {}" r1) ctx)))
-  :arg1 variable)
+  :arg1 variable :relative #t
+  :pass3 (let ((rel (get-rel-offset r1 prog ctx 2))) ;; 2 — это размер JR
+           (list #x18 rel)))
 
-(operand jr 2
-     "JR c, e"
-     :pass3 (case r1
-                ('c (list #b00111000 (- r2 (asm-prog-ilc prog) 2)))
-                ('nc (list #b00110000 (- r2 (asm-prog-ilc prog) 2)))
-                ('z (list #b00101000 (- r2 (asm-prog-ilc prog) 2)))
-                ('nz (list #b00100000 (- r2 (asm-prog-ilc prog) 2))))
+;; --- Conditional Jumps ---
+
+(operand jr 2 "JR cc, e"
+  :arg1 asmsym :arg2 variable :relative #t
+  :pass3 (let ((rel (get-rel-offset r2 prog ctx 2))
+               (code (case r1 
+                       ('nz #x20) ('z #x28) ('nc #x30) ('c #x38)
+                       (else (error "Invalid JR condition" r1)))))
+           (list code rel)))
+
+(operand jp 3 "JP cc, nn"
+     :arg1 asmsym :arg2 variable
+     :pass3 (let ((addr (get-addr r2 prog ctx))
+                  (code (logior #xC2 (lshift (cond-code r1) 3))))
+              (list code (lower-byte addr) (higher-byte addr))))
+
+;; --- Indirect Jumps ---
+
+(operand jp 1 "JP (HL)" :arg1 hl-indirect :pass3 '(#xE9))
+(operand jp 2 "JP (IX)" :arg1 ix-indirect :pass3 '(#xDD #xE9))
+(operand jp 2 "JP (IY)" :arg1 iy-indirect :pass3 '(#xFD #xE9))
+
+;; --- Subroutines & Returns ---
+
+(operand djnz 2 "DJNZ e"
+     :arg1 variable :relative #t
+     :pass3 (list #x10 (get-rel-offset r1 prog ctx size)))
+
+(operand call 3 "CALL nn"
+     :arg1 variable
+     :pass3 (let ((addr (get-addr r1 prog ctx)))
+              (list #xCD (lower-byte addr) (higher-byte addr))))
+
+(operand call 3 "CALL cc, nn"
+     :arg1 asmsym :arg2 variable
+     :pass3 (let ((addr (get-addr r2 prog ctx)))
+              (list (logior #xC4 (lshift (cond-code r1) 3))
+                    (lower-byte addr) (higher-byte addr))))
+
+(operand ret 1 "RET" :pass3 '(#xC9))
+
+(operand ret 1 "RET cc"
      :arg1 asmsym
-     :arg2 variable)
+     :pass3 (list (logior #xC0 (lshift (cond-code r1) 3))))
 
-(operand jp 1
-     "JP (HL)"
-     :pass3 (list #b11101001)
-     :arg1 hl-indirect)
+(operand reti 2 "RETI" :pass3 '(#xED #x4D))
+(operand retn 2 "RETN" :pass3 '(#xED #x45))
 
-(operand jp 2
-     "JP (IX)"
-     :pass3 (list #b11011101 #b11101001)
-     :arg1 ix-indirect)
-
-(operand jp 2
-     "JP (IY)"
-     :pass3 (list #b11111101 #b11101001)
-     :arg1 iy-indirect)
-
-(operand djnz 2 
-     "DJNZ e"
-     :relative #t
-     :pass3 (list #x10 r1)
-     :arg1 variable)
-
-(operand call 3
-     "CALL nn"
-     :pass3 (list #b11001101 (lower-byte r1) (higher-byte r1))
-     :arg1 variable)
-
-(operand call 3
-     "CALL c, nn"
-     :pass3 (list (logior #b11000100 (lshift (con-code r1) 3))
-                  (lower-byte r2) (higher-byte r2))
-     :arg1 asmsym
-     :arg2 variable)
-
-(operand ret 1
-     "RET"
-     :pass3 (list #b11001001))
-
-(operand ret 1
-     "RET c"
-     :pass3 (list (logior #b11000000 (lshift (con-code r1) 3)))
-     :arg1 asmsym)
-
-(operand reti 2
-     "RETI"
-     :pass3 (list #b11101101 #b01001101))
-
-(operand retn 2
-     "RETN"
-     :pass3 (list #b11101101 #b01000101))
-
-(operand rst 1
-     "RST p"
-     :pass3 (list (logior #b11000111 (lshift (/ r1 8) 3)))
-     :arg1 number)
+(operand rst 1 "RST p"
+     :arg1 number
+     :pass3 (list (logior #xC7 (lshift (/ (logand r1 #x38) 8) 3))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;; Input/Output group ;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- Basic Input ---
 
-(operand in 2
-     "IN A, (n)"
-     :pass3 (if (eq? r1 'a) (list #b11011011 r2))
-     :arg1 8-register
-     :arg2 number)
+(operand in 2 "IN A, (n)"
+     :arg1 8-register :arg2 number
+     :pass3 (if (eq? r1 'a) 
+                (list #xDB r2) 
+                (error "Only 'IN A, (n)' is supported for direct port" ctx)))
 
-(operand in 2
-     "IN r, (C)"
+(operand in 2 "IN r, (C)"
+     :arg1 8-register :arg2 8-register
      :pass3 (if (eq? r2 'c)
-                (list #b11101101 (logior #b01000000 
-                                     (lshift (reg-code r1) 3))))
-     :arg1 8-register
-     :arg2 8-register)
+                (list #xED (logior #x40 (lshift (reg-code r1) 3)))
+                (error "Port must be register C" ctx)))
 
-(operand ini 2
-     "INI"
-     :pass3 (list #b11101101 #b10100010))
+;; --- Block Input ---
 
-(operand inir 2
-     "INIR"
-     :pass3 (list #b11101101 #b10110010))
+(operand ini  2 "INI"  :pass3 '(#xED #xA2))
+(operand inir 2 "INIR" :pass3 '(#xED #xB2))
+(operand ind  2 "IND"  :pass3 '(#xED #xAA))
+(operand indr 2 "INDR" :pass3 '(#xED #xBA))
 
-(operand ind 2
-     "IND"
-     :pass3 (list #b11101101 #b10101010))
+;; --- Basic Output ---
 
-(operand indr 2
-     "INDR"
-     :pass3 (list #b11101101 #b10111010))
+(operand out 2 "OUT (n), A"
+     :arg1 number :arg2 8-register
+     :pass3 (if (eq? r2 'a) 
+                (list #xD3 r1) 
+                (error "Only 'OUT (n), A' is supported for direct port" ctx)))
 
-(operand out 2
-     "OUT (n), A"
-     :pass3 (if (eq? r2 'a) (list #b11010011 r1))
-     :arg1 number
-     :arg2 8-register)
-
-(operand out 2
-     "OUT (C), r"
+(operand out 2 "OUT (C), r"
+     :arg1 8-register :arg2 8-register
      :pass3 (if (eq? r1 'c)
-                (list #b11101101 (logior #b01000001
-                                     (lshift (reg-code r2) 3))))
-     :arg1 8-register
-     :arg2 8-register)
+                (list #xED (logior #x41 (lshift (reg-code r2) 3)))
+                (error "Port must be register C" ctx)))
 
-(operand outi 2
-     "OUTI"
-     :pass3 (list #b11101101 #b10100011))
+;; --- Block Output ---
 
-(operand otir 2
-     "OTIR"
-     :pass3 (list #b11101101 #b10110011))
-
-(operand outd 2
-     "OUTD"
-     :pass3 (list #b11101101 #b10101011))
-
-(operand otdr 2
-     "OTDR"
-     :pass3 (list #b11101101 #b10111011))
+(operand outi 2 "OUTI" :pass3 '(#xED #xA3))
+(operand otir 2 "OTIR" :pass3 '(#xED #xB3))
+(operand outd 2 "OUTD" :pass3 '(#xED #xAB))
+(operand otdr 2 "OTDR" :pass3 '(#xED #xBB))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;; ASM Dirrectives ;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; --- Управление адресом ---
 
-(operand org 0 "Origin"
+(operand org 0 "Origin: Set Program Counter"
   :arg1 number
   :pass1 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
   :pass2 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
-  :pass3 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) (quote null)))
+  :pass3 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) '()))
 
-;; Простой db для чисел и списков
-(operand db 1 "Define Byte"
+;; --- Определение данных (Bytes) ---
+
+(operand db 0 "Define Byte(s)"
   :arg1 variable
-  :pass1 1
-  :pass2 1
-  :pass3 (list (lower-byte r1))) ;; lower-byte на случай, если r1 — это 16-битный адрес
+  :pass1 (let ((vals (get-addr-list r1 prog ctx))) (length vals))
+  :pass2 (let ((vals (get-addr-list r1 prog ctx))) (length vals))
+  :pass3 (mapcar lower-byte (get-addr-list r1 prog ctx)))
 
-(operand db 0 "Define Byte" 
-  :arg1 list
-  :pass1 (length r1)       ;; ВАЖНО: возвращаем длину списка для ILC
-  :pass2 (length r1)
-  :pass3  r1) ;; Возвращаем список из одного байта
+;; --- Определение данных (Words) ---
 
-;; dw для чисел и меток
-(operand dw 2 "Define Word"
-  :arg1 variable ;; Позволяет использовать и числа, и метки
-  :pass1 2
-  :pass2 2
-  :pass3 (let ((val r1)) ;; r1 тут уже будет абсолютным адресом из таблицы
-           (list (lower-byte val) 
-                 (higher-byte val))))
-
-(operand dw 0 "Define Word List"
-  :arg1 list
-  :pass1 (* (length r1) 2)   ;; Каждый элемент списка — это 2 байта
-  :pass2 (* (length r1) 2)
-  :pass3 (let ((output '()))
-           (begin
-             (mapcar (lambda (item)
-                       (let ((val (if (symbol? item) 
-                                      (get-label item prog) 
-                                      item)))
-                         (set! output (append output 
-                                              (list (lower-byte val) 
-                                                    (higher-byte val))))))
-                     r1)
+(operand dw 0 "Define Word(s)"
+  :arg1 variable
+  :pass1 (* (length (get-addr-list r1 prog ctx)) 2)
+  :pass2 (* (length (get-addr-list r1 prog ctx)) 2)
+  :pass3 (let ((output '())
+               (vals (get-addr-list r1 prog ctx)))
+           ;; Если vals случайно стал ((64)), берем car
+           (let ((flat-vals (if (and (list? vals) (list? (car vals))) 
+                                (car vals) 
+                                vals)))
+             (dolist (v flat-vals)
+               (let ((addr (if (list? v) (car v) v))) ;; Еще одна страховка
+                 (set! output (append output (list (lower-byte addr) (higher-byte addr))))))
              output)))
 
-;; ds для резервирования места (заполнение нулями)
-;; Пример: (ds 10) -> резервирует 10 байт
-(operand ds 0 "Define Space (zeros)"
-  :arg1 number
-  :pass1 r1                 ;; Размер равен значению аргумента
-  :pass2 r1
-  :pass3 (make-list r1 0))  ;; Генерируем список из r1 нулей
+;; --- Резервирование места ---
 
-;; ds с указанием значения заполнителя
-;; Пример: (ds 10 #xFF) -> резервирует 10 байт, заполненных 255
-(operand ds 0 "Define Space (with fill byte)"
+(operand ds 0 "Define Space (zeros or fill)"
+  :arg1 number :arg2 number
+  :pass1 r1 :pass2 r1
+  :pass3 (make-list r1 r2))
+
+(operand ds 0 "Define Space (zeros only)"
   :arg1 number
-  :arg2 number
-  :pass1 r1                 ;; Размер всё равно r1
-  :pass2 r1
-  :pass3 (make-list r1 r2)) ;; Список из r1 элементов со значением r2
+  :pass1 r1 :pass2 r1
+  :pass3 (make-list r1 0))
+
+;; --- Строки и Выравнивание ---
 
 (operand ascii 0 "Define ASCII string"
   :arg1 string
@@ -1494,18 +998,14 @@
                    
 (operand align 0 "Align ILC to N bytes"
   :arg1 number
-  :pass1 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
-                (rem (mod current-addr r1)))
-           (if (= rem 0) 
-               0 
-               (- r1 rem)))
-  :pass2 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
-                (rem (mod current-addr r1)))
-           (if (= rem 0) 
-               0 
-               (- r1 rem)))
-  :pass3 (let* ((current-addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
-                (rem (mod current-addr r1))
-                (size (if (= rem 0) 0 (- r1 rem))))
-           (make-list size 0)))
+  :pass1 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (pad (mod (- r1 (mod addr r1)) r1)))
+           pad)
+  :pass2 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (pad (mod (- r1 (mod addr r1)) r1)))
+           pad)
+  :pass3 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+                (pad (mod (- r1 (mod addr r1)) r1)))
+           (make-list pad 0)))
+
 (fmt #t "Loaded asm-z80\n")
