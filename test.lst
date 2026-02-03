@@ -1,17 +1,17 @@
-0000 | [ORG SET]        | org 0
+0000 | [ORG SET]        | org 00h
 0000 | zero:           
-8000 | [ORG SET]        | org 32768
+8000 | [ORG SET]        | org 8000h
 8000 | start:          
 8000 |    C3 3B 80      | jp label3
-8003 |    16            | db 22
+8003 |    16            | db 16h
 8004 |    16 21 2C      | db (22 33 44)
-8007 |    40 00         | dw 64
-8009 |    00 00 00 00 00 00 00 00  | ds 8
+8007 |    40 00         | dw 40h
+8009 |    00 00 00 00 00 00 00 00  | ds 08h
 8011 |    00 80         | dw start
 8013 |    01 00 02 00 03 00  | dw (1 2 3)
 8019 |    48 65 6C 6C 6F 20 57 6F 72 6C 64 0A  | ascii Hello World
 
-8025 |    00 00 00 00 00 00 00 00 00 00 00  | align 16
+8025 |    00 00 00 00 00 00 00 00 00 00 00  | align 10h
 8030 | label1:         
 8030 |    18 FE         | jr label1
 8032 |    18 01         | jr label2
@@ -19,11 +19,13 @@
 8035 | label2:         
 8035 |    18 F9         | jr label1
 8037 |    18 02         | jr label3
-8039 |    0E 04         | ld c, 4
+8039 |    0E 04         | ld c, 04h
 803B | label3:         
 803B |    79            | ld a, c
 803C |    18 F2         | jr label1
 803E |    18 F5         | jr label2
 8040 |    18 F9         | jr label3
-8042 |    C3 00 00      | jp 0
+8042 |    C3 00 00      | jp 00h
 8045 |    C3 00 00      | jp zero
+8048 |    DD 7E 05      | ld a, (ix+5)
+804B |    FD 36 F6 AA   | ld (iy-10), AAh

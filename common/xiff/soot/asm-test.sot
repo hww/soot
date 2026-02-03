@@ -70,6 +70,8 @@ $label2
       (jmp 'label3)
       (jmp 0)
       (jmp 'zero)
+      (ld @a [+ ix 5])    ; Должно быть: DD 7E 05
+      (ld [- iy 10] #xAA) ; Должно быть: FD 36 F6 AA
   )
 )
 
