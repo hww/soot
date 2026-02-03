@@ -187,7 +187,7 @@
 
 (defun lzasm-z80 (&rest insts)
   "Create a new z80 program"
-  (make-asm-prog :insts (flatten insts)))
+  (make-segment :insts (flatten insts)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;; 8-Bit Load group ;;;;;;;;;;;;;;;;;;;
@@ -253,7 +253,7 @@
 (operand ld 3 "LD A, (nn)"
      :arg1 8-register :arg2 var-indirect
      :pass3 (if (eq? r1 'a)
-                (let ((addr (get-addr r2 prog ctx)))
+                (let ((addr (get-addr r2 seg ctx)))
                   (list #x3A (lower-byte addr) (higher-byte addr)))
                 (error "Only LD A, (nn) is allowed" ctx)))
 
@@ -268,7 +268,7 @@
 (operand ld 3 "LD (nn), A"
      :arg1 var-indirect :arg2 8-register
      :pass3 (if (eq? r2 'a)
-                (let ((addr (get-addr r1 prog ctx)))
+                (let ((addr (get-addr r1 seg ctx)))
                   (list #x32 (lower-byte addr) (higher-byte addr)))
                 (error "Only LD (nn), A is allowed" ctx)))
 
@@ -298,18 +298,18 @@
 
 (operand ld 3 "LD dd, nn"
      :arg1 16-register :arg2 variable
-     :pass3 (let ((val (get-addr r2 prog ctx)))
+     :pass3 (let ((val (get-addr r2 seg ctx)))
               (list (logior #x01 (lshift (reg-code r1) 4))
                     (lower-byte val) (higher-byte val))))
 
 (operand ld 4 "LD IX, nn"
      :arg1 ix-register :arg2 variable
-     :pass3 (let ((val (get-addr r2 prog ctx)))
+     :pass3 (let ((val (get-addr r2 seg ctx)))
               (list #xDD #x21 (lower-byte val) (higher-byte val))))
 
 (operand ld 4 "LD IY, nn"
      :arg1 iy-register :arg2 variable
-     :pass3 (let ((val (get-addr r2 prog ctx)))
+     :pass3 (let ((val (get-addr r2 seg ctx)))
               (list #xFD #x21 (lower-byte val) (higher-byte val))))
 
 ;; --- 16-bit Memory Loads ---
@@ -318,7 +318,7 @@
 (operand ldhl 3 "LD HL, (nn)"
      :arg1 16-register :arg2 var-indirect
      :pass3 (if (eq? r1 'hl)
-                (let ((addr (get-addr r2 prog ctx)))
+                (let ((addr (get-addr r2 seg ctx)))
                   (list #x2A (lower-byte addr) (higher-byte addr)))
                 (error "Internal error: ldhl called not for HL" ctx)))
 
@@ -329,18 +329,18 @@
                    (struct-set! inst :op 'ldhl) ;; исправлено: меняем :op в структуре inst
                    3)
                 4)
-     :pass3 (let ((addr (get-addr r2 prog ctx)))
+     :pass3 (let ((addr (get-addr r2 seg ctx)))
               (list #xED (logior #x4B (lshift (reg-code r1) 4)) 
                     (lower-byte addr) (higher-byte addr))))
 
 (operand ld 4 "LD IX, (nn)"
      :arg1 ix-register :arg2 var-indirect
-     :pass3 (let ((addr (get-addr r2 prog ctx)))
+     :pass3 (let ((addr (get-addr r2 seg ctx)))
               (list #xDD #x2A (lower-byte addr) (higher-byte addr))))
 
 (operand ld 4 "LD IY, (nn)"
      :arg1 iy-register :arg2 var-indirect
-     :pass3 (let ((addr (get-addr r2 prog ctx)))
+     :pass3 (let ((addr (get-addr r2 seg ctx)))
               (list #xFD #x2A (lower-byte addr) (higher-byte addr))))
 
 ;; --- 16-bit Memory Stores ---
@@ -348,24 +348,24 @@
 (operand ld 3 "LD (nn), HL"
      :arg1 var-indirect :arg2 16-register ;; добавил arg2 для порядка
      :pass3 (if (eq? r2 'hl)
-                (let ((addr (get-addr r1 prog ctx)))
+                (let ((addr (get-addr r1 seg ctx)))
                   (list #x22 (lower-byte addr) (higher-byte addr)))
                 (error "Use LD (nn), dd for non-HL registers" ctx)))
 
 (operand ld 4 "LD (nn), dd"
      :arg1 var-indirect :arg2 16-register
-     :pass3 (let ((addr (get-addr r1 prog ctx)))
+     :pass3 (let ((addr (get-addr r1 seg ctx)))
               (list #xED (logior #x43 (lshift (reg-code r2) 4))
                     (lower-byte addr) (higher-byte addr))))
 
 (operand ld 4 "LD (nn), IX"
      :arg1 var-indirect :arg2 ix-register
-     :pass3 (let ((addr (get-addr r1 prog ctx)))
+     :pass3 (let ((addr (get-addr r1 seg ctx)))
               (list #xDD #x22 (lower-byte addr) (higher-byte addr))))
 
 (operand ld 4 "LD (nn), IY"
      :arg1 var-indirect :arg2 iy-register
-     :pass3 (let ((addr (get-addr r1 prog ctx)))
+     :pass3 (let ((addr (get-addr r1 seg ctx)))
               (list #xFD #x22 (lower-byte addr) (higher-byte addr))))
 
 ;; --- Stack Pointer Loads ---
@@ -822,9 +822,9 @@
 (operand jmp 3 "Virtual JMP (JP or JR)"
   :arg1 variable
   :pass1 3 
-  :pass2 (let* ((target (get-label-addr-optional r1 prog ctx)))
+  :pass2 (let* ((target (get-label-addr-optional r1 seg ctx)))
          (if (and target (not (null? target)))
-             (let ((offset (- target (+ (get-abs-pc prog) 2))))
+             (let ((offset (- target (+ (get-abs-pc seg) 2))))
                (if (and (<= offset 120) (>= offset -120))
                    (begin (struct-set! inst :op 'jr) 2)
                    (begin (struct-set! inst :op 'jp) 3)))
@@ -835,19 +835,19 @@
 
 (operand jp 3 "JP nn"
      :arg1 variable
-     :pass3 (let ((addr (get-addr r1 prog ctx)))
+     :pass3 (let ((addr (get-addr r1 seg ctx)))
               (list #xC3 (lower-byte addr) (higher-byte addr))))
 
 (operand jr 2 "JR e"
   :arg1 variable :relative #t
-  :pass3 (let ((rel (get-rel-offset r1 prog ctx 2))) ;; 2 — это размер JR
+  :pass3 (let ((rel (get-rel-offset r1 seg ctx 2))) ;; 2 — это размер JR
            (list #x18 rel)))
 
 ;; --- Conditional Jumps ---
 
 (operand jr 2 "JR cc, e"
   :arg1 asmsym :arg2 variable :relative #t
-  :pass3 (let ((rel (get-rel-offset r2 prog ctx 2))
+  :pass3 (let ((rel (get-rel-offset r2 seg ctx 2))
                (code (case r1 
                        ('nz #x20) ('z #x28) ('nc #x30) ('c #x38)
                        (else (error "Invalid JR condition" r1)))))
@@ -855,7 +855,7 @@
 
 (operand jp 3 "JP cc, nn"
      :arg1 asmsym :arg2 variable
-     :pass3 (let ((addr (get-addr r2 prog ctx))
+     :pass3 (let ((addr (get-addr r2 seg ctx))
                   (code (logior #xC2 (lshift (cond-code r1) 3))))
               (list code (lower-byte addr) (higher-byte addr))))
 
@@ -869,16 +869,16 @@
 
 (operand djnz 2 "DJNZ e"
      :arg1 variable :relative #t
-     :pass3 (list #x10 (get-rel-offset r1 prog ctx size)))
+     :pass3 (list #x10 (get-rel-offset r1 seg ctx size)))
 
 (operand call 3 "CALL nn"
      :arg1 variable
-     :pass3 (let ((addr (get-addr r1 prog ctx)))
+     :pass3 (let ((addr (get-addr r1 seg ctx)))
               (list #xCD (lower-byte addr) (higher-byte addr))))
 
 (operand call 3 "CALL cc, nn"
      :arg1 asmsym :arg2 variable
-     :pass3 (let ((addr (get-addr r2 prog ctx)))
+     :pass3 (let ((addr (get-addr r2 seg ctx)))
               (list (logior #xC4 (lshift (cond-code r1) 3))
                     (lower-byte addr) (higher-byte addr))))
 
@@ -947,26 +947,26 @@
 
 (operand org 0 "Origin: Set Program Counter"
   :arg1 number
-  :pass1 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
-  :pass2 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) 0)
-  :pass3 (begin (asm-prog-origin! prog r1) (asm-prog-ilc! prog r1) '()))
+  :pass1 (begin (segment-origin! seg r1) (segment-ilc! seg r1) 0)
+  :pass2 (begin (segment-origin! seg r1) (segment-ilc! seg r1) 0)
+  :pass3 (begin (segment-origin! seg r1) (segment-ilc! seg r1) '()))
 
 ;; --- Определение данных (Bytes) ---
 
 (operand db 0 "Define Byte(s)"
   :arg1 variable
-  :pass1 (let ((vals (get-addr-list r1 prog ctx))) (length vals))
-  :pass2 (let ((vals (get-addr-list r1 prog ctx))) (length vals))
-  :pass3 (mapcar lower-byte (get-addr-list r1 prog ctx)))
+  :pass1 (let ((vals (get-addr-list r1 seg ctx))) (length vals))
+  :pass2 (let ((vals (get-addr-list r1 seg ctx))) (length vals))
+  :pass3 (mapcar lower-byte (get-addr-list r1 seg ctx)))
 
 ;; --- Определение данных (Words) ---
 
 (operand dw 0 "Define Word(s)"
   :arg1 variable
-  :pass1 (* (length (get-addr-list r1 prog ctx)) 2)
-  :pass2 (* (length (get-addr-list r1 prog ctx)) 2)
+  :pass1 (* (length (get-addr-list r1 seg ctx)) 2)
+  :pass2 (* (length (get-addr-list r1 seg ctx)) 2)
   :pass3 (let ((output '())
-               (vals (get-addr-list r1 prog ctx)))
+               (vals (get-addr-list r1 seg ctx)))
            ;; Если vals случайно стал ((64)), берем car
            (let ((flat-vals (if (and (list? vals) (list? (car vals))) 
                                 (car vals) 
@@ -998,13 +998,13 @@
                    
 (operand align 0 "Align ILC to N bytes"
   :arg1 number
-  :pass1 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+  :pass1 (let* ((addr (+ (segment-origin seg) (segment-ilc seg)))
                 (pad (mod (- r1 (mod addr r1)) r1)))
            pad)
-  :pass2 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+  :pass2 (let* ((addr (+ (segment-origin seg) (segment-ilc seg)))
                 (pad (mod (- r1 (mod addr r1)) r1)))
            pad)
-  :pass3 (let* ((addr (+ (asm-prog-origin prog) (asm-prog-ilc prog)))
+  :pass3 (let* ((addr (+ (segment-origin seg) (segment-ilc seg)))
                 (pad (mod (- r1 (mod addr r1)) r1)))
            (make-list pad 0)))
 
