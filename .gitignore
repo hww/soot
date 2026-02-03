@@ -10,3 +10,4 @@
 *.TMP
 *.TEMP
 /build
+/.cache

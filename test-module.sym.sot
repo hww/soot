@@ -1,0 +1,8 @@
+("test-module" (:size 32847) (:export) (:symbols
+                                         (:private 0 0 "zero" :label "MAIN" null)
+                                         (:private 32768 0 "start" :label "MAIN" null)
+                                         (:private 32816 0 "label1" :label "MAIN" null)
+                                         (:private 32821 0 "label2" :label "MAIN" null)
+                                         (:private 32827 0 "label3" :label "MAIN" null)
+                                       )
+)

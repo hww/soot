@@ -307,10 +307,11 @@ namespace script
         Object eval_string_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_vector_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_hash_table_for_each(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_list_for_each(const Object & form, Arguments & args, const std::shared_ptr<EnvironmentObject>& env);
 
         // Системные и ввод-вывод
         Object eval_print(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
-        Object eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+        Object eval_pfmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_error(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
         Object eval_fmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);

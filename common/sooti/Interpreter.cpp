@@ -186,10 +186,11 @@ namespace script
             {"string-for-each",     &Interpreter::eval_string_for_each,     nullptr},
             {"vector-for-each",     &Interpreter::eval_vector_for_each,     nullptr},
             {"hash-table-for-each", &Interpreter::eval_hash_table_for_each, nullptr},
+            {"list-for-each",       &Interpreter::eval_list_for_each, nullptr},
 
             // Системные и ввод-вывод
             {"print",               &Interpreter::eval_print, nullptr},
-            {"pprint",              &Interpreter::eval_pprint, nullptr},
+            {"pfmt",                &Interpreter::eval_pfmt, nullptr},
             {"inspect",             &Interpreter::eval_inspect, nullptr},
             {"fmt",                 &Interpreter::eval_fmt, nullptr},
             {"cfmt",                &Interpreter::eval_cfmt, nullptr},
@@ -1889,14 +1890,15 @@ Object Interpreter::eval_print(const Object & form, Arguments & args, const std:
     return Object::make_null();
 }
 
-Object Interpreter::eval_pprint(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+Object Interpreter::eval_pfmt(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
     (void)env;
-    vararg_check(form, args, { {} }, {});
-
-    if (!m_disable_printing) {
-        std::cout << pretty_print::to_string(args.unnamed.at(0), 100) << std::endl;
+    vararg_check(form, args, { {ObjectType::SYMBOL}, {} }, {});
+    if (args.unnamed[0].as_symbol() == "#t") {
+        const auto& str = pretty_print::to_string(args.unnamed.at(1), 100);
+        fmt::print("{}\n", str);
+        return get_null();
     }
-    return Object::make_null();
+    return Object::make_string(pretty_print::to_string(args.unnamed.at(1), 100));
 }
 
 Object Interpreter::eval_inspect(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
@@ -2022,7 +2024,7 @@ Object Interpreter::eval_cfmt(const Object& form, Arguments& args, const std::sh
 
     // Если dest не ложь, выводим в консоль с цветом
     if (truthy(dest)) {
-        fmt::print(fg(text_color), "{}\n", formatted);
+        fmt::print(fg(text_color), "{}", formatted);
     }
 
     return Object::make_string(formatted);
@@ -2850,7 +2852,7 @@ Object Interpreter::eval_string_append(const Object& form, Arguments& args, cons
     std::string result;
     for (const auto& arg : args.unnamed) {
         if (!arg.is_string()) {
-            throw_eval_error(form, "string-append requires string arguments");
+            throw_eval_error(form, "string-append requires string arguments got " + arg.print());
         }
         result += arg.as_string()->data;
     }
@@ -4614,6 +4616,20 @@ Object Interpreter::eval_hash_table_for_each(const Object& form, Arguments& args
         // Мы просто передаем вектор объектов. Ключ и Значение.
         call_lambda_internal(lambda, { Object::make_string(key), val });
     }
+    return get_null();
+}
+Object Interpreter::eval_list_for_each(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env) {
+    vararg_check(form, args, { {ObjectType::PAIR}, {ObjectType::LAMBDA} }, {});
+    
+    Object current = args.unnamed[0];
+    Object lambda = args.unnamed[1];
+
+    while (current.is_pair()) {
+        // Вызываем твой надежный call_lambda_internal
+        call_lambda_internal(lambda, { current.as_pair()->car });
+        current = current.as_pair()->cdr;
+    }
+
     return get_null();
 }
 } // namespace script
