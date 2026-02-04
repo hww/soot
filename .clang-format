@@ -1,0 +1,12 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+AllowShortFunctionsOnASingleLine: Empty
+BreakBeforeBraces: Attach
+# Выравнивает многострочные комментарии по левому краю
+AlignConsecutiveMacros: true
+# Пытается уместить комментарий в лимит строки (например, 100 символов)
+# и переносит его, если он слишком длинный
+ReflowComments: true
+# Добавляет пробел после // (делает //Comment -> // Comment)
+CommentPragmas: '^ IWYU pragma:'

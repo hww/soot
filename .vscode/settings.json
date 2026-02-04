@@ -1,13 +1,11 @@
 {
     // 0. Самая Главная настройка: запрещаем меню открываться клавиатурой
     "window.titleBarStyle": "custom",
-    "window.customMenuBarAltFocus": false,  
+    "window.customMenuBarAltFocus": false,
     "window.enableMenuBarMnemonics": false,
     "window.menuBarVisibility": "visible",
-
     // 1. Главная настройка: заставляем IntelliSense брать пути из CMake
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    
     // 2. Исправляем C_Cpp_Runner, чтобы он не индексировал лишнего
     "C_Cpp_Runner.includeSearch": [
         "${workspaceFolder}/common/**",
@@ -19,14 +17,12 @@
         "**/.vscode/**",
         "**/.git/**"
     ],
-
     // 3. Настройки индексации (IntelliSense)
     "C_Cpp.intelliSenseEngine": "default",
     // Запрещаем сканировать папку build для поиска исходников (чтобы не дублировать символы)
     "C_Cpp.files.exclude": {
         "**/build/**": true
     },
-
     // 4. Настройки CMake Tools для корректной сборки
     "cmake.buildDirectory": "${workspaceFolder}/build",
     "cmake.configureSettings": {
@@ -41,5 +37,14 @@
     // Это заставит CMake пересобирать зависимости при изменении исходников
     "cmake.buildBeforeRun": true,
     "cmake.autoSelectActiveFolder": true,
-    "cmake.generator": "Unix Makefiles"
+    "cmake.generator": "Unix Makefiles",
+    "clangd.arguments": [
+        "--clang-tidy",
+        "--background-index"
+    ],
+    "editor.formatOnSave": true, // Форматировать при каждом сохранении (Ctrl+S)
+    "editor.formatOnPaste": true, // Форматировать вставленный кусок кода
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    }
 }

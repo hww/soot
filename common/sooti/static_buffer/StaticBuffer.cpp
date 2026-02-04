@@ -47,30 +47,31 @@ namespace script {
 
 Object StaticBuffer::make_step_accessor(const Object& key) {
     // 1. Системные свойства (возвращаем как обычные значения)
-    if (key.is_symbol()) {
+    if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
+        
+        // 1. Системные свойства
         if (name == "size")   return Object::make_integer(size());
         if (name == "origin") return Object::make_integer(origin());
         if (name == "type")   return Object::make_string(type_name());
 
-        // 2. Доступ по метке
-        if (has_label(name)) {
-            size_t offset = get_label_offset(name);
-            auto b_cell = std::make_shared<BufferCell>(
-                std::static_pointer_cast<StaticBuffer>(shared_from_this()), 
-                offset
-            );
-            return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
+        // 2. Умный доступ по метке
+        Object label_obj = get_label_obj(name);
+        if (label_obj.is_not_null()) {
+            // МЫ ВОЗВРАЩАЕМ ВЕСЬ ОБЪЕКТ МЕТКИ
+            // Теперь (buffer 'my-label) -> это HeapObject Label
+            return label_obj;
         }
     }
 
-    // 3. Доступ по оффсету напрямую
+    // 3. Низкоуровневый доступ по оффсету (оставляем для магии)
     if (key.is_integer()) {
         size_t offset = static_cast<size_t>(key.as_integer());
         auto b_cell = std::make_shared<BufferCell>(
             std::static_pointer_cast<StaticBuffer>(shared_from_this()), 
             offset
         );
+        // Cell удобен для записи/чтения байт напрямую: (set! (buffer #x8000) #xAF)
         return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
     }
 

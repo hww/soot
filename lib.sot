@@ -5,7 +5,9 @@
 ;; =============================================================================
 ;; Базовые макросы, функции работы со списками и утилиты управления потоком.
 
-;; --- [ Секция 1: Мета-программирование ] ---
+;; ===========================================================================
+;; Мета-программирование
+;; ===========================================================================
 
 ;; @doc (defmacro name args &rest body)
 ;; Определяет новый макрос. Базовый кирпич языка.
@@ -17,13 +19,6 @@
 ;; Определяет функцию (обертка над lambda).
 (defmacro defun (name args &rest body)
   `(define ,name (lambda ,args ,@body)))
-
-;; @doc (with-gensyms (names...) &rest body)
-;; Создает уникальные имена символов для предотвращения конфликтов в макросах.
-(defmacro with-gensyms (names &rest body)
-  `(let ,(map (lambda (x) `(,x (gensym))) names)
-     ,@body))
-
 
 ;; Определяет переменную и присваивает ей значение.
 ;; Использует &rest для имитации опционального значения и документации.
@@ -39,22 +34,9 @@
        (define ,name ,value)
        null))
 
-;; --- Setf CL Style ---
-
-;; 'setf' в CL — это мощнейшая система 'set-field'.
-;; В простейшем случае (setf name value) он работает как setq.
-;; Если ты передаешь getter (например, (setf (car x) 5)), это требует сложной логики.
-;; Пока сделаем базовую версию для переменных:
-(defmacro setf (place value)
-  (if (symbol? place)
-      `(set! ,place ,value)
-      (let ((setter (get-setter (car place)))
-            (tmp-val (gensym))) ; Если у тебя есть gensym для уникальных имен
-        `(let ((,tmp-val ,value))
-           (,(get-setter (car place)) ,@(cdr place) ,tmp-val)
-           ,tmp-val))))
-
-;; --- [ Секция 3.1: Hash Table ] ---
+;; ===========================================================================
+;; Hash Table 
+;; ===========================================================================
 
 ;; gethash key hash-table &optional default => value, present-p
 (defun gethash (key table)
@@ -68,14 +50,9 @@
 ;; To make (setf (gethash @key @table) @value)
 (defsetf 'gethash 'sethash)
 
-;; --- [ Секция 2: Управляющие конструкции ] ---
-
-;; @doc (if clause true-branch false-branch)
-;; Классическое ветвление.
-(defmacro if (test then else)
-  `(cond 
-     (,test ,then)
-     (#t ,else)))
+;; ===========================================================================
+;; Управляющие конструкции 
+;; ===========================================================================
 
 ;; @doc (when clause &rest body)
 ;; Выполняет body, если clause истинно.
@@ -98,74 +75,17 @@
   `(let ((it ,condition))
      (if it ,true-branch ,false-branch)))
 
-
-;;;; ===========================================================================
-;;;; Object navigation
-;;;; ===========================================================================
-
-(defmacro -> (base &rest path)
-        `(navigation ,base ,@path))
-
-;;;; ===========================================================================
-;;;; CASE-TYPE MACRO
-;;;; ===========================================================================
-;;; Диспетчеризация выполнения на основе динамического типа объекта.
-;;; 
-;;; Формат: (case-type <obj> (<type-name> <body>...) ... (else <body>...))
+;; Сравнивает результат выражения с набором константных ключей.
+;; 
+;; Формат: (case <expr> (<key> <body>...) ... (else <body>...))
 ;;;
-;;; Особенности:
-;;; 1. Использует внутреннюю функцию (type-of) для определения типа.
-;;; 2. <type-name> — это символ типа (например: integer, string, lextoken, pair).
-;;; 3. Имена типов не нужно квотировать (integer вместо 'integer).
+;; Особенности:
+;; 1. <expr> вычисляется только один раз (результат биндится к gensym).
+;; 2. <key> может быть символом, числом или списком: ( (k1 k2) <body> ).
+;; 3. Ключи автоматически квотируются (не нужно писать 'a, достаточно a).
 ;;;
-;;; Пример развертки:
-;;; (case-type x (string 1) (else 2)) 
-;;; => (let ((g!1 (type-of x))) (cond ((eq? g!1 'string) 1) (#t 2)))
-;;;
-;;; Примечание: Критически важен для парсеров и ассемблеров, где логика
-;;; сильно зависит от того, является ли аргумент числом, символом или токеном.
-(defmacro case-type (obj &rest branches)
-  (let ((type-sym (gensym)))
-    `(let ((,type-sym (type-of ,obj)))
-       (cond
-         ,@(map (lambda (branch)
-                  (let ((head (car branch))
-                        (body (cdr branch)))
-                    (if (eq? head 'else)
-                        `(#t ,@body)
-                        `((eq? ,type-sym ',head) ,@body))))
-                branches)))))
-
-;;;; ===========================================================================
-;;;; Iterator
-;;;; ===========================================================================
-
-(defun for-each (container proc)
-  (cond
-    ;; 1. Первым делом проверяем на пустоту. 
-    ;; Если список пуст, мы просто выходим, не вызывая C++ итератор.
-    ((null? container)   null)
-    ;; 2. Только если список НЕ пустой и это список, вызываем C++
-    ((list? container)   (list-for-each container proc))
-    ((vector? container) (vector-for-each container proc))
-    ((string? container) (string-for-each container proc))
-    ((hash-table? container) (hash-table-for-each container proc))
-    (else (error (fmt #f "for-each: unsupported container type {}" container) container))))
-
-;;;; ===========================================================================
-;;;; CASE MACRO
-;;;; ===========================================================================
-;;; Сравнивает результат выражения с набором константных ключей.
-;;; 
-;;; Формат: (case <expr> (<key> <body>...) ... (else <body>...))
-;;;
-;;; Особенности:
-;;; 1. <expr> вычисляется только один раз (результат биндится к gensym).
-;;; 2. <key> может быть символом, числом или списком: ( (k1 k2) <body> ).
-;;; 3. Ключи автоматически квотируются (не нужно писать 'a, достаточно a).
-;;;
-;;; Пример развертки:
-;;; (case x (a 1) (else 2))  =>  (let ((g!1 x)) (cond ((eq? g!1 'a) 1) (#t 2)))
+;; Пример развертки:
+;; (case x (a 1) (else 2))  =>  (let ((g!1 x)) (cond ((eq? g!1 'a) 1) (#t 2)))
 (defmacro case (expr &rest branches)
   (let ((val-sym (gensym)))
     `(let ((,val-sym ,expr))
@@ -181,9 +101,175 @@
                             `((eq? ,val-sym ',head) ,@body)))))
                 branches)))))
 
-;; --- [ Секция 3: Работа со списками ] ---
+;; ===========================================================================
+;; CASE-TYPE MACRO
+;; ===========================================================================
+;; Диспетчеризация выполнения на основе динамического типа объекта.
+;; 
+;; Формат: (case-type <obj> (<type-name> <body>...) ... (else <body>...))
+;;;
+;; Особенности:
+;; 1. Использует внутреннюю функцию (type-of) для определения типа.
+;; 2. <type-name> — это символ типа (например: integer, string, lextoken, pair).
+;; 3. Имена типов не нужно квотировать (integer вместо 'integer).
+;;;
+;; Пример развертки:
+;; (case-type x (string 1) (else 2)) 
+;; => (let ((g!1 (type-of x))) (cond ((eq? g!1 'string) 1) (#t 2)))
+;;;
+;; Примечание: Критически важен для парсеров и ассемблеров, где логика
+;; сильно зависит от того, является ли аргумент числом, символом или токеном.
+(defmacro case-type (obj &rest branches)
+  (let ((type-sym (gensym)))
+    `(let ((,type-sym (type-of ,obj)))
+       (cond
+         ,@(map (lambda (branch)
+                  (let ((head (car branch))
+                        (body (cdr branch)))
+                    (if (eq? head 'else)
+                        `(#t ,@body)
+                        `((eq? ,type-sym ',head) ,@body))))
+                branches)))))
 
+;; ===========================================================================
+;; Циклы и итераторы
+;; ===========================================================================
+
+(defun for-each (container proc)
+  (cond
+    ;; 1. Первым делом проверяем на пустоту. 
+    ;; Если список пуст, мы просто выходим, не вызывая C++ итератор.
+    ((null? container)   null)
+    ;; 2. Только если список НЕ пустой и это список, вызываем C++
+    ((list? container)   (list-for-each container proc))
+    ((vector? container) (vector-for-each container proc))
+    ((string? container) (string-for-each container proc))
+    ((hash-table? container) (hash-table-for-each container proc))
+    (else (error (fmt #f "for-each: unsupported container type {}" container) container))))
+
+;; @doc (dotimes (var count [result]) &rest body)
+;; Цикл от 0 до count-1.
+(defmacro dotimes (var &rest body)
+  `(let ((,(first var) 0))
+     (while (< ,(first var) ,(second var))
+            ,@body
+            (set! ,(first var) (+ ,(first var) 1)))
+     ,@(cddr var)))
+
+;; @doc (dolist (var list) &rest body)
+;; Итерация по элементам списка.
+(defmacro dolist (bindings &rest body)
+  `(let ((,(car bindings) ,(cadr bindings)))
+      (while (not (null? ,(car bindings)))
+        ,@body
+        (set! ,(car bindings) (cdr ,(car bindings))))))
+
+;; ===========================================================================
+;; Итераторы в стиле MAP
+;; ===========================================================================
+
+(defun map (fun x)
+    "Стандартный map: Трансформирует список, применяя функцию к каждому элементу.
+     Возвращает новый список той же длины с результатами вычислений.
+     (map (lambda (x) (* x x)) '(1 2 3)) => (1 4 9)"
+    (if (null? x)
+        '()
+        (cons (fun (car x))
+              (map fun (cdr x)))))
+
+
+(defun map2 (fun1 fun2 lst1 lst2)
+    "Специализированный map2: Параллельный обход двух списков с разными функциями.
+     Полезен для задач сборки данных, где нужно одновременно обработать два потока.
+     Важно: Проверяет списки на равенство длин и завершается, если один из них пуст."
+    (if (or (null? lst1)
+            (null? lst2)
+            (not (= (length lst1) (length lst2))))
+        '()
+        (cons (fun1 (car lst1))
+              (cons (fun2 (car lst2))
+                    (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
+
+(defun flat-map (proc lis)
+  "Применяет функцию proc к каждому элементу списка lis и объединяет 
+   результаты в один плоский список. 
+   
+   В отличие от обычного map, который создает список списков, flat-map 
+   'снимает' один уровень вложенности. Идеально подходит для макросов, 
+   генерирующих несколько определений (например, геттер и сеттер) 
+   для одного входного параметра.
+   
+   Пример: (flat-map (lambda (x) (list x (* x x))) '(1 2 3)) 
+           => (1 1 2 4 3 9)"
+  (if (null? lis)
+      '()
+      (append (proc (car lis)) 
+              (flat-map proc (cdr lis)))))
+
+;; --- MAPCAR ---
+
+(defun mapcar (func lst)
+  "Применяет функцию func к каждому элементу списка lst.
+   Результат: новый список из возвращаемых значений."
+  (if (null? lst)
+      null ; Базовый случай: список кончился.
+      (cons (func (car lst)) ; Вызываем func для "головы" и кладем в новый список.
+            (mapcar func (cdr lst))))) ; Рекурсивно идем к "хвосту".
+
+
+(defun mapcar2 (func lst1 lst2)
+  "Параллельная обработка двух списков.
+   Лямбда func должна принимать ровно 2 аргумента."
+  (if (or (null? lst1) (null? lst2))
+      null
+      ; Берем по одному элементу из каждого списка и передаем в func.
+      (cons (func (car lst1) (car lst2))
+            (mapcar2 func (cdr lst1) (cdr lst2)))))
+
+(defun mapcar3 (func lst1 lst2 lst3)
+  "Параллельная обработка трех списков (нужна для макроса soperand).
+   Лямбда func должна принимать ровно 3 аргумента (например: blo, blob, bloc)."
+  ; Синхронно идем по трем спискам. Если один короче других,
+  ; результат будет длиной с самый короткий список.
+  (if (or (null? lst1) (null? lst2) (null? lst3))
+      null
+      ; Извлекаем головы (car) всех трех списков одновременно.
+      (cons (func (car lst1) (car lst2) (car lst3))
+            ; Рекурсивно переходим к хвостам (cdr) всех трех списков.
+            (mapcar3 func (cdr lst1) (cdr lst2) (cdr lst3)))))
+
+
+;; ===========================================================================
+;; GENSYM
+;; ===========================================================================
+
+;; @doc (with-gensyms (names...) &rest body)
+;; Создает уникальные имена символов для предотвращения конфликтов в макросах.
+(defmacro with-gensyms (names &rest body)
+  `(let ,(map (lambda (x) `(,x (gensym))) names)
+     ,@body))
+
+;; ===========================================================================
+;; Работа со списками 
+;; ===========================================================================
+
+;; ---------------------------------------------------------------------------
+;; Предикаты
+;; ---------------------------------------------------------------------------
+
+;; Проверяет, является ли объект каноничным списком.
+;; Список — это либо пустой список '(), либо пара (cons),
+;; чей хвост (cdr) также является списком.
+;; В отличие от pair?, возвращает #f для "точечных пар" вроде (1 . 2).
+(defun list? (x)
+  (cond
+    ((null? x) #t)       ; Пустой список — это каноничный список
+    ((pair? x) (list? (cdr x))) ; Рекурсивно проверяем хвост
+    (else #f)))          ; Атомы (числа, символы и т.д.) — не списки
+
+;; ---------------------------------------------------------------------------
 ;; Аксессоры (C-x-R)
+;; ---------------------------------------------------------------------------
 
 (defun first (x)  (car x))
 (defun rest (x)   (cdr x))
@@ -201,8 +287,12 @@
 (defun cdddr  (x) (cdr (cdr (cdr x))))
 (defun cadddr (x) (car (cdr (cdr (cdr x))))) ; 4-й элемент
 
-;; Utility dunction
+;; ---------------------------------------------------------------------------
+;; Конструкторы
+;; ---------------------------------------------------------------------------
+
 (defun make-list (len val)
+  "Make empty list with this amout of items"
   (if (<= len 0)
       '()
       (cons val (make-list (- len 1) val))))
@@ -211,6 +301,16 @@
   (if (null? lis)
       '()
       (cons (car lis) (copy-list (cdr lis)))))
+
+;; ---------------------------------------------------------------------------
+;; Трансформации
+;; ---------------------------------------------------------------------------
+
+(defun append (l1 l2)
+  "Append one list to other"
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
 
 ;; Рекурсивно «выравнивает» вложенные списки в один плоский список.
 ;; Использует pair? для обнаружения подпунктов и append для их слияния.
@@ -239,6 +339,10 @@
       (set! curr next))        ;; Двигаем "настоящее" на шаг вперед
     prev))                     ;; Возвращаем новую голову списка
 
+;; ---------------------------------------------------------------------------
+;; Поиск
+;; ---------------------------------------------------------------------------
+
 ;; @doc (member x lst) -> list or #f
 ;; Ищет элемент x в списке lst. Возвращает хвост списка, начинающийся с x.
 (defun member (x lst)
@@ -256,6 +360,10 @@
       (if (eq? (caar alist) x)
           (car alist)
           (assoc x (cdr alist)))))
+
+;; ---------------------------------------------------------------------------
+;; Стек
+;; ---------------------------------------------------------------------------
 
 ;; @doc (push! lst obj)
 ;; Добавляет элемент в начало списка (изменяет переменную lst).
@@ -286,61 +394,64 @@
        (set! ,lst (cdr ,lst))
        ,tmp)))
 
-;;; --- MAPCAR ---
-;; Применяет функцию func к каждому элементу списка lst.
-;; Результат: новый список из возвращаемых значений.
-(defun mapcar (func lst)
-  (if (null? lst)
-      null ; Базовый случай: список кончился.
-      (cons (func (car lst)) ; Вызываем func для "головы" и кладем в новый список.
-            (mapcar func (cdr lst))))) ; Рекурсивно идем к "хвосту".
+;; ---------------------------------------------------------------------------
+;; SUBSTITUTE
+;; ---------------------------------------------------------------------------
 
-;;; --- MAPCAR2 ---
-;; Параллельная обработка двух списков.
-;; Лямбда func должна принимать ровно 2 аргумента.
-(defun mapcar2 (func lst1 lst2)
-  ; Если ХОТЯ БЫ ОДИН список пуст, обработка прекращается.
-  (if (or (null? lst1) (null? lst2))
-      null
-      ; Берем по одному элементу из каждого списка и передаем в func.
-      (cons (func (car lst1) (car lst2))
-            (mapcar2 func (cdr lst1) (cdr lst2)))))
+(defun substitute (new old lst)
+  "Replace all occurrences of OLD with NEW in list LST.
+   Returns a new list with the replacements made.
+   
+   Example:
+   (substitute 'x 'y '(a y b y c)) 
+   => (a x b x c)"
+  (cond ((null? lst) '())
+        ((eq? (car lst) old) 
+         (cons new (substitute new old (cdr lst))))
+        (#t (cons (car lst) (substitute new old (cdr lst))))))
 
-;;; --- MAPCAR3 ---
-;; Параллельная обработка трех списков (нужна для макроса soperand).
-;; Лямбда func должна принимать ровно 3 аргумента (например: blo, blob, bloc).
-(defun mapcar3 (func lst1 lst2 lst3)
-  ; Синхронно идем по трем спискам. Если один короче других,
-  ; результат будет длиной с самый короткий список.
-  (if (or (null? lst1) (null? lst2) (null? lst3))
-      null
-      ; Извлекаем головы (car) всех трех списков одновременно.
-      (cons (func (car lst1) (car lst2) (car lst3))
-            ; Рекурсивно переходим к хвостам (cdr) всех трех списков.
-            (mapcar3 func (cdr lst1) (cdr lst2) (cdr lst3)))))
+(defun recsubstitute (dest source lis)
+  "Recursively replace SOURCE with DEST throughout LIS.
+   Works on nested lists and any level of structure.
+   
+   Arguments:
+   - DEST:  The replacement value
+   - SOURCE: The value to replace  
+   - LIS: The input (list or atom)
+   
+   Returns: Structure with all SOURCE replaced by DEST.
+   Note: Uses EQ for comparison at all levels."
+   (cond
+      ((eq? lis source)
+         dest)
+      ((list? lis)
+         (cond
+            ((null? lis) lis)
+            (#t (mapcar (lambda (lis) (recsubstitute dest source lis))
+                       lis))))
+      (#t lis)))
 
+(defun nsubstitute (new old lst)
+  "Destructively replace OLD with NEW in list LST (modifies original).
+   Uses SET-CAR! to mutate list cells in place.
+   
+   Arguments:
+   - NEW: Replacement value
+   - OLD: Value to replace
+   - LST: List to modify (will be changed!)
+   
+   Returns: The modified list (same as input LST).
+   Warning: Mutates the original list structure."
+  (let ((current lst))
+    (while (not (null? current))
+      (if (eq? (car current) old)
+          (set-car! current new)) 
+      (set! current (cdr current)))
+    lst)) 
 
-;; --- [ Секция 4: Циклы ] ---
-
-;; @doc (dotimes (var count [result]) &rest body)
-;; Цикл от 0 до count-1.
-(defmacro dotimes (var &rest body)
-  `(let ((,(first var) 0))
-     (while (< ,(first var) ,(second var))
-            ,@body
-            (set! ,(first var) (+ ,(first var) 1)))
-     ,@(cddr var)))
-
-;; @doc (dolist (var list) &rest body)
-;; Итерация по элементам списка.
-(defmacro dolist (bindings &rest body)
-  `(let ((,(car bindings) ,(cadr bindings)))
-      (while (not (null? ,(car bindings)))
-        ,@body
-        (set! ,(car bindings) (cdr ,(car bindings))))))
-
-
-;; --- [ Секция 5: Мутации и арифметика ] ---
+;; ===========================================================================
+;; Мутации и арифметика
+;; ===========================================================================
 
 (defmacro 1+ (x) `(+ ,x 1))
 (defmacro 1- (x) `(- ,x 1))
@@ -349,80 +460,37 @@
 (defmacro +! (place arg) `(set! ,place (+ ,place ,arg)))
 (defmacro -! (place arg) `(set! ,place (- ,place ,arg)))
 
-;; --- [ Секция 6: Предикаты типов ] ---
+(defun sign (x) (if (>= x 0) '+ '-))
+
+;; ===========================================================================
+;; Предикаты
+;; ===========================================================================
 
 (defmacro neq? (a b) `(not (eq? ,a ,b)))
 (defmacro !=   (a b) `(not (= ,a ,b)))
 
-;;;; ===========================================================================
-;;;; Strings
-;;;; ===========================================================================
+;; ===========================================================================
+;; Strings
+;; ===========================================================================
 
 (defun string-empty? (s) (eq? 0 (string-length s)))
 
-;;;; ===========================================================================
-;;;; LIST? PREDICATE
-;;;; ===========================================================================
-;;; Проверяет, является ли объект каноничным списком.
-;;; Список — это либо пустой список '(), либо пара (cons),
-;;; чей хвост (cdr) также является списком.
-;;; В отличие от pair?, возвращает #f для "точечных пар" вроде (1 . 2).
-(defun list? (x)
-  (cond
-    ((null? x) #t)       ; Пустой список — это каноничный список
-    ((pair? x) (list? (cdr x))) ; Рекурсивно проверяем хвост
-    (else #f)))          ; Атомы (числа, символы и т.д.) — не списки
+;; Алиас для удобства (Common Lisp style)
+(defun intern (str) (string->symbol str))
 
-(defun append (l1 l2)
-  (if (null? l1)
-      l2
-      (cons (car l1) (append (cdr l1) l2))))
 
-;; --- [ Секция 7: Лог ] ---
+;; Если нет concat, но есть string-append
+(defun concat (&rest args) (apply 'string-append args))
+
+
+;; ===========================================================================
+;; Лог
+;; ===========================================================================
 
 (defun info  (fmt-str &rest args)  (apply 'log 'info  fmt-str args))
 (defun warn  (fmt-str &rest args)  (apply 'log 'warn  fmt-str args))
 (defun error (fmt-str &rest args)  (apply 'log 'error fmt-str args))
-       
-;; --- [ Секция 8: Функция к сриску ] ---
-
-;; Стандартный map: Трансформирует список, применяя функцию к каждому элементу.
-;; Возвращает новый список той же длины с результатами вычислений.
-;; (map (lambda (x) (* x x)) '(1 2 3)) => (1 4 9)
-(defun map (fun x)
-    (if (null? x)
-        '()
-        (cons (fun (car x))
-              (map fun (cdr x)))))
-
-;; Специализированный map2: Параллельный обход двух списков с разными функциями.
-;; Полезен для задач сборки данных, где нужно одновременно обработать два потока.
-;; Важно: Проверяет списки на равенство длин и завершается, если один из них пуст.
-(defun map2 (fun1 fun2 lst1 lst2)
-    (if (or (null? lst1)
-            (null? lst2)
-            (not (= (length lst1) (length lst2))))
-        '()
-        (cons (fun1 (car lst1))
-              (cons (fun2 (car lst2))
-                    (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
-
-(defun flat-map (proc lis)
-  "Применяет функцию proc к каждому элементу списка lis и объединяет 
-   результаты в один плоский список. 
    
-   В отличие от обычного map, который создает список списков, flat-map 
-   'снимает' один уровень вложенности. Идеально подходит для макросов, 
-   генерирующих несколько определений (например, геттер и сеттер) 
-   для одного входного параметра.
-   
-   Пример: (flat-map (lambda (x) (list x (* x x))) '(1 2 3)) 
-           => (1 1 2 4 3 9)"
-  (if (null? lis)
-      '()
-      (append (proc (car lis)) 
-              (flat-map proc (cdr lis)))))
-
 ;=================================================================
 ; Hash Table
 ;=================================================================
@@ -438,26 +506,34 @@
           (hash-table->list ht)))
 
 ;=================================================================
-; Mimic Common Lisp Library
+; Getters & Setters
 ;=================================================================
 
-;; В раздел Mimic CL
-;; --- Fundamental Constants ---
+;; 'setf' в CL — это мощнейшая система 'set-field'.
+;; В простейшем случае (setf name value) он работает как setq.
+;; Если ты передаешь getter (например, (setf (car x) 5)), это требует сложной логики.
+(defmacro setf (place value)
+  (if (symbol? place)
+      `(set! ,place ,value)
+      (let ((getter (car place))
+            (args (cdr place))
+            (setter (get-setter (car place))))
+        (if (not setter)
+            (error (string-append "No setter defined for: " (symbol->string getter)))
+            (let ((tmp-val (gensym "setf-val")))
+              `(let ((,tmp-val ,value))
+                 (,setter ,@args ,tmp-val)
+                 ,tmp-val))))))
+
 (defsetf 'car 'set-car!)
 (defsetf 'cdr 'set-cr!)
 (defsetf 'get 'hash-table-set!)
 (defsetf 'vector-ref 'vector-set!)
+(defsetf 'vector-get 'vector-set!)
 
-;; --- Math & Utilities ---
-(defun sign (x) (if (>= x 0) '+ '-))
-
-;; Алиас для удобства (Common Lisp style)
-(defun intern (str) (string->symbol str))
-
-;; Если нет concat, но есть string-append
-(defun concat (&rest args) (apply 'string-append args))
-
-;; --- Asserts & Errors ---
+;; ===========================================================================
+;; Asserts & Errors 
+;; ===========================================================================
 
 (defmacro assert (condition &optional message)
   `(if (not ,condition)
@@ -468,84 +544,29 @@
 (defmacro check-type (var predicate)
   `(assert (,predicate ,var) (fmt #f "Variable `{}` failed type check `{}` because value: `{}`" ',var ',predicate ,var )))
 
-;; --- Structures ----------
+;; ===========================================================================
+;; Object navigation
+;; ===========================================================================
+
+(defmacro -> (base &rest path)
+        `(navigation ,base ,@path))
 
 ;; =============================================================================
-;; DEFSTRUCT: Генератор структур данных в стиле Common Lisp.
+;; Structures 
 ;; =============================================================================
-;; Автоматизирует создание "объектов" на базе ассоциативных списков (alist).
-;; Пример использования: (defstruct point x y)
-;; Макрос создаст в памяти:
-;;   1. Конструктор (make-point :x 1 :y 2)
-;;   2. Геттер   (struct-ref instance field)
-;;   3. Сеттер   (struct-set! instance field value)
-;;   4. Предикат (struct-type? instance field type)
-;;   5. Тип      (struct-type instance )
-;; =============================================================================
-(defmacro defstructure (name &rest fields)
-  (let* ((struct-name-sym name)
-          (doc? (string? (car fields)))
-          (fields (if doc? (cdr fields) fields))
-          (constructor (intern (concat "make-" (symbol->string name))))
-          (normalized (map (lambda (f) 
-                             (if (pair? f) 
-                                 f 
-                                 (list f null))) 
-                           fields)))
-    `(begin
-       ;; Конструктор (оставляем как есть)
-       (defun ,constructor (&key ,@normalized)
-         (let ((h (make-hash-table)))
-           (hash-table-set! h ':_type_ ',struct-name-sym)
-           ,@(map (lambda (f-spec)
-                    (let ((f-name (car f-spec))
-                          (key (intern (symbol->string (car f-spec)))))  ;; Без двоеточия
-                      `(hash-table-set! h ',key ,f-name)))
-                  normalized)
-           h))
-       
-       ;; --- ОПЦИОНАЛЬНО: можно оставить конкретные геттеры/сеттеры для удобства ---
-       ;; Но основную логику реализуем через универсальные функции
-       )))
-
-;; Универсальные функции для всех структур
-(defun struct-type (obj)
-  "Возвращает тип структуры (символ)"
-  (if (hash-table? obj)
-      (hash-table-ref obj ':_type_)
-      (error (fmt #f "Not a struct: {}\n" obj))))
-
-(defun struct-type? (obj type)
-  "Проверяет, является ли объект структурой указанного типа"
-  (and (hash-table? obj)
-       (eq? (struct-type obj) type)))
-
-(defun struct-ref (obj field)
-  "Получает значение поля структуры"
-  (if (hash-table? obj)
-      (hash-table-ref obj field)
-      (error (fmt #f "Not a struct: {}\n" obj))))
-
-(defun struct-set! (obj field value)
-  "Устанавливает значение поля структуры"
-  (if (hash-table? obj)
-      (hash-table-set! obj field value)
-      (error (fmt #f "Not a struct: {}\n" obj))))
-
- (defsetf 'struct-ref 'struct-set!)
-
-;; =============================================================================
-;; DEFSTRUCT: Генератор структур данных в стиле Common Lisp.
-;; =============================================================================
-;; Автоматизирует создание "объектов" на базе ассоциативных списков (alist).
-;; Пример использования: (defstruct point x y)
-;; Макрос создаст в памяти:
-;;   1. Конструктор (make-point :x 1 :y 2)
-;;   2. Геттер   (point-x instance field)
-;;   3. Сеттер   (point-xset! instance field value)
-;;   4. Предикат (point-type? instance field type)
-;;   5. Тип      (point-type instance )
-;; =============================================================================
+;; -----------------------------------------------------------------------------
+;; DEFSTRUCT: Генератор структур на базе Hash-Table.
+;; -----------------------------------------------------------------------------
+;; Пример: (defstruct point x y)
+;;
+;; Создает:
+;;   1. Конструктор: (make-point :x 1 :y 2)
+;;   2. Предикат:    (point? obj) -> #t/#f
+;;   3. Тип:         (point-type obj) -> 'point
+;;   4. Геттеры:     (point-x obj), (point-y obj)
+;;   5. Сеттеры:     (point-x! obj val), (point-y! obj val)
+;;   6. Связки:      Регистрирует пары геттер/сеттер для макроса setf.
+;; -----------------------------------------------------------------------------
 (defmacro defstruct (name &rest fields)
   (let* ((struct-name-sym name)
           (doc? (string? (car fields)))
@@ -597,6 +618,7 @@
       '()
       (cons (cons (car args) (second args))
             (build-struct-from-plist fields (cddr args)))))
+
 (defun build-struct-from-plist (args)
   "Превращает (:type 'imm :value 10) в ((:type . imm) (:value . 10))"
   (if (null? args)
@@ -604,66 +626,24 @@
       (cons (cons (car args) (cadr args))
             (build-struct-from-plist (cddr args)))))            
 
+;; -----------------------------------------------------------------------------
+;; Итеграция структур в систему типов
+;; -----------------------------------------------------------------------------
 
+;; Оборачиваем в функции
+(define original-type-of type-of)
 
+(defun type-of (obj)
+  (let ((t (original-type-of obj)))
+    (if (eq? t 'hash-table)
+        ;; Ищем поле _type_, которое должен записывать defstruct
+        (hash-table-ref obj :_type_ t)
+        t)))
 
-;;; --- SUBSTITUTE ---
-;; "Чистая" замена только на верхнем уровне списка.
-;; Создает копию списка, не меняя оригинал.
-(defun substitute (new old lst)
-  (cond ((null? lst) '()) ; Если список пуст — возвращаем пустой список.
-        
-        ; Если текущий элемент совпадает с тем, что ищем:
-        ((eq? (car lst) old) 
-         ; Создаем новую ячейку с 'new' и идем дальше по хвосту.
-         (cons new (substitute new old (cdr lst))))
-        
-        ; Если не совпадает:
-        (t (cons (car lst) (substitute new old (cdr lst))))))
+(defun type? (obj type-name)
+  (eq? (type-of obj) type-name))
 
-;;; --- RECSUBSTITUTE ---
-;; "Глубокая" рекурсивная замена. 
-;; Ищет 'source' даже внутри вложенных списков.
-(defun recsubstitute (dest source lis)
-   (cond
-      ; Случай 1: Сам элемент (или текущий атом) равен искомому.
-      ; Заменяем его на 'dest'.
-      ((eq? lis source)
-         dest)
-      
-      ; Случай 2: Если перед нами список — нужно "просеять" его внутрь.
-      ((listp lis)
-         (cond
-            ; Если список пуст — возвращаем как есть.
-            ((null? lis) lis)
-            ; Магия: вызываем recsubstitute для каждого элемента списка через mapcar.
-            ; Это позволяет зайти на любую глубину вложенности.
-            (#t (mapcar (lambda (item) (recsubstitute dest source item))
-                       lis))))
-      
-      ; Случай 3: Если это атом, но не тот, что мы ищем — просто возвращаем его.
-      (#t lis)))
-
-;;; --- NSUBSTITUTE ---
-;; "Деструктивная" замена (n = non-destructive по названию, но destructive по факту).
-;; В отличие от обычной substitute, она НЕ создает новый список, 
-;; а переписывает память существующего.
-(defun nsubstitute (new old lst)
-  (let ((current lst)) ; Берем указатель на начало списка.
-    (while (not (null? current)) ; Пока не дошли до конца:
-      
-      ; Если голова текущей ячейки (car) равна 'old'
-      (if (eq? (car current) old)
-          ; Мы ПЕРЕЗАПИСЫВАЕМ значение прямо в этой ячейке памяти.
-          (set-car! current new)) 
-      
-      ; Переходим к следующей ячейке (сдвигаем указатель).
-      (set! current (cdr current)))
-    
-    ; Возвращаем тот же самый указатель на список.
-    ; Внимание: все, кто ссылался на этот список, увидят изменения!
-    lst))
-
-
+;; =============================================================================
 ;; Маркер успешной загрузки библиотеки
+;; =============================================================================
 (define *core-lib-loaded* #t)
