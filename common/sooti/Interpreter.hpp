@@ -433,7 +433,10 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_read_text_file(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
-
+    Object eval_export_intel_hex(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_crc32(const Object &form, Arguments &args,
+                      const std::shared_ptr<EnvironmentObject> &env);
     // Прочие
     Object eval_gensym(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -571,9 +574,9 @@ class Interpreter {
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_static_writer_write(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_add_label(const Object &form, Arguments &args,
+    Object eval_buffer_label_set(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_get_label(const Object &form, Arguments &args,
+    Object eval_buffer_label_get(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_buffer_dump(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);

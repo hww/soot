@@ -1,4 +1,16 @@
 ﻿
+
+(defun %calculate-module-size (mod)
+  "Считает суммарный размер всех сегментов модуля."
+  (let ((total 0))
+    (begin
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let ((seg (hash-table-ref (module-segments mod) name)))
+            ;; Размер сегмента — это разница между финальным ILC и базовым адресом
+            (set! total (+ total (- (segment-ilc seg) (segment-base-addr seg)))))))
+      total)))
+      
 (defun save-module-symbols (path mod)
   "Сохраняет паспорт модуля в формате S-expression."
   (let ((symbols-data '())

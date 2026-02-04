@@ -178,8 +178,6 @@
     (else 
      (error (fmt #f "Expected label, name or address, got: {}" input) ctx))))
 
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Asm Module контейнер 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -220,6 +218,33 @@
             (setf (module-current-segment mod) new-seg))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; DUMP
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun segment-dump (seg)
+  (let* ((buf (segment-buffer seg))
+         (start (-> buf start-addr))
+         (end (-> buf end-addr))
+         (origin (segment-base-addr seg)))
+    
+    (fmt #t "\nSegment: {} | Origin: #{:04X}\n" (segment-name seg) origin)
+    (fmt #t "Range: #{:04X} - #{:04X} ({} bytes used)\n" 
+            (+ origin start) (+ origin end) (-> buf filled-size))
+    (fmt #t "--------------------------------------------------\n")
+    
+    ;; Вызываем нативный дамп буфера
+    ;; Параметры: (buffer, start_offset, length, show_ascii, bytes_per_line)
+    (buffer-dump buf start (-> buf filled-size) #t 16)))
+
+(defun module-dump (mod)
+  (fmt #t "\n=== MODULE DUMP: {} ===\n" (module-name mod))
+  (for-each (module-segment-order mod)
+    (lambda (seg-name)
+      (let ((seg (hash-table-ref (module-segments mod) seg-name)))
+        (segment-dump seg))))
+  (fmt #t "==================================\n"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Метки
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -230,7 +255,7 @@
 (defun set-label-full! (name seg scope type sig ctx)
   "Основная регистрация метки в C++ буфере сегмента."
   (let ((addr (get-abs-pc seg)))
-    (buffer-add-label (segment-buffer seg) name 
+    (buffer-label-set! (segment-buffer seg) name 
                       :address addr 
                       :segment (segment-name seg)
                       :meta (list :scope scope :type type :sig sig))))
@@ -243,7 +268,7 @@
         (seg-name (segment-name seg)))
     ;; Вместо setf используем твой примитив. 
     ;; Он увидит, что метка 'name' уже есть, и обновит ей :address.
-    (buffer-add-label buf name :address addr :segment seg-name :meta '(ctx))))
+    (buffer-label-set! buf name :address addr :segment seg-name :meta '(ctx))))
 
 ;;; ------------------------------------------------------------------
 ;;; 2. Поиск меток (Pass 2 & 3)
@@ -267,7 +292,7 @@
   (let* ((name (%asm-extract-name label ctx))
          (mod  (segment-parent-module seg))
          ;; Сначала ищем в текущем сегменте (локальный поиск — быстрый)
-         (lab  (buffer-get-label (segment-buffer seg) name)))
+         (lab  (buffer-label-get (segment-buffer seg) name)))
     (if (not (null? lab))
         (-> lab addr)
         ;; Если не нашли локально, ищем во всем модуле
@@ -282,7 +307,7 @@
       label
       (let* ((name (%asm-extract-name label ctx))
              (mod  (segment-parent-module seg))
-             (lab  (buffer-get-label (segment-buffer seg) name)))
+             (lab  (buffer-label-get (segment-buffer seg) name)))
         (cond 
           ((not (null? lab)) (-> lab addr))
           ((not (null? mod)) 
@@ -345,9 +370,9 @@
                           (if (list? res)
                               (for-each res (lambda (b) (buffer-write buf b :as 'uint8 :at addr)))
                               (buffer-write buf res :as 'uint8 :at addr))
-                          (set! bin-list (append bin-list (if (list? res) res (list res)))
-                         ;(cfmt #t "blue" "assemble-segment-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
-                          ))))                        
+                          (set! bin-list (append bin-list (if (list? res) res (list res))))
+                          ;(cfmt #t "blue" "assemble-segment-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
+                          )))                        
                  
                  ;; ЛОГИКА ОПРЕДЕЛЕНИЯ ДЛИНЫ (sz):
                  (let ((sz (cond 
@@ -397,6 +422,15 @@
               (segment-base-addr! seg current-addr)
               (set! current-addr (assemble-segment-pass seg 2))))))
 
+      ; 2. PASS 2.5: Мутации и расчет смещений (Глобально)
+      (set! current-addr 0)
+      (for-each (module-segment-order mod)
+        (lambda (name)
+          (let ((seg (hash-table-ref (module-segments mod) name)))
+            (begin
+              (segment-base-addr! seg current-addr)
+              (set! current-addr (assemble-segment-pass seg 2))))))
+
       ;; 3. PASS 3: Генерация байт
       (for-each (module-segment-order mod)
         (lambda (name)
@@ -408,71 +442,23 @@
       final-bin)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Запись результата
+;; Запись результата в listing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (load "common/xiff/soot/asm-listing.sot")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Запись результата
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun assemble-to-file (seg bin-path lst-path)
-  (let* ((res (assemble seg))
-         (bin-data (cdr (assoc :bin res)))
-         (lst-data (cdr (assoc :lst res))))
-    (begin
-      ;; Записываем бинарный файл
-      (write-binary-file bin-path bin-data)
-      ;; Генерируем и записываем текстовый листинг
-      (save-listing lst-path lst-data)
-      (fmt #t "\nAssembly finished. Binary: {}, Listing: {}\n" bin-path lst-path)
-      get_true)))
-
-(defun assemble-raw-byte (seg file)
-  (let ((bos (open file :direction :output
-                        :if-does-not-exist :create
-                        :element-type 'unsigned-byte
-                        :if-exists :overwrite)))
-       (if bos
-           (begin 
-             (assemble seg (lambda (byte) (write-byte byte bos)))
-             (close bos)
-             (fmt t "Program written to file {}\n" file))
-           (fmt t "Program could not be written to file {}\n" file))))
-
-(defun assemble-raw-byte (seg file)
-   (begin 
-      (assemble seg (lambda (byte) (write-byte byte bos)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Symbol Table Export
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun %calculate-module-size (mod)
-  "Считает суммарный размер всех сегментов модуля."
-  (let ((total 0))
-    (begin
-      (for-each (module-segment-order mod)
-        (lambda (name)
-          (let ((seg (hash-table-ref (module-segments mod) name)))
-            ;; Размер сегмента — это разница между финальным ILC и базовым адресом
-            (set! total (+ total (- (segment-ilc seg) (segment-base-addr seg)))))))
-      total)))
-
 (load "common/xiff/soot/asm-symbols.sot")
 
-(defun get-module-binary (mod)
-  (let ((total-bin '()))
-    (begin
-      ;; Проходим по именам сегментов в правильном порядке
-      (vector-for-each (module-segment-order mod)
-        (lambda (seg-name)
-          (let* ((seg (hash-table-ref (module-segments mod) seg-name))
-                 (seg-bin (segment-binary-data seg))) ;; Тут лежат данные из pass3
-            (set! total-bin (append total-bin seg-bin)))))
-      total-bin)))
-      
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Biary File Export
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(load "common/xiff/soot/asm-binary.sot")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; эти методы используются внутри макросов
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -606,15 +592,6 @@
            (let ((seg (hash-table-ref (module-segments *current-module*) current-seg-name)))
              (setf (segment-insts seg) insts)
              seg))))))
-
-(defun save-binary (mod &optional (seg-name null))
-  (if (null? seg-name)
-      ;; Сохраняем весь модуль (все сегменты подряд)
-      (write-binary-file (fmt #f "{}.bin" (module-name mod)) (assemble-module mod))
-      ;; Сохраняем конкретный сегмент
-      (let ((seg (hash-table-ref (module-segments mod) seg-name)))
-        (write-binary-file (fmt #f "{}-{}.bin" (module-name mod) seg-name) 
-                           (segment-binary-data seg)))))
 
 (defun save-symbols (mod)
   (let ((filename (fmt #f "{}.sym.sot" (module-name mod))))

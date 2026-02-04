@@ -1,47 +1,59 @@
 #pragma once
 
-#include "common/type_system/TypeSystem.hpp"
 #include "StaticBuffer.hpp"
-#include "TypeCell.hpp"
+
 #include <fmt/format.h>
 
 namespace script {
 
 class StaticWriter : public HeapObject {
-private:
-    size_t m_position = 0;
+  private:
+    size_t m_position;
     std::shared_ptr<StaticBuffer> m_buffer;
 
-public:
-    StaticWriter(const std::shared_ptr<StaticBuffer>& buffer)
-        : m_buffer(buffer), m_position(0) {}
+  public:
+    StaticWriter(const std::shared_ptr<StaticBuffer> &buffer);
 
     /**
      * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
      */
-    Object allocate(const std::string& type_name);
+    Object allocate(const std::string &type_name);
 
     // Методы управления
-    void seek(size_t pos) { m_position = std::min(pos, m_buffer->size()); }
-    size_t tell() const { return m_position; }
-    void align(size_t a) { m_position = (m_position + a - 1) & ~(a - 1); }
-    size_t remaining() const { return m_buffer->size() - m_position; }
-    std::shared_ptr<script::StaticBuffer> get_buffer() { return m_buffer; }
+    void seek(size_t pos) {
+        m_position = std::min(pos, m_buffer->size());
+    }
+    size_t tell() const {
+        return m_position;
+    }
+    void align(size_t a) {
+        m_position = (m_position + a - 1) & ~(a - 1);
+    }
+    size_t remaining() const {
+        return m_buffer->size() - m_position;
+    }
+    std::shared_ptr<script::StaticBuffer> get_buffer() {
+        return m_buffer;
+    }
 
     // Инспекция (упрощенная)
     std::string print() const override {
-        return fmt::format("#<static-writer :at {}/{} :used {:.1f}%>", 
-            m_position, m_buffer->size(), 
-            (float)m_position / m_buffer->size() * 100.f);
+        return fmt::format("#<static-writer :at {}/{} :used {:.1f}%>", m_position, m_buffer->size(),
+                           (float)m_position / m_buffer->size() * 100.f);
     }
 
-    Object make_step_accessor(const Object& key) override {
+    Object make_step_accessor(const Object &key) override {
         std::string name = key.to_std_string();
-        if (name == "size")   return Object::make_integer(m_buffer->size());
-        if (name == "origin") return Object::make_integer(m_buffer->origin());
-        if (name == "type")   return Object::make_string(m_buffer->type_name());
-        if (name == "position") return Object::make_integer(m_position);
-        if (name == "remaining") return Object::make_integer(remaining());
+        if (name == "size")
+            return Object::make_integer(m_buffer->size());
+        if (name == "origin")
+            return Object::make_integer(m_buffer->origin());
+        if (name == "type")
+            return Object::make_string(m_buffer->type_name());
+        if (name == "position")
+            return Object::make_integer(m_position);
+        if (name == "remaining")
+            return Object::make_integer(remaining());
 
         // Если просят тип по имени, считаем это аллокацией
         // Пример: (-> writer 'my-struct-type) -> вернет TypeCell

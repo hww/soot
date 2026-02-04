@@ -4,17 +4,17 @@
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/sooti/static_buffer/Export.hpp"
+#include <iostream>
 
 #include "common/type_system/Defenum.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/type_system/TypeSystem.hpp"
 
-#include "common/util/Crc32.hpp"
 #include "common/util/FileUtil.hpp"
 #include "common/util/Log.hpp"
 #include "common/util/StringUtil.hpp"
-#include "common/util/UnicodeUtil.hpp"
+
 #include "fmt/args.h"
 #include "fmt/base.h"
 #include "fmt/color.h"
@@ -22,15 +22,13 @@
 
 #include "common/CommonTypes.hpp"
 #include "common/versions/revision.h"
-#include "common/versions/version.h"
 #include <filesystem>
 #include <set>
-#include <sstream>
 
 namespace script {
 
 Interpreter::Interpreter(const std::string &username, bool load_libs)
-    : m_reader(this), m_setter_map(), m_top_frame(nullptr), m_symbol_table() {
+    : m_setter_map(), m_reader(this), m_top_frame(nullptr), m_symbol_table() {
     script::Object::set_symbol_table(&m_symbol_table);
 
     // Инициализируем boolean объекты как символы
@@ -210,6 +208,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"write-binary-file", &Interpreter::eval_write_binary_file, nullptr},
         {"read-text-file", &Interpreter::eval_read_text_file, nullptr},
         {"write-text-file", &Interpreter::eval_write_text_file, nullptr},
+        {"export-hex", &Interpreter::eval_export_intel_hex, nullptr},
+        {"crc32", &Interpreter::eval_crc32, nullptr},
 
         // Reader
         {"set-macro-character", &Interpreter::eval_set_macro_character, nullptr},
@@ -295,8 +295,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
         {"buffer-write", &Interpreter::eval_buffer_write, &args_with_keys},
         {"buffer-read", &Interpreter::eval_buffer_read, &args_with_keys},
-        {"buffer-add-label", &Interpreter::eval_buffer_add_label, &args_with_keys},
-        {"buffer-get-label", &Interpreter::eval_buffer_get_label, &args_with_keys},
+        {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_keys},
+        {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_keys},
         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
     });
@@ -449,9 +449,9 @@ void Interpreter::execute_repl() {
     std::string input;
 
     // auto repl_env = std::make_shared<EnvironmentObject>();
-    // fmt::print(fg(fmt::color::gray), "{}i Scriptable Object-Oriented Toolkit {} Core [sha:{}]\n",
-    // SOOT_VERSION, SOOT_NAME, BUILT_SHA); fmt::print(fg(fmt::color::gray), "Type (exit) or 'quit'
-    // to leave\n");
+    // fmt::print(fg(fmt::color::gray), "{}i Scriptable Object-Oriented Toolkit {} Core
+    // [sha:{}]\n", SOOT_VERSION, SOOT_NAME, BUILT_SHA); fmt::print(fg(fmt::color::gray), "Type
+    // (exit) or 'quit' to leave\n");
 
     while (true) {
         std::cout << "sooti> ";
@@ -503,7 +503,8 @@ Object Interpreter::eval_string(const std::string &expression, const std::string
             // evaluate
             switch (evt.type) {
             case ReaderEvent::Type::FORM_READ:
-                // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} \n", evt.form.print());
+                // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} \n",
+                // evt.form.print());
                 last_result = this->eval_form(evt.form, env);
                 // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} -> {}\n",
                 // evt.form.print(), last_result.print());
@@ -664,9 +665,9 @@ void Interpreter::print_form_info(const Object &form) {
 }
 
 /*!
- * Evaluate the given expression, with a "checkpoint" in the evaluation stack here.  If there is an
- * evaluation error, there will be a print indicating there was an error in the evaluation of "obj",
- * and if possible what file/line "obj" comes from.
+ * Evaluate the given expression, with a "checkpoint" in the evaluation stack here.  If there is
+ * an evaluation error, there will be a print indicating there was an error in the evaluation of
+ * "obj", and if possible what file/line "obj" comes from.
  */
 Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &obj,
                                      const std::shared_ptr<EnvironmentObject> &env,
@@ -850,7 +851,8 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
     const Object &rest = pair->cdr;
 
     // 1. Вычисляем голову. Благодаря тому, что примитивы и спецформы теперь в Environment,
-    // этот вызов вернет нам соответствующий HeapObject (SpecialForm, Primitive, Lambda или Macro).
+    // этот вызов вернет нам соответствующий HeapObject (SpecialForm, Primitive, Lambda или
+    // Macro).
     Object eval_head = eval_with_rewind(obj, head, env);
 
     // 2. Диспетчеризация по типу вычисленного объекта
@@ -1420,8 +1422,8 @@ bool Interpreter::is_number(const Object &obj) {
  * If form isn't "varargs", the expected number of unnamed arguments must match, unless "rest"
  * is specified, in which case the additional arguments are stored in rest.
  *
- * Also, if "varargs" isn't set, all keyword arguments must be defined. If the use doesn't provide
- * a value, the default value will be used instead.
+ * Also, if "varargs" isn't set, all keyword arguments must be defined. If the use doesn't
+ * provide a value, the default value will be used instead.
  */
 Arguments Interpreter::get_args(const Object &form, const Object &rest, const ArgumentSpec &spec) {
     Arguments args;
@@ -1493,14 +1495,10 @@ Arguments Interpreter::get_args(const Object &form, const Object &rest, const Ar
 }
 
 /*!
- * Same as get_args, but it reffers to ArgumentSpect to find associations woth named :key arguments
- * are not parsed. It allows to pass  keywords to methods.
- * (defun foo (a &key b &rest lst) ...)
- * can be invoked
- * (foo 1 :b 2)  ;; named priorty
- * but possible to do
- * (foo :b :b 2)   ;; unnamed prioprity
- * (foo 1 :c :b 2) ;; unnamed prioprity
+ * Same as get_args, but it reffers to ArgumentSpect to find associations woth named :key
+ * arguments are not parsed. It allows to pass  keywords to methods. (defun foo (a &key b &rest
+ * lst) ...) can be invoked (foo 1 :b 2)  ;; named priorty but possible to do (foo :b :b 2)   ;;
+ * unnamed prioprity (foo 1 :c :b 2) ;; unnamed prioprity
  *         ^
  *         +----------- to the (rest)
  */
@@ -1524,11 +1522,9 @@ Arguments Interpreter::get_args_with_spec(const Object &form, const Object &rest
                 args.unnamed.push_back(p_spec.default_value);
             } else {
                 // Аргумент обязательный, но данных нет — это ошибка
-                throw_eval_error(
-                    form,
-                    fmt::format(
-                        "Not enough arguments. Required positional argument '{}' is missing in {}.",
-                        p_spec.name, spec.print()));
+                throw_eval_error(form, fmt::format("Not enough arguments. Required positional "
+                                                   "argument '{}' is missing in {}.",
+                                                   p_spec.name, spec.print()));
             }
         }
     }
@@ -3158,7 +3154,8 @@ Object Interpreter::eval_make_hash_table(const Object &form, Arguments &args,
 
     // Валидация:
     // {} в unnamed означает вариадик, но мы проверим типы вручную ниже для гибкости.
-    // Либо можно зажать строже: vararg_check(form, args, { ObjectType::PAIR, ObjectType::INTEGER },
+    // Либо можно зажать строже: vararg_check(form, args, { ObjectType::PAIR,
+    // ObjectType::INTEGER },
     // {}); Но лучше сделать оба аргумента необязательными:
 
     if (args.unnamed.size() > 2) {
@@ -4482,7 +4479,7 @@ Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
 /**
  * (buffer-add-label buffer-or-writer name :address addr :segment seg :meta meta)
  */
-Object Interpreter::eval_buffer_add_label(const Object &form, Arguments &args,
+Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Проверка аргументов
     vararg_check(form, args, {{}, {}},
@@ -4545,10 +4542,20 @@ Object Interpreter::eval_buffer_add_label(const Object &form, Arguments &args,
         return buffer->get_label_obj(label_name);
     }
 }
+
 /**
- * (buffer-get-label buffer-or-writer name)
+ * @brief Get buffer label by name.
+ * @param form The form of function call.
+ * @param args The arguments passed to the function.
+ * @param env The environment object.
+ * @return The buffer label object.
+ *
+ * This function gets the buffer label object by name. It takes two arguments:
+ * the buffer writer or buffer, and the name of the label.
+ *
+ * If the label does not exist, the function returns null.
  */
-Object Interpreter::eval_buffer_get_label(const Object &form, Arguments &args,
+Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     // Принимаем 2 позиционных аргумента: буфер и имя
     vararg_check(form, args, {{}, {ObjectType::STRING, ObjectType::SYMBOL}}, {});
@@ -4602,27 +4609,26 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
     bool show_ascii = args.unnamed[3].as_symbol();
     int bytes_per_line = args.unnamed[4].as_integer();
     auto str = buffer->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
-
     return Object::make_string(str);
 }
 /**
  * @brief Высокоуровневая команда записи в статическую память.
- * * * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур)
+ * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур)
  * в буфер или через врайтер. Автоматически управляет типами и смещениями.
- * * * Режимы работы:
+ * Режимы работы:
  * 1. Через Writer (Stream mode): (write-to wr val :as 'type)
  * - Автоматически выделяет место (allocate).
  * - Позволяет записывать "теги" (маркеры), просто вызывая запись констант по очереди.
  * 2. Через Buffer (Random access): (write-to buf val :as 'type :at offset)
  * - Записывает данные строго по указанному адресу.
- * * * Особенности:
+ * Особенности:
  * - Использует временную или постоянную TypeCell для выполнения физической записи.
  * - Возвращает смещение (offset), по которому были записаны данные, что удобно
  * для построения таблиц перекрестных ссылок.
- * * * Lisp Logic:
+ * Lisp Logic:
  * (write-to-buffer wr #xAA :as 'int)       ; Запись тега-маркера
  * (write-to-buffer wr 10 :as 'test-enum)   ; Запись значения по типу
- * * * @return Object (Integer — итоговый offset записи).
+ * @return Object (Integer — итоговый offset записи).
  */
 Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
@@ -4693,6 +4699,17 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
     return get_null();
 }
 
+/**
+ * @brief Recursive write to a cell (alist or array)
+ *
+ * This function takes a cell object and a value to write to that cell.
+ * If the value is an alist, it recursively writes the elements of the alist
+ * to the corresponding corresponding cell. If the value is an array, it writes the elements
+ * of the array to the cell.
+ *
+ * @param cell_obj The cell to write to.
+ * @param value The value to write to the cell. Can be an alist or an array.
+ */
 void Interpreter::recursive_write(Object cell_obj, Object value) {
     if (!cell_obj.is_type(ObjectType::CELL))
         return;
@@ -4881,5 +4898,84 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
     }
 
     return get_null();
+}
+// ============================================================
+// CRC32
+// ============================================================
+Object Interpreter::eval_crc32(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}}, {});
+
+    return Object::make_integer(args.unnamed[0].as_crc32());
+}
+
+// ============================================================
+// HexFile Format
+// ============================================================
+// Вспомогательная функция для расчета контрольной суммы и форматирования строки
+std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type, const uint8_t *data) {
+    uint8_t checksum = length + (addr >> 8) + (addr & 0xFF) + type;
+    std::string hex_data;
+    for (int i = 0; i < length; ++i) {
+        checksum += data[i];
+        hex_data += fmt::format("{:02X}", data[i]);
+    }
+    checksum = static_cast<uint8_t>((~checksum) + 1);
+    return fmt::format(":{:02X}{:04X}{:02X}{}{:02X}\n", length, addr, type, hex_data, checksum);
+}
+
+Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    // Ожидаем: (export-hex "path/to/file.hex" buffer_or_list)
+    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::STATIC_BUFFER, ObjectType::PAIR}},
+                 {});
+
+    std::string path = args.unnamed[0].to_std_string();
+    Object source = args.unnamed[1];
+    std::string full_content;
+
+    auto process_buffer = [&](const std::shared_ptr<StaticBuffer> &buf) {
+        uint8_t *raw_data = buf->data();
+        uint32_t base_origin = buf->origin();
+        uint32_t start_off = buf->get_start_addr(); // Смещение относительно origin
+        uint32_t end_off = buf->get_end_addr();     // Смещение относительно origin
+
+        // Если в буфер ничего не писали, start_off будет 0xFFFFFFFF
+        if (start_off > end_off)
+            return;
+
+        // Итерируемся от start_off до end_off
+        for (size_t i = start_off; i <= end_off; i += 16) {
+            // Вычисляем размер текущего чанка (не более 16 байт и не заходя за end_off)
+            uint8_t chunk = static_cast<uint8_t>(std::min((size_t)16, (size_t)(end_off - i + 1)));
+
+            // Реальный адрес в Intel HEX: origin + смещение внутри буфера
+            uint16_t hex_addr = static_cast<uint16_t>(base_origin + i);
+
+            // Записываем кусок данных из raw_data, начиная с индекса i
+            full_content += format_hex_record(chunk, hex_addr, 0x00, &raw_data[i]);
+        }
+    };
+
+    if (source.is_type(ObjectType::STATIC_BUFFER)) {
+        process_buffer(source.as_native_ref<StaticBuffer>());
+    } else {
+        // Если это список буферов (наш гибридный лэйаут)
+        auto current = source;
+        if (current.is_pair()) {
+            auto pair = current.as_pair();
+            auto buf = pair->car.as_native_ref<StaticBuffer>();
+            process_buffer(buf);
+            current = pair->cdr;
+        }
+    }
+
+    // Финальный маркер конца файла
+    full_content += ":00000001FF";
+    auto project_path = file_util::get_path(file_util::PathType::PROJECT);
+    if (path[0] != '/' && path[0] != '\\')
+        path = project_path.string() + "/" + path;
+    file_util::write_text(path, full_content);
+    return Object::make_boolean(true);
 }
 } // namespace script

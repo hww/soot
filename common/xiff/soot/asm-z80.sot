@@ -968,7 +968,7 @@
 
 (operand db 0 "Define Byte(s)"
   :arg1 variable
-  :pass1 0
+  :pass1 (if (list? r1) (length r1) 1)
   :pass2 (let ((vals (get-addr-list r1 seg ctx))) (length vals))
   :pass3 (mapcar lower-byte (get-addr-list r1 seg ctx)))
 
@@ -976,7 +976,7 @@
 
 (operand dw 0 "Define Word(s)"
   :arg1 variable
-  :pass1 0
+  :pass1 (if (list? r1) (* (length r1) 2) 2)
   :pass2 (* (length (get-addr-list r1 seg ctx)) 2)
   :pass3 (let ((output '())
                (vals (get-addr-list r1 seg ctx)))

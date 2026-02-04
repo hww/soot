@@ -688,6 +688,27 @@ HeapObject *Object::as_native_ref() const {
     return dynamic_cast<HeapObject *>(heap_obj.get());
 }
 
+uint32_t Object::as_crc32() const {
+    switch (type) {
+    case ObjectType::UNDEFINED:
+        return util::compute_crc32(":undefined");
+    case ObjectType::EMPTY_LIST:
+        return util::compute_crc32("null");
+    case ObjectType::INTEGER:
+        return util::compute_crc32(print());
+    case ObjectType::FLOAT:
+        return util::compute_crc32(print());
+    case ObjectType::CHAR:
+        return util::compute_crc32(print());
+    case ObjectType::SYMBOL:
+        return util::compute_crc32(print());
+    default:
+        if (is_heap_object() && heap_obj)
+            return heap_obj->as_crc32();
+        return util::compute_crc32("unknown");
+    }
+}
+
 // ============================================================================
 // CALLABLE
 // ============================================================================
@@ -959,6 +980,39 @@ Object MemoryCell::make_step_accessor(const Object &key) {
     // Пытаемся привести базовый Type* к StructType*
     throw std::runtime_error("Can't make step alias on the MemoryCell");
     return Object::make_undefined();
+}
+
+std::string MemoryCell::get_type_name() const {
+    switch (m_kind) {
+    case MemoryAccessKind::SINT8:
+        return "sint8";
+    case MemoryAccessKind::UINT8:
+        return "uint8";
+    case MemoryAccessKind::SINT16:
+        return "sint16";
+    case MemoryAccessKind::UINT16:
+        return "uint16";
+    case MemoryAccessKind::SINT32:
+        return "sint32";
+    case MemoryAccessKind::UINT32:
+        return "uint32";
+    case MemoryAccessKind::SINT64:
+        return "sint64";
+    case MemoryAccessKind::UINT64:
+        return "uint64";
+    case MemoryAccessKind::FLOAT:
+        return "float";
+    case MemoryAccessKind::DOUBLE:
+        return "double";
+    case MemoryAccessKind::POINTER:
+        return "pointer";
+    case MemoryAccessKind::STRING:
+        return "string";
+    case MemoryAccessKind::CUSTOM:
+        return "string";
+    default:
+        return "unknown";
+    }
 }
 
 Object MemoryCell::get() {
