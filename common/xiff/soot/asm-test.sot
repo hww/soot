@@ -27,10 +27,10 @@ $label2
       (jmp 'label3)
       (ld @c (+ 1 3)) 
       (subroutine label3
-            (ld @a @c)
-            (jmp 'label1)
-            (jmp 'label2)
             (jmp 'label3)
+            (jmp 'label2)
+            (jmp 'label1)
+            (ld @a @c)
             (jmp 0)
             (jmp 'zero)
             (ld @a [+ ix 5])    ; Должно быть: DD 7E 05
@@ -40,7 +40,8 @@ $label2
 
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)
+(module-dump test-module)
 (generate-module-listing test-module :print-listing #t)
 ;; 4. Сохраняем артефакты
-(save-binary test-module)
+(save-module-hex test-module)
 (save-symbols test-module)

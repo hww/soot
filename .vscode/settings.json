@@ -40,7 +40,9 @@
     "cmake.generator": "Unix Makefiles",
     "clangd.arguments": [
         "--clang-tidy",
-        "--background-index"
+        "--background-index",
+        "--header-insertion=iwyu",
+        "--completion-style=detailed"
     ],
     "editor.formatOnSave": true, // Форматировать при каждом сохранении (Ctrl+S)
     "editor.formatOnPaste": true, // Форматировать вставленный кусок кода
