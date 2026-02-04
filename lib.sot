@@ -487,9 +487,15 @@
 ;; Лог
 ;; ===========================================================================
 
-(defun info  (fmt-str &rest args)  (apply 'log 'info  fmt-str args))
-(defun warn  (fmt-str &rest args)  (apply 'log 'warn  fmt-str args))
-(defun error (fmt-str &rest args)  (apply 'log 'error fmt-str args))
+(defun log-info (fmt-str &rest args)
+  ;; Мы берем 'info, fmt-str и соединяем их с хвостом args в один список
+  (apply 'log (cons 'info (cons fmt-str null))))
+
+(defun log-warn (fmt-str &rest args)
+  (apply 'log (cons 'warn (cons fmt-str null))))
+
+(defun log-error (fmt-str &rest args)
+  (apply 'log (cons 'error (cons fmt-str null))))
    
 ;=================================================================
 ; Hash Table
@@ -513,17 +519,20 @@
 ;; В простейшем случае (setf name value) он работает как setq.
 ;; Если ты передаешь getter (например, (setf (car x) 5)), это требует сложной логики.
 (defmacro setf (place value)
-  (if (symbol? place)
-      `(set! ,place ,value)
-      (let ((getter (car place))
-            (args (cdr place))
-            (setter (get-setter (car place))))
-        (if (not setter)
-            (error (string-append "No setter defined for: " (symbol->string getter)))
-            (let ((tmp-val (gensym "setf-val")))
-              `(let ((,tmp-val ,value))
-                 (,setter ,@args ,tmp-val)
-                 ,tmp-val))))))
+  (cond
+    ((symbol? place) `(set! ,place ,value))
+    ((eq? (car place) '->) `(cell-set! ,place ,value)) ; Для всех стрелочек используем cell-set!
+    (#t (let ((setter (get-setter (car place))))
+         (if setter
+             `(,setter ,@(cdr place) ,value)
+             (error (fmt #f "Unknown place for setf: {}" (car place)) ()))))))
+
+(defmacro incf (place &rest args)
+  (let ((delta (if (null? args) 1 (car args))))
+    `(setf ,place (+ ,place ,delta))))
+(defmacro decf (place &rest args)
+  (let ((delta (if (null? args) 1 (car args))))
+    `(setf ,place (- ,place ,delta))))
 
 (defsetf 'car 'set-car!)
 (defsetf 'cdr 'set-cr!)

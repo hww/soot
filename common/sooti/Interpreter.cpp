@@ -145,6 +145,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"procedure?", &Interpreter::eval_procedure_p, nullptr},
         {"boolean?", &Interpreter::eval_boolean_p, nullptr},
         {"reader?", &Interpreter::eval_reader_p, nullptr},
+        {"cell?", &Interpreter::eval_cell_p, nullptr},
+        {"primitive?", &Interpreter::eval_primitive_p, nullptr},
+        {"special-form?", &Interpreter::eval_special_form_p, nullptr},
 
         // Сравнение
         {"eq?", &Interpreter::eval_equals}, // было eval_eq
@@ -2843,6 +2846,27 @@ Object Interpreter::eval_reader_p(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_reader());
+}
+
+Object Interpreter::eval_cell_p(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_cell());
+}
+
+Object Interpreter::eval_special_form_p(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_cell());
+}
+
+Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_cell());
 }
 
 // ============================================================

@@ -837,9 +837,9 @@
              (let ((offset (- target (+ (get-abs-pc seg) 2))))
                ;(cfmt #t "yellow" "JMP target {} offset {}\n" target offset)
                (if (and (<= offset 120) (>= offset -120))
-                   (begin (struct-set! inst :op 'jr) 2)
-                   (begin (struct-set! inst :op 'jp) 3)))
-             (begin (struct-set! inst :op 'jp) 3)))
+                   (begin (inst-op! inst 'jr) 2)
+                   (begin (inst-op! inst 'jp) 3)))
+             (begin (inst-op! inst 'jp) 3)))
   :pass3 (error "JMP should have been mutated in Pass 2" inst))
 
 ;; --- Unconditional Jumps ---

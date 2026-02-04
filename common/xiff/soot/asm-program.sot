@@ -238,13 +238,12 @@
 (defun set-label-addr! (label seg ctx)
   "Обновление адреса существующей метки (обычно на Pass 2)."
   (let ((name (%asm-extract-name label ctx))
-        (addr (get-abs-pc seg)))
-    ;; Предполагается, что в C++ у BufferLabel свойство addr доступно для записи
-    (let ((lab (buffer-get-label (segment-buffer seg) name)))
-      (if (not (null? lab))
-          (setf (-> lab addr) addr)
-          ;; Если на Pass 2 метка вдруг исчезла (невозможный случай, но всё же)
-          (set-label-full! name seg :private :label '() ctx)))))
+        (addr (get-abs-pc seg))
+        (buf (segment-buffer seg))
+        (seg-name (segment-name seg)))
+    ;; Вместо setf используем твой примитив. 
+    ;; Он увидит, что метка 'name' уже есть, и обновит ей :address.
+    (buffer-add-label buf name :address addr :segment seg-name :meta '(ctx))))
 
 ;;; ------------------------------------------------------------------
 ;;; 2. Поиск меток (Pass 2 & 3)
