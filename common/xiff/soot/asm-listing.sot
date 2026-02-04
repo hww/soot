@@ -44,6 +44,7 @@
                 ;"   "
                 ;(fmt #f "{}" (inspect inst))
                 ))))
+                
 (defun generate-module-listing (mod &key (print-listing #f))
   (let ((out ""))
     (begin

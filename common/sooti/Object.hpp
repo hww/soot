@@ -27,6 +27,8 @@ namespace script
 
     enum class ObjectType : uint8_t {
         UNDEFINED, 
+        PRIMITIVE,
+        SPECIAL_FORM,
         EMPTY_LIST, PAIR, 
         ARRAY, STRING_HASH_TABLE, 
         INTEGER, FLOAT, CHAR,
@@ -37,7 +39,7 @@ namespace script
         NATIVE_REF,
         CELL,
         STATIC_BUFFER,
-        STATIC_WRITER
+        STATIC_WRITER,
     };
 
     enum class MemoryAccessKind {
@@ -248,14 +250,16 @@ namespace script
         bool is_integer() const { return type == ObjectType::INTEGER; }
         bool is_float() const { return type == ObjectType::FLOAT; }
         bool is_char() const { return type == ObjectType::CHAR; }
-        bool is_symbol() const { return type == ObjectType::SYMBOL; }
-        bool is_keyword() const { return type == ObjectType::SYMBOL && symbol_obj.value.starts_with_colon(); }
         bool is_string() const { return type == ObjectType::STRING; }
+        bool is_symbol() const { return type == ObjectType::SYMBOL; }
+        bool is_string_or_symbol() const { return type == ObjectType::STRING || type == ObjectType::SYMBOL; }
+        bool is_keyword() const { return type == ObjectType::SYMBOL && symbol_obj.value.starts_with_colon(); }
         bool is_pair() const { return type == ObjectType::PAIR; }
         bool is_cell() const { return type == ObjectType::CELL; }
         bool is_native_ref() const { return type == ObjectType::NATIVE_REF; }
         bool is_array() const { return type == ObjectType::ARRAY; }
         bool is_null() const { return type == ObjectType::EMPTY_LIST; }
+        bool is_not_null() const { return type != ObjectType::EMPTY_LIST; }
         bool is_list() const { return is_null() || is_pair(); }
         bool is_lambda() const { return type == ObjectType::LAMBDA; }
         bool is_macro() const { return type == ObjectType::MACRO; }
@@ -265,6 +269,9 @@ namespace script
         bool is_reader() const { return type == ObjectType::READER; }
         bool is_static_buffer() const { return type == ObjectType::STATIC_BUFFER; }
         bool is_buffer_writer() const { return type == ObjectType::STATIC_WRITER; }
+        bool is_primitive() const { return type == ObjectType::PRIMITIVE; }
+        bool is_special_form() const { return type == ObjectType::SPECIAL_FORM; }
+        bool is_callable() const { return type == ObjectType::SPECIAL_FORM || type == ObjectType::PRIMITIVE; }
         bool is_boolean() const { return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f"); }
 
         // Evaluates the truthiness of an object. Since the Object class lacks access 
@@ -304,16 +311,20 @@ namespace script
         EnvironmentObject*          as_env() const;
         ReaderObject*               as_reader() const;
         MemoryCell*                 as_cell() const;
-        HeapObject*                 as_heap_object() const;
+        HeapObject*                 as_native_ref() const;
         const IntegerObject&        as_integer_obj() const;
         const InternedSymbolPtr&    as_symbol() const;
         std::shared_ptr<EnvironmentObject> as_env_ptr() const;
         std::string                 to_std_string() const;
     
+
+
         template <typename T>
         std::shared_ptr<T> as_native_ref() const {
             // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
             if (!heap_obj) {
+                throw std::runtime_error("as_native_ref called on the object with heap_obj null " + object_type_to_string(type) +
+                    " " + print());
                 return nullptr;
             }
 
@@ -664,6 +675,8 @@ namespace script
     public:
         struct TypeSymbols {
             Object empty_list;
+            Object special_form;
+            Object primitive;
             Object integer;
             Object float_pt;
             Object character;
@@ -1010,7 +1023,58 @@ namespace script
 
     };
 
+    // 1. Предварительное объявление
+    class Interpreter; 
 
+    // 2. Типы указателей на методы Интерпретатора
+    using SpecialFormMethod = Object(Interpreter::*)(const Object& form, const Object& rest, const std::shared_ptr<EnvironmentObject>& env);
+    using BuiltinFormMethod = Object(Interpreter::*)(const Object& form, Arguments& args, const std::shared_ptr<EnvironmentObject>& env);
+
+    class CallableObject : public HeapObject {
+    public:
+        virtual ~CallableObject() {} 
+        // Убираем виртуальный call, чтобы класс не был абстрактным
+        virtual bool is_special() const = 0; 
+    };
+
+    struct SpecialFormObject : public CallableObject {
+        SpecialFormMethod method;
+        ArgumentSpec specs;
+
+        // Явный конструктор
+        SpecialFormObject(SpecialFormMethod m, ArgumentSpec* s) 
+            : method(m), specs(false, true)
+        {
+            if (s) specs = *s;
+        }
+
+        bool is_special() const override { return true; }
+
+        std::string print() const {
+            return "#<special-form>";
+        }
+
+        Object inspect() const;
+    };
+
+    struct BuiltinFunctionObject : public CallableObject {
+        BuiltinFormMethod method;
+        ArgumentSpec specs;
+
+        BuiltinFunctionObject(BuiltinFormMethod m, ArgumentSpec* s) 
+            : method(m), specs(false, true)
+        {
+            if (s) specs = *s;
+        }
+
+        bool is_special() const override { return false; }
+
+        std::string print() const {
+            return "#<primitive-procedure>";
+        }
+
+        Object inspect() const;
+    };
 
     Object build_list(std::vector<Object>&& objects);
     Object build_list(const std::vector<Object>& objects);

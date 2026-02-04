@@ -84,6 +84,12 @@ namespace script {
             return *this;
         }
 
+        ListBuilder& add_key_value(std::string key, Object value) {
+            add_keyword(key);
+            add(value);
+            return *this;
+        }
+
         ListBuilder& add(char c) {
             return add(Object::make_char(c));
         }

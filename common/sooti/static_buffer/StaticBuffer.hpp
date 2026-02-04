@@ -3,7 +3,10 @@
 #include <memory>
 // Нам нужны полные определения Object и Arguments для сигнатур методов
 #include "common/sooti/Object.hpp" 
+#include "common/sooti/ListBuilder.hpp" 
 #include "common/type_system/Type.hpp" 
+
+#include "fmt/format.h"
 
 class Type;
 class TypeSystem;
@@ -25,6 +28,53 @@ struct Relocation {
     size_t offset;
     RelocType type;
     std::string target_name; // Имя типа или символа
+};
+
+struct BufferLabel : public HeapObject {
+    size_t addr;      // Смещение в буфере
+    Object segment;   // Имя или объект сегмента (Object для гибкости)
+    Object meta;      // Метаданные (asmsym-info из Lisp)
+
+    // Конструктор для удобства
+    BufferLabel(size_t a, Object seg, Object m) 
+        : addr(a), segment(seg), meta(m) {}
+
+
+    std::string print() const override { return fmt::format("<buffer-label {:08X} {} {}>", addr, segment.print(), meta.print()); };
+
+    Object inspect() const override {
+        // Создаем Map или список пар для отображения внутреннего состояния
+        // Предполагаю, у тебя есть метод создания словаря/карты
+        ListBuilder info{}; 
+        info.add_key_value("address", Object::make_integer(addr));
+        info.add_key_value("segment", segment);
+        info.add_key_value("meta", meta);
+        return info.finalize();
+    }
+
+    Object make_step_accessor(const Object& key) {
+        if (key.is_symbol() || key.is_string()) {
+            std::string name = key.to_std_string();
+
+            // Позволяем доставать адрес
+            if (name == "addr" || name == "address" || name == "offset") {
+                return Object::make_integer(addr);
+            }
+
+            // Позволяем доставать сегмент
+            if (name == "segment" || name == "seg") {
+                return segment;
+            }
+
+            // Позволяем доставать метаданные
+            if (name == "meta" || name == "info") {
+                return meta;
+            }
+        }
+
+        // Если ключ не распознан, возвращаем undefined или ошибку
+        return Object::make_undefined();
+    }
 };
 
 class StaticBuffer;
@@ -298,40 +348,44 @@ private:
     // ============================================================================
 
     public:
-
-    /**
-     * Добавляет метку на определенный офсет.
-     * Если метка уже существует, выбрасывает исключение (переопределение метки запрещено).
-     */
-    void add_label(const std::string& name, size_t offset) {
-        if (m_labels.find(name) != m_labels.end()) {
-            throw std::runtime_error("Label already defined: " + name);
-        }
         
-        // Проверка границ буфера для безопасности
-        if (offset >= m_data.size()) {
-            throw std::runtime_error("Label offset out of bounds: " + std::to_string(offset));
-        }
-
-        m_labels[name] = offset;
-    }
-
     /**
-     * Возвращает офсет метки по её имени.
+     * Добавляет новую метку. Вызывается только если метки нет.
      */
-    size_t get_label_offset(const std::string& name) const {
-        auto it = m_labels.find(name);
-        if (it == m_labels.end()) {
-            throw std::runtime_error("Label not found: " + name);
-        }
-        return it->second;
+    void add_label(const std::string& name, size_t offset, Object segment, Object meta) {
+        // 1. Создаем объект Label в куче и оборачиваем в shared_ptr
+        auto label_ptr = std::make_shared<BufferLabel>(offset, segment, meta);
+        
+        // 2. Создаем Object типа NATIVE_REF, который владеет этим shared_ptr
+        Object new_label = Object::make_native_ref(std::move(label_ptr));
+        
+        // 3. Сохраняем Object в мапу (мапа теперь держит сильную ссылку на объект)
+        m_labels[name] = new_label;
     }
 
     /**
-     * Проверяет наличие метки.
+     * Возвращает Object, который уже содержит shared_ptr<Label>
+     */
+    Object get_label_obj(const std::string& name) const {
+        auto it = m_labels.find(name);
+        if (it != m_labels.end()) {
+            return it->second; // Просто копируем Object (копируется shared_ptr внутри)
+        }
+        return Object::make_null(); // Возвращаем пустой объект
+    }
+
+    /**
+     * Вспомогательный метод для проверки существования
      */
     bool has_label(const std::string& name) const {
         return m_labels.find(name) != m_labels.end();
+    }
+
+    /**
+     * Позволяет получить все метаданные для экспорта в символы (.sym.sot)
+     */
+    const std::unordered_map<std::string, Object>& get_all_labels() const {
+        return m_labels;
     }
 
     // ============================================================================
@@ -370,21 +424,30 @@ public:
 
     void link_internal() {
         for (auto& reloc : m_relocations) {
-            if (!has_label(reloc.target_name)) continue;
+            // 1. Ищем объект метки в мапе
+            Object label_obj = get_label_obj(reloc.target_name);
+            if (label_obj.is_null()) continue; 
 
-            size_t target_addr = get_label_offset(reloc.target_name) + m_origin;
+            // 2. Достаем указатель на HeapObject Label
+            // Используем as_heap<Label>(), так как это NATIVE_REF, указывающий на Label
+            auto label = label_obj.as_native_ref<BufferLabel>();
+            
+            // 3. Вычисляем финальный адрес с учетом базы (origin)
+            size_t target_addr = label->addr + m_origin;
 
             if (reloc.type == RelocType::ABS_ADDR) {
                 write_pointer(reloc.offset, target_addr);
             } 
             else if (reloc.type == RelocType::RELATIVE) {
-                // Расчет прыжка относительно текущей позиции
+                // Расчет относительного прыжка (например, для JR или CALL)
+                // Учитываем размер самого указателя, так как PC обычно указывает на следующий байт
                 int64_t diff = static_cast<int64_t>(target_addr) - 
                             static_cast<int64_t>(reloc.offset + TypeConfig::pointer_size);
+                
                 write_pointer(reloc.offset, static_cast<uint64_t>(diff));
             }
         }
-    } 
+    }
  
     // ============================================================================
     // --- 64-битные значения (8 байта) ---
@@ -518,7 +581,7 @@ private:
     Endian m_endian = Endian::Little;   // По умолчанию для Z80
     std::vector<Relocation> m_relocations;
     std::unique_ptr<StaticSymbolTable> m_symbol_table;
-    std::unordered_map<std::string, size_t> m_labels;
+    std::unordered_map<std::string, Object> m_labels;
 };
 
 

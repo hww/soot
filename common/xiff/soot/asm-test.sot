@@ -9,7 +9,7 @@
 $zero      
       (org #x8000)
 $start
-     (jp 'label3)
+      (jp 'label3)
       (db 22)
       (db (list 22 33 44))
       (dw 64)

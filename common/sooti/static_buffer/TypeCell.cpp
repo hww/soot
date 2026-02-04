@@ -27,7 +27,7 @@ void TypeCell::set(const Object& val) {
     try {
         // Выполняем физическую запись в буфер (учитывая тип: LE/BE, string и т.д.)
         StaticBufferWriter::write_value_at_ptr(m_ptr, m_type, val);
-
+        /**
         std::string valhex;
         if (val.is_integer())
             valhex = fmt::format("0x{:04X}", val.as_integer());
@@ -39,6 +39,7 @@ void TypeCell::set(const Object& val) {
                    m_type->get_name(), 
                    val.print(),
                    valhex);
+        */        
     } 
     catch (const std::exception& e) {
         fmt::print(stderr, "[Error] Write failed for {}: {}\n", m_path, e.what());

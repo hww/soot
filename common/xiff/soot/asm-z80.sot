@@ -114,7 +114,7 @@
     (let ((first (car lis)))
         (cond 
            ((integer? first)
-              (print lis)(print " ")(print (print first))
+              ;(print lis)(print " ")(print (print first))
               (make-lextoken :type 'imm-indirect :value first))
            ((or (eq? '+ first) (eq? '- first))
               (apply 'make-indexed lis))
