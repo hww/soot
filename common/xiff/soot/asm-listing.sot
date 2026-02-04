@@ -56,8 +56,8 @@
                                          seg-name (segment-base-addr seg))))
               (for-each (segment-insts seg)
                 (lambda (inst)
-                  (let* ((addr   (or (struct-ref inst :ilc) 0))
-                         (bytes  (or (struct-ref inst :bin) '())) ;; Теперь тут не будет пусто
+                  (let* ((addr   (or (inst-ilc inst) 0))
+                         (bytes  (or (inst-bin inst) '())) ;; Теперь тут не будет пусто
                          (src    (inst->string inst))
                          (is-lab (eq? (inst-op inst) 'lab))
                          (is-dir (or (eq? (inst-op inst) 'org) (eq? (inst-op inst) 'align)))

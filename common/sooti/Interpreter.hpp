@@ -408,7 +408,12 @@ class Interpreter {
                                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_reader_p(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
-
+    Object eval_cell_p(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_special_form_p(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_primitive_p(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
     // Система
     Object eval_system(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
