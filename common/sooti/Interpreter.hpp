@@ -81,13 +81,13 @@ class Interpreter {
     struct BuiltinEntryConfig {
         std::string name;
         BuiltinFormMethod method;
-        ArgumentSpec *spec;
+        ArgumentSpec *spec = nullptr;
     };
 
     struct SpecialEntryConfig {
         std::string name;
         SpecialFormMethod method;
-        ArgumentSpec *spec;
+        ArgumentSpec *spec = nullptr;
     };
 
     // --- Методы регистрации ---
