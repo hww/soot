@@ -50,6 +50,9 @@ enum class ObjectType : uint8_t {
 };
 
 enum class MemoryAccessKind {
+    UNDEFINED, // was not initialized
+    CUSTOM,    // hardcoded by child class
+    POINTER,   // Просто адрес
     SINT8,
     UINT8,
     SINT16,
@@ -60,9 +63,7 @@ enum class MemoryAccessKind {
     UINT64,
     FLOAT,
     DOUBLE,
-    POINTER, // Просто адрес
-    STRING,  // Специфично для OpenGOAL (адрес на символы)
-    CUSTOM   // hardcoded by child class
+    STRING, // Специфично для OpenGOAL (адрес на символы)
 };
 
 std::string object_type_to_string(ObjectType type);
@@ -222,9 +223,9 @@ class Object {
     // For fixed types (value semantics) - как в OpenGOAL
     union {
         IntegerObject integer_obj;
-        FloatObject float_obj;
-        CharObject char_obj;
-        SymbolObject symbol_obj;
+        FloatObject   float_obj;
+        CharObject    char_obj;
+        SymbolObject  symbol_obj;
     };
 
     // For heap types (reference semantics)
@@ -236,7 +237,7 @@ class Object {
     }
     static inline SymbolTable *get_symbol_table();
     static inline SymbolTable &symbol_table();
-    static InternedSymbolPtr intern(const char *name);
+    static InternedSymbolPtr   intern(const char *name);
     // адресация к объекту -> key
     Object step(const Object &key) const;
 
@@ -279,7 +280,7 @@ class Object {
         return is_heap_object() && heap_obj ? heap_obj->printc() : print();
     } // сырой формат например без "" для строки
     std::string inspect_short() const;
-    Object inspect() const;
+    Object      inspect() const;
 
     std::string type_name() const {
         return object_type_to_string(type);
@@ -401,23 +402,23 @@ class Object {
     }
 
     // Value access with type checking
-    char as_char() const;
-    IntType as_integer() const;
-    FloatType as_float() const;
-    StringObject *as_string() const;
-    ArrayObject *as_array() const;
-    HashTableObject *as_hash_table() const;
-    MacroObject *as_macro() const;
-    LambdaObject *as_lambda() const;
-    EnvironmentObject *as_env() const;
-    ReaderObject *as_reader() const;
-    MemoryCell *as_cell() const;
-    HeapObject *as_native_ref() const;
-    const IntegerObject &as_integer_obj() const;
-    const InternedSymbolPtr &as_symbol() const;
+    char                               as_char() const;
+    IntType                            as_integer() const;
+    FloatType                          as_float() const;
+    StringObject                      *as_string() const;
+    ArrayObject                       *as_array() const;
+    HashTableObject                   *as_hash_table() const;
+    MacroObject                       *as_macro() const;
+    LambdaObject                      *as_lambda() const;
+    EnvironmentObject                 *as_env() const;
+    ReaderObject                      *as_reader() const;
+    MemoryCell                        *as_cell() const;
+    HeapObject                        *as_native_ref() const;
+    const IntegerObject               &as_integer_obj() const;
+    const InternedSymbolPtr           &as_symbol() const;
     std::shared_ptr<EnvironmentObject> as_env_ptr() const;
-    std::string to_std_string() const;
-    uint32_t as_crc32() const;
+    std::string                        to_std_string() const;
+    uint32_t                           as_crc32() const;
 
     template <typename T> std::shared_ptr<T> as_native_ref() const {
         // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
@@ -438,7 +439,7 @@ class Object {
     }
 
     // C++ идеоматичные методы
-    std::vector<Object> as_c_vector() const;
+    std::vector<Object>      as_c_vector() const;
     std::vector<std::string> as_c_vector_of_strings() const;
 
     // For pair access
@@ -450,7 +451,7 @@ class Object {
     }
 
   private:
-    void throw_type_error(const std::string &expected) const;
+    void                throw_type_error(const std::string &expected) const;
     static SymbolTable *s_table; // Просто статический указатель
 };
 
@@ -464,10 +465,10 @@ class PairObject : public HeapObject {
     ~PairObject() override = default;
 
     std::string print() const override;
-    Object inspect() const override;
+    Object      inspect() const override;
 
     int lenght() {
-        int count = 1;
+        int  count = 1;
         auto lst = cdr;
         while (lst.is_pair()) {
             count++;
@@ -674,7 +675,7 @@ template <typename T> class InternedPtrMap {
   private:
     struct Entry {
         const char *key = nullptr;
-        T value;
+        T           value;
     };
 
     std::vector<Entry> m_entries;
@@ -708,7 +709,7 @@ template <typename T> class InternedPtrMap {
         // probe
         for (uint32_t i = 0; i < m_entries.size(); i++) {
             uint32_t slot_addr = (hash + i) & m_mask;
-            auto &slot = m_entries[slot_addr];
+            auto    &slot = m_entries[slot_addr];
             if (!slot.key) {
                 return nullptr;
             } else {
@@ -728,7 +729,7 @@ template <typename T> class InternedPtrMap {
         // probe
         for (uint32_t i = 0; i < m_entries.size(); i++) {
             uint32_t slot_addr = (hash + i) & m_mask;
-            auto &slot = m_entries[slot_addr];
+            auto    &slot = m_entries[slot_addr];
             if (!slot.key) {
                 // not found, insert!
                 slot.key = ptr.name_ptr; // ← Сохраняем указатель!
