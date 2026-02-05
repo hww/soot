@@ -1,7 +1,7 @@
 #include "TypeCell.hpp"
 #include "StaticBufferReader.hpp"
 #include "StaticBufferWriter.hpp"
-
+#include <fmt/format.h>
 namespace script {
 
 // ===========================================================================
@@ -9,145 +9,139 @@ namespace script {
 // ===========================================================================
 
 Object TypeCell::get() {
-    if (!m_ptr || !m_type)
+    void *ptr = resolve_ptr();
+    if (!ptr || !m_type)
         return Object::make_undefined();
 
     // 1. Примитивы, Enum, Bitfield
     if (!m_type->is_reference()) {
-        return StaticBufferReader::read_value_at_ptr(&TypeSystem::instance(), m_ptr, m_type);
+        return StaticBufferReader::read_value_at_ptr(&TypeSystem::instance(), ptr, m_type);
     }
 
     // 2. Строки и Символы
     if (m_type->get_name() == "string" || m_type->get_name() == "symbol") {
-        return StaticBufferReader::read_string_at_ptr(m_ptr);
+        return StaticBufferReader::read_string_at_ptr(ptr);
     }
 
-    // 3. Структуры — возвращаем саму ячейку (для дальнейшей навигации через ->)
+    // 3. Структуры — возвращаем саму ячейку для дальнейшей навигации
     return Object::make_heap_object(shared_from_this(), ObjectType::CELL);
 }
 
 void TypeCell::set(const Object &val) {
-    if (!m_ptr || !m_type)
+    if (!m_ptr || !m_type) {
+        fmt::print(stderr, "[ERROR] TypeCell::set failed: m_ptr or m_type is null\n");
         return;
+    }
+    // Печатаем адрес в HEX (0x8000), название типа и значение
+    fmt::print("TypeCell::set: [addr: {:p}] [type: {:>8}] [val: {}]\n", m_ptr,
+               m_type->get_runtime_name(), val.print());
+    // 1. Используем официальную точку входа.
+    // Она сама разберется: примитив это, enum или bitfield.
+    StaticBufferWriter::write_value_at_ptr(m_ptr, m_type, val);
 
-    try {
-        // Выполняем физическую запись в буфер (учитывая тип: LE/BE, string и т.д.)
-        StaticBufferWriter::write_value_at_ptr(m_ptr, m_type, val);
-        /**
-        std::string valhex;
-        if (val.is_integer())
-            valhex = fmt::format("0x{:04X}", val.as_integer());
-        // ВЫВОД В ЛОГ: Красивая таблица для анализа
-        // Показываем: ПУТЬ | АДРЕС | ТИП | ЗНАЧЕНИЕ
-        fmt::print(fmt::runtime("[StaticWrite] {:<25} | @ 0x{:04X} | {:<10} | <- {} {}\n"),
-                   m_path.empty() ? m_type->get_name() : m_path,
-                   reinterpret_cast<uintptr_t>(m_ptr), // Можно вычесть base буфера, если нужно
-                   m_type->get_name(),
-                   val.print(),
-                   valhex);
-        */
-    } catch (const std::exception &e) {
-        fmt::print(stderr, "[Error] Write failed for {}: {}\n", m_path, e.what());
+    // 2. Уведомление владельца.
+    // Если есть публичный метод в StaticBuffer для этого — используй его.
+    // Если нет, и ты добавил friend class TypeCell в StaticBuffer, то:
+    if (m_owner && m_key.is_integer()) {
+        if (auto *buffer = dynamic_cast<StaticBuffer *>(m_owner.get())) {
+            // fmt::print("TypeCell::set: update_addr_range [start: {:08X}] [size: {:08X}]]\n",
+            //            m_key.as_integer(), m_type->get_size_in_memory());
+            //  Вызываем метод уведомления
+            buffer->update_addr_range(static_cast<uint32_t>(m_key.as_integer()),
+                                      static_cast<uint32_t>(m_type->get_size_in_memory()));
+        }
     }
 }
 
 Object TypeCell::make_step_accessor(const Object &key) {
-    if (!m_ptr || !m_type)
+    if (!m_type || !m_ptr)
         return Object::make_undefined();
 
-    // --- ЛОГИКА МАССИВОВ (Индексация по числу) ---
+    // 1. Используем m_ptr напрямую (физика уже тут)
+    uint8_t *current_ptr = static_cast<uint8_t *>(m_ptr);
+
+    Type       *next_type = nullptr;
+    std::string next_path = m_path;
+    size_t      offset_delta = 0;
+
+    // --- ЛОГИКА СМЕЩЕНИЯ ---
     if (key.is_integer()) {
-        int index = key.as_integer();
-
-        // Здесь мы используем heap_base типа (как в GOAL) или его размер
-        // чтобы понять, на сколько байт прыгнуть
+        int    index = key.as_integer();
         size_t stride = m_type->get_size_in_memory();
-
-        // Если мы в inline-array, выравнивание элементов критично
-        int alignment = m_type->get_inline_array_stride_alignment();
+        int    alignment = m_type->get_inline_array_stride_alignment();
         if (alignment > 1) {
             stride = (stride + alignment - 1) & ~(alignment - 1);
         }
 
-        uint8_t *next_ptr = static_cast<uint8_t *>(m_ptr) + (index * stride);
-
-        // Мы НЕ меняем тип, так как мы просто перешли к i-му элементу ТОГО ЖЕ типа
-        return Object::make_heap_object(
-            std::make_shared<TypeCell>(next_ptr, m_type, fmt::format("{}[{}]", m_path, index)),
-            ObjectType::CELL);
+        offset_delta = index * stride;
+        next_type = m_type; // Для массивов тип элемента тот же
+        next_path += fmt::format("[{}]", index);
+    } else if (key.is_symbol()) {
+        auto *struct_type = dynamic_cast<StructureType *>(m_type);
+        if (struct_type) {
+            Field       field;
+            std::string field_name = key.as_symbol();
+            if (struct_type->lookup_field(field_name, &field)) {
+                offset_delta = field.offset();
+                next_type = TypeSystem::instance().lookup_type(field.type());
+                next_path = m_path.empty() ? field_name : m_path + "." + field_name;
+            }
+        }
     }
 
-    // --- ЛОГИКА СТРУКТУР (Доступ по символу/ключу) ---
-    auto *struct_type = dynamic_cast<StructureType *>(m_type);
+    // --- СОЗДАНИЕ НОВОЙ ЯЧЕЙКИ ---
+    if (next_type) {
+        // Вычисляем новый физический адрес
+        void *next_ptr = current_ptr + offset_delta;
 
-    // Если это не структура, но мы пытаемся взять поле,
-    // возможно это массив, и мы хотим взять поле у его элементов?
-    // Нет, по правилам Лиспа (-> obj index 'field) — индекс должен быть первым.
-
-    if (struct_type) {
-        Field field;
-        std::string field_name = key.to_std_string();
-
-        if (struct_type->lookup_field(field_name, &field)) {
-            Type *next_type_raw = TypeSystem::instance().lookup_type(field.type());
-            if (!next_type_raw) {
-                throw std::runtime_error("Unknown field type: " + field.type().print());
-            }
-
-            uint8_t *next_ptr = static_cast<uint8_t *>(m_ptr) + field.offset();
-            std::string next_path = m_path.empty() ? field_name : m_path + "." + field_name;
-
-            auto next_cell = std::make_shared<TypeCell>(next_ptr, next_type_raw, next_path);
-            return Object::make_heap_object(next_cell, ObjectType::CELL);
+        // Вычисляем новый логический ключ (оффсет в буфере)
+        Object next_key = m_key;
+        if (m_key.is_integer()) {
+            next_key = Object::make_integer(m_key.as_integer() + offset_delta);
         }
+
+        // Создаем ячейку: передаем новый PTR и сохраняем OWNER
+        auto next_cell = std::make_shared<TypeCell>(next_ptr,  // Физика (адрес в памяти)
+                                                    next_type, // Тип
+                                                    m_owner,   // Контекст (владелец-буфер)
+                                                    next_key,  // Оффсет для магии Intel HEX
+                                                    next_path  // Путь для отладки
+        );
+
+        return Object::make_heap_object(next_cell, ObjectType::CELL);
     }
 
     return Object::make_undefined();
 }
 
 std::string TypeCell::print() const {
-    auto value = const_cast<TypeCell *>(this)->get().print();
-    return fmt::format("#<type-cell {} @ {:p} :value {}>",
-                       m_path.empty() ? m_type->get_name() : m_path, m_ptr, value.c_str());
+    void *ptr = resolve_ptr();
+    return fmt::format("#<type-cell {} @ {:p}>",
+                       m_path.empty() ? (m_type ? m_type->get_name() : "null") : m_path, ptr);
 }
 
 Object TypeCell::inspect() const {
     ListBuilder lb{};
-    lb.push_back(Object::symbol_table().core.cell); // Символ 'cell
+    lb.push_back(Object::make_symbol("type-cell"));
+    lb.push_kv("path", Object::make_string(m_path));
+    lb.push_kv("key", m_key);
+    lb.push_kv("address", Object::make_integer((uintptr_t)resolve_ptr()));
+    if (m_type)
+        lb.push_kv("type", Object::make_symbol(m_type->get_name()));
 
-    // Вместо "base" и "key" мы показываем физику:
-    lb.push_kv("address", Object::make_integer((uintptr_t)m_ptr));
-
-    // Показываем текущее значение, раз мы "арестовали" этот участок памяти
-    try {
-        lb.push_kv("value", const_cast<TypeCell *>(this)->get());
-    } catch (...) {
-        lb.push_kv("value", Object::symbol_table().core.unknown);
-    }
     return lb.finalize();
 }
 
-// =============================================================================
-// BufferCell
-// =============================================================================
+void *TypeCell::resolve_ptr() const {
+    if (!m_owner)
+        return nullptr;
 
-Object BufferCell::make_step_accessor(const Object &key) {
-    if (key.is_symbol()) {
-        auto type = TypeSystem::instance().lookup_type(key.as_symbol());
-        if (type) {
-            uint8_t *ptr = m_buffer->data() + m_offset;
-            // Создаем TypeCell и упаковываем его через make_cell
-            auto t_cell = std::make_shared<TypeCell>(ptr, type);
-            return Object::make_cell(std::move(t_cell), MemoryAccessKind::CUSTOM);
-        }
+    // Если владелец — буфер, то ключ — это оффсет
+    if (auto *buffer = dynamic_cast<StaticBuffer *>(m_owner.get())) {
+        return buffer->data() + m_key.as_integer();
     }
 
-    if (key.is_integer()) {
-        // Создаем новый BufferCell (сдвинутый) и тоже через make_cell
-        auto b_cell = std::make_shared<BufferCell>(m_buffer, m_offset + key.as_integer());
-        return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
-    }
-
-    return Object::make_undefined();
+    // Если владелец — другой объект, тут будет другая логика
+    return nullptr;
 }
 } // namespace script

@@ -82,13 +82,13 @@ class StaticBuffer;
 class StaticSymbolTable {
   private:
     struct SymbolEntry {
-        uint32_t crc32;
-        uint32_t string_offset; // offset в string pool
+        uint32_t    crc32;
+        uint32_t    string_offset; // offset в string pool
         std::string name;
     };
 
-    std::vector<SymbolEntry> m_symbols;
-    std::string m_string_pool;
+    std::vector<SymbolEntry>             m_symbols;
+    std::string                          m_string_pool;
     std::unordered_map<uint32_t, size_t> m_crc_to_index; // для быстрого поиска
 
   public:
@@ -111,7 +111,7 @@ class StaticSymbolTable {
 
         // Добавляем запись
         SymbolEntry entry{crc, string_offset, name};
-        size_t index = m_symbols.size();
+        size_t      index = m_symbols.size();
         m_symbols.push_back(entry);
         m_crc_to_index[crc] = index;
 
@@ -181,7 +181,7 @@ class StaticBuffer : public HeapObject {
         return m_type_name;
     }
 
-    Object inspect() const override;
+    Object      inspect() const override;
     std::string hex_dump(size_t start_offset = 0, size_t bytes_to_dump = 0, bool show_ascii = true,
                          size_t bytes_per_line = 16) const;
 
@@ -489,7 +489,6 @@ class StaticBuffer : public HeapObject {
         return (m_addr_min == 0xFFFFFFFF) ? 0 : (m_addr_max - m_addr_min + 1);
     }
 
-  private:
     void update_addr_range(uint32_t addr, uint32_t size) {
         if (m_addr_min == 0xFFFFFFFF) {
             m_addr_min = addr;
@@ -642,14 +641,14 @@ class StaticBuffer : public HeapObject {
     }
 
   private:
-    uint32_t m_addr_min = 0xFFFFFFFF; // Максимально возможное
-    uint32_t m_addr_max = 0;
-    std::string m_type_name;          // Ссылка на тип в TypeSystem
-    uint32_t m_origin;                // Базовый адрес (например, #x2000)
-    std::vector<uint8_t> m_data;      // Сырые байты
-    Endian m_endian = Endian::Little; // По умолчанию для Z80
-    std::vector<Relocation> m_relocations;
-    std::unique_ptr<StaticSymbolTable> m_symbol_table;
+    uint32_t                                m_addr_min = 0xFFFFFFFF; // Максимально возможное
+    uint32_t                                m_addr_max = 0;
+    std::string                             m_type_name; // Ссылка на тип в TypeSystem
+    uint32_t                                m_origin;    // Базовый адрес (например, #x2000)
+    std::vector<uint8_t>                    m_data;      // Сырые байты
+    Endian                                  m_endian = Endian::Little; // По умолчанию для Z80
+    std::vector<Relocation>                 m_relocations;
+    std::unique_ptr<StaticSymbolTable>      m_symbol_table;
     std::unordered_map<std::string, Object> m_labels;
 };
 

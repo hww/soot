@@ -320,6 +320,7 @@ class Object {
     bool is_pair() const {
         return type == ObjectType::PAIR;
     }
+    bool is_dotted_syntax();
     bool is_cell() const {
         return type == ObjectType::CELL;
     }
@@ -766,11 +767,11 @@ template <typename T> class InternedPtrMap {
         std::vector<Entry> new_entries(m_entries.size() * 2);
         for (const auto &old_entry : m_entries) {
             if (old_entry.key) {
-                bool done = false;
+                bool     done = false;
                 uint32_t hash = util::compute_crc32(old_entry.key, sizeof(const char *));
                 for (uint32_t i = 0; i < new_entries.size(); i++) {
                     uint32_t slot_addr = (hash + i) & m_mask;
-                    auto &slot = new_entries[slot_addr];
+                    auto    &slot = new_entries[slot_addr];
                     if (!slot.key) {
                         slot.key = old_entry.key;
                         slot.value = std::move(old_entry.value);
@@ -785,10 +786,10 @@ template <typename T> class InternedPtrMap {
         m_entries = std::move(new_entries);
         m_next_resize = kMaxUsed * m_entries.size();
     }
-    int m_power_of_two_size = 0;
-    int m_used_entries = 0;
-    int m_next_resize = 0;
-    uint32_t m_mask = 0;
+    int                    m_power_of_two_size = 0;
+    int                    m_used_entries = 0;
+    int                    m_next_resize = 0;
+    uint32_t               m_mask = 0;
     static constexpr float kMaxUsed = 0.7;
 };
 
@@ -828,7 +829,7 @@ class SymbolTable {
             return val ? sym_true : sym_false;
         }
     } core;
-    void init_core_symbols();
+    void   init_core_symbols();
     Object object_type_to_symbol(ObjectType type);
 
   public:
@@ -838,10 +839,10 @@ class SymbolTable {
     ~SymbolTable();
 
     InternedSymbolPtr intern(const char *str);
-    Object make_symbol(const char *name);
-    Object make_keyword(const char *name);
-    Object make_symbol(std::string name);
-    Object make_keyword(std::string name);
+    Object            make_symbol(const char *name);
+    Object            make_keyword(const char *name);
+    Object            make_symbol(std::string name);
+    Object            make_keyword(std::string name);
 
     // Метод для итерации по символам
     template <typename F> void for_each_symbol(F func) const {
@@ -858,15 +859,15 @@ class SymbolTable {
 
   private:
     void resize();
-    int m_power_of_two_size = 0;
+    int  m_power_of_two_size = 0;
     struct Entry {
-        uint32_t hash = 0;
+        uint32_t    hash = 0;
         const char *name = nullptr;
     };
-    std::vector<Entry> m_entries;
-    int m_used_entries = 0;
-    int m_next_resize = 0;
-    uint32_t m_mask = 0;
+    std::vector<Entry>     m_entries;
+    int                    m_used_entries = 0;
+    int                    m_next_resize = 0;
+    uint32_t               m_mask = 0;
     static constexpr float kMaxUsed = 0.7;
 };
 
@@ -874,9 +875,9 @@ using EnvironmentMap = InternedPtrMap<Object>;
 
 class EnvironmentObject : public HeapObject {
   public:
-    std::string name;
+    std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
-    EnvironmentMap vars;
+    EnvironmentMap                     vars;
 
     EnvironmentObject() = default;
     EnvironmentObject(std::shared_ptr<EnvironmentObject> parent) : parent_env(std::move(parent)) {}
@@ -901,7 +902,7 @@ class EnvironmentObject : public HeapObject {
         return obj;
     }
 
-    static Object make_new(std::string name,
+    static Object make_new(std::string                        name,
                            std::shared_ptr<EnvironmentObject> parent_env = nullptr) {
         Object obj;
         obj.type = ObjectType::ENVIRONMENT;
@@ -922,10 +923,10 @@ class EnvironmentObject : public HeapObject {
 
 // Аргументы функций
 struct Arguments {
-    std::vector<Object> unnamed;
+    std::vector<Object>           unnamed;
     std::map<std::string, Object> named;
-    std::vector<Object> rest;
-    bool has_rest = false;
+    std::vector<Object>           rest;
+    bool                          has_rest = false;
 
     Object inspect() const;
 
@@ -970,8 +971,8 @@ struct NamedArg {
  */
 struct PositionalArg {
     std::string name;
-    bool is_optional;     // или просто проверка has_default
-    Object default_value; // NIL по умолчанию для опциональных
+    bool        is_optional;   // или просто проверка has_default
+    Object      default_value; // NIL по умолчанию для опциональных
 };
 /**
  * @brief Спецификация аргументов функции (lambda-list).
@@ -1056,18 +1057,18 @@ struct ArgumentSpec {
     std::string print() const;
     std::string print_full(size_t max_len = 512, size_t max_arg_len = 64) const;
 
-    static ArgumentSpec create(const std::vector<std::string> &required,
+    static ArgumentSpec create(const std::vector<std::string>      &required,
                                const std::map<std::string, Object> &optional = {},
                                const std::map<std::string, Object> &keys = {},
-                               const std::string &rest_name = "");
+                               const std::string                   &rest_name = "");
 };
 
 class LambdaObject : public HeapObject {
   public:
-    std::string name;
+    std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
-    Object body;
-    ArgumentSpec args;
+    Object                             body;
+    ArgumentSpec                       args;
 
     LambdaObject() = default;
     ~LambdaObject() override = default;
@@ -1088,10 +1089,10 @@ class LambdaObject : public HeapObject {
 
 class MacroObject : public HeapObject {
   public:
-    std::string name;
+    std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
-    Object body;
-    ArgumentSpec args;
+    Object                             body;
+    ArgumentSpec                       args;
 
     MacroObject() = default;
     ~MacroObject() override = default;
@@ -1128,16 +1129,17 @@ class ReaderObject : public HeapObject {
     void skip_whitespace();
 
     // Проверка на конец файла
-    bool is_eof() const;
+    bool        is_eof() const;
     std::string print() const override;
-    Object inspect() const override;
+    Object      inspect() const override;
 };
 
 class MemoryCell : public HeapObject {
   public:
-    void *m_ptr;             // Прямой адрес в памяти (base_addr + offset)
+    void            *m_ptr;  // Прямой адрес в памяти (base_addr + offset)
     MemoryAccessKind m_kind; // Метаданные (как именно читать этот кусок памяти)
 
+    MemoryCell() : m_ptr(nullptr), m_kind(MemoryAccessKind::UNDEFINED) {}
     MemoryCell(void *ptr) : m_ptr(ptr), m_kind(MemoryAccessKind::UINT32) {}
     MemoryCell(void *ptr, MemoryAccessKind kind) : m_ptr(ptr), m_kind(kind) {}
 
@@ -1150,7 +1152,7 @@ class MemoryCell : public HeapObject {
     virtual Object make_step_accessor(const Object &key) override;
 
     std::string print() const override;
-    Object inspect() const override;
+    Object      inspect() const override;
 };
 
 // 1. Предварительное объявление
@@ -1171,7 +1173,7 @@ class CallableObject : public HeapObject {
 
 struct SpecialFormObject : public CallableObject {
     SpecialFormMethod method;
-    ArgumentSpec specs;
+    ArgumentSpec      specs;
 
     // Явный конструктор
     SpecialFormObject(SpecialFormMethod m, ArgumentSpec *s) : method(m), specs(false, true) {
@@ -1192,7 +1194,7 @@ struct SpecialFormObject : public CallableObject {
 
 struct BuiltinFunctionObject : public CallableObject {
     BuiltinFormMethod method;
-    ArgumentSpec specs;
+    ArgumentSpec      specs;
 
     BuiltinFunctionObject(BuiltinFormMethod m, ArgumentSpec *s) : method(m), specs(false, true) {
         if (s)

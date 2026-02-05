@@ -2,7 +2,7 @@
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/static_buffer/TypeCell.hpp"
-#include "common/type_system/Type.hpp"
+#include "common/type_system/TypeSystem.hpp"
 
 namespace script {
 
@@ -44,7 +44,7 @@ size_t StaticSymbolTable::write_to_buffer(StaticBuffer *dest, size_t offset) {
 // ============================================================================
 
 Object StaticBuffer::make_step_accessor(const Object &key) {
-    // 1. Системные свойства (возвращаем как обычные значения)
+    // 1. Системные свойства
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -64,20 +64,35 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
 
         // 2. Умный доступ по метке
         Object label_obj = get_label_obj(name);
-        if (label_obj.is_not_null()) {
-            // МЫ ВОЗВРАЩАЕМ ВЕСЬ ОБЪЕКТ МЕТКИ
-            // Теперь (buffer 'my-label) -> это HeapObject Label
+        if (label_obj.is_not_null())
             return label_obj;
-        }
     }
 
-    // 3. Низкоуровневый доступ по оффсету (оставляем для магии)
+    // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
     if (key.is_integer()) {
+        Type *byte_t = TypeSystem::instance().lookup_type("uint8");
+        if (!byte_t)
+            throw std::runtime_error("TypeSystem: uint8 not found");
+
         size_t offset = static_cast<size_t>(key.as_integer());
-        auto b_cell = std::make_shared<BufferCell>(
-            std::static_pointer_cast<StaticBuffer>(shared_from_this()), offset);
-        // Cell удобен для записи/чтения байт напрямую: (set! (buffer #x8000) #xAF)
-        return Object::make_cell(std::move(b_cell), MemoryAccessKind::CUSTOM);
+
+        // Проверка границ, чтобы не вылететь из буфера сразу
+        if (offset >= size())
+            return Object::make_undefined();
+
+        // ФИЗИКА: Берем начало данных буфера + смещение
+        uint8_t *next_ptr = this->data() + offset;
+
+        // СОЗДАЕМ КОРНЕВУЮ ЯЧЕЙКУ
+        auto b_cell =
+            std::make_shared<TypeCell>(next_ptr,                     // Физический адрес
+                                       byte_t,                       // Тип (uint8)
+                                       shared_from_this(),           // МЫ (буфер) и есть владелец
+                                       Object::make_integer(offset), // Ключ - это и есть оффсет
+                                       fmt::format("buffer[0x{:x}]", offset) // Путь для отладки
+            );
+
+        return Object::make_heap_object(b_cell, ObjectType::CELL);
     }
 
     return Object::make_undefined();

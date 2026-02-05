@@ -44,8 +44,8 @@ class Interpreter {
     friend class SootTypeSystem;
 
     struct ContextFrame {
-        int depth;
-        Object form;
+        int           depth;
+        Object        form;
         ContextFrame *prev;
 
         std::string print() {
@@ -56,7 +56,7 @@ class Interpreter {
 
     struct FrameGuard {
         ContextFrame **top_frame_ptr;
-        ContextFrame *old_frame;
+        ContextFrame  *old_frame;
 
         FrameGuard(ContextFrame **ptr, ContextFrame *new_val)
             : top_frame_ptr(ptr), old_frame(*ptr) {
@@ -79,15 +79,15 @@ class Interpreter {
     Interpreter(const std::string &username = "user", bool load_libs = false);
 
     struct BuiltinEntryConfig {
-        std::string name;
+        std::string       name;
         BuiltinFormMethod method;
-        ArgumentSpec *spec = nullptr;
+        ArgumentSpec     *spec = nullptr;
     };
 
     struct SpecialEntryConfig {
-        std::string name;
+        std::string       name;
         SpecialFormMethod method;
-        ArgumentSpec *spec = nullptr;
+        ArgumentSpec     *spec = nullptr;
     };
 
     // --- Методы регистрации ---
@@ -148,9 +148,9 @@ class Interpreter {
         return o.truthy(m_sym_false.as_symbol());
     }
     // Помощники для чисел
-    bool is_number(const Object &obj);
+    bool    is_number(const Object &obj);
     int64_t number_to_integer(const Object &obj);
-    double number_to_float(const Object &obj);
+    double  number_to_float(const Object &obj);
 
   private:
     Object call_lambda_internal(const Object &lambda, const std::vector<Object> &args);
@@ -159,7 +159,7 @@ class Interpreter {
                 const std::shared_ptr<EnvironmentObject> &env, bool self_eval_place = true);
     Object eval_with_rewind(const Object &parent_form, const Object &obj,
                             const std::shared_ptr<EnvironmentObject> &env,
-                            bool self_eval_place = true);
+                            bool                                      self_eval_place = true);
 
     void eval_args(const Object &parent_form, Arguments *args,
                    const std::shared_ptr<EnvironmentObject> &env);
@@ -167,24 +167,24 @@ class Interpreter {
     void load_library();
 
     // Символы и окружение
-    Object make_symbol(const char *name);
-    Object make_symbol(const std::string &name);
+    Object            make_symbol(const char *name);
+    Object            make_symbol(const std::string &name);
     InternedSymbolPtr intern(const std::string &name);
-    bool try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
-                           Object *dest);
+    bool   try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
+                             Object *dest);
     Object eval_symbol(const Object &parent_form, const Object &sym,
                        const std::shared_ptr<EnvironmentObject> &env);
-    void define_var_in_env(const Object &env, const Object &var, const char *name);
+    void   define_var_in_env(const Object &env, const Object &var, const char *name);
 
     // Вспомогательные методы
     Arguments get_args(const Object &form, const Object &rest, const ArgumentSpec &spec);
     Arguments get_args_with_spec(const Object &form, const Object &rest, const ArgumentSpec &spec);
     Arguments get_args_no_named(const Object &form, const Object &rest, const ArgumentSpec &spec);
 
-    std::vector<Object> eval_list(const Object &list,
+    std::vector<Object> eval_list(const Object                             &list,
                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_list_return_last(const Object &form, Object rest,
-                                 const std::shared_ptr<EnvironmentObject> &env);
+    Object              eval_list_return_last(const Object &form, Object rest,
+                                              const std::shared_ptr<EnvironmentObject> &env);
 
     // Обработка ошибок
     void throw_eval_error(const Object &o, const std::string &err);
@@ -536,7 +536,7 @@ class Interpreter {
                          const std::shared_ptr<EnvironmentObject> &env);
     void vararg_check(
         const Object &form, const Arguments &args,
-        const std::vector<std::vector<ObjectType>> &unnamed,
+        const std::vector<std::vector<ObjectType>>                                      &unnamed,
         const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>> &named);
 
     Object eval_defenum_special(const Object &form, const Object &rest,
@@ -587,7 +587,7 @@ class Interpreter {
     Object eval_buffer_link(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
     Object lookup_in_alist(Object list, const std::string &key);
-    void recursive_write(Object cell_obj, Object value);
+    void   recursive_write(Object cell_obj, Object value);
 
     // --- Инициализация системы типов ---
     void init_type_system(TypeSystemVariant types);
@@ -597,25 +597,25 @@ class Interpreter {
     // --- Хранилища ---
 
     // Типы и Сеттеры
-    std::unordered_map<std::string, ObjectType> m_string_to_type;
+    std::unordered_map<std::string, ObjectType>              m_string_to_type;
     std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
 
     // Состояние
-    Object m_sym_true;
-    Object m_sym_false;
-    Object m_sym_undefined;
-    const char *m_symbol_true;
-    const char *m_symbol_false;
-    const char *m_symbol_undefined;
-    Object m_null;
-    Object m_undefined;
-    int m_gensym_id = 0;
-    Object m_global_environment;
-    Object m_comp_env;
-    bool m_disable_printing = false;
-    Reader m_reader;
+    Object        m_sym_true;
+    Object        m_sym_false;
+    Object        m_sym_undefined;
+    const char   *m_symbol_true;
+    const char   *m_symbol_false;
+    const char   *m_symbol_undefined;
+    Object        m_null;
+    Object        m_undefined;
+    int           m_gensym_id = 0;
+    Object        m_global_environment;
+    Object        m_comp_env;
+    bool          m_disable_printing = false;
+    Reader        m_reader;
     ContextFrame *m_top_frame;
-    SymbolTable m_symbol_table;
+    SymbolTable   m_symbol_table;
 };
 
 fmt::terminal_color string_to_color(const std::string &name);
