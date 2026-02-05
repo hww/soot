@@ -172,13 +172,13 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
 }
 
 InternedSymbolPtr SymbolTable::intern(const char *str) {
-    size_t string_len = strlen(str);
+    size_t   string_len = strlen(str);
     uint32_t hash = util::compute_crc32(str, string_len);
 
     // probe
     for (uint32_t i = 0; i < m_entries.size(); i++) {
         uint32_t slot_addr = (hash + i) & m_mask;
-        auto &slot = m_entries[slot_addr];
+        auto    &slot = m_entries[slot_addr];
         if (!slot.name) {
             // not found, insert!
             slot.hash = hash;
@@ -217,7 +217,7 @@ void SymbolTable::resize() {
             bool done = false;
             for (uint32_t i = 0; i < new_entries.size(); i++) {
                 uint32_t slot_addr = (old_entry.hash + i) & m_mask;
-                auto &slot = new_entries[slot_addr];
+                auto    &slot = new_entries[slot_addr];
                 if (!slot.name) {
                     slot.name = old_entry.name;
                     slot.hash = old_entry.hash;
@@ -491,7 +491,7 @@ Object Object::make_hash_table(int size) {
 Object Object::make_lambda(const ArgumentSpec &args, const Object &body,
                            const std::shared_ptr<EnvironmentObject> &env) {
     Object obj = LambdaObject::make_new();
-    auto lambda = obj.as_lambda();
+    auto   lambda = obj.as_lambda();
     lambda->args = args;
     lambda->body = body;
     lambda->parent_env = env;
@@ -501,11 +501,24 @@ Object Object::make_lambda(const ArgumentSpec &args, const Object &body,
 Object Object::make_macro(const ArgumentSpec &args, const Object &body,
                           const std::shared_ptr<EnvironmentObject> &env) {
     Object obj = MacroObject::make_new();
-    auto macro = obj.as_macro();
+    auto   macro = obj.as_macro();
     macro->args = args;
     macro->body = body;
     macro->parent_env = env;
     return obj;
+}
+// ============================================================================
+// Predicates
+// ============================================================================
+
+bool Object::is_dotted_syntax() {
+    if (type != ObjectType::PAIR)
+        return false;
+
+    auto tail = as_pair()->cdr;
+    // Если в хвосте не другая пара и не конец списка (null)
+    // значит это структура вида (field . value)
+    return tail.type != ObjectType::PAIR && tail.type != ObjectType::EMPTY_LIST;
 }
 
 // ============================================================================
@@ -638,7 +651,7 @@ std::vector<Object> Object::as_c_vector() const {
         throw std::runtime_error("as_vector called on a " + object_type_to_string(type) + " " +
                                  print());
     std::vector<Object> result;
-    Object current = *this;
+    Object              current = *this;
     while (current.is_pair()) {
         result.push_back(current.as_pair()->car);
         current = current.as_pair()->cdr;
@@ -651,7 +664,7 @@ std::vector<std::string> Object::as_c_vector_of_strings() const {
         throw std::runtime_error("as_c_vector_of_strings called on a " +
                                  object_type_to_string(type) + " " + print());
     std::vector<std::string> result;
-    Object current = *this;
+    Object                   current = *this;
     while (current.is_pair()) {
         auto item = current.as_pair()->car;
         if (item.is_string())
@@ -916,10 +929,10 @@ Object ArgumentSpec::to_object() const {
     return lb.finalize();
 }
 
-ArgumentSpec ArgumentSpec::create(const std::vector<std::string> &required,
+ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
                                   const std::map<std::string, Object> &optional,
                                   const std::map<std::string, Object> &keys,
-                                  const std::string &rest_name) {
+                                  const std::string                   &rest_name) {
     ArgumentSpec spec;
     spec.keys = !keys.empty();
     spec.rest = rest_name;
@@ -1387,7 +1400,7 @@ Object ArrayObject::inspect() const {
 
     // 3. Содержимое (опционально, выводим первые 10 элементов, чтобы не заспамить консоль)
     ListBuilder elements_lb{};
-    size_t limit = std::min(data.size(), (size_t)10);
+    size_t      limit = std::min(data.size(), (size_t)10);
     for (size_t i = 0; i < limit; ++i) {
         elements_lb.push_back(data[i]);
     }

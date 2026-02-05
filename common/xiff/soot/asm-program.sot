@@ -370,6 +370,12 @@
                           ;(if (list? res)
                           ;    (for-each res (lambda (b) (buffer-write buf b :as 'uint8 :at addr)))
                           ;    (buffer-write buf res :as 'uint8 :at addr))
+                          ;(if (list? res)
+                          ;  (let ((current-addr addr))
+                          ;    (for-each res (lambda (b) 
+                          ;        (buffer-write buf b :as 'uint8 :at current-addr)
+                          ;        (set! current-addr (+ current-addr 1))))) ; Двигаем адрес!
+                          ;  (buffer-write buf res :as 'uint8 :at addr))
                           (buffer-write buf res :as 'uint8 :at addr)
                           (set! bin-list (append bin-list (if (list? res) res (list res))))
                           ;(cfmt #t "blue" "assemble-segment-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
