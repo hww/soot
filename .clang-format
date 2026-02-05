@@ -10,3 +10,9 @@ AlignConsecutiveMacros: true
 ReflowComments: true
 # Добавляет пробел после // (делает //Comment -> // Comment)
 CommentPragmas: '^ IWYU pragma:'
+# int a;       // foo
+# int32 abcd;  // bar
+AlignTrailingComments: true
+# int   a;
+# int32 abcd; 
+AlignConsecutiveDeclarations: true
