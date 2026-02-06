@@ -1,22 +1,18 @@
 #pragma once
 
-#include "SourceInfo.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Crc32.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/format.h>
-#include <fstream>
-#include <iostream>
 #include <map>
 #include <memory>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include <vector>
@@ -44,26 +40,9 @@ enum class ObjectType : uint8_t {
     ENVIRONMENT,
     READER,
     NATIVE_REF,
-    CELL,
+    POINTER,
     STATIC_BUFFER,
     STATIC_WRITER,
-};
-
-enum class MemoryAccessKind {
-    UNDEFINED, // was not initialized
-    CUSTOM,    // hardcoded by child class
-    POINTER,   // Просто адрес
-    SINT8,
-    UINT8,
-    SINT16,
-    UINT16,
-    SINT32,
-    UINT32,
-    SINT64,
-    UINT64,
-    FLOAT,
-    DOUBLE,
-    STRING, // Специфично для OpenGOAL (адрес на символы)
 };
 
 std::string object_type_to_string(ObjectType type);
@@ -83,7 +62,7 @@ class ReaderObject;
 class Reader;
 class PlaceObject;
 class Object;
-class MemoryCell;
+class Pointer;
 
 struct ArgumentSpec;
 
@@ -190,27 +169,23 @@ using SymbolObject = FixedObject<InternedSymbolPtr>;
 class HeapObject : public std::enable_shared_from_this<HeapObject> {
   public:
     virtual ~HeapObject() = default;
+
+    virtual Object   make_step_accessor(const Object &key);
+    virtual Object   get_at(const Object &key);
+    virtual void     set_at(const Object &key, const Object &val);
+    virtual uint32_t as_crc32() {
+        return 0;
+    };
+    virtual Object      inspect() const = 0;
     virtual std::string print() const = 0;
     virtual std::string printc() const {
         return print();
     }
-    virtual Object inspect() const = 0;
+};
 
-    // 1. Для оператора (-> base key)
-    // По умолчанию объект не дает в себя "зайти".
-    virtual Object make_step_accessor(const Object &key);
-
-    // 2. Для автоматического eval и явного (deref obj)
-    // По умолчанию объект разыменовывается в самого себя.
-    virtual Object deref();
-
-    // 3. Для (set! obj val)
-    // По умолчанию объекты в куче неизменяемы (кроме ячеек).
-    virtual void assign(const Object &value);
-
-    virtual uint32_t as_crc32() {
-        return 0; // TODO! Make rational
-    }
+class NativeRef : public HeapObject {
+  public:
+    virtual Object deref() = 0; // Обязательный для всех "нативных оберток"
 };
 
 // Main Object class
@@ -269,8 +244,8 @@ class Object {
                              const std::shared_ptr<EnvironmentObject> &env);
     static Object make_hash_table(int size = 16);
     static Object make_reader(TextStream *textStream);
-    static Object make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type);
-    static Object make_cell(void *raw_ptr, MemoryAccessKind type);
+    static Object make_pointer(std::shared_ptr<Pointer> pointer, std::string type);
+    static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
     static Object make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type);
 
@@ -321,8 +296,8 @@ class Object {
         return type == ObjectType::PAIR;
     }
     bool is_dotted_syntax();
-    bool is_cell() const {
-        return type == ObjectType::CELL;
+    bool is_pointer() const {
+        return type == ObjectType::POINTER;
     }
     bool is_native_ref() const {
         return type == ObjectType::NATIVE_REF;
@@ -413,8 +388,8 @@ class Object {
     LambdaObject                      *as_lambda() const;
     EnvironmentObject                 *as_env() const;
     ReaderObject                      *as_reader() const;
-    MemoryCell                        *as_cell() const;
-    HeapObject                        *as_native_ref() const;
+    Pointer                           *as_pointer() const;
+    NativeRef                         *as_native_ref() const;
     const IntegerObject               &as_integer_obj() const;
     const InternedSymbolPtr           &as_symbol() const;
     std::shared_ptr<EnvironmentObject> as_env_ptr() const;
@@ -579,7 +554,7 @@ class ArrayObject : public HeapObject {
 
     Object inspect() const override;
 
-    Object make_step_accessor(const Object &key) {
+    Object make_step_accessor(const Object &key) override {
         if (key.is_integer()) {
             int index = key.as_integer();
 
@@ -596,6 +571,24 @@ class ArrayObject : public HeapObject {
         }
 
         return Object::make_undefined();
+    }
+    Object get_at(const Object &key) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+            if (index >= 0 && index < static_cast<int>(data.size())) {
+                return data[index];
+            }
+        }
+        return Object::make_undefined();
+    }
+
+    void set_at(const Object &key, const Object &val) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+            if (index >= 0 && index < static_cast<int>(data.size())) {
+                data[index] = val;
+            }
+        }
     }
 };
 
@@ -643,6 +636,19 @@ class HashTableObject : public HeapObject {
         return data[key];
     }
 
+    Object get_at(const Object &key) override {
+        if (key.is_string()) {
+            return data[key.to_std_string()];
+        }
+        return Object::make_undefined();
+    }
+
+    void set_at(const Object &key, const Object &val) override {
+        if (key.is_string()) {
+            data[key.to_std_string()] = val;
+        }
+    }
+
     // Доступ по строковому ключу (неконстантный):
     // стандартное поведение для ассоциативных контейнеров.
     Object &operator[](const std::string &key) {
@@ -661,7 +667,7 @@ class HashTableObject : public HeapObject {
         return it->second;
     }
 
-    Object make_step_accessor(const Object &key) {
+    Object make_step_accessor(const Object &key) override {
         if (key.is_symbol() || key.is_string()) {
             auto skey = key.to_std_string();
             return data[skey];
@@ -814,7 +820,7 @@ class SymbolTable {
         Object lextoken;
         Object place;
         Object unknown;
-        Object cell;
+        Object pointer;
         Object sym_undefined;
         Object sym_true;
         Object sym_false;
@@ -1134,22 +1140,30 @@ class ReaderObject : public HeapObject {
     Object      inspect() const override;
 };
 
-class MemoryCell : public HeapObject {
+class Pointer : public HeapObject {
   public:
-    void            *m_ptr;  // Прямой адрес в памяти (base_addr + offset)
-    MemoryAccessKind m_kind; // Метаданные (как именно читать этот кусок памяти)
+    void       *m_ptr;  // Прямой адрес в памяти (base_addr + offset)
+    std::string m_type; // Метаданные (как именно читать этот кусок памяти)
 
-    MemoryCell() : m_ptr(nullptr), m_kind(MemoryAccessKind::UNDEFINED) {}
-    MemoryCell(void *ptr) : m_ptr(ptr), m_kind(MemoryAccessKind::UINT32) {}
-    MemoryCell(void *ptr, MemoryAccessKind kind) : m_ptr(ptr), m_kind(kind) {}
+    Pointer() : m_ptr(nullptr), m_type("undefined") {}
+    Pointer(void *ptr) : m_ptr(ptr), m_type("void") {}
+    Pointer(void *ptr, std::string type) : m_ptr(ptr), m_type(type) {}
 
-    virtual std::string get_type_name() const;
+    virtual std::string get_type_name() const {
+        return m_type;
+    };
 
+    Object         make_step_accessor(const Object &key) override;
+    Object         get_at(const Object &key) override;
+    void           set_at(const Object &key, const Object &val) override;
     virtual Object get();
-
-    virtual void set(const Object &val);
-
-    virtual Object make_step_accessor(const Object &key) override;
+    virtual void   set(const Object &val);
+    virtual Object deref() {
+        return get();
+    }
+    virtual void *resolve_ptr() const {
+        return m_ptr;
+    }
 
     std::string print() const override;
     Object      inspect() const override;
@@ -1185,11 +1199,11 @@ struct SpecialFormObject : public CallableObject {
         return true;
     }
 
-    std::string print() const {
+    std::string print() const override {
         return "#<special-form>";
     }
 
-    Object inspect() const;
+    Object inspect() const override;
 };
 
 struct BuiltinFunctionObject : public CallableObject {
@@ -1205,11 +1219,11 @@ struct BuiltinFunctionObject : public CallableObject {
         return false;
     }
 
-    std::string print() const {
+    std::string print() const override {
         return "#<primitive-procedure>";
     }
 
-    Object inspect() const;
+    Object inspect() const override;
 };
 
 Object build_list(std::vector<Object> &&objects);

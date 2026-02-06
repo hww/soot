@@ -50,6 +50,16 @@
 ;; To make (setf (gethash @key @table) @value)
 (defsetf 'gethash 'sethash)
 
+;; Получить все ключи хеш-таблицы
+(defun hash-table->keys (ht)
+  (mapcar (lambda (pair) (car pair)) 
+          (hash-table->list ht)))
+
+;; Получить все значения хеш-таблицы
+(defun hash-table->values (ht)
+  (mapcar (lambda (pair) (cdr pair)) 
+          (hash-table->list ht)))
+
 ;; ===========================================================================
 ;; Управляющие конструкции 
 ;; ===========================================================================
@@ -276,6 +286,12 @@
 (defun second (x) (car (cdr x)))
 (defun third (x)  (car (cddr x)))
 
+;; Получение элемента списка по индексу (0-based)
+(defun nth (n lst)
+  (if (eq? n 0)
+      (car lst)
+      (nth (- n 1) (cdr lst))))
+
 (defun caar   (x) (car (car x)))
 (defun cadr   (x) (car (cdr x)))   ; 2-й элемент
 (defun cdar   (x) (cdr (car x)))
@@ -338,6 +354,13 @@
       (set! prev curr)         ;; Двигаем "прошлое" на шаг вперед
       (set! curr next))        ;; Двигаем "настоящее" на шаг вперед
     prev))                     ;; Возвращаем новую голову списка
+
+;; Фильтрация списка
+(defun filter (pred lst)
+  (cond ((null? lst) '())
+        ((pred (car lst)) 
+         (cons (car lst) (filter pred (cdr lst))))
+        (else (filter pred (cdr lst)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Поиск
@@ -482,7 +505,6 @@
 ;; Если нет concat, но есть string-append
 (defun concat (&rest args) (apply 'string-append args))
 
-
 ;; ===========================================================================
 ;; Лог
 ;; ===========================================================================
@@ -497,19 +519,7 @@
 (defun log-error (fmt-str &rest args)
   (apply 'log (cons 'error (cons fmt-str null))))
    
-;=================================================================
-; Hash Table
-;=================================================================
 
-;; Получить все ключи хеш-таблицы
-(defun hash-table->keys (ht)
-  (mapcar (lambda (pair) (car pair)) 
-          (hash-table->list ht)))
-
-;; Получить все значения хеш-таблицы
-(defun hash-table->values (ht)
-  (mapcar (lambda (pair) (cdr pair)) 
-          (hash-table->list ht)))
 
 ;=================================================================
 ; Getters & Setters
@@ -559,6 +569,14 @@
 
 (defmacro -> (base &rest path)
         `(navigation ,base ,@path))
+
+(defun identity (item) item)
+
+(defmacro &+ (base &rest offsets)
+  "Складывает базовый адрес с набором смещений."
+  (if (null? offsets)
+      base
+      `(+ ,base ,@offsets)))
 
 ;; =============================================================================
 ;; Structures 

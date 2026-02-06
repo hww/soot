@@ -1,5 +1,5 @@
 #include "StaticWriter.hpp"
-#include "TypeCell.hpp"
+#include "TypePointer.hpp"
 #include "common/type_system/TypeSystem.hpp"
 
 namespace script {
@@ -28,13 +28,13 @@ Object StaticWriter::allocate(const std::string &type_name) {
     // 3. Получаем адрес в памяти
     void *ptr = m_buffer->data() + m_position;
 
-    // 4. Создаем TypeCell на это место
-    auto cell = std::make_shared<TypeCell>(ptr, type);
+    // 4. Создаем TypePointer на это место
+    auto cell = std::make_shared<TypePointer>(ptr, type);
 
     // 5. Двигаем курсор вперед
     m_position += size;
 
-    return Object::make_heap_object(cell, ObjectType::CELL);
+    return Object::make_heap_object(cell, ObjectType::POINTER);
 }
 
 StaticWriter::StaticWriter(const std::shared_ptr<StaticBuffer> &buffer)

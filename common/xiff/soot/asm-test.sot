@@ -4,6 +4,11 @@
 
 (defmodule test-module)
 
+(define vector (deftype vector (basic)
+  ((x int16)   ;; offset 0
+   (y int16)   ;; offset 4
+   (z int16)))) ;; offset 8
+
 (zasm 
       (org #x0000)
 $zero      
@@ -40,7 +45,7 @@ $label2
 
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)
-(module-dump test-module)
+(print (module-dump test-module))
 (generate-module-listing test-module :print-listing #t)
 ;; 4. Сохраняем артефакты
 (save-module-hex test-module)

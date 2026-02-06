@@ -47,8 +47,8 @@ std::string object_type_to_string(ObjectType type) {
         return "[string-hash-table]";
     case ObjectType::READER:
         return "[reader]";
-    case ObjectType::CELL:
-        return "[cell]";
+    case ObjectType::POINTER:
+        return "[pointer]";
     case ObjectType::NATIVE_REF:
         return "[native-ref]";
     case ObjectType::STATIC_BUFFER:
@@ -119,7 +119,7 @@ void SymbolTable::init_core_symbols() {
     core.reader = make_symbol("reader");
     core.lextoken = make_symbol("lextoken");
     core.unknown = make_symbol("unknown");
-    core.cell = make_symbol("cell");
+    core.pointer = make_symbol("pointer");
     core.native_ref = make_symbol("native-ref");
     core.static_buffer = make_symbol("static-buffer");
     core.static_writer = make_symbol("static-writer");
@@ -158,8 +158,8 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.environment;
     case ObjectType::READER:
         return core.reader;
-    case ObjectType::CELL:
-        return core.cell;
+    case ObjectType::POINTER:
+        return core.pointer;
     case ObjectType::NATIVE_REF:
         return core.native_ref;
     case ObjectType::STATIC_BUFFER:
@@ -342,18 +342,18 @@ Object HeapObject::make_step_accessor(const Object &key) {
     // если после всех попыток он получил undefined.
     return Object::make_undefined();
 }
-
-// 2. Для автоматического eval и явного (deref obj)
-// По умолчанию объект разыменовывается в самого себя.
-Object HeapObject::deref() {
-    return Object::make_native_ref(shared_from_this());
+// В HeapObject.cpp
+Object HeapObject::get_at(const Object &key) {
+    Object target = this->make_step_accessor(key);
+    if (target.is_pointer())
+        return target.as_pointer()->get();
+    return Object::make_undefined();
 }
 
-// 3. Для (set! obj val)
-// По умолчанию объекты в куче неизменяемы (кроме ячеек).
-void HeapObject::assign(const Object &value) {
-    (void)value;
-    throw std::runtime_error(fmt::format("Object {} is not assignable", this->print()));
+void HeapObject::set_at(const Object &key, const Object &value) {
+    Object target = this->make_step_accessor(key);
+    if (target.is_pointer())
+        target.as_pointer()->set(value);
 }
 
 // ============================================================================
@@ -387,24 +387,19 @@ Object Object::make_reader(TextStream *textStream) {
     return obj;
 }
 
-Object Object::make_cell(std::shared_ptr<MemoryCell> cell, MemoryAccessKind type) {
+Object Object::make_pointer(std::shared_ptr<Pointer> pointer, std::string type) {
     Object obj;
-    obj.type = ObjectType::CELL;
-
-    // Сначала настраиваем данные внутри MemoryCell
-    if (cell) {
-        cell->m_kind = type;
-    }
-
-    // И только в самом конце отдаем владение объекту Object
-    obj.heap_obj = std::move(cell);
+    obj.type = ObjectType::POINTER;
+    if (pointer)
+        pointer->m_type = type;
+    obj.heap_obj = std::move(pointer);
     return obj;
 }
 
-Object Object::make_cell(void *raw_ptr, MemoryAccessKind type) {
+Object Object::make_pointer(void *raw_ptr, std::string type) {
     // Создаем НОВЫЙ объект ячейки в куче, который будет смотреть на raw_ptr
-    auto cell = std::make_shared<MemoryCell>(raw_ptr);
-    return make_cell(std::move(cell), type);
+    auto pointer_shr = std::make_shared<Pointer>(raw_ptr);
+    return make_pointer(std::move(pointer_shr), type);
 }
 
 Object Object::make_integer(IntType value) {
@@ -685,20 +680,20 @@ const IntegerObject &Object::as_integer_obj() const {
     return integer_obj;
 }
 
-MemoryCell *Object::as_cell() const {
-    if (type != ObjectType::CELL) {
-        throw std::runtime_error("as_cell called on a " + object_type_to_string(type) + " " +
+Pointer *Object::as_pointer() const {
+    if (type != ObjectType::POINTER) {
+        throw std::runtime_error("as_pointer called on a " + object_type_to_string(type) + " " +
                                  print());
     }
-    return dynamic_cast<MemoryCell *>(heap_obj.get());
+    return dynamic_cast<Pointer *>(heap_obj.get());
 }
 
-HeapObject *Object::as_native_ref() const {
+NativeRef *Object::as_native_ref() const {
     if (type != ObjectType::NATIVE_REF) {
         throw std::runtime_error("as_reference called on a " + object_type_to_string(type) + " " +
                                  print());
     }
-    return dynamic_cast<HeapObject *>(heap_obj.get());
+    return dynamic_cast<NativeRef *>(heap_obj.get());
 }
 
 uint32_t Object::as_crc32() const {
@@ -730,7 +725,7 @@ Object SpecialFormObject::inspect() const {
     ListBuilder lb;
     lb.add(Object::make_symbol("special-form"));
     // Если нужно, сюда можно добавить адрес метода для низкоуровневой отладки
-    return lb.finalize();
+    return lb.build();
 }
 
 Object BuiltinFunctionObject::inspect() const {
@@ -750,7 +745,7 @@ Object BuiltinFunctionObject::inspect() const {
         lb.add(Object::symbol_table().core.true_or_false(true));
     }
 
-    return lb.finalize();
+    return lb.build();
 }
 
 // ============================================================================
@@ -913,7 +908,7 @@ Object ArgumentSpec::to_object() const {
                 ListBuilder entry{};
                 entry.push_back(Object::make_symbol(name.c_str()));
                 entry.push_back(spec.default_value);
-                lb.push_back(entry.finalize());
+                lb.push_back(entry.build());
             } else {
                 lb.push_back(Object::make_symbol(name.c_str()));
             }
@@ -926,7 +921,7 @@ Object ArgumentSpec::to_object() const {
         lb.push_back(Object::make_symbol(rest.c_str()));
     }
 
-    return lb.finalize();
+    return lb.build();
 }
 
 ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
@@ -970,161 +965,177 @@ ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
 // Memory Cell
 // ============================================================================
 
-Object MemoryCell::inspect() const {
+// Вспомогательная функция для определения размера типа на лету (только примитивы)
+static size_t get_primitive_size(const std::string &type) {
+    if (type == "int8" || type == "uint8" || type == "byte")
+        return 1;
+    if (type == "int16" || type == "uint16")
+        return 2;
+    if (type == "int32" || type == "uint32" || type == "float")
+        return 4;
+    if (type == "int64" || type == "uint64" || type == "double" || type == "pointer")
+        return 8;
+    return 0;
+}
+
+Object Pointer::inspect() const {
     ListBuilder lb{};
+    // Используем символ 'pointer' для идентификации в инспекции
+    lb.push_back(Object::symbol_table().core.pointer);
 
-    lb.push_back(Object::symbol_table().core.cell); // Символ 'cell
-
-    // Вместо "base" и "key" мы показываем физику:
     lb.push_kv("address", Object::make_integer((uintptr_t)m_ptr));
+    lb.push_kv("type", Object::make_string(m_type));
 
-    // Показываем текущее значение, раз мы "арестовали" этот участок памяти
-    try {
-        lb.push_kv("value", const_cast<MemoryCell *>(this)->get());
-    } catch (...) {
-        lb.push_kv("value", Object::symbol_table().core.unknown);
+    return lb.build();
+}
+
+std::string Pointer::print() const {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "#<pointer %s @ 0x%p>", m_type.c_str(), m_ptr);
+    return std::string(buf);
+}
+
+Object Pointer::make_step_accessor(const Object &key) {
+    if (key.is_integer()) {
+        size_t element_size = get_primitive_size(m_type);
+        if (element_size == 0) {
+            // Если тип сложный (структура), шаг должен вычисляться в TypeSystem,
+            // но на этом уровне мы просто двигаем указатель как по байтам.
+            element_size = 1;
+        }
+
+        uint8_t *new_addr = (uint8_t *)m_ptr + (key.as_integer() * element_size);
+        // Возвращаем новый указатель с тем же типом, но смещенным адресом
+        return Object::make_pointer(new_addr, m_type);
     }
 
-    return lb.finalize();
+    throw std::runtime_error("Pointer step accessor requires an integer offset");
 }
 
-Object MemoryCell::make_step_accessor(const Object &key) {
-    (void)key;
-    // Пытаемся привести базовый Type* к StructType*
-    throw std::runtime_error("Can't make step alias on the MemoryCell");
-    return Object::make_undefined();
-}
-
-std::string MemoryCell::get_type_name() const {
-    switch (m_kind) {
-    case MemoryAccessKind::SINT8:
-        return "sint8";
-    case MemoryAccessKind::UINT8:
-        return "uint8";
-    case MemoryAccessKind::SINT16:
-        return "sint16";
-    case MemoryAccessKind::UINT16:
-        return "uint16";
-    case MemoryAccessKind::SINT32:
-        return "sint32";
-    case MemoryAccessKind::UINT32:
-        return "uint32";
-    case MemoryAccessKind::SINT64:
-        return "sint64";
-    case MemoryAccessKind::UINT64:
-        return "uint64";
-    case MemoryAccessKind::FLOAT:
-        return "float";
-    case MemoryAccessKind::DOUBLE:
-        return "double";
-    case MemoryAccessKind::POINTER:
-        return "pointer";
-    case MemoryAccessKind::STRING:
-        return "string";
-    case MemoryAccessKind::CUSTOM:
-        return "string";
-    default:
-        return "unknown";
-    }
-}
-
-Object MemoryCell::get() {
+Object Pointer::get() {
     if (!m_ptr)
         return Object::make_undefined();
 
-    switch (m_kind) {
-    case MemoryAccessKind::SINT8:
+    if (m_type == "int8")
         return Object::make_integer(*(int8_t *)m_ptr);
-    case MemoryAccessKind::UINT8:
+    if (m_type == "uint8" || m_type == "byte")
         return Object::make_integer(*(uint8_t *)m_ptr);
 
-    case MemoryAccessKind::SINT16:
+    if (m_type == "int16")
         return Object::make_integer(*(int16_t *)m_ptr);
-    case MemoryAccessKind::UINT16:
+    if (m_type == "uint16")
         return Object::make_integer(*(uint16_t *)m_ptr);
 
-    case MemoryAccessKind::SINT32:
+    if (m_type == "int32")
         return Object::make_integer(*(int32_t *)m_ptr);
-    case MemoryAccessKind::UINT32:
+    if (m_type == "uint32")
         return Object::make_integer(*(uint32_t *)m_ptr);
 
-    case MemoryAccessKind::SINT64:
+    if (m_type == "int64")
         return Object::make_integer(*(int64_t *)m_ptr);
-    case MemoryAccessKind::UINT64:
-        return Object::make_integer((int64_t)*(uint64_t *)m_ptr); // Каст к знаковому для Лиспа
+    if (m_type == "uint64")
+        return Object::make_integer((int64_t)*(uint64_t *)m_ptr);
 
-    case MemoryAccessKind::FLOAT:
+    if (m_type == "float")
         return Object::make_float(*(float *)m_ptr);
-    case MemoryAccessKind::DOUBLE:
+    if (m_type == "double")
         return Object::make_float((float)*(double *)m_ptr);
 
-    case MemoryAccessKind::POINTER:
+    if (m_type == "pointer")
         return Object::make_integer((uintptr_t)*(void **)m_ptr);
 
-    case MemoryAccessKind::STRING: {
-        // В OpenGOAL строка — это часто указатель на начало char данных
+    if (m_type == "string") {
         char *str_ptr = *(char **)m_ptr;
         return str_ptr ? Object::make_string(str_ptr) : Object::make_null();
     }
 
-    default:
-        return Object::make_undefined();
-    }
+    // Если тип не примитивный (например, "vector"), возвращаем сам Pointer.
+    // Это позволит продолжить цепочку (-> ptr field)
+    return Object::make_native_ref(shared_from_this());
 }
 
-void MemoryCell::set(const Object &val) {
+void Pointer::set(const Object &val) {
     if (!m_ptr)
         return;
 
-    switch (m_kind) {
-    case MemoryAccessKind::SINT8:
+    if (m_type == "int8") {
         *(int8_t *)m_ptr = (int8_t)val.as_integer();
-        break;
-    case MemoryAccessKind::UINT8:
-        *(uint8_t *)m_ptr = (uint8_t)val.as_integer();
-        break;
-
-    case MemoryAccessKind::SINT16:
-        *(int16_t *)m_ptr = (int16_t)val.as_integer();
-        break;
-    case MemoryAccessKind::UINT16:
-        *(uint16_t *)m_ptr = (uint16_t)val.as_integer();
-        break;
-
-    case MemoryAccessKind::SINT32:
-        *(int32_t *)m_ptr = (int32_t)val.as_integer();
-        break;
-    case MemoryAccessKind::UINT32:
-        *(uint32_t *)m_ptr = (uint32_t)val.as_integer();
-        break;
-
-    case MemoryAccessKind::SINT64:
-        *(int64_t *)m_ptr = (int64_t)val.as_integer();
-        break;
-    case MemoryAccessKind::UINT64:
-        *(uint64_t *)m_ptr = (uint64_t)val.as_integer();
-        break;
-
-    case MemoryAccessKind::FLOAT:
-        *(float *)m_ptr = val.as_float();
-        break;
-    case MemoryAccessKind::DOUBLE:
-        *(double *)m_ptr = (double)val.as_float();
-        break;
-
-    case MemoryAccessKind::POINTER:
-        *(uintptr_t *)m_ptr = (uintptr_t)val.as_integer();
-        break;
-
-    case MemoryAccessKind::STRING:
-        // Внимание: запись в строки обычно требует аллокации,
-        // здесь мы просто меняем указатель, если это допустимо.
-        *(char **)m_ptr = const_cast<char *>(val.to_std_string().c_str());
-        break;
-
-    default:
-        throw std::runtime_error("Unsupported memory write operation");
+        return;
     }
+    if (m_type == "uint8" || m_type == "byte") {
+        *(uint8_t *)m_ptr = (uint8_t)val.as_integer();
+        return;
+    }
+
+    if (m_type == "int16") {
+        *(int16_t *)m_ptr = (int16_t)val.as_integer();
+        return;
+    }
+    if (m_type == "uint16") {
+        *(uint16_t *)m_ptr = (uint16_t)val.as_integer();
+        return;
+    }
+
+    if (m_type == "int32") {
+        *(int32_t *)m_ptr = (int32_t)val.as_integer();
+        return;
+    }
+    if (m_type == "uint32") {
+        *(uint32_t *)m_ptr = (uint32_t)val.as_integer();
+        return;
+    }
+
+    if (m_type == "int64") {
+        *(int64_t *)m_ptr = (int64_t)val.as_integer();
+        return;
+    }
+    if (m_type == "uint64") {
+        *(uint64_t *)m_ptr = (uint64_t)val.as_integer();
+        return;
+    }
+
+    if (m_type == "float") {
+        *(float *)m_ptr = val.as_float();
+        return;
+    }
+    if (m_type == "double") {
+        *(double *)m_ptr = (double)val.as_float();
+        return;
+    }
+
+    if (m_type == "pointer") {
+        *(uintptr_t *)m_ptr = (uintptr_t)val.as_integer();
+        return;
+    }
+
+    throw std::runtime_error("Unsupported memory write for type: " + m_type);
+}
+
+void Pointer::set_at(const Object &key, const Object &value) {
+    // 1. Создаем временный указатель на нужный оффсет/поле
+    Object target = this->make_step_accessor(key);
+
+    // 2. Если шаг успешен, пишем значение по новому адресу
+    if (target.is_pointer()) {
+        target.as_pointer()->set(value);
+    } else {
+        throw std::runtime_error("Pointer::set_at: failed to resolve address for key " +
+                                 key.print());
+    }
+}
+Object Pointer::get_at(const Object &key) {
+    // 1. Создаем временный указатель (аксессор) на поле или элемент массива
+    // Это вычисляет новый адрес (m_ptr + offset) и определяет тип поля
+    Object target = this->make_step_accessor(key);
+
+    // 2. Проверяем, что шаг прошел успешно и мы получили объект-указатель
+    if (target.is_pointer()) {
+        // Разыменовываем (читаем значение по вычисленному адресу)
+        return target.as_pointer()->get();
+    }
+
+    // Если шаг невозможен (нет такого поля/индекса), возвращаем undefined
+    return Object::make_undefined();
 }
 
 // ============================================================================
@@ -1310,10 +1321,6 @@ std::string PairObject::print() const {
     return ss.str();
 }
 
-std::string MemoryCell::print() const {
-    return fmt::format("#<cell addr={:p}>", m_ptr);
-}
-
 // ============================================================================
 //   INSPECTORS
 // ============================================================================
@@ -1340,21 +1347,21 @@ Object Object::inspect() const {
         ListBuilder lb{};
         lb.push_back(Object::make_symbol("integer"));
         lb.push_kv("value", *this);
-        return lb.finalize();
+        return lb.build();
     }
 
     case ObjectType::FLOAT: {
         ListBuilder lb{};
         lb.push_back(Object::make_symbol("float"));
         lb.push_kv("value", *this);
-        return lb.finalize();
+        return lb.build();
     }
 
     case ObjectType::SYMBOL: {
         ListBuilder lb{};
         lb.push_back(Object::make_symbol("symbol"));
         lb.push_kv("name", *this);
-        return lb.finalize();
+        return lb.build();
     }
 
     default:
@@ -1370,7 +1377,7 @@ Object PairObject::inspect() const {
     lb.push_back(Object::make_symbol("pair"));
     lb.push_kv("car", this->car);
     lb.push_kv("cdr", this->cdr);
-    return lb.finalize();
+    return lb.build();
 }
 
 Object StringObject::inspect() const {
@@ -1378,14 +1385,14 @@ Object StringObject::inspect() const {
     lb.push_back(Object::make_symbol("string"));
     lb.push_kv("value", Object::make_string(print().c_str()));
     lb.push_kv("length", Object::make_integer(data.length()));
-    return lb.finalize();
+    return lb.build();
 }
 
 template <typename T> Object FixedObject<T>::inspect() const {
     ListBuilder lb{};
     lb.push_back(Object::make_symbol(type_as_string().c_str()));
     lb.push_kv("value", Object(value)); // Убрали & перед symbols
-    return lb.finalize();
+    return lb.build();
 }
 
 Object ArrayObject::inspect() const {
@@ -1409,9 +1416,9 @@ Object ArrayObject::inspect() const {
         elements_lb.push_back(Object::make_symbol("..."));
     }
 
-    lb.push_kv("data", elements_lb.finalize());
+    lb.push_kv("data", elements_lb.build());
 
-    return lb.finalize();
+    return lb.build();
 }
 
 // Удалено дублирующееся определение HashTableObject::inspect. Оставили одно:
@@ -1425,10 +1432,10 @@ Object HashTableObject::inspect() const {
         ListBuilder pair_lb{};
         pair_lb.push_back(Object::make_string(key.c_str()));
         pair_lb.push_back(val);
-        entries_lb.push_back(pair_lb.finalize());
+        entries_lb.push_back(pair_lb.build());
     }
-    lb.push_kv("entries", entries_lb.finalize());
-    return lb.finalize();
+    lb.push_kv("entries", entries_lb.build());
+    return lb.build();
 }
 
 Object EnvironmentObject::inspect() const {
@@ -1444,7 +1451,7 @@ Object EnvironmentObject::inspect() const {
     // Если InternedPtrMap не поддерживает итераторы, выводим только количество
     lb.push_kv("bindings-count", Object::make_integer(size()));
     lb.push_kv("address", Object::make_integer((int64_t)this));
-    return lb.finalize();
+    return lb.build();
 }
 
 Object LambdaObject::inspect() const {
@@ -1454,7 +1461,7 @@ Object LambdaObject::inspect() const {
                name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
     lb.push_kv("args", args.to_object());
     lb.push_kv("body", body);
-    return lb.finalize();
+    return lb.build();
 }
 
 Object MacroObject::inspect() const {
@@ -1477,14 +1484,14 @@ Object MacroObject::inspect() const {
     // 5. Адрес в памяти для отладки
     lb.push_kv("address", Object::make_integer((int64_t)this));
 
-    return lb.finalize();
+    return lb.build();
 }
 
 Object ReaderObject::inspect() const {
     ListBuilder lb{};
     lb.push_back(Object::make_symbol("reader"));
     lb.push_kv("line", Object::make_integer(ts ? ts->line_count : 0));
-    return lb.finalize();
+    return lb.build();
 }
 
 Object ArgumentSpec::inspect() const {
@@ -1492,7 +1499,7 @@ Object ArgumentSpec::inspect() const {
     lb.push_back(Object::make_symbol("argument-spec"));
     lb.push_kv("has-rest", rest.empty() ? Object::make_null() : Object::make_symbol("#t"));
     lb.push_kv("structure", this->to_object());
-    return lb.finalize();
+    return lb.build();
 }
 
 Object Arguments::inspect() const {
@@ -1502,14 +1509,15 @@ Object Arguments::inspect() const {
     ListBuilder u_list{};
     for (const auto &obj : unnamed)
         u_list.push_back(obj);
-    lb.push_kv("unnamed", u_list.finalize());
+    lb.push_kv("unnamed", u_list.build());
 
     ListBuilder n_list{};
     for (const auto &[name, obj] : named) {
         n_list.push_kv(name.c_str(), obj); // Убрали & перед symbols
     }
-    lb.push_kv("named", n_list.finalize());
+    lb.push_kv("named", n_list.build());
 
-    return lb.finalize();
+    return lb.build();
 }
+
 } // namespace script

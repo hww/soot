@@ -23,6 +23,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/versions/revision.h"
 #include <filesystem>
+#include <fstream>
 #include <set>
 
 namespace script {
@@ -72,7 +73,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"macro", ObjectType::MACRO},
         {"environment", ObjectType::ENVIRONMENT},
         {"reader", ObjectType::READER},
-        {"cell", ObjectType::CELL},
+        {"cell", ObjectType::POINTER},
         {"static-buffer", ObjectType::STATIC_BUFFER},
         {"static-writer", ObjectType::STATIC_WRITER},
     };
@@ -285,6 +286,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
         //
         {"make-accessor", &Interpreter::eval_make_accessor, nullptr},
+        {"&", &Interpreter::eval_addr_of, nullptr},
         {"cell-get", &Interpreter::eval_cell_get, nullptr},
         {"cell-set!", &Interpreter::eval_cell_set, nullptr},
 
@@ -577,7 +579,8 @@ Object Interpreter::call_lambda_internal(const Object &lambda, const std::vector
     bool   has_rest = !lam->args.rest.empty() || lam->args.varargs;
 
     if (args.size() < min_args || (!has_rest && args.size() > min_args)) {
-        throw std::runtime_error(
+        throw_eval_error(
+            lambda,
             fmt::format("call_lambda: wrong number of arguments (expected {}, got {})",
                         has_rest ? fmt::format("at least {}", min_args) : std::to_string(min_args),
                         args.size()));
@@ -764,8 +767,8 @@ Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &ob
 Object Interpreter::eval(const Object &parent_form, const Object &obj,
                          const std::shared_ptr<EnvironmentObject> &env, bool self_eval_place) {
     switch (obj.type) {
-    case ObjectType::CELL:
-        return obj.as_cell()->get();
+    case ObjectType::POINTER:
+        return obj.as_pointer()->get();
     case ObjectType::NATIVE_REF:
         return obj.as_native_ref()->deref();
     case ObjectType::SYMBOL:
@@ -1664,6 +1667,9 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object &form, Object &rest) {
     Object       current = rest;
 
     while (!current.is_null()) {
+        if (!current.is_pair()) {
+            throw_eval_error(form, "argument spec must be a list");
+        }
         auto arg = current.as_pair()->car;
 
         // 1. Пытаемся понять, не встретили ли мы спец-символ (&key или &rest)
@@ -2849,21 +2855,21 @@ Object Interpreter::eval_cell_p(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_cell());
+    return true_or_false(args.unnamed[0].is_pointer());
 }
 
 Object Interpreter::eval_special_form_p(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_cell());
+    return true_or_false(args.unnamed[0].is_pointer());
 }
 
 Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_cell());
+    return true_or_false(args.unnamed[0].is_pointer());
 }
 
 // ============================================================
@@ -4197,9 +4203,10 @@ Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
         return get_null();
 
     Object spec_input = rest.as_pair()->car;
-    auto   ts = std::make_shared<TypeSpec>(parse_typespec(&TypeSystem::instance(), spec_input));
+    auto   ts_ptr = parse_typespec(&TypeSystem::instance(), spec_input);
+    auto   ts_shared = std::make_shared<TypeSpec>(ts_ptr);
 
-    return Object::make_native_ref(ts);
+    return Object::make_native_ref(ts_shared);
 }
 
 Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
@@ -4207,7 +4214,11 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
     (void)env;
     auto env_ptr = get_global_environment().as_env();
     try {
-        parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
+        auto result = parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
+        auto type_shared = std::shared_ptr<Type>(result.type_info, [](Type *) {
+            /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
+        });
+        return Object::make_native_ref(type_shared);
     } catch (std::runtime_error ex) {
         throw_eval_error(form, ex.what());
     }
@@ -4217,8 +4228,11 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
 Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    parse_defenum(rest, &TypeSystem::instance(), nullptr);
-    return get_null();
+    auto enum_ptr = parse_defenum(rest, &TypeSystem::instance(), nullptr);
+    auto enum_shared = std::shared_ptr<Type>(enum_ptr, [](Type *) {
+        /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
+    });
+    return Object::make_native_ref(enum_shared);
 }
 
 Object Interpreter::eval_types_to_lisp(const Object &, Arguments &,
@@ -4250,14 +4264,14 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
  * * * Принцип работы:
  * Превращает пару (Объект, Ключ) в новую точку доступа (Alias).
  * - Если база — NativeRef (метаданные), извлекает свойства типа.
- * - Если база — TypeCell (память), вычисляет адрес поля и возвращает дочерний TypeCell.
+ * - Если база — TypePointer (память), вычисляет адрес поля и возвращает дочерний TypePointer.
  * * * Использование в Lisp (неявное):
  * Используется внутри функций навигации. Например, в выражении:
  * (-> cell 'x 'y)
  * Интерпретатор дважды вызовет `make-alias`:
  * 1. (make-accessor cell 'x) -> вернет ячейку поля x
  * 2. (make-accessor cell_x 'y) -> вернет ячейку поля y внутри x
- * * @return Object (TypeCell со смещением или метаданные из NativeRef)
+ * * @return Object (TypePointer со смещением или метаданные из NativeRef)
  */
 Object Interpreter::eval_make_accessor(const Object &form, Arguments &args,
                                        const std::shared_ptr<EnvironmentObject> &env) {
@@ -4272,9 +4286,37 @@ Object Interpreter::eval_make_accessor(const Object &form, Arguments &args,
     }
 
     // 2. Продолжение пути: База — это уже созданный CELL (MemoryCell)
-    if (base.is_cell()) {
+    if (base.is_pointer()) {
         return base.as_native_ref()->make_step_accessor(key); // Теперь навигация пойдет вглубь!
     }
+
+    return m_sym_undefined; // nil логичнее пустой коллекции
+};
+Object Interpreter::eval_addr_of(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}}, {});
+
+    auto base = args.unnamed[0];
+
+    // // 1. Продолжение пути: База — это уже созданный CELL (MemoryCell)
+    // if (base.is_cell()) {
+    //     auto *ptr = base.as_native_ref()->resolve_ptr(); // Теперь навигация пойдет вглубь!
+    //     return Object::make_pointer(ptr);
+    // }
+    //
+    // // 1. Стартовая точка: База — это NATIVE_REF (например, TypeSpec или Instance)
+    // if (base.is_native_ref()) {
+    //     return base.as_native_ref()->make_step_accessor(key);
+    // }
+    //
+    // // Псевдокод логики &
+    // if (args[0].is_type()) {
+    //     // Если это (& vector x), ищем смещение x в типе vector
+    //     return Object::make_int(args[0].as_type()->get_offset(args[1]));
+    // } else {
+    //     // Если это (& my_label), ищем адрес метки
+    //     return Object::make_pointer(env->lookup_address(args[0]));
+    // }
 
     return m_sym_undefined; // nil логичнее пустой коллекции
 }
@@ -4284,7 +4326,7 @@ Object Interpreter::eval_make_accessor(const Object &form, Arguments &args,
  * Последовательно применяет цепочку ключей к объекту, "проваливаясь" внутрь
  * структур, массивов или метаданных. Реализует высокоуровневый синтаксис доступа.
  * * * Особенности реализации:
- * 1. Первый аргумент вычисляется (eval) — это корень (например, переменная с TypeCell).
+ * 1. Первый аргумент вычисляется (eval) — это корень (например, переменная с TypePointer).
  * 2. Последующие аргументы-символы трактуются как имена полей БЕЗ вычисления.
  * 3. Аргументы-списки или числа вычисляются (позволяет динамические индексы).
  * * * Синтаксис в Lisp: (-> root field1 index field2)
@@ -4293,7 +4335,7 @@ Object Interpreter::eval_make_accessor(const Object &form, Arguments &args,
  * (-> my-buf 10 'int)      ; корень my-buf, вычислить индекс 10, шаг к типу int
  * (-> obj (get-idx) 'name) ; индекс вычисляется вызовом функции
  * * * @param rest Список аргументов навигации.
- * * @return Конечный объект (TypeCell, значение или метаданные) после прохождения всего пути.
+ * * @return Конечный объект (TypePointer, значение или метаданные) после прохождения всего пути.
  */
 Object Interpreter::eval_navigation_special(const Object &form, const Object &rest,
                                             const std::shared_ptr<EnvironmentObject> &env) {
@@ -4356,39 +4398,39 @@ Object Interpreter::eval_navigation_special(const Object &form, const Object &re
 /**
  * @brief Чтение значения из ячейки памяти (Dereference).
  * * * Роль: Преобразует сырые байты из буфера в объект интерпретатора.
- * Использует метаданные типа, хранящиеся в TypeCell, чтобы понять,
+ * Использует метаданные типа, хранящиеся в TypePointer, чтобы понять,
  * сколько байт читать и как их интерпретировать (как число, строку или энум).
  * * * Lisp Logic:
  * (cell-get cell) -> возвращает значение.
  * Обычно используется автоматически при обращении к ячейке в контексте выражения.
- * * * @param args[0] Объект TypeCell.
+ * * * @param args[0] Объект TypePointer.
  * @return Object (Число, строка или другой примитив).
  */
 Object Interpreter::eval_cell_get(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::CELL}}, {});
-    auto cell = args.unnamed[0].as_native_ref<TypeCell>();
+    vararg_check(form, args, {{ObjectType::POINTER}}, {});
+    auto cell = args.unnamed[0].as_native_ref<TypePointer>();
     return cell->get(); // Использует StaticBufferReader внутри
 }
 /**
  * @brief Запись значения в ячейку памяти (Assignment).
  * * * Роль: Сериализует объект интерпретатора в сырые байты буфера.
- * Это "физический" уровень записи. Функция берет TypeCell, находит
- * связанный с ней StaticBuffer и записывает данные по адресу TypeCell->ptr.
+ * Это "физический" уровень записи. Функция берет TypePointer, находит
+ * связанный с ней StaticBuffer и записывает данные по адресу TypePointer->ptr.
  * * * Особенности:
  * - Учитывает порядок байтов (Endianness) целевой платформы (Z80).
  * - Выполняет проверку типов (нельзя записать строку в ячейку int8).
  * * * Lisp Logic:
  * (cell-set! cell value)
  * (set! (-> my-struct 'field) 10) ; Внутри развернется в call-set!
- * * * @param args[0] Объект TypeCell (куда писать).
+ * * * @param args[0] Объект TypePointer (куда писать).
  * @param args[1] Значение (что писать).
  * @return undefined
  */
 Object Interpreter::eval_cell_set(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::CELL}, {}}, {}); // Ячейка и любое значение
-    auto cell = args.unnamed[0].as_native_ref<TypeCell>();
+    vararg_check(form, args, {{ObjectType::POINTER}, {}}, {}); // Ячейка и любое значение
+    auto cell = args.unnamed[0].as_native_ref<TypePointer>();
     cell->set(args.unnamed[1]); // Использует StaticBufferWriter внутри
     return get_undefined();
 }
@@ -4444,7 +4486,7 @@ Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
 }
 /**
  * @brief Фабрика ячеек памяти (Типизированный указатель).
- * * * Роль: Создает объект TypeCell, который связывает конкретный адрес в памяти с типом.
+ * * * Роль: Создает объект TypePointer, который связывает конкретный адрес в памяти с типом.
  * Поддерживает два режима работы:
  * 1. Через Writer: (static-cell writer 'type)
  * - Автоматически выделяет место в текущей позиции врайтера.
@@ -4454,7 +4496,7 @@ Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
  * * * Lisp Logic:
  * (define cell (static-cell wr 'test-vector)) ; Аллокация и создание ссылки
  * (define cell (static-cell buf #x10 'int8))  ; Прямой доступ по адресу
- * * * @return Object (TypeCell).
+ * * * @return Object (TypePointer).
  */
 Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
@@ -4463,7 +4505,7 @@ Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
     if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
         auto        writer = args.unnamed[0].as_native_ref<StaticWriter>();
         std::string type_name = args.unnamed[1].as_symbol();
-        return writer->allocate(type_name); // Возвращает TypeCell через HeapObject
+        return writer->allocate(type_name); // Возвращает TypePointer через HeapObject
     }
 
     auto        buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
@@ -4472,8 +4514,8 @@ Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
 
     Type *type = TypeSystem::instance().lookup_type(type_name);
     void *ptr = buffer->data() + offset;
-    auto  cell = std::make_shared<TypeCell>(ptr, type, buffer, Object::make_integer(offset));
-    return Object::make_heap_object(cell, ObjectType::CELL);
+    auto  cell = std::make_shared<TypePointer>(ptr, type, buffer);
+    return Object::make_heap_object(cell, ObjectType::POINTER);
 }
 
 /**
@@ -4622,7 +4664,7 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
  * 2. Через Buffer (Random access): (write-to buf val :as 'type :at offset)
  * - Записывает данные строго по указанному адресу.
  * Особенности:
- * - Использует временную или постоянную TypeCell для выполнения физической записи.
+ * - Использует временную или постоянную TypePointer для выполнения физической записи.
  * - Возвращает смещение (offset), по которому были записаны данные, что удобно
  * для построения таблиц перекрестных ссылок.
  * Lisp Logic:
@@ -4640,19 +4682,22 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
     std::string type_name = args.named["as"].to_std_string();
     // fmt::print("{}\n", pretty_print::to_string(value, 80).c_str());
     try {
-        TypeCell                 *cell_ptr = nullptr;
-        std::shared_ptr<TypeCell> managed_cell;
-        size_t                    write_offset = 0;
+        TypePointer                 *cell_ptr = nullptr;
+        std::shared_ptr<TypePointer> managed_cell;
+        size_t                       write_offset = 0;
 
         // 1. Подготовка ячейки (Слайса)
         if (target.is_type(ObjectType::STATIC_WRITER)) {
             auto   writer = target.as_native_ref<StaticWriter>();
             Object cell_obj = writer->allocate(type_name);
-            managed_cell = cell_obj.as_native_ref<TypeCell>();
+
+            // Здесь cell_obj должен быть POINTER (TypePointer)
+            managed_cell = cell_obj.as_native_ref<TypePointer>();
             cell_ptr = managed_cell.get();
-            write_offset = writer->tell() - cell_ptr->m_type->get_size_in_memory();
+
+            // Вычисляем оффсет относительно начала буфера писателя для возвращаемого значения
+            write_offset = writer->tell() - cell_ptr->get_type()->get_size_in_memory();
         } else {
-            // Режим буфера с :at
             if (!args.named.count("at")) {
                 throw_eval_error(form, "Keyword :at required for buffer write");
                 return get_null();
@@ -4666,13 +4711,10 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                 throw_eval_error(form, "Unknown type: " + type_name);
             }
 
-            // Вычисляем физический адрес в буфере
             void *physical_ptr = buffer_ptr->data() + write_offset;
 
-            // ВАЖНО: передаем buffer_ptr (shared_ptr), чтобы TypeCell удерживал буфер от удаления
-            managed_cell = std::make_shared<TypeCell>(physical_ptr, type, buffer_ptr,
-                                                      Object::make_integer(write_offset));
-
+            // ОБНОВЛЕНО: Используем новый конструктор с 3 аргументами
+            managed_cell = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
             cell_ptr = managed_cell.get();
         }
 
@@ -4712,8 +4754,8 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
         } else if (!value.is_null()) {
             // Если пришло одиночное значение — пишем как раньше
             cell_ptr->set(value);
-		} else {
-			throw_eval_error(form, fmt::format("Static write failed: because value is null"));
+        } else {
+            throw_eval_error(form, fmt::format("Static write failed: because value is null"));
         }
 
         return Object::make_integer(write_offset);
@@ -4735,9 +4777,9 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
  * @param value The value to write to the cell. Can be an alist or an array.
  */
 void Interpreter::recursive_write(Object cell_obj, Object value) {
-    if (!cell_obj.is_type(ObjectType::CELL))
+    if (!cell_obj.is_type(ObjectType::POINTER))
         return;
-    auto cell = cell_obj.as_native_ref<TypeCell>();
+    auto cell = cell_obj.as_native_ref<TypePointer>();
 
     // 1. Если это ПУСТОЙ список — просто выходим, это конец обхода
     if (value.is_null()) {
@@ -4774,7 +4816,8 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
                 try {
                     // Создаем "дочернюю" ячейку для конкретного поля
                     // make_step_accessor сам вычислит смещение поля внутри структуры
-                    Object field_cell = cell_obj.as_native_ref<TypeCell>()->make_step_accessor(key);
+                    Object field_cell =
+                        cell_obj.as_native_ref<TypePointer>()->make_step_accessor(key);
 
                     // Рекурсивно пишем значение в это поле
                     recursive_write(field_cell, val);
@@ -4791,10 +4834,10 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
     // --- ОБРАБОТКА ПРИМИТИВА ---
     // Если это не список, значит это конечное значение (int, float, etc.)
     if (!value.is_pair()) {
+        fmt::print("recursive_write cell: {} value: {}\n", cell->print(), value.print());
         cell->set(value); // Запись в память через Cell-Set
     }
 }
-
 Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -4804,27 +4847,24 @@ Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
     auto        buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
     std::string type_name = args.named["as"].to_std_string();
     size_t      offset = static_cast<size_t>(args.named["at"].as_integer());
-    // 2. Ищем тип
+
+    // 2. Ищем определение типа
     Type *type = TypeSystem::instance().lookup_type(type_name);
     if (!type)
         throw std::runtime_error("Unknown type: " + type_name);
+
     // 3. Вычисляем физический адрес (БАЗА + СМЕЩЕНИЕ)
     void *physical_ptr = buffer->data() + offset;
 
-    // 4. Создаем ячейку-окно
-    // Если это примитив — get() вернет число/символ.
-    // Если структура — get() вернет Object(TypeCell), позволяя навигацию ->// 4. Создаем "умную"
-    // ячейку Передаем: физику (ptr), тип, владельца (shared_ptr на буфер) и ключ (оффсет)
-    auto cell = std::make_shared<TypeCell>(physical_ptr, type,
-                                           buffer,                      // Владелец
-                                           Object::make_integer(offset) // Ключ
+    // 4. Создаем ячейку-указатель
+    // Оффсет (offset) больше не передаем, он вычислится в set() через (ptr - data)
+    auto cell = std::make_shared<TypePointer>(physical_ptr, type,
+                                              buffer // Владелец удерживает буфер в памяти
     );
-    // 5. Возвращаем результат
-    // Если это примитив — get() вернет число/символ.
-    // Если структура — get() вернет Object(TypeCell), позволяя навигацию ->// 4. Создаем "умную"
-    // ячейку Передаем: физику (ptr), тип, владельца (shared_ptr на буфер) и ключ (оффсет)
-    // Если это простая переменная (int, float), возвращаем значение сразу.
-    // Если структура — возвращаем TypeCell, чтобы юзер мог делать (-> cell 'field)
+
+    // 5. Возвращаем результат разыменования
+    // - Если тип "value" (int, float, enum) -> вернет Object с числом/символом.
+    // - Если тип "structure" -> вернет Object(TypePointer), позволяя цепочку (-> ...).
     return cell->get();
 }
 
@@ -4909,12 +4949,18 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
                                              const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {ObjectType::LAMBDA}}, {});
 
-    auto  &table = args.unnamed[0].as_hash_table()->data;
-    Object lambda = args.unnamed[1];
+    auto       &table = args.unnamed[0].as_hash_table()->data;
+    Object      lambda = args.unnamed[1];
+    const auto &lam_data = lambda.as_lambda();
 
     for (auto const &[key, val] : table) {
-        // Мы просто передаем вектор объектов. Ключ и Значение.
-        call_lambda_internal(lambda, {Object::make_string(key), val});
+        if (lam_data->args.unnamed.size() == 1) {
+            // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
+            call_lambda_internal(lambda, {Object::make_pair(Object::make_string(key), val)});
+        } else {
+            // Если ждет 2 (или больше/rest), передаем как два аргумента
+            call_lambda_internal(lambda, {Object::make_string(key), val});
+        }
     }
     return get_null();
 }

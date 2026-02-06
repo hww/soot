@@ -12,29 +12,19 @@ namespace script {
  * write_bitfield_at_ptr в зависимости от класса типа.
  */
 void StaticBufferWriter::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
-    if (!ptr || !type)
-        return;
-
-    // Специальная обработка строк (так как они могут быть "string" или "symbol")
-    const std::string &type_name = type->get_name();
-    if (type_name == "string" || type_name == "symbol") {
+    if (auto *val_type = dynamic_cast<ValueType *>(type)) {
+        write_primitive_at_ptr(ptr, val_type, val);
+    } else if (auto *enum_type = dynamic_cast<EnumType *>(type)) {
+        write_enum_at_ptr(ptr, enum_type, val);
+    } else if (auto *bf_type = dynamic_cast<BitFieldType *>(type)) {
+        write_bitfield_at_ptr(ptr, bf_type, val);
+    } else if (type->get_name() == "string") {
         write_string_at_ptr(ptr, type, val);
-        return;
+    } else {
+        throw std::runtime_error("StaticBufferWriter: Unsupported type for direct write: " +
+                                 type->get_name());
     }
-
-    std::string class_name = type->get_class_name();
-
-    if (class_name == "value") {
-        write_primitive_at_ptr(ptr, static_cast<ValueType *>(type), val);
-    } else if (class_name == "enum") {
-        write_enum_at_ptr(ptr, static_cast<EnumType *>(type), val);
-    } else if (class_name == "bitfield") {
-        write_bitfield_at_ptr(ptr, static_cast<BitFieldType *>(type), val);
-    }
-    // Запись структур целиком (через alist) здесь не нужна,
-    // так как TypeCell позволяет писать в каждое поле отдельно.
 }
-
 /**
  * Запись примитивного значения в указатель.
  * Используется для записи значений, тип которых является
@@ -49,8 +39,8 @@ void StaticBufferWriter::write_primitive_at_ptr(void *ptr, ValueType *type, cons
 
     // Пытаемся получить числовое значение из объекта
     int64_t i_val = 0;
-    double f_val = 0.0;
-    bool is_float_type = (type->get_name() == "float" || type->get_name() == "double");
+    double  f_val = 0.0;
+    bool    is_float_type = (type->get_name() == "float" || type->get_name() == "double");
 
     if (val.is_integer()) {
         i_val = val.as_integer();
@@ -111,7 +101,7 @@ void StaticBufferWriter::write_enum_at_ptr(void *ptr, EnumType *type, const Obje
         // Ищем число по имени в словаре энума
         std::string name = val.to_std_string();
         const auto &entries = type->entries();
-        auto it = entries.find(name);
+        auto        it = entries.find(name);
         if (it != entries.end()) {
             numeric_to_write = it->second;
         }

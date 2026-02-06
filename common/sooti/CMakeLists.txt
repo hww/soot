@@ -13,7 +13,7 @@ add_library(libsoticore
 # 3. Высокоуровневый интерпретатор и мост к типам
 add_library(libsoti
     common/sooti/Interpreter.cpp
-    common/sooti/static_buffer/TypeCell.cpp
+    common/sooti/static_buffer/TypePointer.cpp
     common/sooti/static_buffer/StaticWriter.cpp
     common/sooti/static_buffer/StaticBuffer.cpp
     common/sooti/static_buffer/StaticBufferFactory.cpp

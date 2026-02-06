@@ -25,8 +25,8 @@ enum class RelocType {
 };
 
 struct Relocation {
-    size_t offset;
-    RelocType type;
+    size_t      offset;
+    RelocType   type;
     std::string target_name; // Имя типа или символа
 };
 
@@ -49,10 +49,10 @@ struct BufferLabel : public HeapObject {
         info.add_key_value("address", Object::make_integer(addr));
         info.add_key_value("segment", segment);
         info.add_key_value("meta", meta);
-        return info.finalize();
+        return info.build();
     }
 
-    Object make_step_accessor(const Object &key) {
+    Object make_step_accessor(const Object &key) override {
         if (key.is_symbol() || key.is_string()) {
             std::string name = key.to_std_string();
 
@@ -192,6 +192,8 @@ class StaticBuffer : public HeapObject {
     }
 
     Object make_step_accessor(const Object &key) override;
+
+    void write_value_at_ptr(void *ptr, Type *type, const Object &val);
 
     // ============================================================================
     // --- Реализация чтения различных данных ---
