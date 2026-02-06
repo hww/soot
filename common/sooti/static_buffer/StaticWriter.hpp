@@ -8,7 +8,7 @@ namespace script {
 
 class StaticWriter : public HeapObject {
   private:
-    size_t m_position;
+    size_t                        m_position;
     std::shared_ptr<StaticBuffer> m_buffer;
 
   public:
@@ -56,7 +56,7 @@ class StaticWriter : public HeapObject {
             return Object::make_integer(remaining());
 
         // Если просят тип по имени, считаем это аллокацией
-        // Пример: (-> writer 'my-struct-type) -> вернет TypeCell
+        // Пример: (-> writer 'my-struct-type) -> вернет TypePointer
         return allocate(name);
     }
 
@@ -66,7 +66,7 @@ class StaticWriter : public HeapObject {
         lb.add_keyword(":cursor");
         lb.add_integer(m_position);
 
-        return lb.finalize();
+        return lb.build();
     }
 };
 

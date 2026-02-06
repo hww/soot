@@ -23,7 +23,7 @@ class TypeSystem;
 namespace script {
 class ExitException : public std::exception {
   public:
-    int exit_code;
+    int         exit_code;
     std::string message; // Храним строку здесь
 
     explicit ExitException(int code = 0)
@@ -554,7 +554,8 @@ class Interpreter {
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_get_context(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
-
+    Object eval_addr_of(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
     Object eval_make_accessor(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_navigation_special(const Object &form, const Object &rest,

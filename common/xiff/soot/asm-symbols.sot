@@ -1,40 +1,53 @@
-﻿
+﻿;; Маленький помощник для динамического разыменования через ->
+(defun baz (n) n)
 
-(defun %calculate-module-size (mod)
-  "Считает суммарный размер всех сегментов модуля."
-  (let ((total 0))
+(defun format-label-meta (m)
+  (if (or (null? m) (eq? m '(ctx)))
+      '()  ;; Убираем ctx или null
+      m))  ;; Оставляем полезные данные
+
+(defun module-segments-list (mod)
+  (let ((lst '()))
     (begin
-      (for-each (module-segment-order mod)
-        (lambda (name)
-          (let ((seg (hash-table-ref (module-segments mod) name)))
-            ;; Размер сегмента — это разница между финальным ILC и базовым адресом
-            (set! total (+ total (- (segment-ilc seg) (segment-base-addr seg)))))))
-      total)))
-      
-(defun save-module-symbols (path mod)
-  "Сохраняет паспорт модуля в формате S-expression."
-  (let ((symbols-data '())
-        (exports '()))
+      (hash-table-for-each (module-segments mod)
+        (lambda (name obj) (set! lst (cons obj lst))))
+      lst)))
+
+(defun get-label-info (buffer label-name)
+  "Извлекает данные конкретной метки."
+  ;; baz заставляет интерпретатор вычислить переменную label-name
+  (let ((label (-> buffer (baz label-name))))
+    (list 
+      :address              
+      (string->symbol (fmt #f "#x{:04X}" (-> label addr)))      
+      :name
+      label-name           
+      :segment               
+      (-> label segment)   
+      :meta
+      (format-label-meta (-> label meta)))))   
+
+(defun collect-segment-symbols (seg)
+  "Собирает список всех меток сегмента."
+  (let* ((buffer (segment-buffer seg))
+         (names  (-> buffer labels)))
+    (map (lambda (name) (get-label-info buffer name))
+         names)))
+
+(defun save-module-symbols (path mod &optional (target-segments '()))
+  (let* ((segs (module-segments-list mod))
+         (all-symbols '()))
     (begin
-      (hash-table-for-each (module-symbols mod)
-        (lambda (name info)
-          ;; Извлекаем данные, проверяя, структура это или число
-          (let ((is-struct (asmsym-info? info)))
-            (let ((addr  (if is-struct (asmsym-info-address info) info))
-                  (scope (if is-struct (asmsym-info-scope info) :private))
-                  (type  (if is-struct (asmsym-info-type info) :label))
-                  (sig   (if is-struct (asmsym-info-signature info) '()))
-                  (seg   (if is-struct (asmsym-info-segment-name info) "MAIN")))
-              (begin
-                ;; Формируем строку для отладочного списка
-                (set! symbols-data 
-                      (cons (list scope addr 0 name type seg sig) symbols-data))
-                ;; Если публичный - добавляем в экспорт
-                (if (eq? scope :public)
-                    (set! exports (cons (list name addr type sig) exports))))))))
-      
-      (let ((output (list (module-name mod)
-                          (list :size (%calculate-module-size mod)) ;; Добавил вызов размера
-                          (cons :export exports)
-                          (cons :symbols symbols-data))))
-        (write-text-file path (pfmt #f  output))))))
+      (for-each segs
+        (lambda (seg)
+          (let ((s-name (segment-name seg)))
+            (if (or (null? target-segments) (member s-name target-segments))
+                (set! all-symbols (append all-symbols (collect-segment-symbols seg)))))))
+
+      (let* ((exports (map (lambda (s) (list (nth 3 s) (nth 1 s))) 
+                          (filter (lambda (s) (eq? (car s) :public)) all-symbols)))
+             (output  (list (string->symbol (module-name mod))
+                            (cons :symbols all-symbols))))
+        (begin
+          (write-text-file path (pfmt #f output))
+          (fmt #t "Passport saved: {} symbols in {}\n" (length all-symbols) path))))))

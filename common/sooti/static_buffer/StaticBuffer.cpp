@@ -1,9 +1,10 @@
 #include "StaticBuffer.hpp"
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sooti/static_buffer/TypeCell.hpp"
+#include "common/sooti/static_buffer/TypePointer.hpp"
 #include "common/type_system/TypeSystem.hpp"
-
+#include "sooti/static_buffer/StaticBuffer.hpp"
+#include "sooti/static_buffer/StaticBufferWriter.hpp"
 namespace script {
 
 // Записать таблицу в буфер
@@ -61,6 +62,16 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
             return Object::make_integer(get_end_addr());
         if (name == "filled-size")
             return Object::make_integer(get_end_addr() - get_start_addr());
+        // Внутри StaticBuffer::make_step_accessor
+        if (name == "labels") {
+            std::vector<Object> names;
+            // Предполагаем, что у тебя есть m_labels или аналогичная структура
+            // (std::map/unordered_map)
+            for (auto const &[label_name, label_obj] : m_labels) {
+                names.push_back(Object::make_string(label_name));
+            }
+            return Object::make_list(names); // Возвращаем как обычный Lisp-список
+        }
 
         // 2. Умный доступ по метке
         Object label_obj = get_label_obj(name);
@@ -76,31 +87,51 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
 
         size_t offset = static_cast<size_t>(key.as_integer());
 
-        // Проверка границ, чтобы не вылететь из буфера сразу
         if (offset >= size())
             return Object::make_undefined();
 
-        // ФИЗИКА: Берем начало данных буфера + смещение
         uint8_t *next_ptr = this->data() + offset;
 
-        // СОЗДАЕМ КОРНЕВУЮ ЯЧЕЙКУ
-        auto b_cell =
-            std::make_shared<TypeCell>(next_ptr,                     // Физический адрес
-                                       byte_t,                       // Тип (uint8)
-                                       shared_from_this(),           // МЫ (буфер) и есть владелец
-                                       Object::make_integer(offset), // Ключ - это и есть оффсет
-                                       fmt::format("buffer[0x{:x}]", offset) // Путь для отладки
-            );
+        // ИСПРАВЛЕНИЕ: Только 3 аргумента (ptr, type, owner)
+        auto b_cell = std::make_shared<TypePointer>(next_ptr,          // Физический адрес
+                                                    byte_t,            // Тип (uint8)
+                                                    shared_from_this() // Владелец
+        );
 
-        return Object::make_heap_object(b_cell, ObjectType::CELL);
+        return Object::make_heap_object(b_cell, ObjectType::POINTER);
     }
 
     return Object::make_undefined();
 }
 
+void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
+    if (!type || !ptr) {
+        fmt::print("CRITICAL: type is null at ptr {:p}\n", ptr);
+        return;
+    }
+
+    // 1. Вычисляем смещение относительно начала данных буфера
+    uint8_t *byte_ptr = static_cast<uint8_t *>(ptr);
+    uint8_t *base_ptr = static_cast<uint8_t *>(this->data());
+
+    // Безопасная проверка: находится ли указатель внутри нашего буфера?
+    if (byte_ptr < base_ptr || byte_ptr >= base_ptr + this->size()) {
+        throw std::runtime_error("StaticBuffer: attempt to write outside of buffer boundaries");
+    }
+
+    size_t offset = byte_ptr - base_ptr;
+    size_t size = type->get_size_in_memory();
+
+    // 2. Выполняем физическую запись через статический хелпер
+    StaticBufferWriter::write_value_at_ptr(ptr, type, val);
+
+    // 3. Обновляем "грязный" диапазон (для синхронизации с GPU или сохранения)
+    this->update_addr_range(offset, size);
+}
+
 Object StaticBuffer::inspect() const {
     std::vector<Object> bytes;
-    size_t limit = std::min(m_data.size(), (size_t)1024);
+    size_t              limit = std::min(m_data.size(), (size_t)1024);
 
     for (size_t i = 0; i < limit; ++i) {
         // Форматируем каждый байт как "0xEF" для наглядности

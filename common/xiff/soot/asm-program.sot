@@ -186,14 +186,12 @@
   (name "unnamed")
   (segments (make-hash-table))  ;; Хэш-таблица: имя-строка -> объект segment
   (segment-order '())           ;; Список имен сегментов в порядке их появления
-  (symbols (make-hash-table))   ;; Глобальная таблица символов (имя -> адрес)
   (current-segment null))       ;; Ссылка на активный в данный момент segment
 
 (defun make-new-module (name)
   "Создает новый модуль и инициализирует его"
   (make-module :name name
                :segments (make-hash-table '() 20)
-               :symbols (make-hash-table '() 200)
                :segment-order '()
                :current-segment null))
 

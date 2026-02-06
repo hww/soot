@@ -13,7 +13,7 @@ class StaticBufferWriter {
   public:
     /**
      * Главная точка входа для записи значения по указателю.
-     * Используется TypeCell::set().
+     * Используется TypePointer::set().
      */
     static void write_value_at_ptr(void *ptr, Type *type, const Object &val);
 

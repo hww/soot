@@ -30,7 +30,7 @@
    
    ;; Чтение (слайсинг)
    (let ((obj (buffer-read buf :as 'outer :at 0)))
-    ;; obj сейчас — это TypeCell, так как 'outer это структура
+    ;; obj сейчас — это TypePointer, так как 'outer это структура
     
     (let ((val-cell (-> obj 'data 'val_i8)))
        (fmt #t "Value val_i8 is: {}\n" (cell-get val-cell)))
@@ -45,7 +45,7 @@
    )
    ;; Запист с переполнением
    (let ((obj (buffer-read buf :as 'outer :at 0)))
-    ;; obj сейчас — это TypeCell, так как 'outer это структура
+    ;; obj сейчас — это TypePointer, так как 'outer это структура
        
     (let ((val-cell (-> obj 'data 'val_i8)))
        (set! (-> obj 'data 'val_i8) #x80) 
