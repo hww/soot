@@ -4,7 +4,7 @@
 
 (defmodule test-module)
 
-(define vector (deftype vector (basic)
+(define vector (deftype vector (structure)
   ((x int16)   ;; offset 0
    (y int16)   ;; offset 4
    (z int16)))) ;; offset 8
@@ -41,6 +41,14 @@ $label2
             (ld @a [+ ix 5])    ; Должно быть: DD 7E 05
             (ld [- iy 10] #xAA) ; Должно быть: FD 36 F6 AA
       )
+      (org #x8000)
+$begin
+      (ld @hl (size-of vector)) ;; offset
+      (ld @hl (offset-of vector x)) ;; offset
+      (ld @hl (offset-of vector y)) ;; offset
+      (ld @hl (size-of vector x)) ;; size
+      (ld @hl (size-of vector y)) ;; size
+      (ld [+ iy (offset-of vector y)] 10)
 )
 
 ;; 3. Одной командой собираем и выводим отчет

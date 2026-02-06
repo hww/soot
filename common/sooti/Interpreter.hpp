@@ -99,8 +99,7 @@ class Interpreter {
     // Основные методы оценки
     Object eval_string(const std::string &expression, const std::string &filename);
 
-    Object eval_form(const Object &obj, const std::shared_ptr<EnvironmentObject> &env,
-                     bool self_eval_place = true);
+    Object eval_form(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
 
     // --- Доступ к приватным членам -------
     // Запуск REPL
@@ -129,23 +128,23 @@ class Interpreter {
         return m_undefined;
     }
     Object get_null() {
-        return m_null;
+        return m_sym_null;
     }
     Object get_true() {
         return m_sym_true;
     }
     Object get_false() {
-        return m_sym_false;
+        return m_obj_false;
     }
     // Boolean helpers (используют символы)
     Object true_or_false(bool value) {
-        return value ? m_sym_true : m_sym_false;
+        return value ? m_sym_true : m_obj_false;
     }
 
     // --- Predicates -----------------------
     // Check if value is true
     bool truthy(const Object &o) const {
-        return o.truthy(m_sym_false.as_symbol());
+        return o.truthy(m_obj_false.as_symbol());
     }
     // Помощники для чисел
     bool    is_number(const Object &obj);
@@ -156,10 +155,9 @@ class Interpreter {
     Object call_lambda_internal(const Object &lambda, const std::vector<Object> &args);
     Object eval_file_internal(const std::vector<std::string> &file_path);
     Object eval(const Object &parent_form, const Object &obj,
-                const std::shared_ptr<EnvironmentObject> &env, bool self_eval_place = true);
+                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_with_rewind(const Object &parent_form, const Object &obj,
-                            const std::shared_ptr<EnvironmentObject> &env,
-                            bool                                      self_eval_place = true);
+                            const std::shared_ptr<EnvironmentObject> &env);
 
     void eval_args(const Object &parent_form, Arguments *args,
                    const std::shared_ptr<EnvironmentObject> &env);
@@ -188,6 +186,17 @@ class Interpreter {
 
     // Обработка ошибок
     void throw_eval_error(const Object &o, const std::string &err);
+    void throw_arity_mismatch(const Object &form, size_t expected, size_t got,
+                              const Arguments &args);
+    void throw_type_mismatch(const Object &form, size_t index,
+                             const std::vector<ObjectType> &expected, ObjectType got,
+                             const Arguments &args);
+    void throw_missing_named_arg(const Object &form, const std::string &name,
+                                 const Arguments &args);
+    void throw_unexpected_named_arg(const Object &form, const std::string &name,
+                                    const Arguments &args);
+    void throw_named_type_mismatch(const Object &form, const std::string &name,
+                                   const std::vector<ObjectType> &expected, ObjectType got);
     void print_form_info(const Object &form);
 
   private:
@@ -350,6 +359,11 @@ class Interpreter {
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_hash_table_containsp(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env);
+    // Universal method working with hash tables
+    Object eval_get_at(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_set_at(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
 
     // Итераторы
     Object eval_string_for_each(const Object &form, Arguments &args,
@@ -554,18 +568,31 @@ class Interpreter {
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_get_context(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_step(const Object &form, Arguments &args,
+                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_deref_special(const Object &form, const Object &rest,
+                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_addr_of(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_accessor(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_navigation_special(const Object &form, const Object &rest,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_buffer_cell(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_cell_get(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_cell_set(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_addr_plus(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_the_special(const Object &form, const Object &rest,
+                            const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_the_as_special(const Object &form, const Object &rest,
+                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_offset_of_special(const Object &form, const Object &rest,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_size_of_special(const Object &form, const Object &rest,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_method_id_of_special(const Object &form, const Object &rest,
+                                     const std::shared_ptr<EnvironmentObject> &env);
+
+    Object eval_make_buffer_pointer(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_mem_get(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_mem_set(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
 
     Object eval_make_static_buffer(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env);
@@ -603,12 +630,12 @@ class Interpreter {
 
     // Состояние
     Object        m_sym_true;
-    Object        m_sym_false;
-    Object        m_sym_undefined;
+    Object        m_obj_false;
+    Object        m_kw_undefined;
     const char   *m_symbol_true;
     const char   *m_symbol_false;
     const char   *m_symbol_undefined;
-    Object        m_null;
+    Object        m_sym_null;
     Object        m_undefined;
     int           m_gensym_id = 0;
     Object        m_global_environment;

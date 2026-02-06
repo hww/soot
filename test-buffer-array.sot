@@ -20,7 +20,7 @@
 
   ;; 3. Проверка доступа через (-> ...)
   (let ((obj (buffer-read buf :as 'array-test-struct :at 0)))
-    (fmt #t "Element 0: {}\n" (cell-get (-> obj 'data-bytes 0)))
-    (fmt #t "Element 2: {}\n" (cell-get (-> obj 'data-bytes 2)))
-    (fmt #t "Element 9: {}\n" (cell-get (-> obj 'data-bytes 9))))
+    (fmt #t "Element 0: {}\n" (mem-get (-> obj 'data-bytes 0)))
+    (fmt #t "Element 2: {}\n" (mem-get (-> obj 'data-bytes 2)))
+    (fmt #t "Element 9: {}\n" (mem-get (-> obj 'data-bytes 9))))
 )

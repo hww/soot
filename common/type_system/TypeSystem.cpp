@@ -318,6 +318,14 @@ bool TypeSystem::typecheck_and_throw(const TypeSpec &expected, const TypeSpec &a
     return success;
 }
 
+/**
+ * @brief Checks if a type is a subtype of another
+ *
+ * @param less_specific The type that is expected to be a supertype of more_specific
+ * @param more_specific The type that is expected to be a subtype of less_specific
+ *
+ * @returns true if more_specific is a subtype of less_specific, false otherwise
+ */
 bool TypeSystem::tc(const TypeSpec &less_specific, const TypeSpec &more_specific) const {
     return typecheck_and_throw(less_specific, more_specific, "", false, false);
 }
@@ -2053,7 +2061,7 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 Object TypeSystem::make_step_accessor(const Object &key) {
     // 1. Сначала свойства (мета-данные системы типов)
     Object base_attempt = HeapObject::make_step_accessor(key);
-    if (!base_attempt.is_undefined())
+    if (!base_attempt.is_none())
         return base_attempt;
 
     // 2. Трактуем ключ как имя типа

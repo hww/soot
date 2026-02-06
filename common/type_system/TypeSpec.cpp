@@ -340,7 +340,7 @@ Object TypeSpec::make_step_accessor(const Object &key) {
     Object meta = HeapObject::make_step_accessor(key);
 
     // Если HeapObject ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
-    return meta.is_undefined() ? Object::make_null() : meta;
+    return meta.is_none() ? Object::make_null() : meta;
 }
 
 // Вспомогательная функция для преобразования TypeSpec

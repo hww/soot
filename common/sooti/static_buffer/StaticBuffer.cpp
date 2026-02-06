@@ -104,9 +104,66 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
     return Object::make_undefined();
 }
 
+Object StaticBuffer::get_at(const Object &key) {
+    // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
+    if (key.is_integer()) {
+        Type *byte_t = TypeSystem::instance().lookup_type("uint8");
+        if (!byte_t)
+            throw std::runtime_error("TypeSystem: uint8 not found");
+
+        size_t offset = static_cast<size_t>(key.as_integer());
+
+        if (offset >= size())
+            return Object::make_undefined();
+
+        uint8_t *next_ptr = this->data() + offset;
+
+        // ИСПРАВЛЕНИЕ: Только 3 аргумента (ptr, type, owner)
+        auto b_cell = std::make_shared<TypePointer>(next_ptr,          // Физический адрес
+                                                    byte_t,            // Тип (uint8)
+                                                    shared_from_this() // Владелец
+        );
+
+        return Object::make_heap_object(b_cell, ObjectType::POINTER);
+    }
+    if (key.is_symbol() || key.is_string()) {
+        std::string name = key.to_std_string();
+        Object      label_obj = get_label_obj(name);
+        if (label_obj.is_not_null())
+            return label_obj;
+    }
+    return Object::make_undefined();
+}
+
+void StaticBuffer::set_at(const Object &key, const Object &value) {
+    // 1. Если ключ — число (оффсет), пишем как uint8 (по аналогии с get_at)
+    if (key.is_integer()) {
+        size_t offset = static_cast<size_t>(key.as_integer());
+        if (offset >= size()) {
+            throw std::runtime_error("StaticBuffer::set_at: offset out of bounds");
+        }
+
+        Type *byte_t = TypeSystem::instance().lookup_type("uint8");
+        // Используем уже готовую физику буфера
+        this->write_value_at_ptr(this->data() + offset, byte_t, value);
+        return;
+    }
+
+    // 2. Если ключ — символ (метка)
+    if (key.is_symbol() || key.is_string()) {
+        Object target = this->get_at(key); // Пытаемся найти указатель по метке
+        if (target.is_pointer()) {
+            target.as_pointer()->set(value);
+            return;
+        }
+    }
+
+    throw std::runtime_error("StaticBuffer::set_at: invalid key or target not writable");
+}
 void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
+
     if (!type || !ptr) {
-        fmt::print("CRITICAL: type is null at ptr {:p}\n", ptr);
+        throw std::runtime_error(fmt::format("CRITICAL: type is null at ptr {:p}\n", ptr));
         return;
     }
 
