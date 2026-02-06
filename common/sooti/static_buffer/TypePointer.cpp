@@ -19,7 +19,7 @@ Type *TypePointer::get_type() {
 }
 
 Object TypePointer::get() {
-    void *ptr = resolve_ptr();
+    void *ptr = resolve_addr();
     if (!ptr || m_type.empty())
         return Object::make_undefined();
 
@@ -55,7 +55,7 @@ Object TypePointer::get() {
 }
 
 void TypePointer::set(const Object &val) {
-    void *ptr = resolve_ptr();
+    void *ptr = resolve_addr();
     if (!ptr || m_type.empty())
         return;
 
@@ -140,7 +140,7 @@ Object TypePointer::make_step_accessor(const Object &key) {
     return Object::make_heap_object(next_cell, ObjectType::POINTER);
 }
 
-void *TypePointer::resolve_ptr() const {
+void *TypePointer::resolve_addr() const {
     // В данной реализации m_ptr уже является вычисленным адресом.
     // Однако, проверка на существование владельца важна для безопасности GC.
     return m_owner ? m_ptr : nullptr;

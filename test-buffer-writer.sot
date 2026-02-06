@@ -33,14 +33,14 @@
     ;; obj сейчас — это TypePointer, так как 'outer это структура
     
     (let ((val-cell (-> obj 'data 'val_i8)))
-       (fmt #t "Value val_i8 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_i8 is: {}\n" (mem-get val-cell)))
     
     (let ((tag-cell (-> obj 'tag)))
-       (fmt #t "Tag is: #x{:x}\n" (cell-get tag-cell)))
+       (fmt #t "Tag is: #x{:x}\n" (mem-get tag-cell)))
        
     (let ((val-cell (-> obj 'data 'val_i8)))
        (set! (-> obj 'data 'val_i8) 45) 
-       (fmt #t "Value val_i8 after set 45 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_i8 after set 45 is: {}\n" (mem-get val-cell)))
 
    )
    ;; Запист с переполнением
@@ -49,16 +49,16 @@
        
     (let ((val-cell (-> obj 'data 'val_i8)))
        (set! (-> obj 'data 'val_i8) #x80) 
-       (fmt #t "Value val_i8 after set #x80 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_i8 after set #x80 is: {}\n" (mem-get val-cell)))
     (let ((val-cell (-> obj 'data 'val_u8)))
        (set! (-> obj 'data 'val_u8) #x80) 
-       (fmt #t "Value val_u8 after set #x80 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_u8 after set #x80 is: {}\n" (mem-get val-cell)))
     (let ((val-cell (-> obj 'data 'val_i16)))
        (set! (-> obj 'data 'val_i16) #x8000) 
-       (fmt #t "Value val_i16 after set #x8000 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_i16 after set #x8000 is: {}\n" (mem-get val-cell)))
     (let ((val-cell (-> obj 'data 'val_u16)))
        (set! (-> obj 'data 'val_u16) #x8000) 
-       (fmt #t "Value val_u16 after set #x8000 is: {}\n" (cell-get val-cell)))
+       (fmt #t "Value val_u16 after set #x8000 is: {}\n" (mem-get val-cell)))
 
    )
    

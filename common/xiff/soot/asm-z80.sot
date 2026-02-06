@@ -80,7 +80,7 @@
         (case r-type
            ('ix (make-lextoken :type 'ix-indexed :value val))
            ('iy (make-lextoken :type 'iy-indexed :value val))
-           (else (error "Unknown index register: ~A" reg)))))
+           (else (error "Unknown index register: {}" reg)))))
 
 ;;;; ==========================================================================
 ;;;; Z80 Indirect Addressing & Indexing Parser

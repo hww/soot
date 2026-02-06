@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Object.hpp"
 #include "StaticBuffer.hpp"
 
 #include <fmt/format.h>
@@ -67,6 +68,13 @@ class StaticWriter : public HeapObject {
         lb.add_integer(m_position);
 
         return lb.build();
+    }
+
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::STATIC_WRITER);
+    }
+    std::string class_name() const override {
+        return "StaticWriter";
     }
 };
 

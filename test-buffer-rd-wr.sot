@@ -59,18 +59,18 @@
     
     ;; Проверяем дефолты первой структуры
     (fmt #t "Struct Defaults: i8={} (expected 1), i16={} (expected 2)\n" 
-         (cell-get (-> s-obj 'test_i8)) 
-         (cell-get (-> s-obj 'test_i16)))
+         (mem-get (-> s-obj 'test_i8)) 
+         (mem-get (-> s-obj 'test_i16)))
 
     ;; Проверяем дефолты вектора
     (fmt #t "Vector Defaults: x={} (expected 5), y={} (expected 10)\n" 
-         (cell-get (-> v-obj 'x)) 
-         (cell-get (-> v-obj 'y)))
+         (mem-get (-> v-obj 'x)) 
+         (mem-get (-> v-obj 'y)))
 
     ;; Проверяем частичную запись
     (fmt #t "Vector Partial:  x={} (expected 5), y={} (expected 99)\n" 
-         (cell-get (-> v-partial 'x)) 
-         (cell-get (-> v-partial 'y))))
+         (mem-get (-> v-partial 'x)) 
+         (mem-get (-> v-partial 'y))))
 
   ;; Финальный дамп
   (fmt #t "\n--- Final Buffer Memory Dump ---\n")

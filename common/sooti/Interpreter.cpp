@@ -33,13 +33,13 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     script::Object::set_symbol_table(&m_symbol_table);
 
     // Инициализируем boolean объекты как символы
-    m_null = Object::make_null();
+    m_sym_null = Object::make_null();
     m_sym_true = m_symbol_table.core.sym_true;
-    m_sym_false = m_symbol_table.core.sym_false;
-    m_sym_undefined = m_symbol_table.core.sym_undefined;
+    m_obj_false = m_symbol_table.core.sym_false;
+    m_kw_undefined = m_symbol_table.core.kw_undefined;
     m_symbol_true = m_sym_true.as_symbol().name_ptr;
-    m_symbol_false = m_sym_false.as_symbol().name_ptr;
-    m_symbol_undefined = m_sym_undefined.as_symbol().name_ptr;
+    m_symbol_false = m_obj_false.as_symbol().name_ptr;
+    m_symbol_undefined = m_kw_undefined.as_symbol().name_ptr;
 
     m_undefined = Object::make_undefined();
     // Создаем глобальное окружение
@@ -48,8 +48,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     // create the environment which is be visible from GOAL
     m_comp_env = EnvironmentObject::make_new("goal");
 
-    define_var_in_env(m_global_environment, m_null, "null");
-    define_var_in_env(m_comp_env, m_null, "null");
+    define_var_in_env(m_global_environment, m_sym_null, "null");
+    define_var_in_env(m_comp_env, m_sym_null, "null");
 
     define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
     define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -61,21 +61,23 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
     // Инициализация string_to_type для type?
     m_string_to_type = {
-        {"empty-list", ObjectType::EMPTY_LIST},
-        {"integer", ObjectType::INTEGER},
-        {"float", ObjectType::FLOAT},
-        {"char", ObjectType::CHAR},
-        {"symbol", ObjectType::SYMBOL},
-        {"string", ObjectType::STRING},
-        {"pair", ObjectType::PAIR},
-        {"array", ObjectType::ARRAY},
-        {"lambda", ObjectType::LAMBDA},
-        {"macro", ObjectType::MACRO},
-        {"environment", ObjectType::ENVIRONMENT},
-        {"reader", ObjectType::READER},
-        {"cell", ObjectType::POINTER},
-        {"static-buffer", ObjectType::STATIC_BUFFER},
-        {"static-writer", ObjectType::STATIC_WRITER},
+        {object_type_to_string(ObjectType::EMPTY_LIST), ObjectType::EMPTY_LIST},
+        {object_type_to_string(ObjectType::INTEGER), ObjectType::INTEGER},
+        {object_type_to_string(ObjectType::FLOAT), ObjectType::FLOAT},
+        {object_type_to_string(ObjectType::CHAR), ObjectType::CHAR},
+        {object_type_to_string(ObjectType::SYMBOL), ObjectType::SYMBOL},
+        {object_type_to_string(ObjectType::STRING), ObjectType::STRING},
+        {object_type_to_string(ObjectType::PAIR), ObjectType::PAIR},
+        {object_type_to_string(ObjectType::ARRAY), ObjectType::ARRAY},
+        {object_type_to_string(ObjectType::LAMBDA), ObjectType::LAMBDA},
+        {object_type_to_string(ObjectType::MACRO), ObjectType::MACRO},
+        {object_type_to_string(ObjectType::ENVIRONMENT), ObjectType::ENVIRONMENT},
+        {object_type_to_string(ObjectType::READER), ObjectType::READER},
+        {object_type_to_string(ObjectType::POINTER), ObjectType::POINTER},
+        {object_type_to_string(ObjectType::STATIC_BUFFER), ObjectType::STATIC_BUFFER},
+        {object_type_to_string(ObjectType::STATIC_WRITER), ObjectType::STATIC_WRITER},
+        {object_type_to_string(ObjectType::NATIVE_REF), ObjectType::NATIVE_REF},
+        {object_type_to_string(ObjectType::NONE), ObjectType::NONE},
     };
 
     ArgumentSpec args_with_keys(true, true);
@@ -97,7 +99,12 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
         {"while", &Interpreter::eval_while_special, nullptr},
         {"top-level", &Interpreter::eval_begin_special, nullptr}, // top level evaluation
-        {"navigation", &Interpreter::eval_navigation_special, nullptr},
+        {"->", &Interpreter::eval_deref_special, nullptr},
+        {"the", &Interpreter::eval_the_special, nullptr},
+        {"the-as", &Interpreter::eval_the_as_special, nullptr},
+        {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
+        {"size-of", &Interpreter::eval_size_of_special, nullptr},
+        {"method-id-of", &Interpreter::eval_method_id_of_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -149,7 +156,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"special-form?", &Interpreter::eval_special_form_p, nullptr},
 
         // Сравнение
-        {"eq?", &Interpreter::eval_equals}, // было eval_eq
+        {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
 
         // Строки
         {"string-append", &Interpreter::eval_string_append, nullptr},
@@ -177,6 +184,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"hash-table-try-ref", &Interpreter::eval_hash_table_try_ref, nullptr},
         {"hash-table-length", &Interpreter::eval_hash_table_length, nullptr},
         {"hash-table->list", &Interpreter::eval_hash_table_to_list, nullptr},
+
+        // Universtal table
+        {"get-at", &Interpreter::eval_get_at, nullptr},
+        {"set-at!", &Interpreter::eval_set_at, nullptr},
 
         // Итераторв
         {"string-for-each", &Interpreter::eval_string_for_each, nullptr},
@@ -285,15 +296,17 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"get-context", &Interpreter::eval_get_context, nullptr},
 
         //
-        {"make-accessor", &Interpreter::eval_make_accessor, nullptr},
+        {"step", &Interpreter::eval_step, nullptr},
         {"&", &Interpreter::eval_addr_of, nullptr},
-        {"cell-get", &Interpreter::eval_cell_get, nullptr},
-        {"cell-set!", &Interpreter::eval_cell_set, nullptr},
+        {"&+", &Interpreter::eval_addr_plus, nullptr},
+
+        {"mem-get", &Interpreter::eval_mem_get, nullptr},
+        {"mem-set!", &Interpreter::eval_mem_set, nullptr},
 
         // Buffer
         {"make-buffer", &Interpreter::eval_make_static_buffer, nullptr},
         {"make-buffer-writer", &Interpreter::eval_make_static_writer, nullptr},
-        {"make-buffer-cell", &Interpreter::eval_make_buffer_cell, nullptr},
+        {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
         {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
         {"buffer-write", &Interpreter::eval_buffer_write, &args_with_keys},
         {"buffer-read", &Interpreter::eval_buffer_read, &args_with_keys},
@@ -362,7 +375,7 @@ bool Interpreter::try_symbol_lookup(const Object                             &sy
                                     const std::shared_ptr<EnvironmentObject> &env, Object *dest) {
     // Boolean проверка
     if (sym.as_symbol().name_ptr == get_true().as_symbol().name_ptr ||
-        sym.as_symbol().name_ptr == m_sym_false.as_symbol().name_ptr) {
+        sym.as_symbol().name_ptr == m_obj_false.as_symbol().name_ptr) {
         *dest = sym;
         return true;
     }
@@ -496,6 +509,48 @@ void Interpreter::throw_eval_error(const Object &o, const std::string &err) {
     throw EvalException(o, err);
 }
 
+void Interpreter::throw_arity_mismatch(const Object &form, size_t expected, size_t got,
+                                       const Arguments &args) {
+    throw_eval_error(form, fmt::format("Arity mismatch: expected {} arguments, but got {} in: {}",
+                                       expected, got, args.print_full()));
+}
+
+void Interpreter::throw_type_mismatch(const Object &form, size_t index,
+                                      const std::vector<ObjectType> &expected, ObjectType got,
+                                      const Arguments &args) {
+    std::string expected_str;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
+    }
+    throw_eval_error(
+        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got {} in: {}",
+                          index, expected_str, object_type_to_string(got), args.print_full()));
+}
+
+void Interpreter::throw_missing_named_arg(const Object &form, const std::string &name,
+                                          const Arguments &args) {
+    throw_eval_error(form, fmt::format("Required named argument ':{}' is missing in: {}", name,
+                                       args.print_full()));
+}
+
+void Interpreter::throw_unexpected_named_arg(const Object &form, const std::string &name,
+                                             const Arguments &args) {
+    throw_eval_error(
+        form, fmt::format("Unexpected named argument ':{}' in: {}", name, args.print_full()));
+}
+
+void Interpreter::throw_named_type_mismatch(const Object &form, const std::string &name,
+                                            const std::vector<ObjectType> &expected,
+                                            ObjectType                     got) {
+    std::string expected_str;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
+    }
+    throw_eval_error(form,
+                     fmt::format("Type error for named argument ':{}': expected [{}], but got {}",
+                                 name, expected_str, object_type_to_string(got)));
+}
+
 Object Interpreter::eval_string(const std::string &expression, const std::string &filename) {
     auto   env = m_global_environment.as_env_ptr();
     Object last_result = Object::make_null();
@@ -561,13 +616,11 @@ Object Interpreter::eval_file_internal(const std::vector<std::string> &file_path
 }
 
 // Same as method befor but for cases wher are no parent form
-Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<EnvironmentObject> &env,
-                              bool self_eval_place) {
-    return eval_with_rewind(obj, obj, env, self_eval_place);
+Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<EnvironmentObject> &env) {
+    return eval_with_rewind(obj, obj, env);
 }
 
 Object Interpreter::call_lambda_internal(const Object &lambda, const std::vector<Object> &args) {
-
     if (!lambda.is_lambda()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
@@ -673,13 +726,10 @@ void Interpreter::print_form_info(const Object &form) {
  * "obj", and if possible what file/line "obj" comes from.
  */
 Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &obj,
-                                     const std::shared_ptr<EnvironmentObject> &env,
-                                     bool                                      self_eval_place) {
-    ContextFrame frame = {
-        depth : m_top_frame == nullptr ? 0 : m_top_frame->depth + 1,
-        form : obj,
-        prev : m_top_frame
-    };
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    ContextFrame frame = {.depth = m_top_frame == nullptr ? 0 : m_top_frame->depth + 1,
+                          .form = obj,
+                          .prev = m_top_frame};
     m_top_frame = &frame;
     // fmt::print("<Interpreter::eval_with_rewind frame={}\n", frame.print());
     try {
@@ -690,7 +740,7 @@ Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &ob
         //
         //);
 
-        auto result = eval(parent_form, obj, env, self_eval_place);
+        auto result = eval(parent_form, obj, env);
         m_top_frame = frame.prev;
         return result;
     } catch (const ExitException &e) {
@@ -765,12 +815,12 @@ Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &ob
 // ============================================================
 
 Object Interpreter::eval(const Object &parent_form, const Object &obj,
-                         const std::shared_ptr<EnvironmentObject> &env, bool self_eval_place) {
+                         const std::shared_ptr<EnvironmentObject> &env) {
     switch (obj.type) {
     case ObjectType::POINTER:
-        return obj.as_pointer()->get();
+        return obj.as_pointer()->deref();
     case ObjectType::NATIVE_REF:
-        return obj.as_native_ref()->deref();
+        return obj;
     case ObjectType::SYMBOL:
         if (obj.is_keyword())
             return obj;
@@ -819,7 +869,6 @@ std::vector<Object> Interpreter::eval_list(const Object                         
 // Запуск функции
 Object Interpreter::eval_list_return_last(const Object &form, Object rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
-
     if (rest.is_null()) {
         return rest;
     }
@@ -916,7 +965,7 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(parent_form,
                      "Object is not callable: " + eval_head.type_name() + " " + eval_head.print());
-    return m_null; // unreachable
+    return m_sym_null; // unreachable
 }
 
 Object Interpreter::eval_define_special(const Object &form, const Object &rest,
@@ -1129,7 +1178,7 @@ Object Interpreter::eval_or_special(const Object &form, const Object &rest,
         current = current.as_pair()->cdr;
     }
 
-    return m_sym_false;
+    return m_obj_false;
 }
 
 Object Interpreter::eval_and_special(const Object &form, const Object &rest,
@@ -1773,7 +1822,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object &form, Object &rest) {
             // Обычный позиционный аргумент
             if (!is_sym)
                 throw_eval_error(form, "positional args must be symbols");
-            spec.unnamed.push_back({name : arg_name, is_optional : false});
+            spec.unnamed.push_back({.name = arg_name, .is_optional = false});
         }
 
         current = current.as_pair()->cdr;
@@ -1845,17 +1894,14 @@ void Interpreter::vararg_check(
     // 1. Проверка unnamed аргументов
     if (!unnamed.empty()) {
         if (args.unnamed.size() != unnamed.size()) {
-            throw_eval_error(form,
-                             fmt::format("expected {} unnamed arguments, got {} in args {}",
-                                         unnamed.size(), args.unnamed.size(), args.print_full()));
+            throw_arity_mismatch(form, unnamed.size(), args.unnamed.size(), args);
         }
 
         for (size_t i = 0; i < unnamed.size(); ++i) {
             const auto &allowed_types = unnamed[i];
             if (allowed_types.empty())
-                continue; // Разрешен любой тип
+                continue;
 
-            // Проверяем, входит ли тип аргумента в список разрешенных
             bool type_ok = false;
             for (auto type : allowed_types) {
                 if (args.unnamed[i].type == type) {
@@ -1865,13 +1911,7 @@ void Interpreter::vararg_check(
             }
 
             if (!type_ok) {
-                std::string expected;
-                for (auto t : allowed_types)
-                    expected += object_type_to_string(t) + " ";
-                std::string got = object_type_to_string(args.unnamed[i].type);
-                throw_eval_error(form,
-                                 fmt::format("argument {}: expected one of [{}], got {} in args {}",
-                                             i, expected, got, args.print_full()));
+                throw_type_mismatch(form, i, allowed_types, args.unnamed[i].type, args);
             }
         }
     }
@@ -1883,8 +1923,7 @@ void Interpreter::vararg_check(
         const auto &allowed_types = spec.second;
 
         if (required && it == args.named.end()) {
-            throw_eval_error(form, fmt::format("required named argument '{}' missing in args {}",
-                                               name, args.print_full()));
+            throw_missing_named_arg(form, name, args);
         }
 
         if (it != args.named.end() && !allowed_types.empty()) {
@@ -1896,21 +1935,15 @@ void Interpreter::vararg_check(
                 }
             }
             if (!type_ok) {
-                std::string expected;
-                for (auto t : allowed_types)
-                    expected += object_type_to_string(t) + " ";
-                throw_eval_error(
-                    form, fmt::format("named argument '{}': expected one of [{}], got {}", name,
-                                      expected, object_type_to_string(it->second.type)));
+                throw_named_type_mismatch(form, name, allowed_types, it->second.type);
             }
         }
     }
 
-    // 3. Проверка лишних named (оставляем как было)
+    // 3. Проверка лишних named
     for (const auto &[name, _] : args.named) {
         if (named.find(name) == named.end()) {
-            throw_eval_error(form, fmt::format("unexpected named argument '{}' in args {}", name,
-                                               args.print_full()));
+            throw_unexpected_named_arg(form, name, args);
         }
     }
 }
@@ -2477,6 +2510,7 @@ Object Interpreter::eval_logand(const Object &form, Arguments &args,
 // (logior n1 n2 ..)
 Object Interpreter::eval_logior(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
     (void)env;
     long result = 0;
     for (const auto &arg : args.unnamed) {
@@ -2488,6 +2522,7 @@ Object Interpreter::eval_logior(const Object &form, Arguments &args,
 // (logxor n1 n2 ..)
 Object Interpreter::eval_logxor(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
     (void)env;
     if (args.unnamed.empty())
         return Object::make_integer(0);
@@ -2510,6 +2545,8 @@ Object Interpreter::eval_lognot(const Object &form, Arguments &args,
 
 Object Interpreter::eval_lshift(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)env;
     vararg_check(form, args, {{ObjectType::INTEGER}, {ObjectType::INTEGER}}, {});
 
     auto val = args.unnamed.at(0).as_integer();
@@ -2527,6 +2564,7 @@ Object Interpreter::eval_lshift(const Object &form, Arguments &args,
 
 Object Interpreter::eval_rshift(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::INTEGER}, {ObjectType::INTEGER}}, {});
 
     auto val = args.unnamed.at(0).as_integer();
@@ -2727,7 +2765,7 @@ Object Interpreter::eval_bound_p(const Object &form, Arguments &args,
     if (try_symbol_lookup(sym, env, &result)) {
         return get_true(); // Твой #t / T
     }
-    return m_sym_false; // Твой #f / NIL
+    return m_obj_false; // Твой #f / NIL
 }
 
 Object Interpreter::eval_type_of(const Object &form, Arguments &args,
@@ -2921,7 +2959,7 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
     }
 
     throw_eval_error(form, "apply: first argument is not a procedure");
-    return m_null;
+    return m_sym_null;
 }
 // ============================================================
 // Функции сравнения
@@ -2929,6 +2967,7 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
 
 Object Interpreter::eval_equals(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}, {}}, {});
     return true_or_false(args.unnamed[0] == args.unnamed[1]);
 }
@@ -3013,7 +3052,7 @@ Object Interpreter::eval_string_containsp(const Object &form, Arguments &args,
     if (str_util::contains(str, suffix)) {
         return get_true();
     }
-    return m_sym_false;
+    return m_obj_false;
 }
 
 Object Interpreter::eval_string_starts_with(const Object &form, Arguments &args,
@@ -3026,7 +3065,7 @@ Object Interpreter::eval_string_starts_with(const Object &form, Arguments &args,
     if (str_util::starts_with(str, suffix)) {
         return get_true();
     }
-    return m_sym_false;
+    return m_obj_false;
 }
 
 Object Interpreter::eval_string_ends_with(const Object &form, Arguments &args,
@@ -3039,7 +3078,7 @@ Object Interpreter::eval_string_ends_with(const Object &form, Arguments &args,
     if (str_util::ends_with(str, suffix)) {
         return get_true();
     }
-    return m_sym_false;
+    return m_obj_false;
 }
 
 Object Interpreter::eval_string_split(const Object &form, Arguments &args,
@@ -3244,6 +3283,58 @@ Object Interpreter::eval_hash_table_set(const Object &form, Arguments &args,
     return Object::make_null();
 }
 
+Object Interpreter::eval_get_at(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // (get-at target key [default])
+    if (args.unnamed.size() < 2 || args.unnamed.size() > 3) {
+        throw_eval_error(form, "get-at: expected 2 or 3 arguments");
+    }
+
+    Object target = args.unnamed[0];
+    Object key = args.unnamed[1];
+
+    if (!target.is_heap_object()) {
+        throw_eval_error(form, "get-at: target must be a heap object");
+    }
+
+    // Вызываем виртуальный метод объекта
+    Object result = target.as_heap_object()->get_at(key);
+
+    // Если ключ не найден (объект вернул undefined)
+    if (result.is_none()) {
+        // Если есть 3-й аргумент (default) — возвращаем его
+        if (args.unnamed.size() == 3) {
+            return args.unnamed[2];
+        }
+        // Иначе — ошибка
+        throw_eval_error(form, "get-at: key or index not found");
+    }
+
+    return result;
+}
+
+Object Interpreter::eval_set_at(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}, {}, {}}, {}); // [цель] [ключ] [значение]
+
+    Object target = args.unnamed[0];
+    Object key = args.unnamed[1];
+    Object value = args.unnamed[2];
+
+    if (target.is_heap_object()) {
+        // Вызываем виртуальный метод.
+        // Если это StaticBuffer — запишется в память.
+        // Если HashTable — запишется в мапу.
+        target.as_heap_object()->set_at(key, value);
+    } else {
+        throw_eval_error(form, "set-at!: target must be a heap object (buffer, table, etc)");
+    }
+
+    return get_null();
+}
+
 Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3282,11 +3373,12 @@ Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
     throw_eval_error(form, "hash-table-ref: key not found: " + std::string(key));
     return get_null();
 }
+
 // Try to look up a value by key in a hash table.The result is a pair of(success.value).
 
 Object Interpreter::eval_hash_table_try_ref(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
-
+    (void)env;
     vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {}}, {});
 
     const auto *table = args.unnamed.at(0).as_hash_table();
@@ -3308,7 +3400,7 @@ Object Interpreter::eval_hash_table_try_ref(const Object &form, Arguments &args,
 
 Object Interpreter::eval_hash_table_containsp(const Object &form, Arguments &args,
                                               const std::shared_ptr<EnvironmentObject> &env) {
-
+    (void)env;
     vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {}}, {});
 
     const auto *table = args.unnamed.at(0).as_hash_table();
@@ -3400,6 +3492,7 @@ Object Interpreter::eval_read_file(const Object &form, Arguments &args,
 // Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
 Object Interpreter::eval_load(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}}, {}); // Одна строка (имя файла)
     Object last_result = get_null();
 
@@ -4160,6 +4253,7 @@ Object Interpreter::eval_defsetf(const Object &form, Arguments &args,
 
 Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     // Проверка: один аргумент-символ
     vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
 
@@ -4243,6 +4337,7 @@ Object Interpreter::eval_types_to_lisp(const Object &, Arguments &,
 
 Object Interpreter::eval_init_types(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
     (void)env;
     // Здесь должна быть логика из твоего старого кода для init-types
     if (args.unnamed.size() > 0 && args.unnamed[0].as_symbol() == "z80") {
@@ -4273,53 +4368,26 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
  * 2. (make-accessor cell_x 'y) -> вернет ячейку поля y внутри x
  * * @return Object (TypePointer со смещением или метаданные из NativeRef)
  */
-Object Interpreter::eval_make_accessor(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_step(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}, {}}, {});
 
     auto base = args.unnamed[0];
     auto key = args.unnamed[1];
 
-    // 1. Стартовая точка: База — это NATIVE_REF (например, TypeSpec или Instance)
-    if (base.is_native_ref()) {
-        return base.as_native_ref()->make_step_accessor(key);
+    if (base.is_none() || base.is_null())
+        return get_null();
+
+    // Пытаемся сделать шаг (вернет новый Pointer или Field)
+    Object next = base.step(key);
+
+    if (next.is_none()) {
+        throw_eval_error(form, "Step failed: property '" + key.print() + "' not found");
     }
-
-    // 2. Продолжение пути: База — это уже созданный CELL (MemoryCell)
-    if (base.is_pointer()) {
-        return base.as_native_ref()->make_step_accessor(key); // Теперь навигация пойдет вглубь!
-    }
-
-    return m_sym_undefined; // nil логичнее пустой коллекции
-};
-Object Interpreter::eval_addr_of(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{}}, {});
-
-    auto base = args.unnamed[0];
-
-    // // 1. Продолжение пути: База — это уже созданный CELL (MemoryCell)
-    // if (base.is_cell()) {
-    //     auto *ptr = base.as_native_ref()->resolve_ptr(); // Теперь навигация пойдет вглубь!
-    //     return Object::make_pointer(ptr);
-    // }
-    //
-    // // 1. Стартовая точка: База — это NATIVE_REF (например, TypeSpec или Instance)
-    // if (base.is_native_ref()) {
-    //     return base.as_native_ref()->make_step_accessor(key);
-    // }
-    //
-    // // Псевдокод логики &
-    // if (args[0].is_type()) {
-    //     // Если это (& vector x), ищем смещение x в типе vector
-    //     return Object::make_int(args[0].as_type()->get_offset(args[1]));
-    // } else {
-    //     // Если это (& my_label), ищем адрес метки
-    //     return Object::make_pointer(env->lookup_address(args[0]));
-    // }
-
-    return m_sym_undefined; // nil логичнее пустой коллекции
+    return next;
 }
+
 /**
  * @brief Специальная форма глубокой навигации (Макрос `->`).
  * * * Роль в системе:
@@ -4337,80 +4405,317 @@ Object Interpreter::eval_addr_of(const Object &form, Arguments &args,
  * * * @param rest Список аргументов навигации.
  * * @return Конечный объект (TypePointer, значение или метаданные) после прохождения всего пути.
  */
-Object Interpreter::eval_navigation_special(const Object &form, const Object &rest,
-                                            const std::shared_ptr<EnvironmentObject> &env) {
-    Object iterator = rest; // Пропускаем само имя 'navigation'
-
-    // 1. ПЕРВЫЙ аргумент вычисляем обязательно (это корень навигации)
-    if (!iterator.is_pair()) {
-        throw_eval_error(form, "expects pair");
+Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    if (!rest.is_pair())
         return get_null();
-    }
-    auto   iterator_pair = iterator.as_pair();
-    Object current = eval_with_rewind(form, iterator_pair->car, env);
-    iterator = iterator_pair->cdr;
 
+    // 1. Корень (первый аргумент)
+    auto   pair = rest.as_pair();
+    Object current = eval_with_rewind(form, pair->car, env);
+    Object iterator = pair->cdr;
+    if (current.is_symbol()) {
+        current = TypeSystem::instance().make_step_accessor(current);
+    }
+
+    // 2. Цикл шагов (Navigation)
     while (!iterator.is_null()) {
-        if (!iterator.is_pair()) {
-            throw_eval_error(form, "expects pair");
-            return get_null();
-        }
-        iterator_pair = iterator.as_pair();
-        Object key_form = iterator_pair->car;
-        Object key;
+        Object key_form = iterator.as_pair()->car;
+        Object key = key_form.is_symbol() ? key_form : eval_with_rewind(form, key_form, env);
 
-        // Если это символ (например, size), превращаем его в ключ-символ без eval
-        if (key_form.is_symbol()) {
-            key = key_form;
-        } else {
-            // Если это что-то другое (например, вызов функции или число), вычисляем
-            key = eval_with_rewind(form, key_form, env);
-        }
-
-        // --- ПРОВЕРКА КЛЮЧА ---
-        if (!key.is_symbol() && !key.is_string() && !key.is_integer()) {
-            // Если eval вернул какой-то HeapObject, который не является ключом
-            throw_eval_error(form, "Navigation key evaluated to invalid type: " + key.type_name() +
-                                       " (value: " + key.print() +
-                                       "). Expected symbol, string or int.");
-            return get_null();
-        }
-
-        // --- ПРОВЕРКА ТЕКУЩЕГО ОБЪЕКТА ---
-        if (current.is_undefined() || current.is_null()) {
-            throw_eval_error(form, "Broken navigation chain: trying to access '" + key.print() +
-                                       "' on " + current.print());
-            return get_null();
-        }
-        // Пытаемся сделать шаг
+        // Делаем шаг через внутренний метод объекта
         Object next = current.step(key);
-        // --- ПРОВЕРКА РЕЗУЛЬТАТА ШАГА ---
-        if (next.is_undefined()) {
-            throw_eval_error(form, "Field or property '" + key.print() + "' not found in object " +
-                                       current.print());
-            return get_null();
+
+        if (next.is_none()) {
+            throw_eval_error(form, "Field '" + key.print() + "' not found in " + current.print());
         }
+
         current = next;
-        iterator = iterator_pair->cdr;
+        iterator = iterator.as_pair()->cdr;
     }
+
+    // 3. ФИНАЛЬНЫЙ ШТРИХ (OpenGOAL style):
+    // Если мы пришли к указателю, мы возвращаем не сам указатель, а ЗНАЧЕНИЕ.
+    if (current.is_pointer()) {
+        return current.as_pointer()->deref();
+    }
+
+    // Если пришли к Field или другому NativeRef — возвращаем как есть
     return current;
 }
+
+/**
+ * @brief addr-of: Возвращает адрес объекта (TypePointer или Field) в виде целого числа.
+ * addr-of принимает один аргумент - целевой объект (TypePointer, Field или StaticBuffer).
+ * addr-of возвращает целое число, которое является адресом объекта в памяти.
+ * - Если целевой объект является TypePointer, addr-of возвращает абсолютный адрес, на который
+ * ссылается указатель.
+ * - Если целевой объект является Field, addr-of возвращает относительное смещение поля в структуре.
+ * - Если целевой объект является StaticBuffer, addr-of возвращает базовый адрес буфера.
+ * @return Object целое число, которое является адресом объекта в памяти.
+ */
+Object Interpreter::eval_addr_of(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {});
+    Object target = args.unnamed[0];
+
+    // 1. Если это число, мы считаем, что пользователь УЖЕ оперирует адресом.
+    if (target.is_integer())
+        return target;
+
+    // 2. Если это Pointer, возвращаем адрес, на который он указывает.
+    if (target.is_pointer()) {
+        return Object::make_integer(
+            reinterpret_cast<uintptr_t>(target.as_pointer()->resolve_addr()));
+    }
+
+    // 3. Для всех NativeRef (Field, MethodInfo, StaticBuffer, StructureType...)
+    // Правило одно: берем адрес самого объекта (или его данных), которые лежат в C++.
+    if (target.is_native_ref()) {
+        // Получаем shared_ptr на обертку
+        auto hr = target.as_native_ref<NativeRef>();
+
+        // .get() возвращает сырой указатель (NativeRef*),
+        // который теперь можно легально кастить в число.
+        return Object::make_integer(reinterpret_cast<uintptr_t>(hr.get()));
+    }
+
+    // 4. Fallback: если это обычный объект Лиспового типа (Pair, Symbol)
+    // Мы все равно можем вернуть его адрес в памяти для полной транспарентности.
+    return Object::make_integer(reinterpret_cast<uintptr_t>(&target));
+}
+
+Object Interpreter::eval_addr_plus(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    uintptr_t total = 0;
+
+    for (const auto &arg : args.unnamed) {
+        if (arg.is_integer()) {
+            total += arg.as_integer();
+        } else if (arg.is_pointer()) {
+            total += reinterpret_cast<uintptr_t>(arg.as_pointer()->resolve_addr());
+        } else if (auto f = arg.as_native_ref<Field>()) {
+            total += f->offset();
+        } else if (auto f = arg.as_native_ref<MethodInfo>()) {
+            total += f->id;
+        } else {
+            throw_eval_error(form, "addr+ : argument is not a number, pointer: " + arg.print());
+        }
+    }
+
+    return Object::make_integer(total);
+}
+Object Interpreter::eval_the_special(const Object &form, const Object &rest,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка структуры (the <type> <value>)
+    if (!rest.is_pair() || !rest.as_pair()->cdr.is_pair()) {
+        throw_eval_error(form, "the: expected 2 arguments: (the <type-name> <target>)");
+    }
+
+    auto   pair = rest.as_pair();
+    Object type_form = pair->car;
+    Object target_form = pair->cdr.as_pair()->car;
+
+    // 2. Первый аргумент должен быть символом или списком (TypeSpec)
+    // В OpenGOAL (the int x) и (the (pointer int) x) оба валидны.
+    if (!type_form.is_symbol() && !type_form.is_pair()) {
+        throw_eval_error(form, fmt::format("the: first argument must be a type-spec, got {}",
+                                           type_form.print()));
+    }
+
+    // Создаем спецификацию того, что мы ОЖИДАЕМ
+    // Предполагаю, что конструктор TypeSpec умеет принимать Object-форму
+    TypeSpec expected_spec(type_form.to_std_string());
+
+    // 3. Вычисляем объект, который ПРОВЕРЯЕМ
+    Object target = eval_with_rewind(form, target_form, env);
+
+    // 4. Определяем спецификацию того, что у нас ЕСТЬ
+    TypeSpec actual_spec;
+    if (target.is_pointer()) {
+        // Если это Pointer, мы проверяем его внутренний тип (на что он указывает)
+        actual_spec = TypeSpec(target.as_pointer()->get_type_name());
+    } else {
+        // Для обычных объектов (integer, string, vec) берем имя их типа
+        actual_spec = TypeSpec(target.type_name());
+    }
+
+    // 5. Проверка через TypeSystem::tc
+    // less_specific = expected (супертип)
+    // more_specific = actual (подтип)
+    if (!TypeSystem::instance().tc(expected_spec, actual_spec)) {
+        // Используем твой новый метод для выброса ошибки
+        // Мы можем передать информацию прямо из TypeSystem
+        throw_eval_error(form, fmt::format("Type assertion failed: expected {}, but got {}",
+                                           expected_spec.print(), actual_spec.print()));
+    }
+
+    // 6. Возврат
+    // В GOAL 'the' возвращает тот же объект, но компилятор теперь "уверен" в его типе.
+    return target;
+}
+
+Object Interpreter::eval_the_as_special(const Object &form, const Object &rest,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    // Проверка структуры (the-as <type> <value>)
+    if (!rest.is_pair() || !rest.as_pair()->cdr.is_pair()) {
+        throw_eval_error(form, "the-as: expected 2 arguments: (the-as <type-name> <target>)");
+    }
+
+    auto   pair = rest.as_pair();
+    Object type_form = pair->car;
+    Object target_form = pair->cdr.as_pair()->car;
+
+    // 1. Первый аргумент (тип) — не вычисляем, он должен быть символом
+    if (!type_form.is_symbol()) {
+        throw_eval_error(form, fmt::format("the-as: first argument must be a type symbol, got {}",
+                                           type_form.print()));
+    }
+
+    std::string type_name = type_form.as_symbol();
+
+    // 2. Второй аргумент — вычисляем
+    Object target = eval_with_rewind(form, target_form, env);
+
+    // 3. Логика приведения (Cast)
+
+    // Случай А: На входе Integer (адрес) -> создаем новый Pointer с этим типом
+    if (target.is_integer()) {
+        void *addr = reinterpret_cast<void *>(static_cast<uintptr_t>(target.as_integer()));
+        // Передаем строку type_name в конструктор
+        return Object::make_pointer(addr, type_name);
+    }
+
+    // Случай Б: На входе уже Pointer -> меняем ему тип "на лету"
+    if (target.is_pointer()) {
+        auto old_ptr = target.as_pointer();
+
+        // Вместо копирования объекта целиком, создаем новый,
+        // вытаскивая сырой адрес из старого через наш resolve_addr()
+        void *raw_addr = old_ptr->resolve_addr();
+
+        // Создаем новый указатель.
+        // Мы передаем raw_addr и новую строку типа.
+        // Interpreter подхватит это и создаст правильный TypePointer.
+        return Object::make_pointer(raw_addr, type_name);
+    }
+
+    // Если пришло что-то другое — кидаем ошибку несовместимости типов
+    // Используем твой новый метод throw_type_mismatch
+    throw_type_mismatch(form, 1, {ObjectType::INTEGER, ObjectType::POINTER}, target.type,
+                        Arguments{{target}, {}});
+
+    return get_null();
+}
+Object Interpreter::eval_offset_of_special(const Object &form, const Object &rest,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}},
+                 {}); // Вторая тоже символ
+
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto &ts = TypeSystem::instance();
+
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(
+            form, fmt::format("Type '{}' not found or not fully defined.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    auto as_struct = dynamic_cast<StructureType *>(type);
+
+    // Защита от nullptr
+    if (!as_struct) {
+        throw_eval_error(
+            form, fmt::format("Type '{}' is not a structure/reference type.", type_name.c_str()));
+    }
+
+    auto field_name = args.unnamed[1].as_symbol();
+    // Проверяем существование поля перед получением инфо
+    try {
+        auto info = ts.lookup_field_info(type->get_name(), field_name);
+
+        // Логика смещения: если объект boxed, смещение в коде обычно считается от начала данных, а
+        // не от тега.
+        auto off = info.field.offset();
+
+        return Object::make_integer(off);
+    } catch (const std::exception &e) {
+        throw_eval_error(form, fmt::format("Field '{}' not found in type '{}'.", field_name.c_str(),
+                                           type_name.c_str()));
+    }
+
+    return get_null();
+}
+
+Object Interpreter::eval_size_of_special(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto  args = get_args(form, rest, ArgumentSpec(false, true));
+    auto &ts = TypeSystem::instance();
+
+    if (args.unnamed.size() == 1) {
+        // Обычный size-of типа: (size-of vector)
+        auto type_name = args.unnamed[0].as_symbol();
+        return Object::make_integer(ts.lookup_type(type_name.name_ptr)->get_size_in_memory());
+    } else if (args.unnamed.size() == 2) {
+        // Умный size-of поля: (size-of vector x)
+        auto type_name = args.unnamed[0].as_symbol();
+        auto field_name = args.unnamed[1].as_symbol();
+
+        auto type = ts.lookup_type(type_name.name_ptr);
+        auto info = ts.lookup_field_info(type->get_name(), field_name.name_ptr);
+
+        // Берем тип самого поля и узнаем его размер
+        auto field_type = ts.lookup_type(info.field.type().base_type());
+        return Object::make_integer(field_type->get_size_in_memory());
+    }
+
+    throw_eval_error(form, "size-of: expected 1 or 2 arguments");
+    return get_null();
+}
+
+Object Interpreter::eval_method_id_of_special(const Object &form, const Object &rest,
+                                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto  method_name = args.unnamed[1].as_symbol();
+    auto &ts = TypeSystem::instance();
+
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(form,
+                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+
+    return Object::make_integer(m_info.id);
+}
+
 /**
  * @brief Чтение значения из ячейки памяти (Dereference).
  * * * Роль: Преобразует сырые байты из буфера в объект интерпретатора.
  * Использует метаданные типа, хранящиеся в TypePointer, чтобы понять,
  * сколько байт читать и как их интерпретировать (как число, строку или энум).
  * * * Lisp Logic:
- * (cell-get cell) -> возвращает значение.
+ * (mem-get cell) -> возвращает значение.
  * Обычно используется автоматически при обращении к ячейке в контексте выражения.
  * * * @param args[0] Объект TypePointer.
  * @return Object (Число, строка или другой примитив).
  */
-Object Interpreter::eval_cell_get(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_mem_get(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::POINTER}}, {});
-    auto cell = args.unnamed[0].as_native_ref<TypePointer>();
-    return cell->get(); // Использует StaticBufferReader внутри
+    // Просто дергаем метод Pointer::get(), который мы обсуждали
+    return args.unnamed[0].as_pointer()->get();
 }
 /**
  * @brief Запись значения в ячейку памяти (Assignment).
@@ -4421,17 +4726,18 @@ Object Interpreter::eval_cell_get(const Object &form, Arguments &args,
  * - Учитывает порядок байтов (Endianness) целевой платформы (Z80).
  * - Выполняет проверку типов (нельзя записать строку в ячейку int8).
  * * * Lisp Logic:
- * (cell-set! cell value)
+ * (mem-set! cell value)
  * (set! (-> my-struct 'field) 10) ; Внутри развернется в call-set!
  * * * @param args[0] Объект TypePointer (куда писать).
  * @param args[1] Значение (что писать).
  * @return undefined
  */
-Object Interpreter::eval_cell_set(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::POINTER}, {}}, {}); // Ячейка и любое значение
-    auto cell = args.unnamed[0].as_native_ref<TypePointer>();
-    cell->set(args.unnamed[1]); // Использует StaticBufferWriter внутри
+Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::POINTER}, {}}, {});
+    auto ptr = args.unnamed[0].as_pointer();
+    ptr->set(args.unnamed[1]); // Пишем значение
     return get_undefined();
 }
 // ============================================================
@@ -4452,6 +4758,7 @@ Object Interpreter::eval_cell_set(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args,
                  {{ObjectType::STRING},   // тип
                   {ObjectType::INTEGER},  // размер
@@ -4479,6 +4786,7 @@ Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
     auto buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
     auto writer = std::make_shared<StaticWriter>(buffer);
@@ -4498,8 +4806,9 @@ Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
  * (define cell (static-cell buf #x10 'int8))  ; Прямой доступ по адресу
  * * * @return Object (TypePointer).
  */
-Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_make_buffer_pointer(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
     // (static-cell buffer offset 'type) ИЛИ (static-cell writer 'type)
     if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
@@ -4523,6 +4832,7 @@ Object Interpreter::eval_make_buffer_cell(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     // 1. Проверка аргументов
     vararg_check(form, args, {{}, {}},
                  {
@@ -4599,6 +4909,7 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     // Принимаем 2 позиционных аргумента: буфер и имя
     vararg_check(form, args, {{}, {ObjectType::STRING, ObjectType::SYMBOL}}, {});
 
@@ -4638,6 +4949,8 @@ Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+
     vararg_check(form, args,
                  {{ObjectType::STATIC_BUFFER},
                   {ObjectType::INTEGER},
@@ -4674,6 +4987,7 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}, {}},
                  {{"as", {true, {ObjectType::SYMBOL}}}, {"at", {false, {ObjectType::INTEGER}}}});
 
@@ -4734,7 +5048,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                     Object field_val = entry.as_pair()->cdr;
 
                     Object sub_cell = cell_ptr->make_step_accessor(field_name);
-                    if (!sub_cell.is_undefined()) {
+                    if (!sub_cell.is_none()) {
                         recursive_write(sub_cell, field_val);
                     }
                 } else {
@@ -4742,7 +5056,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                     // Применяем смещение по индексу относительно текущей ячейки
                     Object sub_cell =
                         cell_ptr->make_step_accessor(Object::make_integer(internal_index));
-                    if (!sub_cell.is_undefined()) {
+                    if (!sub_cell.is_none()) {
                         recursive_write(sub_cell, entry);
                     }
                     internal_index++;
@@ -4834,8 +5148,8 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
     // --- ОБРАБОТКА ПРИМИТИВА ---
     // Если это не список, значит это конечное значение (int, float, etc.)
     if (!value.is_pair()) {
-        fmt::print("recursive_write cell: {} value: {}\n", cell->print(), value.print());
-        cell->set(value); // Запись в память через Cell-Set
+        // fmt::print("recursive_write cell: {} value: {}\n", cell->print(), value.print());
+        cell->set(value); // Запись в память через mem-set
     }
 }
 Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
@@ -4913,6 +5227,7 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
 // ============================================================
 Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::LAMBDA}}, {});
 
     const std::string &str = args.unnamed[0].as_string()->data;
@@ -4926,6 +5241,7 @@ Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
 }
 Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     // Проверяем типы: первый аргумент — массив (вектор), второй — лямбда
     vararg_check(form, args, {{ObjectType::ARRAY}, {ObjectType::LAMBDA}}, {});
 
@@ -4947,6 +5263,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
 /// @return undefined
 Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args,
                                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {ObjectType::LAMBDA}}, {});
 
     auto       &table = args.unnamed[0].as_hash_table()->data;
@@ -4966,6 +5283,7 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
 }
 Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::LAMBDA}}, {});
 
     Object current = args.unnamed[0];
@@ -4985,6 +5303,7 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
 // ============================================================
 Object Interpreter::eval_crc32(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{}}, {});
 
     return Object::make_integer(args.unnamed[0].as_crc32());

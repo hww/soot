@@ -177,10 +177,14 @@ class StaticBuffer : public HeapObject {
     uint8_t *data() {
         return m_data.data();
     }
-    const std::string &type_name() const {
-        return m_type_name;
+
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::STATIC_BUFFER);
     }
 
+    std::string class_name() const override {
+        return "StaticBuffer";
+    }
     Object      inspect() const override;
     std::string hex_dump(size_t start_offset = 0, size_t bytes_to_dump = 0, bool show_ascii = true,
                          size_t bytes_per_line = 16) const;
@@ -194,6 +198,13 @@ class StaticBuffer : public HeapObject {
     Object make_step_accessor(const Object &key) override;
 
     void write_value_at_ptr(void *ptr, Type *type, const Object &val);
+
+    bool is_table() const override {
+        return true;
+    }
+
+    Object get_at(const Object &key) override;
+    void   set_at(const Object &key, const Object &value) override;
 
     // ============================================================================
     // --- Реализация чтения различных данных ---

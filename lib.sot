@@ -531,7 +531,7 @@
 (defmacro setf (place value)
   (cond
     ((symbol? place) `(set! ,place ,value))
-    ((eq? (car place) '->) `(cell-set! ,place ,value)) ; Для всех стрелочек используем cell-set!
+    ((eq? (car place) '->) `(mem-set! ,place ,value)) ; Для всех стрелочек используем mem-set!
     (#t (let ((setter (get-setter (car place))))
          (if setter
              `(,setter ,@(cdr place) ,value)
@@ -567,16 +567,7 @@
 ;; Object navigation
 ;; ===========================================================================
 
-(defmacro -> (base &rest path)
-        `(navigation ,base ,@path))
-
 (defun identity (item) item)
-
-(defmacro &+ (base &rest offsets)
-  "Складывает базовый адрес с набором смещений."
-  (if (null? offsets)
-      base
-      `(+ ,base ,@offsets)))
 
 ;; =============================================================================
 ;; Structures 

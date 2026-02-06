@@ -20,7 +20,7 @@ class TypePointer : public Pointer {
     Object      get() override;
     void        set(const Object &val) override;
     Object      make_step_accessor(const Object &key) override;
-    void       *resolve_ptr() const override;
+    void       *resolve_addr() const override;
     std::string print() const override;
     Object      inspect() const override;
     Type       *get_type();

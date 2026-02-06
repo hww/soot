@@ -19,46 +19,46 @@ namespace script {
 
 std::string object_type_to_string(ObjectType type) {
     switch (type) {
-    case ObjectType::UNDEFINED:
-        return "[undefined]";
+    case ObjectType::NONE:
+        return "none";
     case ObjectType::EMPTY_LIST:
-        return "[empty list]";
+        return "null";
     case ObjectType::INTEGER:
-        return "[integer]";
+        return "int";
     case ObjectType::FLOAT:
-        return "[float]";
+        return "float";
     case ObjectType::CHAR:
-        return "[char]";
+        return "char";
     case ObjectType::SYMBOL:
-        return "[symbol]";
+        return "symbol";
     case ObjectType::STRING:
-        return "[string]";
+        return "string";
     case ObjectType::PAIR:
-        return "[pair]";
+        return "pair";
     case ObjectType::ARRAY:
-        return "[array]";
+        return "array";
     case ObjectType::LAMBDA:
-        return "[lambda]";
+        return "lambda";
     case ObjectType::MACRO:
-        return "[macro]";
+        return "macro";
     case ObjectType::ENVIRONMENT:
-        return "[environment]";
+        return "environment";
     case ObjectType::STRING_HASH_TABLE:
-        return "[string-hash-table]";
+        return "hash-table";
     case ObjectType::READER:
-        return "[reader]";
+        return "reader";
     case ObjectType::POINTER:
-        return "[pointer]";
+        return "pointer";
     case ObjectType::NATIVE_REF:
-        return "[native-ref]";
+        return "native-ref";
     case ObjectType::STATIC_BUFFER:
-        return "[static-buffer]";
+        return "static-buffer";
     case ObjectType::STATIC_WRITER:
-        return "[static-writer]";
+        return "static-writer]";
     case ObjectType::PRIMITIVE:
-        return "[primitive]";
+        return "primitive";
     case ObjectType::SPECIAL_FORM:
-        return "[specialform]";
+        return "specialform";
     default:
         throw std::runtime_error(
             fmt::format("unknown object type {} in object_type_to_string", (int)type));
@@ -96,78 +96,77 @@ SymbolTable::~SymbolTable() {
 }
 
 void SymbolTable::init_core_symbols() {
-    core.sym_undefined = make_symbol(":undefined");
-    core.optional = make_symbol(":optional");
-    core.key = make_symbol(":key");
-    core.rest = make_symbol(":rest");
+    core.kw_undefined = make_symbol(":undefined");
+    core.kw_optional = make_symbol(":optional");
+    core.kw_key = make_symbol(":key");
+    core.kw_rest = make_symbol(":rest");
     core.sym_true = make_symbol("#t");
     core.sym_false = make_symbol("#f");
-    core.empty_list = make_symbol("empty-list");
-    core.primitive = make_symbol("primitive");
-    core.special_form = make_symbol("special-form");
-    core.integer = make_symbol("integer");
-    core.float_pt = make_symbol("float");
-    core.character = make_symbol("char");
-    core.symbol = make_symbol("symbol");
-    core.string = make_symbol("string");
-    core.pair = make_symbol("pair");
-    core.array = make_symbol("array");
-    core.hash_table = make_symbol("hash-table");
-    core.lambda = make_symbol("lambda");
-    core.macro = make_symbol("macro");
-    core.environment = make_symbol("environment");
-    core.reader = make_symbol("reader");
-    core.lextoken = make_symbol("lextoken");
-    core.unknown = make_symbol("unknown");
-    core.pointer = make_symbol("pointer");
-    core.native_ref = make_symbol("native-ref");
-    core.static_buffer = make_symbol("static-buffer");
-    core.static_writer = make_symbol("static-writer");
+    core.type_null = make_symbol(object_type_to_string(ObjectType::EMPTY_LIST));
+    core.type_primitive = make_symbol(object_type_to_string(ObjectType::PRIMITIVE));
+    core.type_special_form = make_symbol(object_type_to_string(ObjectType::SPECIAL_FORM));
+    core.type_int = make_symbol(object_type_to_string(ObjectType::INTEGER));
+    core.type_float = make_symbol(object_type_to_string(ObjectType::FLOAT));
+    core.type_char = make_symbol(object_type_to_string(ObjectType::CHAR));
+    core.type_symbol = make_symbol(object_type_to_string(ObjectType::SYMBOL));
+    core.type_string = make_symbol(object_type_to_string(ObjectType::STRING));
+    core.type_pair = make_symbol(object_type_to_string(ObjectType::PAIR));
+    core.type_array = make_symbol(object_type_to_string(ObjectType::ARRAY));
+    core.type_hash_table = make_symbol(object_type_to_string(ObjectType::STRING_HASH_TABLE));
+    core.type_lambda = make_symbol(object_type_to_string(ObjectType::LAMBDA));
+    core.type_macro = make_symbol(object_type_to_string(ObjectType::MACRO));
+    core.type_environment = make_symbol(object_type_to_string(ObjectType::ENVIRONMENT));
+    core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
+    core.type_none = make_symbol(object_type_to_string(ObjectType::NONE));
+    core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
+    core.type_native_ref = make_symbol(object_type_to_string(ObjectType::NATIVE_REF));
+    core.type_static_buffer = make_symbol(object_type_to_string(ObjectType::STATIC_BUFFER));
+    core.type_static_writer = make_symbol(object_type_to_string(ObjectType::STATIC_WRITER));
 }
 Object SymbolTable::object_type_to_symbol(ObjectType type) {
     switch (type) {
-    case ObjectType::UNDEFINED:
-        return core.sym_undefined;
+    case ObjectType::NONE:
+        return core.type_none;
     case ObjectType::PRIMITIVE:
-        return core.primitive;
+        return core.type_primitive;
     case ObjectType::SPECIAL_FORM:
-        return core.special_form;
+        return core.type_special_form;
     case ObjectType::EMPTY_LIST:
-        return core.empty_list; // было EmptyList
+        return core.type_null; // было EmptyList
     case ObjectType::INTEGER:
-        return core.integer; // было Integer
+        return core.type_int; // было Integer
     case ObjectType::FLOAT:
-        return core.float_pt; // было Float
+        return core.type_float; // было Float
     case ObjectType::CHAR:
-        return core.character; // было Char
+        return core.type_char; // было Char
     case ObjectType::SYMBOL:
-        return core.symbol;
+        return core.type_symbol;
     case ObjectType::STRING:
-        return core.string;
+        return core.type_string;
     case ObjectType::PAIR:
-        return core.pair;
+        return core.type_pair;
     case ObjectType::ARRAY:
-        return core.array;
+        return core.type_array;
     case ObjectType::STRING_HASH_TABLE:
-        return core.hash_table;
+        return core.type_hash_table;
     case ObjectType::LAMBDA:
-        return core.lambda;
+        return core.type_lambda;
     case ObjectType::MACRO:
-        return core.macro;
+        return core.type_macro;
     case ObjectType::ENVIRONMENT:
-        return core.environment;
+        return core.type_environment;
     case ObjectType::READER:
-        return core.reader;
+        return core.type_reader;
     case ObjectType::POINTER:
-        return core.pointer;
+        return core.type_pointer;
     case ObjectType::NATIVE_REF:
-        return core.native_ref;
+        return core.type_native_ref;
     case ObjectType::STATIC_BUFFER:
-        return core.static_buffer;
+        return core.type_static_buffer;
     case ObjectType::STATIC_WRITER:
-        return core.static_writer;
+        return core.type_static_writer;
     default:
-        return core.unknown;
+        return core.type_none;
     }
 }
 
@@ -362,7 +361,7 @@ void HeapObject::set_at(const Object &key, const Object &value) {
 
 Object Object::make_undefined() {
     Object obj;
-    obj.type = ObjectType::UNDEFINED;
+    obj.type = ObjectType::NONE;
     return obj;
 }
 
@@ -564,8 +563,8 @@ std::string Object::to_std_string() const {
         return symbol_obj.value;
 
     default:
-        throw std::runtime_error("Cannot convert " + object_type_to_string(type) +
-                                 " to std::string");
+        throw std::runtime_error("to_std_string called on a " + object_type_to_string(type) +
+                                 print());
     }
 }
 
@@ -695,10 +694,17 @@ NativeRef *Object::as_native_ref() const {
     }
     return dynamic_cast<NativeRef *>(heap_obj.get());
 }
+HeapObject *Object::as_heap_object() const {
+    if (heap_obj == nullptr) {
+        throw std::runtime_error("as_heap_object called on a " + object_type_to_string(type) + " " +
+                                 print() + " heap_obj is null");
+    }
+    return dynamic_cast<HeapObject *>(heap_obj.get());
+}
 
 uint32_t Object::as_crc32() const {
     switch (type) {
-    case ObjectType::UNDEFINED:
+    case ObjectType::NONE:
         return util::compute_crc32(":undefined");
     case ObjectType::EMPTY_LIST:
         return util::compute_crc32("null");
@@ -758,7 +764,7 @@ bool Object::operator==(const Object &other) const {
         return false;
 
     switch (type) {
-    case ObjectType::UNDEFINED:
+    case ObjectType::NONE:
         return false;
 
     case ObjectType::STRING:
@@ -945,7 +951,7 @@ ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
     for (const auto &[name, default_val] : optional) {
         PositionalArg arg;
         arg.name = name;
-        arg.is_optional = !default_val.is_undefined();
+        arg.is_optional = !default_val.is_none();
         arg.default_value = default_val;
         spec.unnamed.push_back(arg);
     }
@@ -953,7 +959,7 @@ ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
     // 3. Ключевые аргументы (&key с дефолтами)
     for (const auto &[name, default_val] : keys) {
         NamedArg arg;
-        arg.has_default = !default_val.is_undefined();
+        arg.has_default = !default_val.is_none();
         arg.default_value = default_val;
         spec.named[name] = arg;
     }
@@ -981,7 +987,7 @@ static size_t get_primitive_size(const std::string &type) {
 Object Pointer::inspect() const {
     ListBuilder lb{};
     // Используем символ 'pointer' для идентификации в инспекции
-    lb.push_back(Object::symbol_table().core.pointer);
+    lb.push_back(Object::symbol_table().core.type_pointer);
 
     lb.push_kv("address", Object::make_integer((uintptr_t)m_ptr));
     lb.push_kv("type", Object::make_string(m_type));
@@ -1161,7 +1167,7 @@ std::string truncate_obj(const std::string &s, size_t max_arg_len) {
 // String representations
 std::string Object::print() const {
     switch (type) {
-    case ObjectType::UNDEFINED:
+    case ObjectType::NONE:
         return "udefined";
     case ObjectType::EMPTY_LIST:
         return "null";
@@ -1211,7 +1217,7 @@ std::string ArgumentSpec::print_full(size_t max_len, size_t max_arg_len) const {
         for (const auto &[name, val] : named) {
             if (!first)
                 ss << " ";
-            if (val.default_value.is_undefined())
+            if (val.default_value.is_none())
                 ss << name;
             else
                 ss << "(" << name << " " << truncate_obj(val.default_value, max_arg_len) << ")";

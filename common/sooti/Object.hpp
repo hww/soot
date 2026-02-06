@@ -23,7 +23,7 @@ using FloatType = double;
 using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
-    UNDEFINED,
+    NONE,
     PRIMITIVE,
     SPECIAL_FORM,
     EMPTY_LIST,
@@ -70,6 +70,9 @@ struct ArgumentSpec;
 struct InternedSymbolPtr {
     const char *name_ptr;
 
+    std::string class_name() const {
+        return "InternedSymbolPtr";
+    }
     bool starts_with_colon() const {
         return name_ptr && name_ptr[0] != '\0' && name_ptr[0] == ':';
     }
@@ -169,7 +172,10 @@ using SymbolObject = FixedObject<InternedSymbolPtr>;
 class HeapObject : public std::enable_shared_from_this<HeapObject> {
   public:
     virtual ~HeapObject() = default;
-
+    virtual bool is_table() const {
+        // has methods get_at and set_at?
+        return false;
+    }
     virtual Object   make_step_accessor(const Object &key);
     virtual Object   get_at(const Object &key);
     virtual void     set_at(const Object &key, const Object &val);
@@ -181,11 +187,22 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual std::string printc() const {
         return print();
     }
+    virtual std::string class_name() const {
+        return "HeapObject";
+    }
+    virtual std::string type_name() const {
+        return "none";
+    }
 };
 
 class NativeRef : public HeapObject {
   public:
-    virtual Object deref() = 0; // Обязательный для всех "нативных оберток"
+    // NativeRef просто говорит: "Я — ссылка на что-то нативное".
+    // Тут можно оставить только метод для интроспекции или получения сырого адреса самого объекта.
+    virtual ~NativeRef() = default;
+    std::string class_name() const override {
+        return "NativeRef";
+    }
 };
 
 // Main Object class
@@ -193,7 +210,7 @@ class Object {
     friend class EnvironmentPrettyPrinter;
 
   public:
-    ObjectType type = ObjectType::UNDEFINED;
+    ObjectType type = ObjectType::NONE;
 
     // For fixed types (value semantics) - как в OpenGOAL
     union {
@@ -206,6 +223,9 @@ class Object {
     // For heap types (reference semantics)
     std::shared_ptr<HeapObject> heap_obj;
 
+    virtual std::string class_name() const {
+        return "Pointer";
+    }
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
         s_table = table;
@@ -265,8 +285,8 @@ class Object {
     bool is_type(ObjectType atype) const {
         return type == atype;
     }
-    bool is_undefined() const {
-        return type == ObjectType::UNDEFINED;
+    bool is_none() const {
+        return type == ObjectType::NONE;
     }
     bool is_heap_object() const {
         return heap_obj != nullptr;
@@ -390,11 +410,15 @@ class Object {
     ReaderObject                      *as_reader() const;
     Pointer                           *as_pointer() const;
     NativeRef                         *as_native_ref() const;
+    HeapObject                        *as_heap_object() const;
     const IntegerObject               &as_integer_obj() const;
     const InternedSymbolPtr           &as_symbol() const;
     std::shared_ptr<EnvironmentObject> as_env_ptr() const;
     std::string                        to_std_string() const;
     uint32_t                           as_crc32() const;
+    std::vector<Object>                as_c_vector() const;
+    std::vector<std::string>           as_c_vector_of_strings() const;
+    PairObject                        *as_pair() const;
 
     template <typename T> std::shared_ptr<T> as_native_ref() const {
         // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
@@ -413,13 +437,6 @@ class Object {
 
         return casted_ptr;
     }
-
-    // C++ идеоматичные методы
-    std::vector<Object>      as_c_vector() const;
-    std::vector<std::string> as_c_vector_of_strings() const;
-
-    // For pair access
-    PairObject *as_pair() const;
 
     bool operator==(const Object &other) const;
     bool operator!=(const Object &other) const {
@@ -476,6 +493,13 @@ class PairObject : public HeapObject {
         }
         return Object::make_undefined();
     }
+
+    std::string class_name() const override {
+        return "PairObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::PAIR);
+    }
 };
 
 class StringObject : public HeapObject {
@@ -505,6 +529,12 @@ class StringObject : public HeapObject {
 
     Object inspect() const override;
 
+    std::string class_name() const override {
+        return "StringObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::STRING);
+    }
     // Неявное преобразование в std::string
     operator std::string() const {
         return data;
@@ -572,6 +602,12 @@ class ArrayObject : public HeapObject {
 
         return Object::make_undefined();
     }
+    // has methods get_at and set_at?
+
+    bool is_table() const override {
+        return true;
+    }
+
     Object get_at(const Object &key) override {
         if (key.is_integer()) {
             int index = key.as_integer();
@@ -589,6 +625,12 @@ class ArrayObject : public HeapObject {
                 data[index] = val;
             }
         }
+    }
+    std::string class_name() const override {
+        return "ArrayObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::ARRAY);
     }
 };
 
@@ -622,8 +664,13 @@ class HashTableObject : public HeapObject {
         return result;
     }
 
-    Object inspect() const override;
-
+    Object      inspect() const override;
+    std::string class_name() const override {
+        return "HashTableObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::STRING_HASH_TABLE);
+    }
     // Метод получения: возвращает ссылку на объект.
     // Если ключа нет, unordered_map создаст объект по умолчанию.
     Object &get(const std::string &key) {
@@ -634,19 +681,6 @@ class HashTableObject : public HeapObject {
     Object &set(const std::string &key, Object value) {
         data[key] = std::move(value); // используем move для эффективности
         return data[key];
-    }
-
-    Object get_at(const Object &key) override {
-        if (key.is_string()) {
-            return data[key.to_std_string()];
-        }
-        return Object::make_undefined();
-    }
-
-    void set_at(const Object &key, const Object &val) override {
-        if (key.is_string()) {
-            data[key.to_std_string()] = val;
-        }
     }
 
     // Доступ по строковому ключу (неконстантный):
@@ -673,6 +707,23 @@ class HashTableObject : public HeapObject {
             return data[skey];
         }
         return Object::make_undefined();
+    }
+    // has methods get_at and set_at?
+    bool is_table() const override {
+        return true;
+    }
+
+    Object get_at(const Object &key) override {
+        if (key.is_string()) {
+            return data[key.to_std_string()];
+        }
+        return Object::make_undefined();
+    }
+
+    void set_at(const Object &key, const Object &val) override {
+        if (key.is_string()) {
+            data[key.to_std_string()] = val;
+        }
     }
 };
 
@@ -802,34 +853,32 @@ template <typename T> class InternedPtrMap {
 class SymbolTable {
   public:
     struct TypeSymbols {
-        Object empty_list;
-        Object special_form;
-        Object primitive;
-        Object integer;
-        Object float_pt;
-        Object character;
-        Object symbol;
-        Object string;
-        Object pair;
-        Object array;
-        Object hash_table;
-        Object lambda;
-        Object macro;
-        Object environment;
-        Object reader;
-        Object lextoken;
-        Object place;
-        Object unknown;
-        Object pointer;
-        Object sym_undefined;
+        Object kw_undefined;
+        Object kw_optional;
+        Object kw_key;
+        Object kw_rest;
         Object sym_true;
         Object sym_false;
-        Object optional;
-        Object key;
-        Object rest;
-        Object native_ref;
-        Object static_buffer;
-        Object static_writer;
+        Object type_null;
+        Object type_special_form;
+        Object type_primitive;
+        Object type_int;
+        Object type_float;
+        Object type_char;
+        Object type_symbol;
+        Object type_string;
+        Object type_pair;
+        Object type_array;
+        Object type_hash_table;
+        Object type_lambda;
+        Object type_macro;
+        Object type_environment;
+        Object type_reader;
+        Object type_none;
+        Object type_pointer;
+        Object type_native_ref;
+        Object type_static_buffer;
+        Object type_static_writer;
 
         Object true_or_false(bool val) {
             return val ? sym_true : sym_false;
@@ -925,6 +974,13 @@ class EnvironmentObject : public HeapObject {
     }
 
     Object inspect() const override;
+
+    std::string class_name() const override {
+        return "EnvironmentObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::ENVIRONMENT);
+    }
 };
 
 // Аргументы функций
@@ -976,9 +1032,9 @@ struct NamedArg {
  * (и должен использовать дефолт), и когда он отсутствует в спецификации.
  */
 struct PositionalArg {
-    std::string name;
-    bool        is_optional;   // или просто проверка has_default
-    Object      default_value; // NIL по умолчанию для опциональных
+    std::string name{};
+    bool        is_optional;     // или просто проверка has_default
+    Object      default_value{}; // NIL по умолчанию для опциональных
 };
 /**
  * @brief Спецификация аргументов функции (lambda-list).
@@ -1091,6 +1147,13 @@ class LambdaObject : public HeapObject {
     }
 
     Object inspect() const override;
+
+    std::string class_name() const override {
+        return "LambdaObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::LAMBDA);
+    }
 };
 
 class MacroObject : public HeapObject {
@@ -1115,6 +1178,13 @@ class MacroObject : public HeapObject {
     }
 
     Object inspect() const override;
+
+    std::string class_name() const override {
+        return "MacroObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::MACRO);
+    }
 };
 
 class ReaderObject : public HeapObject {
@@ -1138,6 +1208,13 @@ class ReaderObject : public HeapObject {
     bool        is_eof() const;
     std::string print() const override;
     Object      inspect() const override;
+
+    std::string class_name() const override {
+        return "ReaderObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::READER);
+    }
 };
 
 class Pointer : public HeapObject {
@@ -1161,12 +1238,19 @@ class Pointer : public HeapObject {
     virtual Object deref() {
         return get();
     }
-    virtual void *resolve_ptr() const {
+    virtual void *resolve_addr() const {
         return m_ptr;
     }
 
     std::string print() const override;
     Object      inspect() const override;
+
+    std::string class_name() const override {
+        return "Pointer";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::POINTER);
+    }
 };
 
 // 1. Предварительное объявление
@@ -1204,6 +1288,13 @@ struct SpecialFormObject : public CallableObject {
     }
 
     Object inspect() const override;
+
+    std::string class_name() const override {
+        return "SpecialFormObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::SPECIAL_FORM);
+    }
 };
 
 struct BuiltinFunctionObject : public CallableObject {
@@ -1224,6 +1315,13 @@ struct BuiltinFunctionObject : public CallableObject {
     }
 
     Object inspect() const override;
+
+    std::string class_name() const override {
+        return "BuiltinFunctionObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::PRIMITIVE);
+    }
 };
 
 Object build_list(std::vector<Object> &&objects);
