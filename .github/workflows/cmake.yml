@@ -9,6 +9,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Cache build folder
+      uses: actions/cache@v4
+      with:
+        path: build
+        # Ключ зависит от ОС и изменений в CMakeLists.txt
+        key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+        # Если точного совпадения нет, берем последний подходящий кэш
+        restore-keys: |
+          ${{ runner.os }}-cmake-
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release
 

@@ -585,6 +585,13 @@
 ;;   5. Сеттеры:     (point-x! obj val), (point-y! obj val)
 ;;   6. Связки:      Регистрирует пары геттер/сеттер для макроса setf.
 ;; -----------------------------------------------------------------------------
+;; Примеры:
+;;      (defstruct vector x y z)
+;;      (define v (make-vector :x 10 :y 20))
+;;      (vector? v)        ;; Должно быть true
+;;      (type-of v)       ;; Должно быть vector
+;;      (vector-x v)       ;; Должно быть 10
+;; -----------------------------------------------------------------------------
 (defmacro defstruct (name &rest fields)
   (let* ((struct-name-sym name)
           (doc? (string? (car fields)))
