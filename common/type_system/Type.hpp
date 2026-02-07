@@ -635,7 +635,9 @@ class StructureType : public ReferenceType {
     }
     int get_in_memory_alignment() const override {
         return TypeConfig::struct_alignment;
-    } // STRUCTURE_ALIGNMENT
+    }
+
+    // STRUCTURE_ALIGNMENT
     int get_inline_array_stride_alignment() const override {
         return m_pack ? 1 : TypeConfig::struct_array_stride_alignment;
     }
@@ -644,10 +646,10 @@ class StructureType : public ReferenceType {
     }
 
     bool lookup_field(const std::string &name, Field *out);
+
     bool is_dynamic() const {
         return m_dynamic;
     }
-
     const std::vector<Field> &fields() const {
         return m_fields;
     }

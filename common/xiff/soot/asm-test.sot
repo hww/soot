@@ -15,7 +15,7 @@
 (defmacro build-vtable (type-sym seg)
   (let* ((type-name-str (symbol->string type-sym))
          (vtable-label (intern (concat type-name-str "-vtable")))
-         (methods (-> type-sym methods-list)))
+         (methods (-> type-sym methods)))
     `(zasm
        ;; Объявляем метку начала таблицы
        (lab ',vtable-label)
@@ -67,6 +67,11 @@ $label2
             (ld [- iy 10] #xAA) ; Должно быть: FD 36 F6 AA
       )
       (org #x8000)
+
+$vec3::new
+      ret
+$vec3::len
+      ret
 $begin
       (ld hl (size-of vec3)) ;; offset
       (ld hl (offset-of vec3 x)) ;; offset
@@ -74,10 +79,10 @@ $begin
       (ld hl (size-of vec3 x)) ;; size
       (ld hl (size-of vec3 y)) ;; size
       (ld [+ iy (offset-of vec3 y)] 10)
-
+      ;(.vtable 'position 'vec3 'def)
 
 )
-(build-vtable vec3 (module-current-segment test-module))
+
 
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)

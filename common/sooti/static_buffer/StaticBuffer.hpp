@@ -30,7 +30,7 @@ struct Relocation {
     std::string target_name; // Имя типа или символа
 };
 
-struct BufferLabel : public HeapObject {
+struct BufferLabel : public NativeRef {
     size_t addr;    // Смещение в буфере
     Object segment; // Имя или объект сегмента (Object для гибкости)
     Object meta;    // Метаданные (asmsym-info из Lisp)
@@ -152,7 +152,7 @@ class StaticSymbolTable {
     }
 };
 
-class StaticBuffer : public HeapObject {
+class StaticBuffer : public NativeRef {
 
   public:
     enum class Endian { Little, Big };
