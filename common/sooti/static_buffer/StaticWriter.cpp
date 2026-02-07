@@ -9,11 +9,11 @@ namespace script {
  */
 Object StaticWriter::allocate(const std::string &type_name) {
     if (!m_buffer)
-        return Object::make_undefined();
+        return Object::make_none();
 
     Type *type = TypeSystem::instance().lookup_type(type_name);
     if (!type)
-        return Object::make_undefined();
+        return Object::make_none();
 
     // 1. Выравниваем курсор под требования типа
     size_t alignment = type->get_in_memory_alignment();

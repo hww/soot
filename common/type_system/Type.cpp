@@ -83,7 +83,7 @@ Object MethodInfo::make_step_accessor(const Object &key) {
     }
 
     // Если ничего не подошло — отдаем undefined
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================
@@ -203,7 +203,7 @@ Object Field::make_step_accessor(const Object &key) {
     }
 
     // Если ключ не найден, возвращаем undefined, чтобы navigation понял, что пути нет
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================
@@ -408,7 +408,7 @@ Object Type::make_step_accessor(const Object &key) {
 
     // Для специфических типов (например, StructureType) мы переопределим этот метод
     // и вызовем Type::make_step_accessor(key) в конце, если ничего не нашли.
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================
@@ -780,7 +780,7 @@ Object StructureType::make_step_accessor(const Object &key) {
                 const_cast<MethodInfo *>(&m_new_method_info), [](MethodInfo *) {});
             return Object::make_native_ref(method_ptr);
         }
-        return Object::make_undefined();
+        return Object::make_none();
     }
     for (auto &field : m_fields) {
         if (field.name() == name) {
@@ -899,7 +899,7 @@ Object BitField::make_step_accessor(const Object &key) {
 
     // 3. Базовый класс (если BitField наследуется от HeapObject/HeapObject)
     // Просто возвращаем undefined, так как у родителя нет свойств.
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================

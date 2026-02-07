@@ -21,7 +21,7 @@ Type *TypePointer::get_type() {
 Object TypePointer::get() {
     void *ptr = resolve_addr();
     if (!ptr || m_type.empty())
-        return Object::make_undefined();
+        return Object::make_none();
 
     auto type = get_type();
     if (!type) {
@@ -76,7 +76,7 @@ void TypePointer::set(const Object &val) {
 Object TypePointer::make_step_accessor(const Object &key) {
     // 1. Быстрая проверка валидности
     if (!m_ptr || m_type.empty()) {
-        return Object::make_undefined();
+        return Object::make_none();
     }
 
     // 2. Получаем актуальный объект типа через TypeSystem
@@ -122,7 +122,7 @@ Object TypePointer::make_step_accessor(const Object &key) {
 
     // Если не удалось вычислить смещение (нет такого поля или неверный ключ)
     if (!next_type_obj) {
-        return Object::make_undefined();
+        return Object::make_none();
     }
 
     // --- ГЕНЕРАЦИЯ НОВОГО УКАЗАТЕЛЯ ---
