@@ -88,7 +88,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         size_t offset = static_cast<size_t>(key.as_integer());
 
         if (offset >= size())
-            return Object::make_undefined();
+            return Object::make_none();
 
         uint8_t *next_ptr = this->data() + offset;
 
@@ -101,7 +101,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         return Object::make_heap_object(b_cell, ObjectType::POINTER);
     }
 
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 Object StaticBuffer::get_at(const Object &key) {
@@ -114,7 +114,7 @@ Object StaticBuffer::get_at(const Object &key) {
         size_t offset = static_cast<size_t>(key.as_integer());
 
         if (offset >= size())
-            return Object::make_undefined();
+            return Object::make_none();
 
         uint8_t *next_ptr = this->data() + offset;
 
@@ -132,7 +132,7 @@ Object StaticBuffer::get_at(const Object &key) {
         if (label_obj.is_not_null())
             return label_obj;
     }
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 void StaticBuffer::set_at(const Object &key, const Object &value) {

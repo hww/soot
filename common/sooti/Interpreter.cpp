@@ -41,7 +41,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     m_symbol_false = m_obj_false.as_symbol().name_ptr;
     m_symbol_undefined = m_kw_undefined.as_symbol().name_ptr;
 
-    m_undefined = Object::make_undefined();
+    m_undefined = Object::make_none();
     // Создаем глобальное окружение
     m_global_environment = EnvironmentObject::make_new("global");
 
@@ -105,6 +105,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
         {"size-of", &Interpreter::eval_size_of_special, nullptr},
         {"method-id-of", &Interpreter::eval_method_id_of_special, nullptr},
+        {"static-new", &Interpreter::eval_static_new_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -177,7 +178,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"vector->list", &Interpreter::eval_vector_to_list, nullptr},
 
         // Хэш-таблицы
-        {"make-hash-table", &Interpreter::eval_make_hash_table, nullptr},
+        {"make-hash-table", &Interpreter::eval_make_hash_table, &args_with_keys},
         {"hash-table-set!", &Interpreter::eval_hash_table_set, nullptr},
         {"hash-table-ref", &Interpreter::eval_hash_table_ref, nullptr},
         {"hash-table-contains?", &Interpreter::eval_hash_table_containsp, nullptr},
@@ -2772,7 +2773,12 @@ Object Interpreter::eval_type_of(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {});
-
+    auto obj = args.unnamed[0];
+    if (obj.is_hash_table()) {
+        auto table = obj.as_hash_table();
+        if (!table->type.is_none())
+            return table->type;
+    }
     return m_symbol_table.object_type_to_symbol(args.unnamed[0].type);
 }
 
@@ -3187,52 +3193,40 @@ const char *get_hash_key(Object item_pair) {
         return nullptr;
     }
 }
-//
-// Пустая таблица: (make-hash-table)
-//
-// Только данные (размер будет 8): (make-hash-table '((:HL . 1) (:BC . 2)))
-//
-// Данные и размер: (make-hash-table '((:A . 0)) 100)
-//
+
+/**
+ * Пустая таблица: (make-hash-table)
+ *
+ * Только данные (размер будет 8): (make-hash-table '((:HL . 1) (:BC . 2)))
+ *
+ * Данные и размер: (make-hash-table '((:A . 0)) 100)
+ */
 Object Interpreter::eval_make_hash_table(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-
-    // Валидация:
-    // {} в unnamed означает вариадик, но мы проверим типы вручную ниже для гибкости.
-    // Либо можно зажать строже: vararg_check(form, args, { ObjectType::PAIR,
-    // ObjectType::INTEGER },
-    // {}); Но лучше сделать оба аргумента необязательными:
-
-    if (args.unnamed.size() > 2) {
-        throw_eval_error(form, fmt::format("make-hash-table: expected at most 2 arguments, got {}",
-                                           args.unnamed.size()));
-    }
+    vararg_check(
+        form, args, {},
+        {{"size", {false, {ObjectType::INTEGER}}}, {"type", {false, {ObjectType::SYMBOL}}}});
 
     // Устанавливаем значения по умолчанию
     Object initial_data = Object::make_null();
-    int    size = 8;
-
-    // Разбираем позиционные аргументы
-    if (args.unnamed.size() >= 1) {
-        initial_data = args.unnamed.at(0);
-        if (!initial_data.is_null() && !initial_data.is_pair()) {
-            throw_eval_error(form,
-                             "make-hash-table: first argument (data) must be a list of pairs");
+    if (args.unnamed.size() > 0) {
+        if (!args.unnamed[0].is_pair() && !args.unnamed[0].is_null()) {
+            throw_type_mismatch(form, 0, {ObjectType::PAIR}, args.unnamed[0].type, args);
         }
+        initial_data = args.unnamed[0];
     }
+    int size = 8;
+    if (args.has_named("size"))
+        size = args.named["size"].as_integer();
 
-    if (args.unnamed.size() == 2) {
-        Object size_obj = args.unnamed.at(1);
-        if (size_obj.is_integer()) {
-            size = size_obj.as_integer();
-        } else {
-            throw_eval_error(form, "make-hash-table: second argument (size) must be an integer");
-        }
-    }
+    Object type_name = Object::make_none();
+    if (args.has_named("type"))
+        type_name = args.named["type"];
 
     // Создаем таблицу
-    Object table = Object::make_hash_table(size);
+    Object table = type_name.is_none() ? Object::make_hash_table(size)
+                                       : Object::make_hash_table(type_name, size);
     auto   table_ptr = table.as_hash_table();
 
     // Заполняем таблицу данными из списка пар
@@ -4349,8 +4343,9 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
 }
 
 // ============================================================
-// Alias
+// Работа с адресацией подобно dot sytnax в C++
 // ============================================================
+
 /**
  * @brief Примитив создания "окна" доступа (Шаг навигации).
  * * * Роль в системе:
@@ -4444,6 +4439,10 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
     return current;
 }
 
+// ============================================================
+// Работа с адресом
+// ============================================================
+
 /**
  * @brief addr-of: Возвращает адрес объекта (TypePointer или Field) в виде целого числа.
  * addr-of принимает один аргумент - целевой объект (TypePointer, Field или StaticBuffer).
@@ -4507,6 +4506,11 @@ Object Interpreter::eval_addr_plus(const Object &form, Arguments &args,
 
     return Object::make_integer(total);
 }
+
+// ============================================================
+// Специальные операторы приведения типа
+// ============================================================
+
 Object Interpreter::eval_the_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Проверка структуры (the <type> <value>)
@@ -4605,10 +4609,15 @@ Object Interpreter::eval_the_as_special(const Object &form, const Object &rest,
     // Если пришло что-то другое — кидаем ошибку несовместимости типов
     // Используем твой новый метод throw_type_mismatch
     throw_type_mismatch(form, 1, {ObjectType::INTEGER, ObjectType::POINTER}, target.type,
-                        Arguments{{target}, {}});
+                        Arguments{{target}, {}, {}, false});
 
     return get_null();
 }
+
+// ============================================================
+// Получение размеров и смещений
+// ============================================================
+
 Object Interpreter::eval_offset_of_special(const Object &form, const Object &rest,
                                            const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -4638,8 +4647,8 @@ Object Interpreter::eval_offset_of_special(const Object &form, const Object &res
     try {
         auto info = ts.lookup_field_info(type->get_name(), field_name);
 
-        // Логика смещения: если объект boxed, смещение в коде обычно считается от начала данных, а
-        // не от тега.
+        // Логика смещения: если объект boxed, смещение в коде обычно считается от начала
+        // данных, а не от тега.
         auto off = info.field.offset();
 
         return Object::make_integer(off);
@@ -4699,6 +4708,10 @@ Object Interpreter::eval_method_id_of_special(const Object &form, const Object &
     return Object::make_integer(m_info.id);
 }
 
+// ============================================================
+// Чтение запись памяти
+// ============================================================
+
 /**
  * @brief Чтение значения из ячейки памяти (Dereference).
  * * * Роль: Преобразует сырые байты из буфера в объект интерпретатора.
@@ -4740,9 +4753,11 @@ Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
     ptr->set(args.unnamed[1]); // Пишем значение
     return get_undefined();
 }
+
 // ============================================================
-// Alias
+// Статический буфер в памяти
 // ============================================================
+
 /**
  * @brief Создание статического буфера памяти (Холст).
  * * * Роль: Выделяет блок "сырой" памяти фиксированного размера, который
@@ -4771,6 +4786,7 @@ Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
     auto     buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
     return Object::make_heap_object(buffer, ObjectType::STATIC_BUFFER);
 }
+
 /**
  * @brief Создание курсора записи (Поток/Врайтер).
  * * * Роль: Обертка над буфером, которая управляет "текущей позицией" записи.
@@ -4792,6 +4808,7 @@ Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
     auto writer = std::make_shared<StaticWriter>(buffer);
     return Object::make_heap_object(writer, ObjectType::STATIC_WRITER);
 }
+
 /**
  * @brief Фабрика ячеек памяти (Типизированный указатель).
  * * * Роль: Создает объект TypePointer, который связывает конкретный адрес в памяти с типом.
@@ -4966,6 +4983,7 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
     auto str = buffer->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
     return Object::make_string(str);
 }
+
 /**
  * @brief Высокоуровневая команда записи в статическую память.
  * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур)
@@ -5152,6 +5170,7 @@ void Interpreter::recursive_write(Object cell_obj, Object value) {
         cell->set(value); // Запись в память через mem-set
     }
 }
+
 Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5207,8 +5226,9 @@ Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
     // но можно расширить аргументами
     buf->write_reloc(offset, target, RelocType::ABS_ADDR);
 
-    return Object::make_undefined();
+    return Object::make_none();
 }
+
 Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5220,11 +5240,87 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
     // но можно расширить аргументами
     buf->link_internal();
 
-    return Object::make_undefined();
+    return Object::make_none();
 }
+
+// ============================================================
+// Работа с буфером более элегантная
+// ============================================================
+/**
+ * ;; Лисп создает буфер в памяти хоста
+ * (define my-pos (static-new vector :x 10 :y 20))
+ *
+ * (zasm
+ *   ;; Ассемблер при генерации кода вытащит данные из my-pos
+ *   (ld ix my-pos)
+ *   (ld a [+ ix (offset-of vector y)])
+ * )
+ */
+Object Interpreter::eval_static_new_special(const Object &form, const Object &rest,
+                                            const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto  args = get_args(form, rest, ArgumentSpec(false, true));
+    auto &ts = TypeSystem::instance();
+
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "static-new: expected at least type name");
+        return get_null();
+    }
+
+    // 1. Извлекаем имя типа (например, vector)
+    std::string type_name = args.unnamed[0].to_std_string();
+    Type       *type = ts.lookup_type(type_name);
+    if (!type) {
+        throw_eval_error(form, "static-new: unknown type " + type_name);
+    }
+
+    auto origin = 0x0000;
+    auto buffer_name = "static-new-" + type_name;
+
+    // 2. Создаем StaticBuffer нужного размера
+    size_t size = type->get_size_in_memory();
+    auto   buffer = std::make_shared<StaticBuffer>(buffer_name, size, origin);
+
+    // 3. Создаем "корневой" указатель на начало буфера
+    // TypePointer связывает физическую память буфера с метаданными типа
+    auto root_cell = std::make_shared<TypePointer>(buffer->data(), type, buffer);
+
+    // 4. Если переданы дополнительные аргументы (alist или список значений)
+    // мы используем твою готовую recursive_write
+    if (args.unnamed.size() > 1) {
+        // Мы берем все аргументы после имени типа как "пакет данных"
+        // (static-new vector ((x . 10) (y . 20)))
+        Object data_package = args.unnamed[1];
+
+        try {
+            recursive_write(Object::make_native_ref(root_cell), data_package);
+        } catch (const std::exception &e) {
+            throw_eval_error(form, fmt::format("static-new initialization failed: {}", e.what()));
+        }
+    }
+    // Поддержка именованных аргументов (если синтаксис :x 10)
+    else if (!args.named.empty()) {
+        // Превращаем named args в alist для recursive_write
+        // Это позволит писать (static-new vector :x 10 :y 20)
+        Object alist = get_null();
+        for (auto it = args.named.rbegin(); it != args.named.rend(); ++it) {
+            Object key = Object::make_symbol(it->first);
+            Object val = it->second;
+            alist = Object::make_pair(Object::make_pair(key, val), alist);
+        }
+        recursive_write(Object::make_native_ref(root_cell), alist);
+    }
+
+    // 5. Возвращаем созданный буфер
+    // В зависимости от твоей архитектуры, ты можешь возвращать либо сам Buffer,
+    // либо Pointer на него. Для ассемблера лучше возвращать Buffer.
+    return Object::make_native_ref(buffer);
+}
+
 // ============================================================
 // Итераторы
 // ============================================================
+
 Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5239,6 +5335,7 @@ Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
     }
     return get_null();
 }
+
 Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5255,6 +5352,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
 
     return get_null();
 }
+
 /// @brief Специальная форма для обхода хеш-таблицы с лямбдой.
 /// @param form Специальная форма "for-each".
 /// @param args Аргументы к форме:
@@ -5281,6 +5379,7 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
     }
     return get_null();
 }
+
 Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
                                        const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5298,9 +5397,11 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
 
     return get_null();
 }
+
 // ============================================================
 // CRC32
 // ============================================================
+
 Object Interpreter::eval_crc32(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5312,6 +5413,7 @@ Object Interpreter::eval_crc32(const Object &form, Arguments &args,
 // ============================================================
 // HexFile Format
 // ============================================================
+
 // Вспомогательная функция для расчета контрольной суммы и форматирования строки
 std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type, const uint8_t *data) {
     uint8_t     checksum = length + (addr >> 8) + (addr & 0xFF) + type;

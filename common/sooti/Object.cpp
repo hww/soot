@@ -339,14 +339,14 @@ Object HeapObject::make_step_accessor(const Object &key) {
     (void)key;
     // Ошибку "Object is not navigable" должен бросать сам ИНТЕРПРЕТАТОР,
     // если после всех попыток он получил undefined.
-    return Object::make_undefined();
+    return Object::make_none();
 }
 // В HeapObject.cpp
 Object HeapObject::get_at(const Object &key) {
     Object target = this->make_step_accessor(key);
     if (target.is_pointer())
         return target.as_pointer()->get();
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 void HeapObject::set_at(const Object &key, const Object &value) {
@@ -359,7 +359,7 @@ void HeapObject::set_at(const Object &key, const Object &value) {
 // Object factory
 // ============================================================================
 
-Object Object::make_undefined() {
+Object Object::make_none() {
     Object obj;
     obj.type = ObjectType::NONE;
     return obj;
@@ -481,7 +481,12 @@ Object Object::make_hash_table(int size) {
     obj.heap_obj = std::make_shared<HashTableObject>(size);
     return obj;
 }
-
+Object Object::make_hash_table(Object type_name, int size) {
+    Object obj;
+    obj.type = ObjectType::STRING_HASH_TABLE;
+    obj.heap_obj = std::make_shared<HashTableObject>(type_name, size);
+    return obj;
+}
 Object Object::make_lambda(const ArgumentSpec &args, const Object &body,
                            const std::shared_ptr<EnvironmentObject> &env) {
     Object obj = LambdaObject::make_new();
@@ -1020,7 +1025,7 @@ Object Pointer::make_step_accessor(const Object &key) {
 
 Object Pointer::get() {
     if (!m_ptr)
-        return Object::make_undefined();
+        return Object::make_none();
 
     if (m_type == "int8")
         return Object::make_integer(*(int8_t *)m_ptr);
@@ -1141,7 +1146,7 @@ Object Pointer::get_at(const Object &key) {
     }
 
     // Если шаг невозможен (нет такого поля/индекса), возвращаем undefined
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================

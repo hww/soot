@@ -2071,7 +2071,7 @@ Object TypeSystem::make_step_accessor(const Object &key) {
     } else if (key.is_string()) {
         name = key.to_std_string();
     } else {
-        return Object::make_undefined(); // Или бросай ошибку, если хочешь строгости
+        return Object::make_none(); // Или бросай ошибку, если хочешь строгости
     }
     if (name == "types-count") {
         return Object::make_integer(get_types_count());
@@ -2099,7 +2099,7 @@ Object TypeSystem::make_step_accessor(const Object &key) {
         return Object::make_native_ref(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
     }
 
-    return Object::make_undefined();
+    return Object::make_none();
 }
 
 // ============================================================================

@@ -39,7 +39,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; List of all assembler instructions
-(defparameter *optable* (make-hash-table '() 200)
+(defparameter *optable* (make-hash-table '() :size 200)
   "Opcode table for the assembler")
 
 (defun %make-raw-key (op-name a1 a2 a3)

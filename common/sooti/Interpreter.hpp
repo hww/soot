@@ -614,6 +614,8 @@ class Interpreter {
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_buffer_link(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_static_new_special(const Object &form, const Object &rest,
+                                   const std::shared_ptr<EnvironmentObject> &env);
     Object lookup_in_alist(Object list, const std::string &key);
     void   recursive_write(Object cell_obj, Object value);
 

@@ -73,7 +73,7 @@ struct BufferLabel : public HeapObject {
         }
 
         // Если ключ не распознан, возвращаем undefined или ошибку
-        return Object::make_undefined();
+        return Object::make_none();
     }
 };
 

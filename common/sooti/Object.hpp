@@ -237,7 +237,7 @@ class Object {
     Object step(const Object &key) const;
 
     // Constructors for fixed types
-    static Object make_undefined();
+    static Object make_none();
     static Object make_integer(IntType value);
     static Object make_float(FloatType value);
     static Object make_char(char value);
@@ -263,6 +263,7 @@ class Object {
     static Object make_macro(const ArgumentSpec &args, const Object &body,
                              const std::shared_ptr<EnvironmentObject> &env);
     static Object make_hash_table(int size = 16);
+    static Object make_hash_table(Object type_name, int size = 16);
     static Object make_reader(TextStream *textStream);
     static Object make_pointer(std::shared_ptr<Pointer> pointer, std::string type);
     static Object make_pointer(void *raw_ptr, std::string type);
@@ -474,7 +475,7 @@ class PairObject : public HeapObject {
         if (key.is_integer()) {
             int index = key.as_integer();
             if (index < 0)
-                return Object::make_undefined();
+                return Object::make_none();
 
             auto current = this;
 
@@ -485,13 +486,13 @@ class PairObject : public HeapObject {
                     current = next.as_pair();
                 } else {
                     // Список закончился раньше, чем мы дошли до нужного индекса
-                    return Object::make_undefined();
+                    return Object::make_none();
                 }
             }
 
             return current->car; // Предполагаю, что поле называется car
         }
-        return Object::make_undefined();
+        return Object::make_none();
     }
 
     std::string class_name() const override {
@@ -592,7 +593,7 @@ class ArrayObject : public HeapObject {
             if (index >= 0 && index < static_cast<int>(data.size())) {
                 return data[index];
             }
-            return Object::make_undefined();
+            return Object::make_none();
         }
 
         // Можно добавить свойство 'length' для массива
@@ -600,7 +601,7 @@ class ArrayObject : public HeapObject {
             return Object::make_integer(data.size());
         }
 
-        return Object::make_undefined();
+        return Object::make_none();
     }
     // has methods get_at and set_at?
 
@@ -615,7 +616,7 @@ class ArrayObject : public HeapObject {
                 return data[index];
             }
         }
-        return Object::make_undefined();
+        return Object::make_none();
     }
 
     void set_at(const Object &key, const Object &val) override {
@@ -637,13 +638,19 @@ class ArrayObject : public HeapObject {
 class HashTableObject : public HeapObject {
   public:
     std::unordered_map<std::string, Object> data;
+    Object                                  type;
 
     HashTableObject() = default;
-    HashTableObject(int size = 16) : data(size) {};
+    HashTableObject(int size = 16) : data(size), type() {};
+    HashTableObject(Object type, int size = 16) : data(size), type(type) {};
+
     ~HashTableObject() override = default;
 
     std::string print() const override {
         // Короткий системный принт: #<hash-table size:5>
+        if (!type.is_none()) {
+            return fmt::format("#<hash-table type:{} size:{}>", type.print(), data.size());
+        }
         return fmt::format("#<hash-table size:{}>", data.size());
     }
 
@@ -669,6 +676,10 @@ class HashTableObject : public HeapObject {
         return "HashTableObject";
     }
     std::string type_name() const override {
+        if (!type.is_none()) {
+            return fmt::format("{}::{}>", object_type_to_string(ObjectType::STRING_HASH_TABLE),
+                               type.print());
+        }
         return object_type_to_string(ObjectType::STRING_HASH_TABLE);
     }
     // Метод получения: возвращает ссылку на объект.
@@ -706,7 +717,7 @@ class HashTableObject : public HeapObject {
             auto skey = key.to_std_string();
             return data[skey];
         }
-        return Object::make_undefined();
+        return Object::make_none();
     }
     // has methods get_at and set_at?
     bool is_table() const override {
@@ -717,7 +728,7 @@ class HashTableObject : public HeapObject {
         if (key.is_string()) {
             return data[key.to_std_string()];
         }
-        return Object::make_undefined();
+        return Object::make_none();
     }
 
     void set_at(const Object &key, const Object &val) override {
