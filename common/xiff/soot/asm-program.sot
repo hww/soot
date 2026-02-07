@@ -283,7 +283,7 @@
           (for-each (module-segment-order mod)
             (lambda (seg-name)
               (let* ((seg (hash-table-ref (module-segments mod) seg-name))
-                     (lab (buffer-get-label (segment-buffer seg) name)))
+                     (lab (buffer-label-get (segment-buffer seg) name)))
                 (if (not (null? lab)) (set! result lab)))))
           result))))
 

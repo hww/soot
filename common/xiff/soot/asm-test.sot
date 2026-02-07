@@ -77,7 +77,8 @@ $begin
 
 
 )
-;(build-vtable vec3 (module-current-segment test-module))
+(build-vtable vec3 (module-current-segment test-module))
+
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)
 (print (module-dump test-module))

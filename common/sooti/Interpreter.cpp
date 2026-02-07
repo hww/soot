@@ -24,6 +24,7 @@
 #include "common/versions/revision.h"
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <set>
 
 namespace script {
@@ -105,6 +106,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
         {"size-of", &Interpreter::eval_size_of_special, nullptr},
         {"method-id-of", &Interpreter::eval_method_id_of_special, nullptr},
+        {"method-of", &Interpreter::eval_method_of_special, nullptr},
         {"static-new", &Interpreter::eval_static_new_special, nullptr},
     });
 
@@ -318,8 +320,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     });
 
     // Type system
-    init_type_system(TypeSystemVariant::Z80);
+    TypeSystem::instance().add_builtin_types();
+    define_var_in_env(get_global_environment(), TypeSystem::instance().to_alias(), "*type-system*");
 
+    // Special forms
     add_special_form("defenum", &Interpreter::eval_defenum_special); // does not return anything
     add_special_form("deftype", &Interpreter::eval_deftype_special); // does not return anything
     add_special_form("typespec",
@@ -4268,22 +4272,6 @@ Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
 // Type System
 // ============================================================
 
-void Interpreter::init_type_system(TypeSystemVariant types) {
-    TypeSystem::instance().clear();
-
-    switch (types) {
-    case TypeSystemVariant::Z80:
-        TypeSystem::instance().add_builtin_types_z80();
-        break;
-    case TypeSystemVariant::Default:
-        TypeSystem::instance().add_builtin_types();
-    default:
-        break;
-    }
-
-    define_var_in_env(get_global_environment(), TypeSystem::instance().to_alias(), "*type-system*");
-}
-
 Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -4333,11 +4321,12 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
     (void)env;
+    TypeSystem::instance().clear();
     // Здесь должна быть логика из твоего старого кода для init-types
     if (args.unnamed.size() > 0 && args.unnamed[0].as_symbol() == "z80") {
-        init_type_system(TypeSystemVariant::Z80);
+        TypeSystem::instance().add_builtin_types();
     } else {
-        init_type_system(TypeSystemVariant::Default);
+        TypeSystem::instance().add_builtin_types_z80();
     }
     return get_null();
 }
@@ -4736,6 +4725,27 @@ Object Interpreter::eval_method_id_of_special(const Object &form, const Object &
     return Object::make_integer(m_info.id);
 }
 
+Object Interpreter::eval_method_of_special(const Object &form, const Object &rest,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto  method_name = args.unnamed[1].as_symbol();
+    auto &ts = TypeSystem::instance();
+
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(form,
+                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+    auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
+    return Object::make_native_ref(method_ptr);
+}
+
 // ============================================================
 // Чтение запись памяти
 // ============================================================
@@ -4974,7 +4984,7 @@ Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
     // Возвращаем объект из мапы (там уже лежит Object, инкапсулирующий Label*)
     Object label_obj = buffer->get_label_obj(label_name);
 
-    // Если не нашли — возвращаем null, чтобы Lisp мог проверить (if (buffer-get-label ...))
+    // Если не нашли — возвращаем null, чтобы Lisp мог проверить (if (buffer-label-get ...))
     return label_obj;
 }
 
