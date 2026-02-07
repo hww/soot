@@ -133,7 +133,7 @@ class MethodInfo : public NativeRef {
     std::string diff(const MethodInfo &other) const;
 
     std::string print() const override {
-        return "<method-info>";
+        return "#<method-info>";
     }
     Object inspect() const override {
         ListBuilder builder;

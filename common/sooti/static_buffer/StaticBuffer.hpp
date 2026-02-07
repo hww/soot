@@ -39,7 +39,7 @@ struct BufferLabel : public HeapObject {
     BufferLabel(size_t a, Object seg, Object m) : addr(a), segment(seg), meta(m) {}
 
     std::string print() const override {
-        return fmt::format("<buffer-label {:08X} {} {}>", addr, segment.print(), meta.print());
+        return fmt::format("#<buffer-label {:08X} {} {}>", addr, segment.print(), meta.print());
     };
 
     Object inspect() const override {
@@ -191,7 +191,7 @@ class StaticBuffer : public HeapObject {
 
     // Печать для REPL
     std::string print() const override {
-        return fmt::format("<static-buffer '{}' :size {} :origin {:#x}>", m_type_name,
+        return fmt::format("#<static-buffer '{}' :size {} :origin {:#x}>", m_type_name,
                            m_data.size(), m_origin);
     }
 

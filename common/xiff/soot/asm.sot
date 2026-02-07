@@ -8,12 +8,6 @@
       (let ((sym (read s)))
            (lab sym))))
 
-;; @ is a macro character to define registers
-(set-macro-character "@" 
-   (lambda (s c) 
-      (let ((reg (read s)))
-          (get-register-token reg))))
-
 
 ;; [ is a macro character for indirect and indexed adressing modes
 (set-macro-character "["

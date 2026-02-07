@@ -4,10 +4,35 @@
 
 (defmodule test-module)
 
-(define vector (deftype vector (structure)
+(deftype vec3 (structure)
   ((x int16)   ;; offset 0
    (y int16)   ;; offset 4
-   (z int16)))) ;; offset 8
+   (z int16))  ;; offset 8
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+(defmacro build-vtable (type-sym seg)
+  (let* ((type-name-str (symbol->string type-sym))
+         (vtable-label (intern (concat type-name-str "-vtable")))
+         (methods (-> type-sym methods-list)))
+    `(zasm
+       ;; Объявляем метку начала таблицы
+       (lab ',vtable-label)
+       ,@(map (lambda (m)
+                (let* ((m-name (-> m name))
+                       (m-id (-> m id))
+                       (full-symbol (intern (concat type-name-str "::" m-name))))
+                  ;; Вместо того чтобы мучить ассемблер вычислениями в ORG,
+                  ;; мы просто генерируем нужные смещения
+                  `(begin
+                     (org (+ (segment-get-label-addr ',vtable-label ,seg) (* 3 ,m-id)))
+                     (jp ',full-symbol))))
+              methods))))
+
+
+
+
 
 (zasm 
       (org #x0000)
@@ -26,31 +51,33 @@ $start
 $label1
       (jmp 'label1)
       (jmp 'label2)
-      (ld @a @b) 
+      (ld a b) 
 $label2
       (jmp 'label1)
       (jmp 'label3)
-      (ld @c (+ 1 3)) 
+      (ld c (+ 1 3)) 
       (subroutine label3
             (jmp 'label3)
             (jmp 'label2)
             (jmp 'label1)
-            (ld @a @c)
+            (ld a c)
             (jmp 0)
             (jmp 'zero)
-            (ld @a [+ ix 5])    ; Должно быть: DD 7E 05
+            (ld a [+ ix 5])    ; Должно быть: DD 7E 05
             (ld [- iy 10] #xAA) ; Должно быть: FD 36 F6 AA
       )
       (org #x8000)
 $begin
-      (ld @hl (size-of vector)) ;; offset
-      (ld @hl (offset-of vector x)) ;; offset
-      (ld @hl (offset-of vector y)) ;; offset
-      (ld @hl (size-of vector x)) ;; size
-      (ld @hl (size-of vector y)) ;; size
-      (ld [+ iy (offset-of vector y)] 10)
-)
+      (ld hl (size-of vec3)) ;; offset
+      (ld hl (offset-of vec3 x)) ;; offset
+      (ld hl (offset-of vec3 y)) ;; offset
+      (ld hl (size-of vec3 x)) ;; size
+      (ld hl (size-of vec3 y)) ;; size
+      (ld [+ iy (offset-of vec3 y)] 10)
 
+
+)
+;(build-vtable vec3 (module-current-segment test-module))
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)
 (print (module-dump test-module))

@@ -23,33 +23,27 @@
 
 
 ;; =================================================================
-(define *registers* (make-hash-table))
-(hash-table-set! *registers* 'a   (make-lextoken :type '8-register :value 'a))
-(hash-table-set! *registers* 'b   (make-lextoken :type '8-register :value 'b))
-(hash-table-set! *registers* 'c   (make-lextoken :type '8-register :value 'c))
-(hash-table-set! *registers* 'd   (make-lextoken :type '8-register :value 'd))
-(hash-table-set! *registers* 'e   (make-lextoken :type '8-register :value 'e))
-(hash-table-set! *registers* 'h   (make-lextoken :type '8-register :value 'h))
-(hash-table-set! *registers* 'l   (make-lextoken :type '8-register :value 'l))
-(hash-table-set! *registers* 'bc  (make-lextoken :type '16-register :value 'bc))
-(hash-table-set! *registers* 'de  (make-lextoken :type '16-register :value 'de))
-(hash-table-set! *registers* 'hl  (make-lextoken :type '16-register :value 'hl))
-(hash-table-set! *registers* 'sp  (make-lextoken :type '16-register :value 'sp))
-(hash-table-set! *registers* 'af  (make-lextoken :type '16-register :value 'af))
-(hash-table-set! *registers* 'bc2 (make-lextoken :type '16-register2 :value 'bc2))
-(hash-table-set! *registers* 'de2 (make-lextoken :type '16-register2 :value 'de2))
-(hash-table-set! *registers* 'hl2 (make-lextoken :type '16-register2 :value 'hl2))
-(hash-table-set! *registers* 'af2 (make-lextoken :type '16-register2 :value 'af2))
-(hash-table-set! *registers* 'rv  (make-lextoken :type 'rv-register :value 'rv))
-(hash-table-set! *registers* 'ix  (make-lextoken :type 'ix-register :value 'ix))
-(hash-table-set! *registers* 'iy  (make-lextoken :type 'iy-register :value 'iy))
-(hash-table-set! *registers* 'iv  (make-lextoken :type 'iv-register :value 'iv))
-(hash-table-set! *registers* 'mr  (make-lextoken :type 'mr-register :value 'mr))
-
-;; ... и так далее
-;; used by character-macro @ for example @a @hl
-(defun get-register-token (reg)
-  (hash-table-ref *registers* reg))
+(define a   (make-lextoken :type '8-register :value 'a))
+(define b   (make-lextoken :type '8-register :value 'b))
+(define c   (make-lextoken :type '8-register :value 'c))
+(define d   (make-lextoken :type '8-register :value 'd))
+(define e   (make-lextoken :type '8-register :value 'e))
+(define h   (make-lextoken :type '8-register :value 'h))
+(define l   (make-lextoken :type '8-register :value 'l))
+(define bc  (make-lextoken :type '16-register :value 'bc))
+(define de  (make-lextoken :type '16-register :value 'de))
+(define hl  (make-lextoken :type '16-register :value 'hl))
+(define sp  (make-lextoken :type '16-register :value 'sp))
+(define af  (make-lextoken :type '16-register :value 'af))
+(define bc2 (make-lextoken :type '16-register2 :value 'bc2))
+(define de2 (make-lextoken :type '16-register2 :value 'de2))
+(define hl2 (make-lextoken :type '16-register2 :value 'hl2))
+(define af2 (make-lextoken :type '16-register2 :value 'af2))
+(define rv  (make-lextoken :type 'rv-register :value 'rv))
+(define ix  (make-lextoken :type 'ix-register :value 'ix))
+(define iy  (make-lextoken :type 'iy-register :value 'iy))
+(define iv  (make-lextoken :type 'iv-register :value 'iv))
+(define mr  (make-lextoken :type 'mr-register :value 'mr))
 
 ;;; make-indexed (sign reg val)
 ;;; ---------------------------
@@ -190,8 +184,8 @@
   (let* ((segments-map (module-segments module)))
     ;; Сначала проверяем, существует ли сегмент
     (if (not (hash-table-contains? segments-map seg-name))
-        ;; Если нет — создаем его через твой select-segment (он умеет регистрировать)
-        (select-segment module seg-name))
+        ;; Если нет — создаем его через твой segment-select-segment (он умеет регистрировать)
+        (segment-select-segment module seg-name))
     
     (let ((seg (hash-table-ref segments-map seg-name)))
       (begin
@@ -832,9 +826,9 @@
 (operand jmp 3 "Virtual JMP (JP or JR)"
   :arg1 variable
   :pass1 3 
-  :pass2 (let* ((target (get-label-addr-optional r1 seg ctx)))
+  :pass2 (let* ((target (segment-get-label-addr-optional r1 seg ctx)))
          (if (and target (not (null? target)))
-             (let ((offset (- target (+ (get-abs-pc seg) 2))))
+             (let ((offset (- target (+ (segment-get-abs-pc seg) 2))))
                ;(cfmt #t "yellow" "JMP target {} offset {}\n" target offset)
                (if (and (<= offset 120) (>= offset -120))
                    (begin (inst-op! inst 'jr) 2)
@@ -851,7 +845,7 @@
 
 (operand jr 2 "JR e"
   :arg1 variable :relative #t
-  :pass3 (let ((rel (get-rel-offset r1 seg ctx 2))) ;; 2 — это размер JR
+  :pass3 (let ((rel (segment-get-rel-offset r1 seg ctx 2))) ;; 2 — это размер JR
            ;(cfmt #t "yellow" "JR r1 {} rel {:04X} seg {}\n" r1 rel (segment-name seg))
 
            (list #x18 rel)))
@@ -860,7 +854,7 @@
 
 (operand jr 2 "JR cc, e"
   :arg1 asmsym :arg2 variable :relative #t
-  :pass3 (let ((rel (get-rel-offset r2 seg ctx 2))
+  :pass3 (let ((rel (segment-get-rel-offset r2 seg ctx 2))
                (code (case r1 
                        ('nz #x20) ('z #x28) ('nc #x30) ('c #x38)
                        (else (error "Invalid JR condition" r1)))))
@@ -882,7 +876,7 @@
 
 (operand djnz 2 "DJNZ e"
      :arg1 variable :relative #t
-     :pass3 (list #x10 (get-rel-offset r1 seg ctx size)))
+     :pass3 (list #x10 (segment-get-rel-offset r1 seg ctx size)))
 
 (operand call 3 "CALL nn"
      :arg1 variable
@@ -960,9 +954,9 @@
 
 (operand org 0 "Origin: Set Program Counter"
   :arg1 number
-  :pass1 (begin (set-org! seg r1) 0)
-  :pass2 (begin (set-org! seg r1) 0)
-  :pass3 (begin (set-org! seg r1) '()))
+  :pass1 (begin (ssegment-set-org! seg r1) 0)
+  :pass2 (begin (ssegment-set-org! seg r1) 0)
+  :pass3 (begin (ssegment-set-org! seg r1) '()))
 
 ;; --- Определение данных (Bytes) ---
 

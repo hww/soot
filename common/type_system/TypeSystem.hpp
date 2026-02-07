@@ -348,7 +348,7 @@ class TypeSystem : public NativeRef {
     // ========================================================================
 
     std::string print() const override {
-        return "<type-system>";
+        return "#<type-system>";
     }
     script::Object           inspect() const override;
     std::string              print_all_type_information() const;

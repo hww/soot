@@ -1154,7 +1154,7 @@ class LambdaObject : public HeapObject {
     }
 
     std::string print() const override {
-        return name.empty() ? "#<unnamed lambda>" : "<lambda " + name + ">";
+        return name.empty() ? "#<unnamed lambda>" : "#<lambda " + name + ">";
     }
 
     Object inspect() const override;
@@ -1283,9 +1283,11 @@ class CallableObject : public HeapObject {
 struct SpecialFormObject : public CallableObject {
     SpecialFormMethod method;
     ArgumentSpec      specs;
+    std::string       name;
 
     // Явный конструктор
-    SpecialFormObject(SpecialFormMethod m, ArgumentSpec *s) : method(m), specs(false, true) {
+    SpecialFormObject(SpecialFormMethod m, ArgumentSpec *s, std::string name)
+        : method(m), specs(false, true), name(name) {
         if (s)
             specs = *s;
     }
@@ -1295,7 +1297,7 @@ struct SpecialFormObject : public CallableObject {
     }
 
     std::string print() const override {
-        return "#<special-form>";
+        return fmt::format("#<special-form {}>", name);
     }
 
     Object inspect() const override;
@@ -1311,8 +1313,10 @@ struct SpecialFormObject : public CallableObject {
 struct BuiltinFunctionObject : public CallableObject {
     BuiltinFormMethod method;
     ArgumentSpec      specs;
+    std::string       name;
 
-    BuiltinFunctionObject(BuiltinFormMethod m, ArgumentSpec *s) : method(m), specs(false, true) {
+    BuiltinFunctionObject(BuiltinFormMethod m, ArgumentSpec *s, std::string name)
+        : method(m), specs(false, true), name(name) {
         if (s)
             specs = *s;
     }
@@ -1322,7 +1326,7 @@ struct BuiltinFunctionObject : public CallableObject {
     }
 
     std::string print() const override {
-        return "#<primitive-procedure>";
+        return fmt::format("#<primitive-procedure {}>", name);
     }
 
     Object inspect() const override;
