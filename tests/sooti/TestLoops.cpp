@@ -1,21 +1,20 @@
-#include <gtest/gtest.h>
 #include "common/sooti/Interpreter.hpp"
+#include <gtest/gtest.h>
 
 using namespace script;
 
 class LoopTest : public ::testing::Test {
-protected:
+  protected:
     void SetUp() override {
-        env = std::make_shared<EnvironmentObject>();
+        env = interp.get_global_environment().as_env();
     }
 
-    Object eval(const std::string& code) {
-        Object obj = interp.get_reader().read_from_string(code, "test");
-        return interp.eval_form(obj, env);
+    Object eval(const std::string &code) {
+        return interp.eval_string(code, "test");
     }
 
-    Interpreter interp;
-    std::shared_ptr<EnvironmentObject> env;
+    Interpreter        interp;
+    EnvironmentObject *env;
 };
 
 // Тест while

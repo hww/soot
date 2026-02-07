@@ -1,21 +1,20 @@
-#include <gtest/gtest.h>
 #include "common/sooti/Interpreter.hpp"
+#include <gtest/gtest.h>
 
 using namespace script;
 
 class ArithmeticTest : public ::testing::Test {
-protected:
+  protected:
     void SetUp() override {
-        env = std::make_shared<EnvironmentObject>();
+        env = interp.get_global_environment().as_env();
     }
 
-    Object eval(const std::string& code) {
-        Object obj = interp.get_reader().read_from_string(code, "test");
-        return interp.eval_form(obj, env);
+    Object eval(const std::string &code) {
+        return interp.eval_string(code, "test");
     }
 
-    Interpreter interp;
-    std::shared_ptr<EnvironmentObject> env;
+    Interpreter        interp;
+    EnvironmentObject *env;
 };
 
 // Тест сложения
@@ -66,7 +65,7 @@ TEST_F(ArithmeticTest, MixedTypesFollowFirstArg) {
     EXPECT_TRUE(obj.is_integer());  // Теперь ожидаем integer!
     EXPECT_EQ(obj.as_integer(), 3); // 2.5 → 2 (отбрасывание дробной части)
 
-    // Первый аргумент float → ВСЕ конвертируется в float  
+    // Первый аргумент float → ВСЕ конвертируется в float
     obj = eval("(+ 1.0 2)");
     EXPECT_TRUE(obj.is_float());
     EXPECT_DOUBLE_EQ(obj.as_float(), 3.0);
@@ -79,7 +78,7 @@ TEST_F(ArithmeticTest, MixedTypesFollowFirstArg) {
 // Тест деления (всегда float в OpenGOAL)
 TEST_F(ArithmeticTest, Division) {
     Object obj = eval("(/ 6 2)");
-    EXPECT_TRUE(obj.is_float());  // Всегда float для деления
+    EXPECT_TRUE(obj.is_float()); // Всегда float для деления
     EXPECT_DOUBLE_EQ(obj.as_float(), 3.0);
 
     obj = eval("(/ 5 2)");
