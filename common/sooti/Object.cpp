@@ -1250,7 +1250,7 @@ std::string ArgumentSpec::print_full(size_t max_len, size_t max_arg_len) const {
 
 std::string Arguments::print() const {
     // Инстанция аргументов в момент вызова
-    return fmt::format("#<args-invoked u:{} n:{} r:{}>", unnamed.size(), named.size(), rest.size());
+    return fmt::format("#<args-invoked u:{} n:{} r:{}>", unnamed.size(), named.size(), rest_size());
 }
 
 std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {
@@ -1283,14 +1283,26 @@ std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {
     }
 
     // 3. Остаток (rest)
-    if (has_rest) {
+    if (has_rest()) {
         if (!unnamed.empty() || !named.empty())
             ss << " ";
+
         ss << "&rest: ";
-        for (size_t i = 0; i < rest.size(); ++i) {
-            ss << truncate_obj(rest[i], max_arg_len);
-            if (i < rest.size() - 1)
+
+        Object current = rest;
+        while (current.is_pair()) {
+            auto *pair = current.as_pair();
+
+            // Печатаем текущий элемент (car ячейки)
+            ss << truncate_obj(pair->car, max_arg_len);
+
+            // Если это не последняя ячейка в цепочке, добавляем пробел
+            if (pair->cdr.is_pair()) {
                 ss << " ";
+            }
+
+            // Переходим к следующей паре
+            current = pair->cdr;
         }
     }
 

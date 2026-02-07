@@ -424,14 +424,12 @@ void Interpreter::set_args_in_env(const Object &form, const Arguments &args,
 
     // rest args
     if (!arg_spec.rest.empty()) {
-        // will correctly handle the '() case
-        Object rest_list = Object::make_null();
-        for (auto it = args.rest.rbegin(); it != args.rest.rend(); ++it) {
-            rest_list = Object::make_pair(*it, rest_list);
-        }
-        env->vars.set(intern(arg_spec.rest), rest_list);
+        // args.rest теперь сам по себе является списком Pair или Null.
+        // Мы просто биндим его в окружение. Никаких копирований!
+        env->vars.set(intern(arg_spec.rest), args.rest);
     } else {
-        if (!args.rest.empty()) {
+        // Если rest не пустой, но спецификация его не ждет
+        if (args.has_rest()) {
             throw_eval_error(form, "got too many arguments");
         }
     }
@@ -645,19 +643,29 @@ Object Interpreter::call_lambda_internal(const Object &lambda, const std::vector
     }
 
     // 2. Создаем Arguments
+    // 2. Создаем Arguments
     Arguments func_args;
-    func_args.unnamed = args;
 
-    // Если есть rest-аргумент (не varargs, а именно &rest)
-    if (!lam->args.rest.empty() && args.size() > min_args) {
-        // Помещаем лишние аргументы в rest
-        for (size_t i = min_args; i < args.size(); ++i) {
-            func_args.rest.push_back(args[i]);
-        }
-        // Обрезаем unnamed до нужного размера
-        func_args.unnamed.resize(min_args);
+    // Резервируем место для скорости
+    func_args.unnamed.reserve(min_args);
+
+    // Заполняем только позиционные (обязательные) аргументы
+    for (size_t i = 0; i < min_args; ++i) {
+        func_args.unnamed.push_back(args[i]);
     }
 
+    // 3. Обработка rest
+    if (has_rest) {
+        if (args.size() > min_args) {
+            Object head = Object::make_null();
+            for (size_t i = args.size(); i > min_args; --i) {
+                head = Object::make_pair(args[i - 1], head);
+            }
+            func_args.rest = head;
+        } else {
+            func_args.rest = Object::make_null();
+        }
+    }
     // 3. Создаем окружение для выполнения
     // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
     auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
@@ -1517,7 +1525,8 @@ Arguments Interpreter::get_args(const Object &form, const Object &rest, const Ar
             if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
                 args.unnamed.push_back(arg);
             } else {
-                args.rest.push_back(arg);
+                args.rest = *current;
+                break;
             }
         }
         current = &current->as_pair()->cdr;
@@ -1543,7 +1552,7 @@ Arguments Interpreter::get_args(const Object &form, const Object &rest, const Ar
             throw_eval_error(form, "didn't get enough arguments");
         }
 
-        if (!args.rest.empty() && spec.rest.empty()) {
+        if (!args.rest_empty() && spec.rest.empty()) {
             throw_eval_error(form, "got too many arguments");
         }
     }
@@ -1620,7 +1629,8 @@ Arguments Interpreter::get_args_with_spec(const Object &form, const Object &rest
         } else {
             // Если это не ключевое слово или функция не ждет &key
             if (!spec.rest.empty() || spec.varargs) {
-                args.rest.push_back(arg);
+                args.rest = *current;
+                break;
             } else {
                 throw_eval_error(form,
                                  fmt::format("Too many arguments (no &rest or &key expected) in {}",
@@ -1666,7 +1676,8 @@ Arguments Interpreter::get_args_no_named(const Object &form, const Object &rest,
         if (spec.varargs || args.unnamed.size() < spec.unnamed.size()) {
             args.unnamed.push_back(arg);
         } else {
-            args.rest.push_back(arg);
+            args.rest = current;
+            break;
         }
         current = current.as_pair()->cdr;
     }
@@ -1678,7 +1689,7 @@ Arguments Interpreter::get_args_no_named(const Object &form, const Object &rest,
         }
         ASSERT(args.unnamed.size() == spec.unnamed.size());
 
-        if (!args.rest.empty() && spec.rest.empty()) {
+        if (!args.rest_empty() && spec.rest.empty()) {
             throw_eval_error(form, "got too many arguments");
         }
     }
@@ -1705,8 +1716,28 @@ void Interpreter::eval_args(const Object &parent_form, Arguments *args,
         kv.second = eval_with_rewind(parent_form, kv.second, env);
     }
 
-    for (auto &arg : args->rest) {
-        arg = eval_with_rewind(parent_form, arg, env);
+    // 3. REST - САМОЕ ВАЖНОЕ
+    if (args->rest.is_pair()) {
+        Object  old_rest = args->rest;
+        Object  new_head = Object::make_null();
+        Object *current_tail = &new_head;
+
+        Object current = old_rest;
+        while (current.is_pair()) {
+            auto *pair = current.as_pair();
+
+            // ВЫЧИСЛЯЕМ значение
+            Object evaluated_val = eval_with_rewind(parent_form, pair->car, env);
+
+            // СОЗДАЕМ НОВУЮ ЯЧЕЙКУ (не трогаем старую!)
+            *current_tail = Object::make_pair(evaluated_val, Object::make_null());
+
+            // Шагаем дальше
+            current_tail = &((*current_tail).as_pair()->cdr);
+            current = pair->cdr;
+        }
+        // Заменяем rest в аргументах на новый, "вычисленный" список
+        args->rest = new_head;
     }
 }
 
@@ -1762,7 +1793,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object &form, Object &rest) {
         if (is_sym && arg_name == "&optional") {
             parsing_optional = true;
             parsing_keys = false;
-            spec.keys = true;
+            spec.keys = false;
             current = current.as_pair()->cdr;
             continue; // Идем к следующему элементу после "&key"
         }
@@ -4616,7 +4647,7 @@ Object Interpreter::eval_the_as_special(const Object &form, const Object &rest,
     // Если пришло что-то другое — кидаем ошибку несовместимости типов
     // Используем твой новый метод throw_type_mismatch
     throw_type_mismatch(form, 1, {ObjectType::INTEGER, ObjectType::POINTER}, target.type,
-                        Arguments{{target}, {}, {}, false});
+                        Arguments{{target}, {}, {}});
 
     return get_null();
 }
