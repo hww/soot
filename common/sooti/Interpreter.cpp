@@ -353,7 +353,7 @@ void Interpreter::init_special_forms(const std::initializer_list<SpecialEntryCon
 void Interpreter::add_special_form(std::string name, SpecialFormMethod method,
                                    ArgumentSpec *specs) {
     // Используем обычный конструктор shared_ptr
-    auto sf_obj = std::shared_ptr<SpecialFormObject>(new SpecialFormObject(method, specs));
+    auto sf_obj = std::shared_ptr<SpecialFormObject>(new SpecialFormObject(method, specs, name));
 
     Object o = Object::make_heap_object(sf_obj, ObjectType::SPECIAL_FORM);
     define_var_in_env(m_global_environment, o, name.c_str());
@@ -362,7 +362,7 @@ void Interpreter::add_special_form(std::string name, SpecialFormMethod method,
 void Interpreter::add_builtin_form(std::string name, BuiltinFormMethod method,
                                    ArgumentSpec *specs) {
     auto builtin_obj =
-        std::shared_ptr<BuiltinFunctionObject>(new BuiltinFunctionObject(method, specs));
+        std::shared_ptr<BuiltinFunctionObject>(new BuiltinFunctionObject(method, specs, name));
 
     Object o = Object::make_heap_object(builtin_obj, ObjectType::PRIMITIVE);
     define_var_in_env(m_global_environment, o, name.c_str());
@@ -918,7 +918,7 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
         return ((*this).*(spec_form->method))(obj, rest, env);
     }
 
-    // --- PRIMITIVES (+, -, print, get-abs-pc ...) ---
+    // --- PRIMITIVES (+, -, print, segment-get-abs-pc ...) ---
     if (eval_head.is_primitive()) {
         auto builtin = eval_head.as_native_ref<BuiltinFunctionObject>();
 
@@ -4307,7 +4307,7 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
             /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
         });
         return Object::make_native_ref(type_shared);
-    } catch (std::runtime_error ex) {
+    } catch (std::runtime_error &ex) {
         throw_eval_error(form, ex.what());
     }
     return get_null();
@@ -4405,37 +4405,65 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
     if (!rest.is_pair())
         return get_null();
 
-    // 1. Корень (первый аргумент)
     auto   pair = rest.as_pair();
-    Object current = eval_with_rewind(form, pair->car, env);
+    Object current = pair->car;
     Object iterator = pair->cdr;
-    if (current.is_symbol()) {
-        current = TypeSystem::instance().make_step_accessor(current);
+
+    // --- 1. ОПРЕДЕЛЕНИЕ КОРНЯ ---
+    if (current.is_pair()) {
+        // Если корень - это выражение, например (-> (get-obj) field)
+        current = eval_with_rewind(form, current, env);
+    } else if (current.is_symbol()) {
+        // Сначала ищем в переменных Лиспа (динамический объект)
+        Object result;
+        if (try_symbol_lookup(current, env, &result)) {
+            current = result;
+            if (current.is_symbol())
+                current = TypeSystem::instance().make_step_accessor(current);
+        } else {
+            // Если переменной нет, ищем в типах (статический доступ к метаданным)
+            current = TypeSystem::instance().make_step_accessor(current);
+        }
     }
 
-    // 2. Цикл шагов (Navigation)
+    // Если корень так и не разрешился
+    if (current.is_none()) {
+        throw_eval_error(form, fmt::format("Deref root '{}' not found in environment or TypeSystem",
+                                           pair->car.print()));
+        return get_null();
+    }
+
+    // --- 2. НАВИГАЦИЯ (ШАГИ) ---
     while (!iterator.is_null()) {
         Object key_form = iterator.as_pair()->car;
+        // Ключи (поля) обычно символы, но могут быть вычисляемыми (-> obj (get-field-name))
         Object key = key_form.is_symbol() ? key_form : eval_with_rewind(form, key_form, env);
 
-        // Делаем шаг через внутренний метод объекта
-        Object next = current.step(key);
+        // Пытаемся сделать шаг
+        Object next;
+        try {
+            next = current.step(key);
+        } catch (const std::exception &e) {
+            throw_eval_error(form, fmt::format("Deref error: {}", e.what()));
+        }
 
         if (next.is_none()) {
-            throw_eval_error(form, "Field '" + key.print() + "' not found in " + current.print());
+            throw_eval_error(
+                form, fmt::format("Field '{}' not found in {}", key.print(), current.print()));
         }
 
         current = next;
         iterator = iterator.as_pair()->cdr;
     }
 
-    // 3. ФИНАЛЬНЫЙ ШТРИХ (OpenGOAL style):
-    // Если мы пришли к указателю, мы возвращаем не сам указатель, а ЗНАЧЕНИЕ.
-    if (current.is_pointer()) {
-        return current.as_pointer()->deref();
+    // --- 3. РАЗЫМЕНОВАНИЕ УКАЗАТЕЛЕЙ (OpenGOAL style) ---
+    // Если результат - TypePointer, мы возвращаем значение, на которое он указывает.
+    // Если мы хотим получить сам объект указателя, мы используем другой оператор или (address-of
+    // ...)
+    if (current.is_type(ObjectType::POINTER)) {
+        return current.as_native_ref<TypePointer>()->deref();
     }
 
-    // Если пришли к Field или другому NativeRef — возвращаем как есть
     return current;
 }
 
