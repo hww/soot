@@ -998,8 +998,7 @@ class EnvironmentObject : public HeapObject {
 struct Arguments {
     std::vector<Object>           unnamed;
     std::map<std::string, Object> named;
-    std::vector<Object>           rest;
-    bool                          has_rest = false;
+    Object                        rest;
 
     Object inspect() const;
 
@@ -1016,6 +1015,42 @@ struct Arguments {
         return named.find(name) != named.end();
     }
 
+    // Проверяем, есть ли элементы в rest
+    bool has_rest() const {
+        // В Лиспе rest есть, если это не пустой список (null)
+        // и не отсутствие объекта (none)
+        return !rest.is_none() && !rest.is_null();
+    }
+    bool rest_empty() const {
+        return !has_rest();
+    }
+    // Получаем размер списка rest (O(n))
+    int rest_size() const {
+        int    size = 0;
+        Object current = rest;
+        while (current.is_pair()) {
+            size++;
+            current = current.as_pair()->cdr;
+        }
+        return size;
+    }
+
+    // Получаем элемент по индексу (O(n))
+    Object get_rest_at(const int index) {
+        Object current = rest;
+        int    i = 0;
+
+        while (current.is_pair()) {
+            if (i == index) {
+                return current.as_pair()->car;
+            }
+            i++;
+            current = current.as_pair()->cdr;
+        }
+
+        // Если индекс вне диапазона, можно вернуть None или бросить ошибку
+        return Object::make_none();
+    }
     std::string print() const;
     std::string print_full(size_t max_len = 512, size_t max_arg_len = 64) const;
 };
