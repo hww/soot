@@ -597,8 +597,7 @@
        ;; --- Конструктор ---
        ;; Используем &key, так как это Лисп-функция, она умеет в именованные аргументы
        (defun ,constructor (&key ,@normalized)
-          (let ((h (make-hash-table))) ;; Создаем пустую таблицу
-            (hash-table-set! h :_type_ ',struct-name-sym) ;; Ставим тип
+          (let ((h (make-hash-table :type ',struct-name-sym))) ;; Создаем пустую таблицу c типом
             ,@(map (lambda (f-spec)
                     (let* ((f-name (car f-spec))
                             (key (intern (concat ":" (symbol->string f-name)))))
@@ -608,12 +607,7 @@
 
        ;; --- Предикат типа ---
        (defun ,(intern (concat struct-name-str "?")) (obj)
-         (and (hash-table? obj) 
-              (eq? (hash-table-ref obj :_type_) ',struct-name-sym)))
-       
-       (defun ,(intern (concat struct-name-str "-type")) (obj)
-         (and (hash-table? obj) 
-              (hash-table-ref obj :_type_)))
+         (eq? (type-of obj) ',struct-name-sym))
 
        ;; --- Геттеры ---
        ,@(flat-map (lambda (f-spec)
