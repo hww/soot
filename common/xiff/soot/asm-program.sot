@@ -406,11 +406,15 @@
                      (segment-ilc! seg (+ (segment-ilc seg) sz)))))))
             
             ;; 2. Обработка метки
-            ((asmsym? inst) 
+            ((symbol? inst) 
              (if (eq? pass-num 1)
                  (register-label (asmsym-name inst) (segment-ilc seg) seg)))
 
-            (else null))))
+            (else
+              (error (fmt #f "CRITICAL: Naked symbol or lambda '{}' found in zasm! 
+                       You probably forgot parentheses: ({})" inst inst) inst)
+            
+            ))))
       
       ;; Возвращаем результат: для Pass 3 — байты, для остальных — финальный ILC
       (if (eq? pass-num 3) bin-list (segment-ilc seg)))))
@@ -595,11 +599,24 @@
   ;; Здесь можно добавить логику поиска модуля в глобальном реестре
   `(set! *current-module* (find-module ,(symbol->string name))))
 
+(defun validate (lst)
+  (while (not (null? ptr))
+      (let ((item (car ptr)))
+        (if (not (or (list? item) (hash-table? item)))
+            (error (fmt #f "Naked item '{}' found!" item) ptr))) ;; Ошибка здесь
+      (set! ptr (cdr ptr))))
+      
 (defmacro zasm (&rest body)
-  `(begin
-     (if (null? *current-module*) (error "No module selected! Use (defmodule ...)"))
-     ;; По умолчанию льем в "MAIN", если внутри нет директивы segment
-     (let ((current-seg-name "MAIN"))
+  (let ((ptr body))
+      (while (not (null? ptr))
+        (let ((item (car ptr)))
+          (if (not (or (list? item) (hash-table? item) (procedure? item)))
+              (error (fmt #f "Naked item '{}' found!" item) ptr))) 
+        (set! ptr (cdr ptr)))
+
+    ;; Если проверка прошла, генерируем код
+    `(let ((current-seg-name "MAIN"))
+       (validate ',body)
        (let ((insts (flatten (list ,@body))))
          (begin
            (if (not (hash-table-contains? (module-segments *current-module*) current-seg-name))
@@ -607,6 +624,7 @@
            (let ((seg (hash-table-ref (module-segments *current-module*) current-seg-name)))
              (setf (segment-insts seg) insts)
              seg))))))
+
 
 (defun save-symbols (mod)
   (let ((filename (fmt #f "{}.sym.sot" (module-name mod))))

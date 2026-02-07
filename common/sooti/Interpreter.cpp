@@ -3267,16 +3267,13 @@ Object Interpreter::eval_make_hash_table(const Object &form, Arguments &args,
 Object Interpreter::eval_hash_table_set(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {}, {}},
+    vararg_check(form, args,
+                 {{ObjectType::STRING_HASH_TABLE}, {ObjectType::SYMBOL, ObjectType::STRING}, {}},
                  {}); // Таблица, ключ, значение
 
-    auto        ht = args.unnamed[0].as_hash_table();
-    const char *key = get_hash_key(args.unnamed.at(1));
-    if (key != nullptr) {
-        ht->data[key] = args.unnamed.at(2);
-    } else {
-        throw_eval_error(form, "Hash table must use key symbol or string as the key.");
-    }
+    auto ht = args.unnamed[0].as_hash_table();
+    auto key = args.unnamed.at(1).to_std_string();
+    ht->data[key] = args.unnamed.at(2);
 
     return Object::make_null();
 }
@@ -3337,24 +3334,17 @@ Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // Разрешаем любое кол-во, проверку сделаем сами для гибкости
-    vararg_check(form, args, {}, {});
-
-    if (args.unnamed.size() < 2 || args.unnamed.size() > 3) {
-        throw_eval_error(form, "hash-table-ref: expected 2 or 3 arguments, got " +
-                                   std::to_string(args.unnamed.size()));
+    if (args.unnamed.size() > 2) {
+        vararg_check(
+            form, args,
+            {{ObjectType::STRING_HASH_TABLE}, {ObjectType::STRING, ObjectType::SYMBOL}, {}}, {});
+    } else {
+        vararg_check(form, args,
+                     {{ObjectType::STRING_HASH_TABLE}, {ObjectType::STRING, ObjectType::SYMBOL}},
+                     {});
     }
-
-    // Проверка типа таблицы
-    if (!args.unnamed[0].is_hash_table()) {
-        throw_eval_error(form, "hash-table-ref: first argument must be a hash-table");
-    }
-
-    auto        ht = args.unnamed[0].as_hash_table();
-    const char *key = get_hash_key(args.unnamed.at(1));
-
-    if (key == nullptr) {
-        throw_eval_error(form, "hash-table-ref: key must be string or symbol");
-    }
+    auto ht = args.unnamed[0].as_hash_table();
+    auto key = args.unnamed.at(1).to_std_string();
 
     auto it = ht->data.find(key);
     if (it != ht->data.end()) {
@@ -4433,7 +4423,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         try {
             next = current.step(key);
         } catch (const std::exception &e) {
-            throw_eval_error(form, fmt::format("Deref error: {}", e.what()));
+            throw_eval_error(form, fmt::format("Deref object '{}' impossible", current.print()));
         }
 
         if (next.is_none()) {
@@ -4729,21 +4719,26 @@ Object Interpreter::eval_method_of_special(const Object &form, const Object &res
                                            const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     auto args = get_args(form, rest, ArgumentSpec(false, true));
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
-
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL, ObjectType::INTEGER}}, {});
     auto  type_name = args.unnamed[0].as_symbol();
-    auto  method_name = args.unnamed[1].as_symbol();
     auto &ts = TypeSystem::instance();
-
     if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
         throw_eval_error(form,
                          fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
     }
 
     auto type = ts.lookup_type(type_name.name_ptr);
-    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
-    auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
-    return Object::make_native_ref(method_ptr);
+    if (args.unnamed[1].is_integer()) {
+        auto method_id = args.unnamed[1].as_integer();
+        auto m_info = ts.lookup_method(type->get_name(), method_id);
+        auto method_ptr = std::make_shared<MethodInfo>(m_info);
+        return Object::make_native_ref(method_ptr);
+    } else {
+        auto method_name = args.unnamed[1].as_symbol();
+        auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+        auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
+        return Object::make_native_ref(method_ptr);
+    }
 }
 
 // ============================================================

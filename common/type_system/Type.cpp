@@ -744,7 +744,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         return Object::make_integer(this->fields().size());
     if (name == "first-unique-field-idx")
         return Object::make_integer(this->first_unique_field_idx());
-    if (name == "fields-list") {
+    if (name == "fields") {
         ListBuilder lb;
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
@@ -755,7 +755,17 @@ Object StructureType::make_step_accessor(const Object &key) {
         }
         return lb.build();
     }
-    if (name == "methods-list") {
+    if (name == "field-names") {
+        ListBuilder lb;
+        for (auto &field : m_fields) {
+            // 1. Приводим к неконстантному указателю (const_cast),
+            // так как NativeRef ожидает владения, но мы его обманем.
+            // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
+            lb.add(Object::make_symbol(field.name().c_str()));
+        }
+        return lb.build();
+    }
+    if (name == "methods") {
         ListBuilder lb;
 
         // 1. Добавляем специальный метод 'new', если он определен
@@ -774,6 +784,46 @@ Object StructureType::make_step_accessor(const Object &key) {
 
         return lb.build();
     }
+    if (name == "methods-names") {
+        ListBuilder lb;
+
+        // 1. Добавляем специальный метод 'new', если он определен
+        if (m_new_method_info_defined) {
+            lb.add(Object::make_symbol("new"));
+        }
+
+        // 2. Добавляем все остальные методы из вектора
+        for (auto &method : m_methods) {
+            lb.add(Object::make_symbol(method.name.c_str()));
+        }
+
+        return lb.build();
+    }
+    if (name == "methods-ids") {
+        ListBuilder lb;
+
+        // 1. Добавляем специальный метод 'new', если он определен
+        if (m_new_method_info_defined) {
+            lb.add(Object::make_integer(0));
+        }
+
+        // 2. Добавляем все остальные методы из вектора
+        for (auto &method : m_methods) {
+            lb.add(Object::make_integer(method.id));
+        }
+
+        return lb.build();
+    }
+    if (name == "methods-max-id") {
+        int max_id = -1;
+        if (m_new_method_info_defined)
+            max_id = 0;
+        for (auto &method : m_methods) {
+            if (method.id > max_id)
+                max_id = method.id;
+        }
+        return Object::make_integer(max_id);
+    }
     if (name == "new") {
         if (m_new_method_info_defined) {
             auto method_ptr = std::shared_ptr<MethodInfo>(
@@ -782,12 +832,14 @@ Object StructureType::make_step_accessor(const Object &key) {
         }
         return Object::make_none();
     }
+
     for (auto &field : m_fields) {
         if (field.name() == name) {
             auto field_ptr = std::shared_ptr<Field>(const_cast<Field *>(&field), [](Field *) {});
             return Object::make_native_ref(field_ptr);
         }
     }
+
     for (auto &method : m_methods) {
         if (method.name == name) {
             auto method_ptr =

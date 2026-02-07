@@ -46,12 +46,15 @@
                 ))))
                 
 (defun generate-module-listing (mod &key (print-listing #f))
+
   (let ((out ""))
     (begin
       (for-each (module-segment-order mod)
         (lambda (seg-name)
           (let ((seg (hash-table-ref (module-segments mod) seg-name)))
+        
             (begin
+              (pfmt #t (segment-insts seg))
               (set! out (concat out (fmt #f "\n--- Segment: {} | Base: #{:04X} ---\n" 
                                          seg-name (segment-base-addr seg))))
               (for-each (segment-insts seg)
