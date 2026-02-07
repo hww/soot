@@ -130,11 +130,11 @@ bool TypeTag::operator!=(const TypeTag &other) const {
 std::string TypeSpec::print() const {
     // Simple case: no arguments and no tags
     if ((!m_arguments || m_arguments->empty()) && m_tags.empty()) {
-        return "<typspec " + m_type + ">";
+        return "#<typspec " + m_type + ">";
     }
 
     // Complex case: with arguments and/or tags
-    std::string result = "<typspec (" + m_type;
+    std::string result = "#<typspec (" + m_type;
 
     // Print arguments
     if (m_arguments) {
