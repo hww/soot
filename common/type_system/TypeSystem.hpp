@@ -348,7 +348,7 @@ class TypeSystem : public NativeRef {
     // ========================================================================
 
     std::string print() const override {
-        return "#<type-system>";
+        return fmt::format("#<type-system {}>", m_variant.print());
     }
     script::Object           inspect() const override;
     std::string              print_all_type_information() const;
@@ -456,6 +456,8 @@ class TypeSystem : public NativeRef {
     std::vector<std::unique_ptr<Type>> m_old_types;
     std::vector<std::string>           m_types_allowed_to_be_redefined;
     bool                               m_allow_redefinition = false;
+
+    Object m_variant;
 
   public:
     static int verbose;

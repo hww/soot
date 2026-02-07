@@ -58,7 +58,7 @@ TEST_F(DefTypeTest, BasicStructure) {
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
-    EXPECT_EQ(result.type.print(), "<typspec test-structure>");
+    EXPECT_EQ(result.type.print(), "#<typspec test-structure>");
 
     auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);

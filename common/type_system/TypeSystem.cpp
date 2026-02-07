@@ -773,6 +773,7 @@ void TypeSystem::add_builtin_types() {
     TypeConfig::struct_array_stride_alignment = 16;
     TypeConfig::struct_array_start_alignment = 16;
     TypeConfig::basic_array_start_alignment = 16;
+    m_variant = Object::make_symbol("default");
 
     // Проверяем что базовые типы еще не инициализированы
     if (!m_types.empty() && m_types.find("object") != m_types.end()) {
@@ -948,6 +949,7 @@ void TypeSystem::add_builtin_types_z80() {
     TypeConfig::struct_array_stride_alignment = 2;
     TypeConfig::struct_array_start_alignment = 2;
     TypeConfig::basic_array_start_alignment = 2;
+    m_variant = Object::make_symbol("z80");
 
     // 1. Технические типы
     add_type("none", std::make_unique<NullType>("none"));
@@ -2073,6 +2075,11 @@ Object TypeSystem::make_step_accessor(const Object &key) {
     } else {
         return Object::make_none(); // Или бросай ошибку, если хочешь строгости
     }
+
+    if (name == "variant") {
+        return m_variant;
+    }
+
     if (name == "types-count") {
         return Object::make_integer(get_types_count());
     }
