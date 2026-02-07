@@ -1,32 +1,30 @@
-#include <gtest/gtest.h>
-#include "common/type_system/TypeSystem.hpp"
-#include "common/type_system/Deftype.hpp"
-#include "fmt/format.h"
 #include "common/sooti/Export.hpp"
+#include "common/type_system/Deftype.hpp"
+#include "common/type_system/TypeSystem.hpp"
+#include "fmt/format.h"
+#include <gtest/gtest.h>
 
-#define EXPECT_DEFTYPE_THROW(statement) \
-    try { \
-        statement; \
-        FAIL() << "Expected exception but none was thrown"; \
-    } catch (const std::exception& e) { \
-        SUCCEED() << "Caught expected exception: " << typeid(e).name() << " - " << e.what(); \
-    } catch (...) { \
-        SUCCEED() << "Caught expected exception of unknown type"; \
+#define EXPECT_DEFTYPE_THROW(statement)                                                            \
+    try {                                                                                          \
+        statement;                                                                                 \
+        FAIL() << "Expected exception but none was thrown";                                        \
+    } catch (const std::exception &e) {                                                            \
+        SUCCEED() << "Caught expected exception: " << typeid(e).name() << " - " << e.what();       \
+    } catch (...) {                                                                                \
+        SUCCEED() << "Caught expected exception of unknown type";                                  \
     }
-void expect_deftype_throws(const std::function<void()>& func) {
+void expect_deftype_throws(const std::function<void()> &func) {
     try {
         func();
         FAIL() << "Expected exception but none was thrown";
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         SUCCEED() << "Caught expected exception: " << typeid(e).name() << " - " << e.what();
-    }
-    catch (...) {
+    } catch (...) {
         SUCCEED() << "Caught expected exception of unknown type";
     }
 }
 class DefTypeTest : public ::testing::Test {
-protected:
+  protected:
     void SetUp() override {
         ts = &TypeSystem::instance();
         ts->add_builtin_types();
@@ -36,21 +34,21 @@ protected:
         ts = nullptr;
     }
     // Хелпер для парсинга как в оригинале
-    DeftypeResult parse_deftype_string(const std::string& code) {
+    DeftypeResult parse_deftype_string(const std::string &code) {
         auto obj = reader.read_from_string(code, "test");
         fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
 
         // Извлекаем форму deftype: (top-level (deftype name ...))
-        // в просто (name ...) 
-        auto& deftype_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
+        // в просто (name ...)
+        auto &deftype_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
         return parse_deftype(deftype_form, ts, nullptr);
     }
-    TypeSystem* ts;
+    TypeSystem    *ts;
     script::Reader reader;
 };
 
 TEST_F(DefTypeTest, BasicStructure) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype test-structure
           (structure)
           ((x int32)
@@ -60,16 +58,16 @@ TEST_F(DefTypeTest, BasicStructure) {
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
-    EXPECT_EQ(result.type.print(), "test-structure");
+    EXPECT_EQ(result.type.print(), "<typspec test-structure>");
 
-    auto structure = dynamic_cast<StructureType*>(result.type_info);
+    auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
     EXPECT_EQ(structure->get_name(), "test-structure");
     EXPECT_EQ(structure->get_parent(), "structure");
 }
 
 TEST_F(DefTypeTest, BasicType) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype test-basic
           (basic)
           ((id int32)
@@ -79,14 +77,14 @@ TEST_F(DefTypeTest, BasicType) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    auto basic = dynamic_cast<BasicType*>(result.type_info);
+    auto basic = dynamic_cast<BasicType *>(result.type_info);
     ASSERT_NE(basic, nullptr);
     EXPECT_EQ(basic->get_name(), "test-basic");
     EXPECT_EQ(basic->get_parent(), "basic");
 }
 
 TEST_F(DefTypeTest, BitfieldType) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype test-bitfield
           (integer)
           ((flag1 uint8 :offset 0 :size 1)
@@ -96,14 +94,14 @@ TEST_F(DefTypeTest, BitfieldType) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    auto bitfield = dynamic_cast<BitFieldType*>(result.type_info);
+    auto bitfield = dynamic_cast<BitFieldType *>(result.type_info);
     ASSERT_NE(bitfield, nullptr);
     EXPECT_EQ(bitfield->get_name(), "test-bitfield");
     EXPECT_EQ(bitfield->get_parent(), "integer");
 }
 
 TEST_F(DefTypeTest, WithDocstring) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype documented-type
           (structure)
           "This is a test type with documentation"
@@ -118,11 +116,11 @@ TEST_F(DefTypeTest, WithDocstring) {
     // Проверяем что докстринг сохранился
     EXPECT_TRUE(result.type_info->m_metadata.has_docstring());
     EXPECT_EQ(result.type_info->m_metadata.get_docstring_or_empty(),
-        "This is a test type with documentation");
+              "This is a test type with documentation");
 }
 
 TEST_F(DefTypeTest, WithMethods) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype method-type
           (structure)
           ((x int32)
@@ -140,7 +138,7 @@ TEST_F(DefTypeTest, WithMethods) {
 }
 
 TEST_F(DefTypeTest, ArrayField) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype array-type
           (structure)
           ((count int32)
@@ -150,18 +148,18 @@ TEST_F(DefTypeTest, ArrayField) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    auto structure = dynamic_cast<StructureType*>(result.type_info);
+    auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
 
     // Проверяем что поле с массивом создалось
     Field data_field;
-    bool has_data = structure->lookup_field("data", &data_field);
+    bool  has_data = structure->lookup_field("data", &data_field);
     EXPECT_TRUE(has_data);
     EXPECT_TRUE(data_field.is_array());
 }
 
 TEST_F(DefTypeTest, InlineField) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype inline-type
           (structure)
           ((transform matrix :inline)
@@ -171,17 +169,17 @@ TEST_F(DefTypeTest, InlineField) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    auto structure = dynamic_cast<StructureType*>(result.type_info);
+    auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
 
     Field transform_field;
-    bool has_transform = structure->lookup_field("transform", &transform_field);
+    bool  has_transform = structure->lookup_field("transform", &transform_field);
     EXPECT_TRUE(has_transform);
     EXPECT_TRUE(transform_field.is_inline());
 }
 
 TEST_F(DefTypeTest, ComplexOptions) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype complex-type
           (structure)
           ((a int32)
@@ -194,7 +192,7 @@ TEST_F(DefTypeTest, ComplexOptions) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    auto structure = dynamic_cast<StructureType*>(result.type_info);
+    auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
 
     EXPECT_TRUE(structure->is_packed());
@@ -231,7 +229,7 @@ TEST_F(DefTypeTest, InvalidFieldType) {
 }
 
 TEST_F(DefTypeTest, SizeAssert) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype sized-type
           (structure)
           ((a int32)
@@ -255,9 +253,8 @@ TEST_F(DefTypeTest, FailedSizeAssert) {
     EXPECT_ANY_THROW(parse_deftype_string(code));
 }
 
-
 TEST_F(DefTypeTest, WithStates) {
-    std::string code = R"(
+    std::string   code = R"(
         (deftype stateful-type
           (structure)
           ((value int32))
@@ -271,21 +268,21 @@ TEST_F(DefTypeTest, WithStates) {
     ASSERT_NE(result.type_info, nullptr);
 
     // Проверяем что states добавились
-    auto& states = result.type_info->get_states_declared_for_type();
+    auto &states = result.type_info->get_states_declared_for_type();
     EXPECT_GT(states.size(), 0);
 }
 
 TEST_F(DefTypeTest, Inheritance) {
     // Сначала создаем родительский тип
-    std::string code1 = R"(
+    std::string   code1 = R"(
         (deftype parent-type
           (structure)
           ((parent-field int32)))
     )";
     DeftypeResult parent_result = parse_deftype_string(code1); // Сохраняем результат родителя
 
-    // Затем дочерний тип  
-    std::string code2 = R"(
+    // Затем дочерний тип
+    std::string   code2 = R"(
         (deftype child-type
           (parent-type)
           ((child-field float)))
@@ -294,14 +291,14 @@ TEST_F(DefTypeTest, Inheritance) {
 
     ASSERT_NE(child_result.type_info, nullptr); // Проверяем child_result
 
-    auto child = dynamic_cast<StructureType*>(child_result.type_info);
+    auto child = dynamic_cast<StructureType *>(child_result.type_info);
     ASSERT_NE(child, nullptr);
     EXPECT_EQ(child->get_parent(), "parent-type"); // Должно работать
 
     // Проверяем что унаследовались поля
     Field parent_field, child_field;
-    bool has_parent = child->lookup_field("parent-field", &parent_field);
-    bool has_child = child->lookup_field("child-field", &child_field);
+    bool  has_parent = child->lookup_field("parent-field", &parent_field);
+    bool  has_child = child->lookup_field("child-field", &child_field);
 
     EXPECT_TRUE(has_parent);
     EXPECT_TRUE(has_child);

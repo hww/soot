@@ -1,21 +1,20 @@
-#include <gtest/gtest.h>
 #include "common/sooti/Interpreter.hpp"
+#include <gtest/gtest.h>
 
 using namespace script;
 
 class BasicTypesTest : public ::testing::Test {
-protected:
+  protected:
     void SetUp() override {
-        env = std::make_shared<EnvironmentObject>();
+        env = interp.get_global_environment().as_env();
     }
 
-    Object eval(const std::string& code) {
-        Object obj = interp.get_reader().read_from_string(code, "test");
-        return interp.eval_form(obj, env);
+    Object eval(const std::string &code) {
+        return interp.eval_string(code, "test");
     }
 
-    Interpreter interp;
-    std::shared_ptr<EnvironmentObject> env;
+    Interpreter        interp;
+    EnvironmentObject *env;
 };
 
 // Тест 1: Целые числа
@@ -84,20 +83,20 @@ TEST_F(BasicTypesTest, SymbolLiterals) {
     // Символы как литералы (без вычисления) - используем reader из interpreter
 
     Object obj1 = interp.get_reader().read_from_string("x", "test");
-    auto& expressions1 = obj1.as_pair()->cdr;  // (x)
-    auto& symbol_obj1 = expressions1.as_pair()->car;  // x
+    auto  &expressions1 = obj1.as_pair()->cdr;        // (x)
+    auto  &symbol_obj1 = expressions1.as_pair()->car; // x
     EXPECT_TRUE(symbol_obj1.is_symbol());
-    EXPECT_STREQ(symbol_obj1.as_symbol().name_ptr, "x");  // ← используем STREQ для C-строк
+    EXPECT_STREQ(symbol_obj1.as_symbol().name_ptr, "x"); // ← используем STREQ для C-строк
 
     Object obj2 = interp.get_reader().read_from_string("variable-name", "test");
-    auto& expressions2 = obj2.as_pair()->cdr;  // (variable-name)
-    auto& symbol_obj2 = expressions2.as_pair()->car;  // variable-name
+    auto  &expressions2 = obj2.as_pair()->cdr;        // (variable-name)
+    auto  &symbol_obj2 = expressions2.as_pair()->car; // variable-name
     EXPECT_TRUE(symbol_obj2.is_symbol());
-    EXPECT_STREQ(symbol_obj2.as_symbol().name_ptr, "variable-name");  // ← STREQ
+    EXPECT_STREQ(symbol_obj2.as_symbol().name_ptr, "variable-name"); // ← STREQ
 
     Object obj3 = interp.get_reader().read_from_string("+", "test");
-    auto& expressions3 = obj3.as_pair()->cdr;  // (+)
-    auto& symbol_obj3 = expressions3.as_pair()->car;  // +
+    auto  &expressions3 = obj3.as_pair()->cdr;        // (+)
+    auto  &symbol_obj3 = expressions3.as_pair()->car; // +
     EXPECT_TRUE(symbol_obj3.is_symbol());
-    EXPECT_STREQ(symbol_obj3.as_symbol().name_ptr, "+");  // ← STREQ
+    EXPECT_STREQ(symbol_obj3.as_symbol().name_ptr, "+"); // ← STREQ
 }
