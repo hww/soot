@@ -5,7 +5,7 @@
 ![CMake](https://img.shields.io/badge/CMake-3.16+-064F8C?style=flat&logo=cmake&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-8E44AD?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat)
-![Build](https://github.com/ВАШ_ЛОГИН/soot/actions/workflows/ИМЯ_ФАЙЛА.yml/badge.svg)
+![Build](https://github.com/your-username/soot/actions/workflows/build.yml/badge.svg) 
 ![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
 
 ## SOOT & Carbon: A Tiered Ecosystem for Embedded Automation
