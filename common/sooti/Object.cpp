@@ -1408,6 +1408,12 @@ Object Object::inspect() const {
         return lb.build();
     }
 
+    case ObjectType::NONE: {
+        ListBuilder lb{};
+        lb.push_back(Object::make_symbol("none"));
+        return lb.build();
+    }
+
     default:
         if (is_heap_object() && heap_obj) {
             return heap_obj->inspect();
