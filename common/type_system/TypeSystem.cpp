@@ -2076,19 +2076,19 @@ Object TypeSystem::make_step_accessor(const Object &key) {
         return Object::make_none(); // Или бросай ошибку, если хочешь строгости
     }
 
-    if (name == "variant") {
+    if (name == ".variant") {
         return m_variant;
     }
 
-    if (name == "types-count") {
+    if (name == ".types-count") {
         return Object::make_integer(get_types_count());
     }
 
-    if (name == "pointer-size") {
+    if (name == ".pointer-size") {
         return Object::make_integer(get_pointer_size());
     }
 
-    if (name == "types") {
+    if (name == ".types") {
         ListBuilder lb{};
         for (auto &kv : m_types) {
             lb.push_back(Object::make_symbol(kv.first));

@@ -304,24 +304,24 @@ Object TypeSpec::make_step_accessor(const Object &key) {
 
     auto name = key.to_std_string();
     // 1. Имя базового типа (например, "pointer")
-    if (name == "base-type") {
+    if (name == ".base-type") {
         return Object::make_string(base_type());
     }
 
     // 2. Количество аргументов
-    if (name == "args-count") {
+    if (name == ".args-count") {
         return Object::make_integer(get_args_count());
     }
 
     // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
-    if (name == "args") {
+    if (name == ".args") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
         return Object::make_string(print());
     }
 
     // 4. Количество тегов
-    if (name == "tags-count") {
+    if (name == ".tags-count") {
         return Object::make_integer(get_tags_count());
     };
 

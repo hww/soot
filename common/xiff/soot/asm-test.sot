@@ -5,12 +5,17 @@
 (defmodule test-module)
 
 (deftype vec3 (structure)
-  ((x int16)   ;; offset 0
-   (y int16)   ;; offset 4
-   (z int16))  ;; offset 8
+  ((x int16) 
+   (y int16) 
+   (z int16))
  (:methods
       (new (int16 int16) none)
       (len () int16)))
+
+(deftype mat3 (structure)
+  ((r1 vec3)   
+   (r2 vec3)   
+   (r3 vec3))) 
 
 (defmacro build-vtable (type-sym seg)
   (let* ((type-name-str (symbol->string type-sym))
@@ -69,9 +74,9 @@ $label2
       (org #x8000)
 
 $vec3::new
-      ret
+      (ret)
 $vec3::len
-      ret
+      (ret)
 $begin
       (ld hl (size-of vec3)) ;; offset
       (ld hl (offset-of vec3 x)) ;; offset
@@ -79,14 +84,37 @@ $begin
       (ld hl (size-of vec3 x)) ;; size
       (ld hl (size-of vec3 y)) ;; size
       (ld [+ iy (offset-of vec3 y)] 10)
-      ;(.vtable 'position 'vec3 'def)
+      (vtable position vec3)
 
 )
+
+(defmacro defmethod (name-and-type args &body body)
+  (let ((name (car name-and-type))
+        (type (cadr name-and-type))
+        (label (format nil "$~a::~a" type name)))
+    `(begin
+       ;; 1. Регистрация в метаданных (то, что мы обсуждали)
+       (declare-method ',type ',name ',args) 
+       
+       ;; 2. Генерация кода
+       (zasm
+         (label ,label)
+         ;; Пролог: настраиваем доступ к полям структуры через IX
+         (push ix)
+         (ld ix sp) 
+         
+         ;; Вставляем тело метода. 
+         ;; Здесь макрос '->' будет знать, что 'this' - это IX
+         ,@body 
+         
+         (pop ix)
+         (ret)))))
+
 
 
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)
-(print (module-dump test-module))
+(module-dump test-module)
 (generate-module-listing test-module :print-listing #t)
 ;; 4. Сохраняем артефакты
 (save-module-hex test-module)

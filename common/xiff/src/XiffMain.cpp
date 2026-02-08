@@ -1,21 +1,19 @@
 
-#include <iostream>
+#include "common/sooti/Export.hpp"
+#include "common/util/FileUtil.hpp"
+#include "common/util/Log.hpp"
+#include "fmt/color.h"
+#include "fmt/format.h"
+#include "xiff/XiffCompiler.hpp"
 #include <filesystem>
 #include <fstream>
-#include "fmt/format.h"
-#include "fmt/color.h"
-#include "common/util/Log.hpp"
-#include "common/util/FileUtil.hpp"
-#include "common/sooti/Export.hpp"
-#include "xiff/XiffCompiler.hpp"
+#include <iostream>
 
 namespace fs = std::filesystem;
 
-
-
-
 void print_xiff_usage() {
-    fmt::print(fg(fmt::color::cyan), "XIFF (eXternal Interface Function Fabric) - SOOT Edition\n\n");
+    fmt::print(fg(fmt::color::cyan),
+               "XIFF (eXternal Interface Function Fabric) - SOOT Edition\n\n");
     fmt::print("Usage:\n");
     fmt::print("  xiff [options] <asm_files...>\n\n");
     fmt::print("Options:\n");
@@ -27,16 +25,13 @@ void print_xiff_usage() {
     fmt::print("  xiff -o interface.h src/*.asm\n");
 }
 
-
-
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_xiff_usage();
         return 0;
     }
-    
 
-    std::string project_path;
+    std::string              project_path;
     std::vector<std::string> libs;
     std::vector<std::string> sources;
 
@@ -49,9 +44,13 @@ int main(int argc, char* argv[]) {
             print_xiff_usage();
             return 0;
         } else if (arg == "--project" || arg == "-p") {
-            if (i + 1 < argc) { project_path = argv[++i]; file_util::set_project_path(project_path); }
+            if (i + 1 < argc) {
+                project_path = argv[++i];
+                file_util::set_project_path(project_path);
+            }
         } else if (arg == "--lib" || arg == "-l") {
-            if (i + 1 < argc) libs.push_back(argv[++i]);
+            if (i + 1 < argc)
+                libs.push_back(argv[++i]);
         } else if (arg == "--verbose" || arg == "-v") {
             verbose = true;
         } else if (arg.starts_with("-")) {
@@ -66,23 +65,22 @@ int main(int argc, char* argv[]) {
         // 2. Инициализируем SOOT Runtime (без интерактивного режима)
         script::Interpreter sooti("Xiff"); // Создаем ядро
 
-
         XiffCompiler compiler(sooti);
 
         // 1. Преамбула
-        for (const auto& lib : libs) {
+        for (const auto &lib : libs) {
             compiler.load_library(lib);
         }
 
         // 2. Процессинг
-        for (const auto& src : sources) {
+        for (const auto &src : sources) {
             compiler.scan_file(src);
         }
 
         // 3. Завершение
         compiler.finalize_and_inject();
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         fmt::print(fg(fmt::color::red), "XIFF Fatal Error: {}\n", e.what());
         return 1;
     }

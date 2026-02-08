@@ -8,16 +8,6 @@
 #include <memory>
 #include <unordered_map>
 
-namespace std {
-template <> struct hash<script::InternedSymbolPtr> {
-    size_t operator()(const script::InternedSymbolPtr &s) const noexcept {
-        // Поскольку символы интернированы, адрес указателя
-        // сам по себе является отличным уникальным хешем.
-        return std::hash<const char *>{}(s.name_ptr);
-    }
-};
-} // namespace std
-
 class TypeSystem;
 
 namespace script {
@@ -118,27 +108,28 @@ class Interpreter {
     std::string get_all_symbols_matching(const std::string &prefix);
 
     // --- Константы ------------------------
-    Object get_undefined() {
-        return m_undefined;
-    }
+
     Object get_null() {
-        return m_sym_null;
+        return m_obj_null;
+    }
+    Object get_none() {
+        return m_obj_none;
     }
     Object get_true() {
         return m_sym_true;
     }
     Object get_false() {
-        return m_obj_false;
+        return m_sym_false;
     }
     // Boolean helpers (используют символы)
     Object true_or_false(bool value) {
-        return value ? m_sym_true : m_obj_false;
+        return value ? m_sym_true : m_sym_false;
     }
 
     // --- Predicates -----------------------
     // Check if value is true
     bool truthy(const Object &o) const {
-        return o.truthy(m_obj_false.as_symbol());
+        return o.truthy(m_sym_false.as_symbol());
     }
     // Помощники для чисел
     bool    is_number(const Object &obj);
@@ -179,19 +170,37 @@ class Interpreter {
                                               const std::shared_ptr<EnvironmentObject> &env);
 
     // Обработка ошибок
-    void throw_eval_error(const Object &o, const std::string &err);
-    void throw_arity_mismatch(const Object &form, size_t expected, size_t got,
-                              const Arguments &args);
-    void throw_type_mismatch(const Object &form, size_t index,
-                             const std::vector<ObjectType> &expected, ObjectType got,
-                             const Arguments &args);
-    void throw_missing_named_arg(const Object &form, const std::string &name,
-                                 const Arguments &args);
-    void throw_unexpected_named_arg(const Object &form, const std::string &name,
-                                    const Arguments &args);
-    void throw_named_type_mismatch(const Object &form, const std::string &name,
-                                   const std::vector<ObjectType> &expected, ObjectType got);
-    void print_form_info(const Object &form);
+    [[noreturn]] void throw_eval_error(const Object &o, const std::string &err);
+    void              throw_arity_mismatch(const Object &form, size_t expected, size_t got,
+                                           const Arguments &args);
+    void              throw_type_mismatch(const Object &form, size_t index,
+                                          const std::vector<ObjectType> &expected, ObjectType got,
+                                          const Arguments &args);
+    void              throw_missing_named_arg(const Object &form, const std::string &name,
+                                              const Arguments &args);
+    void              throw_unexpected_named_arg(const Object &form, const std::string &name,
+                                                 const Arguments &args);
+    void              throw_named_type_mismatch(const Object &form, const std::string &name,
+                                                const std::vector<ObjectType> &expected, ObjectType got);
+    void              print_form_info(const Object &form);
+
+    template <typename... Args>
+    [[noreturn]] void throw_eval_error(const Object &code, const std::string &str, Args &&...args) {
+        std::string message;
+
+        if (!str.empty() && str.back() == '\n') {
+            // Используем fmt::runtime для runtime форматирования
+            message =
+                fmt::format(fmt::emphasis::bold, fmt::runtime(str), std::forward<Args>(args)...);
+        } else {
+            message = fmt::format(fmt::emphasis::bold, fmt::runtime(str + '\n'),
+                                  std::forward<Args>(args)...);
+        }
+
+        // Здесь должно быть фактическое выбрасывание исключения
+        // Например:
+        throw_eval_error(code, message);
+    }
 
   private:
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
@@ -205,8 +214,6 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_special(const Object &form, const Object &rest,
                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_let_special(const Object &form, const Object &rest,
-                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_if_special(const Object &form, const Object &rest,
                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_and_special(const Object &form, const Object &rest,
@@ -219,8 +226,13 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_macro_special(const Object &form, const Object &rest,
                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_let_special(const Object &form, const Object &rest,
+                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_let_star_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_let_common_special(const Object &form, const Object &rest,
+                                   const std::shared_ptr<EnvironmentObject> &env, bool is_star);
+
     Object eval_quasiquote_special(const Object &form, const Object &rest,
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_apply(const Object &form, Arguments &args,
@@ -546,13 +558,24 @@ class Interpreter {
         const Object &form, const Arguments &args,
         const std::vector<std::vector<ObjectType>>                                      &unnamed,
         const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>> &named);
-
+    Object eval_make_asm_regs_special(const Object &form, const Object &rest,
+                                      const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_rlet_special(const Object &form, const Object &rest,
+                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_defenum_special(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_deftype_special(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_special(const Object &form, const Object &rest,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_type_special(const Object &form, const Object &rest,
+                                     const std::shared_ptr<EnvironmentObject> &env);
+    Object declarations(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_rlet_ref(const Object &form, Arguments &args,
+                         const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
@@ -619,20 +642,20 @@ class Interpreter {
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);
     void init_builtin_forms(const std::initializer_list<BuiltinEntryConfig> forms);
     // --- Хранилища ---
-
+    void for_each_in_list(const Object &list, const std::function<void(const Object &)> &f);
     // Типы и Сеттеры
     std::unordered_map<std::string, ObjectType>              m_string_to_type;
     std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
 
     // Состояние
     Object        m_sym_true;
-    Object        m_obj_false;
+    Object        m_sym_false;
     Object        m_kw_undefined;
     const char   *m_symbol_true;
     const char   *m_symbol_false;
     const char   *m_symbol_undefined;
-    Object        m_sym_null;
-    Object        m_undefined;
+    Object        m_obj_null;
+    Object        m_obj_none;
     int           m_gensym_id = 0;
     Object        m_global_environment;
     Object        m_comp_env;

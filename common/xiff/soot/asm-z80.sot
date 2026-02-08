@@ -1023,7 +1023,7 @@
 
 (defun get-vtable-size (type-sym)
      (if (symbol? type-sym)
-          (* 3 (-> type-sym methods-max-id))
+          (* 3 (-> type-sym .methods-max-id))
           (error (fmt #f "Expected type name {}" type-sym) null)))
 
 (defun find-if (pred lst)
@@ -1032,45 +1032,44 @@
     ((pred (car lst)) (car lst))
     (else (find-if pred (cdr lst)))))
 
-(defun emit-vtable-slots (type-sym emit-fn)
+(defun emit-vtable-slots (type-sym emit-fn &optional ctx)
   (if (not (symbol? type-sym))
-     (error (fmt #f "Expected type name {}" type-sym) null)
-     (let (
-            (max-id (-> type-sym methods-max-id))
-            (methods (-> type-sym methods)))
+     (error (fmt #f "emit-vtable-slots expected symbol got `{}`" type-sym) ctx)
+     (let ((max-id (-> type-sym .methods-max-id))
+           (methods (-> type-sym .methods))
+           (data '()))
        (dotimes (i (+ max-id 1))
-          (let ((m (find-if (lambda (x) (= (-> x id) i)) methods)))
-          (if m
-               ;; Вызываем "излучатель" для реального метода
-               (emit-fn (intern (concat (symbol->string type-sym) "::" (-> m name))))
-               ;; Вызываем "излучатель" для пустой дырки
-               (emit-fn #f)))))))
+          (let ((m (find-if (lambda (x) (= (-> x .id) i)) methods)))
+               (if m
+                    ;; Вызываем "излучатель" для реального метода
+                    (push! (emit-fn (intern (concat (symbol->string type-sym) "::" (-> m .name)))) data )
+                    ;; Вызываем "излучатель" для пустой дырки
+                    (push! (emit-fn #f) data ))))
+        (flatten (reverse  data)))
+        ;; else
+        null))
 
-(operand .vtable 0 "Place v-table to code"
-     :arg1 variable ;; name
-     :arg2 variable ;; type
-     :arg3 variable ;; options
-     :pass1 1
-     :pass2 1
-     :pass3 '(1))
 
-(operand ..vtable 0 "Place v-table to code"
-     :arg1 variable ;; name
-     :arg2 variable ;; type
-     :arg3 variable ;; options
-     :pass1 (begin 
-          (lab r1)
-          (get-vtable-size r2))
-     :pass2 (begin 
-          (lab r1)
-          (get-vtable-size r2))
-     :pass3 (emit-vtable-slots r2 (lambda (label-name) 
-               (if label-name
-                    (let ((addr (get-addr label-name seg ctx)))
-                              (list #xC3 (lower-byte addr) (higher-byte addr)))
-                              (list 0 0 0)))))
+(operand ams-vtable  0 "Place v-table to code"
+  :arg1 variable ;; name
+  :arg2 variable ;; type
+  :arg3 variable ;; options
+  :pass1 (begin 
+       (lab r1)
+       (get-vtable-size r2))
+  :pass2 (begin 
+       (lab r1)
+       (get-vtable-size r2))
+  :pass3 (begin
+            (emit-vtable-slots r2 
+                 (lambda (label-name) 
+                 (if label-name
+                      (let ((addr (get-addr label-name seg ctx)))                         
+                          (list #xC3 (lower-byte addr) (higher-byte addr)))
+                      (list 0 0 0)))
+                      ctx)))
 
 (defmacro vtable (name type &optional (options 'default))
-     `(%vtable ',name ',type ',options))
+     `(ams-vtable ',name ',type ',options))
 
 (fmt #t "Loaded asm-z80\n")
