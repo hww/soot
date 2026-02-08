@@ -4443,15 +4443,23 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
     // --- 2. НАВИГАЦИЯ (ШАГИ) ---
     while (!iterator.is_null()) {
         Object key_form = iterator.as_pair()->car;
-        // Ключи (поля) обычно символы, но могут быть вычисляемыми (-> obj (get-field-name))
-        Object key = key_form.is_symbol() ? key_form : eval_with_rewind(form, key_form, env);
 
-        // Пытаемся сделать шаг
+        // ВАЖНО: Если это символ с точкой (мета-поле), берем его как есть без вычисления
+        Object key;
+        if (key_form.is_symbol() && key_form.as_symbol().name_ptr[0] == '.') {
+            key = key_form;
+        } else {
+            key = key_form.is_symbol() ? key_form : eval_with_rewind(form, key_form, env);
+        }
+
         Object next;
         try {
+            // Делаем шаг. current ОБЯЗАТЕЛЬНО должен быть NativeRef (RegisterAlias)
             next = current.step(key);
         } catch (const std::exception &e) {
-            throw_eval_error(form, fmt::format("Deref object '{}' impossible", current.print()));
+            // Если упали тут, значит current потерял связь с RegisterAlias
+            throw_eval_error(form, fmt::format("Deref impossible: object is {}, error: {}",
+                                               current.print(), e.what()));
         }
 
         if (next.is_none()) {
@@ -4459,6 +4467,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
                 form, fmt::format("Field '{}' not found in {}", key.print(), current.print()));
         }
 
+        // ПЕРЕХОДИМ К СЛЕДУЮЩЕМУ ОБЪЕКТУ И СЛЕДУЮЩЕМУ КЛЮЧУ
         current = next;
         iterator = iterator.as_pair()->cdr;
     }

@@ -10,13 +10,13 @@
 
 
 ;; [ is a macro character for indirect and indexed adressing modes
-(set-macro-character "["
-   (lambda (s c)
-        (let ((lis (read-delimited-list "]" s)))
-             (ind-reader lis))))
+;(set-macro-character "["
+;   (lambda (s c)
+;        (let ((lis (read-delimited-list "]" s)))
+;             (ind-reader lis))))
 
 ;; Closing macro character for indirect and indexed adressing modes
-(set-macro-character "]" ")")
+;(set-macro-character "]" ")")
 
 ;; ==============================================
 ;; Load source code with active character macro

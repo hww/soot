@@ -387,7 +387,9 @@ Object TypeSpec::inspect() const {
 // ============================================================================
 
 namespace typespec {
-
+TypeSpec bool_() {
+    return TypeSpec("bool");
+}
 TypeSpec object() {
     return TypeSpec("object");
 }
