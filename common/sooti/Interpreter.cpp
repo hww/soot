@@ -450,7 +450,10 @@ void Interpreter::set_args_in_env(const Object &form, const Arguments &args,
     if (!arg_spec.rest.empty()) {
         // args.rest теперь сам по себе является списком Pair или Null.
         // Мы просто биндим его в окружение. Никаких копирований!
-        env->vars.set(intern(arg_spec.rest), args.rest);
+        if (args.rest.is_none())
+            env->vars.set(intern(arg_spec.rest), get_null());
+        else
+            env->vars.set(intern(arg_spec.rest), args.rest);
     } else {
         // Если rest не пустой, но спецификация его не ждет
         if (args.has_rest()) {

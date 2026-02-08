@@ -110,7 +110,15 @@ $begin
          (pop ix)
          (ret)))))
 
-
+ (rlet ((m :reg r13 :type mat3))
+ 
+ (zasm
+   (fmt #t "(-> m) => {}\n" (-> m))
+   (fmt #t "(-> m r1) =>{}\n" (-> m r1 ))
+   (fmt #t "(-> m r1 x) =>{}\n" (-> m r1 x))
+   (ld a (-> m r1 x))   
+  ;(-> m r2 z) 
+  ))
 
 ;; 3. Одной командой собираем и выводим отчет
 (build test-module)

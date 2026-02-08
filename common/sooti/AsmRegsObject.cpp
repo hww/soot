@@ -13,11 +13,10 @@ Object get_current_asm_context(std::shared_ptr<EnvironmentObject> env) {
     }
     return Object::make_none();
 }
-
 Object RegisterAlias::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
-    // 1. Базовые свойства
+    // 1. Внутренняя рефлексия алиаса
     if (name == ".reg" || name == ".physical_reg")
         return physical_reg;
     if (name == ".offset")
@@ -25,15 +24,46 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
     if (name == ".type_name")
         return Object::make_string(type_name);
 
-    if (name == ".type") {
-        auto type_ptr = TypeSystem::instance().lookup_type(type_name);
+    // 2. Получаем объект типа из глобальной таблицы
+    auto type_ptr = TypeSystem::instance().lookup_type(type_name);
+    if (!type_ptr)
+        return Object::make_none();
 
-        if (type_ptr) {
-            // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
-            // Если как unique_ptr, то возвращай NativeRef с пустым делетером (но помни о рисках!)
-            return Object::make_native_ref(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
+    // 3. Пытаемся найти поле (сначала в структурах)
+    auto struct_ptr = dynamic_cast<StructureType *>(type_ptr);
+    if (struct_ptr) {
+        Field field;
+        if (struct_ptr->lookup_field(name, &field)) {
+            // Создаем новый алиас - "шаг вглубь"
+            auto next_step = std::make_shared<RegisterAlias>();
+
+            // Наследуем физический регистр
+            next_step->physical_reg = this->physical_reg;
+
+            // Устанавливаем тип этого поля для следующего шага
+            next_step->type_name = field.type().base_type();
+
+            // ГЛАВНОЕ: Аккумулируем смещение
+            next_step->offset = this->offset + field.offset();
+
+            return Object::make_native_ref(next_step);
         }
     }
+
+    // 4. Поддержка битфилдов (если нужно)
+    auto bit_ptr = dynamic_cast<BitFieldType *>(type_ptr);
+    if (bit_ptr) {
+        BitField bf;
+        if (bit_ptr->lookup_field(name, &bf)) {
+            auto next_step = std::make_shared<RegisterAlias>();
+            next_step->physical_reg = this->physical_reg;
+            next_step->type_name = bf.type().base_type();
+            // Смещение битфилда (приводим биты к байтам, если это допустимо в вашей архитектуре)
+            next_step->offset = this->offset + (bf.offset() / 8);
+            return Object::make_native_ref(next_step);
+        }
+    }
+
     return Object::make_none();
 }
 
