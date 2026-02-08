@@ -45,6 +45,55 @@
 (define iv  (make-lextoken :type 'iv-register :value 'iv))
 (define mr  (make-lextoken :type 'mr-register :value 'mr))
 
+;; Функции для косвенной адресации
+(defun @hl () (make-lextoken :type 'hl-indirect))
+(defun @bc () (make-lextoken :type 'bc-indirect))
+(defun @de () (make-lextoken :type 'de-indirect))
+(defun @sp () (make-lextoken :type 'sp-indirect))
+
+;; Функции для индексированной адресации
+;;  (ld a (@hl))      ;; LD A, (HL)
+;;  (ld a (@+ ix 5))  ;; LD A, (IX+5)
+;;  (ld (@+ iy 10) a) ;; LD (IY+10), A
+(defun @+ (reg offset)
+  (make-lextoken 
+    :type (case reg
+            ('ix 'ix-indexed)
+            ('iy 'iy-indexed)
+            ('r13 'r13-indexed)
+            ('r14 'r14-indexed)
+            (else (error (fmt #f "Unknown index register: {}" reg))))
+    :value offset))
+
+(defun @- (reg offset)
+  (@+ reg (- offset)))
+
+;; 1. Определяем функцию +i
+(defun +i (reg offset)
+  (make-lextoken 
+    :type (case reg
+            ('ix 'ix-indexed)
+            ('iy 'iy-indexed)
+            ('r13 'r13-indexed)
+            ('r14 'r14-indexed)
+            (else (error (fmt #f "Unknown index register: {}" reg))))
+    :value offset))
+
+;; 2. Вспомогательные функции для регистров
+(defun get-low-reg (reg)
+  (case reg
+    ('hl 'l)
+    ('de 'e)
+    ('bc 'c)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
+(defun get-high-reg (reg)
+  (case reg
+    ('hl 'h)
+    ('de 'd)
+    ('bc 'b)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
 ;;; make-indexed (sign reg val)
 ;;; ---------------------------
 ;;; Создает токен индексированной адресации для регистров IX или IY.
@@ -103,23 +152,37 @@
 ;;;   [MY_LABEL]   -> LIS: (MY_LABEL)
 ;;;                   FIRST: MY_LABEL (symbol?)
 ;;;                   Результат: asmsym-indirect (адрес будет разрешен позже)
+;; В ind-reader добавить обработку r13/r14
 (defun ind-reader (lis)
-   "Read indirect adressing modes"
-    (let ((first (car lis)))
-        (cond 
-           ((integer? first)
-              ;(print lis)(print " ")(print (print first))
-              (make-lextoken :type 'imm-indirect :value first))
-           ((or (eq? '+ first) (eq? '- first))
-              (apply 'make-indexed lis))
-           ((lextoken? first)
-              (case (lextoken-value first)
-                 ('bc (make-lextoken :type 'bc-indirect))
-                 ('hl (make-lextoken :type 'hl-indirect))
-                 ('sp (make-lextoken :type 'sp-indirect))
-                 ('de (make-lextoken :type 'de-indirect))))
-           ((symbol? first)
-              (make-lextoken :type 'asmsym-indirect :value first)))))
+  "Read indirect addressing modes"
+  (let ((first (car lis)))
+    (cond 
+      ((integer? first)
+        (make-lextoken :type 'imm-indirect :value first))
+      ((or (eq? '+ first) (eq? '- first))
+        (apply 'make-indexed lis))
+      ;; Обработка символов (hl, bc, de, sp)
+      ((symbol? first)
+        (case first
+          ('hl (make-lextoken :type 'hl-indirect))
+          ('bc (make-lextoken :type 'bc-indirect))
+          ('de (make-lextoken :type 'de-indirect))
+          ('sp (make-lextoken :type 'sp-indirect))
+          ;; Для r13/r14 тоже нужно добавить
+          ('r13 (make-lextoken :type 'r13-indirect))
+          ('r14 (make-lextoken :type 'r14-indirect))
+          ;; Любой другой символ - это метка
+          (else (make-lextoken :type 'asmsym-indirect :value first))))
+      ;; Если передали уже lextoken (из переменной hl)
+      ((lextoken? first)
+        (case (lextoken-value first)
+          ('hl (make-lextoken :type 'hl-indirect))
+          ('bc (make-lextoken :type 'bc-indirect))
+          ('de (make-lextoken :type 'de-indirect))
+          ('sp (make-lextoken :type 'sp-indirect))
+          (else (error (fmt #f "Unsupported indirect register: {}" first) lis))))
+      (else 
+        (error (fmt #f "Invalid indirect addressing: {}" lis) lis)))))
 
 ;; z80 register codes, needed often during instruction assembling
 (define *reg-codes* (make-hash-table '() 11))
@@ -160,21 +223,65 @@
 (con-code! 'p 6)
 (con-code! 'm 7)
 
-(defun parse-z80 (arg)
-  "Parse z80 source code, see the macro definitions and lextoken
-  definitions above."
+(defun parse-z80 (arg ctx)
+     ;(error "sss" ctx)
   (cond
-    ((null? arg) '())
     ((lextoken? arg) arg)
-    ((number? arg)
-          (make-lextoken :type 'number :value arg))
+     ;; Обработка списка (hl) как индексированной адресации
+    ((and (list? arg) (= (length arg) 1) (lextoken? (car arg)))
+     (let ((token (car arg)))
+       (if (member (lextoken-value token) '(hl bc de sp))
+           (ind-reader (list token))
+           arg)))
+
+
+((type? arg 'native-ref)
+ (let ((b-size (-> arg .bit_size))
+       (offs   (-> arg .offset))
+       (base   (-> arg .reg)))
+   ;; Для отладки:
+   (fmt #t "PARSE native-ref: base={} offset={} bits={}\n" base offs b-size)
+   
+   ;; ВАЖНО: Возвращаем ТОЛЬКО ОДНО значение!
+   (cond
+     ;; 1. Для R13/R14 - создаем специальные токены
+     ((member base '(r13 r14))
+      (make-lextoken :type (if (eq? base 'r13) 'r13-indexed 'r14-indexed)
+                     :value offs))
+     
+     ;; 2. Для битовых полей (bits=1) - число
+     ((= b-size 1)
+      (make-lextoken :type 'number :value (-> arg .bit_offset)))
+     
+     ;; 3. Для 8-битных данных в памяти - indexed-addr
+     ((= b-size 8)
+      (make-lextoken :type 'indexed-addr :value (list base offs)))
+     
+     ;; 4. Для 16-битных данных - список для макроса
+     ((= b-size 16)
+      (list base offs))  ;; Будет использовано макросом ld-16-from-mem
+     
+     ;; 5. Для регистров (offset=0) - обычный регистр
+     ((= offs 0)
+      (make-lextoken :type (if (>= b-size 16) '16-register '8-register) 
+                     :value base))
+     
+     ;; 6. Все остальное - ошибка
+     (else
+      (error (fmt #f "Unsupported native-ref: base={} offset={} bits={}" 
+                  base offs b-size) ctx)))))
+
     ((symbol? arg)
-          (make-lextoken :type 'asmsym :value arg))
-    ((string? arg)  
-          (make-lextoken :type 'string :value arg))
-    ((list? arg) 
-          (make-lextoken :type 'list   :value arg)) ; lists to embed data into the assembler source code
-    (#t 'XXX)))
+     (let ((type (cond 
+                   ((hash-table-contains? *reg-codes* arg) '8-register)
+                   ((hash-table-contains? *con-codes* arg) 'condition)
+                   (else 'asmsym))))
+       (make-lextoken :type type :value arg)))
+
+    ((number? arg) (make-lextoken :type 'number :value arg))
+    ((null? arg)   (make-lextoken :type null))
+    (else          (make-lextoken :type 'unknown :value arg))))
+
   
 ; Set the assembler parse function to be parse-z80
 (set! *parse* parse-z80)
@@ -950,6 +1057,23 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;; ASM Dirrectives ;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(operand bit 2 "BIT b, r (Smart Alias)"
+  :arg1 any :arg2 any
+  ;; pass1 и pass2 фиксированы (2 байта для CB XX)
+  :pass1 2
+  :pass2 2
+  :pass3 (let ((bit-val (if (type? r1 'native-ref) 
+                            (-> r1 .bit_offset)   ;; Если алиас, берем бит из него
+                            r1))                  ;; Если число, берем как есть
+               (reg-obj (if (type? r2 'native-ref)
+                            (-> r2 .reg)          ;; Если алиас, берем физ. регистр
+                            r2)))                 ;; Если символ (напр. 'a), берем его
+           (list #xCB 
+                 (logior #x40 
+                         (lshift (logand bit-val 7) 3) 
+                         (reg-code reg-obj)))))
+
 ;; --- Управление адресом ---
 
 (operand org 0 "Origin: Set Program Counter"
@@ -1071,5 +1195,36 @@
 
 (defmacro vtable (name type &optional (options 'default))
      `(ams-vtable ',name ',type ',options))
+
+(defun ld16 (reg-thing field-expr)
+  (let* ((alias (eval field-expr))
+         (base (-> alias .reg))
+         (offset (-> alias .offset))
+         ;; Извлекаем символ из lextoken если нужно:
+         (reg-sym (if (lextoken? reg-thing)
+                      (lextoken-value reg-thing)
+                      reg-thing)))  ;; если уже символ
+    (list
+      (ld (get-low-reg reg-sym) (+i base offset))
+      (ld (get-high-reg reg-sym) (+i base (+ offset 1))))))
+
+
+
+;; Добавляем в таблицу опкодов
+(operand ld 4 "LD r, (R13+d)"
+  :arg1 8-register :arg2 r13-indexed
+  :pass3 (list #xDD (logior #x46 (lshift (reg-code r1) 3)) r2))
+
+(operand ld 4 "LD r, (R14+d)"
+  :arg1 8-register :arg2 r14-indexed
+  :pass3 (list #xFD (logior #x46 (lshift (reg-code r1) 3)) r2))
+
+(operand ld 4 "LD (R13+d), r"
+  :arg1 r13-indexed :arg2 8-register
+  :pass3 (list #xDD (logior #x70 (reg-code r2)) r1))
+
+(operand ld 4 "LD (R14+d), r"
+  :arg1 r14-indexed :arg2 8-register
+  :pass3 (list #xFD (logior #x70 (reg-code r2)) r1))
 
 (fmt #t "Loaded asm-z80\n")

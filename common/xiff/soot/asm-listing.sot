@@ -1,49 +1,66 @@
-﻿
-(defun arg->string (arg)
+﻿(defun arg->string (arg)
   "Конвертировать аргумент в строку для записи в листинг файл"
   (if (lextoken? arg)
       (let ((val  (lextoken-value arg))
             (type (lextoken-type arg)))
-        (cond 
-          ;; 1. Пустые аргументы
-          ((or (null? val) (eq? val 'null)) "")
+        (case type
+          ('r13-indexed (fmt #f "(r13{:+})" (lextoken-value arg)))
+          ('r14-indexed (fmt #f "(r14{:+})" (lextoken-value arg)))
+          ;; Индексная адресация (IX+d) / (IY+d)
+          ('ix-indexed (fmt #f "(ix{:+})" (or val 0)))
+          ('iy-indexed (fmt #f "(iy{:+})" (or val 0)))
           
-          ;; 2. Индексная адресация (IX+d) / (IY+d)
-          ((eq? type 'ix-indexed) (fmt #f "(ix{:+})" val))
-          ((eq? type 'iy-indexed) (fmt #f "(iy{:+})" val))
+          ;; Косвенная адресация (HL), (BC) и т.д.
+          ('hl-indirect "(hl)")
+          ('bc-indirect "(bc)")
+          ('de-indirect "(de)")
+          ('sp-indirect "(sp)")
           
-          ;; 3. Косвенная адресация (HL), (BC) и т.д.
-          ((eq? type 'hl-indirect) "(hl)")
-          ((eq? type 'bc-indirect) "(bc)")
-          ((eq? type 'de-indirect) "(de)")
-          ((eq? type 'sp-indirect) "(sp)")
+          ;; Косвенная адресация по адресу (nn)
+          ('imm-indirect (fmt #f "({:04X}h)" (or val 0)))
+          ('asmsym-indirect (fmt #f "({})" (or val "?")))
           
-          ;; 4. Косвенная адресация по адресу (nn)
-          ((eq? type 'imm-indirect) (fmt #f "({:04X}h)" val))
-          ((eq? type 'asmsym-indirect) (fmt #f "({})" val))
+          ;; Числа
+          ('number (fmt #f "{:02X}h" (or val 0)))
           
-          ;; 5. Обычные числа (в hex для красоты)
-          ((integer? val) (fmt #f "{:02X}h" val))
+          ;; Регистры
+          ('8-register (fmt #f "{}" (or val "")))
+          ('16-register (fmt #f "{}" (or val "")))
           
-          ;; 6. Всё остальное (регистры, метки)
-          (#t (fmt #f "{}" val))))
+          ;; Метки
+          ('asmsym (fmt #f "{}" (or val "")))
+          
+          ;; Пустые
+          (else "")))
       ""))
 
 (defun inst->string (inst)
   "Конвертировать инструкцию в строку для записи в листинг файл"
-  (let ((op (inst-op inst))
-        (a1 (arg->string (inst-arg1 inst)))
-        (a2 (arg->string (inst-arg2 inst)))
-        (a3 (arg->string (inst-arg3 inst))))
+  (let* ((op (inst-op inst))
+         (arg1 (inst-arg1 inst))
+         (arg2 (inst-arg2 inst))
+         (arg3 (inst-arg3 inst))
+         (a1 (arg->string arg1))
+         (a2 (arg->string arg2))
+         (a3 (arg->string arg3)))
+    
+    ;; ОТЛАДКА:
+    (cfmt #t "yellow" "DEBUG inst->string: op={}\n" op)
+    (cfmt #t "yellow" "  arg1: type={} value={} -> '{}'\n" 
+          (if (lextoken? arg1) (lextoken-type arg1) 'none)
+          (if (lextoken? arg1) (lextoken-value arg1) 'none)
+          a1)
+    (cfmt #t "yellow" "  arg2: type={} value={} -> '{}'\n" 
+          (if (lextoken? arg2) (lextoken-type arg2) 'none)
+          (if (lextoken? arg2) (lextoken-value arg2) 'none)
+          a2)
+    
     (if (eq? op 'lab)
         (concat "label: " a1)
         (concat (fmt #f "{}" op)
                 (if (not (string-empty? a1)) (concat " " a1) "")
                 (if (not (string-empty? a2)) (concat ", " a2) "")
-                (if (not (string-empty? a3)) (concat ", " a3) "")
-                ;"   "
-                ;(fmt #f "{}" (inspect inst))
-                ))))
+                (if (not (string-empty? a3)) (concat ", " a3) "")))))
 
 
 ;; Вспомогательная функция: берет первые N элементов списка

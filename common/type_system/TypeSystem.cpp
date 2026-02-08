@@ -838,6 +838,8 @@ void TypeSystem::add_builtin_types() {
     auto uint32_type = add_builtin_value_type("uinteger", "uint32", 4, false, false);
     auto uint64_type = add_builtin_value_type("uinteger", "uint64", 8, false, false);
 
+    auto bool_type = add_builtin_value_type("integer", "bool", 1, false, false, RegClass::GPR_8);
+
     // Псевдонимы как в оригинале
     auto int_type = add_builtin_value_type("integer", "int", 8, false, true, RegClass::GPR_64);
     int_type->disallow_in_runtime();
@@ -974,6 +976,8 @@ void TypeSystem::add_builtin_types_z80() {
     add_builtin_value_type("integer", "uint16", 2, false, false, RegClass::GPR_16);
     add_builtin_value_type("integer", "uint", 2, false, false, RegClass::GPR_16);
 
+    add_builtin_value_type("integer", "bool", 1, false, false, RegClass::GPR_8);
+
     // Костыль для парсера
     auto i64 = add_builtin_value_type("integer", "int64", 8);
     i64->disallow_in_runtime();
@@ -1095,6 +1099,7 @@ void TypeSystem::verify_type_sizes_z80() {
     };
 
     check_size("object", 2);
+    check_size("bool", 1);
     check_size("int8", 1);
     check_size("int16", 2);
     check_size("int", 2);

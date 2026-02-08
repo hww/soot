@@ -553,7 +553,10 @@
      (defun ,sym (&optional (a1 (make-lextoken :type null))
                             (a2 (make-lextoken :type null))
                             (a3 (make-lextoken :type null)))
-       (let ((bla1 (*parse* a1)) (bla2 (*parse* a2)) (bla3 (*parse* a3)))
+                         ;;   (error "ss" (get-context 5))
+       (let* ((ctx (get-context 3))
+              (bla1 (*parse* a1 ctx)) (bla2 (*parse* a2 ctx)) (bla3 (*parse* a3 ctx)))
+              
          (make-inst :op ',sym :arg1 bla1 :arg2 bla2 :arg3 bla3 :ctx (get-context 3))))))
 
 (defun %lab-get-meta (lst key)
@@ -600,6 +603,7 @@
 
 (defmacro zasm (&rest body)
   (let ((ptr body))
+    (pfmt #t "\nZASM body\n{}\n" body)
     ;; проверка валидности кода
     (while (not (null? ptr))
       (let ((item (car ptr)))
