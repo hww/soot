@@ -36,9 +36,9 @@ using namespace script;
 // ============================================================================
 
 enum class RegClass { GPR_8, GPR_16, GPR_32, GPR_64, FPR, INVALID };
-namespace {
-extern std::string reg_kind_to_string(RegClass reg_class);
-}
+
+std::string reg_kind_to_string(RegClass reg_class);
+
 constexpr u32 SOOT_NEW_METHOD = 0;      // method ID of GOAL new
 constexpr u32 SOOT_DEL_METHOD = 1;      // method ID of GOAL delete
 constexpr u32 SOOT_PRINT_METHOD = 2;    // method ID of GOAL print

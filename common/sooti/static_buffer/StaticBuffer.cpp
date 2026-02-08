@@ -224,8 +224,8 @@ std::string StaticBuffer::hex_dump(size_t start_offset, size_t bytes_to_dump, bo
 
     size_t end_offset = std::min(start_offset + bytes_to_dump, m_data.size());
 
-    std::string result;
-    result += fmt::format("Buffer '{}' dump ({} bytes, origin: {:#x}):\n", m_type_name,
+    std::string result = "";
+    result += fmt::format("Buffer: '{}' | dump ({} bytes, origin: {:#x}):\n", m_type_name,
                           m_data.size(), m_origin);
 
     for (size_t offset = start_offset; offset < end_offset; offset += bytes_per_line) {
@@ -257,7 +257,6 @@ std::string StaticBuffer::hex_dump(size_t start_offset, size_t bytes_to_dump, bo
             }
             result += '|';
         }
-
         result += '\n';
     }
 

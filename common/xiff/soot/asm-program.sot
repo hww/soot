@@ -230,19 +230,19 @@
     (fmt #t "\nSegment: {} | Origin: #{:04X}\n" (segment-name seg) origin)
     (fmt #t "Range: #{:04X} - #{:04X} ({} bytes used)\n" 
             (+ origin start) (+ origin end) (-> buf filled-size))
-    (fmt #t "--------------------------------------------------\n")
+    (fmt #t "──────────────────────────────────────────\n")
     
     ;; Вызываем нативный дамп буфера
     ;; Параметры: (buffer, start_offset, length, show_ascii, bytes_per_line)
-    (buffer-dump buf start (-> buf filled-size) #t 16)))
+    (print (buffer-dump buf start (-> buf filled-size) #t 16))))
 
 (defun module-dump (mod)
-  (fmt #t "\n=== MODULE DUMP: {} ===\n" (module-name mod))
+  (fmt #t   "\n─── MODULE DUMP: {} ───\n" (module-name mod))
   (for-each (module-segment-order mod)
     (lambda (seg-name)
       (let ((seg (hash-table-ref (module-segments mod) seg-name)))
         (segment-dump seg))))
-  (fmt #t "==================================\n"))
+  (fmt #t "──────────────────────────────────────────\n"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Метки
@@ -411,8 +411,7 @@
                  (register-label (asmsym-name inst) (segment-ilc seg) seg)))
 
             (else
-              (error (fmt #f "CRITICAL: Naked symbol or lambda '{}' found in zasm! 
-                       You probably forgot parentheses: ({})" inst inst) inst)
+              (error (fmt #f "Naked symbol or lambda '{}' found in zasm!" inst) inst)
             
             ))))
       
@@ -599,24 +598,17 @@
   ;; Здесь можно добавить логику поиска модуля в глобальном реестре
   `(set! *current-module* (find-module ,(symbol->string name))))
 
-(defun validate (lst)
-  (while (not (null? ptr))
-      (let ((item (car ptr)))
-        (if (not (or (list? item) (hash-table? item)))
-            (error (fmt #f "Naked item '{}' found!" item) ptr))) ;; Ошибка здесь
-      (set! ptr (cdr ptr))))
-      
 (defmacro zasm (&rest body)
   (let ((ptr body))
-      (while (not (null? ptr))
-        (let ((item (car ptr)))
-          (if (not (or (list? item) (hash-table? item) (procedure? item)))
-              (error (fmt #f "Naked item '{}' found!" item) ptr))) 
-        (set! ptr (cdr ptr)))
+    ;; проверка валидности кода
+    (while (not (null? ptr))
+      (let ((item (car ptr)))
+        (if (not (or (list? item) (hash-table? item) (procedure? item)))
+            (error (fmt #f "Unexpected item '{}' found!" item) ptr))) 
+      (set! ptr (cdr ptr)))
 
     ;; Если проверка прошла, генерируем код
     `(let ((current-seg-name "MAIN"))
-       (validate ',body)
        (let ((insts (flatten (list ,@body))))
          (begin
            (if (not (hash-table-contains? (module-segments *current-module*) current-seg-name))

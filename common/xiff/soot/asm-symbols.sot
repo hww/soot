@@ -49,5 +49,5 @@
              (output  (list (string->symbol (module-name mod))
                             (cons :symbols all-symbols))))
         (begin
-          (write-text-file path (pfmt #f output))
+          (write-text-file path (pfmt #f "{}" output))
           (fmt #t "Passport saved: {} symbols in {}\n" (length all-symbols) path))))))

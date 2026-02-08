@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <vector>
+#include <functional>
 
 namespace script {
 // Портируемые типы
@@ -65,6 +65,14 @@ class Object;
 class Pointer;
 
 struct ArgumentSpec;
+
+struct DeclareSettings {
+    bool is_set = false;            // has the user set these with a (declare)?
+    bool inline_by_default = false; // if a function, inline when possible?
+    bool save_code = true;          // if a function, should we save the code?
+    bool allow_inline = false;      // should we allow the user to use this an inline function
+    bool print_asm = false;         // should we print out the asm for this function?
+};
 
 // InternedSymbolPtr как в OpenGOAL
 struct InternedSymbolPtr {
@@ -443,6 +451,7 @@ class Object {
     bool operator!=(const Object &other) const {
         return !(*this == other);
     }
+    static void for_each_in_list(const Object &list, const std::function<void(const Object &)> &f);
 
   private:
     void                throw_type_error(const std::string &expected) const;
@@ -944,6 +953,8 @@ class EnvironmentObject : public HeapObject {
     std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
     EnvironmentMap                     vars;
+    bool                               is_function;
+    Object                             meta_data; // metadata от компилятора или интерпретатора
 
     EnvironmentObject() = default;
     EnvironmentObject(std::shared_ptr<EnvironmentObject> parent) : parent_env(std::move(parent)) {}
@@ -991,6 +1002,51 @@ class EnvironmentObject : public HeapObject {
     }
     std::string type_name() const override {
         return object_type_to_string(ObjectType::ENVIRONMENT);
+    }
+
+    std::shared_ptr<EnvironmentObject> function_env() {
+        if (is_function)
+            return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
+        auto current = parent_env;
+        while (current) {
+            if (current->is_function)
+                return current;
+            current = current->parent_env;
+        }
+        return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
+    }
+
+    void add_meta(Object key, Object meta) {
+        if (meta_data.is_none())
+            meta_data = Object::make_null();
+        meta_data = Object::make_pair(Object::make_pair(key, meta), meta_data);
+    }
+
+    void add_meta(std::string key, Object meta) {
+        add_meta(Object::make_symbol(key), meta);
+    }
+
+    Object get_metadata(Object &key) const {
+        Object result = Object::make_none();
+
+        // Вероятно, for_each_in_list принимает const Object&
+        Object::for_each_in_list(meta_data, [&](const Object &pair) {
+            if (pair.is_pair() && pair.as_pair()->car == key) {
+                result = pair.as_pair()->cdr;
+                return false; // прервать поиск
+            }
+            return true; // продолжить поиск
+        });
+
+        return result;
+    }
+
+    Object get_metadata() const {
+        return meta_data;
+    }
+
+    bool is_metadata_set() {
+        return !meta_data.is_none();
     }
 };
 
@@ -1378,3 +1434,13 @@ Object build_list(std::vector<Object> &&objects);
 Object build_list(const std::vector<Object> &objects);
 
 } // namespace script
+
+namespace std {
+template <> struct hash<script::InternedSymbolPtr> {
+    size_t operator()(const script::InternedSymbolPtr &s) const noexcept {
+        // Поскольку символы интернированы, адрес указателя
+        // сам по себе является отличным уникальным хешем.
+        return std::hash<const char *>{}(s.name_ptr);
+    }
+};
+} // namespace std

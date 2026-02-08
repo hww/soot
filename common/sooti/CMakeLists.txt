@@ -9,6 +9,7 @@ add_library(libsoticore
     common/sooti/ParseHelpers.cpp
     common/sooti/PrinterEnv.cpp
     common/sooti/PrettyPrinter.cpp
+    common/sooti/AsmRegsObject.cpp
 )
 # 3. Высокоуровневый интерпретатор и мост к типам
 add_library(libsoti

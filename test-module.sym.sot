@@ -1,6 +1,6 @@
 (test-module (:symbols
-               (:address #x8000 :name "vec3::len" :segment "MAIN" :meta null)
-               (:address #x8000 :name "begin" :segment "MAIN" :meta null)
+               (:address #x8001 :name "vec3::len" :segment "MAIN" :meta null)
+               (:address #x8002 :name "begin" :segment "MAIN" :meta null)
                (:address #x803B :name "label3" :segment "MAIN" :meta null)
                (:address #x8035 :name "label2" :segment "MAIN" :meta null)
                (:address #x8030 :name "label1" :segment "MAIN" :meta null)

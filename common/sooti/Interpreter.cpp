@@ -1,4 +1,5 @@
 #include "common/sooti/Interpreter.hpp"
+#include "common/sooti/AsmRegsObject.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
@@ -34,23 +35,23 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     script::Object::set_symbol_table(&m_symbol_table);
 
     // Инициализируем boolean объекты как символы
-    m_sym_null = Object::make_null();
+    m_obj_null = Object::make_null();
+    m_obj_none = Object::make_none();
     m_sym_true = m_symbol_table.core.sym_true;
-    m_obj_false = m_symbol_table.core.sym_false;
+    m_sym_false = m_symbol_table.core.sym_false;
     m_kw_undefined = m_symbol_table.core.kw_undefined;
     m_symbol_true = m_sym_true.as_symbol().name_ptr;
-    m_symbol_false = m_obj_false.as_symbol().name_ptr;
+    m_symbol_false = m_sym_false.as_symbol().name_ptr;
     m_symbol_undefined = m_kw_undefined.as_symbol().name_ptr;
 
-    m_undefined = Object::make_none();
     // Создаем глобальное окружение
     m_global_environment = EnvironmentObject::make_new("global");
 
     // create the environment which is be visible from GOAL
     m_comp_env = EnvironmentObject::make_new("goal");
 
-    define_var_in_env(m_global_environment, m_sym_null, "null");
-    define_var_in_env(m_comp_env, m_sym_null, "null");
+    define_var_in_env(m_global_environment, m_obj_null, "null");
+    define_var_in_env(m_comp_env, m_obj_null, "null");
 
     define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
     define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -108,6 +109,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"method-id-of", &Interpreter::eval_method_id_of_special, nullptr},
         {"method-of", &Interpreter::eval_method_of_special, nullptr},
         {"static-new", &Interpreter::eval_static_new_special, nullptr},
+        {"declare", &Interpreter::eval_declare_special, nullptr},
+        {"declare-type", &Interpreter::eval_declare_type_special, nullptr},
+        {"declare-type", &Interpreter::eval_make_asm_regs_special, nullptr},
+        {"rlet", &Interpreter::eval_rlet_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -139,6 +144,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Работа с типом
         {"type-of", &Interpreter::eval_type_of, nullptr},
         {"type?", &Interpreter::eval_type_p, nullptr},
+        {"declarations", &Interpreter::declarations, &args_with_keys},
 
         // Предикаты типов
         {"null?", &Interpreter::eval_null_p, nullptr},
@@ -372,6 +378,24 @@ void Interpreter::add_builtin_form(std::string name, BuiltinFormMethod method,
     define_var_in_env(m_global_environment, o, name.c_str());
 }
 
+/*!
+ * Iterate through elements of a goos list and apply the given function. Throw compiler error if the
+ * list is invalid.
+ */
+void Interpreter::for_each_in_list(const Object                              &list,
+                                   const std::function<void(const Object &)> &f) {
+    const Object *iter = &list;
+    while (iter->is_pair()) {
+        auto lap = iter->as_pair();
+        f(lap->car);
+        iter = &lap->cdr;
+    }
+
+    if (!iter->is_null()) {
+        throw_eval_error(list, "Invalid list: {}", list.print());
+    }
+}
+
 // ============================================================
 // Environment
 // ============================================================
@@ -380,7 +404,7 @@ bool Interpreter::try_symbol_lookup(const Object                             &sy
                                     const std::shared_ptr<EnvironmentObject> &env, Object *dest) {
     // Boolean проверка
     if (sym.as_symbol().name_ptr == get_true().as_symbol().name_ptr ||
-        sym.as_symbol().name_ptr == m_obj_false.as_symbol().name_ptr) {
+        sym.as_symbol().name_ptr == m_sym_false.as_symbol().name_ptr) {
         *dest = sym;
         return true;
     }
@@ -949,6 +973,7 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
         Arguments args = get_args_with_spec(obj, rest, macro->args);
 
         auto mac_env = std::make_shared<EnvironmentObject>();
+        mac_env->is_function = true;
         mac_env->parent_env = env; // Динамическое или лексическое — на твой вкус, обычно env
         set_args_in_env(obj, args, macro->args, mac_env);
 
@@ -966,8 +991,9 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
         eval_args(obj, &args, env);
 
         auto lam_env_obj = EnvironmentObject::make_new();
-        auto lam_env = lam_env_obj.as_env_ptr();
 
+        auto lam_env = lam_env_obj.as_env_ptr();
+        lam_env->is_function = true;
         // Лексическое связывание: используем окружение, где лямбда была создана
         lam_env->parent_env = lam->parent_env;
 
@@ -978,7 +1004,7 @@ Object Interpreter::eval_pair(const Object &parent_form, const Object &obj,
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(parent_form,
                      "Object is not callable: " + eval_head.type_name() + " " + eval_head.print());
-    return m_sym_null; // unreachable
+    return m_obj_null; // unreachable
 }
 
 Object Interpreter::eval_define_special(const Object &form, const Object &rest,
@@ -1191,7 +1217,7 @@ Object Interpreter::eval_or_special(const Object &form, const Object &rest,
         current = current.as_pair()->cdr;
     }
 
-    return m_obj_false;
+    return m_sym_false;
 }
 
 Object Interpreter::eval_and_special(const Object &form, const Object &rest,
@@ -1213,104 +1239,53 @@ Object Interpreter::eval_and_special(const Object &form, const Object &rest,
 
 Object Interpreter::eval_let_star_special(const Object &form, const Object &rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "let* requires bindings and body");
-    }
-
-    Object bindings_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
-
-    if (!bindings_obj.is_list()) {
-        throw_eval_error(form, "let* bindings must be a list");
-    }
-
-    auto current_env = env;
-
-    Object current_binding = bindings_obj;
-    while (current_binding.is_pair()) {
-        Object binding = current_binding.as_pair()->car;
-
-        if (!binding.is_pair()) {
-            throw_eval_error(form, "let* binding must be a pair (name value)");
-        }
-
-        Object name_obj = binding.as_pair()->car;
-        Object value_part = binding.as_pair()->cdr;
-
-        if (!name_obj.is_symbol()) {
-            throw_eval_error(form, "let* binding name must be a symbol");
-        }
-
-        if (!value_part.is_pair()) {
-            throw_eval_error(form, "let* binding must have a value");
-        }
-
-        auto new_env = std::make_shared<EnvironmentObject>(current_env);
-
-        Object value = eval_with_rewind(form, value_part.as_pair()->car, current_env);
-        new_env->vars.set(name_obj.as_symbol(), value);
-
-        current_env = new_env;
-        current_binding = current_binding.as_pair()->cdr;
-    }
-
-    Object result = Object::make_null();
-    Object current_body = body_obj;
-    while (current_body.is_pair()) {
-        result = eval_with_rewind(form, current_body.as_pair()->car, current_env);
-        current_body = current_body.as_pair()->cdr;
-    }
-    return result;
+    return eval_let_common_special(form, rest, env, true);
 }
 
 Object Interpreter::eval_let_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
+    return eval_let_common_special(form, rest, env, false);
+}
+
+Object Interpreter::eval_let_common_special(const Object &form, const Object &rest,
+                                            const std::shared_ptr<EnvironmentObject> &env,
+                                            bool                                      is_star) {
     if (!rest.is_pair()) {
-        throw_eval_error(form, "let requires bindings and body");
+        throw_eval_error(form, "first argument to let must be bindings");
     }
 
-    Object bindings_obj = rest.as_pair()->car;
-    Object body_obj = rest.as_pair()->cdr;
+    const auto *bindings_iter = &rest.as_pair()->car;
+    const auto *body_iter = &rest.as_pair()->cdr;
 
-    if (!bindings_obj.is_list()) {
-        throw_eval_error(form, "let bindings must be a list");
+    if (!bindings_iter->is_pair()) {
+        throw_eval_error(form, "let cannot have empty bindings");
     }
 
-    auto let_env = std::make_shared<EnvironmentObject>(env);
+    std::shared_ptr<EnvironmentObject> new_env = std::make_shared<EnvironmentObject>();
+    new_env->parent_env = env;
 
-    Object current_binding = bindings_obj;
-    while (current_binding.is_pair()) {
-        Object binding = current_binding.as_pair()->car;
-
-        if (!binding.is_pair()) {
-            throw_eval_error(form, "let binding must be a pair (name value)");
+    while (!bindings_iter->is_null()) {
+        const auto *binding = &bindings_iter->as_pair()->car;
+        if (!binding->is_pair()) {
+            throw_eval_error(form, "let binding invalid");
+        }
+        const auto &name = binding->as_pair()->car;
+        if (!name.is_symbol()) {
+            throw_eval_error(form, "let binding invalid");
         }
 
-        Object name_obj = binding.as_pair()->car;
-        Object value_part = binding.as_pair()->cdr;
-
-        if (!name_obj.is_symbol()) {
-            throw_eval_error(form, "let binding name must be a symbol");
+        binding = &binding->as_pair()->cdr;
+        if (!binding->is_pair() || !binding->as_pair()->cdr.is_null()) {
+            throw_eval_error(form, "let binding invalid");
         }
 
-        if (!value_part.is_pair()) {
-            throw_eval_error(form, "let binding must have a value");
-        }
+        new_env->vars.set(name.as_symbol(),
+                          eval(form, binding->as_pair()->car, is_star ? new_env : env));
 
-        Object value = eval_with_rewind(form, value_part.as_pair()->car, env);
-        let_env->vars.set(name_obj.as_symbol(), value);
-
-        current_binding = current_binding.as_pair()->cdr;
+        bindings_iter = &bindings_iter->as_pair()->cdr;
     }
 
-    Object result = Object::make_null();
-    Object current_body = body_obj;
-
-    while (current_body.is_pair()) {
-        result = eval_with_rewind(form, current_body.as_pair()->car, let_env);
-        current_body = current_body.as_pair()->cdr;
-    }
-    return result;
+    return eval_list_return_last(*body_iter, *body_iter, new_env);
 }
 
 Object Interpreter::eval_while_special(const Object &form, const Object &rest,
@@ -2003,18 +1978,37 @@ Object Interpreter::eval_print(const Object &form, Arguments &args,
 Object Interpreter::eval_pfmt(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {}},
+    // Проверка аргументов
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::STRING}, {}},
                  {{"width", {false, {ObjectType::INTEGER}}}});
+
     auto width = 100;
     if (args.has_named("width"))
-        width = args.named["width"].as_integer();
+        width = (int)args.named["width"].as_integer();
 
-    if (args.unnamed[0].as_symbol() == "#t") {
-        const auto &str = pretty_print::to_string(args.unnamed.at(1), width);
-        fmt::print("{}\n", str);
-        return get_null();
+    // 1. Сохраняем строку формата как std::string, чтобы она жила до конца функции
+    std::string fmt_template = args.unnamed.at(1).to_std_string();
+
+    // 2. Получаем строковое представление объекта
+    std::string object_repr = pretty_print::to_string(args.unnamed.at(2), width);
+
+    try {
+        // 3. Форматируем. fmt::format безопасно принимает std::string
+        std::string result_string = fmt::format(fmt::runtime(fmt_template), object_repr);
+
+        // Проверяем первый аргумент (куда выводить: в строку или в stdout)
+        // Если первый аргумент - символ T или #t (в зависимости от твоего интернирования)
+        auto dest = args.unnamed[0];
+        if (dest.is_symbol() && std::string(dest.as_symbol().name_ptr) == "#t") {
+            fmt::print("{}", result_string);
+            return get_null();
+        }
+
+        return Object::make_string(result_string);
+    } catch (const std::exception &e) {
+        throw_eval_error(form, fmt::format("pfmt error: {}", e.what()));
     }
-    return Object::make_string(pretty_print::to_string(args.unnamed.at(1), width));
+    return get_null();
 }
 
 Object Interpreter::eval_inspect(const Object &form, Arguments &args,
@@ -2801,7 +2795,7 @@ Object Interpreter::eval_bound_p(const Object &form, Arguments &args,
     if (try_symbol_lookup(sym, env, &result)) {
         return get_true(); // Твой #t / T
     }
-    return m_obj_false; // Твой #f / NIL
+    return m_sym_false; // Твой #f / NIL
 }
 
 Object Interpreter::eval_type_of(const Object &form, Arguments &args,
@@ -3000,7 +2994,7 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
     }
 
     throw_eval_error(form, "apply: first argument is not a procedure");
-    return m_sym_null;
+    return m_obj_null;
 }
 // ============================================================
 // Функции сравнения
@@ -3093,7 +3087,7 @@ Object Interpreter::eval_string_containsp(const Object &form, Arguments &args,
     if (str_util::contains(str, suffix)) {
         return get_true();
     }
-    return m_obj_false;
+    return m_sym_false;
 }
 
 Object Interpreter::eval_string_starts_with(const Object &form, Arguments &args,
@@ -3106,7 +3100,7 @@ Object Interpreter::eval_string_starts_with(const Object &form, Arguments &args,
     if (str_util::starts_with(str, suffix)) {
         return get_true();
     }
-    return m_obj_false;
+    return m_sym_false;
 }
 
 Object Interpreter::eval_string_ends_with(const Object &form, Arguments &args,
@@ -3119,7 +3113,7 @@ Object Interpreter::eval_string_ends_with(const Object &form, Arguments &args,
     if (str_util::ends_with(str, suffix)) {
         return get_true();
     }
-    return m_obj_false;
+    return m_sym_false;
 }
 
 Object Interpreter::eval_string_split(const Object &form, Arguments &args,
@@ -4815,7 +4809,7 @@ Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
     vararg_check(form, args, {{ObjectType::POINTER}, {}}, {});
     auto ptr = args.unnamed[0].as_pointer();
     ptr->set(args.unnamed[1]); // Пишем значение
-    return get_undefined();
+    return get_none();
 }
 
 // ============================================================
@@ -5544,5 +5538,345 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
         path = project_path.string() + "/" + path;
     file_util::write_text(path, full_content);
     return Object::make_boolean(true);
+}
+
+// ============================================================
+// Declaration
+// ============================================================
+
+Object Interpreter::eval_declare_type_special(const Object &form, const Object &rest,
+                                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    auto kind = args.unnamed.at(1).to_std_string();
+    auto type_name = args.unnamed.at(0).as_symbol();
+
+    auto &ts = TypeSystem::instance();
+    ts.forward_declare_type_as(type_name.name_ptr, kind);
+
+    // Local table of types
+    // auto existing_type = m_symbol_types.lookup(type_name);
+    // if (existing_type && *existing_type != TypeSpec("type")) {
+    //     throw_eval_error(form, "Cannot forward declare {} as a type: it is already a {}",
+    //                      type_name.name_ptr, existing_type->print());
+    // }
+    // m_symbol_types.set(type_name, TypeSpec("type"));
+
+    return get_none();
+}
+
+/*!
+ * A (declare ...) form can be used to configure settings inside a function.
+ * Currently there aren't many useful settings, but more may be added in the future.
+ *
+ *  ;; Пример 1: Объявление встраиваемой функции
+ * (defun add (x y)
+ *   (declare (inline))  ;; Функция будет автоматически встраиваться
+ *   (+ x y))
+ *
+ * ;; Пример 2: Разрешение встраивания (но не по умолчанию)
+ * (defun multiply (x y)
+ *   (declare (allow-inline))  ;; Компилятор может встроить по своему усмотрению
+ *   (* x y))
+ *
+ * ;; Пример 3: Объявление ассемблерной функции с типом возврата
+ * (defun sys-call (a b)
+ *   (declare (asm-func int))  ;; Ассемблерная функция, возвращающая int
+ *   (asm "..." a b))
+ *
+ * ;; Пример 4: Ассемблерная функция с разными типами
+ * (defun get-pointer ()
+ *   (declare (asm-func void*))  ;; Возвращает указатель
+ *   (asm "mov rax, [rbp+8]; ret"))
+ *
+ * (defun read-byte ()
+ *   (declare (asm-func unsigned-char))  ;; Возвращает беззнаковый символ
+ *   (asm "mov al, [rdi]; ret"))
+ *
+ * ;; Пример 5: Включение печати ассемблерного кода
+ * (defun optimized-func (x)
+ *   (declare (print-asm))  ;; Выведет сгенерированный ассемблерный код
+ *   (declare (inline))     ;; Комбинация нескольких declare
+ *   (* x 42))
+ *
+ * ;; Пример 6: Ассемблерная функция с разрешением использования saved registers
+ * (defun context-switch ()
+ *   (declare (asm-func void))
+ *   (declare (allow-saved-regs))  ;; Разрешает использовать регистры, сохраняемые между вызовами
+ *   (asm "push rbx; push r12; ..."))
+ *
+ * ;; Пример 7: Комбинация нескольких опций
+ * (defun critical-func (x)
+ *   (declare (inline))
+ *   (declare (print-asm))
+ *   (declare (allow-saved-regs))
+ *   ;; тело функции
+ *   )
+ */
+Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+
+    DeclareSettings settings;
+    auto            fe = env->function_env();
+    if (fe.get() == nullptr) {
+        throw_eval_error(form, "Cannot use function metadata outside of a function.");
+    }
+    settings.is_set = fe->is_metadata_set();
+
+    if (settings.is_set) {
+        throw_eval_error(form, "Function cannot have multiple declares");
+    }
+    settings.is_set = true;
+
+    for_each_in_list(rest, [&](const Object &o) {
+        if (!o.is_pair()) {
+            throw_eval_error(o, "Invalid declare specification.");
+        }
+
+        auto first = o.as_pair()->car;
+        auto rrest = &o.as_pair()->cdr;
+
+        if (!first.is_symbol()) {
+            throw_eval_error(
+                first,
+                "Invalid declare option specification, expected a symbol, but got {} instead.",
+                first.print());
+        }
+
+        if (first.as_symbol() == "inline") {
+            if (!rrest->is_null()) {
+                throw_eval_error(first, "Invalid inline declare, no options were expected.");
+            }
+            settings.allow_inline = true;
+            settings.inline_by_default = true;
+            settings.save_code = true;
+        } else if (first.as_symbol() == "allow-inline") {
+            if (!rrest->is_null()) {
+                throw_eval_error(first, "Invalid allow-inline declare");
+            }
+            settings.allow_inline = true;
+            settings.inline_by_default = false;
+            settings.save_code = true;
+        } else if (first.as_symbol() == "asm-func") {
+
+            fe->add_meta("is_asm_func", Object::make_boolean(true));
+            if (!rrest->is_pair()) {
+                throw_eval_error(
+                    form,
+                    "Declare asm-func must provide the function's return type as an argument.");
+            }
+            ///
+
+            auto ts_ptr = parse_typespec(&TypeSystem::instance(), rest.as_pair()->car);
+            auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
+            fe->add_meta("asm-func-return-type", Object::make_native_ref(ts_shared));
+            ///
+            if (!rrest->as_pair()->cdr.is_null()) {
+                throw_eval_error(first, "Invalid asm-func declare");
+            }
+        } else if (first.as_symbol() == "print-asm") {
+            if (!rrest->is_null()) {
+                throw_eval_error(first, "Invalid print-asm declare");
+            }
+            settings.print_asm = true;
+
+        } else if (first.as_symbol() == "allow-saved-regs") {
+            if (!rrest->is_null()) {
+                throw_eval_error(first, "Invalid allow-saved-regs declare");
+            }
+            auto fe = env->function_env();
+            fe->add_meta("asm_func_saved_regs", get_true());
+
+        } else {
+            throw_eval_error(first, "Unrecognized declare option {}.", first.print());
+        }
+    });
+
+    if (settings.is_set) { // has the user set these with a (declare)?
+        fe->add_meta("is-set", get_true());
+    }
+    if (settings.inline_by_default) {
+        // if a function, inline when possible?
+        fe->add_meta("inline-by-default", get_true());
+    }
+    if (settings.save_code) {
+        // if a function, should we save the code?
+        fe->add_meta("save-code", get_true());
+    }
+    if (settings.allow_inline) {
+        // should we allow the user to use this an inline function
+        fe->add_meta("allow-inline", get_true());
+    }
+    if (settings.print_asm) {
+        // should we print out the asm for this function?
+        fe->add_meta("print-asm", get_true());
+    }
+
+    return get_none();
+}
+
+Object Interpreter::declarations(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+
+    vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
+
+    auto fe = env->function_env();
+    if (fe.get() == nullptr) {
+        throw_eval_error(form, "Cannot use function metadata outside of a function.");
+    }
+    if (args.has_named("name")) {
+        return fe->get_metadata(args.named.at("name"));
+    } else {
+        return fe->get_metadata();
+    }
+}
+
+Object Interpreter::eval_make_asm_regs_special(const Object &form, const Object &rest,
+                                               const std::shared_ptr<EnvironmentObject> &env) {
+    // Гасим ворнинги о неиспользуемых параметрах
+    (void)form;
+    (void)env;
+
+    auto asm_regs = std::make_shared<AsmRegsObject>();
+
+    for_each_in_list(rest, [&](const Object &binding) {
+        if (!binding.is_pair())
+            throw_eval_error(binding, "Expected list in rlet");
+
+        Object name_sym = binding.as_pair()->car;
+        if (name_sym.type != ObjectType::SYMBOL)
+            throw_eval_error(name_sym, "Alias must be a symbol");
+
+        // ВАЖНО: Используем полное имя типа AsmRegsObject::RegisterAlias
+        auto   alias = std::make_shared<RegisterAlias>();
+        Object current = binding.as_pair()->cdr;
+
+        while (current.is_pair()) {
+            Object key = current.as_pair()->car;
+            current = current.as_pair()->cdr;
+
+            if (!current.is_pair())
+                throw_eval_error(key, "Missing value for keyword");
+            Object val = current.as_pair()->car;
+            current = current.as_pair()->cdr;
+
+            if (key.type == ObjectType::SYMBOL) {
+                // В OpenGOAL/Soot ключевые слова обычно сравниваются как строки или по ID
+                std::string k = key.print();
+                if (k == ":reg") {
+                    alias->physical_reg = val;
+                } else if (k == ":type") {
+                    // Используем print(), так как TypeSystem ожидает строку имени типа
+                    alias->type_name = val.print();
+                } else if (k == ":offset") {
+                    alias->offset = (int)val.as_integer();
+                }
+            }
+        }
+
+        // Сохраняем в мапу по адресу интернированного символа
+        asm_regs->set_at(name_sym.symbol_obj.value, alias);
+    });
+
+    return Object::make_native_ref(asm_regs);
+}
+Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+
+    if (!rest.is_pair()) {
+        throw_eval_error(form, "rlet requires bindings and body");
+    }
+
+    Object bindings = rest.as_pair()->car;
+    Object body = rest.as_pair()->cdr;
+
+    // Создаем специальное окружение
+    auto new_env = std::make_shared<AsmEnvironmentObject>(env);
+
+    // Используем helper для обхода списка
+    for_each_in_list(bindings, [&](const Object &binding) {
+        if (!binding.is_pair())
+            throw_eval_error(binding, "Invalid rlet binding");
+
+        Object name_sym = binding.as_pair()->car;
+        if (!name_sym.is_symbol())
+            throw_eval_error(name_sym, "Binding name must be a symbol");
+
+        // Создаем shared_ptr на RegisterAlias
+        auto alias = std::make_shared<RegisterAlias>();
+
+        Object current = binding.as_pair()->cdr;
+
+        while (current.is_pair()) {
+            Object key = current.as_pair()->car;
+            current = current.as_pair()->cdr;
+
+            if (!current.is_pair())
+                throw_eval_error(key, "Missing value for keyword");
+            Object val = current.as_pair()->car;
+            current = current.as_pair()->cdr;
+
+            if (key.is_symbol()) {
+                std::string k = key.print();
+                if (k == ":reg") {
+                    alias->physical_reg = val;
+                } else if (k == ":type") {
+                    alias->type_name = val.print();
+                } else if (k == ":offset") {
+                    alias->offset = (int)val.as_integer();
+                }
+            }
+        }
+
+        // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
+        new_env->asm_regs->aliases[name_sym.symbol_obj.value] = alias;
+
+        // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
+        new_env->vars.set(name_sym.as_symbol(), Object::make_native_ref(alias));
+    });
+
+    return eval_list_return_last(body, body, new_env);
+}
+Object Interpreter::eval_rlet_ref(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверяем аргументы: (rlet-ref symbol prop-name)
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    // 2. Ищем контекст в иерархии окружений
+    Object context_obj = get_current_asm_context(env);
+
+    if (context_obj.is_native_ref()) {
+        auto regs = std::static_pointer_cast<AsmRegsObject>(context_obj.heap_obj);
+
+        // Поиск алиаса
+        auto it = regs->aliases.find(args.unnamed[0].symbol_obj.value);
+        if (it != regs->aliases.end()) {
+            const auto &alias = it->second;
+            // Используем InternedSymbolPtr для сравнения, если можно,
+            // но для свойств "на лету" string_view или string тоже ок.
+            auto prop_name = args.unnamed[1].to_std_string();
+
+            if (prop_name == "reg" || prop_name == "physical_reg") {
+                return alias->physical_reg;
+            }
+            if (prop_name == "type" || prop_name == "type_name") {
+                return Object::make_string(alias->type_name);
+            }
+            if (prop_name == "offset") {
+                return Object::make_integer(alias->offset);
+            }
+
+            throw_eval_error(form, "Unknown rlet property: {}", prop_name);
+        }
+
+        // Если символ не найден в таблице алиасов
+        return Object::make_none();
+    }
+
+    // Если мы вызвали это вне rlet блока
+    throw_eval_error(form, "rlet-ref called outside of rlet context");
 }
 } // namespace script

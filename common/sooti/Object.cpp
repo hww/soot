@@ -330,6 +330,27 @@ Object Object::step(const Object &key) const {
 }
 
 // ============================================================================
+// Iterators
+// ============================================================================
+
+/*!
+ * Iterate through elements of a goos list and apply the given function. Throw compiler error if the
+ * list is invalid.
+ */
+void Object::for_each_in_list(const Object &list, const std::function<void(const Object &)> &f) {
+    const Object *iter = &list;
+    while (iter->is_pair()) {
+        auto lap = iter->as_pair();
+        f(lap->car);
+        iter = &lap->cdr;
+    }
+
+    if (!iter->is_null()) {
+        throw EvalException(list, fmt::format("Invalid list: {}", list.print()));
+    }
+}
+
+// ============================================================================
 // Object factory
 // ============================================================================
 
