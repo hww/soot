@@ -4730,8 +4730,12 @@ Object Interpreter::eval_mem_get(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{ObjectType::POINTER}}, {});
-    // Просто дергаем метод Pointer::get(), который мы обсуждали
-    return args.unnamed[0].as_pointer()->get();
+    try {
+        // Просто дергаем метод Pointer::get(), который мы обсуждали
+        return args.unnamed[0].as_pointer()->get();
+    } catch (std::runtime_error &ex) {
+        throw_eval_error(form, ex.what());
+    }
 }
 /**
  * @brief Запись значения в ячейку памяти (Assignment).
@@ -4753,7 +4757,11 @@ Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{ObjectType::POINTER}, {}}, {});
     auto ptr = args.unnamed[0].as_pointer();
-    ptr->set(args.unnamed[1]); // Пишем значение
+    try {
+        ptr->set(args.unnamed[1]); // Пишем значение
+    } catch (std::runtime_error &ex) {
+        throw_eval_error(form, ex.what());
+    }
     return get_none();
 }
 
@@ -5079,12 +5087,20 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                         Object field_val = entry.as_pair()->cdr;
                         Object sub_ptr = cell_ptr->make_step_accessor(field_name);
                         recursive_write(form, sub_ptr, field_val);
+                    } else if (entry.is_pair() && !entry.as_pair()->cdr.is_null()) {
+                        // ВЕТКА А: Все ок, пишем в поле по имени
+                        Object field_name = entry.as_pair()->car;
+                        Object field_val = entry.as_pair()->cdr.as_pair()->car;
+                        Object sub_ptr = cell_ptr->make_step_accessor(field_name);
+                        recursive_write(form, sub_ptr, field_val);
                     } else {
                         // ОШИБКА: Мы в структуре, но нам подсунули атом или обычный список без
                         // ключа
-                        throw_eval_error(form, fmt::format("Structure '{}' expects field-value "
-                                                           "pairs (field . val), but got: {}",
-                                                           struct_type->get_name(), entry.print()));
+                        throw_eval_error(
+                            form,
+                            fmt::format("Structure '{}' expects field-value "
+                                        "pairs (field . val), or list (field value) but got: {}",
+                                        struct_type->get_name(), entry.print()));
                     }
                 } else if (auto *value_type = dynamic_cast<ValueType *>(type)) {
                     // --- МЫ ВНУТРИ МАССИВА ПРИМИТИВОВ ---
@@ -5114,7 +5130,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
         }
 
         return Object::make_integer(write_offset);
-    } catch (const std::exception &e) {
+    } catch (const std::runtime_error &e) {
         throw_eval_error(form, fmt::format("Static write failed: {}", e.what()));
     }
     return get_null();

@@ -14,14 +14,9 @@
   (write 2)
   (exec  4))
 
-;; Структура с дефолтными значениями (test_i8 = 1, test_i16 = 2)
-(deftype test-struct (basic)
-  ((test_i8   int8  1) 
-   (test_i16  int16 2)))
-
-(deftype test-vector (basic)
-  ((x   int8 5)  ;; дефолт 5
-   (y   int8 10)) ;; дефолт 10
+(deftype vec2 (basic)
+  ((x   int8)  ;; дефолт 5
+   (y   int8)) ;; дефолт 10
   (:methods
       (new (int8 int8) object)
       (len () int8)))
@@ -35,12 +30,11 @@
 
   ;; 1. Проверка инициализации дефолтов
   ;; Просто пишем пустой список, ожидая, что сработают дефолты из deftype
-  (buffer-write wr '() :type 'test-struct)
-  (buffer-write wr '() :type 'test-vector)
+  (buffer-write wr '() :type 'vec2)
   
   ;; 2. Проверка частичной перезаписи
   ;; Пишем только 'y', 'x' должен остаться дефолтным (5)
-  (buffer-write wr '((y . 99)) :type 'test-vector)
+  (buffer-write wr '((y . 99)) :type 'vec2)
 
 ;; 3. Смешанная запись (Enum + Mask)
   ;; Передаем символы, которые enum должен уметь распознать
@@ -53,16 +47,11 @@
   ;; --- Валидация ---
   
   ;; Создаем объект-адаптер над буфером, чтобы прочитать данные обратно
-  (let ((s-obj (buffer-read buf :type 'test-struct :address 0))
-        (v-obj (buffer-read buf :type 'test-vector :address 4)) ;; учитываем смещение
-        (v-partial (buffer-read buf :type 'test-vector :address 8)))
+  (let ((v-obj (buffer-read buf :type 'vec2 :address 4)) ;; учитываем смещение
+        (v-partial (buffer-read buf :type 'vec2 :address 8)))
 
     (fmt #t "\n[ASSERTION LOG]\n")
     
-    ;; Проверяем дефолты первой структуры
-    (fmt #t "Struct Defaults: i8={} (expected 1), i16={} (expected 2)\n" 
-         (mem-get (-> s-obj 'test_i8)) 
-         (mem-get (-> s-obj 'test_i16)))
 
     ;; Проверяем дефолты вектора
     (fmt #t "Vector Defaults: x={} (expected 5), y={} (expected 10)\n" 

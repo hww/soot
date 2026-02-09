@@ -13,12 +13,14 @@ namespace script {
  * write_bitfield_at_ptr в зависимости от класса типа.
  */
 void StaticBufferWriter::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
-    if (auto *val_type = dynamic_cast<ValueType *>(type)) {
-        write_primitive_at_ptr(ptr, val_type, val);
-    } else if (auto *enum_type = dynamic_cast<EnumType *>(type)) {
+
+    // Классы от болле конкретных к более общим
+    if (auto *enum_type = dynamic_cast<EnumType *>(type)) {
         write_enum_at_ptr(ptr, enum_type, val);
     } else if (auto *bf_type = dynamic_cast<BitFieldType *>(type)) {
         write_bitfield_at_ptr(ptr, bf_type, val);
+    } else if (auto *val_type = dynamic_cast<ValueType *>(type)) {
+        write_primitive_at_ptr(ptr, val_type, val);
     } else if (type->get_name() == "string") {
         // На самом деле мы пишем в буффер произвольные данные
         // по произвольному адресу тут 'string' просто подсдсказка
