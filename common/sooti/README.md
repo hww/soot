@@ -134,7 +134,7 @@ Special forms don't evaluate their arguments automatically.
 ## 🔢 **Mathematics**
 
 | Function          | Arguments          | Description      |
-|-------------------|--------------------|------------------|
+| ----------------- | ------------------ | ---------------- |
 | `+`               | `number...`        | Sum of numbers   |
 | `-`               | `number number...` | Subtraction      |
 | `*`               | `number...`        | Multiplication   |
@@ -168,7 +168,7 @@ Special forms don't evaluate their arguments automatically.
 ## 📝 **Strings**
 
 | Function         | Arguments          | Description            |
-|------------------|--------------------|------------------------|
+| ---------------- | ------------------ | ---------------------- |
 | `string-append`  | `string...`        | Concatenate strings    |
 | `string-length`  | `string`           | String length          |
 | `string-ref`     | `string integer`   | Get character at index |
@@ -189,15 +189,15 @@ Special forms don't evaluate their arguments automatically.
 
 ## 🔗 **Lists and Pairs**
 
-| Function              | Arguments    | Description       |
-|-----------------------|--------------|-------------------|
-| `cons`                | `item list`  | Create pair       |
-| `car`                 | `pair`       | First element     |
-| `cdr`                 | `pair`       | Rest of list      |
-| `set-car!` `set-cdr!` | `pair value` | Modify pair       |
-| `list`                | `item...`    | Create list       |
-| `length`              | `list`       | List length       |
-| `append`              | `list...`    | Concatenate lists |
+| Function              | Arguments    | Description                      |
+| --------------------- | ------------ | -------------------------------- |
+| `cons`                | `item list`  | Create pair                      |
+| `car`                 | `pair`       | First element                    |
+| `cdr`                 | `pair`       | Rest of list                     |
+| `set-car!` `set-cdr!` | `pair value` | Modify pair                      |
+| `list`                | `item...`    | Create list                      |
+| `length`              | `list`       | List length                      |
+| `append`              | `list...`    | Concatenate lists                |
 | `apply`               | `func list`  | Apply function to list arguments |
 
 **Examples:**
@@ -214,13 +214,13 @@ Special forms don't evaluate their arguments automatically.
 
 ## 🗃️ **Vectors**
 
-| Function            | Arguments              | Description            |
-|---------------------|------------------------|------------------------|
-| `vector`            | `item...`              | Create vector          |
-| `vector-ref`        | `vector integer`       | Get element            |
-| `vector-set!`       | `vector integer value` | Set element            |
-| `vector-length`     | `vector`               | Vector size            |
-| `vector->list`      | `vector`               | Convert vector to list |
+| Function        | Arguments              | Description            |
+| --------------- | ---------------------- | ---------------------- |
+| `vector`        | `item...`              | Create vector          |
+| `vector-ref`    | `vector integer`       | Get element            |
+| `vector-set!`   | `vector integer value` | Set element            |
+| `vector-length` | `vector`               | Vector size            |
+| `vector->list`  | `vector`               | Convert vector to list |
 
 **Examples:**
 
@@ -235,7 +235,7 @@ Special forms don't evaluate their arguments automatically.
 ## 🔍 **Type Predicates**
 
 | Function      | Arguments         | Returns                |
-|---------------|-------------------|------------------------|
+| ------------- | ----------------- | ---------------------- |
 | `null?`       | `value`           | #t if empty list       |
 | `pair?`       | `value`           | #t if pair/list        |
 | `symbol?`     | `value`           | #t if symbol           |
@@ -268,7 +268,7 @@ Special forms don't evaluate their arguments automatically.
 ## ⚖️ **Comparisons**
 
 | Function | Arguments | Description     |
-|----------|-----------|-----------------|
+| -------- | --------- | --------------- |
 | `eq?`    | `any any` | Object identity |
 | `eqv?`   | `any any` | Value equality  |
 
@@ -283,15 +283,15 @@ Special forms don't evaluate their arguments automatically.
 
 ## 🗄️ **Hash Tables**
 
-| Function                 | Arguments         | Description              |
-|--------------------------|-------------------|--------------------------|
-| `make-hash-table`        | `pairs...`        | Create hash table        |
-| `hash-table-set!`        | `table key value` | Set value                |
-| `hash-table-ref`         | `table key`       | Get value                |
-| `hash-table-try-ref`     | `table key`       | Returns (success? value) |
-| `hash-table?`            | `value`           | Check if hash table      |
-| `hash-table-length`      | `table`           | Number of entries        |
-| `hash-table->list`       | `table`           | Convert to list of pairs |
+| Function             | Arguments         | Description              |
+| -------------------- | ----------------- | ------------------------ |
+| `make-hash-table`    | `pairs...`        | Create hash table        |
+| `hash-table-set!`    | `table key value` | Set value                |
+| `hash-table-ref`     | `table key`       | Get value                |
+| `hash-table-try-ref` | `table key`       | Returns (success? value) |
+| `hash-table?`        | `value`           | Check if hash table      |
+| `hash-table-length`  | `table`           | Number of entries        |
+| `hash-table->list`   | `table`           | Convert to list of pairs |
 
 **Examples:**
 
@@ -444,10 +444,10 @@ All bitwise operations in SOOT are performed using 64-bit signed integers. When 
 ## 💾 **File I/O**
 
 | Function                   | Arguments                          | Description                  |
-|----------------------------|------------------------------------|------------------------------|
+| -------------------------- | ---------------------------------- | ---------------------------- |
 | `print` `pprint` `inspect` | `value`                            | Print with different formats |
 | `fmt`                      | `dest format args...`              | Formatted output             |
-| `cfmt`                     | `dest format args... :color color` | Formatted output with color  |
+| `fmt`                      | `dest format args... :color color` | Formatted output with color  |
 | `error`                    | `message [object]`                 | Throw error with context     |
 | `file-exists?`             | `filename`                         | Check if file exists         |
 | `read-str`                 | `filename`                         | Read from file to string     |
@@ -473,7 +473,7 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 **Logging:**
 
 | Function | Arguments         | Description |
-|----------|-------------------|-------------|
+| -------- | ----------------- | ----------- |
 | log      | `"trace" message` |             |
 | log      | `"debug" message` |             |
 | log      | `"info" message`  |             |
@@ -483,19 +483,19 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 
 ## 🖥️ **System**
 
-| Function                   | Arguments      | Description                         |
-|----------------------------|----------------|-------------------------------------|
-| `system`                   | `command`      | Execute shell command               |
-| `get-environment-variable` | `name`         | Get env variable                    |
-| `exit`                     | `[code]`       | Exit interpreter (default code 0)   |
-| `get-path`                 | `'cwd`         | Current working dir                 |
-| `get-path`                 | `'exe`         | Executable directory                |
-| `get-path`                 | `'home`        | User home ~                         |
-| `get-path`                 | `'config`      | User settings ~/.config/soot/       |
-| `get-path`                 | `'cache`       | Cache files ~/.cache/soot/          |
-| `get-path`                 | `'share`       | Shared files /usr/local/share/soot/ |
-| `get-path`                 | `'project`     | Project folder                      |
-| `find-file`                | `filename`     | Find file in system directories     |
+| Function                   | Arguments  | Description                         |
+| -------------------------- | ---------- | ----------------------------------- |
+| `system`                   | `command`  | Execute shell command               |
+| `get-environment-variable` | `name`     | Get env variable                    |
+| `exit`                     | `[code]`   | Exit interpreter (default code 0)   |
+| `get-path`                 | `'cwd`     | Current working dir                 |
+| `get-path`                 | `'exe`     | Executable directory                |
+| `get-path`                 | `'home`    | User home ~                         |
+| `get-path`                 | `'config`  | User settings ~/.config/soot/       |
+| `get-path`                 | `'cache`   | Cache files ~/.cache/soot/          |
+| `get-path`                 | `'share`   | Shared files /usr/local/share/soot/ |
+| `get-path`                 | `'project` | Project folder                      |
+| `find-file`                | `filename` | Find file in system directories     |
 
 **Examples:**
 
@@ -509,7 +509,7 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 ## 🔄 **Type Conversions**
 
 | Function         | Arguments              | Description        |
-|------------------|------------------------|--------------------|
+| ---------------- | ---------------------- | ------------------ |
 | `number->string` | `number :base integer` | Convert to string  |
 | `string->number` | `string :base integer` | Parse number       |
 | `char->integer`  | `char`                 | Character to ASCII |
@@ -527,7 +527,7 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 ## 🎲 **Time Functions**
 
 | Function            | Arguments | Description                                                  | Example Output        |
-|---------------------|-----------|--------------------------------------------------------------|-----------------------|
+| ------------------- | --------- | ------------------------------------------------------------ | --------------------- |
 | `time-seconds`      |           | Returns current Unix timestamp in seconds (since 1970-01-01) | `1734167895`          |
 | `time-milliseconds` |           | Returns current Unix timestamp in milliseconds               | `1734167895123`       |
 | `time-microseconds` |           | Returns current Unix timestamp in microseconds               | `1734167895123456`    |
@@ -538,7 +538,7 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 ### **Reader Functions**
 
 | Function                 | Arguments                    | Description                                         |
-|--------------------------|------------------------------|-----------------------------------------------------|
+| ------------------------ | ---------------------------- | --------------------------------------------------- |
 | `set-macro-character`    | `pattern replacement/lambda` | Define reader macro                                 |
 | `remove-macro-character` | `pattern`                    | Remove reader macro                                 |
 | `get-macro-character`    | `pattern`                    | Get reader macro definition                         |
@@ -607,9 +607,9 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 
 ## 🔄 **Macro System**
 
-| Function      | Arguments    | Description                      |
-|---------------|--------------|----------------------------------|
-| `macroexpand` | `expression` | Expand macros in expression      |
+| Function      | Arguments    | Description                 |
+| ------------- | ------------ | --------------------------- |
+| `macroexpand` | `expression` | Expand macros in expression |
 
 **Examples:**
 
@@ -628,7 +628,7 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 ## 🎲 **Other Functions**
 
 | Function | Arguments    | Description            |
-|----------|--------------|------------------------|
+| -------- | ------------ | ---------------------- |
 | `gensym` |              | Generate unique symbol |
 | `eval`   | `expression` | Evaluate expression    |
 
@@ -710,7 +710,7 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 ## 📖 **Type Reference**
 
 | Type       | Literal        | Example               |
-|------------|----------------|-----------------------|
+| ---------- | -------------- | --------------------- |
 | Integer    | `123`          | `42`, `-5`, `0xFF`    |
 | Float      | `1.23`         | `3.14`, `-2.5`        |
 | Boolean    | `#t`, `#f`     | `#t`, `#f`            |
@@ -741,7 +741,7 @@ sooti> exit             ; Exit REPL
 ## 📋 **Function Index**
 
 | Category        | Functions                                                                                                                            |
-|-----------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Core            | `define`, `set!`, `lambda`, `macro`, `if`, `cond`, `let`, `let*`, `quote`, `quasiquote`                                              |
 | Math            | `+`, `-`, `*`, `/`, `=`, `<`, `>`, `<=`, `>=`, `abs`, `max`, `min`, `expt`, `sqrt`, `ash`                                            |
 | Lists           | `cons`, `car`, `cdr`, `list`, `length`, `append`, `apply`, `set-car!`, `set-cdr!`                                                    |

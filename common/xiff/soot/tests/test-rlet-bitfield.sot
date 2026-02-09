@@ -1,0 +1,23 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Bitfield...\n" :color 'yellow)
+
+(defenum eflag
+  :type uint8
+  :bitfield #t
+  (bit0 0)
+  (bit1 1)
+  (bit2 2)
+  (bit3 3))
+
+
+;; bitfield
+(rlet ((status :reg ix :type eflag))
+    (fmt #t "Full Enum:   {}\n" (-> status))
+    (fmt #t "Bit 0:       {}\n" (-> status bit0))
+    (fmt #t "Bit 2:       {}\n" (-> status bit2))
+    
+    ;; Проверка "внутренностей" через точки
+    (fmt #t "Bit 2 Shift: {}\n" (-> status bit2 .bit_offset))
+    (fmt #t "Bit 2 Size:  {}\n" (-> status bit2 .bit_size))
+  )

@@ -45,12 +45,12 @@
          (a3 (arg->string arg3)))
     
     ;; ОТЛАДКА:
-    (cfmt #t "yellow" "DEBUG inst->string: op={}\n" op)
-    (cfmt #t "yellow" "  arg1: type={} value={} -> '{}'\n" 
+    (fmt #t "DEBUG inst->string: op={}\n" op  :color 'yellow)
+    (fmt #t "  arg1: type={} value={} -> '{}'\n" 
           (if (lextoken? arg1) (lextoken-type arg1) 'none)
           (if (lextoken? arg1) (lextoken-value arg1) 'none)
           a1)
-    (cfmt #t "yellow" "  arg2: type={} value={} -> '{}'\n" 
+    (fmt #t "  arg2: type={} value={} -> '{}'\n" 
           (if (lextoken? arg2) (lextoken-type arg2) 'none)
           (if (lextoken? arg2) (lextoken-value arg2) 'none)
           a2)

@@ -273,7 +273,7 @@ class Object {
     static Object make_hash_table(int size = 16);
     static Object make_hash_table(Object type_name, int size = 16);
     static Object make_reader(TextStream *textStream);
-    static Object make_pointer(std::shared_ptr<Pointer> pointer, std::string type);
+    static Object make_pointer(std::shared_ptr<Pointer> pointer);
     static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
     static Object make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type);

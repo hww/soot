@@ -170,14 +170,14 @@ $begin
 ;     (ld a (-> m  x)) 
 ;  ))
 
-(rlet ((m      :reg r13 :type mat3)   ;; Матрица (база в r13)
-       (status :reg r14 :type eflag)) ;; Регистр флагов (в r14)
+(rlet ((m      :reg ix :type mat3)   ;; Матрица (база в r13)
+       (status :reg iy :type eflag)) ;; Регистр флагов (в r14)
   (zasm
     (nop)
-    ; (ld a (-> m r1 x))   ;; Сгенерирует: LD HL, (R13 + 16)
+     (ld a (-> m r1 x))   ;; Сгенерирует: LD HL, (R13 + 16)
      ;; 16-битные загрузки через макрос
-    (ld16 hl (-> m r1 x))      ; Развернется в LD L,(R13+0); LD H,(R13+1)
- ;   (ld16 hl 33)      ; Развернется в LD L,(R13+0); LD H,(R13+1)
+    ;(ld16 hl (-> m r1 x))      ; Развернется в LD L,(R13+0); LD H,(R13+1)
+   ; (ld16 hl 33)      ; Развернется в LD L,(R13+0); LD H,(R13+1)
  ;   (ld-16-from-mem hl (-> m r2 y))      ; LD L,(R13+6); LD H,(R13+7)
     
     ;; Сохранение

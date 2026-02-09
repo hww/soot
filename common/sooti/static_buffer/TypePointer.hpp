@@ -13,10 +13,10 @@ class TypePointer : public Pointer {
     std::shared_ptr<HeapObject> m_owner;
     TypePointer() : Pointer(), m_owner() {}
 
-    TypePointer(void *ptr, std::string type, std::shared_ptr<HeapObject> owner = nullptr)
+    TypePointer(void *ptr, std::string type, std::shared_ptr<HeapObject> owner)
         : Pointer(ptr, type), m_owner(owner) {}
 
-    TypePointer(void *ptr, Type *type, std::shared_ptr<HeapObject> owner = nullptr);
+    TypePointer(void *ptr, Type *type, std::shared_ptr<HeapObject> owner);
     Object      get() override;
     void        set(const Object &val) override;
     Object      make_step_accessor(const Object &key) override;

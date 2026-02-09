@@ -18,7 +18,7 @@ class StaticWriter : public HeapObject {
     /**
      * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
      */
-    Object allocate(const std::string &type_name);
+    Object allocate(Type *type);
 
     // Методы управления
     void seek(size_t pos) {
@@ -39,26 +39,24 @@ class StaticWriter : public HeapObject {
 
     // Инспекция (упрощенная)
     std::string print() const override {
-        return fmt::format("#<static-writer :at {}/{} :used {:.1f}%>", m_position, m_buffer->size(),
-                           (float)m_position / m_buffer->size() * 100.f);
+        return fmt::format("#<static-writer :address {}/{} :used {:.1f}%>", m_position,
+                           m_buffer->size(), (float)m_position / m_buffer->size() * 100.f);
     }
 
     Object make_step_accessor(const Object &key) override {
         std::string name = key.to_std_string();
-        if (name == "size")
+        if (name == ".size")
             return Object::make_integer(m_buffer->size());
-        if (name == "origin")
+        if (name == ".origin")
             return Object::make_integer(m_buffer->origin());
-        if (name == "type")
+        if (name == ".type")
             return Object::make_string(m_buffer->type_name());
-        if (name == "position")
+        if (name == ".position")
             return Object::make_integer(m_position);
-        if (name == "remaining")
+        if (name == ".remaining")
             return Object::make_integer(remaining());
 
-        // Если просят тип по имени, считаем это аллокацией
-        // Пример: (-> writer 'my-struct-type) -> вернет TypePointer
-        return allocate(name);
+        return Object::make_none();
     }
 
     Object inspect() const override {

@@ -1,19 +1,16 @@
 #include "StaticWriter.hpp"
 #include "TypePointer.hpp"
-#include "common/type_system/TypeSystem.hpp"
 
 namespace script {
 
 /**
  * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
  */
-Object StaticWriter::allocate(const std::string &type_name) {
-    if (!m_buffer)
+Object StaticWriter::allocate(Type *type) {
+    if (!m_buffer) {
+        throw std::runtime_error("StaticBufferWriter: Unitialized buffer");
         return Object::make_none();
-
-    Type *type = TypeSystem::instance().lookup_type(type_name);
-    if (!type)
-        return Object::make_none();
+    }
 
     // 1. Выравниваем курсор под требования типа
     size_t alignment = type->get_in_memory_alignment();
@@ -27,14 +24,16 @@ Object StaticWriter::allocate(const std::string &type_name) {
 
     // 3. Получаем адрес в памяти
     void *ptr = m_buffer->data() + m_position;
+    // Инициализируем
+    std::memset(ptr, 0, size);
 
     // 4. Создаем TypePointer на это место
-    auto cell = std::make_shared<TypePointer>(ptr, type);
+    auto pointer = std::make_shared<TypePointer>(ptr, type, m_buffer);
 
     // 5. Двигаем курсор вперед
     m_position += size;
-
-    return Object::make_heap_object(cell, ObjectType::POINTER);
+    // 6. Возвращаем
+    return Object::make_pointer(pointer);
 }
 
 StaticWriter::StaticWriter(const std::shared_ptr<StaticBuffer> &buffer)

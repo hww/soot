@@ -60,8 +60,6 @@
     :type (case reg
             ('ix 'ix-indexed)
             ('iy 'iy-indexed)
-            ('r13 'r13-indexed)
-            ('r14 'r14-indexed)
             (else (error (fmt #f "Unknown index register: {}" reg))))
     :value offset))
 
@@ -74,8 +72,6 @@
     :type (case reg
             ('ix 'ix-indexed)
             ('iy 'iy-indexed)
-            ('r13 'r13-indexed)
-            ('r14 'r14-indexed)
             (else (error (fmt #f "Unknown index register: {}" reg))))
     :value offset))
 
@@ -152,7 +148,6 @@
 ;;;   [MY_LABEL]   -> LIS: (MY_LABEL)
 ;;;                   FIRST: MY_LABEL (symbol?)
 ;;;                   Результат: asmsym-indirect (адрес будет разрешен позже)
-;; В ind-reader добавить обработку r13/r14
 (defun ind-reader (lis)
   "Read indirect addressing modes"
   (let ((first (car lis)))
@@ -168,9 +163,6 @@
           ('bc (make-lextoken :type 'bc-indirect))
           ('de (make-lextoken :type 'de-indirect))
           ('sp (make-lextoken :type 'sp-indirect))
-          ;; Для r13/r14 тоже нужно добавить
-          ('r13 (make-lextoken :type 'r13-indirect))
-          ('r14 (make-lextoken :type 'r14-indirect))
           ;; Любой другой символ - это метка
           (else (make-lextoken :type 'asmsym-indirect :value first))))
       ;; Если передали уже lextoken (из переменной hl)
@@ -223,8 +215,8 @@
 (con-code! 'p 6)
 (con-code! 'm 7)
 
-(defun parse-z80 (arg ctx)
-     ;(error "sss" ctx)
+(defun parse-z80 (arg)
+    ; (error "sss" (lextoken-ctx arg))
   (cond
     ((lextoken? arg) arg)
      ;; Обработка списка (hl) как индексированной адресации
@@ -244,11 +236,6 @@
    
    ;; ВАЖНО: Возвращаем ТОЛЬКО ОДНО значение!
    (cond
-     ;; 1. Для R13/R14 - создаем специальные токены
-     ((member base '(r13 r14))
-      (make-lextoken :type (if (eq? base 'r13) 'r13-indexed 'r14-indexed)
-                     :value offs))
-     
      ;; 2. Для битовых полей (bits=1) - число
      ((= b-size 1)
       (make-lextoken :type 'number :value (-> arg .bit_offset)))
@@ -936,7 +923,7 @@
   :pass2 (let* ((target (segment-get-label-addr-optional r1 seg ctx)))
          (if (and target (not (null? target)))
              (let ((offset (- target (+ (segment-get-abs-pc seg) 2))))
-               ;(cfmt #t "yellow" "JMP target {} offset {}\n" target offset)
+               ;(fmt #t "JMP target {} offset {}\n" target offset)
                (if (and (<= offset 120) (>= offset -120))
                    (begin (inst-op! inst 'jr) 2)
                    (begin (inst-op! inst 'jp) 3)))
@@ -953,7 +940,7 @@
 (operand jr 2 "JR e"
   :arg1 variable :relative #t
   :pass3 (let ((rel (segment-get-rel-offset r1 seg ctx 2))) ;; 2 — это размер JR
-           ;(cfmt #t "yellow" "JR r1 {} rel {:04X} seg {}\n" r1 rel (segment-name seg))
+           ;(fmt #t "JR r1 {} rel {:04X} seg {}\n" r1 rel (segment-name seg))
 
            (list #x18 rel)))
 
@@ -1196,35 +1183,6 @@
 (defmacro vtable (name type &optional (options 'default))
      `(ams-vtable ',name ',type ',options))
 
-(defun ld16 (reg-thing field-expr)
-  (let* ((alias (eval field-expr))
-         (base (-> alias .reg))
-         (offset (-> alias .offset))
-         ;; Извлекаем символ из lextoken если нужно:
-         (reg-sym (if (lextoken? reg-thing)
-                      (lextoken-value reg-thing)
-                      reg-thing)))  ;; если уже символ
-    (list
-      (ld (get-low-reg reg-sym) (+i base offset))
-      (ld (get-high-reg reg-sym) (+i base (+ offset 1))))))
 
-
-
-;; Добавляем в таблицу опкодов
-(operand ld 4 "LD r, (R13+d)"
-  :arg1 8-register :arg2 r13-indexed
-  :pass3 (list #xDD (logior #x46 (lshift (reg-code r1) 3)) r2))
-
-(operand ld 4 "LD r, (R14+d)"
-  :arg1 8-register :arg2 r14-indexed
-  :pass3 (list #xFD (logior #x46 (lshift (reg-code r1) 3)) r2))
-
-(operand ld 4 "LD (R13+d), r"
-  :arg1 r13-indexed :arg2 8-register
-  :pass3 (list #xDD (logior #x70 (reg-code r2)) r1))
-
-(operand ld 4 "LD (R14+d), r"
-  :arg1 r14-indexed :arg2 8-register
-  :pass3 (list #xFD (logior #x70 (reg-code r2)) r1))
 
 (fmt #t "Loaded asm-z80\n")

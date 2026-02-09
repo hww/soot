@@ -1,4 +1,6 @@
-﻿;; 1. Описываем типы (чертежи памяти)
+﻿(fmt #t "Test Labels...\n" :color 'yellow)
+
+;; 1. Описываем типы (чертежи памяти)
 (deftype driver-config (basic) (
     (id       uint16)
     (version  uint8)
@@ -18,7 +20,7 @@
 (fmt #t "--- Шаг 1: Запись начальных данных ---\n")
 
 ;; Ставим метку в самом начале
-(buffer-add-label wr "segment-start")
+(buffer-label-set! wr "segment-start")
 
 ;; Записываем структуру через alist
 (buffer-write wr 
@@ -26,18 +28,18 @@
       (config . ((id . #x1234) 
                  (version . 1) 
                  (flags . #x80))))
-    :as 'device-header)
+    :type 'device-header)
 (fmt #t "--- Шаг 2: Использование меток ---\n")
 ;; Допустим, здесь начинается какой-то код инициализации
 ;; Мы ставим метку через курсор
-(buffer-add-label wr "init-routine")
+(buffer-label-set! wr "init-routine")
 
 ;; Пишем пару "пустых" команд (например, NOP = 0)
-(buffer-write wr 0 :as 'uint8)
-(buffer-write wr 0 :as 'uint8)
+(buffer-write wr 0 :type 'uint8)
+(buffer-write wr 0 :type 'uint8)
 ;; А теперь ставим метку вручную на фиксированный адрес
 ;; (например, системный обработчик Z80 на адресе #x0038)
-(buffer-add-label buf 'rst-handler :address #x38)
+(buffer-label-set! buf 'rst-handler :address #x38)
 (fmt #t "--- Шаг 3: Проверка результатов ---\n")
 ;; Выводим оффсеты меток, чтобы убедиться, что они зацепились
 (fmt #t "Метка 'segment-start' на: {}\n" (-> buf 'segment-start))

@@ -392,8 +392,6 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_fmt(const Object &form, Arguments &args,
                     const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_cfmt(const Object &form, Arguments &args,
-                     const std::shared_ptr<EnvironmentObject> &env);
 
     // Logger
     Object eval_log(const Object &form, Arguments &args,
@@ -636,7 +634,7 @@ class Interpreter {
     Object eval_static_new_special(const Object &form, const Object &rest,
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object lookup_in_alist(Object list, const std::string &key);
-    void   recursive_write(Object cell_obj, Object value);
+    void   recursive_write(const Object &form, Object cell_obj, Object value);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

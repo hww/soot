@@ -1,0 +1,18 @@
+﻿(init-types 'z80)
+(fmt #t "Test Rlet...\n" :color 'yellow)
+
+(deftype vec3 (structure)
+  ((x int16) 
+   (y int16) 
+   (z int16))
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+;; index
+(rlet ((m :reg ix :type vec3))
+    (fmt #t "Alias         {}\n" m)
+    (fmt #t "Alias         {}\n" (-> m))
+    (fmt #t "Alias .reg    {}\n" (-> m .reg))
+    (fmt #t "Alias .offset {}\n" (-> m .offset))
+    (fmt #t "Alias .type   {}\n" (-> m .type)))

@@ -1,4 +1,7 @@
 ﻿(init-types 'z80)
+
+(fmt #t "Test Buffer Struct Array...\n" :color 'yellow)
+
 ;; 1. Описываем тип с массивом
 (deftype array-test-struct (basic)
   ((data-bytes uint8 10)  ;; Массив из 10 байт
@@ -13,14 +16,20 @@
   ;; но в static-writer всё зависит от твоих смещений.
   
   (buffer-write wr 
-                   '((data-bytes . (10 20 30 40 50 60 70 80 90 100))) 
-                   :as 'array-test-struct)
+               '((data-bytes . (10 20 30 40 50 60 70 80 90 100))) 
+                :type 'array-test-struct)
 
   (fmt #t "Dump with array:\n{}\n" (buffer-dump buf 0 64 #t 8))
 
   ;; 3. Проверка доступа через (-> ...)
-  (let ((obj (buffer-read buf :as 'array-test-struct :at 0)))
-    (fmt #t "Element 0: {}\n" (mem-get (-> obj 'data-bytes 0)))
-    (fmt #t "Element 2: {}\n" (mem-get (-> obj 'data-bytes 2)))
-    (fmt #t "Element 9: {}\n" (mem-get (-> obj 'data-bytes 9))))
+  (let ((obj (buffer-read buf :type 'array-test-struct :address 0)))
+    (fmt #t "Data Bytes {}\n" (-> obj data-bytes))
+    (fmt #t "Data Bytes 0 {}\n" (-> obj data-bytes 0))
+    (fmt #t "Data Bytes 2 {}\n" (-> obj data-bytes 2))
+    
+    (fmt #t "Address of byte 2 {}\n" (& (-> obj data-bytes 2)))
+
+    (fmt #t "Element 0: {}\n" (mem-get (-> obj data-bytes 0)))
+    (fmt #t "Element 2: {}\n" (mem-get (-> obj data-bytes 2)))
+    (fmt #t "Element 9: {}\n" (mem-get (-> obj data-bytes 9))))
 )

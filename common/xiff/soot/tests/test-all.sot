@@ -1,0 +1,18 @@
+﻿
+(fmt #t "TESTS START...\n" :color 'yellow)
+
+;(load "common/xiff/soot/tests/test-types.sot")
+
+(load "common/xiff/soot/tests/test-buffer-array.sot")
+;(load "common/xiff/soot/tests/test-buffer-struct-array.sot")
+;(load "common/xiff/soot/tests/test-buffer-labels.sot")
+;(load "common/xiff/soot/tests/test-buffer-link.sot")
+;(load "common/xiff/soot/tests/test-buffer-rd-wr.sot")
+;(load "common/xiff/soot/tests/test-buffer-writer.sot")
+;
+;(load "common/xiff/soot/tests/test-rlet.sot")
+;(load "common/xiff/soot/tests/test-rlet-index.sot")
+;(load "common/xiff/soot/tests/test-rlet-stride.sot")
+;(load "common/xiff/soot/tests/test-rlet-bitfield.sot")
+
+(fmt #t "TESTS END\n" :color 'yellow)

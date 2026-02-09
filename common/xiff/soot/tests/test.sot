@@ -1,0 +1,34 @@
+﻿(load "common/xiff/soot/asm.sot")
+
+(init-types 'z80)
+
+(defmodule test-module)
+
+(deftype vec3s8 (structure)
+  ((x int8) 
+   (y int8) 
+   (z int8))
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+(deftype vec3 (structure)
+  ((x int16) 
+   (y int16) 
+   (z int16))
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+(deftype mat3 (structure)
+  ((r1 vec3)   
+   (r2 vec3)   
+   (r3 vec3))) 
+
+(defenum eflag
+  :type uint8
+  :bitfield #t
+  (bit0 0)
+  (bit1 1)
+  (bit2 2)
+  (bit3 3))
