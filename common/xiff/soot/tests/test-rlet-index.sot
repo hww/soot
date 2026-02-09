@@ -1,0 +1,27 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Index...\n" :color 'yellow)
+
+(deftype vec3 (structure)
+  ((x int16) 
+   (y int16) 
+   (z int16))
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+;; index
+(rlet ((m :reg ix :type vec3))
+
+          ;; Проверка базового смещения
+          (fmt #t "Base: (-> m)      => {}\n" (-> m))       ; Ожидаем offset 0
+          
+          ;; Проверка индексации (как будто m - это массив векторов)
+          ;; Если vec3 занимает 16 байт:
+          (fmt #t "Idx 1: (-> m 1)   => {}\n" (-> m 1))     ; Ожидаем offset 16
+          (fmt #t "Idx 2: (-> m 2)   => {}\n" (-> m 2))     ; Ожидаем offset 32
+          
+          ;; Смешанная цепочка: массив -> поле
+          ;; Допустим, поле 'y' имеет offset 4 внутри vec3
+          (fmt #t "Full: (-> m 1 y)  => {}\n" (-> m 1 y))   ; Ожидаем offset 20 (16 + 4)
+        )

@@ -1,0 +1,19 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Stride...\n" :color 'yellow)
+
+(deftype vec3 (structure)
+  ((x int16) 
+   (y int16) 
+   (z int16))
+ (:methods
+      (new (int16 int16) none)
+      (len () int16)))
+
+;; Automatic Stride
+(rlet ((v :reg ix :type vec3))
+    ;; vec3 обычно выравнивается по 16 байт в массиве
+    (fmt #t "v[0]   offset: {}\n" (-> v 0 .offset)) ; Ожидаем 0
+    (fmt #t "v[1]   offset: {}\n" (-> v 1 .offset)) ; Ожидаем 16 (не 12!)
+    (fmt #t "v[1].y offset: {}\n" (-> v 1 y .offset)) ; Ожидаем 20 (16 + 4)
+  )

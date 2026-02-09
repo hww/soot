@@ -16,7 +16,7 @@
 ;; Lextoken - assembler lexical token container
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct lextoken (type null) (value null))
+(defstruct lextoken (type null) (value null) (ctx null))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Opcode - assembler instruction data container  
@@ -367,7 +367,7 @@
                     (res (if (procedure? pass-f) (pass-f inst seg) null)))
                (begin
                   (inst-ilc! inst (segment-ilc seg))
-                  ;(cfmt #t "red" " 0x{:04X} \n" (inst-ilc inst))
+                  ;(fmt #t " 0x{:04X} \n" (inst-ilc inst))
                   ;; На 3-м проходе собираем бинарник, если функция что-то родила
                   (if (and (eq? pass-num 3) (not (null? res)))
                       (let ((buf (segment-buffer seg))
@@ -386,7 +386,7 @@
                           ;  (buffer-write buf res :as 'uint8 :at addr))
                           (buffer-write buf res :as 'uint8 :at addr)
                           (set! bin-list (append bin-list (if (list? res) res (list res))))
-                          ;(cfmt #t "blue" "segment-assemble-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
+                          ;(fmt #t "segment-assemble-pass {} ilc 0x{:04X} op {} result {}\n" pass-num (segment-ilc seg)  (inst-op inst) res)
                           )))                        
                  
                  ;; ЛОГИКА ОПРЕДЕЛЕНИЯ ДЛИНЫ (sz):
@@ -399,7 +399,7 @@
                              ;; Берем константу :size из самого операнда!
                              (else (opcode-size opc)))))
                    (begin
-                     ;(cfmt #t "blue" "segment-assemble-pass {} ilc 0x{:04X} op {} result {} normalized {}\n" pass-num (segment-ilc seg)  (inst-op inst) res sz)                 
+                     ;(fmt #t "segment-assemble-pass {} ilc 0x{:04X} op {} result {} normalized {}\n" pass-num (segment-ilc seg)  (inst-op inst) res sz)                 
                      ;; Сохраняем вычисленную длину в саму инструкцию (для листинга/отладки)
                      (inst-size! inst sz)
                      ;; Двигаем ILC сегмента
@@ -550,14 +550,18 @@
                                    (ctx (inst-ctx inst)))
                                ,pass3))))
 
-     (defun ,sym (&optional (a1 (make-lextoken :type null))
-                            (a2 (make-lextoken :type null))
-                            (a3 (make-lextoken :type null)))
+     (defun ,sym (&optional (a1 null)
+                            (a2 null)
+                            (a3 null))
                          ;;   (error "ss" (get-context 5))
-       (let* ((ctx (get-context 3))
-              (bla1 (*parse* a1 ctx)) (bla2 (*parse* a2 ctx)) (bla3 (*parse* a3 ctx)))
-              
-         (make-inst :op ',sym :arg1 bla1 :arg2 bla2 :arg3 bla3 :ctx (get-context 3))))))
+                         (let ((ctx (get-context 3)))
+                            (let (
+                                    (a1 (make-lextoken :type null :ctx ctx))
+                                    (a2 (make-lextoken :type null :ctx ctx))
+                                    (a3 (make-lextoken :type null :ctx ctx))
+                                    (bla1 (*parse* a1)) (bla2 (*parse* a2)) (bla3 (*parse* a3)))
+                                    
+                              (make-inst :op ',sym :arg1 bla1 :arg2 bla2 :arg3 bla3 :ctx ctx))))))
 
 (defun %lab-get-meta (lst key)
   "Ищет значение ключа в списке метаданных метки."
@@ -626,20 +630,20 @@
   (let ((filename (fmt #f "{}.sym.sot" (module-name mod))))
     (begin
       (save-module-symbols filename mod)
-      (cfmt #t "green" "Symbols saved: {}\n" filename))))
+      (fmt #t "Symbols saved: {}\n" filename :color 'green))))
 
 (defmacro build (mod &key (with-listing #f) (print-listing #f))
   `(begin
      (module-assemble ,mod)
-     (cfmt #t "yellow" "\n──────────────────────────────────────────\n")
-     (cfmt #t "white"  " BUILD SUCCESSFUL: {:15} \n" (module-name ,mod))
-     (cfmt #t "yellow" "──────────────────────────────────────────\n")
+     (fmt #t "\n──────────────────────────────────────────\n" :color 'yellow)
+     (fmt #t " BUILD SUCCESSFUL: {:15} \n" (module-name ,mod))
+     (fmt #t "──────────────────────────────────────────\n" :color 'yellow)
      (for-each (module-segment-order ,mod)
        (lambda (name)
          (let ((seg (hash-table-ref (module-segments ,mod) name)))
-           (cfmt #t "cyan" " Segment: {:10} | Base: #{:04X} | Size: {} bytes\n" 
+           (fmt #t "cyan" " Segment: {:10} | Base: #{:04X} | Size: {} bytes\n" 
                  name (segment-base-addr seg) (segment-ilc seg)))))
-     (cfmt #t "yellow" "──────────────────────────────────────────\n")
+     (fmt #t "──────────────────────────────────────────\n" :color 'yellow)
      ;; Добавляем запятые перед аргументами макроса:
      (if ,with-listing
        (generate-module-listing ,mod :print-listing ,print-listing))))

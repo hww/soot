@@ -56,8 +56,10 @@ Object TypePointer::get() {
 
 void TypePointer::set(const Object &val) {
     void *ptr = resolve_addr();
-    if (!ptr || m_type.empty())
+    if (!ptr || m_type.empty()) {
+        throw std::runtime_error(fmt::format("CRITICAL: type is null at ptr {:p}\n", ptr));
         return;
+    }
 
     auto type = get_type();
     if (!type)
@@ -74,70 +76,62 @@ void TypePointer::set(const Object &val) {
     }
 }
 Object TypePointer::make_step_accessor(const Object &key) {
-    // 1. Быстрая проверка валидности
-    if (!m_ptr || m_type.empty()) {
+    if (!m_ptr || m_type.empty())
         return Object::make_none();
-    }
 
-    // 2. Получаем актуальный объект типа через TypeSystem
     Type *current_type = TypeSystem::instance().lookup_type(m_type);
-    if (!current_type) {
+    if (!current_type)
         throw std::runtime_error("TypePointer: unknown type " + m_type);
+
+    // --- СЛУЧАЙ А: МЫ В СТРУКТУРЕ ---
+    if (auto *struct_type = dynamic_cast<StructureType *>(current_type)) {
+        Field field_info;
+        if (key.is_symbol() || key.is_string()) {
+            if (struct_type->lookup_field(key.to_std_string(), &field_info)) {
+
+                // Если это ОБЫЧНОЕ поле (не массив), сразу возвращаем указатель на него
+                if (!field_info.is_array()) {
+                    uint8_t *field_addr = static_cast<uint8_t *>(m_ptr) + field_info.offset();
+                    auto     ptr = std::make_shared<TypePointer>(
+                        field_addr, field_info.type().base_type(), m_owner);
+                    return Object::make_pointer(ptr);
+                }
+
+                // Если это МАССИВ, нам нужно вернуть "умный" объект,
+                // который знает, что он массив, чтобы обработать следующий индекс.
+                // В твоей системе проще всего вернуть указатель на начало массива,
+                // но пометить его особым типом-оберткой или обработать индекс прямо здесь.
+
+                // Для простоты: возвращаем указатель на начало, но TypePointer
+                // должен будет уметь работать с индексами.
+                uint8_t *array_start = static_cast<uint8_t *>(m_ptr) + field_info.offset();
+                auto ptr = std::make_shared<TypePointer>(array_start, field_info.type().base_type(),
+                                                         m_owner);
+                return Object::make_pointer(ptr);
+            }
+        }
     }
 
-    Type  *next_type_obj = nullptr;
-    size_t offset_delta = 0;
-
-    // --- ЛОГИКА СМЕЩЕНИЯ ---
+    // --- СЛУЧАЙ Б: ДОСТУП ПО ИНДЕКСУ ---
     if (key.is_integer()) {
-        // Случай A: Доступ по индексу (Массив / Inline Array)
-        int    index = key.as_integer();
+        int index = key.as_integer();
+        // Здесь current_type — это тип ЭЛЕМЕНТА (например, uint8)
+        // Мы предполагаем, что если к TypePointer обратились по индексу,
+        // то это индекс этого типа в памяти.
+
         size_t stride = current_type->get_size_in_memory();
         int    align = current_type->get_inline_array_stride_alignment();
-
-        // Учитываем выравнивание элементов в массиве (как в OpenGOAL)
         if (align > 1) {
             stride = (stride + align - 1) & ~(align - 1);
         }
 
-        offset_delta = index * stride;
-        next_type_obj = current_type; // Тип элемента тот же
+        uint8_t *elem_addr = static_cast<uint8_t *>(m_ptr) + (index * stride);
 
-    } else if (key.is_symbol() || key.is_string()) {
-        // Случай Б: Доступ к полю структуры
-        auto *struct_type = dynamic_cast<StructureType *>(current_type);
-        if (!struct_type) {
-            throw std::runtime_error(
-                fmt::format("TypePointer: type {} is not a structure", m_type));
-        }
-
-        Field       field_info;
-        std::string field_name = key.to_std_string();
-        if (struct_type->lookup_field(field_name, &field_info)) {
-            offset_delta = field_info.offset();
-            // Получаем тип поля (lookup здесь не нужен, нам нужна только строка имени типа)
-            next_type_obj = TypeSystem::instance().lookup_type(field_info.type());
-        }
+        auto ptr = std::make_shared<TypePointer>(elem_addr, m_type, m_owner);
+        return Object::make_pointer(ptr);
     }
 
-    // Если не удалось вычислить смещение (нет такого поля или неверный ключ)
-    if (!next_type_obj) {
-        return Object::make_none();
-    }
-
-    // --- ГЕНЕРАЦИЯ НОВОГО УКАЗАТЕЛЯ ---
-    // Вычисляем физический адрес в памяти хоста
-    uint8_t *new_phys_ptr = static_cast<uint8_t *>(m_ptr) + offset_delta;
-
-    // Создаем новый TypePointer.
-    // m_owner прокидывается дальше, обеспечивая безопасность ссылки.
-    auto next_cell =
-        std::make_shared<TypePointer>(new_phys_ptr,              // Новая физика
-                                      next_type_obj->get_name(), // Имя нового типа (строка)
-                                      m_owner                    // Тот же владелец
-        );
-
-    return Object::make_heap_object(next_cell, ObjectType::POINTER);
+    return Object::make_none();
 }
 
 void *TypePointer::resolve_addr() const {

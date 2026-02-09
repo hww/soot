@@ -407,19 +407,17 @@ Object Object::make_reader(TextStream *textStream) {
     return obj;
 }
 
-Object Object::make_pointer(std::shared_ptr<Pointer> pointer, std::string type) {
+Object Object::make_pointer(std::shared_ptr<Pointer> pointer) {
     Object obj;
     obj.type = ObjectType::POINTER;
-    if (pointer)
-        pointer->m_type = type;
     obj.heap_obj = std::move(pointer);
     return obj;
 }
 
 Object Object::make_pointer(void *raw_ptr, std::string type) {
     // Создаем НОВЫЙ объект ячейки в куче, который будет смотреть на raw_ptr
-    auto pointer_shr = std::make_shared<Pointer>(raw_ptr);
-    return make_pointer(std::move(pointer_shr), type);
+    auto pointer_shr = std::make_shared<Pointer>(raw_ptr, type);
+    return make_pointer(std::move(pointer_shr));
 }
 
 Object Object::make_integer(IntType value) {

@@ -1,0 +1,22 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Buffer Array...\n" :color 'yellow)
+
+;; 2. Создаем буфер и записываем туда данные вручную (для теста)
+(let* ((buf (make-buffer "array-test" 100 0))
+       (wr (make-buffer-writer buf)))
+  
+  ;; Запишем что-нибудь по адресу, где должен быть массив (например, с отступом 2-4 байта)
+  ;; В структуре типа 'basic' первые 4 байта обычно заняты типом, 
+  ;; но в static-writer всё зависит от твоих смещений.
+  
+  (buffer-write wr 
+               '(10 20 30 40 50 60 70 80 90 100) 
+                :type 'int8)
+
+  (fmt #t "Dump with array:\n{}\n" (buffer-dump buf 0 64 #t 8))
+  (fmt #t "Read Byte [0] {}\n" (buffer-read buf :address 0 :type 'int))
+  (fmt #t "Read Byte [1] {}\n" (buffer-read buf :address 1 :type 'int))
+  (fmt #t "Read Byte [2] {}\n" (buffer-read buf :address 2 :type 'int))
+
+)

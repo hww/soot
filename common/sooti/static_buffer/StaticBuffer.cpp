@@ -50,20 +50,20 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         std::string name = key.to_std_string();
 
         // 1. Системные свойства
-        if (name == "size")
+        if (name == ".size")
             return Object::make_integer(size());
-        if (name == "origin")
+        if (name == ".origin")
             return Object::make_integer(origin());
-        if (name == "type")
+        if (name == ".type")
             return Object::make_string(type_name());
-        if (name == "start-addr")
+        if (name == ".start-addr")
             return Object::make_integer(get_start_addr());
-        if (name == "end-addr")
+        if (name == ".end-addr")
             return Object::make_integer(get_end_addr());
-        if (name == "filled-size")
+        if (name == ".filled-size")
             return Object::make_integer(get_end_addr() - get_start_addr());
         // Внутри StaticBuffer::make_step_accessor
-        if (name == "labels") {
+        if (name == ".labels") {
             std::vector<Object> names;
             // Предполагаем, что у тебя есть m_labels или аналогичная структура
             // (std::map/unordered_map)
@@ -161,7 +161,8 @@ void StaticBuffer::set_at(const Object &key, const Object &value) {
     throw std::runtime_error("StaticBuffer::set_at: invalid key or target not writable");
 }
 void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
-
+    printf("PHYSICAL WRITE: data=%p ptr=%p, type=%s, val=%s\n", m_data.data(), ptr,
+           type->get_name().c_str(), val.print().c_str());
     if (!type || !ptr) {
         throw std::runtime_error(fmt::format("CRITICAL: type is null at ptr {:p}\n", ptr));
         return;

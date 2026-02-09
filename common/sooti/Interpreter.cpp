@@ -209,7 +209,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"pfmt", &Interpreter::eval_pfmt, &args_with_keys},
         {"inspect", &Interpreter::eval_inspect, nullptr},
         {"fmt", &Interpreter::eval_fmt, &args_with_keys},
-        {"cfmt", &Interpreter::eval_cfmt, nullptr},
         {"error", &Interpreter::eval_error, nullptr},
 
         // Logger
@@ -912,7 +911,6 @@ Object Interpreter::eval_list_return_last(const Object &form, Object rest,
     if (rest.is_null()) {
         return rest;
     }
-
     const Object *iter = &rest;
     while (true) {
         const Object *next = &iter->as_pair()->cdr;
@@ -1966,6 +1964,20 @@ void Interpreter::vararg_check(
 // Системные функции(print, pprint, inspect)
 // ============================================================
 
+Object Interpreter::eval_inspect(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем, что передан хотя бы один аргумент для инспекции
+    vararg_check(form, args, {{}}, {});
+
+    // Получаем объект, который нужно проинспектировать
+    const Object &target = args.unnamed.at(0);
+
+    // Вызываем метод inspect, который теперь (благодаря нашим правкам)
+    // возвращает структуру данных (List/Pair), а не строку.
+    return target.inspect();
+}
+
 Object Interpreter::eval_print(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -1982,57 +1994,23 @@ Object Interpreter::eval_pfmt(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // Проверка аргументов
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::STRING}, {}},
-                 {{"width", {false, {ObjectType::INTEGER}}}});
+    vararg_check(form, args, {{}}, {{"width", {false, {ObjectType::INTEGER}}}});
 
     auto width = 100;
     if (args.has_named("width"))
         width = (int)args.named["width"].as_integer();
 
-    // 1. Сохраняем строку формата как std::string, чтобы она жила до конца функции
-    std::string fmt_template = args.unnamed.at(1).to_std_string();
-
     // 2. Получаем строковое представление объекта
-    std::string object_repr = pretty_print::to_string(args.unnamed.at(2), width);
+    std::string object_repr = pretty_print::to_string(args.unnamed.at(0), width);
 
-    try {
-        // 3. Форматируем. fmt::format безопасно принимает std::string
-        std::string result_string = fmt::format(fmt::runtime(fmt_template), object_repr);
-
-        // Проверяем первый аргумент (куда выводить: в строку или в stdout)
-        // Если первый аргумент - символ T или #t (в зависимости от твоего интернирования)
-        auto dest = args.unnamed[0];
-        if (dest.is_symbol() && std::string(dest.as_symbol().name_ptr) == "#t") {
-            fmt::print("{}", result_string);
-            return get_null();
-        }
-
-        return Object::make_string(result_string);
-    } catch (const std::exception &e) {
-        throw_eval_error(form, fmt::format("pfmt error: {}", e.what()));
-    }
-    return get_null();
-}
-
-Object Interpreter::eval_inspect(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Проверяем, что передан хотя бы один аргумент для инспекции
-    vararg_check(form, args, {{}}, {});
-
-    // Получаем объект, который нужно проинспектировать
-    const Object &target = args.unnamed.at(0);
-
-    // Вызываем метод inspect, который теперь (благодаря нашим правкам)
-    // возвращает структуру данных (List/Pair), а не строку.
-    return target.inspect();
+    return Object::make_string(object_repr);
 }
 
 Object Interpreter::eval_fmt(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     if (args.unnamed.size() < 2) {
-        throw_eval_error(form, "format must get at least two arguments");
+        throw_eval_error(form, "fmt must get at least destination and format-string");
     }
 
     auto dest = args.unnamed.at(0);
@@ -2041,25 +2019,41 @@ Object Interpreter::eval_fmt(const Object &form, Arguments &args,
         throw_eval_error(form, "format string must be a string");
     }
 
+    // 1. Собираем аргументы (теперь начинаем с индекса 2)
     fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
     for (size_t i = 2; i < args.unnamed.size(); i++) {
         auto &arg = args.unnamed.at(i);
-        if (arg.is_string()) {
+        if (arg.is_string())
             arg_store.push_back(arg.as_string()->data);
-        } else if (arg.is_symbol()) { // Добавляем обработку целых чисел
+        else if (arg.is_symbol())
             arg_store.push_back(arg.as_symbol().c_str());
-        } else if (arg.is_integer()) { // Если есть float/double
+        else if (arg.is_integer())
             arg_store.push_back(arg.as_integer());
-        } else if (arg.is_float()) { // Если есть float/double
+        else if (arg.is_float())
             arg_store.push_back(arg.as_float());
-        } else {
+        else
             arg_store.push_back(arg.print());
-        }
     }
 
+    // 2. Форматируем финальную строку
     auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
+
+    // 3. Вывод или возврат строки
     if (truthy(dest)) {
-        lg::print("{}", formatted.c_str());
+        // Проверяем наличие именованного аргумента :color
+        if (args.has_named("color")) {
+            auto                color_val = args.named["color"];
+            fmt::terminal_color text_color = fmt::terminal_color::white;
+
+            if (color_val.is_string())
+                text_color = string_to_color(color_val.as_string()->data);
+            else if (color_val.is_symbol())
+                text_color = string_to_color(color_val.as_symbol().c_str());
+
+            fmt::print(fg(text_color), "{}\n", formatted); // Вывод с цветом
+        } else {
+            lg::print("{}\n", formatted); // Обычный вывод
+        }
         return get_null();
     }
 
@@ -2075,60 +2069,6 @@ fmt::terminal_color string_to_color(const std::string &name) {
         {"white", fmt::terminal_color::white},     {"gray", fmt::terminal_color::bright_black}};
     auto it = colors.find(name);
     return (it != colors.end()) ? it->second : fmt::terminal_color::white;
-}
-
-// (cfmt #t 'red "format" arguments )
-Object Interpreter::eval_cfmt(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    if (args.unnamed.size() < 3) {
-        throw_eval_error(form, "cfmt requires at least destination, color and format-string");
-    }
-
-    auto dest = args.unnamed.at(0);
-
-    // Обработка цвета из ключевых аргументов (например, :color "red")
-    fmt::terminal_color text_color = fmt::terminal_color::white;
-    auto                it_color = args.unnamed.at(1);
-    if (it_color.is_string()) {
-        text_color = string_to_color(it_color.as_string()->data);
-    } else if (it_color.is_symbol()) {
-        text_color = string_to_color(it_color.as_symbol().c_str());
-    } else {
-        throw_eval_error(form, "cfmt color as string or symbol");
-    }
-
-    auto format_str = args.unnamed.at(2);
-    if (!format_str.is_string()) {
-        throw_eval_error(form, "cfmt: format string must be a string");
-    }
-
-    // Собираем аргументы (как в твоем fmt)
-    fmt::dynamic_format_arg_store<fmt::format_context> arg_store;
-    for (size_t i = 3; i < args.unnamed.size(); i++) {
-        auto &arg = args.unnamed.at(i);
-        if (arg.is_string()) {
-            arg_store.push_back(arg.as_string()->data);
-        } else if (arg.is_symbol()) { // Добавляем обработку целых чисел
-            arg_store.push_back(arg.as_symbol().c_str());
-        } else if (arg.is_integer()) { // Если есть float/double
-            arg_store.push_back(arg.as_integer());
-        } else if (arg.is_float()) { // Если есть float/double
-            arg_store.push_back(arg.as_float());
-        } else {
-            arg_store.push_back(arg.print());
-        }
-    }
-
-    // Форматируем строку
-    auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
-
-    // Если dest не ложь, выводим в консоль с цветом
-    if (truthy(dest)) {
-        fmt::print(fg(text_color), "{}", formatted);
-    }
-
-    return Object::make_string(formatted);
 }
 
 /**
@@ -4472,14 +4412,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         iterator = iterator.as_pair()->cdr;
     }
 
-    // --- 3. РАЗЫМЕНОВАНИЕ УКАЗАТЕЛЕЙ (OpenGOAL style) ---
-    // Если результат - TypePointer, мы возвращаем значение, на которое он указывает.
-    // Если мы хотим получить сам объект указателя, мы используем другой оператор или (address-of
-    // ...)
-    if (current.is_type(ObjectType::POINTER)) {
-        return current.as_native_ref<TypePointer>()->deref();
-    }
-
+    // --- 3. ВОЗВРАЩАЕМ УКАЗАТЕЛЬ ---
     return current;
 }
 
@@ -4901,7 +4834,11 @@ Object Interpreter::eval_make_buffer_pointer(const Object &form, Arguments &args
     if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
         auto        writer = args.unnamed[0].as_native_ref<StaticWriter>();
         std::string type_name = args.unnamed[1].as_symbol();
-        return writer->allocate(type_name); // Возвращает TypePointer через HeapObject
+        auto       *type = TypeSystem::instance().lookup_type(type_name);
+        if (type == nullptr) {
+            throw_eval_error(form, "Unknown type: " + type_name);
+        }
+        return writer->allocate(type); // Возвращает TypePointer через HeapObject
     }
 
     auto        buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
@@ -5076,48 +5013,53 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
 Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{}, {}},
-                 {{"as", {true, {ObjectType::SYMBOL}}}, {"at", {false, {ObjectType::INTEGER}}}});
+    vararg_check(
+        form, args, {{}, {}},
+        {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {false, {ObjectType::INTEGER}}}});
 
-    Object      target = args.unnamed[0];
-    Object      value = args.unnamed[1];
-    std::string type_name = args.named["as"].to_std_string();
+    Object target = args.unnamed[0];
+    Object value = args.unnamed[1];
+
+    printf("write-to %s %s :as %s\n", target.print().c_str(), value.print().c_str());
+
+    std::string type_name = args.named["type"].to_std_string();
+    // Get the type
+    auto *type = TypeSystem::instance().lookup_type(type_name);
+
+    if (!type) {
+        throw_eval_error(form, "Unknown type: " + type_name);
+        return get_null();
+    }
     // fmt::print("{}\n", pretty_print::to_string(value, 80).c_str());
     try {
-        TypePointer                 *cell_ptr = nullptr;
-        std::shared_ptr<TypePointer> managed_cell;
+        Object                       cell_obj;
+        std::shared_ptr<TypePointer> cell_ptr;
         size_t                       write_offset = 0;
 
         // 1. Подготовка ячейки (Слайса)
         if (target.is_type(ObjectType::STATIC_WRITER)) {
-            auto   writer = target.as_native_ref<StaticWriter>();
-            Object cell_obj = writer->allocate(type_name);
+            auto writer = target.as_native_ref<StaticWriter>();
+
+            cell_obj = writer->allocate(type);
 
             // Здесь cell_obj должен быть POINTER (TypePointer)
-            managed_cell = cell_obj.as_native_ref<TypePointer>();
-            cell_ptr = managed_cell.get();
+            cell_ptr = cell_obj.as_native_ref<TypePointer>();
 
             // Вычисляем оффсет относительно начала буфера писателя для возвращаемого значения
             write_offset = writer->tell() - cell_ptr->get_type()->get_size_in_memory();
         } else {
-            if (!args.named.count("at")) {
-                throw_eval_error(form, "Keyword :at required for buffer write");
+            if (!args.named.count("address")) {
+                throw_eval_error(form, "Keyword :address required for buffer write");
                 return get_null();
             }
 
             auto buffer_ptr = target.as_native_ref<StaticBuffer>();
-            write_offset = static_cast<size_t>(args.named["at"].as_integer());
-
-            Type *type = TypeSystem::instance().lookup_type(type_name);
-            if (!type) {
-                throw_eval_error(form, "Unknown type: " + type_name);
-            }
+            write_offset = static_cast<size_t>(args.named["address"].as_integer());
 
             void *physical_ptr = buffer_ptr->data() + write_offset;
 
             // ОБНОВЛЕНО: Используем новый конструктор с 3 аргументами
-            managed_cell = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
-            cell_ptr = managed_cell.get();
+            cell_ptr = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
         }
 
         // 2. САМА ЗАПИСЬ (Магия пакетов)
@@ -5129,25 +5071,35 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
             while (current_item.is_pair()) {
                 Object entry = current_item.as_pair()->car;
 
-                // Используем проверку на точечный синтаксис (field . value)
-                if (entry.is_dotted_syntax()) {
-                    // ВЕТКА А: Работаем как со структурой
-                    Object field_name = entry.as_pair()->car;
-                    Object field_val = entry.as_pair()->cdr;
-
-                    Object sub_cell = cell_ptr->make_step_accessor(field_name);
-                    if (!sub_cell.is_none()) {
-                        recursive_write(sub_cell, field_val);
+                if (auto *struct_type = dynamic_cast<StructureType *>(type)) {
+                    // --- МЫ ВНУТРИ СТРУКТУРЫ ---
+                    if (entry.is_dotted_syntax()) {
+                        // ВЕТКА А: Все ок, пишем в поле по имени
+                        Object field_name = entry.as_pair()->car;
+                        Object field_val = entry.as_pair()->cdr;
+                        Object sub_ptr = cell_ptr->make_step_accessor(field_name);
+                        recursive_write(form, sub_ptr, field_val);
+                    } else {
+                        // ОШИБКА: Мы в структуре, но нам подсунули атом или обычный список без
+                        // ключа
+                        throw_eval_error(form, fmt::format("Structure '{}' expects field-value "
+                                                           "pairs (field . val), but got: {}",
+                                                           struct_type->get_name(), entry.print()));
                     }
-                } else {
-                    // ВЕТКА Б: Работаем как с массивом/списком значений
-                    // Применяем смещение по индексу относительно текущей ячейки
-                    Object sub_cell =
-                        cell_ptr->make_step_accessor(Object::make_integer(internal_index));
-                    if (!sub_cell.is_none()) {
-                        recursive_write(sub_cell, entry);
+                } else if (auto *value_type = dynamic_cast<ValueType *>(type)) {
+                    // --- МЫ ВНУТРИ МАССИВА ПРИМИТИВОВ ---
+                    if (entry.is_pair()) {
+                        // ОШИБКА: Зачем нам имя поля, если мы пишем просто массив чисел?
+                        throw_eval_error(form, fmt::format("Type '{}' is a primitive, it doesn't "
+                                                           "expect pairs, got a pairs list: {}",
+                                                           value_type->get_name(), entry.print()));
+                    } else {
+                        // ВЕТКА Б: Все ок, пишем как элемент массива
+                        Object sub_ptr =
+                            cell_ptr->make_step_accessor(Object::make_integer(internal_index));
+                        recursive_write(form, sub_ptr, entry);
+                        internal_index++;
                     }
-                    internal_index++;
                 }
 
                 // Переходим к следующему элементу входного списка
@@ -5157,7 +5109,8 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
             // Если пришло одиночное значение — пишем как раньше
             cell_ptr->set(value);
         } else {
-            throw_eval_error(form, fmt::format("Static write failed: because value is null"));
+            // Если пришло NULL, то не пишем ничего
+            return Object::make_integer(write_offset);
         }
 
         return Object::make_integer(write_offset);
@@ -5178,78 +5131,105 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
  * @param cell_obj The cell to write to.
  * @param value The value to write to the cell. Can be an alist or an array.
  */
-void Interpreter::recursive_write(Object cell_obj, Object value) {
-    if (!cell_obj.is_type(ObjectType::POINTER))
-        return;
-    auto cell = cell_obj.as_native_ref<TypePointer>();
+void Interpreter::recursive_write(const Object &form, Object cell_obj, Object value) {
+    auto cell_ptr = cell_obj.as_native_ref<TypePointer>();
+    auto type = cell_ptr->get_type();
 
-    // 1. Если это ПУСТОЙ список — просто выходим, это конец обхода
-    if (value.is_null()) {
-        return;
-    }
-    if (value.is_pair() && !value.as_pair()->car.is_pair()) {
-        int    index = 0;
-        Object current_list = value;
-
-        while (!current_list.is_null()) {
-            // 1. Создаем ячейку для i-го элемента массива
-            // Мы используем наш новый make_step_accessor(index)
-            Object element_cell = cell->make_step_accessor(Object::make_integer(index));
-
-            // 2. Рекурсивно пишем значение в эту ячейку
-            recursive_write(element_cell, current_list.as_pair()->car);
-
-            // 3. Переходим к следующему элементу списка
-            current_list = current_list.as_pair()->cdr;
-            index++;
+    // --- СЦЕНАРИЙ 1: СТРУКТУРА ---
+    if (auto *struct_type = dynamic_cast<StructureType *>(type)) {
+        // Если пришла одиночная переменная для структуры (редко, но бывает)
+        if (!value.is_pair()) {
+            cell_ptr->set(value);
+            return;
         }
-        return; // Завершили запись массива
-    }
 
-    // --- ОБРАБОТКА СТРУКТУРЫ (alist) ---
-    if (value.is_pair() && value.as_pair()->car.is_pair()) {
         Object current = value;
         while (current.is_pair()) {
             Object entry = current.as_pair()->car;
             if (entry.is_pair()) {
-                Object key = entry.as_pair()->car; // Например, 'tag'
-                Object val = entry.as_pair()->cdr; // Например, #x55
+                // Строго требуем dotted syntax (field . value) для структур
+                if (!entry.is_dotted_syntax()) {
+                    throw_eval_error(form, "Structure field must use dotted syntax, got: " +
+                                               entry.print());
+                }
 
-                try {
-                    // Создаем "дочернюю" ячейку для конкретного поля
-                    // make_step_accessor сам вычислит смещение поля внутри структуры
-                    Object field_cell =
-                        cell_obj.as_native_ref<TypePointer>()->make_step_accessor(key);
+                std::string f_name = entry.as_pair()->car.to_std_string();
+                Object      f_val = entry.as_pair()->cdr;
 
-                    // Рекурсивно пишем значение в это поле
-                    recursive_write(field_cell, val);
-                } catch (const std::exception &e) {
-                    // Если поля не существует или ошибка смещения
-                    throw_eval_error(key, "StaticWrite error in field '" + key.print() +
-                                              "': " + e.what());
+                Field f;
+                if (struct_type->lookup_field(f_name, &f)) {
+                    Object field_cell = cell_ptr->make_step_accessor(entry.as_pair()->car);
+
+                    // Если поле — массив в описании структуры
+                    if (f.is_array() && f_val.is_pair()) {
+                        int    idx = 0;
+                        Object curr_item = f_val;
+                        while (curr_item.is_pair() && idx < f.array_size()) {
+                            Object elem_cell =
+                                field_cell.as_native_ref<TypePointer>()->make_step_accessor(
+                                    Object::make_integer(idx));
+
+                            recursive_write(form, elem_cell, curr_item.as_pair()->car);
+                            curr_item = curr_item.as_pair()->cdr;
+                            idx++;
+                        }
+                    } else {
+                        // Обычное поле (примитив или вложенная структура)
+                        recursive_write(form, field_cell, f_val);
+                    }
                 }
             }
             current = current.as_pair()->cdr;
         }
-        return; // Завершаем обработку структуры
+        return;
     }
-    // --- ОБРАБОТКА ПРИМИТИВА ---
-    // Если это не список, значит это конечное значение (int, float, etc.)
+
+    // --- СЦЕНАРИЙ 2: ЗНАЧЕНИЕ (ValueType, Enum, BitField) ---
+    if (auto *value_type = dynamic_cast<ValueType *>(type)) {
+        if (value.is_pair()) {
+            int    idx = 0;
+            Object curr = value;
+            while (curr.is_pair()) {
+                Object val_item = curr.as_pair()->car;
+
+                // СТРОГАЯ ПРОВЕРКА:
+                // В массиве примитивов не должно быть вложенных списков/пар
+                if (val_item.is_pair()) {
+                    throw_eval_error(
+                        form,
+                        fmt::format(
+                            "Type '{}' is a primitive. Cannot write nested list {} as an element.",
+                            type->get_name(), val_item.print()));
+                }
+
+                Object elem_cell = cell_ptr->make_step_accessor(Object::make_integer(idx));
+                elem_cell.as_native_ref<TypePointer>()->set(val_item);
+
+                curr = curr.as_pair()->cdr;
+                idx++;
+            }
+        } else {
+            cell_ptr->set(value);
+        }
+        return;
+    }
+
+    // --- СЦЕНАРИЙ 3: ДЕФОЛТ (на случай Pointer или других типов) ---
     if (!value.is_pair()) {
-        // fmt::print("recursive_write cell: {} value: {}\n", cell->print(), value.print());
-        cell->set(value); // Запись в память через mem-set
+        cell_ptr->set(value);
     }
 }
 
 Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{}},
-                 {{"as", {true, {ObjectType::SYMBOL}}}, {"at", {true, {ObjectType::INTEGER}}}});
+    vararg_check(
+        form, args, {{}},
+        {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {true, {ObjectType::INTEGER}}}});
 
     auto        buffer = args.unnamed[0].as_native_ref<StaticBuffer>();
-    std::string type_name = args.named["as"].to_std_string();
-    size_t      offset = static_cast<size_t>(args.named["at"].as_integer());
+    std::string type_name = args.named["type"].to_std_string();
+    size_t      offset = static_cast<size_t>(args.named["address"].as_integer());
 
     // 2. Ищем определение типа
     Type *type = TypeSystem::instance().lookup_type(type_name);
@@ -5363,7 +5343,7 @@ Object Interpreter::eval_static_new_special(const Object &form, const Object &re
         Object data_package = args.unnamed[1];
 
         try {
-            recursive_write(Object::make_native_ref(root_cell), data_package);
+            recursive_write(form, Object::make_native_ref(root_cell), data_package);
         } catch (const std::exception &e) {
             throw_eval_error(form, fmt::format("static-new initialization failed: {}", e.what()));
         }
@@ -5378,7 +5358,7 @@ Object Interpreter::eval_static_new_special(const Object &form, const Object &re
             Object val = it->second;
             alist = Object::make_pair(Object::make_pair(key, val), alist);
         }
-        recursive_write(Object::make_native_ref(root_cell), alist);
+        recursive_write(form, Object::make_native_ref(root_cell), alist);
     }
 
     // 5. Возвращаем созданный буфер
