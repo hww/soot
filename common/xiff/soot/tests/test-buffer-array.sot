@@ -15,8 +15,8 @@
                 :type 'int8)
 
   (fmt #t "Dump with array:\n{}\n" (buffer-dump buf 0 64 #t 8))
-  (fmt #t "Read Byte [0] {}\n" (buffer-read buf :address 0 :type 'int))
-  (fmt #t "Read Byte [1] {}\n" (buffer-read buf :address 1 :type 'int))
-  (fmt #t "Read Byte [2] {}\n" (buffer-read buf :address 2 :type 'int))
+  (fmt #t "Read Byte [0] {}\n" (buffer-read buf :address 0 :type 'int8))
+  (fmt #t "Read Byte [1] {}\n" (buffer-read buf :address 1 :type 'int8))
+  (fmt #t "Read Byte [2] {}\n" (buffer-read buf :address 2 :type 'int8))
 
 )

@@ -161,8 +161,10 @@ void StaticBuffer::set_at(const Object &key, const Object &value) {
     throw std::runtime_error("StaticBuffer::set_at: invalid key or target not writable");
 }
 void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
+    /*
     printf("PHYSICAL WRITE: data=%p ptr=%p, type=%s, val=%s\n", m_data.data(), ptr,
            type->get_name().c_str(), val.print().c_str());
+    */
     if (!type || !ptr) {
         throw std::runtime_error(fmt::format("CRITICAL: type is null at ptr {:p}\n", ptr));
         return;
