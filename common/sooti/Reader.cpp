@@ -644,6 +644,7 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
     }
 
     list_builder.build();
+
     // Линкуем весь список целиком
     m_db.link(list_builder.head, ts.text, start_offset);
 
