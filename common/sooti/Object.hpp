@@ -873,7 +873,6 @@ template <typename T> class InternedPtrMap {
 class SymbolTable {
   public:
     struct TypeSymbols {
-        Object kw_undefined;
         Object kw_optional;
         Object kw_key;
         Object kw_rest;

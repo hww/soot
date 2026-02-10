@@ -1,8 +1,6 @@
-﻿(load "common/xiff/soot/asm.sot")
+﻿(init-types 'z80)
 
-(init-types 'z80)
 
-(defmodule test-module)
 
 (deftype vec3s8 (structure)
   ((x int8) 
@@ -32,3 +30,154 @@
   (bit1 1)
   (bit2 2)
   (bit3 3))
+
+;;; =====================================================================
+;;; Class Segment
+;;; =====================================================================
+
+(defstruct segment 
+  (name    null)   ;; 'code, 'data, 'const
+  (buffer  null)   ;; Ссылка на C++ StaticBuffer
+  (module  null)) ;; Ссылка на родительский модуль
+
+(defun new-segment (&key name module)
+  (let ((seg-buffer (make-buffer (fmt #f "{}:{}" (module-name module) name) 65536 0)))
+    (make-segment :name name 
+                  :buffer seg-buffer 
+                  :module module)))
+
+;;; =====================================================================
+;;; Class Module
+;;; =====================================================================
+
+(defstruct module 
+  (name     null)
+  (segments (make-hash-table)) ;; (name -> segment-struct)
+  (exports  (make-hash-table))) ;; (label -> offset/address)
+
+(defun module-segment-get (mod-name seg-type)
+  (while (and (pair? seg-type) (eq? (car seg-type) 'quote))
+    (set! seg-type (cadr seg-type)))
+  
+  (let* ((mod (gethash mod-name *modules*)))
+    (unless mod
+      (set! mod (make-module :name mod-name 
+                             :segments (make-hash-table)
+                             :exports (make-hash-table)))
+      (sethash mod-name mod *modules*))
+    
+    ;; Используем прямое обращение к слоту структуры, если -> капризничает
+    (let* ((segs (module-segments mod)) 
+           (seg (gethash seg-type segs)))
+      (unless seg
+        (set! seg (new-segment :name seg-type :module mod))
+        (sethash seg-type segs seg))
+      seg)))
+;;; =====================================================================
+;;; Глобальное состояние 
+;;; =====================================================================
+
+(defvar *modules* (make-hash-table) 
+  "Глобальный реестр всех загруженных модулей.")
+
+(defvar *current-module* 'default "Имя текущего активного модуля.")
+(defvar *current-segment* null "Текущий объект-сегмент для записи.")
+(defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
+
+;;; =====================================================================
+;;; Core Macros
+;;; =====================================================================
+
+(defmacro defmodule (name)
+  "Декларирует новый модуль и регистрирует его в глобальном реестре."
+  `(let ((mod (gethash ',name *modules* null)))
+     (unless mod
+       (set! mod (make-module :name ',name 
+                              :segments (make-hash-table)))
+       (sethash ',name mod *modules* ))
+      (fmt #t "DEBUG: defmodule {}\n" ',name)
+     mod))
+
+(defmodule default)
+
+;;; Исправленный with-module (установка глобального флага)
+(defmacro with-module (name &rest body)
+  `(begin 
+     (set! *current-module* ',name)
+     (unless (gethash ',name *modules*)
+       (sethash ',name (make-module :name ',name) *modules*))
+      (fmt #t "DEBUG: with-module {}\n" ',name)
+     ,@body))
+
+;;; Исправленный with-segment
+(defmacro with-segment (seg-name &rest body)
+  `(begin 
+     (set! *current-segment* (module-segment-get *current-module* ',seg-name))
+     (fmt #t "DEBUG: with-segment {}\n" ',seg-name)
+     ,@body))
+
+(defmacro with-segment (seg-name &rest body)
+  "Переключает запись в указанный сегмент (например, 'code или 'data)."
+  `(begin
+    (set! *current-segment* (module-segment-get *current-module* ',seg-name))
+    ,@body))
+
+(defmacro zasm (&rest body)
+  `(foreach form ',body
+     (cond
+       ;; Если это метка: (label "name")
+       ((eq (car form) 'label)
+        (module-label-register *current-module* (cadr form) (buffer-cursor (-> *current-segment* 'buffer))))
+
+       ;; Если это команда: (ld a b)
+       (t
+        (emit-instruction form)))))
+
+(defun emit-instruction (form)
+  (let ((cmd (car form))
+        (args (cdr form)))
+    (case cmd
+      ('nop  (emit-8 #x00))
+      ('push (z80-emit-push (car args)))
+      ('ld   (z80-emit-ld (car args) (cadr args)))
+      ('ret  (emit-8 #xC9))
+      (#t (throw-context-error (fmt null "Unknown instruction: {}" cmd))))))
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================
+
+
+(defmacro defmethod (name args &rest body)
+  (let* ((this-spec (car args))
+         (this-name (car this-spec))
+         (this-type (cadr this-spec))
+         (label (fmt #f "{}::{}" this-type name)))
+    
+    ;; ПЕРЕДАЕМ code БЕЗ КАВЫЧКИ, так как with-segment сам её добавит
+    `(with-segment code
+       (begin
+         (declare-method ',this-type ',name ',args)
+         
+         ;; Здесь мы используем *current-module*, который должен быть 
+         ;; установлен через (with-module ...) снаружи или быть 'default
+         (fmt #t "Compiling method {} for type {}\n" ',name ',this-type)
+         
+         (zasm
+           (label ,label)
+           ,@body)))))
+
+(defmethod len ((this vec3))
+ #|  (declare (asm-func int16))
+ 
+  (rlet ((m :reg ix :type vec3))
+  (zasm   
+    (nop)
+    
+    ))
+    
+      |#
+    
+    )
+
+  

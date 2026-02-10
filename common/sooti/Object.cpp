@@ -96,7 +96,6 @@ SymbolTable::~SymbolTable() {
 }
 
 void SymbolTable::init_core_symbols() {
-    core.kw_undefined = make_symbol(":undefined");
     core.kw_optional = make_symbol(":optional");
     core.kw_key = make_symbol(":key");
     core.kw_rest = make_symbol(":rest");
@@ -729,7 +728,7 @@ HeapObject *Object::as_heap_object() const {
 uint32_t Object::as_crc32() const {
     switch (type) {
     case ObjectType::NONE:
-        return util::compute_crc32(":undefined");
+        return util::compute_crc32("none");
     case ObjectType::EMPTY_LIST:
         return util::compute_crc32("null");
     case ObjectType::INTEGER:
@@ -1192,7 +1191,7 @@ std::string truncate_obj(const std::string &s, size_t max_arg_len) {
 std::string Object::print() const {
     switch (type) {
     case ObjectType::NONE:
-        return "udefined";
+        return "none";
     case ObjectType::EMPTY_LIST:
         return "null";
     case ObjectType::INTEGER:

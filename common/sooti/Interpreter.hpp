@@ -277,6 +277,8 @@ class Interpreter {
                        const std::shared_ptr<EnvironmentObject> &env);
     Object eval_null_p(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_none_p(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_pair_p(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
 
@@ -648,10 +650,8 @@ class Interpreter {
     // Состояние
     Object        m_sym_true;
     Object        m_sym_false;
-    Object        m_kw_undefined;
     const char   *m_symbol_true;
     const char   *m_symbol_false;
-    const char   *m_symbol_undefined;
     Object        m_obj_null;
     Object        m_obj_none;
     int           m_gensym_id = 0;

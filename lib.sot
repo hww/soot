@@ -39,9 +39,11 @@
 ;; ===========================================================================
 
 ;; gethash key hash-table &optional default => value, present-p
-(defun gethash (key table)
+(defun gethash (key table &optional defval)
   "CL style hash table access (gethash @key @table)"
-  (hash-table-ref table key))
+  (if (none? defval) 
+    (hash-table-ref table key)
+    (hash-table-ref table key defval)))
 
 (defun sethash (key table value)
   "CL style hash table setter (gethash @key @table @value)"
@@ -556,12 +558,12 @@
 
 (defmacro assert (condition &optional message)
   `(if (not ,condition)
-       (error (if ,message ,message "Assertion failed!") ',condition)
+       (error (if ,message ,message "Assertion failed!"))
        #t))
 
 ;; (check-type x symbolp)
 (defmacro check-type (var predicate)
-  `(assert (,predicate ,var) (fmt #f "Variable `{}` failed type check `{}` because value: `{}`" ',var ',predicate ,var )))
+  `(assert (,predicate ,var) (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" ',var ',predicate ,var (type-of ,var))))
 
 ;; ===========================================================================
 ;; Object navigation
