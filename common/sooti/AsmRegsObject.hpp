@@ -5,15 +5,17 @@
 
 namespace script {
 struct RegisterAlias : NativeRef {
+    Object      name;
     Object      physical_reg;   // Ссылка на физический регистр
     std::string type_name;      // Имя типа
     int         offset = 0;     // Смещение в БАЙТАХ
     int         bit_offset = 0; // Смещение в БИТАХ (0-7) внутри байта
     int         bit_size = 0;   // Размер поля в БИТАХ (если это битфилд)
-    RegisterAlias() : physical_reg(Object::make_none()), offset(0) {}
+    RegisterAlias() : name(Object::make_none()), physical_reg(Object::make_none()), offset(0) {}
     Object      make_step_accessor(const Object &key) override;
     std::string print() const override {
-        return "#<alias for " + physical_reg.print() + " :type " + type_name + ">";
+        return "#<alias " + name.print() + " for " + physical_reg.print() + " :type " + type_name +
+               ">";
     }
     Object inspect() const override {
         return Object::make_string(print());

@@ -216,6 +216,24 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
       m_heap_base(heap_base) {
     m_runtime_name = m_name;
 }
+// Used for the scripting systme
+bool Type::set_method_by_id(int id, const script::Object method) {
+    MethodInfo info;
+    if (get_my_method(id, &info)) {
+        info.method_impl = method;
+        return true;
+    }
+    return false;
+}
+// Used for the scripting systme
+bool Type::set_method_by_name(const std::string &name, const script::Object method) {
+    MethodInfo info;
+    if (get_my_method(name, &info)) {
+        info.method_impl = method;
+        return true;
+    }
+    return false;
+}
 
 bool Type::get_my_method(const std::string &name, MethodInfo *out) const {
     for (const auto &method : m_methods) {

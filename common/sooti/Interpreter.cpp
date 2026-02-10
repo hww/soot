@@ -52,6 +52,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     define_var_in_env(m_comp_env, m_obj_null, "null");
     define_var_in_env(m_global_environment, m_obj_none, "none");
     define_var_in_env(m_comp_env, m_obj_none, "none");
+    define_var_in_env(m_global_environment, m_sym_true, "else");
+    define_var_in_env(m_comp_env, m_sym_false, "else");
 
     define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
     define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -144,7 +146,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Работа с типом
         {"type-of", &Interpreter::eval_type_of, nullptr},
         {"type?", &Interpreter::eval_type_p, nullptr},
-        {"declarations", &Interpreter::declarations, &args_with_keys},
+        {"declarations", &Interpreter::eval_declarations, &args_with_keys},
+        {"set-method!", &Interpreter::eval_set_method, &args_with_keys},
 
         // Предикаты типов
         {"none?", &Interpreter::eval_none_p, nullptr},
@@ -780,10 +783,12 @@ Object Interpreter::eval_with_rewind(const Object                             &o
             fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
             e.error_header_required = false;
             e.already_printed = true;
+            // fmt::print("Env: {}", EnvironmentPrettyPrinter::to_string(env));
         }
 
         // 2. Печать исходного кода со стрелочкой (если это место ошибки)
         if (e.detailed_error_required) {
+
             std::string info = m_reader.get_db().get_info_for(e.form);
             if (info == "?")
                 info = m_reader.get_db().get_info_for(obj);
@@ -972,6 +977,11 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         return eval_list_return_last(lam->body, lam->body, lam_env);
     }
 
+    if (eval_head.is_native_ref()) {
+        auto alias = eval_head.as_native_ref<RegisterAlias>();
+        if (alias)
+            return eval(alias->name, env->parent_env);
+    }
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(obj,
                      "Object is not callable: " + eval_head.type_name() + " " + eval_head.print());
@@ -1285,97 +1295,114 @@ Object Interpreter::eval_while_special(const Object &form, const Object &rest,
     return result;
 }
 
-Object build_list_with_spliced_tail(std::vector<Object> &&objects, const Object &tail) {
-    if (objects.empty()) {
-        return tail;
+Object Interpreter::build_list_with_links(std::vector<QuasiquoteEntry> &&entries, Object tail) {
+    Object current_tail = tail;
+
+    for (s64 i = (s64)entries.size() - 1; i >= 0; --i) {
+        Object new_pair;
+        new_pair.type = ObjectType::PAIR;
+        new_pair.heap_obj = std::make_shared<PairObject>(entries[i].value, current_tail);
+
+        // Если у нас есть сохраненная оригинальная ячейка - копируем линк
+        if (entries[i].origin_cons.is_pair()) {
+            m_reader.get_db().copy_link(entries[i].origin_cons, new_pair);
+        }
+
+        current_tail = new_pair;
     }
-
-    std::shared_ptr<PairObject> head = std::make_shared<PairObject>(objects.back(), tail);
-
-    s64 idx = ((s64)objects.size()) - 2;
-    while (idx >= 0) {
-        Object next;
-        next.type = ObjectType::PAIR;
-        next.heap_obj = std::move(head);
-
-        head = std::make_shared<PairObject>();
-        head->car = std::move(objects[idx]);
-        head->cdr = std::move(next);
-
-        idx--;
-    }
-
-    Object result;
-    result.type = ObjectType::PAIR;
-    result.heap_obj = std::move(head);
-    return result;
+    return current_tail;
 }
+
+Object Interpreter::eval_unquote_arg(const Object                             &item,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    // item — это список вида (unquote <expression>)
+    const Object &cdr = item.as_pair()->cdr;
+
+    // Проверка: (unquote) — ошибка
+    if (cdr.type == ObjectType::EMPTY_LIST) {
+        throw_eval_error(item, "unquote must have exactly 1 argument, got 0");
+    }
+
+    // Проверка: (unquote a b) — ошибка
+    if (cdr.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
+        throw_eval_error(item, "unquote must have exactly 1 argument, got more");
+    }
+
+    // Вычисляем аргумент (car от cdr)
+    return eval_with_rewind(cdr.as_pair()->car, env);
+}
+
 /*!
  * Recursive quasi-quote evaluation
  */
 Object Interpreter::quasiquote_helper(const Object                             &form,
                                       const std::shared_ptr<EnvironmentObject> &env) {
-    const Object       *lst_iter = &form;
-    std::vector<Object> result;
+    const Object                *lst_iter = &form;
+    std::vector<QuasiquoteEntry> entries;
+
     for (;;) {
         if (lst_iter->type == ObjectType::PAIR) {
-            const Object &item = lst_iter->as_pair()->car;
+            const Object &current_cons = *lst_iter; // Сохраняем текущую ячейку шаблона
+            const Object &item = current_cons.as_pair()->car;
+
             if (item.type == ObjectType::PAIR) {
-                if (item.as_pair()->car.type == ObjectType::SYMBOL &&
-                    item.as_pair()->car.as_symbol() == "unquote") {
-                    const Object &unquote_arg = item.as_pair()->cdr;
-                    if (unquote_arg.type != ObjectType::PAIR ||
-                        unquote_arg.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
-                        throw_eval_error(form, "unquote must have exactly 1 arg");
-                    }
-                    result.push_back(eval_with_rewind(unquote_arg.as_pair()->car, env));
+                const Object &head = item.as_pair()->car;
+
+                // --- UNQUOTE ---
+                if (head.is_symbol("unquote")) {
+                    Object val = eval_unquote_arg(item, env); // Вспомогательная проверка аргументов
+                    entries.push_back({val, current_cons});
                     lst_iter = &lst_iter->as_pair()->cdr;
                     continue;
-                } else if (item.as_pair()->car.type == ObjectType::SYMBOL &&
-                           item.as_pair()->car.as_symbol() == "unquote-splicing") {
-                    const Object &unquote_arg = item.as_pair()->cdr;
-                    if (unquote_arg.type != ObjectType::PAIR ||
-                        unquote_arg.as_pair()->cdr.type != ObjectType::EMPTY_LIST) {
-                        throw_eval_error(form, "unquote must have exactly 1 arg");
-                    }
+                }
 
-                    // bypass normal addition:
-                    lst_iter = &lst_iter->as_pair()->cdr;
-                    Object splice_result = eval_with_rewind(unquote_arg.as_pair()->car, env);
-                    if (lst_iter->type == ObjectType::EMPTY_LIST) {
-                        // optimization!
-                        return build_list_with_spliced_tail(std::move(result), splice_result);
-                    }
+                // --- UNQUOTE-SPLICING ---
+                else if (head.is_symbol("unquote-splicing")) {
+                    Object splice_list = eval_unquote_arg(item, env);
 
-                    const Object *to_add = &splice_result;
-                    for (;;) {
-                        if (to_add->type == ObjectType::PAIR) {
-                            result.push_back(to_add->as_pair()->car);
-                            to_add = &to_add->as_pair()->cdr;
-                        } else if (to_add->type == ObjectType::EMPTY_LIST) {
-                            break;
-                        } else {
-                            throw_eval_error(form, "malformed unquote-splicing result");
+                    if (splice_list.is_pair()) {
+                        const Object *splice_iter = &splice_list;
+                        bool          first = true;
+                        while (splice_iter->is_pair()) {
+                            // Копируем линк только для первого элемента сплайсинга
+                            // Остальные элементы "плывут" следом
+                            entries.push_back(
+                                {splice_iter->as_pair()->car, first ? current_cons : Object()});
+                            splice_iter = &splice_iter->as_pair()->cdr;
+                            first = false;
                         }
+                    } else if (!splice_list.is_null()) {
+                        throw_eval_error(form, "unquote-splicing must return a list");
                     }
-                    continue;
-                } else {
-                    lst_iter = &lst_iter->as_pair()->cdr;
 
-                    if (item.is_pair()) {
-                        result.push_back(quasiquote_helper(item, env));
-                    } else {
-                        result.push_back(item);
-                    }
+                    lst_iter = &lst_iter->as_pair()->cdr;
                     continue;
                 }
             }
-            result.push_back(item);
+
+            // --- ОБЫЧНЫЙ ЭЛЕМЕНТ ---
+            Object processed;
+            if (item.is_pair()) {
+                processed = quasiquote_helper(item, env);
+            } else {
+                processed = item;
+            }
+
+            entries.push_back({processed, current_cons});
             lst_iter = &lst_iter->as_pair()->cdr;
+
         } else if (lst_iter->type == ObjectType::EMPTY_LIST) {
-            return build_list(std::move(result));
+            return build_list_with_links(std::move(entries), Object::make_null());
         } else {
-            throw_eval_error(form, "malformed quasiquote");
+            // Это случай (a . b), где lst_iter указывает на b (не Pair и не Nil)
+            Object last_val;
+            // Если хвост — это тоже пара (например, вложенный список), обрабатываем рекурсивно
+            if (lst_iter->is_pair()) {
+                last_val = quasiquote_helper(*lst_iter, env);
+            } else {
+                last_val = *lst_iter;
+            }
+            return build_list_with_links(std::move(entries), last_val);
         }
     }
 }
@@ -4980,18 +5007,18 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
  * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур)
  * в буфер или через врайтер. Автоматически управляет типами и смещениями.
  * Режимы работы:
- * 1. Через Writer (Stream mode): (write-to wr val :as 'type)
+ * 1. Через Writer (Stream mode): (write-to wr val :type 'type)
  * - Автоматически выделяет место (allocate).
  * - Позволяет записывать "теги" (маркеры), просто вызывая запись констант по очереди.
- * 2. Через Buffer (Random access): (write-to buf val :as 'type :at offset)
+ * 2. Через Buffer (Random access): (write-to buf val :type 'type :address offset)
  * - Записывает данные строго по указанному адресу.
  * Особенности:
  * - Использует временную или постоянную TypePointer для выполнения физической записи.
  * - Возвращает смещение (offset), по которому были записаны данные, что удобно
  * для построения таблиц перекрестных ссылок.
  * Lisp Logic:
- * (write-to-buffer wr #xAA :as 'int)       ; Запись тега-маркера
- * (write-to-buffer wr 10 :as 'test-enum)   ; Запись значения по типу
+ * (write-to-buffer wr #xAA :type 'int)       ; Запись тега-маркера
+ * (write-to-buffer wr 10 :type 'test-enum)   ; Запись значения по типу
  * @return Object (Integer — итоговый offset записи).
  */
 Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
@@ -5699,8 +5726,8 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
     return get_none();
 }
 
-Object Interpreter::declarations(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_declarations(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
 
     vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
 
@@ -5789,7 +5816,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
         // Создаем shared_ptr на RegisterAlias
         auto alias = std::make_shared<RegisterAlias>();
-
+        alias->name = name_sym;
         Object current = binding.as_pair()->cdr;
 
         while (current.is_pair()) {
@@ -5860,5 +5887,48 @@ Object Interpreter::eval_rlet_ref(const Object &form, Arguments &args,
 
     // Если мы вызвали это вне rlet блока
     throw_eval_error(form, "rlet-ref called outside of rlet context");
+}
+Object Interpreter::eval_set_method(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args,
+                 {
+                     {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // Type
+                     {ObjectType::INTEGER, ObjectType::SYMBOL},    // Method ID or Name
+                     {}                                            // Implementation (Function)
+                 },
+                 {});
+
+    auto &ts = TypeSystem::instance();
+    Type *type = nullptr;
+
+    // 1. Извлекаем Тип
+    const auto &type_arg = args.unnamed[0];
+    if (type_arg.is_symbol()) {
+        type = ts.lookup_type(type_arg.to_std_string());
+    } else if (type_arg.is_native_ref<Type>()) {
+        type = type_arg.as_native_ref<Type>().get();
+    }
+
+    if (!type) {
+        throw_eval_error(form, fmt::format("Could not resolve type from {}", type_arg.print()));
+    }
+
+    // 2. Извлекаем Метод и обновляем его
+    const auto &method_arg = args.unnamed[1];
+    const auto &implementation = args.unnamed[2];
+    bool        success = false;
+
+    if (method_arg.is_symbol()) {
+        success = type->set_method_by_name(method_arg.to_std_string(), implementation);
+    } else if (method_arg.is_integer()) {
+        success = type->set_method_by_id(method_arg.as_integer(), implementation);
+    }
+
+    if (!success) {
+        throw_eval_error(
+            form, fmt::format("Type {} has no method {}", type->print(), method_arg.print()));
+    }
+
+    return get_true();
 }
 } // namespace script
