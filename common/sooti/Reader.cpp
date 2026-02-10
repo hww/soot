@@ -166,12 +166,11 @@ Object Reader::read_single_form(TextStream &ts, EvalCallback eval_callback) {
         // А) Функциональный макрос (Лямбда)
         if (macro.lambda.is_lambda()) {
             if (eval_callback) {
-                ReaderEvent evt = {
-                    type : ReaderEvent::Type::MACRO_REQUEST,
-                    form : macro.lambda,
-                    reader : Object::make_reader(&ts), // Поток СРАЗУ после знака макроса
-                    token : Object::make_string(macro.shortcut)
-                };
+                ReaderEvent evt = {.type = ReaderEvent::Type::MACRO_REQUEST,
+                                   .form = macro.lambda,
+                                   .reader =
+                                       Object::make_reader(&ts), // Поток СРАЗУ после знака макроса
+                                   .token = Object::make_string(macro.shortcut)};
                 return eval_callback(evt);
             }
             // Если коллбэка нет, мы не можем запустить лямбду — это ошибка конфигурации

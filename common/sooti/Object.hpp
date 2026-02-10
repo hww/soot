@@ -954,9 +954,10 @@ class EnvironmentObject : public HeapObject {
     EnvironmentMap                     vars;
     bool                               is_function;
     Object                             meta_data; // metadata от компилятора или интерпретатора
-
+    Object                             ctx;
     EnvironmentObject() = default;
-    EnvironmentObject(std::shared_ptr<EnvironmentObject> parent) : parent_env(std::move(parent)) {}
+    EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
+        : parent_env(std::move(parent)), ctx() {}
     ~EnvironmentObject() override = default;
 
     int size() const {
