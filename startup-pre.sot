@@ -10,5 +10,5 @@
 ;(load "test-buffer-link.sot")
 ;(load "common/xiff/soot/asm-test.sot")
 ;(load "test-player.sot")
-(load "common/xiff/soot/tests/test-all.sot")
-;(load "common/xiff/soot/tests/test.sot")
+;(load "common/xiff/soot/tests/test-all.sot")
+(load "common/xiff/soot/tests/test.sot")

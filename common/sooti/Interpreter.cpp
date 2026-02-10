@@ -39,10 +39,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     m_obj_none = Object::make_none();
     m_sym_true = m_symbol_table.core.sym_true;
     m_sym_false = m_symbol_table.core.sym_false;
-    m_kw_undefined = m_symbol_table.core.kw_undefined;
     m_symbol_true = m_sym_true.as_symbol().name_ptr;
     m_symbol_false = m_sym_false.as_symbol().name_ptr;
-    m_symbol_undefined = m_kw_undefined.as_symbol().name_ptr;
 
     // Создаем глобальное окружение
     m_global_environment = EnvironmentObject::make_new("global");
@@ -52,6 +50,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
     define_var_in_env(m_global_environment, m_obj_null, "null");
     define_var_in_env(m_comp_env, m_obj_null, "null");
+    define_var_in_env(m_global_environment, m_obj_none, "none");
+    define_var_in_env(m_comp_env, m_obj_none, "none");
 
     define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
     define_var_in_env(m_global_environment, m_comp_env, "*comp-env*");
@@ -147,6 +147,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"declarations", &Interpreter::declarations, &args_with_keys},
 
         // Предикаты типов
+        {"none?", &Interpreter::eval_none_p, nullptr},
         {"null?", &Interpreter::eval_null_p, nullptr},
         {"pair?", &Interpreter::eval_pair_p, nullptr},
         {"symbol?", &Interpreter::eval_symbol_p, nullptr},
@@ -552,7 +553,7 @@ void Interpreter::throw_type_mismatch(const Object &form, size_t index,
         expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
     }
     throw_eval_error(
-        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got {} in: {}",
+        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
                           index, expected_str, object_type_to_string(got), args.print_full()));
 }
 
@@ -799,9 +800,12 @@ Object Interpreter::eval_with_rewind(const Object &parent_form, const Object &ob
                 // 2. Пытаемся найти максимально точную локацию (LexToken или конкретная форма)
                 std::string info = m_reader.get_db().get_info_for(e.form);
 
-                // 3. Если не нашли, пробуем текущий уровень вызова (obj)
                 if (info == "?") {
                     info = m_reader.get_db().get_info_for(obj);
+                }
+                // 3. Если не нашли, пробуем текущий уровень вызова (obj)
+                if (info == "?") {
+                    info = m_reader.get_db().get_info_for(e.form);
                 }
 
                 // 4. Печатаем стрелочку, если нашли хоть какую-то локацию
@@ -1286,7 +1290,7 @@ Object Interpreter::eval_let_common_special(const Object &form, const Object &re
         bindings_iter = &bindings_iter->as_pair()->cdr;
     }
 
-    return eval_list_return_last(*body_iter, *body_iter, new_env);
+    return eval_list_return_last(form, *body_iter, new_env);
 }
 
 Object Interpreter::eval_while_special(const Object &form, const Object &rest,
@@ -2083,13 +2087,14 @@ Object Interpreter::eval_error(const Object &form, Arguments &args,
     // Проверяем аргументы:
     // 1-й обязательно STRING.
     // 2-й опционально ЛЮБОЙ (поэтому пустые скобки {} во втором векторе)
-    vararg_check(form, args, {{ObjectType::STRING}, {}}, {});
+    vararg_check(form, args, {{ObjectType::STRING}},
+                 {{"ctx", {false, {ObjectType::PAIR, ObjectType::NONE}}}});
 
     std::string message = args.unnamed.at(0).as_string()->data;
 
     // Если передан второй аргумент, используем его как "место преступления"
     // Иначе используем 'form' (всю строку вызова (error ..))
-    Object context_form = (args.unnamed.size() > 1) ? args.unnamed.at(1) : form;
+    Object context_form = args.has_named("ctx") ? args.named["ctx"] : form;
 
     // Вызываем стандартный механизм исключений с учетом контекста
     throw_eval_error(context_form, message);
@@ -2774,6 +2779,12 @@ Object Interpreter::eval_null_p(const Object &form, Arguments &args,
     vararg_check(form, args, {{}}, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_null());
 }
+Object Interpreter::eval_none_p(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_none());
+}
 
 Object Interpreter::eval_pair_p(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
@@ -3326,7 +3337,8 @@ Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
     }
 
     // Если 3-го аргумента нет — кидаем ошибку, как и раньше
-    throw_eval_error(form, "hash-table-ref: key not found: " + std::string(key));
+    throw_eval_error(form, "hash-table-ref: key not found (use default value as last argument): " +
+                               std::string(key));
     return get_null();
 }
 

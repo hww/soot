@@ -62,7 +62,7 @@ void Node::link(Node *this_parent, std::vector<Node *> *bfs_order, uint32_t dept
 Node to_node(const Object &obj) {
     switch (obj.type) {
     case ObjectType::NONE:
-        return Node(":undefined");
+        return Node("none");
 
     case ObjectType::EMPTY_LIST:
         return Node("null");
