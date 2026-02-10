@@ -21,3 +21,8 @@
 (let ((m 100))
   (rlet ((m :reg ix :type vec3))
     (fmt #t "Alias (m)        {}\n" (m))))
+
+
+(let ((m 100))
+  (rlet ((m :reg ix :type vec3))
+    (fmt #t "Alias (m)        {}\n" (inspect m))))

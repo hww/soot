@@ -1,4 +1,5 @@
 #include "AsmRegsObject.hpp"
+#include "ListBuilder.hpp"
 #include "common/type_system/TypeSystem.hpp"
 
 namespace script {
@@ -139,5 +140,17 @@ Object AsmRegsObject::make_step_accessor(const Object &key) {
         return Object::make_integer(this->aliases.size());
 
     return get_at(key);
+}
+
+Object RegisterAlias::inspect() const {
+    ListBuilder lb;
+    lb.add_symbol("reg-alias");
+    lb.add_key_value("name", name);
+    lb.add_key_value("physical-reg", physical_reg);
+    lb.add_key_value("type-name", Object::make_string(type_name));
+    lb.add_key_value("offset", Object::make_integer(offset));
+    lb.add_key_value("bit-offset", Object::make_integer(bit_offset));
+    lb.add_key_value("bit-ize", Object::make_integer(bit_size));
+    return lb.build();
 }
 } // namespace script

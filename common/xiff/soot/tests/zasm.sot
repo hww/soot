@@ -1,0 +1,349 @@
+﻿(init-types 'z80)
+
+;;; =====================================================================
+;;; Z80 Registers
+;;; =====================================================================
+
+(define a    'a)
+(define b    'b)
+(define c    'c)
+(define d    'd)
+(define e    'e)
+(define h    'h)
+(define l    'l)
+(define bc   'bc)
+(define de   'de)
+(define hl   'hl)
+(define sp   'sp)
+(define af   'af)
+(define bc2  'bc2)
+(define de2  'de2)
+(define hl2  'hl2)
+(define af2  'af2)
+(define rv   'rv)
+(define ix   'ix)
+(define iy   'iy)
+(define iv   'iv)
+(define mr   'mr)
+
+;;; =====================================================================
+;;; Class Segment
+;;; =====================================================================
+
+(defstruct segment 
+  (name    null)   ;; 'code, 'data, 'const
+  (buffer  null)   ;; Ссылка на C++ StaticBuffer
+  (module  null)   ;; Ссылка на родительский модуль
+  (ilc     0)     ;; Position of PC
+  (listing '()))
+
+(defun new-segment (&key name module)
+  (let ((seg-buffer (make-buffer (fmt #f "{}:{}" (module-name module) name) 65536 0)))
+    (make-segment :name name 
+                  :buffer seg-buffer 
+                  :module module)))
+
+(defun segment-label-get (seg label)
+  "Возвращает адрес метки в данном сегменте или null, если не найдена."
+  (let* ((buf (segment-buffer seg))
+         ;; Используем динамическое обращение к слоту буфера
+         (label (-> buf label)))
+    (if (not (null? addr))
+        label
+        null)))
+
+(defun segment-label-addr-get (seg label)
+  "Возвращает адрес метки в данном сегменте или null, если не найдена."
+  (let* ((buf (segment-buffer seg))
+         ;; Используем динамическое обращение к слоту буфера
+         (addr (-> buf (identity label))))
+    (if (not (null? addr))
+        addr
+        null)))
+
+(defun segment-label-set! (seg label &key (address null) (scope 'private))
+  "Устанавливает метку в сегменте. Если address — null, берет текущий курсор буфера."
+  (let ((buf (segment-buffer seg))
+        (ilc (segment-ilc seg))
+        (target-addr 0))
+    (if (not (null? address))
+        ;; Если адрес задан явно
+        (set! target-addr address)
+        ;; Иначе привязываемся к текущей позиции записи
+        (set! target-addr ilc))
+    (buffer-label-set! buf label :address target-addr)
+    (fmt #t "  [Segment:{}] Label '{}' set to {}\n" 
+         (segment-name seg) label target-addr)))
+
+(defun segment-record-listing-line (seg start-addr text)
+  ;(fmt #t "DEBUG: segment-record-listing-line addr: {} :listing {}\n" start-addr text)
+  (let* ((end-addr (segment-ilc seg))
+         (len (- end-addr start-addr))
+         (hex-str ""))
+    
+    ;; Читаем записанные байты для дампа
+    (dotimes (i len)
+      (let ((byte (buffer-read (segment-buffer seg) :type 'uint8 :address (+ start-addr i))))
+        (set! hex-str (fmt #f "{} {:02X}" hex-str byte))))
+
+    ;; Форматируем: Адрес | HEX | Мнемоника
+    (let ((line (fmt #f "{:04X}: {:<12} | {}" start-addr hex-str text)))
+      (segment-listing! seg (cons line (segment-listing seg))))))
+
+(defun segment-dump-listing (seg)
+  (fmt #t "\n--- Segment: {} ---\n" (segment-name seg))
+  (for-each (reverse (segment-listing seg)) (lambda (line)
+    (fmt #t "{}\n" line))))
+
+(defun segment-reset (seg)
+  (let ((seg (module-segment-get 'default 'code)))
+    (segment-ilc! seg 0)
+    (segment-listing! seg '())))
+
+;;; =====================================================================
+;;; Class Module
+;;; =====================================================================
+
+(defstruct module 
+  (name     null)
+  (segments (make-hash-table)) ;; (name -> segment-struct)
+  (exports  (make-hash-table))) ;; (label -> offset/address)
+
+(defun module-segment-get (mod-name seg-type)
+  (while (and (pair? seg-type) (eq? (car seg-type) 'quote))
+    (set! seg-type (cadr seg-type)))
+  
+  (let* ((mod (gethash mod-name *modules*)))
+    (unless mod
+      (set! mod (make-module :name mod-name 
+                             :segments (make-hash-table)
+                             :exports (make-hash-table)))
+      (sethash mod-name mod *modules*))
+    
+    ;; Используем прямое обращение к слоту структуры, если -> капризничает
+    (let* ((segs (module-segments mod)) 
+           (seg (gethash seg-type segs)))
+      (unless seg
+        (set! seg (new-segment :name seg-type :module mod))
+        (sethash seg-type segs seg))
+      seg)))
+
+
+(defun module-label-get (label)
+  "Умный поиск метки: сначала в текущем сегменте, затем по всему модулю."
+  (let ((mod (gethash *current-module* *modules*)))
+    ;; 1. Проверяем текущий активный сегмент (самый частый случай)
+    (let ((local-addr (segment-label-addr-get *current-segment* label)))
+      (if (not (null? local-addr))
+          local-addr
+          
+          ;; 2. Если в текущем нет, итерируемся по всем сегментам модуля
+          (let ((found-addr null))
+            (for-each-hash (module-segments mod) (lambda (name seg)
+              (let ((addr (segment-label-addr-get seg label)))
+                (if (not (null? addr)) (set! found-addr addr)))))
+            
+            (if (null? found-addr)
+                (throw-context-error (fmt #f "Label '{}' not found in module {}" label *current-module*))
+                found-addr))))))
+
+(defun module-dump-listing (mod)
+  (fmt #t "\n--- Module: {} ---\n" (module-name mod)) ;; Исправлено seg -> mod
+  (let ((segs (module-segments mod)))
+    (if (not (null? segs))
+        (for-each segs (lambda (name seg)
+          (segment-dump-listing seg)))
+        (fmt #t "  (No segments found in module)\n"))))
+
+;;; =====================================================================
+;;; Глобальное состояние 
+;;; =====================================================================
+
+(defvar *modules* (make-hash-table) 
+  "Глобальный реестр всех загруженных модулей.")
+
+(defvar *current-module* 'default "Имя текущего активного модуля.")
+(defvar *current-segment* null "Текущий объект-сегмент для записи.")
+(defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
+(defvar *current-pass* 1 "Глобальный флаг прохода")  
+(defvar *source-context* null "Контекст ассемблера")
+
+;;; =====================================================================
+;;; Core Macros
+;;; =====================================================================
+
+(defmacro defmodule (name)
+  "Декларирует новый модуль и регистрирует его в глобальном реестре."
+  `(let ((mod (gethash ',name *modules* null)))
+     (unless mod
+       (set! mod (make-module :name ',name 
+                              :segments (make-hash-table)))
+       (sethash ',name *modules* mod))
+      (fmt #t "DEBUG: defmodule {}\n" ',name)
+     mod))
+
+
+;;; Исправленный with-module (установка глобального флага)
+(defmacro with-module (name &rest body)
+  `(begin 
+     (set! *current-module* ',name)
+     (unless (gethash ',name *modules*)
+       (sethash ',name (make-module :name ',name) *modules*))
+      (fmt #t "DEBUG: with-module {}\n" ',name)
+     ,@body))
+
+;;; Исправленный with-segment
+(defmacro with-segment (seg-name &rest body)
+  `(begin 
+     (set! *current-segment* (module-segment-get *current-module* ',seg-name))
+     (fmt #t "DEBUG: with-segment {}\n" ',seg-name)
+     ,@body))
+
+(defmacro with-segment (seg-name &rest body)
+  "Переключает запись в указанный сегмент (например, 'code или 'data)."
+  `(begin
+    (fmt #t "With segment {}" ',seg-name)
+    (set! *current-segment* (module-segment-get *current-module* ',seg-name))
+    ,@body))
+
+
+(defmodule default)
+(with-segment 'code (print "with-segment ok"))
+(fmt #t "DEBUG: Modules {}\n" (inspect *modules*))
+
+(defun record-listing-line (start-addr form)
+  ;(fmt #t "DEBUG: record-listing-line addr: {} :listing {}\n" start-addr form)
+  (segment-record-listing-line *current-segment* start-addr form))
+
+(defun dump-listing (mod-name)
+  "Находит модуль по имени в глобальном реестре и печатает листинг всех его сегментов."
+  (let ((mod (gethash mod-name *modules*)))
+    (if (not (null? mod))
+        (module-dump-listing mod)
+        (fmt #t "Error: Module '{}' not found in *modules*\n" mod-name))))
+
+
+(defmacro zasm (&rest body)
+  (let ((result '()))
+    (for-each body (lambda (form)
+      (set! result (cons 
+        `(begin
+           (set! *source-context* ',form)
+           (if (list? ',form)
+               ,form
+               (asm-error (fmt #f "Expected expression, got {}" ',form))))
+        result))))
+    `(begin ,@(reverse result))))
+
+
+(defun emit (data &key (listing ""))
+  "Принимает байт или список байтов. Если передан :listing, сохраняет строку в листинг."
+  (let ((seg *current-segment*)
+        (bytes (if (list? data) data (list data))))
+    (unless seg
+      (throw-error "emit: *current-segment* is null."))
+    
+    (let ((start-addr (segment-ilc seg)))
+      (for-each bytes (lambda (b)
+        (let ((current-ilc (segment-ilc seg)))
+          (when (eq? *current-pass* 2)
+            (buffer-write (segment-buffer seg) b :type 'uint8 :address current-ilc))
+          (segment-ilc! seg (+ current-ilc 1)))))
+
+      ;; Если второй проход и есть текст — пишем в листинг
+      (when (and (eq? *current-pass* 2))
+        (record-listing-line start-addr listing)))))
+        
+(defun is-alias? (obj)
+  "Проверяет, является ли объект псевдонимом регистра/памяти."
+  ;; Если у тебя есть примитив native-ref?, используй его.
+  ;; Иначе проверяем через системный запрос типа.
+    (eq? 'reg-alias (car (inspect obj))))
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================
+
+(defun asm-error (message) (error message :ctx *source-context*))
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================
+
+(defun label (name &key (address 0) (scope 'private))
+  (segment-label-set! *current-segment* name :address address :scope scope))
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================
+
+;; Теперь твои определения выглядят супер-лаконично:
+(defun .ret () (emit '(#xC9) :listing ".ret"))
+(defun .nop () (emit '(#x00) :listing ".nop"))
+(defun .di  () (emit '(#xF3) :listing ".di"))
+(defun .ei  () (emit '(#xFB) :listing ".ei"))
+
+  ;; RST n: коды от #xC7 до #xFF с шагом 8
+(defun .rst (val)
+  (emit (+ #xC7 val) :listing (fmt "RST {:02X}h" val)))
+
+(defun .ld-hl-ix (offset)
+  (emit (list #xDD #x6E offset #xDD #x66 (+ offset 1))
+        :listing (fmt "LD HL, (IX+{})" offset)))
+
+
+(defun .ld (dest src)
+  (cond
+    ;; 1. LD HL, (IX+d) -> чтение 16-бит из памяти
+    ((and (eq? dest 'hl) (is-alias? src))
+     (let ((reg (-> src .reg))
+           (off (-> src .offset)))
+       (if (eq? reg 'ix)
+           (emit (list #xDD #x6E off #xDD #x66 (+ off 1))
+                 :listing (fmt #f "LD HL, (IX+{})" off))
+           (asm-error "Only IX is supported for now"))))
+
+    ;; 2. LD (IX+d), n -> запись константы в память
+    ((and (is-alias? dest) (number? src))
+     (let ((reg (-> dest .reg))
+           (off (-> dest .offset)))
+       (if (eq? reg 'ix)
+           (emit (list #xDD #x36 off src)
+                 :listing (fmt #f "LD (IX+{}), ${:02X}" off src))
+           (asm-error "Only IX is supported for now"))))
+
+    ;; 3. LD A, n -> загрузка аккумулятора
+    ((and (eq? dest 'a) (number? src))
+     (emit (list #x3E src) :listing (fmt #f "LD A, ${:02X}" src)))
+
+    (else (asm-error (fmt #f "Unsupported operands for .ld: {} {}" dest src)))))
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================
+
+(defmacro defmethod (name args &rest body)
+  (let* ((this-spec (car args))          ;; Извлекаем ((this vec3) ...)
+         (this-name (car this-spec))    ;; 'this
+         (this-type (cadr this-spec))   ;; 'vec3
+         ;; Формируем уникальное имя метки для ассемблера
+         (label-name (fmt #f "method-{}::{}" this-type name)))
+    
+    `(with-segment code
+       (begin
+         ;; 1. Ставим метку в текущем сегменте перед началом кода
+         (segment-label-set! *current-segment* ,label-name)
+         
+         ;; 2. Оборачиваем тело в "информационный" rlet.
+         ;; Он связывает имя 'this' с типом 'vec3', но пока не привязывает к регистру.
+         ;; Это позволит программисту внутри написать (rlet ((self :reg ix :source ,this-name)))
+         (rlet ((,this-name :type ,this-type))
+           (begin
+             ,@body))
+         
+         ;; 3. Регистрируем метод в системе типов.
+         ;; Используем module-label-get, чтобы найти адрес только что созданной метки.
+         (set-method! ',this-type ',name (module-label-get ,label-name))
+         
+         (fmt #t "Method {} for type {} registered at label: {}\n" 
+              ',name ',this-type ,label-name)))))
