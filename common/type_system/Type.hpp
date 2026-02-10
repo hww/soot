@@ -114,7 +114,7 @@ class MethodInfo : public NativeRef {
         : id(id), name(std::move(name)), type(std::move(type)),
           defined_in_type(std::move(defined_in)), type_name(std::move(type_name)),
           no_virtual(no_virtual), overrides_parent(overrides), only_overrides_docstring(only_doc),
-          docstring(std::move(doc)), overlay_name(std::move(overlay)) {}
+          docstring(std::move(doc)), overlay_name(std::move(overlay)), method_impl() {}
 
     int                        id = -1;
     std::string                name;
@@ -126,6 +126,7 @@ class MethodInfo : public NativeRef {
     bool                       only_overrides_docstring = false;
     std::optional<std::string> docstring;
     std::optional<std::string> overlay_name;
+    script::Object             method_impl; // SOOT feature assigned definition from script
 
     bool        operator==(const MethodInfo &other) const;
     bool        operator!=(const MethodInfo &other) const;
@@ -148,6 +149,7 @@ class MethodInfo : public NativeRef {
                               Object::make_boolean(only_overrides_docstring));
         builder.add_key_value("docstring", Object::make_string(docstring.value_or("")));
         builder.add_key_value("overlay-name", Object::make_string(overlay_name.value_or("")));
+        builder.add_key_value("method-impl", method_impl);
         return builder.build();
     }
 
@@ -374,6 +376,9 @@ class Type : public NativeRef {
     const MethodInfo &add_method(const MethodInfo &info);
     const MethodInfo &add_new_method(const MethodInfo &info);
     std::string       print_method_info() const;
+    bool set_method_by_id(int id, const script::Object method); // Used for the scripting systme
+    bool set_method_by_name(const std::string   &name,
+                            const script::Object method); // Used for the scripting systme
 
     // New method access
     const MethodInfo *get_new_method_defined_for_type() const {

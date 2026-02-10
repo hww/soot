@@ -11,8 +11,13 @@
 
 ;; index
 (rlet ((m :reg ix :type vec3))
-    (fmt #t "Alias         {}\n" m)
-    (fmt #t "Alias         {}\n" (-> m))
-    (fmt #t "Alias .reg    {}\n" (-> m .reg))
-    (fmt #t "Alias .offset {}\n" (-> m .offset))
-    (fmt #t "Alias .type   {}\n" (-> m .type)))
+    (fmt #t "Alias m          {}\n" m)
+    (fmt #t "Alias -> m       {}\n" (-> m))
+    (fmt #t "Alias -> .reg    {}\n" (-> m .reg))
+    (fmt #t "Alias -> .offset {}\n" (-> m .offset))
+    (fmt #t "Alias -> .type   {}\n" (-> m .type)))
+
+
+(let ((m 100))
+  (rlet ((m :reg ix :type vec3))
+    (fmt #t "Alias (m)        {}\n" (m))))

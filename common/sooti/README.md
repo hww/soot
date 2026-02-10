@@ -354,7 +354,6 @@ The `setf` macro uses this registry to perform code rewriting. It handles two pr
 
 The expression `(setf (get table "key") 100)` expands directly into `(hash-table-set! table "key" 100)`.
 
-
 ---
 
 ## Bitwise Operations (Bit-Magic)
@@ -439,7 +438,6 @@ Returns the bitwise complement (inverse) of the integer. Every `0` bit becomes `
 #### Implementation Note for SOOT
 
 All bitwise operations in SOOT are performed using 64-bit signed integers. When encoding 8-bit or 16-bit Z80 instructions, ensure you use `(logand ... #xFF)` or `(logand ... #xFFFF)` to truncate values to the desired width if necessary.
-
 
 ## 💾 **File I/O**
 
@@ -783,7 +781,7 @@ sooti> exit             ; Exit REPL
 
 The documentation now accurately reflects all functions available in the `Interpreter` class implementation.
 
-## Apendix 
+## Apendix
 
 ---
 
@@ -871,3 +869,711 @@ By leveraging these forms, you can create "Type-Aware" assembly macros that calc
 (ld-field 'a 'hl 'Sprite 'y)             ;; Expands to: (ld a (+ hl 1))
 
 ```
+
+---
+
+# Buffer System Documentation
+
+## Overview
+
+The buffer system provides low-level memory manipulation capabilities for systems programming, emulation, and binary data generation. It simulates raw memory regions with support for typed access, labels, relocations, and hex dumping.
+
+## Core Components
+
+### 1. StaticBuffer
+
+Raw memory buffer representing a contiguous region of bytes.
+
+#### Creation
+
+```scheme
+(make-static-buffer "buffer-name" size-in-bytes base-address)
+```
+
+**Parameters:**
+
+- `name`: String identifier for debugging/logging
+- `size`: Integer size in bytes
+- `origin`: Base virtual address (VMA). Writing to offset 0 writes to `origin` address.
+
+**Example:**
+
+```scheme
+(define ram (make-static-buffer "main-ram" 1024 #x0000))
+(define rom (make-static-buffer "boot-rom" 4096 #xC000))
+```
+
+### 2. StaticWriter
+
+Stream-like interface for sequential writing with automatic alignment.
+
+#### Creation
+
+```scheme
+(make-static-writer buffer-object)
+```
+
+**Example:**
+
+```scheme
+(define writer (make-static-writer ram))
+```
+
+### 3. TypePointer
+
+Typed memory pointer that associates a memory address with a specific type.
+
+#### Creation
+
+Via writer (allocates automatically):
+
+```scheme
+(static-cell writer 'type-name)
+```
+
+Via buffer (direct offset access):
+
+```scheme
+(static-cell buffer offset 'type-name)
+```
+
+**Examples:**
+
+```scheme
+;; Allocate a vector in writer's current position
+(define vec (static-cell writer 'vector))
+
+;; Access specific offset in buffer
+(define header (static-cell rom #x100 'file-header))
+```
+
+## Operations
+
+### 1. Label Management
+
+#### Set/Update Label
+
+```scheme
+(buffer-label-set buffer-or-writer label-name 
+                  :address addr 
+                  :segment seg 
+                  :meta data)
+```
+
+**Parameters:**
+
+- `buffer-or-writer`: Target buffer or writer
+- `label-name`: String or symbol identifier
+- `:address`: Optional integer address (default: writer's position)
+- `:segment`: Optional segment name (default: "main")
+- `:meta`: Optional metadata object
+
+**Examples:**
+
+```scheme
+;; Set label at writer's current position
+(buffer-label-set writer "entry-point")
+
+;; Set label at specific address
+(buffer-label-set rom "interrupt-handler" :address #xFF00)
+```
+
+#### Get Label
+
+```scheme
+(buffer-label-get buffer-or-writer label-name)
+```
+
+**Returns:** Label object or `null` if not found.
+
+### 2. Data Writing
+
+#### High-level Write
+
+```scheme
+(buffer-write target value :type 'type :address offset)
+```
+
+**Parameters:**
+
+- `target`: Buffer or writer object
+- `value`: Data to write (scalar or structured)
+- `:type`: Type name (required)
+- `:address`: Offset for buffer writes (required for buffers)
+
+**Examples:**
+
+```scheme
+;; Write single value through writer
+(buffer-write writer 42 :type 'int32)
+
+;; Write structured data
+(buffer-write writer '((x . 10) (y . 20) (z . 30)) :type 'vector3)
+
+;; Write to specific buffer address
+(buffer-write rom #xC3 :type 'uint8 :address 0)  ;; JP instruction
+```
+
+#### Recursive Structure Writing
+
+For complex types, supports nested field assignment:
+
+```scheme
+;; Write to array elements
+(buffer-write writer '(10 20 30 40) :type 'int16-array)
+
+;; Write to structure fields
+(buffer-write writer '((position . (10 20 30)) 
+                       (velocity . (1 0 0))) 
+              :type 'particle)
+```
+
+### 3. Data Reading
+
+#### Read from Buffer
+
+```scheme
+(buffer-read buffer :type 'type :address offset)
+```
+
+**Returns:** Typed value from memory.
+
+**Example:**
+
+```scheme
+(define value (buffer-read rom :type 'uint16 :address #x100))
+```
+
+### 4. Memory Inspection
+
+#### Hex Dump
+
+```scheme
+(buffer-dump buffer start-offset byte-count show-ascii? bytes-per-line)
+```
+
+**Parameters:**
+
+- `buffer`: Buffer to inspect
+- `start-offset`: Starting byte offset
+- `byte-count`: Number of bytes to display
+- `show-ascii?`: Boolean to show ASCII representation
+- `bytes-per-line`: Number of bytes per output line
+
+**Example:**
+
+```scheme
+;; Display 256 bytes with ASCII
+(fmt #t (buffer-dump ram 0 256 #t 16))
+```
+
+### 5. Relocation & Linking
+
+#### Add Relocation
+
+```scheme
+(buffer-reloc buffer offset target-label)
+```
+
+Creates a relocation entry that will be resolved during linking.
+
+**Example:**
+
+```scheme
+;; Write jump instruction
+(buffer-write rom #xC3 :type 'uint8 :address 0)  ;; JP opcode
+(buffer-reloc rom 1 "interrupt-handler")       ;; Address to fill
+```
+
+#### Link Buffer
+
+```scheme
+(buffer-link buffer)
+```
+
+Resolves all relocation entries using label addresses.
+
+### 6. Static Object Creation
+
+#### Create and Initialize Static Object
+
+```scheme
+(static-new 'type-name field-value-pairs...)
+```
+
+Creates a buffer containing an initialized instance of a type.
+
+**Example:**
+
+```scheme
+(define my-vector (static-new 'vector3 :x 10 :y 20 :z 30))
+```
+
+## Type System Integration
+
+### Supported Type Categories
+
+1. **Primitive Types**: `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `float`, `double`
+2. **Enums**: User-defined enumeration types
+3. **Structures**: Composite types with named fields
+4. **Arrays**: Fixed-size arrays of any type
+5. **Bitfields**: Packed bit fields
+
+### Type-Aware Features
+
+- **Automatic Alignment**: Writers align according to type requirements
+- **Field Access**: Navigate structure fields with `->` operator
+- **Array Indexing**: Access array elements by index
+- **Endian Awareness**: Platform-appropriate byte ordering
+
+## Advanced Usage Examples
+
+### 1. Binary File Generation
+
+```scheme
+(define exe (make-static-buffer "executable" 4096 #x1000))
+
+;; Write header
+(buffer-write exe #x7F454C46 :type 'uint32 :address 0)  ;; ELF magic
+(buffer-label-set exe "entry-point" :address #x1000)
+
+;; Write code section
+(define code-writer (make-static-writer exe))
+(buffer-label-set code-writer "_start")
+(buffer-write code-writer #x90 :type 'uint8)  ;; NOP
+;; ... more code ...
+
+;; Link and export
+(buffer-link exe)
+(export-hex "output.hex" exe)
+```
+
+### 2. Memory-Mapped Structures
+
+```scheme
+(deftype hardware-register
+  (control uint8 :bits ((enable 0) (mode 1-3) (irq 7)))
+  (status uint8)
+  (data uint16))
+
+(define uart (static-cell mmio #x1000 'hardware-register))
+
+;; Access fields
+(set! (-> uart 'control 'enable) 1)
+(define ready? (-> uart 'status 'ready))
+```
+
+### 3. Relocatable Code Generation
+
+```scheme
+(define code (make-static-buffer "code" 1024 #x0000))
+
+;; Forward reference to function
+(buffer-label-set code "call-target" :segment "text")
+(buffer-reloc code 2 "some-function")
+
+;; Later define the function
+(buffer-label-set code "some-function" :address #x0100)
+(buffer-write code #xC9 :type 'uint8 :address #x0100)  ;; RET
+
+;; Link to resolve addresses
+(buffer-link code)
+```
+
+## Error Handling
+
+Most buffer operations validate:
+
+- Type existence
+- Boundary checks
+- Alignment requirements
+- Label existence for relocations
+
+Errors include detailed source location information from the TextDb system.
+
+## Performance Notes
+
+- **Zero-copy**: TypePointer provides direct memory access without copying
+- **Type safety**: Compile-time type checking through TypeSystem
+- **Memory efficient**: Shared buffer references minimize duplication
+
+## Integration with Assembler
+
+The buffer system integrates with Z80 assembler for low-level code generation:
+
+```scheme
+(zasm
+  (ld hl (-> my-struct 'field))
+  (call (buffer-label-get code "helper-function"))
+  (ret))
+```
+
+This system provides the foundation for binary manipulation, emulator memory models, and firmware generation tools.
+
+# ASM Helpers Documentation
+
+## Overview
+
+The ASM (Assembly) helpers system provides tools for low-level programming, inline assembly functions, register allocation, and function metadata. It bridges high-level Scheme code with low-level assembly operations.
+
+## Type System Integration
+
+### Forward Type Declaration
+
+```scheme
+(declare-type type-name kind-symbol)
+```
+
+**Purpose:** Declare a type before its full definition for forward references.
+
+**Parameters:**
+
+- `type-name`: Symbol naming the type
+- `kind-symbol`: Type category (`'structure`, `'enum`, `'value`, etc.)
+
+**Examples:**
+
+```scheme
+;; Forward declare types
+(declare-type hardware-register 'structure)
+(declare-type interrupt-vector 'value)
+
+;; Later define them
+(deftype hardware-register
+  (control uint8)
+  (status uint8)
+  (data uint16))
+```
+
+## Function Metadata Declaration
+
+### `(declare ...)` Form
+
+Adds metadata to functions for optimization and code generation hints.
+
+#### Syntax
+
+```scheme
+(defun function-name parameters
+  (declare option1 option2 ...)
+  function-body)
+```
+
+### Available Declarations
+
+#### 1. **Inline Optimization**
+
+```scheme
+(declare (inline))           ;; Always inline when possible
+(declare (allow-inline))     ;; Allow compiler to inline at discretion
+```
+
+#### 2. **Assembly Functions**
+
+```scheme
+(declare (asm-func return-type))
+```
+
+**Purpose:** Marks a function as implemented in assembly with specified return type.
+
+**Examples:**
+
+```scheme
+(defun read-port (port)
+  (declare (asm-func uint8))
+  (asm "in al, dx; ret" port))
+
+(defun system-call (number arg1 arg2)
+  (declare (asm-func int))
+  (asm "int 0x80; ret" number arg1 arg2))
+```
+
+#### 3. **Debugging and Output**
+
+```scheme
+(declare (print-asm))        ;; Print generated assembly code
+```
+
+#### 4. **Register Usage**
+
+```scheme
+(declare (allow-saved-regs)) ;; Allow use of callee-saved registers
+```
+
+### Complete Examples
+
+```scheme
+;; Optimized math function
+(defun fast-multiply (x y)
+  (declare (inline))
+  (declare (print-asm))
+  (* x y))
+
+;; System interface
+(defun get-time ()
+  (declare (asm-func uint32))
+  (asm "rdtsc; ret"))
+
+;; Critical section
+(defun context-switch (new-sp)
+  (declare (asm-func void))
+  (declare (allow-saved-regs))
+  (asm "push ebp; mov ebp, esp; ..." new-sp))
+```
+
+## Assembly Register Management
+
+### Register Aliases (`rlet`)
+
+Creates a scoped environment with named register aliases for assembly programming.
+
+#### Syntax
+
+```scheme
+(rlet ((alias1 :reg physical-reg :type type-name :offset offset)
+       (alias2 :reg ...))
+  body...)
+```
+
+**Parameters per alias:**
+
+- `alias`: Symbol name for the alias
+- `:reg`: Physical register symbol (e.g., `'eax`, `'r13`)
+- `:type`: Type name for typed access
+- `:offset`: Integer offset from register base
+
+#### Examples
+
+```scheme
+;; Simple register binding
+(rlet ((self :reg ix :type vec3))
+  (zasm (ld hl (self x))
+        (ret)))
+
+;; Multiple registers with offsets
+(rlet ((base :reg ebp :type stack-frame)
+       (index :reg ecx :type int32 :offset 4))
+  (zasm (mov eax, [base index])
+        (add eax, 8)))
+
+;; Nested rlet for different scopes
+(rlet ((this :reg edi :type object))
+  (let ((field (-> this 'value)))
+    (rlet ((temp :reg eax))
+      (zasm (mov temp, field)
+            (shl temp, 1)))))
+```
+
+### Register Alias Inspection (`rlet-ref`)
+
+Query properties of register aliases within an `rlet` scope.
+
+#### Syntax
+
+```scheme
+(rlet-ref alias-symbol property-name)
+```
+
+**Properties:**
+
+- `'reg` or `'physical_reg`: Physical register symbol
+- `'type` or `'type_name`: Type name as string
+- `'offset`: Offset as integer
+
+#### Example
+
+```scheme
+(rlet ((ptr :reg esi :type byte* :offset 8))
+  (let ((reg (rlet-ref 'ptr 'reg))
+        (type (rlet-ref 'ptr 'type))
+        (off (rlet-ref 'ptr 'offset)))
+    (fmt #t "Pointer: register={}, type={}, offset={}" reg type off)))
+```
+
+### Assembly Register Object Creation
+
+```scheme
+(make-asm-regs bindings...)
+```
+
+Creates a standalone `AsmRegsObject` for manual register management.
+
+**Example:**
+
+```scheme
+(define regs (make-asm-regs 
+               ('self :reg ix :type vector3)
+               ('temp :reg a :type int8)))
+```
+
+## Function Metadata Access
+
+### `(declarations ...)` Function
+
+Query metadata attached to the current function.
+
+#### Syntax
+
+```scheme
+(declarations)                    ;; Get all metadata as alist
+(declarations :name 'key)         ;; Get specific metadata value
+```
+
+**Common Metadata Keys:**
+
+- `'is_asm_func`: Boolean for assembly functions
+- `'asm-func-return-type`: TypeSpec for assembly function return
+- `'inline-by-default`: Boolean for automatic inlining
+- `'save-code`: Boolean to preserve generated code
+- `'print-asm`: Boolean to output assembly
+- `'asm_func_saved_regs`: Boolean allowing saved register use
+
+#### Examples
+
+```scheme
+(defun debug-func (x)
+  (declare (inline))
+  (declare (print-asm))
+  
+  ;; Access own metadata
+  (let ((meta (declarations)))
+    (when (cdr (assoc 'print-asm meta))
+      (fmt #t "This function will print assembly\n")))
+  
+  (* x 2))
+
+;; Check specific property
+(defun maybe-inline (a b)
+  (declare (allow-inline))
+  (if (cdr (assoc 'allow-inline (declarations)))
+      (+ a b)
+      (slow-add a b)))
+```
+
+## Method System Integration
+
+### Dynamic Method Assignment (`set-method`)
+
+Assign or replace method implementations at runtime.
+
+#### Syntax
+
+```scheme
+(set-method type method-identifier implementation)
+```
+
+**Parameters:**
+
+- `type`: Type symbol or Type object
+- `method-identifier`: Method name (symbol) or ID (integer)
+- `implementation`: Function object to assign
+
+#### Examples
+
+```scheme
+;; Define a type
+(deftype vector3
+  (x float)
+  (y float)
+  (z float))
+
+;; Default method implementation
+(defmethod length ((v vector3))
+  (sqrt (+ (expt (-> v 'x) 2)
+           (expt (-> v 'y) 2)
+           (expt (-> v 'z) 2))))
+
+;; Replace with optimized version
+(set-method 'vector3 'length
+  (lambda (v)
+    (asm-fp-sqrt 
+      (asm-fp-add
+        (asm-fp-mul (-> v 'x) (-> v 'x))
+        (asm-fp-add
+          (asm-fp-mul (-> v 'y) (-> v 'y))
+          (asm-fp-mul (-> v 'z) (-> v 'z)))))))
+
+;; Replace by method ID
+(set-method (lookup-type 'vector3) 3  ;; method ID for 'length
+            fast-vector-length)
+```
+
+## Assembly Environment Object
+
+The `AsmEnvironmentObject` extends regular environments with:
+
+1. **Register Alias Table**: Maps symbol names to `RegisterAlias` objects
+2. **Scoped Access**: Aliases are only visible within the `rlet` body
+3. **Type Integration**: Aliases can have associated types for safe access
+4. **Automatic Cleanup**: Aliases don't persist beyond the scope
+
+### Internal Structure
+
+```cpp
+struct RegisterAlias {
+    Object name;          // Symbol name (e.g., 'self, 'temp)
+    Object physical_reg;  // Physical register (e.g., 'eax, 'r13)
+    std::string type_name; // Associated type name
+    int offset;           // Offset from register
+};
+```
+
+## Integration Examples
+
+### Complete Assembly Function with Register Management
+
+```scheme
+(defun vector3-dot (a b)
+  (declare (asm-func float))
+  (declare (allow-saved-regs))
+  
+  (rlet ((va :reg edi :type vector3 :source a)
+         (vb :reg esi :type vector3 :source b)
+         (sum :reg xmm0 :type float))
+    
+    (zasm 
+      ;; Load vector components
+      (movss xmm1, [va vector3.x])
+      (movss xmm2, [vb vector3.x])
+      (mulss xmm1, xmm2)
+      
+      (movss xmm3, [va vector3.y])
+      (movss xmm4, [vb vector3.y])
+      (mulss xmm3, xmm4)
+      (addss xmm1, xmm3)
+      
+      (movss xmm3, [va vector3.z])
+      (movss xmm4, [vb vector3.z])
+      (mulss xmm3, xmm4)
+      (addss xmm1, xmm3)
+      
+      ;; Result in xmm0
+      (movss sum, xmm1))))
+```
+
+### Method Specialization for Hardware
+
+```scheme
+;; Generic implementation
+(defmethod read-sensor ((dev device))
+  (sleep 0.01)
+  (io-read (-> dev 'port)))
+
+;; Hardware-specific optimized version
+(when (hardware-avx2-available?)
+  (set-method 'device 'read-sensor
+    (lambda (dev)
+      (declare (asm-func uint16))
+      (rlet ((port :reg dx :type io-port :source (-> dev 'port)))
+        (zasm (in ax, dx))))))
+```
+
+## Best Practices
+
+1. **Use `rlet` for Assembly**: Always use `rlet` for register management in assembly code
+2. **Declare Assembly Functions**: Use `(declare (asm-func ...))` for type safety
+3. **Forward Declare Types**: Use `declare-type` for circular dependencies
+4. **Metadata for Optimization**: Use `declare` forms to guide the compiler
+5. **Dynamic Methods Judiciously**: Use `set-method` for hardware-specific optimizations
+
+This system enables writing high-performance, hardware-aware code while maintaining the safety and expressiveness of a high-level language.

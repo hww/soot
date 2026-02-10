@@ -159,6 +159,12 @@ class Interpreter {
         // Например:
         throw_eval_error(code, message);
     }
+    struct QuasiquoteEntry {
+        Object value;
+        Object origin_cons; // Оригинальная ячейка Pair из исходного кода
+    };
+    Object eval_unquote_arg(const Object &item, const std::shared_ptr<EnvironmentObject> &env);
+    Object build_list_with_links(std::vector<QuasiquoteEntry> &&entries, Object tail = Object());
 
   private:
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
@@ -523,8 +529,10 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_type_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env);
-    Object declarations(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_set_method(const Object &form, Arguments &args,
+                           const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declarations(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_rlet_ref(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,

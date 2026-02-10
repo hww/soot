@@ -315,6 +315,9 @@ class Object {
     bool is_symbol() const {
         return type == ObjectType::SYMBOL;
     }
+    bool is_symbol(std::string str) const {
+        return (type == ObjectType::SYMBOL) && symbol_obj.value == str;
+    }
     bool is_string_or_symbol() const {
         return type == ObjectType::STRING || type == ObjectType::SYMBOL;
     }
@@ -330,6 +333,17 @@ class Object {
     }
     bool is_native_ref() const {
         return type == ObjectType::NATIVE_REF;
+    }
+    template <typename T> bool is_native_ref() const {
+        // 1. Базовая проверка типа
+        if (type != ObjectType::NATIVE_REF || !heap_obj) {
+            return false;
+        }
+
+        // 2. Достаем сырой указатель из shared_ptr и проверяем через dynamic_cast
+        // Используем std::remove_pointer на случай, если ты передал <Type*>, а не <Type>
+        using BaseT = typename std::remove_pointer<T>::type;
+        return dynamic_cast<BaseT *>(heap_obj.get()) != nullptr;
     }
     bool is_array() const {
         return type == ObjectType::ARRAY;

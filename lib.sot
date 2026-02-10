@@ -157,7 +157,7 @@
     ((vector? container) (vector-for-each container proc))
     ((string? container) (string-for-each container proc))
     ((hash-table? container) (hash-table-for-each container proc))
-    (else (error (fmt #f "for-each: unsupported container type {}" container) container))))
+    (#t (error (fmt #f "for-each: unsupported container type {}" container)))))
 
 ;; @doc (dotimes (var count [result]) &rest body)
 ;; Цикл от 0 до count-1.
@@ -277,7 +277,7 @@
   (cond
     ((null? x) #t)       ; Пустой список — это каноничный список
     ((pair? x) (list? (cdr x))) ; Рекурсивно проверяем хвост
-    (else #f)))          ; Атомы (числа, символы и т.д.) — не списки
+    (#t #f)))          ; Атомы (числа, символы и т.д.) — не списки
 
 ;; ---------------------------------------------------------------------------
 ;; Аксессоры (C-x-R)
