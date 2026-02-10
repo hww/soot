@@ -45,8 +45,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     // Создаем глобальное окружение
     m_global_environment = EnvironmentObject::make_new("global");
 
-    // create the environment which is be visible from GOAL
-    m_comp_env = EnvironmentObject::make_new("goal");
+    // create the environment which is be visible from compiler
+    m_comp_env = EnvironmentObject::make_new("sootc");
 
     define_var_in_env(m_global_environment, m_obj_null, "null");
     define_var_in_env(m_comp_env, m_obj_null, "null");
@@ -210,7 +210,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"pfmt", &Interpreter::eval_pfmt, &args_with_keys},
         {"inspect", &Interpreter::eval_inspect, nullptr},
         {"fmt", &Interpreter::eval_fmt, &args_with_keys},
-        {"error", &Interpreter::eval_error, nullptr},
+        {"error", &Interpreter::eval_error, &args_with_keys},
 
         // Logger
         {"log", &Interpreter::eval_log, nullptr},
@@ -594,7 +594,8 @@ Object Interpreter::eval_string(const std::string &expression, const std::string
             case ReaderEvent::Type::MACRO_REQUEST:
                 // fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} \n",
                 // evt.token.print());
-                last_result = this->call_lambda_internal(evt.form, {evt.reader, evt.token});
+                last_result =
+                    this->call_lambda_internal(evt.form, evt.form, {evt.reader, evt.token});
                 // fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} -> {}\n",
                 // evt.token.print(), last_result.print());
                 break;
@@ -626,7 +627,8 @@ Object Interpreter::eval_file_internal(const std::vector<std::string> &file_path
             case ReaderEvent::Type::MACRO_REQUEST:
                 // fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} \n",
                 // evt.token.print());
-                last_result = this->call_lambda_internal(evt.form, {evt.reader, evt.token});
+                last_result =
+                    this->call_lambda_internal(evt.form, evt.form, {evt.reader, evt.token});
                 // fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} -> {}\n",
                 // evt.token.print(), last_result.print());
                 break;
@@ -645,7 +647,8 @@ Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<Environme
     return eval_with_rewind(obj, env);
 }
 
-Object Interpreter::call_lambda_internal(const Object &lambda, const std::vector<Object> &args) {
+Object Interpreter::call_lambda_internal(const Object &form, const Object &lambda,
+                                         const std::vector<Object> &args) {
     if (!lambda.is_lambda()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
@@ -692,7 +695,8 @@ Object Interpreter::call_lambda_internal(const Object &lambda, const std::vector
     // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
     auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
     auto lam_env = lam_env_obj.as_env_ptr();
-
+    lam_env->is_function = true;
+    lam_env->ctx = form;
     // 4. Биндим аргументы
     Object dummy_form = m_symbol_table.make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
@@ -763,81 +767,59 @@ void Interpreter::print_form_info(const Object                             &form
  */
 Object Interpreter::eval_with_rewind(const Object                             &obj,
                                      const std::shared_ptr<EnvironmentObject> &env) {
-    // fmt::print("<Interpreter::eval_with_rewind frame={}\n", frame.print());
     try {
-        // fmt::print(">>>> parent: {}\n    obj: {}\n    src: {}\n",
-        //     parent_form.print().c_str(),
-        //     obj.print().c_str(),
-        //      m_reader.get_db().get_info_for(obj)
-        //
-        //);
-
-        auto result = eval(obj, env);
-        return result;
-    } catch (const ExitException &e) {
-        throw; // Пробрасываем в самый верх (в main loop)
+        return eval(obj, env);
     } catch (EvalException &e) {
-        if (!m_disable_printing) {
-            if (e.error_header_required) {
-                // 1. Печатаем "Шапку"
-                fmt::print(fg(fmt::color::indian_red),
-                           "\n─── ERROR ──────────────────────────────────\n");
-                e.error_header_required = false;
-            }
+        if (m_disable_printing)
+            throw;
 
-            if (e.detailed_error_required) {
-                // 2. Пытаемся найти максимально точную локацию (LexToken или конкретная форма)
-                std::string info = m_reader.get_db().get_info_for(e.form);
+        // 1. Заголовок и текст ошибки (печатаем один раз на самом глубоком уровне)
+        if (e.error_header_required) {
+            fmt::print(fg(fmt::color::indian_red),
+                       "\n─── ERROR ──────────────────────────────────\n");
+            fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
+            e.error_header_required = false;
+            e.already_printed = true;
+        }
 
-                // 3. Если не нашли, пробуем текущий уровень вызова (obj)
-                if (info == "?") {
-                    info = m_reader.get_db().get_info_for(obj);
-                }
+        // 2. Печать исходного кода со стрелочкой (если это место ошибки)
+        if (e.detailed_error_required) {
+            std::string info = m_reader.get_db().get_info_for(e.form);
+            if (info == "?")
+                info = m_reader.get_db().get_info_for(obj);
 
-                // 4. Печатаем стрелочку, если нашли хоть какую-то локацию
-                if (info != "?") {
-                    fmt::print("{}", info);
-                    e.detailed_error_required = false;
-                }
-                if (!e.already_printed) {
-                    // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
-                    fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
-                    e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
-                }
+            if (info != "?") {
+                fmt::print("{}", info);
+                e.detailed_error_required = false;
             } else {
-                if (obj.is_pair()) {
-                    auto info_opt = m_reader.get_db().get_short_info_for(obj);
-                    int  current_depth = e.stack_counter;
-                    // Печатаем "at ..", только если есть реальный файл и строка > 0
-
-                    int  max_size = 80;
-                    auto obj_string = truncate_obj(obj.print(), max_size);
-                    if (info_opt && info_opt->line_idx_to_display > 0) {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {} at {}:{:d}\n",
-                                   current_depth, obj_string, info_opt->filename,
-                                   info_opt->line_idx_to_display);
-                    } else {
-                        fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] in {}\n", current_depth,
-                                   obj_string);
-                    }
-
-                    if (current_depth == 0)
-                        fmt::print(fg(fmt::color::dim_gray), "\n");
-                }
-            }
-            if (!e.already_printed) {
-                // 5. ПЕЧАТАЕМ САМУ ОШИБКУ (это критично!)
-                fmt::print(fg(fmt::color::indian_red), "Error: {}\n\n", e.message);
-                e.already_printed = true; // Помечаем, что "мясо" ошибки уже на экране
+                print_stack_frame(e, obj);
             }
         }
+        // 3. Печать обычного кадра стека
+        else {
+            print_stack_frame(e, obj);
+        }
+
         e.stack_counter++;
         throw;
-    } catch (const std::exception &e) {
-        throw; // Пробрасываем в самый верх (в main loop)
+    }
+    // std::exception и ExitException пробрасываются автоматически без лишнего catch
+}
+void Interpreter::print_stack_frame(EvalException &e, const Object &obj) {
+    int         max_size = 80;
+    std::string obj_str = truncate_obj(obj.print(), max_size);
+    auto        info_opt = m_reader.get_db().get_short_info_for(obj);
+
+    // Цвет для мета-информации (путь к файлу)
+    auto dim_color = fg(fmt::color::dim_gray);
+
+    if (info_opt && info_opt->line_idx_to_display > 0) {
+        fmt::print(dim_color, "  [{:02d}] in {} ", e.stack_counter, obj_str);
+        fmt::print(dim_color, "at {}:{:d}\n", info_opt->filename, info_opt->line_idx_to_display);
+    } else {
+        fmt::print(dim_color, "  [{:02d}] in {}\n", e.stack_counter, obj_str);
     }
 }
-
 // ============================================================
 // Eval (Single Item)
 // ============================================================
@@ -981,6 +963,7 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         auto lam_env_obj = EnvironmentObject::make_new();
 
         auto lam_env = lam_env_obj.as_env_ptr();
+        lam_env->ctx = obj;
         lam_env->is_function = true;
         // Лексическое связывание: используем окружение, где лямбда была создана
         lam_env->parent_env = lam->parent_env;
@@ -2913,6 +2896,8 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
     if (callable_obj.is_lambda()) {
         const auto &lam = callable_obj.as_lambda();
         auto        lam_env = EnvironmentObject::make_new().as_env_ptr();
+        lam_env->ctx = form;
+        lam_env->is_function = true;
         lam_env->parent_env = lam->parent_env;
 
         set_args_in_env(form, applied_args, lam->args, lam_env);
@@ -4108,6 +4093,8 @@ Object Interpreter::eval_macroexpand(const Object &form, Arguments &args,
         // 2. Создаем временное окружение для раскрытия (как в твоем eval_pair)
         auto mac_env_obj = EnvironmentObject::make_new();
         auto mac_env = mac_env_obj.as_env_ptr();
+        mac_env->ctx = form;
+        mac_env->is_function = true;
         mac_env->parent_env = env;
 
         set_args_in_env(code, mac_args, macro->args, mac_env);
@@ -5017,8 +5004,6 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
     Object target = args.unnamed[0];
     Object value = args.unnamed[1];
 
-    printf("write-to %s %s :as %s\n", target.print().c_str(), value.print().c_str());
-
     std::string type_name = args.named["type"].to_std_string();
     // Get the type
     auto *type = TypeSystem::instance().lookup_type(type_name);
@@ -5386,7 +5371,7 @@ Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
 
     for (unsigned char c : str) {
         // Передаем код символа как Integer
-        call_lambda_internal(lambda, {Object::make_integer(static_cast<int>(c))});
+        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))});
     }
     return get_null();
 }
@@ -5402,7 +5387,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
 
     for (const auto &item : vec) {
         // Вызываем лямбду для каждого элемента вектора
-        call_lambda_internal(lambda, {item});
+        call_lambda_internal(form, lambda, {item});
     }
 
     return get_null();
@@ -5426,10 +5411,10 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
     for (auto const &[key, val] : table) {
         if (lam_data->args.unnamed.size() == 1) {
             // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
-            call_lambda_internal(lambda, {Object::make_pair(Object::make_string(key), val)});
+            call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)});
         } else {
             // Если ждет 2 (или больше/rest), передаем как два аргумента
-            call_lambda_internal(lambda, {Object::make_string(key), val});
+            call_lambda_internal(form, lambda, {Object::make_string(key), val});
         }
     }
     return get_null();
@@ -5445,7 +5430,7 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
 
     while (current.is_pair()) {
         // Вызываем твой надежный call_lambda_internal
-        call_lambda_internal(lambda, {current.as_pair()->car});
+        call_lambda_internal(form, lambda, {current.as_pair()->car});
         // print_form_info(form);
         current = current.as_pair()->cdr;
     }

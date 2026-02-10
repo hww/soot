@@ -12,7 +12,7 @@ class EvalException : public std::exception {
     bool        detailed_error_required = true;
     int         stack_counter;
 
-    EvalException(Object f, std::string m) : form(f), message(std::move(m)) {}
+    EvalException(Object f, std::string m) : form(f), message(std::move(m)), stack_counter(0) {}
 
     // Чтобы соответствовать стандарту std::exception
     const char *what() const noexcept override {

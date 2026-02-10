@@ -1,5 +1,5 @@
 #pragma once
-
+#include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
 #include "fmt/color.h"
@@ -93,13 +93,15 @@ class Interpreter {
     double  number_to_float(const Object &obj);
 
   private:
-    Object call_lambda_internal(const Object &lambda, const std::vector<Object> &args);
+    Object call_lambda_internal(const Object &form, const Object &lambda,
+                                const std::vector<Object> &args);
     Object eval_file_internal(const std::vector<std::string> &file_path);
     Object eval(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
     Object eval_with_rewind(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
     Object eval_pair(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
     Object quasiquote_helper(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
 
+    void print_stack_frame(EvalException &e, const Object &obj);
     void eval_args(const Object &parent_form, Arguments *args,
                    const std::shared_ptr<EnvironmentObject> &env);
 
