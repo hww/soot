@@ -17,9 +17,7 @@ struct RegisterAlias : NativeRef {
         return "#<alias " + name.print() + " for " + physical_reg.print() + " :type " + type_name +
                ">";
     }
-    Object inspect() const override {
-        return Object::make_string(print());
-    }
+    Object inspect() const override;
 };
 class AsmRegsObject : public NativeRef {
 
@@ -34,12 +32,12 @@ class AsmRegsObject : public NativeRef {
         return "AsmRegsObject";
     }
     std::string type_name() const override {
-        return "asm-context";
+        return "asm-regs";
     }
 
     // Если в HeapObject эти методы были = 0, их НУЖНО реализовать:
     Object inspect() const override {
-        return Object::make_string(print());
+        return Object::make_pair(Object::make_symbol(type_name()), Object::make_null());
     }
     std::string print() const override {
         return "#<asm-context with " + std::to_string(aliases.size()) + " aliases>";

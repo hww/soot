@@ -2041,9 +2041,9 @@ Object Interpreter::eval_fmt(const Object &form, Arguments &args,
             else if (color_val.is_symbol())
                 text_color = string_to_color(color_val.as_symbol().c_str());
 
-            fmt::print(fg(text_color), "{}\n", formatted); // Вывод с цветом
+            fmt::print(fg(text_color), "{}", formatted); // Вывод с цветом
         } else {
-            lg::print("{}\n", formatted); // Обычный вывод
+            lg::print("{}", formatted); // Обычный вывод
         }
         return get_null();
     }
