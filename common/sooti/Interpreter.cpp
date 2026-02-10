@@ -980,7 +980,7 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
     if (eval_head.is_native_ref()) {
         auto alias = eval_head.as_native_ref<RegisterAlias>();
         if (alias)
-            return eval(alias->name, env->parent_env);
+            return eval(alias->source, env->parent_env);
     }
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(obj,
@@ -5653,51 +5653,50 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
                 "Invalid declare option specification, expected a symbol, but got {} instead.",
                 first.print());
         }
+        std::string name = first.to_std_string();
 
-        if (first.as_symbol() == "inline") {
+        if (name == "inline") {
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid inline declare, no options were expected.");
             }
             settings.allow_inline = true;
             settings.inline_by_default = true;
             settings.save_code = true;
-        } else if (first.as_symbol() == "allow-inline") {
+        } else if (name == "allow-inline") {
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid allow-inline declare");
             }
             settings.allow_inline = true;
             settings.inline_by_default = false;
             settings.save_code = true;
-        } else if (first.as_symbol() == "asm-func") {
+        } else if (name == "asm-func") {
 
-            fe->add_meta("is_asm_func", Object::make_boolean(true));
+            fe->add_meta("is-asm-func", Object::make_boolean(true));
             if (!rrest->is_pair()) {
                 throw_eval_error(
                     form,
                     "Declare asm-func must provide the function's return type as an argument.");
             }
             ///
-
-            auto ts_ptr = parse_typespec(&TypeSystem::instance(), rest.as_pair()->car);
+            auto type_expr = rrest->as_pair()->car;
+            auto ts_ptr = parse_typespec(&TypeSystem::instance(), type_expr);
             auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
-            fe->add_meta("asm-func-return-type", Object::make_native_ref(ts_shared));
+            fe->add_meta("asm-func", Object::make_native_ref(ts_shared));
             ///
             if (!rrest->as_pair()->cdr.is_null()) {
                 throw_eval_error(first, "Invalid asm-func declare");
             }
-        } else if (first.as_symbol() == "print-asm") {
+        } else if (name == "print-asm") {
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid print-asm declare");
             }
             settings.print_asm = true;
-
-        } else if (first.as_symbol() == "allow-saved-regs") {
+        } else if (name == "allow-saved-regs") {
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid allow-saved-regs declare");
             }
             auto fe = env->function_env();
-            fe->add_meta("asm_func_saved_regs", get_true());
-
+            fe->add_meta("asm-func-saved-regs", get_true());
         } else {
             throw_eval_error(first, "Unrecognized declare option {}.", first.print());
         }
@@ -5775,16 +5774,22 @@ Object Interpreter::eval_make_asm_regs_special(const Object &form, const Object 
                 // В OpenGOAL/Soot ключевые слова обычно сравниваются как строки или по ID
                 std::string k = key.print();
                 if (k == ":reg") {
-                    alias->physical_reg = val;
+                    alias->reg = val;
                 } else if (k == ":type") {
                     // Используем print(), так как TypeSystem ожидает строку имени типа
                     alias->type_name = val.print();
                 } else if (k == ":offset") {
                     alias->offset = (int)val.as_integer();
+                } else if (k == ":source") {
+                    alias->source = val;
+                } else {
+                    throw_eval_error(binding, "Expected :type, :reg, :offset, :source, but got " +
+                                                  val.print());
                 }
             }
         }
-
+        if (alias->source.is_none())
+            alias->source = alias->name;
         // Сохраняем в мапу по адресу интернированного символа
         asm_regs->set_at(name_sym.symbol_obj.value, alias);
     });
@@ -5831,15 +5836,21 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
             if (key.is_symbol()) {
                 std::string k = key.print();
                 if (k == ":reg") {
-                    alias->physical_reg = val;
+                    alias->reg = val;
                 } else if (k == ":type") {
                     alias->type_name = val.print();
                 } else if (k == ":offset") {
                     alias->offset = (int)val.as_integer();
+                } else if (k == ":source") {
+                    alias->source = val;
+                } else {
+                    throw_eval_error(binding, "Expected :type, :reg, :offset, :source, but got " +
+                                                  val.print());
                 }
             }
         }
-
+        if (alias->source.is_none())
+            alias->source = alias->name;
         // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
         new_env->asm_regs->aliases[name_sym.symbol_obj.value] = alias;
 
@@ -5868,16 +5879,25 @@ Object Interpreter::eval_rlet_ref(const Object &form, Arguments &args,
             // но для свойств "на лету" string_view или string тоже ок.
             auto prop_name = args.unnamed[1].to_std_string();
 
-            if (prop_name == "reg" || prop_name == "physical_reg") {
-                return alias->physical_reg;
+            if (prop_name == "reg") {
+                return alias->reg;
             }
-            if (prop_name == "type" || prop_name == "type_name") {
+            if (prop_name == "source") {
+                return alias->source;
+            }
+            if (prop_name == "type") {
+                if (alias->type_name.empty()) {
+                    auto refered = eval(alias->source);
+                    if (refered.is_native_ref<RegisterAlias>()) {
+
+                    } else {
+                    }
+                }
                 return Object::make_string(alias->type_name);
             }
             if (prop_name == "offset") {
                 return Object::make_integer(alias->offset);
             }
-
             throw_eval_error(form, "Unknown rlet property: {}", prop_name);
         }
 

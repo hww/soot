@@ -15,4 +15,6 @@
 (load "common/xiff/soot/tests/test-rlet-stride.sot")
 (load "common/xiff/soot/tests/test-rlet-bitfield.sot")
 
+(load "common/xiff/soot/tests/test-declare.sot")
+
 (fmt #t "TESTS END\n" :color 'yellow)

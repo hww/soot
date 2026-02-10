@@ -1,6 +1,18 @@
 ﻿(init-types 'z80)
 
 ;;; =====================================================================
+;;; Word to Byte Conversions
+;;; =====================================================================
+
+(defun lower-byte (bla)
+   "Get the lower byte of the integer"
+   (logand bla #b11111111))
+
+(defun higher-byte (bla)
+   "Get the higher byte of the integer"
+   (logand (rshift bla 8) #b11111111))
+
+;;; =====================================================================
 ;;; Z80 Registers
 ;;; =====================================================================
 
@@ -25,6 +37,112 @@
 (define iy   'iy)
 (define iv   'iv)
 (define mr   'mr)
+
+;;; =====================================================================
+;;; Register codes
+;;; =====================================================================
+
+;; z80 register codes, needed often during instruction assembling
+(define *reg-codes* (make-hash-table '() 11))
+
+(defmacro reg-code (reg)
+   `(hash-table-ref *reg-codes* ,reg))
+
+(defmacro reg-code! (reg value)
+   `(hash-table-set! *reg-codes* ,reg ,value))
+
+(reg-code! 'a 7)
+(reg-code! 'b 0)
+(reg-code! 'c 1)
+(reg-code! 'd 2)
+(reg-code! 'e 3)
+(reg-code! 'h 4)
+(reg-code! 'l 5)
+(reg-code! 'bc 0)
+(reg-code! 'de 1)
+(reg-code! 'hl 2)
+(reg-code! 'sp 3)
+(reg-code! 'af 3)
+
+;;; =====================================================================
+;;; Condition Codes
+;;; =====================================================================
+
+; z80 condition codes, needed often during instruction assembling
+(define *con-codes* (make-hash-table))
+
+(defmacro con-code (reg)
+   `(hash-table-ref *con-codes* ,reg))
+(defmacro con-code! (reg value)
+   `(hash-table-set! *con-codes* ,reg ,value))
+
+(con-code! 'nz 0)
+(con-code! 'z 1)
+(con-code! 'nc 2)
+(con-code! 'c 3)
+(con-code! 'pe 4)
+(con-code! 'po 5)
+(con-code! 'p 6)
+(con-code! 'm 7)
+
+;;; =====================================================================
+;;; Convert Argument To 
+;;; =====================================================================
+
+(defun parse-z80 (arg)
+    ; (error "sss" (lextoken-ctx arg))
+  (cond
+    ((lextoken? arg) arg)
+     ;; Обработка списка (hl) как индексированной адресации
+    ((and (list? arg) (= (length arg) 1) (lextoken? (car arg)))
+     (let ((token (car arg)))
+       (if (member (lextoken-value token) '(hl bc de sp))
+           (ind-reader (list token))
+           arg)))
+
+
+((type? arg 'native-ref)
+ (let ((b-size (-> arg .bit_size))
+       (offs   (-> arg .offset))
+       (base   (-> arg .reg)))
+   ;; Для отладки:
+   (fmt #t "PARSE native-ref: base={} offset={} bits={}\n" base offs b-size)
+   
+   ;; ВАЖНО: Возвращаем ТОЛЬКО ОДНО значение!
+   (cond
+     ;; 2. Для битовых полей (bits=1) - число
+     ((= b-size 1)
+      (make-lextoken :type 'number :value (-> arg .bit_offset)))
+     
+     ;; 3. Для 8-битных данных в памяти - indexed-addr
+     ((= b-size 8)
+      (make-lextoken :type 'indexed-addr :value (list base offs)))
+     
+     ;; 4. Для 16-битных данных - список для макроса
+     ((= b-size 16)
+      (list base offs))  ;; Будет использовано макросом ld-16-from-mem
+     
+     ;; 5. Для регистров (offset=0) - обычный регистр
+     ((= offs 0)
+      (make-lextoken :type (if (>= b-size 16) '16-register '8-register) 
+                     :value base))
+     
+     ;; 6. Все остальное - ошибка
+     (else
+      (error (fmt #f "Unsupported native-ref: base={} offset={} bits={}" 
+                  base offs b-size) ctx)))))
+
+    ((symbol? arg)
+     (let ((type (cond 
+                   ((hash-table-contains? *reg-codes* arg) '8-register)
+                   ((hash-table-contains? *con-codes* arg) 'condition)
+                   (else 'asmsym))))
+       (make-lextoken :type type :value arg)))
+
+    ((number? arg) (make-lextoken :type 'number :value arg))
+    ((null? arg)   (make-lextoken :type null))
+    (else          (make-lextoken :type 'unknown :value arg))))
+
 
 ;;; =====================================================================
 ;;; Class Segment
@@ -96,9 +214,8 @@
     (fmt #t "{}\n" line))))
 
 (defun segment-reset (seg)
-  (let ((seg (module-segment-get 'default 'code)))
     (segment-ilc! seg 0)
-    (segment-listing! seg '())))
+    (segment-listing! seg '()))
 
 ;;; =====================================================================
 ;;; Class Module
@@ -270,8 +387,9 @@
 ;;; 
 ;;; =====================================================================
 
-(defun label (name &key (address 0) (scope 'private))
-  (segment-label-set! *current-segment* name :address address :scope scope))
+(defmacro .label (name &key (address 0) (scope 'private))
+  (segment-label-set! *current-segment* name :address address :scope scope)
+  (emit '() :listing (fmt #f ".label {}" name)))
 
 ;;; =====================================================================
 ;;; 
@@ -300,7 +418,7 @@
            (off (-> src .offset)))
        (if (eq? reg 'ix)
            (emit (list #xDD #x6E off #xDD #x66 (+ off 1))
-                 :listing (fmt #f "LD HL, (IX+{})" off))
+                 :listing (fmt #f ".ld HL, (IX+{})" off))
            (asm-error "Only IX is supported for now"))))
 
     ;; 2. LD (IX+d), n -> запись константы в память
@@ -309,12 +427,12 @@
            (off (-> dest .offset)))
        (if (eq? reg 'ix)
            (emit (list #xDD #x36 off src)
-                 :listing (fmt #f "LD (IX+{}), ${:02X}" off src))
+                 :listing (fmt #f ".ld (IX+{}), ${:02X}" off src))
            (asm-error "Only IX is supported for now"))))
 
     ;; 3. LD A, n -> загрузка аккумулятора
     ((and (eq? dest 'a) (number? src))
-     (emit (list #x3E src) :listing (fmt #f "LD A, ${:02X}" src)))
+     (emit (list #x3E src) :listing (fmt #f ".ld A, ${:02X}" src)))
 
     (else (asm-error (fmt #f "Unsupported operands for .ld: {} {}" dest src)))))
 

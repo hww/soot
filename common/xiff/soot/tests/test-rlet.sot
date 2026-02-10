@@ -9,6 +9,8 @@
       (new (int16 int16) none)
       (len () int16)))
 
+
+
 ;; index
 (rlet ((m :reg ix :type vec3))
     (fmt #t "Alias m          {}\n" m)
@@ -22,7 +24,12 @@
   (rlet ((m :reg ix :type vec3))
     (fmt #t "Alias (m)        {}\n" (m))))
 
-
+;; same name linking
 (let ((m 100))
   (rlet ((m :reg ix :type vec3))
     (fmt #t "Alias (m)        {}\n" (inspect m))))
+
+;; change name linking
+(let ((age 100))
+  (rlet ((m :reg ix :source age))
+    (fmt #t "Alias (m)        {}\n" (m))))
