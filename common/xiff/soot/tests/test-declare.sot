@@ -1,0 +1,10 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Buffer Array...\n" :color 'yellow)
+
+(defun test ()
+  (declare (asm-func int8))
+  (fmt #t "(print (declarations)) => {}\n" (declarations))
+)
+
+(test)

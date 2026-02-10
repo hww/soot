@@ -40,11 +40,13 @@
   (rlet ((self :reg ix :type uint8)
          (x    :reg a  :type uint8)) 
     (zasm
+      (.label start)
       (.nop)
       (.ld self 10)
       (.ld self #x0A)  ;; Запишет 10 в (IX+0)
       (.ld a #x55)    ;; Загрузит 85 в A
-      ;(ld hl (self x)) ;; Используем типизированное смещение
+      (.ld self #x0A) ;; Это (IX+0)
+      (.label exit)      
       (.ret))))
 
 (dump-listing 'default)
