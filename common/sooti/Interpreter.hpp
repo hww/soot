@@ -11,53 +11,9 @@
 class TypeSystem;
 
 namespace script {
-class ExitException : public std::exception {
-  public:
-    int         exit_code;
-    std::string message; // Храним строку здесь
-
-    explicit ExitException(int code = 0)
-        : exit_code(code), message(fmt::format("Exit with code {}", code)) {}
-
-    const char *what() const noexcept override {
-        return message.c_str(); // Теперь это безопасно
-    }
-};
 
 class Interpreter {
     friend class SootTypeSystem;
-
-    struct ContextFrame {
-        int           depth;
-        Object        form;
-        ContextFrame *prev;
-
-        std::string print() {
-            return fmt::format("<ContextFrame depth={} form={} prev={:p}>", depth, form.print(),
-                               static_cast<void *>(prev));
-        }
-    };
-
-    struct FrameGuard {
-        ContextFrame **top_frame_ptr;
-        ContextFrame  *old_frame;
-
-        FrameGuard(ContextFrame **ptr, ContextFrame *new_val)
-            : top_frame_ptr(ptr), old_frame(*ptr) {
-            *top_frame_ptr = new_val;
-        }
-
-        ~FrameGuard() {
-            *top_frame_ptr = old_frame;
-        }
-
-        std::string print() {
-            ContextFrame *current = top_frame_ptr ? *top_frame_ptr : nullptr;
-            return fmt::format("<FrameGuard current={:p} old={:p} ptr={:p}>",
-                               static_cast<void *>(current), static_cast<void *>(old_frame),
-                               static_cast<void *>(top_frame_ptr));
-        }
-    };
 
   public:
     Interpreter(const std::string &username = "user", bool load_libs = false);
@@ -139,10 +95,10 @@ class Interpreter {
   private:
     Object call_lambda_internal(const Object &lambda, const std::vector<Object> &args);
     Object eval_file_internal(const std::vector<std::string> &file_path);
-    Object eval(const Object &parent_form, const Object &obj,
-                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_with_rewind(const Object &parent_form, const Object &obj,
-                            const std::shared_ptr<EnvironmentObject> &env);
+    Object eval(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_with_rewind(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_pair(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
+    Object quasiquote_helper(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
 
     void eval_args(const Object &parent_form, Arguments *args,
                    const std::shared_ptr<EnvironmentObject> &env);
@@ -155,8 +111,7 @@ class Interpreter {
     InternedSymbolPtr intern(const std::string &name);
     bool   try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
                              Object *dest);
-    Object eval_symbol(const Object &parent_form, const Object &sym,
-                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_symbol(const Object &sym, const std::shared_ptr<EnvironmentObject> &env);
     void   define_var_in_env(const Object &env, const Object &var, const char *name);
 
     // Вспомогательные методы
@@ -182,7 +137,8 @@ class Interpreter {
                                                  const Arguments &args);
     void              throw_named_type_mismatch(const Object &form, const std::string &name,
                                                 const std::vector<ObjectType> &expected, ObjectType got);
-    void              print_form_info(const Object &form);
+
+    void print_form_info(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
 
     template <typename... Args>
     [[noreturn]] void throw_eval_error(const Object &code, const std::string &str, Args &&...args) {
@@ -543,13 +499,6 @@ class Interpreter {
     Object eval_time_nanoseconds(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
 
-    // Quasiquote helpers
-    Object quasiquote_helper(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
-
-    // Основной метод оценки пар
-    Object eval_pair(const Object &parent_for, const Object &obj,
-                     const std::shared_ptr<EnvironmentObject> &env);
-
     // Улучшенная обработка аргументов
     ArgumentSpec parse_arg_spec(const Object &form, Object &rest);
     void set_args_in_env(const Object &form, const Arguments &args, const ArgumentSpec &arg_spec,
@@ -648,19 +597,18 @@ class Interpreter {
     std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
 
     // Состояние
-    Object        m_sym_true;
-    Object        m_sym_false;
-    const char   *m_symbol_true;
-    const char   *m_symbol_false;
-    Object        m_obj_null;
-    Object        m_obj_none;
-    int           m_gensym_id = 0;
-    Object        m_global_environment;
-    Object        m_comp_env;
-    bool          m_disable_printing = false;
-    Reader        m_reader;
-    ContextFrame *m_top_frame;
-    SymbolTable   m_symbol_table;
+    Object      m_sym_true;
+    Object      m_sym_false;
+    const char *m_symbol_true;
+    const char *m_symbol_false;
+    Object      m_obj_null;
+    Object      m_obj_none;
+    int         m_gensym_id = 0;
+    Object      m_global_environment;
+    Object      m_comp_env;
+    bool        m_disable_printing = false;
+    Reader      m_reader;
+    SymbolTable m_symbol_table;
 };
 
 fmt::terminal_color string_to_color(const std::string &name);
