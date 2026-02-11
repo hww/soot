@@ -110,12 +110,12 @@
   
   ;; 2. Инициализируем VTable объекта (первые 2 байта)
   (.ld hl 'vec3-vtable)
-  ;(.ld (ix + 0) l)
-  ;(.ld (ix + 1) h)
+  (.ld (ix + 0) l)
+  (.ld (ix + 1) h)
   ;
   ;;; 3. Обнуляем поля или ставим дефолты
-  ;(.ld (ix + 2) 0) ;; x
-  ;(.ld (ix + 4) 0) ;; y
+  (.ld (ix + 2) 0) ;; x
+  (.ld (ix + 4) 0) ;; y
   (.ret))
 
 (defmethod clear ((self vec3))

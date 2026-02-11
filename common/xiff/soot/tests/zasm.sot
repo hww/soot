@@ -81,6 +81,23 @@
     (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
 
 ;;; =====================================================================
+;;; Complex addressing
+;;; =====================================================================
+
+(defun @ (reg) 
+  "Метка-заполнитель для косвенной адресации (.ld a (@ hl))"
+  (list '@ reg))
+
+(defun ix (&rest args)
+  ;; args будет выглядеть как (+ 5) или (+ -1)
+  (let ((offset (if (null? args) 0 (cadr args))))
+    (list 'ix-indexed offset)))
+
+(defun iy (&rest args)
+  (let ((offset (if (null? args) 0 (cadr args))))
+    (list 'iy-indexed offset)))
+       
+;;; =====================================================================
 ;;; Condition Codes
 ;;; =====================================================================
 
@@ -120,10 +137,6 @@
 (defun asm-token-type (tok)  (cadr tok))
 (defun asm-token-value (tok) (caddr tok))
 
-(defun @ (reg) 
-  "Метка-заполнитель для косвенной адресации"
-  (list '@ reg))
-
 (defun alias->token (alias)
   (let ((base (-> alias .reg))
         (offs (-> alias .offset))
@@ -141,44 +154,35 @@
       ((member name '(a b c d e h l)) (make-asm-token '8-reg name))
       ((member name '(bc de hl sp af ix iy)) (make-asm-token '16-reg name))
       (else (make-asm-token 'number (module-label-addr-get name))))))
-
 (defun parse-arg (arg)
   (cond
-    ;; 1. Если это уже готовый токен — ничего не делаем
     ((asm-token? arg) arg)
-    
-    ;; 2. Если это число — упаковываем
     ((number? arg) (make-asm-token 'number arg))
-    
-    ;; 3. Если это системный псевдоним (rlet / native-ref)
     ((native-ref? arg) (alias->token arg))
-    
-    ;; 4. Если это символ (регистр или метка)
     ((symbol? arg) (symbol->token arg))
-    
-    ;; Проверка на косвенную адресацию (@ hl), (@ bc) и т.д.
-    ((and (list? arg) (eq? (car arg) '@))
-     (make-asm-token 'indirect (cadr arg)))
 
-    ;; 5. ВЫРАЖЕНИЯ (Lisp-код в аргументах)
     ((list? arg)
-     (let ((name (car arg)))
-       (cond 
-         ;; Если это уже наш обработанный косвенный адрес (@ hl)
-         ((eq? name '@) (make-asm-token 'indirect (unquote-sym (cadr arg))))
+     (let ((head (car arg)))
+       (cond
+         ;; 1. Косвенная адресация (@ hl)
+         ((eq? head '@) (make-asm-token 'indirect (unquote-sym (cadr arg))))
          
-         ;; Если это квотированная метка
-         ((eq? name 'quote) (symbol->token arg))
+         ;; 2. Квотированные метки 'start
+         ((eq? head 'quote) (symbol->token arg))
          
-         ;; Все остальное вычисляем
+         ;; 3. Результат работы функций ix/iy (уже вычисленный)
+         ((eq? head 'ix-indexed) (make-asm-token 'ix-indexed (cadr arg)))
+         ((eq? head 'iy-indexed) (make-asm-token 'iy-indexed (cadr arg)))
+
+         ;; 4. Все остальное: (ix + 2), (+ offset 1), (ADDR_BASE)
          (else 
           (let ((val (eval arg)))
-            (cond 
+            (cond
               ((number? val) (make-asm-token 'number val))
-              ;; Если после eval получили (@ hl), рекурсивно парсим его
-              ((and (list? val) (eq? (car val) '@)) (parse-arg val))
-              (else (error "Expression must evaluate to a number or address" arg))))))))
-                 
+              ;; Если eval вернул (ix-indexed 2), парсим результат рекурсивно
+              ((or (asm-token? val) (list? val)) (parse-arg val))
+              (else (error "Expression must evaluate to a number or valid operand" arg))))))))
+
     (else (error "Unknown operand type" arg))))
 
 ;;; =====================================================================
@@ -577,9 +581,10 @@
         (asm-error "Z80 can only LD A from (IX+d) directly"))))
 
 ;; LD (IX+d), R -> DD 70+reg d
-(register-handler '.ld "ix-indexed-8-reg"
-  (lambda (off reg)
-    (emit (list #xDD (+ #x70 (reg-code reg)) off))))
+(register-handler '.ld '(ix-indexed 8-reg)
+  (lambda (dist r)
+    (emit (list #xDD (+ #x70 (reg-code r)) dist)
+          :listing (fmt #f "LD (IX+{}), {}" dist r))))
 
 ;; LD (IX+d), n  -> #xDD #x36 dist n
 (register-handler '.ld "ix-indexed-number"
