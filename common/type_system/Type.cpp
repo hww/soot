@@ -234,19 +234,29 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
 }
 // Used for the scripting systme
 bool Type::set_method_by_id(int id, const script::Object method) {
-    MethodInfo info;
-    if (get_my_method(id, &info)) {
-        info.method_impl = method;
+    if (id == 0) {
+        m_new_method_info.method_impl = method;
         return true;
+    } else {
+        MethodInfo info;
+        if (get_my_method(id, &info)) {
+            info.method_impl = method;
+            return true;
+        }
     }
     return false;
 }
 // Used for the scripting systme
 bool Type::set_method_by_name(const std::string &name, const script::Object method) {
-    MethodInfo info;
-    if (get_my_method(name, &info)) {
-        info.method_impl = method;
+    if (name == "new") {
+        m_new_method_info.method_impl = method;
         return true;
+    } else {
+        MethodInfo info;
+        if (get_my_method(name, &info)) {
+            info.method_impl = method;
+            return true;
+        }
     }
     return false;
 }
