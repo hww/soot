@@ -564,10 +564,11 @@ class Interpreter {
                                   const std::shared_ptr<EnvironmentObject> &env);
     Object eval_size_of_special(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_method_id_of_special(const Object &form, const Object &rest,
-                                     const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_method_of_special(const Object &form, const Object &rest,
-                                  const std::shared_ptr<EnvironmentObject> &env);
+
+    Object eval_method_id_of(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_method_of(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
 
     Object eval_make_buffer_pointer(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env);

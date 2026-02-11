@@ -103,6 +103,10 @@
           
       )
 
+;;; ===================================================================== 
+;;; Methods
+;;; ===================================================================== 
+
 ;; Пример для твоего синтаксиса (как в sprite-aux-list)
 (defmethod new vec3 ((x int16) (x int16))
   ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
@@ -126,8 +130,19 @@
       (.ld (-> v z) 0)
       (.ret))))
 
+;;; ===================================================================== 
+;;; V-Table
+;;; ===================================================================== 
 
-(defproc copy-string ((dest :reg de :type string) 
+(defproc test-vtable ()
+  (.build-vtable 'vec3)
+)
+
+;;; ===================================================================== 
+;;; 
+;;; ===================================================================== 
+
+(defproc test-copy-string ((dest :reg de :type string) 
                       (src  :reg hl :type string))
   ;; Вход: DE = dest, HL = src
   (.label 'loop)
@@ -140,11 +155,7 @@
   (.inc de)           ;; Следующий в приемнике
   (.jr 'loop))        ;; Повторяем
 
-(defproc vtable ()
-  (.build-vtable 'vec3)
-)
-
-(defproc main (dest src)
+(defproc test-indirect (dest src)
   ;; Вход: DE = dest, HL = src
   (.label loop)
   (.ld a (@ hl))      ;; Читаем символ из источника
@@ -155,6 +166,10 @@
   (.inc hl)           ;; Следующий в источнике
   (.inc de)           ;; Следующий в приемнике
   (.jr 'loop))        ;; Повторяем
+
+(defproc test-call-method ()
+  (call-method #x100 vec3::new 0 0)
+  (.ret))
 
 
 (assemble-module 'default)

@@ -109,8 +109,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"the-as", &Interpreter::eval_the_as_special, nullptr},
         {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
         {"size-of", &Interpreter::eval_size_of_special, nullptr},
-        {"method-id-of", &Interpreter::eval_method_id_of_special, nullptr},
-        {"method-of", &Interpreter::eval_method_of_special, nullptr},
+
         {"static-new", &Interpreter::eval_static_new_special, nullptr},
         {"declare", &Interpreter::eval_declare_special, nullptr},
         {"declare-type", &Interpreter::eval_declare_type_special, nullptr},
@@ -331,7 +330,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_keys},
         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
-
+        {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
+        {"method-of", &Interpreter::eval_method_of, nullptr},
     });
 
     // Type system
@@ -3093,7 +3093,7 @@ Object Interpreter::eval_string_split(const Object &form, Arguments &args,
     vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::STRING}}, {});
     auto &str = args.unnamed.at(0).as_string()->data;
     auto &delim = args.unnamed.at(1).as_string()->data;
-    auto  list = str_util::split(str, delim.at(0));
+    auto  list = str_util::split_string(str, delim);
     return pretty_print::build_list(list);
 }
 
@@ -4774,10 +4774,10 @@ Object Interpreter::eval_size_of_special(const Object &form, const Object &rest,
     return get_null();
 }
 
-Object Interpreter::eval_method_id_of_special(const Object &form, const Object &rest,
-                                              const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_method_id_of(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(false, true));
+
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
 
     auto  type_name = args.unnamed[0].as_symbol();
@@ -4795,10 +4795,9 @@ Object Interpreter::eval_method_id_of_special(const Object &form, const Object &
     return Object::make_integer(m_info.id);
 }
 
-Object Interpreter::eval_method_of_special(const Object &form, const Object &rest,
-                                           const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_method_of(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(false, true));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL, ObjectType::INTEGER}}, {});
     auto  type_name = args.unnamed[0].as_symbol();
     auto &ts = TypeSystem::instance();

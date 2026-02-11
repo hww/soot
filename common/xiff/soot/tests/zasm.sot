@@ -154,6 +154,7 @@
       ((member name '(a b c d e h l)) (make-asm-token '8-reg name))
       ((member name '(bc de hl sp af ix iy)) (make-asm-token '16-reg name))
       (else (make-asm-token 'number (module-label-addr-get name))))))
+
 (defun parse-arg (arg)
   (cond
     ((asm-token? arg) arg)
@@ -183,7 +184,7 @@
               ((or (asm-token? val) (list? val)) (parse-arg val))
               (else (error "Expression must evaluate to a number or valid operand" arg))))))))
 
-    (else (error "Unknown operand type" arg))))
+    (else (error (fmt #f "Unknown operand type {}" arg)))))
 
 ;;; =====================================================================
 ;;; Class Segment
@@ -837,18 +838,25 @@
     (else 
      (error "Malformed defmethod: check arguments structure."))))
 
-(defmacro call-method (obj method-name &rest args)
-  `(zasm
-     ;; 1. Получаем адрес объекта в IX
-     (.ld ix ,obj)
-     ;; 2. Берем адрес vtable (допустим, он в первых 2 байтах объекта)
-     (.ld l (ix + 0))
-     (.ld h (ix + 1))
-     ;; 3. Переходим к нужному слоту (ID метода * 3)
-     (let ((offset (* 3 (get-method-id ',method-name))))
-       (.ld de offset)
-       (.add hl de))
-     (.jp (hl)))) ;; Прыгаем в таблицу переходов
+(defmacro call-method (obj method-full-name &rest args)
+  (let* ((full-str (symbol->string (unquote-sym method-full-name)))
+         (parts (string-split full-str "::")))
+    (if (< (length parts) 2)
+        (error (fmt #f "Invalid method name: {}" method-full-name))
+        (let* ((t-name (car parts))
+               (m-name (cadr parts))
+             
+               ;; ХИТРОСТЬ: используем eval, чтобы подставить реальные символы 'vec3 и 'new
+               (m-id (method-id-of t-name m-name))
+               (offset (* 3 m-id)))
+          `(zasm
+             (.ld ix ,obj)
+             (.ld l (ix + 0))
+             (.ld h (ix + 1))
+             (.ld de ,offset)
+             (.add hl de)
+             (.jp hl)
+             )))))
 
 ;;; =====================================================================
 ;;; V-Table 
