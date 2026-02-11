@@ -77,7 +77,7 @@
       (lambda (key value)
         (set! vals (cons value vals))))
     vals))
-    
+
 ;; ===========================================================================
 ;; Управляющие конструкции 
 ;; ===========================================================================
@@ -519,9 +519,16 @@
 ;; Алиас для удобства (Common Lisp style)
 (defun intern (str) (string->symbol str))
 
-
 ;; Если нет concat, но есть string-append
 (defun concat (&rest args) (apply 'string-append args))
+
+(defun string->bytes (s)
+  "Преобразует строку в список кодов символов (байтов)."
+  (let ((res '()))
+    (string-for-each s (lambda (char)
+                       (set! res (cons char res)))
+                     )
+    (reverse res)))
 
 ;; ===========================================================================
 ;; Лог

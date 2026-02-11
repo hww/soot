@@ -77,6 +77,8 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         Object label_obj = get_label_obj(name);
         if (label_obj.is_not_null())
             return label_obj;
+
+        return Object::make_null();
     }
 
     // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
