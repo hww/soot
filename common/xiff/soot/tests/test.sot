@@ -42,12 +42,22 @@
     (zasm
       (.label start)
       (.nop)
+
+     
       (.ld self 10)
       (.ld self #x0A)  ;; Запишет 10 в (IX+0)
       (.ld a #x55)    ;; Загрузит 85 в A
       (.ld self #x0A) ;; Это (IX+0)
       (.label exit)      
       (.ret))))
+
+
+(defmethod clear ((self vec3))
+  (rlet ((v :reg ix :source self))
+    (zasm 
+      (.ld (-> v x) 0)
+      (.ld (-> v y) 0)
+      (.ld (-> v z) 0))))
 
 (dump-listing 'default)
 

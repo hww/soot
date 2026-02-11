@@ -197,7 +197,9 @@ std::string TextDb::get_info_for(const std::shared_ptr<SourceText> &frag, int of
 
     // Сама строка кода
     std::string line = frag->get_line_containing_offset(offset);
-    result += "    " + line + "\n";
+    result += "    " + line;
+    if (result[result.size() - 1] != '\n')
+        result += "\n";
 
     // 1. Вычисляем реальный отступ внутри строки
     int offset_in_line = offset - frag->get_offset_of_line(line_idx);

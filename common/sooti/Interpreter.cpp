@@ -1,9 +1,9 @@
 #include "common/sooti/Interpreter.hpp"
-#include "common/sooti/AsmRegsObject.hpp"
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Printer.hpp"
+#include "common/sooti/RegisterAlias.hpp"
 #include "common/sooti/static_buffer/Export.hpp"
 #include <iostream>
 
@@ -27,6 +27,7 @@
 #include <fstream>
 #include <memory>
 #include <set>
+#include <stdexcept>
 
 namespace script {
 
@@ -113,8 +114,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"static-new", &Interpreter::eval_static_new_special, nullptr},
         {"declare", &Interpreter::eval_declare_special, nullptr},
         {"declare-type", &Interpreter::eval_declare_type_special, nullptr},
-        {"declare-type", &Interpreter::eval_make_asm_regs_special, nullptr},
         {"rlet", &Interpreter::eval_rlet_special, nullptr},
+        {"reg-alias", &Interpreter::eval_reg_alias_special, nullptr},
+
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -154,6 +156,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"null?", &Interpreter::eval_null_p, nullptr},
         {"pair?", &Interpreter::eval_pair_p, nullptr},
         {"symbol?", &Interpreter::eval_symbol_p, nullptr},
+        {"keyword?", &Interpreter::eval_keyword_p, nullptr},
         {"number?", &Interpreter::eval_number_p, nullptr},
         {"integer?", &Interpreter::eval_integer_p, nullptr},
         {"float?", &Interpreter::eval_float_p, nullptr},
@@ -164,9 +167,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"procedure?", &Interpreter::eval_procedure_p, nullptr},
         {"boolean?", &Interpreter::eval_boolean_p, nullptr},
         {"reader?", &Interpreter::eval_reader_p, nullptr},
-        {"cell?", &Interpreter::eval_cell_p, nullptr},
+        {"cell?", &Interpreter::eval_pointer_p, nullptr},
         {"primitive?", &Interpreter::eval_primitive_p, nullptr},
         {"special-form?", &Interpreter::eval_special_form_p, nullptr},
+        {"native-ref?", &Interpreter::eval_native_ref_p, nullptr},
 
         // Сравнение
         {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
@@ -177,10 +181,11 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"string-ref", &Interpreter::eval_string_ref, nullptr},
         {"string-replace", &Interpreter::eval_string_replace, nullptr}, // было eval_substring
         {"string-substr", &Interpreter::eval_string_substr, nullptr},   // было eval_substring
-        {"string-starts-with?", &Interpreter::eval_string_starts_with, nullptr},
-        {"string-ends-with?", &Interpreter::eval_string_ends_with, nullptr},
+        {"string-prefix?", &Interpreter::eval_string_starts_with, nullptr},
+        {"string-suffix?", &Interpreter::eval_string_ends_with, nullptr},
         {"string-contains?", &Interpreter::eval_string_containsp, nullptr},
         {"string-split", &Interpreter::eval_string_split, nullptr},
+        {"string-join", &Interpreter::eval_string_join, nullptr},
 
         // Векторы
         {"vector", &Interpreter::eval_vector, nullptr},
@@ -326,6 +331,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_keys},
         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
+
     });
 
     // Type system
@@ -852,7 +858,7 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::READER:
         return obj;
     case ObjectType::LAMBDA:
-        return eval_pair(obj, env);
+        return obj;
     default:
         throw_eval_error(obj, "cannot evaluate this object");
     }
@@ -2026,29 +2032,33 @@ Object Interpreter::eval_fmt(const Object &form, Arguments &args,
             arg_store.push_back(arg.print());
     }
 
-    // 2. Форматируем финальную строку
-    auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
+    try {
+        // 2. Форматируем финальную строку
+        auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
 
-    // 3. Вывод или возврат строки
-    if (truthy(dest)) {
-        // Проверяем наличие именованного аргумента :color
-        if (args.has_named("color")) {
-            auto                color_val = args.named["color"];
-            fmt::terminal_color text_color = fmt::terminal_color::white;
+        // 3. Вывод или возврат строки
+        if (truthy(dest)) {
+            // Проверяем наличие именованного аргумента :color
+            if (args.has_named("color")) {
+                auto                color_val = args.named["color"];
+                fmt::terminal_color text_color = fmt::terminal_color::white;
 
-            if (color_val.is_string())
-                text_color = string_to_color(color_val.as_string()->data);
-            else if (color_val.is_symbol())
-                text_color = string_to_color(color_val.as_symbol().c_str());
+                if (color_val.is_string())
+                    text_color = string_to_color(color_val.as_string()->data);
+                else if (color_val.is_symbol())
+                    text_color = string_to_color(color_val.as_symbol().c_str());
 
-            fmt::print(fg(text_color), "{}", formatted); // Вывод с цветом
-        } else {
-            lg::print("{}", formatted); // Обычный вывод
+                fmt::print(fg(text_color), "{}", formatted); // Вывод с цветом
+            } else {
+                lg::print("{}", formatted); // Обычный вывод
+            }
+            return get_null();
         }
-        return get_null();
+        return Object::make_string(formatted);
+    } catch (std::runtime_error &e) {
+        throw_eval_error(form, e.what());
     }
-
-    return Object::make_string(formatted);
+    return Object::make_none();
 }
 
 // Вспомогательная функция для сопоставления символа/строки с цветом fmt
@@ -2787,6 +2797,13 @@ Object Interpreter::eval_symbol_p(const Object &form, Arguments &args,
     return true_or_false(args.unnamed[0].is_symbol());
 }
 
+Object Interpreter::eval_keyword_p(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_keyword());
+}
+
 Object Interpreter::eval_integer_p(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2865,8 +2882,8 @@ Object Interpreter::eval_reader_p(const Object &form, Arguments &args,
     return true_or_false(args.unnamed[0].is_reader());
 }
 
-Object Interpreter::eval_cell_p(const Object &form, Arguments &args,
-                                const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_pointer_p(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_pointer());
@@ -2876,14 +2893,21 @@ Object Interpreter::eval_special_form_p(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_pointer());
+    return true_or_false(args.unnamed[0].is_special_form());
+}
+
+Object Interpreter::eval_native_ref_p(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {}); // Один аргумент
+    return true_or_false(args.unnamed[0].is_native_ref());
 }
 
 Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_pointer());
+    return true_or_false(args.unnamed[0].is_primitive());
 }
 
 // ============================================================
@@ -2892,7 +2916,11 @@ Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
 Object Interpreter::eval_apply(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Базовая проверка (нам нужно минимум 2 аргумента: функция и список)
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {}}, {});
+    vararg_check(
+        form, args,
+        {{ObjectType::SYMBOL, ObjectType::LAMBDA, ObjectType::PRIMITIVE, ObjectType::SPECIAL_FORM},
+         {}},
+        {});
 
     Object callable_obj = args.unnamed[0];
     Object args_list = args.unnamed[1];
@@ -3069,6 +3097,41 @@ Object Interpreter::eval_string_split(const Object &form, Arguments &args,
     return pretty_print::build_list(list);
 }
 
+Object Interpreter::eval_string_join(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::STRING}}, {});
+
+    auto  list = args.unnamed.at(0);
+    auto &delim = args.unnamed.at(1).as_string()->data;
+
+    std::string result;
+    bool        first = true;
+
+    // Используем твой хелпер для итерации по списку
+    for_each_in_list(list, [&](const Object &obj) {
+        if (!first) {
+            result += delim;
+        }
+
+        // Преобразуем элемент в строку в зависимости от его типа
+        if (obj.type == ObjectType::SYMBOL) {
+            result += obj.symbol_obj.value.name_ptr;
+        } else if (obj.type == ObjectType::STRING) {
+            result += obj.as_string()->data;
+        } else if (obj.type == ObjectType::INTEGER) {
+            result += std::to_string(obj.integer_obj.value);
+        } else {
+            // Если попало что-то странное, используем стандартный принт
+            result += obj.print();
+        }
+
+        first = false;
+    });
+
+    return Object::make_string(result);
+}
 Object Interpreter::eval_string_to_symbol(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3683,8 +3746,46 @@ Object Interpreter::eval_gensym(const Object &form, Arguments &args,
 
 Object Interpreter::eval_eval(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{}}, {}); // Один аргумент
-    return eval_with_rewind(args.unnamed[0], env);
+    // Минимум 1 аргумент должен быть
+    if (args.unnamed.empty()) {
+        throw_eval_error(form, "eval: at least one argument required");
+    }
+
+    Object first = args.unnamed.at(0);
+
+    // СЛУЧАЙ 1: Классический (eval '(+ 1 2))
+    if (args.unnamed.size() == 1) {
+        // Мы просто вычисляем то, что нам дали.
+        // Важно: если 'first' это уже LAMBDA, наш исправленный eval
+        // (с case ObjectType::LAMBDA: return obj) просто вернет её.
+        return eval_with_rewind(first, env);
+    }
+
+    // СЛУЧАЙ 2: Расширенный (eval lambda arg1 arg2 ...)
+    // Здесь мы ведем себя как apply/call.
+
+    // Собираем все аргументы кроме первого в вектор
+    std::vector<Object> call_args;
+    for (size_t i = 1; i < args.unnamed.size(); ++i) {
+        call_args.push_back(args.unnamed.at(i));
+    }
+
+    if (first.is_lambda()) {
+        // Используем твой call_lambda_internal.
+        // Он создаст окружение, привяжет аргументы и выполнит тело.
+        return call_lambda_internal(form, first, call_args);
+    } else if (first.is_primitive()) {
+        // Если это встроенная функция (например, +), нам нужно
+        // подготовить структуру Arguments и вызвать её метод.
+        auto      builtin = first.as_native_ref<BuiltinFunctionObject>();
+        Arguments b_args;
+        b_args.unnamed = call_args;
+        return ((*this).*(builtin->method))(form, b_args, env);
+    }
+
+    throw_eval_error(form, "eval: first argument must be a code form or callable when multiple "
+                           "arguments are provided");
+    return Object::make_null();
 }
 
 Object Interpreter::eval_set_car(const Object &form, Arguments &args,
@@ -4282,14 +4383,20 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
     (void)env;
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
     TypeSystem::instance().clear();
     // Здесь должна быть логика из твоего старого кода для init-types
-    if (args.unnamed.size() > 0 && args.unnamed[0].as_symbol() == "z80") {
-        TypeSystem::instance().add_builtin_types();
-    } else {
+    if (args.unnamed[0].as_symbol() == "z80") {
         TypeSystem::instance().add_builtin_types_z80();
+        return get_true();
+    } else if (args.unnamed[0].as_symbol() == "default") {
+        TypeSystem::instance().add_builtin_types();
+        return get_true();
+    } else {
+        throw_eval_error(form,
+                         fmt::format("Expected 'default or 'z80, got {}", args.unnamed[0].print()));
+        return get_null();
     }
-    return get_null();
 }
 
 // ============================================================
@@ -5741,61 +5848,6 @@ Object Interpreter::eval_declarations(const Object &form, Arguments &args,
     }
 }
 
-Object Interpreter::eval_make_asm_regs_special(const Object &form, const Object &rest,
-                                               const std::shared_ptr<EnvironmentObject> &env) {
-    // Гасим ворнинги о неиспользуемых параметрах
-    (void)form;
-    (void)env;
-
-    auto asm_regs = std::make_shared<AsmRegsObject>();
-
-    for_each_in_list(rest, [&](const Object &binding) {
-        if (!binding.is_pair())
-            throw_eval_error(binding, "Expected list in rlet");
-
-        Object name_sym = binding.as_pair()->car;
-        if (name_sym.type != ObjectType::SYMBOL)
-            throw_eval_error(name_sym, "Alias must be a symbol");
-
-        // ВАЖНО: Используем полное имя типа AsmRegsObject::RegisterAlias
-        auto   alias = std::make_shared<RegisterAlias>();
-        Object current = binding.as_pair()->cdr;
-
-        while (current.is_pair()) {
-            Object key = current.as_pair()->car;
-            current = current.as_pair()->cdr;
-
-            if (!current.is_pair())
-                throw_eval_error(key, "Missing value for keyword");
-            Object val = current.as_pair()->car;
-            current = current.as_pair()->cdr;
-
-            if (key.type == ObjectType::SYMBOL) {
-                // В OpenGOAL/Soot ключевые слова обычно сравниваются как строки или по ID
-                std::string k = key.print();
-                if (k == ":reg") {
-                    alias->reg = val;
-                } else if (k == ":type") {
-                    // Используем print(), так как TypeSystem ожидает строку имени типа
-                    alias->type_name = val.print();
-                } else if (k == ":offset") {
-                    alias->offset = (int)val.as_integer();
-                } else if (k == ":source") {
-                    alias->source = val;
-                } else {
-                    throw_eval_error(binding, "Expected :type, :reg, :offset, :source, but got " +
-                                                  val.print());
-                }
-            }
-        }
-        if (alias->source.is_none())
-            alias->source = alias->name;
-        // Сохраняем в мапу по адресу интернированного символа
-        asm_regs->set_at(name_sym.symbol_obj.value, alias);
-    });
-
-    return Object::make_native_ref(asm_regs);
-}
 Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -5808,8 +5860,10 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
     Object body = rest.as_pair()->cdr;
 
     // Создаем специальное окружение
-    auto new_env = std::make_shared<AsmEnvironmentObject>(env);
+    auto new_env = std::make_shared<EnvironmentObject>(env);
+    new_env->is_asm_function = true;
     new_env->ctx = form;
+    new_env->parent_env = env;
     // Используем helper для обхода списка
     for_each_in_list(bindings, [&](const Object &binding) {
         if (!binding.is_pair())
@@ -5822,6 +5876,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
         // Создаем shared_ptr на RegisterAlias
         auto alias = std::make_shared<RegisterAlias>();
         alias->name = name_sym;
+        alias->source = name_sym;
         Object current = binding.as_pair()->cdr;
 
         while (current.is_pair()) {
@@ -5838,7 +5893,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                 if (k == ":reg") {
                     alias->reg = val;
                 } else if (k == ":type") {
-                    alias->type_name = val.print();
+                    alias->type_name = val;
                 } else if (k == ":offset") {
                     alias->offset = (int)val.as_integer();
                 } else if (k == ":source") {
@@ -5849,10 +5904,24 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                 }
             }
         }
-        if (alias->source.is_none())
-            alias->source = alias->name;
+        if (alias->type_name.is_none()) {
+            if (alias->source.is_none()) {
+                throw_eval_error(
+                    form, fmt::format("Could not resolve type for {}", alias->print().c_str()));
+            } else {
+                auto obj = eval(alias->source, env);
+                if (obj.is_native_ref<RegisterAlias>()) {
+                    auto parent_reg = obj.as_native_ref<RegisterAlias>();
+                    alias->type_name = parent_reg->type_name;
+                } else {
+                    throw_eval_error(
+                        form, fmt::format("The source object should be RegisterAlias, got {}",
+                                          obj.print().c_str()));
+                }
+            }
+        }
         // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
-        new_env->asm_regs->aliases[name_sym.symbol_obj.value] = alias;
+        // new_env->set_at(name_sym, Object::make_native_ref(alias));
 
         // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
         new_env->vars.set(name_sym.as_symbol(), Object::make_native_ref(alias));
@@ -5860,56 +5929,54 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
     return eval_list_return_last(body, body, new_env);
 }
-Object Interpreter::eval_rlet_ref(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env) {
+
+Object Interpreter::eval_reg_alias_special(const Object &form, const Object &rest,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+
+    auto args = get_args(form, rest, ArgumentSpec(true, true));
+
     // 1. Проверяем аргументы: (rlet-ref symbol prop-name)
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+    vararg_check(form, args, {{ObjectType::SYMBOL}},
+                 {{"source", {false, {ObjectType::SYMBOL}}},
+                  {"reg", {false, {ObjectType::SYMBOL}}},
+                  {"type", {false, {ObjectType::SYMBOL, ObjectType::STRING}}}});
 
     // 2. Ищем контекст в иерархии окружений
-    Object context_obj = get_current_asm_context(env);
+    auto context_obj = env->asm_function_env();
 
-    if (context_obj.is_native_ref()) {
-        auto regs = std::static_pointer_cast<AsmRegsObject>(context_obj.heap_obj);
+    auto alias = std::make_shared<RegisterAlias>();
+    alias->name = args.unnamed[0];
+    alias->source = args.unnamed[0];
+    if (args.has_named("source"))
+        alias->source = args.named["source"];
+    if (args.has_named("reg"))
+        alias->reg = args.named["reg"];
+    if (args.has_named("type"))
+        alias->type_name = args.named["type"];
 
-        // Поиск алиаса
-        auto it = regs->aliases.find(args.unnamed[0].symbol_obj.value);
-        if (it != regs->aliases.end()) {
-            const auto &alias = it->second;
-            // Используем InternedSymbolPtr для сравнения, если можно,
-            // но для свойств "на лету" string_view или string тоже ок.
-            auto prop_name = args.unnamed[1].to_std_string();
-
-            if (prop_name == "reg") {
-                return alias->reg;
+    if (alias->type_name.is_none()) {
+        if (alias->source.is_none()) {
+            throw_eval_error(form,
+                             fmt::format("Could not resolve type for {}", alias->print().c_str()));
+        } else {
+            auto obj = eval_with_rewind(alias->source, env);
+            if (obj.is_native_ref<RegisterAlias>()) {
+                auto parent_reg = obj.as_native_ref<RegisterAlias>();
+                alias->type_name = parent_reg->type_name;
+            } else {
+                throw_eval_error(form,
+                                 fmt::format("The source object should be RegisterAlias, got {}",
+                                             obj.print().c_str()));
             }
-            if (prop_name == "source") {
-                return alias->source;
-            }
-            if (prop_name == "type") {
-                if (alias->type_name.empty()) {
-                    auto refered = eval(alias->source);
-                    if (refered.is_native_ref<RegisterAlias>()) {
-
-                    } else {
-                    }
-                }
-                return Object::make_string(alias->type_name);
-            }
-            if (prop_name == "offset") {
-                return Object::make_integer(alias->offset);
-            }
-            throw_eval_error(form, "Unknown rlet property: {}", prop_name);
         }
-
-        // Если символ не найден в таблице алиасов
-        return Object::make_none();
     }
-
-    // Если мы вызвали это вне rlet блока
-    throw_eval_error(form, "rlet-ref called outside of rlet context");
+    // Если символ не найден в таблице алиасов
+    return Object::make_native_ref(alias);
 }
+
 Object Interpreter::eval_set_method(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args,
                  {
                      {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // Type

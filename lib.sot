@@ -62,6 +62,22 @@
   (mapcar (lambda (pair) (cdr pair)) 
           (hash-table->list ht)))
 
+(defun hash-table-keys (ht)
+  "Возвращает список всех ключей хэш-таблицы."
+  (let ((keys '()))
+    (hash-table-for-each ht 
+      (lambda (key value)
+        (set! keys (cons key keys))))
+    keys))
+
+(defun hash-table-values (ht)
+  "Возвращает список всех значений хэш-таблицы."
+  (let ((vals '()))
+    (hash-table-for-each ht 
+      (lambda (key value)
+        (set! vals (cons value vals))))
+    vals))
+    
 ;; ===========================================================================
 ;; Управляющие конструкции 
 ;; ===========================================================================

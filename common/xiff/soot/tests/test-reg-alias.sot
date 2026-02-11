@@ -1,0 +1,18 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Reg Alias Array...\n" :color 'yellow)
+
+(reg-alias foo)
+(reg-alias foo :type x)
+(reg-alias foo :type x :reg x)
+(reg-alias foo :type x :reg z)
+(reg-alias foo :type x :reg z :source zz)
+
+(rlet ((x)) (print x))
+(rlet ((x :source y)) (print x))
+(rlet ((x :source y :type int32)) (print x))
+(rlet ((x :source y :type int32 :reg ix)) (print x))
+
+
+(rlet ((self :reg ix :type mat3))
+      (-> self r2 y))
