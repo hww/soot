@@ -64,6 +64,22 @@
 (reg-code! 'sp 3)
 (reg-code! 'af 3)
 
+;; Вспомогательная функции для регистров
+(defun get-low-reg (reg)
+  (case reg
+    ('hl 'l)
+    ('de 'e)
+    ('bc 'c)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
+;; Вспомогательная функции для регистров
+(defun get-high-reg (reg)
+  (case reg
+    ('hl 'h)
+    ('de 'd)
+    ('bc 'b)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
 ;;; =====================================================================
 ;;; Condition Codes
 ;;; =====================================================================
@@ -89,46 +105,81 @@
 ;;; Convert Argument To 
 ;;; =====================================================================
 
+(defun unquote-sym (s)
+  "Если символ квотирован '(quote x), возвращает x, иначе сам s"
+  (if (and (list? s) (eq? (car s) 'quote))
+      (cadr s)
+      s))
+
+;; Используем список с тегом 'token для однозначности
+(defun make-asm-token (type value)
+  (list 'token type value))
+
+(defun asm-token? (obj)
+  (and (list? obj) (eq? (car obj) 'token)))
+
+(defun asm-token-type (tok)  (cadr tok))
+(defun asm-token-value (tok) (caddr tok))
+
+(defun @ (reg) 
+  "Метка-заполнитель для косвенной адресации"
+  (list '@ reg))
+
 (defun alias->token (alias)
-  "конвертр"
   (let ((base (-> alias .reg))
         (offs (-> alias .offset))
         (size (-> alias .bit_size)))
     (cond
-      ;; Если это просто регистр (например, HL в rlet)
       ((and (= offs 0) (not (member base '(ix iy))))
-       (cons (if (>= size 16) '16-reg '8-reg) base))
-
-      ;; Если это индексированная память (IX+d)
+       (make-asm-token (if (>= size 16) '16-reg '8-reg) base))
       ((member base '(ix iy))
-       (cons (if (eq? base 'ix) 'ix-indexed 'iy-indexed) offs))
-
-      ;; Если это бит в байте (BIT n, (IX+d))
-      ((= size 1)
-       (cons 'bit-access (list base offs (-> alias .bit_offset))))
-
+       (make-asm-token (if (eq? base 'ix) 'ix-indexed 'iy-indexed) offs))
       (else (error "Unknown alias mapping" alias)))))
 
 (defun symbol->token (sym)
-  (cond
-    ;; 8-битные регистры
-    ((member sym '(a b c d e h l)) 
-     (cons '8-reg sym))
-    
-    ;; 16-битные регистры
-    ((member sym '(bc de hl sp af ix iy)) 
-     (cons '16-reg sym))
-    
-    ;; Если это не регистр, значит это метка (адрес)
-    (else (cons 'number (module-label-get sym)))))
+  (let ((name (unquote-sym sym)))
+    (cond
+      ((member name '(a b c d e h l)) (make-asm-token '8-reg name))
+      ((member name '(bc de hl sp af ix iy)) (make-asm-token '16-reg name))
+      (else (make-asm-token 'number (module-label-addr-get name))))))
 
 (defun parse-arg (arg)
   (cond
-    ((list? arg) arg) ;; Уже токен (регистр типа HL, A)
-    ((number? arg)    (cons 'number arg))
-    ((native-ref? arg) (alias->token arg)) ;; Тот самый "разбор полетов"
-    ((symbol? arg)    (symbol->token arg)) ;; Регистры, метки
-    ((list? arg)      (ind-reader arg))    ;; Косвенная адресация (HL)
+    ;; 1. Если это уже готовый токен — ничего не делаем
+    ((asm-token? arg) arg)
+    
+    ;; 2. Если это число — упаковываем
+    ((number? arg) (make-asm-token 'number arg))
+    
+    ;; 3. Если это системный псевдоним (rlet / native-ref)
+    ((native-ref? arg) (alias->token arg))
+    
+    ;; 4. Если это символ (регистр или метка)
+    ((symbol? arg) (symbol->token arg))
+    
+    ;; Проверка на косвенную адресацию (@ hl), (@ bc) и т.д.
+    ((and (list? arg) (eq? (car arg) '@))
+     (make-asm-token 'indirect (cadr arg)))
+
+    ;; 5. ВЫРАЖЕНИЯ (Lisp-код в аргументах)
+    ((list? arg)
+     (let ((name (car arg)))
+       (cond 
+         ;; Если это уже наш обработанный косвенный адрес (@ hl)
+         ((eq? name '@) (make-asm-token 'indirect (unquote-sym (cadr arg))))
+         
+         ;; Если это квотированная метка
+         ((eq? name 'quote) (symbol->token arg))
+         
+         ;; Все остальное вычисляем
+         (else 
+          (let ((val (eval arg)))
+            (cond 
+              ((number? val) (make-asm-token 'number val))
+              ;; Если после eval получили (@ hl), рекурсивно парсим его
+              ((and (list? val) (eq? (car val) '@)) (parse-arg val))
+              (else (error "Expression must evaluate to a number or address" arg))))))))
+                 
     (else (error "Unknown operand type" arg))))
 
 ;;; =====================================================================
@@ -150,24 +201,22 @@
 
 (defun segment-label-get (seg label)
   "Возвращает адрес метки в данном сегменте или null, если не найдена."
-  (let* ((buf (segment-buffer seg))
+  (let* ((buf (segment-buffer seg)))
          ;; Используем динамическое обращение к слоту буфера
-         (label (-> buf label)))
-    (if (not (null? addr))
-        label
-        null)))
+         (-> buf (identity label))))
 
 (defun segment-label-addr-get (seg label)
   "Возвращает адрес метки в данном сегменте или null, если не найдена."
   (let* ((buf (segment-buffer seg))
          ;; Используем динамическое обращение к слоту буфера
-         (addr (-> buf (identity label))))
+         (addr (-> buf (identity (identity label)))))
     (if (not (null? addr))
         addr
         null)))
 
 (defun segment-label-set! (seg label &key (address null) (scope 'private))
   "Устанавливает метку в сегменте. Если address — null, берет текущий курсор буфера."
+  (fmt #t "segment-label-set! {} {}" (segment-name seg) label)
   (let ((buf (segment-buffer seg))
         (ilc (segment-ilc seg))
         (target-addr 0))
@@ -234,22 +283,34 @@
 
 
 (defun module-label-get (label)
-  "Умный поиск метки: сначала в текущем сегменте, затем по всему модулю."
+  "Безопасный поиск метки с поддержкой проходов."
   (let ((mod (gethash *current-module* *modules*)))
-    ;; 1. Проверяем текущий активный сегмент (самый частый случай)
-    (let ((local-addr (segment-label-addr-get *current-segment* label)))
-      (if (not (null? local-addr))
-          local-addr
-          
-          ;; 2. Если в текущем нет, итерируемся по всем сегментам модуля
-          (let ((found-addr null))
-            (for-each-hash (module-segments mod) (lambda (name seg)
-              (let ((addr (segment-label-addr-get seg label)))
-                (if (not (null? addr)) (set! found-addr addr)))))
-            
-            (if (null? found-addr)
-                (throw-context-error (fmt #f "Label '{}' not found in module {}" label *current-module*))
-                found-addr))))))
+    (if (null? mod)
+        ;; Если модуль не найден (например, на 1-м проходе инициализации)
+        (if (eq? *current-pass* 1) 
+            null ;; На первом проходе это допустимо
+            (error (fmt #f "Module '{}' not found in *modules*" *current-module*)))
+        
+        ;; Если модуль есть, ищем в сегментах
+        (let ((found-label null))
+          ;; 1. Проверяем текущий сегмент
+          (let ((local (segment-label-get *current-segment* label)))
+            (fmt #t "module-label-get {} -> {}\n" label local) ;; Исправлено seg -> mod
+            (if (not (null? local))
+                (set! found-label local)
+                ;; 2. Проверяем остальные сегменты модуля
+                ;; ВНИМАНИЕ: Используем for-each-hash для хэш-таблицы сегментов
+                (for-each (module-segments mod) (lambda (name seg)
+                  (let ((l (segment-label-get seg label)))
+                    (if (not (null? l)) (set! found-label l)))))))
+          found-label))))
+
+(defun module-label-addr-get (label)
+  "Всегда возвращает число (адрес) или 0."
+  (let ((lab (module-label-get label)))
+    (if (null? lab)
+        (if (eq? *current-pass* 1) 0 (error (fmt #f "Label not found `{}`" label)))
+        (-> lab .address))))
 
 (defun module-dump-listing (mod)
   (fmt #t "\n--- Module: {} ---\n" (module-name mod)) ;; Исправлено seg -> mod
@@ -271,6 +332,14 @@
 (defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
 (defvar *current-pass* 1 "Глобальный флаг прохода")  
 (defvar *source-context* null "Контекст ассемблера")
+(defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
+
+(defun get-pass-signature () (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
+
+(defmacro pass-case (p1 p2)
+  `(if (== *current-pass* 1)
+       ,p1
+       ,p2))
 
 ;;; =====================================================================
 ;;; Core Macros
@@ -290,10 +359,10 @@
 ;;; Исправленный with-module (установка глобального флага)
 (defmacro with-module (name &rest body)
   `(begin 
-     (set! *current-module* ',name)
+     (set! *current-module* ',name) ;; Устанавливаем имя
+     ;; Если модуля нет — создаем его
      (unless (gethash ',name *modules*)
-       (sethash ',name (make-module :name ',name) *modules*))
-      (fmt #t "DEBUG: with-module {}\n" ',name)
+       (sethash ',name (make-module :name ',name :segments (make-hash-table)) *modules*))
      ,@body))
 
 ;;; Исправленный with-segment
@@ -368,15 +437,25 @@
 ;;; 
 ;;; =====================================================================
 
-(defun asm-error (message) (error message :ctx *source-context*))
+(defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
 
 ;;; =====================================================================
-;;; 
+;;; Labels
 ;;; =====================================================================
 
-(defmacro .label (name &key (address 0) (scope 'private))
-  (segment-label-set! *current-segment* name :address address :scope scope)
-  (emit '() :listing (fmt #f ".label {}" name)))
+(defmacro .label (name &key (address null) (scope 'private))
+  `(let* ((seg *current-segment*)
+          ;; Если адрес не передан, берем текущий ILC сегмента
+          (addr (if (null? ,address) 
+                    (segment-ilc seg) 
+                    ,address)))
+     (segment-label-set! seg ',name :address addr :scope ',scope)
+     ;; Пустой emit просто для записи в листинг
+     (emit '() :listing (fmt #f ".label {} @ {:04X}" ',name addr))))
+
+(defun address-of (label)
+  "Функция для использования внутри Lisp-выражений в zasm"
+  (module-label-addr-get label))
 
 ;;; =====================================================================
 ;;; Коллекция вариантов команд
@@ -414,30 +493,80 @@
                               "NONE (check registration)" 
                               (string-join available "\n  "))))))))
 
+(defmacro define-instruction (name)
+  `(defun ,name (dest &optional (src null))
+     (let* ((d-tok (parse-arg dest))
+            (s-tok (if (null? src) null (parse-arg src)))
+            (sig (if (null? s-tok)
+                     (list (asm-token-type d-tok))
+                     (list (asm-token-type d-tok) (asm-token-type s-tok))))
+            (handler (find-handler! ',name sig)))
+       (if (null? s-tok)
+           (apply handler (list (asm-token-value d-tok)))
+           (apply handler (list (asm-token-value d-tok) (asm-token-value s-tok)))))))
+
 ;;; =====================================================================
 ;;; 
 ;;; =====================================================================
 
 ;; Теперь твои определения выглядят супер-лаконично:
-(defun .ret () (emit '(#xC9) :listing ".ret"))
 (defun .nop () (emit '(#x00) :listing ".nop"))
 (defun .di  () (emit '(#xF3) :listing ".di"))
 (defun .ei  () (emit '(#xFB) :listing ".ei"))
 
+(defun .ret (&optional cc)
+  (if (null? cc)
+      ;; Обычный RET (#xC9)
+      (emit #xC9 :listing "RET")
+      ;; Условный RET: #xC0 + (code << 3)
+      (let ((op (+ #xC0 (ash (con-code cc) 3))))
+        (emit op :listing (fmt #f "RET {}" cc)))))
+
   ;; RST n: коды от #xC7 до #xFF с шагом 8
 (defun .rst (val)
-  (emit (+ #xC7 val) :listing (fmt "RST {:02X}h" val)))
+  (emit (+ #xC7 val) :listing (fmt #f "RST {:02X}h" val)))
 
 (for-each '(a b c d e h l) (lambda (r)
   (register-handler '.ld "8-reg-8-reg"
     (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s)))))))
- 
+
+;;; =====================================================================
+;;; LD
+;;; =====================================================================
+
+;; OR A (часто используется для проверки A на ноль)
+(register-handler '.or "8-reg"
+  (lambda (r) (emit (+ #xB0 (reg-code r)) :listing (fmt #f "OR {}" r))))
+
+;; INC 16-bit register
+(register-handler '.inc "16-reg"
+  (lambda (r) (emit (+ #x03 (ash (reg-code r) 4)) :listing (fmt #f "INC {}" r))))
+
+(define-instruction .or)
+(define-instruction .inc)
+
 ;;; =====================================================================
 ;;; LD
 ;;; =====================================================================
 
 (register-handler '.ld "8-reg-number"
   (lambda (d s) (emit (list #x3E s) :listing (fmt #f "LD {}, ${:02X}" d s))))
+
+;; LD A, (HL) -> #x7E
+(register-handler '.ld "8-reg-symbol"
+  (lambda (d s)
+    (if (and (eq? d 'a) (eq? s 'hl))
+        (emit #x7E :listing "LD A, (HL)")
+        (asm-error "Only 'LD A, (HL)' is supported for this signature"))))
+
+
+
+;; LD 16-reg, number (например, LD HL, $4100)
+(register-handler '.ld "16-reg-number"
+  (lambda (d s) 
+    (let ((op (+ #x01 (ash (reg-code d) 4)))) ;; BC=01, DE=11, HL=21, SP=31
+      (emit (list op (lower-byte s) (higher-byte s))
+            :listing (fmt #f "LD {}, ${:04X}" d s)))))
 
 (register-handler '.ld "16-reg-ix-indexed"
   (lambda (d s) 
@@ -469,57 +598,220 @@
     (emit (list #xFD #x36 off val) 
           :listing (fmt #f "LD (IY+{}), ${:02X}" off val))))
 
-(defun .ld (dest src)
-  (let* ((d-tok (parse-arg dest))
-         (s-tok (parse-arg src))
-         (sig   (list (car d-tok) (car s-tok)))
-         (handler (find-handler! '.ld sig)))
-    
-    ;; Убедись, что мы передаем значения, а не списки значений
-    (let ((d-val (if (pair? (cdr d-tok)) (car (cdr d-tok)) (cdr d-tok)))
-          (s-val (if (pair? (cdr s-tok)) (car (cdr s-tok)) (cdr s-tok))))
-      (eval handler d-val s-val))))
+;; 1. Чтение из памяти: LD A, (HL/BC/DE)
+(register-handler '.ld '(8-reg indirect)
+  (lambda (d s)
+    (if (eq? d 'a)
+        (cond
+          ((eq? s 'hl) (emit #x7E :listing "LD A, (HL)"))
+          ((eq? s 'bc) (emit #x0A :listing "LD A, (BC)"))
+          ((eq? s 'de) (emit #x1A :listing "LD A, (DE)"))
+          (else (asm-error (fmt #f "Z80 cannot LD A from ({})" s))))
+        (asm-error "Indirect load to register is only supported for Accumulator (A)"))))
 
-(defmacro define-instruction (name)
-  `(defun ,name (dest src)
-     (let* ((d-tok (parse-arg dest))
-            (s-tok (parse-arg src))
-            (sig (list (car d-tok) (car s-tok)))
-            (handler (find-handler! ',name sig)))
-       (apply handler (list (cdr d-tok) (cdr s-tok))))))
+;; 2. Запись в память: LD (HL/BC/DE), A
+(register-handler '.ld '(indirect 8-reg)
+  (lambda (d s)
+    (if (eq? s 'a)
+        (cond
+          ((eq? d 'hl) (emit #x77 :listing "LD (HL), A"))
+          ((eq? d 'bc) (emit #x02 :listing "LD (BC), A"))
+          ((eq? d 'de) (emit #x12 :listing "LD (DE), A"))
+          (else (asm-error (fmt #f "Z80 cannot LD ({}) from A" d))))
+        (asm-error "Indirect store is only supported from Accumulator (A)"))))
+
+
 
 ;; Теперь вместо написания функций вручную:
-;(define-instruction .ld)
+(define-instruction .ld)
 (define-instruction .add)
 (define-instruction .sub)
 (define-instruction .xor)
 
 ;;; =====================================================================
-;;; 
+;;; Переходы
 ;;; =====================================================================
 
+
+;; Для JR
+(register-handler '.jr '(number)
+  (lambda (target-addr)
+    (let* ((current-ilc (segment-ilc *current-segment*))
+           (offset (- target-addr (+ current-ilc 2))))
+      (emit (list #x18 (logand offset #xFF)) 
+            :listing (fmt #f "JR {:+d} (to ${:04X})" offset target-addr)))))
+
+(register-handler '.jr '(condition number)
+  (lambda (cc target-addr)
+    (let* ((current-ilc (segment-ilc *current-segment*))
+           (offset (- target-addr (+ current-ilc 2)))
+           ;; Условный JR: #x20 + (code << 3)
+           ;; Внимание: в Z80 для JR доступны только NZ, Z, NC, C
+           (op (+ #x20 (ash (con-code cc) 3))))
+      (emit (list op (logand offset #xFF))
+            :listing (fmt #f "JR {}, {:+d}" cc offset)))))
+
+(define-instruction .jr)
+(define-instruction .call)
+
+;; Без условия: JP nn (тип сигнатуры: (number))
+(register-handler '.jp '(number)
+  (lambda (addr)
+    (emit (list #xC3 (lower-byte addr) (higher-byte addr))
+          :listing (fmt #f "JP ${:04X}" addr))))
+
+;; С условием: JP cc, nn (тип сигнатуры: (condition number))
+(register-handler '.jp '(condition number)
+  (lambda (cc addr)
+    (let ((op (+ #xC2 (ash (con-code cc) 3))))
+      (emit (list op (lower-byte addr) (higher-byte addr))
+            :listing (fmt #f "JP {}, ${:04X}" cc addr)))))
+
+(define-instruction .jp)
+
+(defun .jump (target)
+  (let* ((t-tok (parse-arg target))
+         (target-addr (asm-token-value t-tok))
+         (current-ilc (segment-ilc *current-segment*)))
+    (cond
+      ((eq? *current-pass* 1)
+       (emit '(#xC3 #x00 #x00) :listing (fmt #f "JP ${:04X} (placeholder)" target-addr)))
+      (else
+       (let ((offset (- target-addr (+ current-ilc 2))))
+         (if (and (>= offset -128) (<= offset 127))
+             (begin
+               (emit (list #x18 (logand offset #xFF)) :listing (fmt #f "JR {:+d} (optimized)" offset))
+               (emit #x00 :listing "nop (align)")) 
+             (emit (list #xC3 (lower-byte target-addr) (higher-byte target-addr))
+                   :listing (fmt #f "JP ${:04X}" target-addr))))))))
+
+
+
+;;; =====================================================================
+;;; Procedures
+;;; =====================================================================
+
+(register-handler '.call 'number
+  (lambda (addr)
+    (emit (list #xCD (lower-byte addr) (higher-byte addr))
+          :listing (fmt #f "CALL ${:04X}" addr))))
+
+(define-instruction .call)
+
+;;; =====================================================================
+;;; директивы
+;;; =====================================================================
+
+
+(defun .db (&rest args)
+  (for-each args (lambda (arg)
+    (cond
+      ;; Если это число
+      ((number? arg) 
+       (emit arg :listing (fmt #f "DB ${:02X}" arg)))
+      
+      ;; Если это строка — расщепляем на байты
+      ((string? arg)
+       (let ((bytes (string->bytes arg)))
+         (emit bytes :listing (fmt #f "DB \"{}\"" arg))))
+      
+      ;; Если это список (выражение)
+      ((list? arg)
+       (let ((val (eval arg)))
+         (emit val :listing (fmt #f "DB ${:02X} (expr)" val))))
+      
+      (else (error "DB: Unsupported data type" arg))))))
+
+(defun .dw (&rest args)
+  (for-each args (lambda (arg)
+    (let* ((t-tok (parse-arg arg))
+           (val (asm-token-value t-tok)))
+      (emit (list (lower-byte val) (higher-byte val))
+            :listing (fmt #f "DW ${:04X}" val))))))
+
+(defun .ds (size &optional (fill #x00))
+  (dotimes (i size)
+    (emit fill :listing (if (= i 0) (fmt #f "DS {} bytes" size) ""))))
+
+;;; =====================================================================
+;;; Address 
+;;; =====================================================================
+
+(defun .org (new-addr)
+  (let ((seg *current-segment*))
+    (segment-ilc! seg new-addr)
+    ;; В листинге отмечаем прыжок адреса
+    (emit '() :listing (fmt #f "ORG set to ${:04X}" new-addr))))
+
+(defun .align (boundary &optional (fill #x00))
+  (let* ((seg *current-segment*)
+         (current (segment-ilc seg))
+         ;; Вычисляем, сколько байт нужно добавить до границы
+         (rem (mod current boundary))
+         (padding (if (= rem 0) 0 (- boundary rem))))
+    (when (> padding 0)
+      (dotimes (i padding)
+        (emit fill :listing (if (= i 0) (fmt #f "ALIGN {} (added {} bytes)" boundary padding) ""))))))
+
+;;; =====================================================================
+;;; Methods 
+;;; =====================================================================
+
+(defstruct method (name null) (type null) (this-name null) (label null) (body null))
+
 (defmacro defmethod (name args &rest body)
-  (let* ((this-spec (car args))          ;; Извлекаем ((this vec3) ...)
-         (this-name (car this-spec))    ;; 'this
-         (this-type (cadr this-spec))   ;; 'vec3
-         ;; Формируем уникальное имя метки для ассемблера
+  (let* ((this-spec (car args))
+         (this-name (car this-spec))
+         (this-type (cadr this-spec))
          (label-name (fmt #f "method-{}::{}" this-type name)))
     
-    `(with-segment code
-       (begin
-         ;; 1. Ставим метку в текущем сегменте перед началом кода
-         (segment-label-set! *current-segment* ,label-name)
-         
-         ;; 2. Оборачиваем тело в "информационный" rlet.
-         ;; Он связывает имя 'this' с типом 'vec3', но пока не привязывает к регистру.
-         ;; Это позволит программисту внутри написать (rlet ((self :reg ix :source ,this-name)))
-         (rlet ((,this-name :type ,this-type))
-           (begin
-             ,@body))
-         
-         ;; 3. Регистрируем метод в системе типов.
-         ;; Используем module-label-get, чтобы найти адрес только что созданной метки.
-         (set-method! ',this-type ',name (module-label-get ,label-name))
-         
-         (fmt #t "Method {} for type {} registered at label: {}\n" 
-              ',name ',this-type ,label-name)))))
+    `(begin
+       (set! *methods-to-assemble* (cons (make-method :name ',name 
+                         :type ',this-type 
+                         :this-name ',this-name
+                         :label ,label-name
+                         ;; Лямбда создается ЗДЕСЬ, rlet внутри неё уже будет иметь
+                         ;; реальные символы вместо запятых.
+                         :body (lambda () 
+                                 (rlet ((,this-name :type ,this-type))
+                                    (.label ,label-name)
+                                   ,@body))) 
+                   *methods-to-assemble*))
+       
+       ;; Регистрируем в системе типов
+       (set-method! ',this-type ',name 0)
+       (fmt #t "Method {}::{} queued for assembly\n" ',this-type ',name))))
+
+
+;;; =====================================================================
+;;; 
+;;; =====================================================================   
+
+(defun assemble-module (name)
+  ;; 1. Устанавливаем текущий модуль (name тут - это 'default)
+  (set! *current-module* name)
+  
+  ;; 2. Гарантируем, что модуль существует
+  (let ((mod (gethash name *modules*)))
+    (unless mod
+      (set! mod (make-module :name name :segments (make-hash-table)))
+      (sethash name mod *modules*))
+    
+    ;; 3. Работаем с сегментом 'code'
+    (set! *current-segment* (module-segment-get name 'code))
+    
+    (let ((methods (reverse *methods-to-assemble*)))
+      (for-each '(1 2) (lambda (pass)
+        (set! *current-pass* pass)
+        (segment-reset *current-segment*)
+        
+        (fmt #t "--- PASS {} ---\n" pass)
+        
+        (for-each methods (lambda (m)
+          ;; Ставим метку метода (например, "method-vec3::len")
+          (segment-label-set! *current-segment* (method-label m))
+          
+          ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
+          ((method-body m))))))
+      
+      (fmt #t "Assembly of module '{}' finished.\n" name))))

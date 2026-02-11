@@ -57,21 +57,22 @@ struct BufferLabel : public NativeRef {
             std::string name = key.to_std_string();
 
             // Позволяем доставать адрес
-            if (name == "addr" || name == "address" || name == "offset") {
+            if (name == ".address" || name == ".offset") {
                 return Object::make_integer(addr);
             }
 
             // Позволяем доставать сегмент
-            if (name == "segment" || name == "seg") {
+            if (name == ".segment" || name == ".seg") {
                 return segment;
             }
 
             // Позволяем доставать метаданные
-            if (name == "meta" || name == "info") {
+            if (name == ".meta" || name == ".info") {
                 return meta;
             }
         }
-
+        throw std::runtime_error("BufferLabel expects .address, .segment or .meta, got " +
+                                 key.print());
         // Если ключ не распознан, возвращаем undefined или ошибку
         return Object::make_none();
     }
