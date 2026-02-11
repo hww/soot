@@ -17,4 +17,6 @@
 
 (load "common/xiff/soot/tests/test-declare.sot")
 
+(load "common/xiff/soot/tests/reg-alias.sot")
+
 (fmt #t "TESTS END\n" :color 'yellow)

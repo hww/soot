@@ -231,6 +231,9 @@ class Object {
     // For heap types (reference semantics)
     std::shared_ptr<HeapObject> heap_obj;
 
+  public:
+    virtual ~Object() {}
+
     virtual std::string class_name() const {
         return "Pointer";
     }
@@ -241,6 +244,7 @@ class Object {
     static inline SymbolTable *get_symbol_table();
     static inline SymbolTable &symbol_table();
     static InternedSymbolPtr   intern(const char *name);
+
     // адресация к объекту -> key
     Object step(const Object &key) const;
 
@@ -281,8 +285,9 @@ class Object {
     // String representation
     std::string print() const;
     std::string printc() const {
+        // сырой формат например без "" для строки
         return is_heap_object() && heap_obj ? heap_obj->printc() : print();
-    } // сырой формат например без "" для строки
+    }
     std::string inspect_short() const;
     Object      inspect() const;
 
@@ -912,6 +917,7 @@ class SymbolTable {
         Object type_native_ref;
         Object type_static_buffer;
         Object type_static_writer;
+        Object type_register_alias;
 
         Object true_or_false(bool val) {
             return val ? sym_true : sym_false;
@@ -967,6 +973,7 @@ class EnvironmentObject : public HeapObject {
     std::shared_ptr<EnvironmentObject> parent_env;
     EnvironmentMap                     vars;
     bool                               is_function;
+    bool                               is_asm_function;
     Object                             meta_data; // metadata от компилятора или интерпретатора
     Object                             ctx;
     EnvironmentObject() = default;
@@ -1024,6 +1031,18 @@ class EnvironmentObject : public HeapObject {
         auto current = parent_env;
         while (current) {
             if (current->is_function)
+                return current;
+            current = current->parent_env;
+        }
+        return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
+    }
+
+    std::shared_ptr<EnvironmentObject> asm_function_env() {
+        if (is_function)
+            return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
+        auto current = parent_env;
+        while (current) {
+            if (current->is_asm_function)
                 return current;
             current = current->parent_env;
         }
@@ -1148,9 +1167,18 @@ struct NamedArg {
  * (и должен использовать дефолт), и когда он отсутствует в спецификации.
  */
 struct PositionalArg {
+    /**
+     * * @bried Дополнительные метаданные
+     */
     std::string name{};
-    bool        is_optional;     // или просто проверка has_default
-    Object      default_value{}; // NIL по умолчанию для опциональных
+    /**
+     * * @bried или просто проверка has_default
+     */
+    bool is_optional;
+    /**
+     * * @bried NIL по умолчанию для опциональных
+     */
+    Object default_value{};
 };
 /**
  * @brief Спецификация аргументов функции (lambda-list).

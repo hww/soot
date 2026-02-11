@@ -253,6 +253,8 @@ class Interpreter {
     // Предикаты типов
     Object eval_symbol_p(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_keyword_p(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_number_p(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_integer_p(const Object &form, Arguments &args,
@@ -295,6 +297,8 @@ class Interpreter {
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_string_split(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_join(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_string_containsp(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_string_replace(const Object &form, Arguments &args,
@@ -392,8 +396,10 @@ class Interpreter {
                                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_reader_p(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_cell_p(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_pointer_p(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_native_ref_p(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_special_form_p(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_primitive_p(const Object &form, Arguments &args,
@@ -515,8 +521,6 @@ class Interpreter {
         const Object &form, const Arguments &args,
         const std::vector<std::vector<ObjectType>>                                      &unnamed,
         const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>> &named);
-    Object eval_make_asm_regs_special(const Object &form, const Object &rest,
-                                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_rlet_special(const Object &form, const Object &rest,
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_defenum_special(const Object &form, const Object &rest,
@@ -533,8 +537,8 @@ class Interpreter {
                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declarations(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_rlet_ref(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_reg_alias_special(const Object &form, const Object &rest,
+                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,

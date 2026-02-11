@@ -59,10 +59,17 @@ Object MethodInfo::make_step_accessor(const Object &key) {
         return Object::make_string(this->type_name);
 
     // 2. Сложные поля (создаем объекты на лету)
-    if (name == ".type") {
+    if (name == ".type-spec") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой make_step_accessor
         return Object::make_native_ref(std::make_shared<TypeSpec>(this->type));
+    }
+
+    if (name == ".type") {
+        // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
+        // потому что у TypeSpec тоже будет свой make_step_accessor
+        auto base_type = this->type.base_type();
+        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type));
     }
 
     // 3. Флаги и логика
@@ -178,8 +185,14 @@ Object Field::make_step_accessor(const Object &key) {
         return Object::make_integer(this->alignment());
 
     // 2. Тип (TypeSpec) — создаем NativeRef для дальнейшей навигации
-    if (name == ".type") {
+    if (name == ".type-spec") {
         return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
+    }
+    if (name == ".type") {
+        // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
+        // потому что у TypeSpec тоже будет свой make_step_accessor
+        auto base_type = this->type().base_type();
+        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type));
     }
 
     // 3. Флаги состояния (теперь возвращают логический тип)

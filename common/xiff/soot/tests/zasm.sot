@@ -89,60 +89,47 @@
 ;;; Convert Argument To 
 ;;; =====================================================================
 
-(defun parse-z80 (arg)
-    ; (error "sss" (lextoken-ctx arg))
+(defun alias->token (alias)
+  "конвертр"
+  (let ((base (-> alias .reg))
+        (offs (-> alias .offset))
+        (size (-> alias .bit_size)))
+    (cond
+      ;; Если это просто регистр (например, HL в rlet)
+      ((and (= offs 0) (not (member base '(ix iy))))
+       (cons (if (>= size 16) '16-reg '8-reg) base))
+
+      ;; Если это индексированная память (IX+d)
+      ((member base '(ix iy))
+       (cons (if (eq? base 'ix) 'ix-indexed 'iy-indexed) offs))
+
+      ;; Если это бит в байте (BIT n, (IX+d))
+      ((= size 1)
+       (cons 'bit-access (list base offs (-> alias .bit_offset))))
+
+      (else (error "Unknown alias mapping" alias)))))
+
+(defun symbol->token (sym)
   (cond
-    ((lextoken? arg) arg)
-     ;; Обработка списка (hl) как индексированной адресации
-    ((and (list? arg) (= (length arg) 1) (lextoken? (car arg)))
-     (let ((token (car arg)))
-       (if (member (lextoken-value token) '(hl bc de sp))
-           (ind-reader (list token))
-           arg)))
+    ;; 8-битные регистры
+    ((member sym '(a b c d e h l)) 
+     (cons '8-reg sym))
+    
+    ;; 16-битные регистры
+    ((member sym '(bc de hl sp af ix iy)) 
+     (cons '16-reg sym))
+    
+    ;; Если это не регистр, значит это метка (адрес)
+    (else (cons 'number (module-label-get sym)))))
 
-
-((type? arg 'native-ref)
- (let ((b-size (-> arg .bit_size))
-       (offs   (-> arg .offset))
-       (base   (-> arg .reg)))
-   ;; Для отладки:
-   (fmt #t "PARSE native-ref: base={} offset={} bits={}\n" base offs b-size)
-   
-   ;; ВАЖНО: Возвращаем ТОЛЬКО ОДНО значение!
-   (cond
-     ;; 2. Для битовых полей (bits=1) - число
-     ((= b-size 1)
-      (make-lextoken :type 'number :value (-> arg .bit_offset)))
-     
-     ;; 3. Для 8-битных данных в памяти - indexed-addr
-     ((= b-size 8)
-      (make-lextoken :type 'indexed-addr :value (list base offs)))
-     
-     ;; 4. Для 16-битных данных - список для макроса
-     ((= b-size 16)
-      (list base offs))  ;; Будет использовано макросом ld-16-from-mem
-     
-     ;; 5. Для регистров (offset=0) - обычный регистр
-     ((= offs 0)
-      (make-lextoken :type (if (>= b-size 16) '16-register '8-register) 
-                     :value base))
-     
-     ;; 6. Все остальное - ошибка
-     (else
-      (error (fmt #f "Unsupported native-ref: base={} offset={} bits={}" 
-                  base offs b-size) ctx)))))
-
-    ((symbol? arg)
-     (let ((type (cond 
-                   ((hash-table-contains? *reg-codes* arg) '8-register)
-                   ((hash-table-contains? *con-codes* arg) 'condition)
-                   (else 'asmsym))))
-       (make-lextoken :type type :value arg)))
-
-    ((number? arg) (make-lextoken :type 'number :value arg))
-    ((null? arg)   (make-lextoken :type null))
-    (else          (make-lextoken :type 'unknown :value arg))))
-
+(defun parse-arg (arg)
+  (cond
+    ((list? arg) arg) ;; Уже токен (регистр типа HL, A)
+    ((number? arg)    (cons 'number arg))
+    ((native-ref? arg) (alias->token arg)) ;; Тот самый "разбор полетов"
+    ((symbol? arg)    (symbol->token arg)) ;; Регистры, метки
+    ((list? arg)      (ind-reader arg))    ;; Косвенная адресация (HL)
+    (else (error "Unknown operand type" arg))))
 
 ;;; =====================================================================
 ;;; Class Segment
@@ -392,6 +379,42 @@
   (emit '() :listing (fmt #f ".label {}" name)))
 
 ;;; =====================================================================
+;;; Коллекция вариантов команд
+;;; =====================================================================
+
+(define *asm-handlers* (make-hash-table))
+
+(defun obj->string (obj) (fmt #f "{}" obj))
+
+;; Генерируем ключ вида "ld:8-reg:number"
+(defun make-sig-key (cmd sig)
+  (when (keyword? sig) (error "Unexpected keyword"))
+  (let ((sig-str (cond 
+                   ((string? sig) sig)
+                   ((symbol? sig) (symbol->string sig))
+                   ((list? sig)   (string-join (map obj->string sig) "-"))
+                   (else (obj->string sig)))))
+    (fmt #f "{}:{}" cmd sig-str)))
+
+(defun register-handler (cmd sig fn)
+  (let ((key (make-sig-key cmd sig)))
+    (fmt #t "Register handler: {}\n" key)
+    (hash-table-set! *asm-handlers* key fn)))
+
+(defun find-handler! (cmd sig)
+  (let* ((key (make-sig-key cmd sig))
+         (h   (hash-table-ref *asm-handlers* key #f)))
+    (or h 
+        (let ((available (filter (lambda (k) (string-prefix? (fmt #f "{}:" cmd) k))
+                                 (hash-table-keys *asm-handlers*))))
+          (asm-error (fmt #f "Instruction {}: no implementation for [{}]\nAvailable variants:\n  {}" 
+                          cmd 
+                          (if (list? sig) (string-join (map obj->string sig) "-") sig)
+                          (if (null? available) 
+                              "NONE (check registration)" 
+                              (string-join available "\n  "))))))))
+
+;;; =====================================================================
 ;;; 
 ;;; =====================================================================
 
@@ -405,36 +428,71 @@
 (defun .rst (val)
   (emit (+ #xC7 val) :listing (fmt "RST {:02X}h" val)))
 
-(defun .ld-hl-ix (offset)
-  (emit (list #xDD #x6E offset #xDD #x66 (+ offset 1))
-        :listing (fmt "LD HL, (IX+{})" offset)))
+(for-each '(a b c d e h l) (lambda (r)
+  (register-handler '.ld "8-reg-8-reg"
+    (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s)))))))
+ 
+;;; =====================================================================
+;;; LD
+;;; =====================================================================
 
+(register-handler '.ld "8-reg-number"
+  (lambda (d s) (emit (list #x3E s) :listing (fmt #f "LD {}, ${:02X}" d s))))
+
+(register-handler '.ld "16-reg-ix-indexed"
+  (lambda (d s) 
+    (let ((off (cdr s)))
+       (emit (list #xDD #x6E off #xDD #x66 (+ off 1))))))
+
+;; LD A, (IX+d) -> DD 7E d
+(register-handler '.ld "8-reg-ix-indexed"
+  (lambda (reg off)
+    (if (eq? reg 'a)
+        (emit (list #xDD #x7E off))
+        (asm-error "Z80 can only LD A from (IX+d) directly"))))
+
+;; LD (IX+d), R -> DD 70+reg d
+(register-handler '.ld "ix-indexed-8-reg"
+  (lambda (off reg)
+    (emit (list #xDD (+ #x70 (reg-code reg)) off))))
+
+;; LD (IX+d), n  -> #xDD #x36 dist n
+(register-handler '.ld "ix-indexed-number"
+  (lambda (off val)
+    (fmt #t "DEBUG: val is {} type is {}\n" val (type-of val))
+    (emit (list #xDD #x36 off val) 
+          :listing (fmt #f "LD (IX+{}), ${:02X}" off val))))
+
+;; LD (IY+d), n  -> #xFD #x36 dist n
+(register-handler '.ld "iy-indexed-number"
+  (lambda (off val)
+    (emit (list #xFD #x36 off val) 
+          :listing (fmt #f "LD (IY+{}), ${:02X}" off val))))
 
 (defun .ld (dest src)
-  (cond
-    ;; 1. LD HL, (IX+d) -> чтение 16-бит из памяти
-    ((and (eq? dest 'hl) (is-alias? src))
-     (let ((reg (-> src .reg))
-           (off (-> src .offset)))
-       (if (eq? reg 'ix)
-           (emit (list #xDD #x6E off #xDD #x66 (+ off 1))
-                 :listing (fmt #f ".ld HL, (IX+{})" off))
-           (asm-error "Only IX is supported for now"))))
+  (let* ((d-tok (parse-arg dest))
+         (s-tok (parse-arg src))
+         (sig   (list (car d-tok) (car s-tok)))
+         (handler (find-handler! '.ld sig)))
+    
+    ;; Убедись, что мы передаем значения, а не списки значений
+    (let ((d-val (if (pair? (cdr d-tok)) (car (cdr d-tok)) (cdr d-tok)))
+          (s-val (if (pair? (cdr s-tok)) (car (cdr s-tok)) (cdr s-tok))))
+      (eval handler d-val s-val))))
 
-    ;; 2. LD (IX+d), n -> запись константы в память
-    ((and (is-alias? dest) (number? src))
-     (let ((reg (-> dest .reg))
-           (off (-> dest .offset)))
-       (if (eq? reg 'ix)
-           (emit (list #xDD #x36 off src)
-                 :listing (fmt #f ".ld (IX+{}), ${:02X}" off src))
-           (asm-error "Only IX is supported for now"))))
+(defmacro define-instruction (name)
+  `(defun ,name (dest src)
+     (let* ((d-tok (parse-arg dest))
+            (s-tok (parse-arg src))
+            (sig (list (car d-tok) (car s-tok)))
+            (handler (find-handler! ',name sig)))
+       (apply handler (list (cdr d-tok) (cdr s-tok))))))
 
-    ;; 3. LD A, n -> загрузка аккумулятора
-    ((and (eq? dest 'a) (number? src))
-     (emit (list #x3E src) :listing (fmt #f ".ld A, ${:02X}" src)))
-
-    (else (asm-error (fmt #f "Unsupported operands for .ld: {} {}" dest src)))))
+;; Теперь вместо написания функций вручную:
+;(define-instruction .ld)
+(define-instruction .add)
+(define-instruction .sub)
+(define-instruction .xor)
 
 ;;; =====================================================================
 ;;; 

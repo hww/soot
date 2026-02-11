@@ -3,6 +3,7 @@
 #include "common/sooti/Printer.hpp"
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
+#include "type_system/TypeSystem.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -336,11 +337,21 @@ Object TypeSpec::make_step_accessor(const Object &key) {
         return Object::make_null();
     }
 
+    if (name == ".type") {
+        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type()));
+    }
+
     // Если ключ — символ (например, 'base-type), используем стандартную карту HeapObject
     Object meta = HeapObject::make_step_accessor(key);
 
+    if (!meta.is_none())
+        return meta;
+
+    throw std::runtime_error(
+        fmt::format("type-spec step accessor does not know the key {}", key.to_std_string()));
+
     // Если HeapObject ничего не нашел (undefined), возвращаем пустой список (nil) для Лиспа
-    return meta.is_none() ? Object::make_null() : meta;
+    return Object::make_null();
 }
 
 // Вспомогательная функция для преобразования TypeSpec
