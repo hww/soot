@@ -106,9 +106,8 @@
 ;;; =====================================================================
 
 (defun unquote-sym (s)
-  "Если символ квотирован '(quote x), возвращает x, иначе сам s"
   (if (and (list? s) (eq? (car s) 'quote))
-      (cadr s)
+      (unquote-sym (cadr s)) ;; Рекурсивно чистим
       s))
 
 ;; Используем список с тегом 'token для однозначности
@@ -215,19 +214,14 @@
         null)))
 
 (defun segment-label-set! (seg label &key (address null) (scope 'private))
-  "Устанавливает метку в сегменте. Если address — null, берет текущий курсор буфера."
-  (fmt #t "segment-label-set! {} {}" (segment-name seg) label)
-  (let ((buf (segment-buffer seg))
-        (ilc (segment-ilc seg))
-        (target-addr 0))
-    (if (not (null? address))
-        ;; Если адрес задан явно
-        (set! target-addr address)
-        ;; Иначе привязываемся к текущей позиции записи
-        (set! target-addr ilc))
-    (buffer-label-set! buf label :address target-addr)
+  (let* ((clean-name (unquote-sym label)) ;; Убираем лишние quote
+         (buf (segment-buffer seg))
+         (ilc (segment-ilc seg))
+         (target-addr (if (not (null? address)) address ilc)))
+    
+    (buffer-label-set! buf clean-name :address target-addr)
     (fmt #t "  [Segment:{}] Label '{}' set to {}\n" 
-         (segment-name seg) label target-addr)))
+         (segment-name seg) clean-name target-addr)))
 
 (defun segment-record-listing-line (seg start-addr text)
   ;(fmt #t "DEBUG: segment-record-listing-line addr: {} :listing {}\n" start-addr text)
@@ -306,12 +300,13 @@
           found-label))))
 
 (defun module-label-addr-get (label)
-  "Всегда возвращает число (адрес) или 0."
+  "На 1-м проходе возвращает 0 для неизвестных меток, на 2-м — кидает ошибку."
   (let ((lab (module-label-get label)))
-    (if (null? lab)
-        (if (eq? *current-pass* 1) 0 (asm-error (fmt #f "Label not found `{}`" label)))
-        (-> lab .address))))
-
+    (cond
+      ((not (null? lab)) (-> lab .address))
+      ((eq? *current-pass* 1) 0) ;; Заглушка для первого прохода
+      (else (asm-error (fmt #f "Label not found: `{}`" label))))))
+      
 (defun module-dump-listing (mod)
   (fmt #t "\n--- Module: {} ---\n" (module-name mod)) ;; Исправлено seg -> mod
   (let ((segs (module-segments mod)))
