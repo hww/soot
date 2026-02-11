@@ -309,7 +309,7 @@
   "Всегда возвращает число (адрес) или 0."
   (let ((lab (module-label-get label)))
     (if (null? lab)
-        (if (eq? *current-pass* 1) 0 (error (fmt #f "Label not found `{}`" label)))
+        (if (eq? *current-pass* 1) 0 (asm-error (fmt #f "Label not found `{}`" label)))
         (-> lab .address))))
 
 (defun module-dump-listing (mod)
@@ -323,6 +323,10 @@
 ;;; =====================================================================
 ;;; Глобальное состояние 
 ;;; =====================================================================
+
+(defstruct method 
+  "Регистрируем фкнецию или метод в базе методов для многопроходной компиляции" 
+  (name null) (type null) (this-name null) (label null) (body null))
 
 (defvar *modules* (make-hash-table) 
   "Глобальный реестр всех загруженных модулей.")
@@ -445,12 +449,9 @@
 
 (defmacro .label (name &key (address null) (scope 'private))
   `(let* ((seg *current-segment*)
-          ;; Если адрес не передан, берем текущий ILC сегмента
-          (addr (if (null? ,address) 
-                    (segment-ilc seg) 
-                    ,address)))
+          (addr (if (null? ,address) (segment-ilc seg) ,address)))
+     ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg ',name :address addr :scope ',scope)
-     ;; Пустой emit просто для записи в листинг
      (emit '() :listing (fmt #f ".label {} @ {:04X}" ',name addr))))
 
 (defun address-of (label)
@@ -754,37 +755,118 @@
         (emit fill :listing (if (= i 0) (fmt #f "ALIGN {} (added {} bytes)" boundary padding) ""))))))
 
 ;;; =====================================================================
+;;; Procedure
+;;; =====================================================================
+
+(defmacro defproc (name args &rest body)
+  (let ((label-name name)
+        ;; Формируем список привязок для rlet на основе аргументов
+        ;; Ожидаем формат: ((buf1 :reg de :type string) (buf2 :reg hl :type string))
+        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+    `(begin
+       (set! *methods-to-assemble* (cons (make-method 
+                         :name ',label-name 
+                         :type 'global
+                         :label ',label-name
+                         :body (lambda () 
+                                 (.label ,label-name :scope 'public)
+                                 ;; Если есть типизированные аргументы, оборачиваем в rlet
+                                 ,(if (not (null? rlet-bindings))
+                                      `(rlet ,rlet-bindings (zasm ,@body))
+                                      `(zasm ,@body))
+                                 (.ret))) 
+                   *methods-to-assemble*))
+       (fmt #t "Procedure {} with typed registers registered\n" ',label-name))))
+
+(defmacro call-proc (name &rest args)
+  "Пример: (call-proc copy-string :dest buffer :src msg)"
+  `(zasm
+     ;; Здесь макрос должен посмотреть в декларацию defproc
+     ;; и сгенерировать LD для каждого аргумента
+     (.ld de ,(get-arg args :dest))
+     (.ld hl ,(get-arg args :src))
+     (.call ',name)))
+
+;;; =====================================================================
 ;;; Methods 
 ;;; =====================================================================
 
-(defstruct method (name null) (type null) (this-name null) (label null) (body null))
-
 (defmacro defmethod (name args &rest body)
   (let* ((this-spec (car args))
-         (this-name (car this-spec))
          (this-type (cadr this-spec))
-         (label-name (fmt #f "method-{}::{}" this-type name)))
-    
+         ;; Создаем символ метки заранее
+         (label-sym (intern (fmt #f "{}::{}" this-type name))))
     `(begin
-       (set! *methods-to-assemble* (cons (make-method :name ',name 
-                         :type ',this-type 
-                         :this-name ',this-name
-                         :label ,label-name
-                         ;; Лямбда создается ЗДЕСЬ, rlet внутри неё уже будет иметь
-                         ;; реальные символы вместо запятых.
-                         :body (lambda () 
-                                 (rlet ((,this-name :type ,this-type))
-                                    (.label ,label-name)
-                                   ,@body))) 
-                   *methods-to-assemble*))
-       
-       ;; Регистрируем в системе типов
-       (set-method! ',this-type ',name 0)
-       (fmt #t "Method {}::{} queued for assembly\n" ',this-type ',name))))
-
+       (let ((impl (make-method :name ',name 
+                                :type ',this-type 
+                                :label ',label-sym ;; Тут квота нужна для структуры
+                                :body (lambda () 
+                                        (rlet ((,(car this-spec) :reg ix :type ,this-type))
+                                          ;; А ТУТ - НЕТ! Передаем значение напрямую через запятую
+                                          (.label ,label-sym) 
+                                          ,@body)))))
+         (push! impl *methods-to-assemble*)
+         (set-method! ',this-type ',name impl)))))
+         
+(defmacro call-method (obj method-name &rest args)
+  `(zasm
+     ;; 1. Получаем адрес объекта в IX
+     (.ld ix ,obj)
+     ;; 2. Берем адрес vtable (допустим, он в первых 2 байтах объекта)
+     (.ld l (ix + 0))
+     (.ld h (ix + 1))
+     ;; 3. Переходим к нужному слоту (ID метода * 3)
+     (let ((offset (* 3 (get-method-id ',method-name))))
+       (.ld de offset)
+       (.add hl de))
+     (.jp (hl)))) ;; Прыгаем в таблицу переходов
 
 ;;; =====================================================================
-;;; 
+;;; V-Table 
+;;; =====================================================================
+
+;;; 1. Сначала определяем вспомогательную функцию
+(defun emit-vtable-slots (type-sym emit-fn &optional ctx)
+  (let ((max-id (-> type-sym .methods-max-id))
+        (methods (-> type-sym .methods))
+        (data '()))
+    (dotimes (i (+ max-id 1))
+      (let ((m (find-if (lambda (x) (= (-> x .id) i)) methods)))
+        (if m
+            (push! (emit-fn (intern (concat (symbol->string type-sym) "::" (-> m .name)))) data)
+            (push! (emit-fn #f) data))))
+    (flatten (reverse data))))
+
+;;; 2. Теперь определяем функцию генерации таблицы
+(defun .build-vtable (type-sym)
+  (let ((v-name (intern (fmt #f "{}-vtable" type-sym))))
+    ;; 1. Устанавливаем метку вручную
+    (segment-label-set! *current-segment* v-name)
+    
+    ;; 2. Генерируем данные таблицы
+    (let ((slots (emit-vtable-slots type-sym 
+                    (lambda (method-full-name) 
+                      (if method-full-name
+                          (let ((addr (module-label-addr-get method-full-name)))
+                            (list #xC3 (lower-byte addr) (higher-byte addr)))
+                          (list 0 0 0))))))
+      ;; 3. Отправляем байты в буфер
+      (emit slots :listing (fmt #f "VTable for {}" type-sym)))))
+
+
+;;;  Инстанциация: создание объекта в памяти
+;;; Чтобы объект «знал» свой тип, он должен хранить адрес своей VTable.
+(defun .instance (type-sym)
+  (let ((vtable-label (intern (fmt #f "{}-vtable" type-sym))))
+    (zasm
+      ;; 1. Указатель на VTable (2 байта на Z80)
+      (.dw vtable-label)
+      ;; 2. Резервируем место под поля структуры
+      ;; Мы можем спросить у C++ системы типов размер структуры
+      (.ds (-> type-sym .size)))))
+
+;;; =====================================================================
+;;; Top Level Functions
 ;;; =====================================================================   
 
 (defun assemble-module (name)

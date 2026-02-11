@@ -4976,7 +4976,9 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // 1. Проверка аргументов
-    vararg_check(form, args, {{}, {}},
+    vararg_check(form, args,
+                 {{ObjectType::STATIC_BUFFER, ObjectType::STATIC_WRITER},
+                  {ObjectType::STRING, ObjectType::SYMBOL}},
                  {
                      {"address", {false, {ObjectType::INTEGER}}},
                      {"segment", {false, {ObjectType::STRING, ObjectType::SYMBOL}}},

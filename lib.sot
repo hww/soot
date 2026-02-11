@@ -380,6 +380,12 @@
          (cons (car lst) (filter pred (cdr lst))))
         (else (filter pred (cdr lst)))))
 
+(defun find-if (pred lst)
+  (cond
+    ((null? lst) null)
+    ((pred (car lst)) (car lst))
+    (else (find-if pred (cdr lst)))))
+    
 ;; ---------------------------------------------------------------------------
 ;; Поиск
 ;; ---------------------------------------------------------------------------

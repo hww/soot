@@ -45,6 +45,7 @@ std::string MethodInfo::print_one_line() const {
 bool MethodInfo::operator!=(const MethodInfo &other) const {
     return !(*this == other);
 }
+
 Object MethodInfo::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
@@ -57,6 +58,8 @@ Object MethodInfo::make_step_accessor(const Object &key) {
         return Object::make_string(this->defined_in_type);
     if (name == ".type-name")
         return Object::make_string(this->type_name);
+    if (name == ".implementation")
+        return this->method_impl;
 
     // 2. Сложные поля (создаем объекты на лету)
     if (name == ".type-spec") {

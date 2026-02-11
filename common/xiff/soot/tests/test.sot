@@ -103,6 +103,12 @@
           
       )
 
+;(defmethod new vec3 ((x uint16)(y uint16))
+;  (rlet ((v :reg ix :source self))
+;    (zasm 
+;      (.ret))))
+
+
 
 (defmethod clear ((self vec3))
   (rlet ((v :reg ix :source self))
@@ -111,6 +117,37 @@
       (.ld (-> v y) 0)
       (.ld (-> v z) 0)
       (.ret))))
+
+
+(defproc copy-string ((dest :reg de :type string) 
+                      (src  :reg hl :type string))
+  ;; Вход: DE = dest, HL = src
+  (.label loop)
+  (.ld a (@ hl))      ;; Читаем символ из источника
+  (.ld (@ de) a)      ;; Пишем в приемник
+  (.or a)             ;; Проверяем на 0 (конец строки)
+  (.ret 'z)           ;; Если 0 — выходим (строка уже закрыта нулем)
+  
+  (.inc hl)           ;; Следующий в источнике
+  (.inc de)           ;; Следующий в приемнике
+  (.jr 'loop))        ;; Повторяем
+
+(defproc vtable ()
+  (.label vec3::new)
+  (.build-vtable 'vec3)
+)
+
+(defproc main (dest src)
+  ;; Вход: DE = dest, HL = src
+  (.label loop)
+  (.ld a (@ hl))      ;; Читаем символ из источника
+  (.ld (@ de) a)      ;; Пишем в приемник
+  (.or a)             ;; Проверяем на 0 (конец строки)
+  (.ret 'z)           ;; Если 0 — выходим (строка уже закрыта нулем)
+  
+  (.inc hl)           ;; Следующий в источнике
+  (.inc de)           ;; Следующий в приемнике
+  (.jr 'loop))        ;; Повторяем
 
 
 (assemble-module 'default)
