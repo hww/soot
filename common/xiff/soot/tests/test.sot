@@ -104,19 +104,19 @@
       )
 
 ;; Пример для твоего синтаксиса (как в sprite-aux-list)
-;(defmethod new vec3 ((x int16) (x int16))
+(defmethod new vec3 ((x int16) (x int16))
   ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
   ;; (.call 'object-new)
   
   ;; 2. Инициализируем VTable объекта (первые 2 байта)
-  ;(.ld hl 'vec3-vtable)
+  (.ld hl 'vec3-vtable)
   ;(.ld (ix + 0) l)
   ;(.ld (ix + 1) h)
   ;
   ;;; 3. Обнуляем поля или ставим дефолты
   ;(.ld (ix + 2) 0) ;; x
   ;(.ld (ix + 4) 0) ;; y
-  ;(.ret))
+  (.ret))
 
 (defmethod clear ((self vec3))
   (rlet ((v :reg ix :source self))
@@ -141,7 +141,6 @@
   (.jr 'loop))        ;; Повторяем
 
 (defproc vtable ()
-  (.label 'vec3::new)
   (.build-vtable 'vec3)
 )
 
