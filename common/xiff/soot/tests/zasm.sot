@@ -786,23 +786,52 @@
 ;;; Methods 
 ;;; =====================================================================
 
-(defmacro defmethod (name args &rest body)
-  (let* ((this-spec (car args))
+(defmacro defmethod-instance (name args &rest body)
+  (let* ((this-spec (car args))      ;; Например: (self :vec3)
          (this-type (cadr this-spec))
-         ;; Создаем символ метки заранее
          (label-sym (intern (fmt #f "{}::{}" this-type name))))
     `(begin
        (let ((impl (make-method :name ',name 
                                 :type ',this-type 
-                                :label ',label-sym ;; Тут квота нужна для структуры
+                                :label ',label-sym
                                 :body (lambda () 
                                         (rlet ((,(car this-spec) :reg ix :type ,this-type))
-                                          ;; А ТУТ - НЕТ! Передаем значение напрямую через запятую
-                                          (.label ,label-sym) 
-                                          ,@body)))))
+                                          (.label ,label-sym :scope 'public)
+                                          (zasm ,@body)
+                                          (.ret))))))
          (push! impl *methods-to-assemble*)
          (set-method! ',this-type ',name impl)))))
-         
+
+(defmacro defmethod-static (name type args &rest body)
+  (let ((label-sym (intern (fmt #f "{}::{}" type name))))
+    `(begin
+       (let ((impl (make-method :name ',name 
+                                :type ',type 
+                                :label ',label-sym
+                                :body (lambda () 
+                                        (.label ,label-sym :scope 'public)
+                                        (zasm ,@body)
+                                        (.ret)))))
+         (push! impl *methods-to-assemble*)
+         ;; Регистрируем как статический метод в метаданных типа
+         (set-method! ',type ',name impl)))))
+
+(defmacro defmethod (name type-or-args &rest body)
+  (cond
+    ;; Случай: (defmethod new vec3 (x y z) ...)
+    ((eq? name 'new)
+     (let ((type type-or-args)
+           (args (car body))
+           (actual-body (cdr body)))
+       `(defmethod-static ,name ,type ,args ,@actual-body)))
+
+    ;; Случай: (defmethod len ((self vec3)) ...)
+    ((list? type-or-args)
+     `(defmethod-instance ,name ,type-or-args ,@body))
+
+    (else 
+     (error "Malformed defmethod: check arguments structure."))))
+
 (defmacro call-method (obj method-name &rest args)
   `(zasm
      ;; 1. Получаем адрес объекта в IX
