@@ -64,20 +64,25 @@
 (reg-code! 'sp 3)
 (reg-code! 'af 3)
 
-;; Вспомогательная функции для регистров
+(reg-code! 'ix 2) ;; Код такой же как у HL
+(reg-code! 'iy 2)
+
 (defun get-low-reg (reg)
   (case reg
     ('hl 'l)
     ('de 'e)
     ('bc 'c)
+    ('ix 'ixl) ;; Добавляем половинки для индексных
+    ('iy 'iyl)
     (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
 
-;; Вспомогательная функции для регистров
 (defun get-high-reg (reg)
   (case reg
     ('hl 'h)
     ('de 'd)
     ('bc 'b)
+    ('ix 'ixh)
+    ('iy 'iyh)
     (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
 
 ;;; =====================================================================
@@ -88,14 +93,8 @@
   "Метка-заполнитель для косвенной адресации (.ld a (@ hl))"
   (list '@ reg))
 
-(defun ix (&rest args)
-  ;; args будет выглядеть как (+ 5) или (+ -1)
-  (let ((offset (if (null? args) 0 (cadr args))))
-    (list 'ix-indexed offset)))
-
-(defun iy (&rest args)
-  (let ((offset (if (null? args) 0 (cadr args))))
-    (list 'iy-indexed offset)))
+(defun +ix (offset) (list 'ix-indexed offset))
+(defun +iy (offset) (list 'iy-indexed offset))
        
 ;;; =====================================================================
 ;;; Condition Codes
@@ -452,7 +451,7 @@
           (addr (if (null? ,address) (segment-ilc seg) ,address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg ',name :address addr :scope ',scope)
-     (emit '() :listing (fmt #f ".label {} @ {:04X}" ',name addr))))
+     (emit '() :listing (fmt #f "--- .label {} @ {:04X} ---" ',name addr))))
 
 (defun address-of (label)
   "Функция для использования внутри Lisp-выражений в zasm"
@@ -560,14 +559,20 @@
         (emit #x7E :listing "LD A, (HL)")
         (asm-error "Only 'LD A, (HL)' is supported for this signature"))))
 
-
-
 ;; LD 16-reg, number (например, LD HL, $4100)
 (register-handler '.ld "16-reg-number"
   (lambda (d s) 
-    (let ((op (+ #x01 (ash (reg-code d) 4)))) ;; BC=01, DE=11, HL=21, SP=31
-      (emit (list op (lower-byte s) (higher-byte s))
-            :listing (fmt #f "LD {}, ${:04X}" d s)))))
+    (cond
+      ((eq? d 'ix) 
+       (emit (list #xDD #x21 (lower-byte s) (higher-byte s)) 
+             :listing (fmt #f "LD IX, ${:04X}" s)))
+      ((eq? d 'iy) 
+       (emit (list #xFD #x21 (lower-byte s) (higher-byte s)) 
+             :listing (fmt #f "LD IY, ${:04X}" s)))
+      (else
+       (let ((op (+ #x01 (ash (reg-code d) 4))))
+         (emit (list op (lower-byte s) (higher-byte s))
+               :listing (fmt #f "LD {}, ${:04X}" d s)))))))
 
 (register-handler '.ld "16-reg-ix-indexed"
   (lambda (d s) 
@@ -577,9 +582,12 @@
 ;; LD A, (IX+d) -> DD 7E d
 (register-handler '.ld "8-reg-ix-indexed"
   (lambda (reg off)
-    (if (eq? reg 'a)
-        (emit (list #xDD #x7E off))
-        (asm-error "Z80 can only LD A from (IX+d) directly"))))
+    ;; Вычисляем код регистра (A=7, B=0, C=1, D=2, E=3, H=4, L=5)
+    (let ((r-code (reg-code reg)))
+      ;; Опкод: #x40 + (r << 3) + 6
+      (let ((opcode (+ #x40 (ash r-code 3) 6)))
+        (emit (list #xDD opcode off)
+              :listing (fmt #f "LD {}, (IX+{})" reg off))))))
 
 ;; LD (IX+d), R -> DD 70+reg d
 (register-handler '.ld '(ix-indexed 8-reg)
@@ -622,7 +630,13 @@
           (else (asm-error (fmt #f "Z80 cannot LD ({}) from A" d))))
         (asm-error "Indirect store is only supported from Accumulator (A)"))))
 
-
+;; ADD HL, rr (BC=00, DE=10, HL=20, SP=30)
+(register-handler '.add "16-reg-16-reg"
+  (lambda (d s)
+    (if (eq? d 'hl)
+        (let ((op (+ #x09 (ash (reg-code s) 4))))
+          (emit op :listing (fmt #f "ADD HL, {}" s)))
+        (asm-error "Z80 can only ADD to HL (or IX/IY) for 16-bit registers"))))
 
 ;; Теперь вместо написания функций вручную:
 (define-instruction .ld)
@@ -669,6 +683,14 @@
       (emit (list op (lower-byte addr) (higher-byte addr))
             :listing (fmt #f "JP {}, ${:04X}" cc addr)))))
 
+(register-handler '.jp "16-reg"
+  (lambda (reg)
+    (cond
+      ((eq? reg 'hl) (emit #xE9 :listing "JP (HL)"))
+      ((eq? reg 'ix) (emit (list #xDD #xE9) :listing "JP (IX)"))
+      ((eq? reg 'iy) (emit (list #xFD #xE9) :listing "JP (IY)"))
+      (else (asm-error "Z80 can only JP to HL, IX, or IY")))))
+      
 (define-instruction .jp)
 
 (defun .jump (target)
@@ -686,8 +708,6 @@
                (emit #x00 :listing "nop (align)")) 
              (emit (list #xC3 (lower-byte target-addr) (higher-byte target-addr))
                    :listing (fmt #f "JP ${:04X}" target-addr))))))))
-
-
 
 ;;; =====================================================================
 ;;; Procedures
@@ -840,23 +860,23 @@
 
 (defmacro call-method (obj method-full-name &rest args)
   (let* ((full-str (symbol->string (unquote-sym method-full-name)))
-         (parts (string-split full-str "::")))
-    (if (< (length parts) 2)
-        (error (fmt #f "Invalid method name: {}" method-full-name))
-        (let* ((t-name (car parts))
-               (m-name (cadr parts))
-             
-               ;; ХИТРОСТЬ: используем eval, чтобы подставить реальные символы 'vec3 и 'new
-               (m-id (method-id-of t-name m-name))
-               (offset (* 3 m-id)))
-          `(zasm
-             (.ld ix ,obj)
-             (.ld l (ix + 0))
-             (.ld h (ix + 1))
-             (.ld de ,offset)
-             (.add hl de)
-             (.jp hl)
-             )))))
+         (parts (filter (lambda (x) (> (string-length (symbol->string x)) 0)) 
+                        (string-split full-str "::")))
+         (t-name (car parts))
+         (m-name (cadr parts))
+         (m-id (eval `(method-id-of ',t-name ',m-name)))
+         (offset (* 3 m-id)))
+    ;; Оборачиваем в begin, чтобы zasm понял, что это группа команд
+    `(begin
+       (.ld ix 1)
+       (.ld ix ,obj)
+       (.ld l (+ix 0))
+       (.ld h (+ix 1))
+       (.ld de ,offset)
+       (.add hl de)
+       (.jp hl)
+       )
+       ))
 
 ;;; =====================================================================
 ;;; V-Table 

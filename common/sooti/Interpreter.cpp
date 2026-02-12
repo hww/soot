@@ -779,6 +779,8 @@ Object Interpreter::eval_with_rewind(const Object                             &o
     try {
         return eval(obj, env);
     } catch (EvalException &e) {
+        if (e.env.get() == nullptr)
+            e.env = env;
         if (m_disable_printing)
             throw;
 
@@ -3515,16 +3517,22 @@ Object Interpreter::eval_load(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{}}, {}); // Одна строка (имя файла)
     Object last_result = get_null();
+    try {
+        if (args.unnamed[0].is_string()) {
+            std::vector<std::string> path;
+            path.push_back(args.unnamed[0].as_string()->data);
+            return eval_file_internal(path);
+        } else if (args.unnamed[0].is_pair()) {
+            auto strings = args.unnamed[0].as_c_vector_of_strings();
 
-    if (args.unnamed[0].is_string()) {
-        std::vector<std::string> path;
-        path.push_back(args.unnamed[0].as_string()->data);
-        return eval_file_internal(path);
-    } else if (args.unnamed[0].is_pair()) {
-        auto strings = args.unnamed[0].as_c_vector_of_strings();
-        return eval_file_internal(strings);
-    } else {
-        throw_eval_error(form, "load requires a string or list of strings");
+            return eval_file_internal(strings);
+        } else {
+            throw_eval_error(form, "load requires a string or list of strings");
+        }
+    } catch (std::runtime_error &e) {
+        throw_eval_error(form, e.what());
+    } catch (std::exception &e) {
+        throw_eval_error(form, e.what());
     }
     return last_result;
 }
