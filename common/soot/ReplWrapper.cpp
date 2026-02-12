@@ -7,8 +7,6 @@
 #include "common/versions/version.h"
 #include "fmt/color.h"
 #include "fmt/format.h"
-#include <fstream>
-#include <iostream>
 
 #include "common/sooti/PrettyPrinter.hpp"
 
@@ -265,6 +263,7 @@ replxx::Replxx::completions_t ReplWrapper::get_completions(const std::string &in
 // Hints возвращает vector<pair<string, Color>>
 replxx::Replxx::hints_t ReplWrapper::get_hints(const std::string &input, int &context_len,
                                                replxx::Replxx::Color &color) {
+    (void)color;
 
     replxx::Replxx::hints_t hints;
 
@@ -556,9 +555,11 @@ void ReplWrapper::handle_network_message(const std::string &message, int client_
         send(client_socket, error.c_str(), error.size(), 0);
     }
 }
+
 // ============================================================
 // Основная логика выполнения (Локально vs Сеть)
 // ============================================================
+
 void ReplWrapper::execute_line_internal(const std::string &line, bool print_result) {
     if (is_client_mode_) {
         // КЛИЕНТ: шлет код на сервер

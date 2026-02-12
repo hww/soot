@@ -1,6 +1,6 @@
 ﻿(init-types 'z80)
 
-(load "common/xiff/soot/tests/zasm.sot")
+(load "common/xiff/soot/zasm/zasm.sot")
 
 (deftype vec3s8 (structure)
   ((x int8) 
@@ -35,7 +35,32 @@
 (segment-reset *current-segment*)
 
 
-(define ADDR_BASE #x4000)
+;;; ===================================================================== 
+;;; Methods
+;;; ===================================================================== 
+
+;; Пример для твоего синтаксиса (как в sprite-aux-list)
+(defmethod new vec3 ((x int16) (x int16))
+  ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
+  ;; (.call 'object-new)
+  
+  ;; 2. Инициализируем VTable объекта (первые 2 байта)
+  (.ld hl 'vec3-vtable)
+  (.ld (+ix 0) l)
+  (.ld (+ix 1) h)
+  ;
+  ;;; 3. Обнуляем поля или ставим дефолты
+  (.ld (+ix 2) 0) ;; x
+  (.ld (+ix 4) 0) ;; y
+  (.ret))
+
+(defmethod clear ((self vec3))
+  (rlet ((v :reg ix :source self))
+    (zasm 
+      (.ld (-> v x) 0)
+      (.ld (-> v y) 0)
+      (.ld (-> v z) 0)
+      (.ret))))
 
 (defmethod len ((this vec3) (x uint8))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
@@ -43,7 +68,7 @@
   (rlet ((self :reg ix :type uint8)
          (x    :reg a  :type uint8)) 
     (zasm
-      (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
+     
       (.label start)
       (.jr 'start)    ;; Переход назад на 3 байта
       (.jp 'exit)    ;; Переход вперед на метку exit
@@ -55,13 +80,37 @@
       (.jr 'start)    ;; Переход назад на 3 байта
       (.jp 'exit)    ;; Переход вперед на метку exit
       (.label exit)      
-      (.ret))
+      (.ret))))
+
+;;; ===================================================================== 
+;;; V-Table
+;;; ===================================================================== 
+
+(defproc test-vtable ()
+  (.build-vtable 'vec3)
+)
+
+;;; ===================================================================== 
+;;; Other Tests
+;;; ===================================================================== 
+
+(define ADDR_BASE #x4000)
+
+(defproc test-expression ()
+  (zasm 
+     (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
+     (.ret)))
+
+(defproc test-jump-optimization ()
     (zasm
+      (.label start)
       (.jump #x8000)
       (.jump 'start)
-      (.jump 'exit2)
-      (.label exit2)      
-      (.ret))
+      (.jump 'exit)
+      (.label exit)      
+      (.ret)))
+
+(defproc test-data ()
     (zasm      
       (.label msg_hello)
       (.db "Hello, Z80!" 0)     ;; Строка с нуль-терминатором
@@ -70,9 +119,9 @@
       (.dw #x1234 (+ (address-of 'start) 5))  ;; Таблица адресов
       
       (.label buffer)
-      (.ds 8 #xFF)            ;; Буфер на 32 байта, забитый $FF
-      )
+      (.ds 8 #xFF)))            ;; Буфер на 32 байта, забитый $FF
       
+ (defproc test-address ()     
     (zasm
       (.org #x8000)          ;; Начинаем с адреса 32768
       
@@ -86,10 +135,9 @@
       (.label print_char)
       ;; Представим, что здесь вывод в порт
       (.rst #x10)            ;; Системный вызов (напр. в Sinclair ROM)
-      (.ret))      
-      
-      )
-      
+      (.ret)))      
+
+ (defproc test-string-copy ()        
       (zasm
         (.label strcpy)
         (.ld a (@ hl))      ;; Опкод 7E (LD A, (HL))
@@ -99,44 +147,8 @@
         (.ld (@ de) a)      ;; ТЕПЕРЬ Ок: Опкод 12 (LD (DE), A)
         (.inc hl)           ;; Опкод 23
         (.inc de)           ;; Опкод 13
-        (.jr 'strcpy))      ;; Опкод 18 F7 (прыжок назад)
-          
-      )
+        (.jr 'strcpy)))      ;; Опкод 18 F7 (прыжок назад)
 
-;;; ===================================================================== 
-;;; Methods
-;;; ===================================================================== 
-
-;; Пример для твоего синтаксиса (как в sprite-aux-list)
-(defmethod new vec3 ((x int16) (x int16))
-  ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
-  ;; (.call 'object-new)
-  
-  ;; 2. Инициализируем VTable объекта (первые 2 байта)
-  (.ld hl 'vec3-vtable)
-  (.ld (ix + 0) l)
-  (.ld (ix + 1) h)
-  ;
-  ;;; 3. Обнуляем поля или ставим дефолты
-  (.ld (ix + 2) 0) ;; x
-  (.ld (ix + 4) 0) ;; y
-  (.ret))
-
-(defmethod clear ((self vec3))
-  (rlet ((v :reg ix :source self))
-    (zasm 
-      (.ld (-> v x) 0)
-      (.ld (-> v y) 0)
-      (.ld (-> v z) 0)
-      (.ret))))
-
-;;; ===================================================================== 
-;;; V-Table
-;;; ===================================================================== 
-
-(defproc test-vtable ()
-  (.build-vtable 'vec3)
-)
 
 ;;; ===================================================================== 
 ;;; 
