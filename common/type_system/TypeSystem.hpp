@@ -433,6 +433,21 @@ class TypeSystem : public NativeRef {
         return Object::make_native_ref(shared_from_this());
     }
 
+    // ========================================================================
+    // Check Arguments
+    // ========================================================================
+  public:
+    bool check_function_args(const std::shared_ptr<EnvironmentObject> &env,
+                             const TypeSpec &expected_func_type, std::string *error_msg = nullptr);
+
+    std::vector<TypeSpec> get_arg_types_from_env(const std::shared_ptr<EnvironmentObject> &env);
+
+    TypeSpec build_function_type_from_args(const std::shared_ptr<EnvironmentObject> &env,
+                                           const std::string                        &return_type);
+
+  private:
+    TypeSpec get_type_from_object(const Object &obj);
+
   private:
     // ========================================================================
     // Private Implementation
