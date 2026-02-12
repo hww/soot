@@ -958,7 +958,7 @@ ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
                                   const std::map<std::string, Object> &keys,
                                   const std::string                   &rest_name) {
     ArgumentSpec spec;
-    spec.keys = !keys.empty();
+    spec.varkeys = !keys.empty();
     spec.rest = rest_name;
     spec.varargs = false; // Мы явно задаем структуру
 
@@ -1213,7 +1213,8 @@ std::string Object::print() const {
 std::string ArgumentSpec::print() const {
     // Вместо "ArgumentSpec: unnamed=2..." сделаем более сжатый системный вид
     return fmt::format("#<arg-spec u:{} n:{} r:{}{}{}>", unnamed.size(), named.size(),
-                       rest.empty() ? "0" : "1", keys ? " +rest" : "", varargs ? " +vararg" : "");
+                       rest.empty() ? "0" : "1", varkeys ? " +rest" : "",
+                       varargs ? " +vararg" : "");
 }
 
 std::string ArgumentSpec::print_full(size_t max_len, size_t max_arg_len) const {

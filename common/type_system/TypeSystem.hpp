@@ -151,8 +151,14 @@ struct TypeSearchFieldInput {
 class TypeSystem : public NativeRef {
     TypeSystem() = default; // Закрытый конструктор
   public:
+    // Запрещаем копирование и присваивание
     TypeSystem(const TypeSystem &) = delete;
     TypeSystem &operator=(const TypeSystem &) = delete;
+
+    // Разрешаем перемещение (если нужно)
+    TypeSystem(TypeSystem &&) = default;
+    TypeSystem &operator=(TypeSystem &&) = default;
+
     ~TypeSystem() = default;
 
     // Точка доступа к единственному экземпляру
@@ -402,6 +408,9 @@ class TypeSystem : public NativeRef {
 
     int get_types_count() {
         return m_types.size();
+    }
+    const std::unordered_map<std::string, std::unique_ptr<Type>> &get_types() const {
+        return m_types;
     }
 
     // ========================================================================

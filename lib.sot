@@ -624,6 +624,7 @@
 ;;      (vector-x v)       ;; Должно быть 10
 ;; -----------------------------------------------------------------------------
 (defmacro defstruct (name &rest fields)
+  (if (not (list? fields)) (error "expected list with arguments"))
   (let* ((struct-name-sym name)
           (doc? (string? (car fields)))
           ;; Если первый элемент строка — это докстринг, берем остальное как поля

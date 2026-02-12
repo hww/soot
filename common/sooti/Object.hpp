@@ -340,15 +340,14 @@ class Object {
         return type == ObjectType::NATIVE_REF;
     }
     template <typename T> bool is_native_ref() const {
-        // 1. Базовая проверка типа
         if (type != ObjectType::NATIVE_REF || !heap_obj) {
             return false;
         }
-
-        // 2. Достаем сырой указатель из shared_ptr и проверяем через dynamic_cast
-        // Используем std::remove_pointer на случай, если ты передал <Type*>, а не <Type>
-        using BaseT = typename std::remove_pointer<T>::type;
-        return dynamic_cast<BaseT *>(heap_obj.get()) != nullptr;
+        // КРИТИЧЕСКИ ВАЖНО: если use_count == 0, объект уже удалён!
+        if (heap_obj.use_count() == 0) {
+            return false;
+        }
+        return std::dynamic_pointer_cast<T>(heap_obj) != nullptr;
     }
     bool is_array() const {
         return type == ObjectType::ARRAY;
@@ -855,6 +854,70 @@ template <typename T> class InternedPtrMap {
         m_mask = 0b111;
     }
 
+    bool remove(InternedSymbolPtr ptr) {
+        uint32_t hash = util::compute_crc32(ptr.name_ptr, sizeof(const char *));
+
+        // Ищем существующий entry
+        for (uint32_t i = 0; i < m_entries.size(); i++) {
+            uint32_t slot_addr = (hash + i) & m_mask;
+            auto    &slot = m_entries[slot_addr];
+
+            if (!slot.key) {
+                // Дошли до пустого слота - элемент не найден
+                return false;
+            }
+
+            if (slot.key == ptr.name_ptr) {
+                // Нашли! Удаляем
+                slot.key = nullptr;
+                slot.value = T(); // value-initialized
+                m_used_entries--;
+
+                // ОПЦИОНАЛЬНО: Сдвигаем последующие элементы для улучшения поиска
+                // Это стандартная техника для открытой адресации
+                for (uint32_t j = i + 1; j < m_entries.size(); j++) {
+                    uint32_t next_slot = (hash + j) & m_mask;
+                    auto    &next = m_entries[next_slot];
+
+                    // Если дошли до пустого - стоп
+                    if (!next.key) {
+                        break;
+                    }
+
+                    // Перехешируем следующий элемент
+                    uint32_t next_hash = util::compute_crc32(next.key, sizeof(const char *));
+                    uint32_t ideal_slot = next_hash & m_mask;
+
+                    // Если идеальный слот находится ДО или РАВНО текущей позиции удаления
+                    // и ДО следующего пустого - нужно переместить
+                    if ((ideal_slot <= slot_addr && slot_addr < next_slot) ||
+                        (ideal_slot > next_slot && slot_addr < next_slot)) {
+                        // Копируем в текущий слот
+                        slot.key = next.key;
+                        slot.value = std::move(next.value);
+
+                        // Очищаем следующий слот
+                        next.key = nullptr;
+                        next.value = T();
+
+                        // Продолжаем с этой позиции
+                        slot_addr = next_slot;
+                        slot = m_entries[slot_addr];
+                    }
+                }
+                return true;
+            }
+        }
+
+        ASSERT_NOT_REACHED();
+        return false;
+    }
+
+    // Удобная обертка для удаления по строке
+    bool remove(const std::string &name) {
+        return remove(InternedSymbolPtr{name.c_str()}); // Осторожно: временный указатель!
+    }
+
   private:
     void resize() {
         m_power_of_two_size++;
@@ -1186,11 +1249,11 @@ struct PositionalArg {
  * согласно стандартам Lisp (позиционные, опциональные, ключевые и rest-аргументы).
  */
 struct ArgumentSpec {
-    /** @brief Разрешить использование ключевых слов (&key), например: :mode 'fast. */
-    bool keys = true;
     /** @brief Разрешить неограниченное количество неименованных аргументов (для встроенных
      * функций). */
     bool varargs = false;
+    /** @brief Разрешить неограниченое использование ключевых слов (&key), например: :mode 'fast. */
+    bool varkeys = true;
     /** * @brief Список имен обязательных позиционных аргументов.
      * Должны быть переданы в строгом порядке в начале вызова.
      */
@@ -1204,8 +1267,8 @@ struct ArgumentSpec {
      */
     std::string rest;
 
-    ArgumentSpec() : keys(false), varargs(false) {}
-    ArgumentSpec(bool keys, bool varargs) : keys(keys), varargs(varargs) {}
+    ArgumentSpec() : varargs(false), varkeys(false) {}
+    ArgumentSpec(bool varargs, bool keys) : varargs(varargs), varkeys(keys) {}
 
     size_t size() const {
         return unnamed.size() + named.size();
@@ -1420,7 +1483,7 @@ struct SpecialFormObject : public CallableObject {
 
     // Явный конструктор
     SpecialFormObject(SpecialFormMethod m, ArgumentSpec *s, std::string name)
-        : method(m), specs(false, true), name(name) {
+        : method(m), specs(true, false), name(name) {
         if (s)
             specs = *s;
     }
@@ -1449,7 +1512,7 @@ struct BuiltinFunctionObject : public CallableObject {
     std::string       name;
 
     BuiltinFunctionObject(BuiltinFormMethod m, ArgumentSpec *s, std::string name)
-        : method(m), specs(false, true), name(name) {
+        : method(m), specs(true, false), name(name) {
         if (s)
             specs = *s;
     }
