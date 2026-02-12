@@ -84,8 +84,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {object_type_to_string(ObjectType::NATIVE_REF), ObjectType::NATIVE_REF},
         {object_type_to_string(ObjectType::NONE), ObjectType::NONE},
     };
-
-    ArgumentSpec args_with_keys(true, true);
+    // Разрешить использование неограниченого числа ключей
+    ArgumentSpec args_with_varkeys(true, true);
 
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
     init_special_forms({
@@ -110,7 +110,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
         {"size-of", &Interpreter::eval_size_of_special, nullptr},
 
-        {"static-new", &Interpreter::eval_static_new_special, nullptr},
         {"declare", &Interpreter::eval_declare_special, nullptr},
         {"declare-type", &Interpreter::eval_declare_type_special, nullptr},
         {"rlet", &Interpreter::eval_rlet_special, nullptr},
@@ -147,8 +146,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Работа с типом
         {"type-of", &Interpreter::eval_type_of, nullptr},
         {"type?", &Interpreter::eval_type_p, nullptr},
-        {"declarations", &Interpreter::eval_declarations, &args_with_keys},
-        {"set-method!", &Interpreter::eval_set_method, &args_with_keys},
+        {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
+        {"set-method!", &Interpreter::eval_set_method, &args_with_varkeys},
 
         // Предикаты типов
         {"none?", &Interpreter::eval_none_p, nullptr},
@@ -194,7 +193,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"vector->list", &Interpreter::eval_vector_to_list, nullptr},
 
         // Хэш-таблицы
-        {"make-hash-table", &Interpreter::eval_make_hash_table, &args_with_keys},
+        {"make-hash-table", &Interpreter::eval_make_hash_table, &args_with_varkeys},
         {"hash-table-set!", &Interpreter::eval_hash_table_set, nullptr},
         {"hash-table-ref", &Interpreter::eval_hash_table_ref, nullptr},
         {"hash-table-contains?", &Interpreter::eval_hash_table_containsp, nullptr},
@@ -214,10 +213,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
         // Системные и ввод-вывод
         {"print", &Interpreter::eval_print, nullptr},
-        {"pfmt", &Interpreter::eval_pfmt, &args_with_keys},
+        {"pfmt", &Interpreter::eval_pfmt, &args_with_varkeys},
         {"inspect", &Interpreter::eval_inspect, nullptr},
-        {"fmt", &Interpreter::eval_fmt, &args_with_keys},
-        {"error", &Interpreter::eval_error, &args_with_keys},
+        {"fmt", &Interpreter::eval_fmt, &args_with_varkeys},
+        {"error", &Interpreter::eval_error, &args_with_varkeys},
 
         // Logger
         {"log", &Interpreter::eval_log, nullptr},
@@ -264,7 +263,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"get-setter", &Interpreter::eval_get_setter, nullptr},
 
         // Преобразования типов
-        {"number->string", &Interpreter::eval_number_to_string, &args_with_keys},
+        {"number->string", &Interpreter::eval_number_to_string, &args_with_varkeys},
         {"string->number", &Interpreter::eval_string_to_number, nullptr},
         {"char->integer", &Interpreter::eval_char_to_integer, nullptr},
         {"integer->char", &Interpreter::eval_integer_to_char, nullptr},
@@ -324,19 +323,20 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"make-buffer-writer", &Interpreter::eval_make_static_writer, nullptr},
         {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
         {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
-        {"buffer-write", &Interpreter::eval_buffer_write, &args_with_keys},
-        {"buffer-read", &Interpreter::eval_buffer_read, &args_with_keys},
-        {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_keys},
-        {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_keys},
+        {"buffer-write", &Interpreter::eval_buffer_write, &args_with_varkeys},
+        {"buffer-read", &Interpreter::eval_buffer_read, &args_with_varkeys},
+        {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_varkeys},
+        {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_varkeys},
         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
         {"method-of", &Interpreter::eval_method_of, nullptr},
+
+        {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
     });
 
     // Type system
-    TypeSystem::instance().add_builtin_types();
-    define_var_in_env(get_global_environment(), TypeSystem::instance().to_alias(), "*type-system*");
+    init_types("default");
 
     // Special forms
     add_special_form("defenum", &Interpreter::eval_defenum_special); // does not return anything
@@ -891,6 +891,7 @@ std::vector<Object> Interpreter::eval_list(const Object                         
 // Запуск функции
 Object Interpreter::eval_list_return_last(const Object &form, Object rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
     if (rest.is_null()) {
         return rest;
     }
@@ -1022,7 +1023,7 @@ Object Interpreter::eval_define_special(const Object &form, const Object &rest,
 
 Object Interpreter::eval_set_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
-    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    auto args = get_args(form, rest, ArgumentSpec(true, false));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {}}, {});
     auto   to_define = args.unnamed.at(0);
     Object to_set = eval_with_rewind(args.unnamed.at(1), env);
@@ -1102,7 +1103,7 @@ Object Interpreter::eval_macro_special(const Object &form, const Object &rest,
 Object Interpreter::eval_quote_special(const Object &form, const Object &rest,
                                        const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args_no_named(form, rest, ArgumentSpec(false, true));
+    auto args = get_args_no_named(form, rest, ArgumentSpec(true, false));
     if (!args.unnamed.size()) {
         throw_eval_error(form, "quote requires one argument");
     }
@@ -1474,7 +1475,7 @@ Arguments Interpreter::get_args(const Object &form, const Object &rest, const Ar
         const auto &arg = current->as_pair()->car;
 
         // did we get a ":keyword"
-        if (spec.keys && arg.is_keyword()) {
+        if (spec.varkeys && arg.is_keyword()) {
             auto        key_name = std::string(arg.as_symbol().name_ptr + 1);
             const auto &kv = spec.named.find(key_name);
 
@@ -1576,7 +1577,18 @@ Arguments Interpreter::get_args_with_spec(const Object &form, const Object &rest
 
         auto is_keyword = arg.is_keyword();
         // Если функция ждет именованные аргументы (&key) и мы встретили ключевое слово
-        if (is_keyword && !spec.named.empty()) {
+        if (is_keyword && spec.varkeys) {
+            // неограниченое число ключей
+            auto key_name = std::string(arg.as_symbol().name_ptr + 1);
+            // Переходим к значению
+            current = &current->as_pair()->cdr;
+            if (current->is_null()) {
+                throw_eval_error(form, fmt::format("Key {} is missing a value in {}", key_name,
+                                                   spec.print_full()));
+            }
+
+            args.named[key_name] = current->as_pair()->car;
+        } else if (is_keyword && !spec.named.empty()) {
             auto key_name = std::string(arg.as_symbol().name_ptr + 1);
 
             // Проверка на валидность ключа
@@ -1760,7 +1772,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object &form, Object &rest) {
         if (is_sym && arg_name == "&key") {
             parsing_optional = false;
             parsing_keys = true;
-            spec.keys = true;
+            spec.varkeys = true;
             current = current.as_pair()->cdr;
             continue; // Идем к следующему элементу после "&key"
         }
@@ -1768,7 +1780,7 @@ ArgumentSpec Interpreter::parse_arg_spec(const Object &form, Object &rest) {
         if (is_sym && arg_name == "&optional") {
             parsing_optional = true;
             parsing_keys = false;
-            spec.keys = false;
+            spec.varkeys = false;
             current = current.as_pair()->cdr;
             continue; // Идем к следующему элементу после "&key"
         }
@@ -3529,6 +3541,8 @@ Object Interpreter::eval_load(const Object &form, Arguments &args,
         } else {
             throw_eval_error(form, "load requires a string or list of strings");
         }
+    } catch (EvalException &e) {
+        throw;
     } catch (std::runtime_error &e) {
         throw_eval_error(form, e.what());
     } catch (std::exception &e) {
@@ -4364,6 +4378,10 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
         auto type_shared = std::shared_ptr<Type>(result.type_info, [](Type *) {
             /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
         });
+        auto name = result.type_info->get_name();
+
+        m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+                                                Object::make_native_ref(type_shared));
         return Object::make_native_ref(type_shared);
     } catch (std::runtime_error &ex) {
         throw_eval_error(form, ex.what());
@@ -4378,6 +4396,11 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
     auto enum_shared = std::shared_ptr<Type>(enum_ptr, [](Type *) {
         /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
     });
+
+    auto name = enum_ptr->get_name();
+
+    m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+                                            Object::make_native_ref(enum_shared));
     return Object::make_native_ref(enum_shared);
 }
 
@@ -4394,11 +4417,7 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
     vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
     TypeSystem::instance().clear();
     // Здесь должна быть логика из твоего старого кода для init-types
-    if (args.unnamed[0].as_symbol() == "z80") {
-        TypeSystem::instance().add_builtin_types_z80();
-        return get_true();
-    } else if (args.unnamed[0].as_symbol() == "default") {
-        TypeSystem::instance().add_builtin_types();
+    if (init_types(args.unnamed[0].as_symbol())) {
         return get_true();
     } else {
         throw_eval_error(form,
@@ -4406,7 +4425,50 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
         return get_null();
     }
 }
+bool Interpreter::init_types(const std::string &variant) {
+    auto &ts = TypeSystem::instance();
+    auto  env = m_global_environment.as_env();
 
+    // 1. УДАЛЯЕМ старые типы из окружения
+    std::vector<const char *> to_remove;
+    const auto               &entries = env->vars.get_all_entries();
+    for (const auto &entry : entries) {
+        if (entry.value.is_native_ref()) {
+            to_remove.push_back(entry.key);
+        }
+    }
+    for (const auto &key : to_remove) {
+        env->vars.remove(key);
+    }
+
+    // 2. ОЧИЩАЕМ TypeSystem
+    ts.clear();
+
+    // 3. СОЗДАЁМ новые типы
+    if (variant == "z80") {
+        ts.add_builtin_types_z80();
+    } else if (variant == "default") {
+        ts.add_builtin_types();
+    } else {
+        return false;
+    }
+
+    // 4. ЭКСПОРТИРУЕМ новые типы - ИСПРАВЛЕНО!
+    const auto &all_types = ts.get_types(); // теперь константная ссылка!
+    for (const auto &pair : all_types) {    // pair, а не [name, type_ptr]
+        const auto &name = pair.first;
+        auto       *type_ptr = pair.second.get();
+
+        auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
+        auto type_obj = Object::make_native_ref(shared_type);
+        env->vars.set(Object::intern(name.c_str()), type_obj);
+    }
+
+    // 5. Обновляем ссылку на TypeSystem
+    define_var_in_env(get_global_environment(), ts.to_alias(), "*type-system*");
+
+    return true;
+}
 // ============================================================
 // Работа с адресацией подобно dot sytnax в C++
 // ============================================================
@@ -4716,7 +4778,7 @@ Object Interpreter::eval_the_as_special(const Object &form, const Object &rest,
 Object Interpreter::eval_offset_of_special(const Object &form, const Object &rest,
                                            const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    auto args = get_args(form, rest, ArgumentSpec(true, false));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}},
                  {}); // Вторая тоже символ
 
@@ -4758,7 +4820,7 @@ Object Interpreter::eval_offset_of_special(const Object &form, const Object &res
 Object Interpreter::eval_size_of_special(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto  args = get_args(form, rest, ArgumentSpec(false, true));
+    auto  args = get_args(form, rest, ArgumentSpec(true, false));
     auto &ts = TypeSystem::instance();
 
     if (args.unnamed.size() == 1) {
@@ -5319,6 +5381,7 @@ void Interpreter::recursive_write(const Object &form, Object cell_obj, Object va
 
     // --- СЦЕНАРИЙ 2: ЗНАЧЕНИЕ (ValueType, Enum, BitField) ---
     if (auto *value_type = dynamic_cast<ValueType *>(type)) {
+        (void)value_type;
         if (value.is_pair()) {
             int    idx = 0;
             Object curr = value;
@@ -5439,26 +5502,26 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
  *   (ld a [+ ix (offset-of vector y)])
  * )
  */
-Object Interpreter::eval_static_new_special(const Object &form, const Object &rest,
-                                            const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_static_new(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto  args = get_args(form, rest, ArgumentSpec(false, true));
+    vararg_check(form, args, {{ObjectType::NATIVE_REF}}, {});
     auto &ts = TypeSystem::instance();
 
     if (args.unnamed.empty()) {
         throw_eval_error(form, "static-new: expected at least type name");
         return get_null();
     }
-
+    Type *type;
     // 1. Извлекаем имя типа (например, vector)
-    std::string type_name = args.unnamed[0].to_std_string();
-    Type       *type = ts.lookup_type(type_name);
-    if (!type) {
-        throw_eval_error(form, "static-new: unknown type " + type_name);
+    if (args.unnamed[0].is_native_ref<Type>()) {
+        type = args.unnamed[0].as_native_ref<Type>().get();
+    } else {
+        throw_eval_error(form, "static-new: expected type, got " + args.unnamed[0].print());
     }
 
     auto origin = 0x0000;
-    auto buffer_name = "static-new-" + type_name;
+    auto buffer_name = "static-new-" + type->get_name();
 
     // 2. Создаем StaticBuffer нужного размера
     size_t size = type->get_size_in_memory();
@@ -5672,7 +5735,7 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
 Object Interpreter::eval_declare_type_special(const Object &form, const Object &rest,
                                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(false, true));
+    auto args = get_args(form, rest, ArgumentSpec(true, false));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
 
     auto kind = args.unnamed.at(1).to_std_string();
