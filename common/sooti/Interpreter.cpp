@@ -3,12 +3,12 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Printer.hpp"
-#include "common/sooti/RegisterAlias.hpp"
 #include "common/sooti/static_buffer/Export.hpp"
 #include <iostream>
 
 #include "common/type_system/Defenum.hpp"
 #include "common/type_system/Deftype.hpp"
+#include "common/type_system/RegisterAlias.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/type_system/TypeSystem.hpp"
 

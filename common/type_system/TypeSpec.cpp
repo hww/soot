@@ -315,10 +315,22 @@ Object TypeSpec::make_step_accessor(const Object &key) {
     }
 
     // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
-    if (name == ".args") {
+    if (name == ".args-type-specs") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
-        return Object::make_string(print());
+        return to_sexpr_typspec();
+    }
+
+    if (name == ".args-type-names") {
+        // Здесь можно либо вернуть список, либо специальный объект-итератор.
+        // Пока оставим заглушку или вернем строку для отладки.
+        return to_sexpr_type_names();
+    }
+
+    if (name == ".args-types") {
+        // Здесь можно либо вернуть список, либо специальный объект-итератор.
+        // Пока оставим заглушку или вернем строку для отладки.
+        return to_sexpr_type_objects();
     }
 
     // 4. Количество тегов
@@ -393,6 +405,83 @@ Object TypeSpec::inspect() const {
 
     return pretty_print::build_list(list_elements);
 }
+
+// 1) S-expression с TypeSpec объектами
+Object TypeSpec::to_sexpr_typspec() const {
+    ListBuilder builder;
+    builder.add(
+        Object::make_native_ref(std::make_shared<TypeSpec>(*this) // Создаем копию как HeapObject
+                                ));
+
+    // Добавляем базовый тип
+    builder.add(Object::make_string(m_type));
+
+    // Рекурсивно добавляем аргументы
+    if (m_arguments) {
+        for (const auto &arg : *m_arguments) {
+            builder.add(arg.to_sexpr_typspec());
+        }
+    }
+
+    return builder.build();
+}
+
+// 2) S-expression с именами типов (как строки/символы)
+Object TypeSpec::to_sexpr_type_names() const {
+    ListBuilder builder;
+    builder.add_symbol(m_type);
+
+    // Рекурсивно добавляем аргументы
+    if (m_arguments) {
+        for (const auto &arg : *m_arguments) {
+            builder.add(arg.to_sexpr_type_names());
+        }
+    }
+
+    return builder.build();
+}
+
+// 3) S-expression с Type объектами (обертки для типов)
+Object TypeSpec::to_sexpr_type_objects() const {
+    ListBuilder builder;
+
+    // Создаем объект, представляющий тип (может быть отдельный класс Type)
+    // Предполагаем, что есть функция или конструктор make_type()
+    auto type = TypeSystem::instance().make_step_accessor(Object::make_string(m_type));
+    builder.add(type);
+
+    // Рекурсивно добавляем аргументы
+    if (m_arguments) {
+        for (const auto &arg : *m_arguments) {
+            builder.add(arg.to_sexpr_type_objects());
+        }
+    }
+
+    return builder.build();
+}
+
+// Вспомогательный метод для рекурсивного обхода
+void TypeSpec::append_to_sexpr(ListBuilder &builder, int mode) const {
+    switch (mode) {
+    case 0: // TypeSpec objects
+        builder.add(Object::make_native_ref(std::make_shared<TypeSpec>(*this)));
+        break;
+    case 1: // Type names
+        builder.add_symbol(m_type);
+        break;
+    case 2: // Type objects
+        auto type = TypeSystem::instance().make_step_accessor(Object::make_string(m_type));
+        builder.add(type);
+        break;
+    }
+
+    if (m_arguments) {
+        for (const auto &arg : *m_arguments) {
+            arg.append_to_sexpr(builder, mode);
+        }
+    }
+}
+
 // ============================================================================
 // typespec namespace Implementation
 // ============================================================================

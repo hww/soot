@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "common/sooti/ListBuilder.hpp"
 #include "common/sooti/Object.hpp"
 
 namespace script {
@@ -91,6 +92,12 @@ class TypeSpec : public NativeRef {
     const std::string &base_type() const {
         return m_type;
     }
+
+    Object to_sexpr_typspec() const;
+    Object to_sexpr_type_names() const;
+    Object to_sexpr_type_objects() const;
+    void   append_to_sexpr(ListBuilder &builder, int mode) const;
+
     bool                        has_single_arg() const;
     const TypeSpec             &get_single_arg() const;
     TypeSpec                   &get_single_arg();
