@@ -108,6 +108,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
         {"rlet", &Interpreter::eval_rlet_special, nullptr},
         {"->", &Interpreter::eval_deref_special, nullptr},
+        {"declare", &Interpreter::eval_declare_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -325,7 +326,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
         {"method-of", &Interpreter::eval_method_of, nullptr},
 
-        {"declare", &Interpreter::eval_declare, nullptr},
         {"declare-type", &Interpreter::eval_declare_type, nullptr},
         {"reg-alias", &Interpreter::eval_reg_alias, nullptr},
         {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
@@ -614,14 +614,15 @@ Object Interpreter::eval_string(const std::string &expression, const std::string
                 // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} \n",
                 // evt.form.print());
                 last_result = this->eval_form(evt.form, env);
-                // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} -> {}\n",
+                // fmt::print("DEBUG: Interpreter::eval_string FORM_READ {} -> {}\n",>
                 // evt.form.print(), last_result.print());
                 break;
             case ReaderEvent::Type::MACRO_REQUEST:
                 // fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} \n",
                 // evt.token.print());
-                last_result =
-                    this->call_lambda_internal(evt.form, evt.form, {evt.reader, evt.token});
+                last_result = this->call_lambda_internal(
+                    evt.form, evt.form, {evt.reader, evt.token},
+                    m_global_environment.as_heap_obj<EnvironmentObject>());
                 // fmt::print("DEBUG: Interpreter::eval_string MACRO_REQUEST {} -> {}\n",
                 // evt.token.print(), last_result.print());
                 break;
@@ -653,8 +654,9 @@ Object Interpreter::eval_file_internal(const std::vector<std::string> &file_path
             case ReaderEvent::Type::MACRO_REQUEST:
                 // fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} \n",
                 // evt.token.print());
-                last_result =
-                    this->call_lambda_internal(evt.form, evt.form, {evt.reader, evt.token});
+                last_result = this->call_lambda_internal(
+                    evt.form, evt.form, {evt.reader, evt.token},
+                    m_global_environment.as_heap_obj<EnvironmentObject>());
                 // fmt::print("DEBUG: Interpreter::eval_file_internal MACRO_REQUEST {} -> {}\n",
                 // evt.token.print(), last_result.print());
                 break;
@@ -674,7 +676,8 @@ Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<Environme
 }
 
 Object Interpreter::call_lambda_internal(const Object &form, const Object &lambda,
-                                         const std::vector<Object> &args) {
+                                         const std::vector<Object>                &args,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
     if (!lambda.is_lambda()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
@@ -724,7 +727,7 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
     lam_env->is_function = true;
     lam_env->ctx = form;
     lam_env->owner_lambda = lambda.as_heap_obj<LambdaObject>();
-    // 4. Биндим аргументы
+    //  4. Биндим аргументы
     Object dummy_form = m_symbol_table.make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
 
@@ -3809,7 +3812,7 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
     if (first.is_lambda()) {
         // Используем твой call_lambda_internal.
         // Он создаст окружение, привяжет аргументы и выполнит тело.
-        return call_lambda_internal(form, first, call_args);
+        return call_lambda_internal(form, first, call_args, env);
     } else if (first.is_primitive()) {
         // Если это встроенная функция (например, +), нам нужно
         // подготовить структуру Arguments и вызвать её метод.
@@ -5643,7 +5646,7 @@ Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
 
     for (unsigned char c : str) {
         // Передаем код символа как Integer
-        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))});
+        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))}, env);
     }
     return get_null();
 }
@@ -5659,7 +5662,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
 
     for (const auto &item : vec) {
         // Вызываем лямбду для каждого элемента вектора
-        call_lambda_internal(form, lambda, {item});
+        call_lambda_internal(form, lambda, {item}, env);
     }
 
     return get_null();
@@ -5683,10 +5686,11 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
     for (auto const &[key, val] : table) {
         if (lam_data->args.unnamed.size() == 1) {
             // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
-            call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)});
+            call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)},
+                                 env);
         } else {
             // Если ждет 2 (или больше/rest), передаем как два аргумента
-            call_lambda_internal(form, lambda, {Object::make_string(key), val});
+            call_lambda_internal(form, lambda, {Object::make_string(key), val}, env);
         }
     }
     return get_null();
@@ -5702,7 +5706,7 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
 
     while (current.is_pair()) {
         // Вызываем твой надежный call_lambda_internal
-        call_lambda_internal(form, lambda, {current.as_pair()->car});
+        call_lambda_internal(form, lambda, {current.as_pair()->car}, env);
         // print_form_info(form);
         current = current.as_pair()->cdr;
     }
@@ -5868,93 +5872,91 @@ Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
  *   ;; тело функции
  *   )
  */
-Object Interpreter::eval_declare(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-
+Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Поиск функционального окружения
     auto fe = env->get_function_env();
-    if (fe.get() == nullptr) {
-        throw_eval_error(form, "Cannot use function metadata outside of a function.");
+    if (!fe || !fe->owner_lambda) {
+        throw_eval_error(form, "Cannot use 'declare' outside of a function body.");
     }
-    auto func = fe->owner_lambda;
-    if (func.get() == nullptr) {
-        throw_eval_error(form, "Fuction environment does not have pointer to function.");
-    }
+
+    auto  func = fe->owner_lambda;
     auto &settings = func->declarations;
 
+    // Запрещаем двойной declare (как в GOAL)
     if (settings.is_set) {
-        throw_eval_error(form, "Function cannot have multiple declares");
+        if (settings.once)
+            return m_obj_none;
+        throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
     }
     settings.is_set = true;
 
-    for (const auto &o : args.unnamed) {
+    // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
+    for_each_in_list(rest, [&](const Object &o) {
         if (!o.is_pair()) {
-            throw_eval_error(o, "Invalid declare specification.");
+            throw_eval_error(o, "Invalid declare specification: expected a list.");
         }
 
-        auto first = o.as_pair()->car;
-        auto rrest = &o.as_pair()->cdr;
+        auto spec = o.as_pair();
+        auto first = spec->car;
+        auto args = spec->cdr; // Это список аргументов опции
 
         if (!first.is_symbol()) {
-            throw_eval_error(
-                first,
-                "Invalid declare option specification, expected a symbol, but got {} instead.",
-                first.print());
+            throw_eval_error(first, "Declare option must be a symbol.");
         }
-        std::string name = first.to_std_string();
 
-        if (name == "inline") {
-            if (!rrest->is_null()) {
-                throw_eval_error(first, "Invalid inline declare, no options were expected.");
-            }
+        std::string name = first.to_std_string();
+        if (name == "once") {
+            settings.once = true;
+        } else if (name == "inline") {
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'inline' expects no arguments.");
             settings.allow_inline = true;
             settings.inline_by_default = true;
             settings.save_code = true;
         } else if (name == "allow-inline") {
-            if (!rrest->is_null()) {
-                throw_eval_error(first, "Invalid allow-inline declare");
-            }
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'allow-inline' expects no arguments.");
             settings.allow_inline = true;
             settings.inline_by_default = false;
             settings.save_code = true;
         } else if (name == "asm-func") {
             fe->is_asm_function = true;
-            if (!rrest->is_pair()) {
-                throw_eval_error(
-                    form,
-                    "Declare asm-func must provide the function's return type as an argument.");
+
+            // Ожидаем (asm-func return_type)
+            if (!args.is_pair() || !args.as_pair()->cdr.is_null()) {
+                throw_eval_error(first,
+                                 "Option 'asm-func' expects exactly one argument: return_type.");
             }
-            /// Get return type
-            auto asm_type_expr = rrest->as_pair()->car;
-            if (!(asm_type_expr.is_symbol() || asm_type_expr.is_string())) {
-                throw_eval_error(first, "Invalid asm-func declare bad return type");
+
+            auto ret_type_expr = args.as_pair()->car;
+            if (!(ret_type_expr.is_symbol() || ret_type_expr.is_string())) {
+                throw_eval_error(ret_type_expr, "Return type must be a symbol or string.");
             }
-            ///
-            if (!rrest->as_pair()->cdr.is_null()) {
-                throw_eval_error(first, "Invalid asm-func declare");
-            }
+
+            // Нам нужно rlet окружение, чтобы собрать типы аргументов
             auto rlet_env = env->get_reg_let_env();
-            if (!rrest->as_pair()->cdr.is_null()) {
-                throw_eval_error(first, "Invalid asm-func declare");
+            if (!rlet_env) {
+                throw_eval_error(
+                    first, "Option 'asm-func' requires an 'rlet' scope to determine arguments.");
             }
-            if (rlet_env.get() == nullptr) {
-                throw_eval_error(first, "Can't find rlet environment");
-            }
-            auto type_name = asm_type_expr.to_std_string();
+
+            auto type_name = ret_type_expr.to_std_string();
+            // Строим сигнатуру функции на основе текущих регистровых алиасов
             settings.typespec = TypeSystem::instance().build_typespec_from_env(rlet_env, type_name);
         } else if (name == "print-asm") {
-            if (!rrest->is_null()) {
-                throw_eval_error(first, "Invalid print-asm declare");
-            }
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'print-asm' expects no arguments.");
             settings.print_asm = true;
         } else if (name == "allow-saved-regs") {
-            if (!rrest->is_null()) {
-                throw_eval_error(first, "Invalid allow-saved-regs declare");
-            }
-            auto fe = env->get_function_env();
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'allow-saved-regs' expects no arguments.");
+            settings.allow_saved_regs = true;
         } else {
-            throw_eval_error(first, "Unrecognized declare option {}.", first.print());
+            throw_eval_error(first, "Unrecognized declare option: {}.", name);
+            return;
         }
-    }
+    });
 
     return get_none();
 }
@@ -6020,12 +6022,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
     auto new_env = std::make_shared<EnvironmentObject>(env);
     new_env->name = env_name;
     new_env->is_reg_let = true;
-    new_env->is_asm_function = true; // Помечаем как потенциальный интерфейс метода
     new_env->parent_env = env;
-
-    if (!env_name.empty())
-        env->vars.set(Object::intern(env_name.c_str()),
-                      Object::make_heap_object(new_env, ObjectType::ENVIRONMENT));
 
     // Используем helper для обхода списка
     for_each_in_list(bindings, [&](const Object &binding) {
@@ -6075,6 +6072,10 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
         auto name_sym = name_obj.as_symbol();
         new_env->vars.set(name_sym, Object::make_native_ref(alias));
     });
+    // Регистрируем окружение в родительском
+    if (!env_name.empty())
+        env->vars.set(Object::intern(env_name.c_str()),
+                      Object::make_heap_object(new_env, ObjectType::ENVIRONMENT));
 
     return eval_list_return_last(body, body, new_env);
 }
@@ -6105,54 +6106,62 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
 }
 Object Interpreter::eval_set_method(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args,
                  {
-                     {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // 0: Type
-                     {ObjectType::INTEGER, ObjectType::SYMBOL},    // 1: Method ID/Name
-                     {ObjectType::FUNCTION}                        // 2: Implementation (Lambda)
+                     {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // 0: Тип
+                     {ObjectType::INTEGER, ObjectType::SYMBOL},    // 1: ID или Имя метода
+                     {ObjectType::FUNCTION}                        // 2: Лямбда
                  },
                  {});
 
     auto &ts = TypeSystem::instance();
 
-    // 1. Извлекаем Тип
+    // 1. Разрешаем тип
     Type *type = args.unnamed[0].is_symbol() ? ts.lookup_type(args.unnamed[0].to_std_string())
                                              : args.unnamed[0].as_native_ref<Type>().get();
 
     if (!type)
         throw_eval_error(form, "Could not resolve type");
 
-    // 2. ПОДГОТОВКА: Запускаем лямбду, чтобы сработал (declare ...)
-    // Это заполнит объект LambdaObject::declarations
+    // 2. Получаем реализацию и проверяем наличие (declare)
     Object implementation = args.unnamed[2];
+    auto   lambda_ptr = implementation.as_native_ref<LambdaObject>();
 
-    // 3. ПРОВЕРКА СИГНАТУРЫ
-    auto lambda_ptr = implementation.as_native_ref<LambdaObject>();
-    if (!lambda_ptr->declarations.is_set) {
-        throw_eval_error(form, "Method implementation must contain a (declare) block");
+    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
+        throw_eval_error(
+            form, fmt::format("set-method {}::{} expect declared typespec in the lambda object {}",
+                              args.unnamed[0].to_std_string(), args.unnamed[1].print(),
+                              implementation.print()));
     }
 
-    // Достаем эталонную сигнатуру из TypeSystem
-    MethodInfo info;
-    bool       found = args.unnamed[1].is_symbol()
-                           ? type->get_my_method(args.unnamed[1].to_std_string(), &info)
-                           : type->get_my_method(args.unnamed[1].as_integer(), &info);
-
-    if (!found)
-        throw_eval_error(form, "Method not found in type declaration");
-
-    // Сравниваем то, что сгенерировал (declare) через build_typespec_from_env, с эталоном
     const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_native_ref<TypeSpec>();
-    int             bad_idx = -1;
-    if (!info.type.is_compatible_child_method(impl_spec, type->get_name(), &bad_idx)) {
-        throw_eval_error(form,
-                         fmt::format("Signature mismatch for {}::{}. Arg {}: expected {}, got {}",
-                                     type->get_name(), info.name, bad_idx,
-                                     info.type.get_arg(bad_idx).print(),
-                                     impl_spec.get_arg(bad_idx).print()));
+
+    // 3. ПРОВЕРКА ЧЕРЕЗ DEFINE_METHOD (Тот самый шаг!)
+    try {
+        std::string method_name;
+        if (args.unnamed[1].is_symbol()) {
+            method_name = args.unnamed[1].to_std_string();
+        } else {
+            // Если пришло число (ID), вытягиваем имя из типа, чтобы передать в define_method
+            MethodInfo info;
+            if (!type->get_my_method(args.unnamed[1].as_integer(), &info)) {
+                throw_eval_error(form, fmt::format("Method ID {} not found in type {}",
+                                                   args.unnamed[1].as_integer(), type->get_name()));
+            }
+            method_name = info.name;
+        }
+
+        // Вызываем высокоуровневый метод системы типов.
+        // Он сделает всю грязную работу по проверке сигнатур и бросит подробный exception.
+        ts.define_method(type, method_name, impl_spec, std::nullopt);
+
+    } catch (const std::exception &e) {
+        // Пробрасываем качественную ошибку из TypeSystem в REPL
+        throw_eval_error(form, e.what());
     }
 
-    // 4. РЕГИСТРАЦИЯ
+    // 4. ФИНАЛЬНАЯ РЕГИСТРАЦИЯ
     bool success = args.unnamed[1].is_symbol()
                        ? type->set_method_impl(args.unnamed[1].to_std_string(), implementation)
                        : type->set_method_impl(args.unnamed[1].as_integer(), implementation);

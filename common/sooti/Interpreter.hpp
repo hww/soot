@@ -94,7 +94,8 @@ class Interpreter {
 
   private:
     Object call_lambda_internal(const Object &form, const Object &lambda,
-                                const std::vector<Object> &args);
+                                const std::vector<Object>                &args,
+                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_file_internal(const std::vector<std::string> &file_path);
     Object eval(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
     Object eval_with_rewind(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
@@ -529,8 +530,8 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_special(const Object &form, const Object &rest,
+                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_type(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_method(const Object &form, Arguments &args,
