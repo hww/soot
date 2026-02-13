@@ -375,9 +375,12 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
 }
 
 // ============================================================================
-// Method System
+// Method System: Поиск и Навигация
 // ============================================================================
-
+/**
+ * Внутренний хелпер. Вычисляет ID для нового метода, анализируя иерархию.
+ * Гарантирует, что нумерация виртуальных методов (VTable) продолжается после родителя.
+ */
 int TypeSystem::get_next_method_id(const Type *type) const {
     MethodInfo info;
 
@@ -395,6 +398,89 @@ int TypeSystem::get_next_method_id(const Type *type) const {
     }
 }
 
+/**
+ * Внутренний хелпер. Рекурсивный поиск информации о методе вверх по дереву наследования.
+ * Возвращает false, если метод не найден (безопасная проверка без исключений).
+ */
+bool TypeSystem::try_lookup_method(const Type *type, const std::string &method_name,
+                                   MethodInfo *info) const {
+    while (true) {
+        if (method_name == "new") {
+            if (type->get_my_new_method(info)) {
+                return true;
+            }
+        } else {
+            if (type->get_my_method(method_name, info)) {
+                return true;
+            }
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        } else {
+            break;
+        }
+    }
+    return false;
+}
+/**
+ * Внешний инструмент. Находит метод или бросает ошибку, если его не существует.
+ * Основной метод для получения метаданных (ID, сигнатура) при генерации кода вызова.
+ */
+MethodInfo TypeSystem::lookup_method(const std::string &type_name,
+                                     const std::string &method_name) const {
+
+    if (method_name == "new") {
+        return lookup_new_method(type_name);
+    }
+
+    MethodInfo info;
+    auto      *type = lookup_type(type_name);
+
+    while (true) {
+        if (type->get_my_method(method_name, &info)) {
+            return info;
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        } else {
+            break;
+        }
+    }
+
+    throw_typesystem_error("The method {} of type {} could not be found", method_name, type_name);
+}
+/**
+ * Внешний инструмент. Ищет метод 'new' (конструктор) для конкретного типа.
+ * Позволяет узнать правильную сигнатуру выделения памяти, учитывая переопределения в потомках.
+ */
+MethodInfo TypeSystem::lookup_new_method(const std::string &type_name) const {
+    MethodInfo info;
+    auto      *type = lookup_type(type_name);
+
+    while (true) {
+        if (type->get_my_new_method(&info)) {
+            return info;
+        }
+
+        if (type->has_parent()) {
+            type = lookup_type(type->get_parent());
+        } else {
+            break;
+        }
+    }
+
+    throw_typesystem_error("The new method of type {} could not be found", type_name);
+}
+
+// ============================================================================
+// Method System: Декларация (Объявление интерфейса)
+// ============================================================================
+/**
+ * Основной внешний инструмент. Регистрирует "имя" метода и его ожидаемую сигнатуру.
+ * Используется в макросах и при парсинге заголовков для формирования VTable типа.
+ */
 MethodInfo TypeSystem::declare_method(Type *type, const std::string &method_name,
                                       const std::optional<std::string> &docstring, bool no_virtual,
                                       const TypeSpec &ts, bool override_type) {
@@ -445,7 +531,30 @@ MethodInfo TypeSystem::declare_method(Type *type, const std::string &method_name
         }
     }
 }
+/**
+ * Основной внешний инструмент. Регистрирует "имя" метода и его ожидаемую сигнатуру.
+ * Используется в макросах и при парсинге заголовков для формирования VTable типа.
+ */
+MethodInfo TypeSystem::declare_method(const std::string &type_name, const std::string &method_name,
+                                      const std::optional<std::string> &docstring, bool no_virtual,
+                                      const TypeSpec &ts, bool override_type) {
+    return declare_method(lookup_type(make_typespec(type_name)), method_name, docstring, no_virtual,
+                          ts, override_type);
+}
+/**
+ * Основной внешний инструмент. Регистрирует "имя" метода и его ожидаемую сигнатуру.
+ * Используется в макросах и при парсинге заголовков для формирования VTable типа.
+ */
+MethodInfo TypeSystem::define_method(const std::string &type_name, const std::string &method_name,
+                                     const TypeSpec                   &ts,
+                                     const std::optional<std::string> &docstring) {
+    return define_method(lookup_type(make_typespec(type_name)), method_name, ts, docstring);
+}
 
+/**
+ * Внутренний хелпер. Специальная логика для регистрации метода 'new' (ID всегда 0).
+ * Обеспечивает строгую проверку совместимости при переопределении правил создания объекта.
+ */
 MethodInfo TypeSystem::add_new_method(Type *type, const TypeSpec &ts,
                                       const std::optional<std::string> &docstring) {
     MethodInfo existing;
@@ -463,71 +572,92 @@ MethodInfo TypeSystem::add_new_method(Type *type, const TypeSpec &ts,
                                      false, docstring, std::nullopt});
     }
 }
-
-bool TypeSystem::try_lookup_method(const Type *type, const std::string &method_name,
-                                   MethodInfo *info) const {
-    while (true) {
-        if (method_name == "new") {
-            if (type->get_my_new_method(info)) {
-                return true;
-            }
-        } else {
-            if (type->get_my_method(method_name, info)) {
-                return true;
-            }
-        }
-
-        if (type->has_parent()) {
-            type = lookup_type(type->get_parent());
-        } else {
-            break;
-        }
-    }
-    return false;
-}
-
-MethodInfo TypeSystem::lookup_method(const std::string &type_name,
-                                     const std::string &method_name) const {
-
+// ============================================================================
+// Method System: Определение (Связывание реализации)
+// ============================================================================
+/**
+ * Внешний инструмент. Связывает конкретную реализацию (лямбду/код) с ранее объявленным методом.
+ * Проверяет совместимость типов (TypeSpec) реализации и исходной декларации.
+ */
+MethodInfo TypeSystem::define_method(Type *type, const std::string &method_name, const TypeSpec &ts,
+                                     const std::optional<std::string> &docstring) {
     if (method_name == "new") {
-        return lookup_new_method(type_name);
+        return add_new_method(type, ts, docstring);
     }
 
-    MethodInfo info;
-    auto      *type = lookup_type(type_name);
+    MethodInfo existing_info;
+    bool       got_existing = try_lookup_method(type, method_name, &existing_info);
 
-    while (true) {
-        if (type->get_my_method(method_name, &info)) {
-            return info;
+    if (got_existing) {
+        // Update docstring and verify compatibility
+        if (docstring.has_value()) {
+            existing_info.docstring = *docstring;
         }
 
-        if (type->has_parent()) {
-            type = lookup_type(type->get_parent());
-        } else {
-            break;
+        int bad_arg_idx = -1;
+        if (!existing_info.type.is_compatible_child_method(ts, type->get_name(), &bad_arg_idx)) {
+            if (bad_arg_idx == -1) {
+                throw_typesystem_error(
+                    "The method {} of type {} was originally defined as {}, but has been "
+                    "redefined as {}.",
+                    method_name, type->get_name(), existing_info.type.print(), ts.print());
+            } else {
+                throw_typesystem_error(
+                    "The method {} of type {} was originally defined as {}, but has been "
+                    "redefined as {} (see argument index {})",
+                    method_name, type->get_name(), existing_info.type.print(), ts.print(),
+                    bad_arg_idx);
+            }
         }
+
+        return existing_info;
+    } else {
+        throw_typesystem_error("Cannot add method {} to type {} because it was not declared",
+                               method_name, type->get_name());
     }
-
-    throw_typesystem_error("The method {} of type {} could not be found", method_name, type_name);
 }
+/**
+ * Специальный инструмент. Позволяет создать новый метод, который ссылается на существующий ID в
+ * VTable. Применяется для "подмены" (overlay) или создания псевдонимов методов в системных целях.
+ */
+MethodInfo TypeSystem::overlay_method(Type *type, const std::string &method_name,
+                                      const std::string                &method_overlay_name,
+                                      const std::optional<std::string> &docstring,
+                                      const TypeSpec                   &ts) {
+    MethodInfo existing_info;
+    bool       got_existing = try_lookup_method(type, method_overlay_name, &existing_info);
 
-MethodInfo TypeSystem::lookup_new_method(const std::string &type_name) const {
-    MethodInfo info;
-    auto      *type = lookup_type(type_name);
-
-    while (true) {
-        if (type->get_my_new_method(&info)) {
-            return info;
-        }
-
-        if (type->has_parent()) {
-            type = lookup_type(type->get_parent());
-        } else {
-            break;
-        }
+    if (!got_existing) {
+        throw_typesystem_error(
+            "Cannot use :overlay-at on method {} of {} because this method was not previously "
+            "declared in a parent",
+            method_overlay_name, type->get_name());
     }
 
-    throw_typesystem_error("The new method of type {} could not be found", type_name);
+    // CORRECTED: Proper construction
+    return type->add_method({existing_info.id, method_name, ts, type->get_name(), type->get_name(),
+                             false, true, false, docstring,
+                             std::make_optional(method_overlay_name)});
+}
+/**
+ * Удобная внешняя обертка. Наследует сигнатуру родительского метода для текущего типа.
+ * Используется, когда нужно переопределить только документацию или логику, не меняя интерфейс.
+ */
+MethodInfo TypeSystem::override_method(Type *type, const std::string &method_name,
+                                       const std::optional<std::string> &docstring) {
+    // Lookup the method from the parent type
+    MethodInfo existing_info;
+    bool       exists = try_lookup_method(type->get_parent(), method_name, &existing_info);
+    if (!exists) {
+        throw_typesystem_error("Trying to override a method that has no parent declaration");
+    }
+
+    // CORRECTED: Use proper MethodInfo construction
+    return type->add_method({existing_info.id, method_name, existing_info.type, type->get_name(),
+                             type->get_name(), existing_info.no_virtual,
+                             false, // overrides_parent
+                             true,  // only_overrides_docstring
+                             docstring, std::nullopt});
 }
 
 // ============================================================================
@@ -1751,88 +1881,6 @@ std::optional<int> TypeSystem::try_get_type_method_count(const std::string &name
 }
 
 // ============================================================================
-// Method declaration variants
-// ============================================================================
-
-MethodInfo TypeSystem::declare_method(const std::string &type_name, const std::string &method_name,
-                                      const std::optional<std::string> &docstring, bool no_virtual,
-                                      const TypeSpec &ts, bool override_type) {
-    return declare_method(lookup_type(make_typespec(type_name)), method_name, docstring, no_virtual,
-                          ts, override_type);
-}
-
-MethodInfo TypeSystem::define_method(const std::string &type_name, const std::string &method_name,
-                                     const TypeSpec                   &ts,
-                                     const std::optional<std::string> &docstring) {
-    return define_method(lookup_type(make_typespec(type_name)), method_name, ts, docstring);
-}
-
-MethodInfo TypeSystem::define_method(Type *type, const std::string &method_name, const TypeSpec &ts,
-                                     const std::optional<std::string> &docstring) {
-    if (method_name == "new") {
-        return add_new_method(type, ts, docstring);
-    }
-
-    MethodInfo existing_info;
-    bool       got_existing = try_lookup_method(type, method_name, &existing_info);
-
-    if (got_existing) {
-        // Update docstring and verify compatibility
-        existing_info.docstring = *docstring;
-
-        int bad_arg_idx = -1;
-        if (!existing_info.type.is_compatible_child_method(ts, type->get_name(), &bad_arg_idx)) {
-            throw_typesystem_error(
-                "The method {} of type {} was originally defined as {}, but has been "
-                "redefined as {} (see argument index {})",
-                method_name, type->get_name(), existing_info.type.print(), ts.print(), bad_arg_idx);
-        }
-
-        return existing_info;
-    } else {
-        throw_typesystem_error("Cannot add method {} to type {} because it was not declared",
-                               method_name, type->get_name());
-    }
-}
-
-MethodInfo TypeSystem::overlay_method(Type *type, const std::string &method_name,
-                                      const std::string                &method_overlay_name,
-                                      const std::optional<std::string> &docstring,
-                                      const TypeSpec                   &ts) {
-    MethodInfo existing_info;
-    bool       got_existing = try_lookup_method(type, method_overlay_name, &existing_info);
-
-    if (!got_existing) {
-        throw_typesystem_error(
-            "Cannot use :overlay-at on method {} of {} because this method was not previously "
-            "declared in a parent",
-            method_overlay_name, type->get_name());
-    }
-
-    // CORRECTED: Proper construction
-    return type->add_method({existing_info.id, method_name, ts, type->get_name(), type->get_name(),
-                             false, true, false, docstring,
-                             std::make_optional(method_overlay_name)});
-}
-
-MethodInfo TypeSystem::override_method(Type *type, const std::string &method_name,
-                                       const std::optional<std::string> &docstring) {
-    // Lookup the method from the parent type
-    MethodInfo existing_info;
-    bool       exists = try_lookup_method(type->get_parent(), method_name, &existing_info);
-    if (!exists) {
-        throw_typesystem_error("Trying to override a method that has no parent declaration");
-    }
-
-    // CORRECTED: Use proper MethodInfo construction
-    return type->add_method({existing_info.id, method_name, existing_info.type, type->get_name(),
-                             type->get_name(), existing_info.no_virtual,
-                             false, // overrides_parent
-                             true,  // only_overrides_docstring
-                             docstring, std::nullopt});
-}
-
-// ============================================================================
 // Field offset assertion
 // ============================================================================
 
@@ -2411,11 +2459,13 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
     args_list = Object::make_pair(Object::make_symbol(ret_type_name), args_list);
 
     for (int i = (int)entries.size() - 1; i >= 0; --i) {
-        auto alias = entries[i].value.as_native_ref<RegisterAlias>();
-        // Если тип не указан, пусть будет 'object
-        Object t_name =
-            alias->type_name.is_none() ? Object::make_symbol("object") : alias->type_name;
-        args_list = Object::make_pair(t_name, args_list);
+        if (entries[i].value.is_native_ref<RegisterAlias>()) {
+            auto alias = entries[i].value.as_native_ref<RegisterAlias>();
+            // Если тип не указан, пусть будет 'object
+            Object t_name =
+                alias->type_name.is_none() ? Object::make_symbol("object") : alias->type_name;
+            args_list = Object::make_pair(t_name, args_list);
+        }
     }
 
     Object func_spec_form = Object::make_pair(Object::make_symbol("function"), args_list);

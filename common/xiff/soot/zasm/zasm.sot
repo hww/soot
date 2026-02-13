@@ -325,7 +325,12 @@
 
 (defstruct method 
   "Регистрируем фкнецию или метод в базе методов для многопроходной компиляции" 
-  (name null) (type null) (this-name null) (label null) (body null))
+  (name null)       ;; len, or size or other name
+  (type null)       ;; vector3 or other type
+  (label null)      ;; full name vector3::len
+  (func null)       ;; assigned lambda
+  (static #f)       ;; static or object
+  (scope 'private)) ;; private or public
 
 (defvar *modules* (make-hash-table) 
   "Глобальный реестр всех загруженных модулей.")
@@ -402,13 +407,14 @@
 (defmacro zasm (&rest body)
   (let ((result '()))
     (for-each body (lambda (form)
-      (set! result (cons 
-        `(begin
-           (set! *source-context* ',form)
-           (if (list? ',form)
-               ,form
-               (asm-error (fmt #f "Expected expression, got {}" ',form))))
-        result))))
+      (push! `(begin
+                (set! *source-context* ',form)
+                (if (list? ',form)
+                    ;; Мы вставляем саму форму как вызов функции
+                    ;; Теперь это выполнится только когда лямбду вызовет ассемблер
+                    ,form 
+                    (asm-error (fmt #f "Expected expression, got {}" ',form))))
+             result)))
     `(begin ,@(reverse result))))
 
 
@@ -776,28 +782,49 @@
         (emit fill :listing (if (= i 0) (fmt #f "ALIGN {} (added {} bytes)" boundary padding) ""))))))
 
 ;;; =====================================================================
+;;; Обработка всех харегестрированных методов
+;;; =====================================================================
+
+(defun finalize-method-registration ()
+  (for-each *methods-to-assemble*
+    (lambda (m)
+      ;; 1. Вызываем функцию один раз (сухой запуск)
+      ;; Это заставит сработать (declare) и заполнит LambdaObject->declarations
+      ;(call (method-func m))
+      (print (inspect m))
+      ;; 2. Теперь регистрируем в системе типов. 
+      ;; Твой C++ код set_method теперь увидит готовый typespec!
+      (if (not (method-static m))
+        (set-method! (method-type m) 
+                    (method-name m) 
+                    (method-func m))))))
+
+;;; =====================================================================
 ;;; Procedure
 ;;; =====================================================================
 
 (defmacro defproc (name args &rest body)
   (let ((label-name name)
-        ;; Формируем список привязок для rlet на основе аргументов
-        ;; Ожидаем формат: ((buf1 :reg de :type string) (buf2 :reg hl :type string))
+        ;; Извлекаем только списки: (buf1 :reg de :type string)
         (rlet-bindings (filter (lambda (x) (list? x)) args)))
-    `(begin
-       (set! *methods-to-assemble* (cons (make-method 
-                         :name ',label-name 
-                         :type 'global
-                         :label ',label-name
-                         :body (lambda () 
-                                 (.label ,label-name :scope 'public)
-                                 ;; Если есть типизированные аргументы, оборачиваем в rlet
-                                 ,(if (not (null? rlet-bindings))
-                                      `(rlet ,rlet-bindings (zasm ,@body))
-                                      `(zasm ,@body))
-                                 (.ret))) 
-                   *methods-to-assemble*))
-       (fmt #t "Procedure {} with typed registers registered\n" ',label-name))))
+    `(let ((impl (lambda () 
+                   (.label ,label-name :scope 'public)
+                        ;; Если есть аргументы, declare идет ВНУТРЬ rlet
+                        (rlet ,rlet-bindings 
+                           
+                           (zasm ,@body))
+                   (.ret))))
+       ;; Регистрируем в списке для сборки
+       (push! (make-method
+                :static #t
+                :func impl 
+                :type 'global
+                :name ',label-name
+                :label ',label-name
+                :scope 'public)
+              *methods-to-assemble*)
+       ;; Привязываем процедуру к имени
+       (define ,name impl))))
 
 (defmacro call-proc (name &rest args)
   "Пример: (call-proc copy-string :dest buffer :src msg)"
@@ -813,37 +840,43 @@
 ;;; =====================================================================
 
 (defmacro defmethod-instance (name args &rest body)
-  (let* ((this-spec (car args))      ;; Например: (self :vec3)
+  (let* ((this-spec (car args))      ;; (self :vec3)
          (this-type (cadr this-spec))
          (label-sym (intern (fmt #f "{}::{}" this-type name))))
-    `(begin
-       (let ((impl (make-method :name ',name 
-                                :type ',this-type 
-                                :label ',label-sym
-                                :body (lambda () 
-                                        (rlet asm-regs ((,(car this-spec)  ,this-type :reg ix))
-                                          (.label ,label-sym :scope 'public)
-                                          (zasm ,@body)
-                                          (.ret))))))
-         (push! impl *methods-to-assemble*)
-         (pass-case 2 (set-method! ',this-type ',name impl))
-         ))))
+    `(let ((impl (lambda () 
+                   (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
+                     (.label ,label-sym :scope 'public)
+
+                     (zasm ,@body)
+                     (.ret)))))
+       ;; Сохраняем в реестр вместо немедленной регистрации
+       (push! (make-method :func impl 
+                           :type ',this-type 
+                           :name ',name
+                           :label ',label-sym
+                           :scope 'public) 
+              *methods-to-assemble*))))
 
 (defmacro defmethod-static (name type args &rest body)
-  (let ((label-sym (intern (fmt #f "{}::{}" type name))))
-    `(begin
-       (let ((impl (make-method :name ',name 
-                                :type ',type 
-                                :label ',label-sym
-                                :body (lambda () 
-                                        ;; Регистрируем как статический метод в метаданных типа
-                                        
-                                        (.label ,label-sym :scope 'public)
-                                        (zasm ,@body)
-                                        (.ret)))))
-         (push! impl *methods-to-assemble*)
-         (pass-case 2 (set-method! ',type ',name impl))
-         ))))
+  (let ((label-sym (intern (fmt #f "{}::{}" type name)))
+        ;; Извлекаем только списки (arg :reg ... :type ...)
+        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+    `(let ((impl (lambda () 
+                   ;; Убрали ` перед rlet! Теперь это код, а не данные.
+                   (rlet asm-regs ,rlet-bindings  
+                      (.label ,label-sym :scope 'public)
+                      ;; Тут важно: если body содержит макросы (типа zasm), 
+                      ;; они должны раскрыться здесь.
+                      (zasm ,@body)
+                      (.ret)))))
+       (push! (make-method
+                :func impl 
+                :type ',type 
+                :name ',name
+                :label ',label-sym 
+                :scope 'public
+                :static #t) ;; Поправь тут поле, в логе было :static
+              *methods-to-assemble*))))
 
 (defmacro defmethod (name type-or-args &rest body)
   (cond
@@ -902,8 +935,9 @@
     (flatten (reverse data))))
 
 ;;; 2. Теперь определяем функцию генерации таблицы
-(defun .build-vtable (type-sym)
-  (let ((v-name (intern (fmt #f "{}-vtable" type-sym))))
+(defun .vtable (type-sym)
+  (fmt #t "DEBUG .vtable {}\n" type-sym)           
+  (let ((v-name (intern (fmt #f "{}::vtable" type-sym))))
     ;; 1. Устанавливаем метку вручную
     (segment-label-set! *current-segment* v-name)
     
@@ -914,6 +948,7 @@
                           (let ((addr (module-label-addr-get method-full-name)))
                             (list #xC3 (lower-byte addr) (higher-byte addr)))
                           (list 0 0 0))))))
+      (fmt #t "DEBUG .vtable {}\n" slots)                            
       ;; 3. Отправляем байты в буфер
       (emit slots :listing (fmt #f "VTable for {}" type-sym)))))
 
@@ -958,6 +993,6 @@
           (segment-label-set! *current-segment* (method-label m))
           
           ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
-          ((method-body m))))))
-      
+          ((method-func m))))))
+      (finalize-method-registration)
       (fmt #t "Assembly of module '{}' finished.\n" name))))

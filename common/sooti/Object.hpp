@@ -1317,12 +1317,14 @@ class EnvironmentObject : public HeapObject {
 };
 
 struct DeclareSettings {
-    bool   is_set = false;            // has the user set these with a (declare)?
+    bool   is_set = false; // has the user set these with a (declare)?
+    bool   once = false;
     bool   inline_by_default = false; // if a function, inline when possible?
     bool   save_code = true;          // if a function, should we save the code?
     bool   allow_inline = false;      // should we allow the user to use this an inline function
     bool   print_asm = false;         // should we print out the asm for this function?
-    Object typespec;                  // Type spec of this function
+    bool   allow_saved_regs = false;
+    Object typespec; // Type spec of this function
 };
 
 class LambdaObject : public HeapObject {
@@ -1344,7 +1346,16 @@ class LambdaObject : public HeapObject {
     }
 
     std::string print() const override {
-        return name.empty() ? "#<unnamed lambda>" : "#<lambda " + name + ">";
+        std::string str = "#<lambda";
+        if (!name.empty()) {
+            str += " ";
+            str += name;
+        }
+        if (!declarations.typespec.is_none()) {
+            str += declarations.typespec.print();
+        }
+        str += ">";
+        return str;
     }
 
     Object inspect() const override;

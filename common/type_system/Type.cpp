@@ -258,6 +258,7 @@ bool Type::set_new_method_impl(const script::Object method) {
 }
 
 bool Type::get_my_method(const std::string &name, MethodInfo *out) const {
+
     for (const auto &method : m_methods) {
         if (method.name == name) {
             if (out)
@@ -265,17 +266,22 @@ bool Type::get_my_method(const std::string &name, MethodInfo *out) const {
             return true;
         }
     }
+    if (name == "new") {
+        return get_my_new_method(out);
+    }
     return false;
 }
 
 bool Type::get_my_method(int id, MethodInfo *out) const {
-    ASSERT(id > 0);
     for (const auto &method : m_methods) {
         if (method.id == id) {
             if (out)
                 *out = method;
             return true;
         }
+    }
+    if (id == 0) {
+        return get_my_new_method(out);
     }
     return false;
 }

@@ -7,7 +7,7 @@
    (y int8) 
    (z int8))
  (:methods
-      (new (int16 int16) none)
+      (new (int16 int16) _type_)
       (len () int16)))
 
 (deftype vec3 (structure)
@@ -15,9 +15,9 @@
    (y int16) 
    (z int16))
  (:methods
-      (new (int16 int16) none)
-      (clear () none)
-      (len () int16)))
+      (new (int16 int16) _type_)
+      (clear (_type_) none)
+      (len (_type_) int16)))
 
 (deftype mat3 (structure)
   ((r1 vec3)   
@@ -43,9 +43,10 @@
 (defmethod new vec3 ((x int16) (x int16))
   ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
   ;; (.call 'object-new)
-  
+  (declare (once) (asm-func object))
+  (fmt #t "DECLARATIONS vec3::new {}" (declarations))
   ;; 2. Инициализируем VTable объекта (первые 2 байта)
-  (.ld hl 'vec3-vtable)
+  (.ld hl 'vec3::vtable)
   (.ld (+ix 0) l)
   (.ld (+ix 1) h)
   ;
@@ -55,6 +56,8 @@
   (.ret))
 
 (defmethod clear ((self vec3))
+  (declare (once) (asm-func none))
+  (fmt #t "DECLARATIONS vec3::clear {}" (declarations))
   (rlet ((self vec3 :reg ix))
     (zasm 
       (.ld (-> self x) 0)
@@ -63,6 +66,8 @@
       (.ret))))
 
 (defmethod len ((this vec3) (x uint8))
+  (declare (once) (asm-func int16))
+  (fmt #t "DECLARATIONS vec3::len {}" (declarations))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
   (rlet ((self uint8 :reg ix)
@@ -87,8 +92,8 @@
 ;;; ===================================================================== 
 
 (defproc test-vtable ()
-  (.build-vtable 'vec3)
-)
+  (fmt #t "DEBUG test-vtable...\n")
+  (.vtable 'vec3))
 
 ;;; ===================================================================== 
 ;;; Method Call
@@ -167,7 +172,7 @@
 ;;; ===================================================================== 
 
 (defproc test-copy-string ((dest string :reg de) 
-                      (src string :reg hl))
+                           (src string :reg hl))
   ;; Вход: DE = dest, HL = src
   (.label 'loop)
   (.ld a (@ hl))      ;; Читаем символ из источника
@@ -190,7 +195,6 @@
   (.inc hl)           ;; Следующий в источнике
   (.inc de)           ;; Следующий в приемнике
   (.jr 'loop))        ;; Повторяем
-
 
 
 
