@@ -17,12 +17,17 @@ class TypePointer : public Pointer {
         : Pointer(ptr, type), m_owner(owner) {}
 
     TypePointer(void *ptr, Type *type, std::shared_ptr<HeapObject> owner);
-    Object      get() override;
-    void        set(const Object &val) override;
-    Object      make_step_accessor(const Object &key) override;
-    void       *resolve_addr() const override;
-    std::string print() const override;
-    Object      inspect() const override;
-    Type       *get_type();
+    Object                      get() override;
+    void                        set(const Object &val) override;
+    Object                      make_step_accessor(const Object &key) override;
+    void                       *resolve_addr() const override;
+    std::string                 print() const override;
+    Object                      inspect() const override;
+    Type                       *get_type();
+    std::shared_ptr<HeapObject> get_owner() const {
+        return m_owner;
+    }
+
+    size_t get_offset_in_buffer() const;
 };
 } // namespace script

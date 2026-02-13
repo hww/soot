@@ -35,7 +35,7 @@ enum class ObjectType : uint8_t {
     CHAR,
     SYMBOL,
     STRING,
-    LAMBDA,
+    FUNCTION,
     MACRO,
     ENVIRONMENT,
     READER,
@@ -65,14 +65,6 @@ class Object;
 class Pointer;
 
 struct ArgumentSpec;
-
-struct DeclareSettings {
-    bool is_set = false;            // has the user set these with a (declare)?
-    bool inline_by_default = false; // if a function, inline when possible?
-    bool save_code = true;          // if a function, should we save the code?
-    bool allow_inline = false;      // should we allow the user to use this an inline function
-    bool print_asm = false;         // should we print out the asm for this function?
-};
 
 // InternedSymbolPtr как в OpenGOAL
 struct InternedSymbolPtr {
@@ -362,7 +354,7 @@ class Object {
         return is_null() || is_pair();
     }
     bool is_lambda() const {
-        return type == ObjectType::LAMBDA;
+        return type == ObjectType::FUNCTION;
     }
     bool is_macro() const {
         return type == ObjectType::MACRO;
@@ -451,6 +443,24 @@ class Object {
         // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
         if (!heap_obj) {
             throw std::runtime_error("as_native_ref called on the object with heap_obj null " +
+                                     object_type_to_string(type) + " " + print());
+            return nullptr;
+        }
+
+        // 2. Извлекаем базовый указатель на HeapObject (или твой базовый класс для нативов)
+        // Предполагаем, что m_data.heap_obj хранит shared_ptr
+        auto base_ptr = heap_obj;
+
+        // 3. Пытаемся безопасно привести к целевому типу T
+        auto casted_ptr = std::dynamic_pointer_cast<T>(base_ptr);
+
+        return casted_ptr;
+    }
+
+    template <typename T> std::shared_ptr<T> as_heap_obj() const {
+        // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
+        if (!heap_obj) {
+            throw std::runtime_error("as_heap_obj<T> called on the object with heap_obj null " +
                                      object_type_to_string(type) + " " + print());
             return nullptr;
         }
@@ -1028,124 +1038,6 @@ class SymbolTable {
     static constexpr float kMaxUsed = 0.7;
 };
 
-using EnvironmentMap = InternedPtrMap<Object>;
-
-class EnvironmentObject : public HeapObject {
-  public:
-    std::string                        name;
-    std::shared_ptr<EnvironmentObject> parent_env;
-    EnvironmentMap                     vars;
-    bool                               is_function;
-    bool                               is_asm_function;
-    Object                             meta_data; // metadata от компилятора или интерпретатора
-    Object                             ctx;
-    EnvironmentObject() = default;
-    EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
-        : parent_env(std::move(parent)), ctx() {}
-    ~EnvironmentObject() override = default;
-
-    int size() const {
-        return vars.size();
-    }
-
-    Object *find(const char *n, SymbolTable *st) {
-        return vars.lookup(st->intern(n));
-    }
-
-    Object *find(InternedSymbolPtr ptr) {
-        return vars.lookup(ptr);
-    }
-
-    static Object make_new() {
-        Object obj;
-        obj.type = ObjectType::ENVIRONMENT;
-        obj.heap_obj = std::make_shared<EnvironmentObject>();
-        return obj;
-    }
-
-    static Object make_new(std::string                        name,
-                           std::shared_ptr<EnvironmentObject> parent_env = nullptr) {
-        Object obj;
-        obj.type = ObjectType::ENVIRONMENT;
-        auto env = std::make_shared<EnvironmentObject>();
-        env->name = std::move(name);
-        env->parent_env = std::move(parent_env);
-        obj.heap_obj = std::move(env);
-        return obj;
-    }
-
-    std::string print() const override {
-        return fmt::format("#<env {} parent:{} @{:p}>", name.empty() ? "anonymous" : name,
-                           parent_env ? parent_env->name : "none", (void *)this);
-    }
-
-    Object inspect() const override;
-
-    std::string class_name() const override {
-        return "EnvironmentObject";
-    }
-    std::string type_name() const override {
-        return object_type_to_string(ObjectType::ENVIRONMENT);
-    }
-
-    std::shared_ptr<EnvironmentObject> function_env() {
-        if (is_function)
-            return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
-        auto current = parent_env;
-        while (current) {
-            if (current->is_function)
-                return current;
-            current = current->parent_env;
-        }
-        return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
-    }
-
-    std::shared_ptr<EnvironmentObject> asm_function_env() {
-        if (is_function)
-            return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
-        auto current = parent_env;
-        while (current) {
-            if (current->is_asm_function)
-                return current;
-            current = current->parent_env;
-        }
-        return std::static_pointer_cast<EnvironmentObject>(shared_from_this());
-    }
-
-    void add_meta(Object key, Object meta) {
-        if (meta_data.is_none())
-            meta_data = Object::make_null();
-        meta_data = Object::make_pair(Object::make_pair(key, meta), meta_data);
-    }
-
-    void add_meta(std::string key, Object meta) {
-        add_meta(Object::make_symbol(key), meta);
-    }
-
-    Object get_metadata(Object &key) const {
-        Object result = Object::make_none();
-
-        // Вероятно, for_each_in_list принимает const Object&
-        Object::for_each_in_list(meta_data, [&](const Object &pair) {
-            if (pair.is_pair() && pair.as_pair()->car == key) {
-                result = pair.as_pair()->cdr;
-                return false; // прервать поиск
-            }
-            return true; // продолжить поиск
-        });
-
-        return result;
-    }
-
-    Object get_metadata() const {
-        return meta_data;
-    }
-
-    bool is_metadata_set() {
-        return !meta_data.is_none();
-    }
-};
-
 // Аргументы функций
 struct Arguments {
     std::vector<Object>           unnamed;
@@ -1332,19 +1224,121 @@ struct ArgumentSpec {
                                const std::string                   &rest_name = "");
 };
 
+using EnvironmentMap = InternedPtrMap<Object>;
+
+class EnvironmentObject : public HeapObject {
+  public:
+    std::string                        name;
+    std::shared_ptr<EnvironmentObject> parent_env;
+    EnvironmentMap                     vars;
+    bool                               is_function;
+    bool                               is_asm_function;
+    bool                               is_reg_let;
+    Object                             ctx;
+    std::shared_ptr<LambdaObject>      owner_lambda;
+
+    EnvironmentObject() = default;
+    EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
+        : parent_env(std::move(parent)), ctx() {}
+    ~EnvironmentObject() override = default;
+
+    int size() const {
+        return vars.size();
+    }
+
+    Object *find(const char *n, SymbolTable *st) {
+        return vars.lookup(st->intern(n));
+    }
+
+    Object *find(InternedSymbolPtr ptr) {
+        return vars.lookup(ptr);
+    }
+
+    static Object make_new() {
+        Object obj;
+        obj.type = ObjectType::ENVIRONMENT;
+        obj.heap_obj = std::make_shared<EnvironmentObject>();
+        return obj;
+    }
+
+    static Object make_new(std::string                        name,
+                           std::shared_ptr<EnvironmentObject> parent_env = nullptr) {
+        Object obj;
+        obj.type = ObjectType::ENVIRONMENT;
+        auto env = std::make_shared<EnvironmentObject>();
+        env->name = std::move(name);
+        env->parent_env = std::move(parent_env);
+        obj.heap_obj = std::move(env);
+        return obj;
+    }
+
+    std::string print() const override {
+        return fmt::format("#<env {} parent:{} @{:p}>", name.empty() ? "anonymous" : name,
+                           parent_env ? parent_env->name : "none", (void *)this);
+    }
+
+    Object inspect() const override;
+
+    std::string class_name() const override {
+        return "EnvironmentObject";
+    }
+    std::string type_name() const override {
+        return object_type_to_string(ObjectType::ENVIRONMENT);
+    }
+    // Универсальный хелпер для поиска вверх по иерархии
+    std::shared_ptr<EnvironmentObject> find_env_up(const std::string &target_name,
+                                                   bool(EnvironmentObject::*flag)) {
+        auto current = std::static_pointer_cast<EnvironmentObject>(shared_from_this());
+
+        while (current) {
+            bool flag_match = (current.get()->*flag);
+            bool name_match = target_name.empty() || (current->name == target_name);
+
+            if (flag_match && name_match) {
+                return current;
+            }
+            current = current->parent_env;
+        }
+        return nullptr;
+    }
+
+    // Твои три функции теперь выглядят так:
+    std::shared_ptr<EnvironmentObject> get_function_env(const std::string &env_name = "") {
+        return find_env_up(env_name, &EnvironmentObject::is_function);
+    }
+
+    std::shared_ptr<EnvironmentObject> get_asm_function_env(const std::string &env_name = "") {
+        return find_env_up(env_name, &EnvironmentObject::is_asm_function);
+    }
+
+    std::shared_ptr<EnvironmentObject> get_reg_let_env(const std::string &env_name = "") {
+        return find_env_up(env_name, &EnvironmentObject::is_reg_let);
+    }
+};
+
+struct DeclareSettings {
+    bool   is_set = false;            // has the user set these with a (declare)?
+    bool   inline_by_default = false; // if a function, inline when possible?
+    bool   save_code = true;          // if a function, should we save the code?
+    bool   allow_inline = false;      // should we allow the user to use this an inline function
+    bool   print_asm = false;         // should we print out the asm for this function?
+    Object typespec;                  // Type spec of this function
+};
+
 class LambdaObject : public HeapObject {
   public:
     std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
     Object                             body;
     ArgumentSpec                       args;
+    DeclareSettings                    declarations;
 
     LambdaObject() = default;
     ~LambdaObject() override = default;
 
     static Object make_new() {
         Object obj;
-        obj.type = ObjectType::LAMBDA;
+        obj.type = ObjectType::FUNCTION;
         obj.heap_obj = std::make_shared<LambdaObject>();
         return obj;
     }
@@ -1358,8 +1352,9 @@ class LambdaObject : public HeapObject {
     std::string class_name() const override {
         return "LambdaObject";
     }
+
     std::string type_name() const override {
-        return object_type_to_string(ObjectType::LAMBDA);
+        return object_type_to_string(ObjectType::FUNCTION);
     }
 };
 

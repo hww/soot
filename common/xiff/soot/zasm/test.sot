@@ -55,18 +55,18 @@
   (.ret))
 
 (defmethod clear ((self vec3))
-  (rlet ((v :reg ix :source self))
+  (rlet ((self vec3 :reg ix))
     (zasm 
-      (.ld (-> v x) 0)
-      (.ld (-> v y) 0)
-      (.ld (-> v z) 0)
+      (.ld (-> self x) 0)
+      (.ld (-> self y) 0)
+      (.ld (-> self z) 0)
       (.ret))))
 
 (defmethod len ((this vec3) (x uint8))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
-  (rlet ((self :reg ix :type uint8)
-         (x    :reg a  :type uint8)) 
+  (rlet ((self uint8 :reg ix)
+         (x    uint8 :reg a)) 
     (zasm
      
       (.label start)
@@ -166,8 +166,8 @@
 ;;; 
 ;;; ===================================================================== 
 
-(defproc test-copy-string ((dest :reg de :type string) 
-                      (src  :reg hl :type string))
+(defproc test-copy-string ((dest string :reg de) 
+                      (src string :reg hl))
   ;; Вход: DE = dest, HL = src
   (.label 'loop)
   (.ld a (@ hl))      ;; Читаем символ из источника

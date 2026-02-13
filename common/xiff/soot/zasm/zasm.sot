@@ -340,7 +340,7 @@
 (defun get-pass-signature () (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
 
 (defmacro pass-case (p1 p2)
-  `(if (== *current-pass* 1)
+  `(if (eq? *current-pass* 1)
        ,p1
        ,p2))
 
@@ -821,12 +821,13 @@
                                 :type ',this-type 
                                 :label ',label-sym
                                 :body (lambda () 
-                                        (rlet ((,(car this-spec) :reg ix :type ,this-type))
+                                        (rlet asm-regs ((,(car this-spec)  ,this-type :reg ix))
                                           (.label ,label-sym :scope 'public)
                                           (zasm ,@body)
                                           (.ret))))))
          (push! impl *methods-to-assemble*)
-         (set-method! ',this-type ',name impl)))))
+         (pass-case 2 (set-method! ',this-type ',name impl))
+         ))))
 
 (defmacro defmethod-static (name type args &rest body)
   (let ((label-sym (intern (fmt #f "{}::{}" type name))))
@@ -835,12 +836,14 @@
                                 :type ',type 
                                 :label ',label-sym
                                 :body (lambda () 
+                                        ;; Регистрируем как статический метод в метаданных типа
+                                        
                                         (.label ,label-sym :scope 'public)
                                         (zasm ,@body)
                                         (.ret)))))
          (push! impl *methods-to-assemble*)
-         ;; Регистрируем как статический метод в метаданных типа
-         (set-method! ',type ',name impl)))))
+         (pass-case 2 (set-method! ',type ',name impl))
+         ))))
 
 (defmacro defmethod (name type-or-args &rest body)
   (cond
@@ -883,14 +886,18 @@
 ;;; =====================================================================
 
 ;;; 1. Сначала определяем вспомогательную функцию
-(defun emit-vtable-slots (type-sym emit-fn &optional ctx)
-  (let ((max-id (-> type-sym .methods-max-id))
-        (methods (-> type-sym .methods))
-        (data '()))
+(defun emit-vtable-slots (type-arg emit-fn &optional ctx)
+  ;; Используем (the-type ...) или просто (eval) чтобы превратить символ в объект типа
+  (let* ((type-obj (if (symbol? type-arg) (eval type-arg) type-arg))
+         (max-id  (-> type-obj .methods-max-id))
+         (methods (-> type-obj .methods))
+         (data '()))
     (dotimes (i (+ max-id 1))
       (let ((m (find-if (lambda (x) (= (-> x .id) i)) methods)))
         (if m
-            (push! (emit-fn (intern (concat (symbol->string type-sym) "::" (-> m .name)))) data)
+            ;; Для intern нам всё еще нужно имя типа как строка/символ
+            (let ((type-name (-> type-obj .name)))
+              (push! (emit-fn (intern (concat type-name "::" (-> m .name)))) data))
             (push! (emit-fn #f) data))))
     (flatten (reverse data))))
 

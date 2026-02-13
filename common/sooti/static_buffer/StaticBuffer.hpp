@@ -514,6 +514,29 @@ class StaticBuffer : public NativeRef {
     }
 
     // ============================================================================
+    // --- Запись другого буфера ---
+    // ============================================================================
+
+    void write_buffer(size_t offset, StaticBuffer *other) {
+        // 1. Копируем сырые байты
+        if (offset + other->size() > m_data.size()) {
+            m_data.resize(offset + other->size()); // Расширяем, если нужно
+        }
+        std::memcpy(m_data.data() + offset, other->data(), other->size());
+        update_addr_range(offset, other->size());
+        // 2. Переносим релокации с коррекцией смещения
+        for (const auto &reloc : other->get_relocations()) {
+            this->add_reloc(offset + reloc.offset, reloc.type, reloc.target_name);
+        }
+
+        // 3. Переносим метки
+        for (const auto &[name, label_obj] : other->get_all_labels()) {
+            auto label = label_obj.as_native_ref<BufferLabel>();
+            this->add_label(name, offset + label->addr, label->segment, label->meta);
+        }
+    }
+
+    // ============================================================================
     // --- 64-битные значения (8 байта) ---
     // ============================================================================
 

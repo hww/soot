@@ -37,7 +37,7 @@ std::string object_type_to_string(ObjectType type) {
         return "pair";
     case ObjectType::ARRAY:
         return "array";
-    case ObjectType::LAMBDA:
+    case ObjectType::FUNCTION:
         return "lambda";
     case ObjectType::MACRO:
         return "macro";
@@ -112,7 +112,7 @@ void SymbolTable::init_core_symbols() {
     core.type_pair = make_symbol(object_type_to_string(ObjectType::PAIR));
     core.type_array = make_symbol(object_type_to_string(ObjectType::ARRAY));
     core.type_hash_table = make_symbol(object_type_to_string(ObjectType::STRING_HASH_TABLE));
-    core.type_lambda = make_symbol(object_type_to_string(ObjectType::LAMBDA));
+    core.type_lambda = make_symbol(object_type_to_string(ObjectType::FUNCTION));
     core.type_macro = make_symbol(object_type_to_string(ObjectType::MACRO));
     core.type_environment = make_symbol(object_type_to_string(ObjectType::ENVIRONMENT));
     core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
@@ -148,7 +148,7 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.type_array;
     case ObjectType::STRING_HASH_TABLE:
         return core.type_hash_table;
-    case ObjectType::LAMBDA:
+    case ObjectType::FUNCTION:
         return core.type_lambda;
     case ObjectType::MACRO:
         return core.type_macro;
@@ -592,7 +592,7 @@ std::string Object::to_std_string() const {
 }
 
 LambdaObject *Object::as_lambda() const {
-    if (type != ObjectType::LAMBDA) {
+    if (type != ObjectType::FUNCTION) {
         throw std::runtime_error("as_lambda called on a " + object_type_to_string(type) + " " +
                                  print());
     }
@@ -802,7 +802,7 @@ bool Object::operator==(const Object &other) const {
         return symbol_obj.value.name_ptr == other.symbol_obj.value.name_ptr;
 
     case ObjectType::ENVIRONMENT:
-    case ObjectType::LAMBDA:
+    case ObjectType::FUNCTION:
     case ObjectType::MACRO:
     case ObjectType::READER:
     case ObjectType::PRIMITIVE:

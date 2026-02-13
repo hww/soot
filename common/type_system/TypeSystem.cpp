@@ -1,6 +1,8 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
+#include "common/type_system/Deftype.hpp"
 #include "common/type_system/RegisterAlias.hpp"
+
 #include "common/util/Assert.hpp"
 
 #include "fmt/format.h"
@@ -2393,122 +2395,36 @@ script::Object TypeSystem::inspect() const {
 // argument Checket
 // ============================================================================
 
-// ПРОСТО МЕТОД 1: Проверить аргументы из Environment
-bool TypeSystem::check_function_args(const std::shared_ptr<EnvironmentObject> &env,
-                                     const TypeSpec &expected_func_type, std::string *error_msg) {
+Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+                                           const std::string &ret_type_name) {
+    // Собираем список: (function arg1 arg2 ... ret)
+    // Важно: в EnvironmentMap порядок может быть не гарантирован,
+    // если ты не используешь OrderPreservingMap.
+    // Если порядок важен (а для сигнатуры он важен),
+    // лучше брать его прямо из bindings в eval_rlet.
 
-    if (expected_func_type.base_type() != "function") {
-        if (error_msg)
-            *error_msg = "Expected type is not a function";
-        return false;
+    // Но если мы доверяем порядку в vars:
+    Object args_list = Object::make_null();
+    auto   entries = env->vars.get_all_entries();
+
+    // Идем с конца в начало, чтобы собрать список через cons
+    args_list = Object::make_pair(Object::make_symbol(ret_type_name), args_list);
+
+    for (int i = (int)entries.size() - 1; i >= 0; --i) {
+        auto alias = entries[i].value.as_native_ref<RegisterAlias>();
+        // Если тип не указан, пусть будет 'object
+        Object t_name =
+            alias->type_name.is_none() ? Object::make_symbol("object") : alias->type_name;
+        args_list = Object::make_pair(t_name, args_list);
     }
 
-    // Получаем все entries в порядке вставки
-    const auto &entries = env->vars.get_all_entries();
+    Object func_spec_form = Object::make_pair(Object::make_symbol("function"), args_list);
 
-    // -1 для return type
-    size_t expected_args = expected_func_type.get_args_count() - 1;
-
-    if (entries.size() != expected_args) {
-        if (error_msg) {
-            *error_msg = fmt::format("Argument count mismatch: expected {}, got {}", expected_args,
-                                     entries.size());
-        }
-        return false;
-    }
-
-    // Проверяем по порядку (индекс = позиция аргумента)
-    for (size_t i = 0; i < entries.size(); i++) {
-        const auto &entry = entries[i];
-
-        // Получаем тип из значения
-        TypeSpec arg_type = get_type_from_object(entry.value);
-
-        const TypeSpec &expected_type = expected_func_type.get_arg(i);
-
-        if (!tc(expected_type, arg_type)) {
-            if (error_msg) {
-                *error_msg = fmt::format("Argument {} ({}) type mismatch: expected '{}', got '{}'",
-                                         i, entry.key, expected_type.print(), arg_type.print());
-            }
-            return false;
-        }
-    }
-
-    return true;
+    // Вызываем твой парсер
+    TypeSpec ts = parse_typespec(this, func_spec_form);
+    return Object::make_native_ref(std::make_shared<TypeSpec>(ts));
 }
 
-// ПРОСТО МЕТОД 2: Получить типы аргументов из Environment
-std::vector<TypeSpec>
-TypeSystem::get_arg_types_from_env(const std::shared_ptr<EnvironmentObject> &env) {
-    std::vector<TypeSpec> result;
-
-    for (const auto &entry : env->vars.get_all_entries()) {
-        result.push_back(get_type_from_object(entry.value));
-    }
-
-    return result;
-}
-
-// ПРОСТО МЕТОД 3: Построить TypeSpec функции из аргументов
-TypeSpec TypeSystem::build_function_type_from_args(const std::shared_ptr<EnvironmentObject> &env,
-                                                   const std::string &return_type) {
-    std::vector<std::string> arg_type_names;
-
-    for (const auto &entry : env->vars.get_all_entries()) {
-        TypeSpec ts = get_type_from_object(entry.value);
-        arg_type_names.push_back(ts.base_type());
-    }
-
-    return make_function_typespec(arg_type_names, return_type);
-}
-
-// Получить TypeSpec из Object
-TypeSpec TypeSystem::get_type_from_object(const Object &obj) {
-    // Числа
-    if (obj.is_integer()) {
-        int64_t val = obj.as_integer();
-        if (val >= -128 && val <= 127)
-            return make_typespec("int8");
-        if (val >= -32768 && val <= 32767)
-            return make_typespec("int16");
-        if (val >= -2147483648LL && val <= 2147483647LL)
-            return make_typespec("int32");
-        return make_typespec("int64");
-    }
-
-    if (obj.is_float())
-        return make_typespec("float");
-    if (obj.is_string())
-        return make_typespec("string");
-    if (obj.is_symbol())
-        return make_typespec("symbol");
-    if (obj.is_pair())
-        return make_typespec("pair");
-    if (obj.is_null())
-        return make_typespec("none");
-
-    // NativeRef объекты
-    if (obj.is_native_ref()) {
-        // RegisterAlias
-        auto reg = std::dynamic_pointer_cast<script::RegisterAlias>(obj.heap_obj);
-        if (reg && !reg->type_name.is_none()) {
-            try {
-                return make_typespec(reg->type_name.to_std_string());
-            } catch (...) {
-            }
-        }
-
-        // TypeSpec
-        auto ts = std::dynamic_pointer_cast<TypeSpec>(obj.heap_obj);
-        if (ts)
-            return *ts;
-
-        // Type
-        auto type = std::dynamic_pointer_cast<Type>(obj.heap_obj);
-        if (type)
-            return make_typespec(type->get_name());
-    }
-
-    return make_typespec("object"); // fallback
-}
+// ============================================================================
+//
+// ============================================================================
