@@ -330,26 +330,6 @@ StateHandler handler_keyword_to_kind(const std::string &name) {
     }
 }
 
-std::string handler_kind_to_name(StateHandler kind) {
-    switch (kind) {
-    case StateHandler::ENTER:
-        return "enter";
-    case StateHandler::EXIT:
-        return "exit";
-    case StateHandler::CODE:
-        return "code";
-    case StateHandler::EVENT:
-        return "event";
-    case StateHandler::TRANS:
-        return "trans";
-    case StateHandler::POST:
-        return "post";
-    default:
-        ASSERT(false);
-        return "";
-    }
-}
-
 void declare_method(Type *type, TypeSystem *type_system, const script::Object &def,
                     StructureDefResult &struct_def) {
     for_each_in_list(def, [&](const script::Object &_obj) {

@@ -12,6 +12,25 @@ namespace script {
 
 TypePointer::TypePointer(void *ptr, Type *type, std::shared_ptr<HeapObject> owner)
     : Pointer(ptr, type->get_name()), m_owner(owner) {}
+size_t TypePointer::get_offset_in_buffer() const {
+    if (!m_owner)
+        return 0;
+
+    // Пытаемся понять, является ли владелец буфером
+    auto buffer = std::dynamic_pointer_cast<StaticBuffer>(m_owner);
+    if (!buffer) {
+        throw std::runtime_error("Pointer owner is not a StaticBuffer");
+    }
+
+    uint8_t *base_addr = buffer->data();
+    uint8_t *current_addr = static_cast<uint8_t *>(m_ptr);
+
+    if (current_addr < base_addr) {
+        throw std::runtime_error("Pointer address is outside (before) buffer range");
+    }
+
+    return static_cast<size_t>(current_addr - base_addr);
+}
 } // namespace script
 
 Type *TypePointer::get_type() {

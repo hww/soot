@@ -10,14 +10,12 @@
 #include "common/sooti/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
-#include "common/util/Crc32.hpp"
 
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 // ============================================================================
@@ -446,16 +444,8 @@ class TypeSystem : public NativeRef {
     // Check Arguments
     // ========================================================================
   public:
-    bool check_function_args(const std::shared_ptr<EnvironmentObject> &env,
-                             const TypeSpec &expected_func_type, std::string *error_msg = nullptr);
-
-    std::vector<TypeSpec> get_arg_types_from_env(const std::shared_ptr<EnvironmentObject> &env);
-
-    TypeSpec build_function_type_from_args(const std::shared_ptr<EnvironmentObject> &env,
-                                           const std::string                        &return_type);
-
-  private:
-    TypeSpec get_type_from_object(const Object &obj);
+    Object build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+                                   const std::string                        &ret_type_name);
 
   private:
     // ========================================================================

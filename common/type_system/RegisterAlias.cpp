@@ -1,6 +1,6 @@
 #include "RegisterAlias.hpp"
 #include "ListBuilder.hpp"
-#include "common/type_system/TypeSystem.hpp"
+#include "TypeSystem.hpp"
 
 namespace script {
 
@@ -26,8 +26,6 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
             return Object::make_integer(this->bit_offset);
         if (name == ".bit_size")
             return Object::make_integer(this->bit_size);
-        if (name == ".source")
-            return this->source;
         if (name == ".type_name")
             return this->type_name;
 
@@ -124,7 +122,9 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
 
         return Object::make_native_ref(next_step);
     }
-    throw std::runtime_error(fmt::format("RegisterAlias expects a valid key, got ", key.print()));
+    throw std::runtime_error(
+        fmt::format("RegisterAlias for type `{}` expects a valid key, got `{}`",
+                    type_name.to_std_string(), key.print()));
     return Object::make_none();
 }
 
@@ -132,7 +132,6 @@ Object RegisterAlias::inspect() const {
     ListBuilder lb;
     lb.add_symbol("reg-alias");
     lb.add_key_value("name", name);
-    lb.add_key_value("source", source);
     lb.add_key_value("physical-reg", reg);
     lb.add_key_value("type-name", type_name);
     lb.add_key_value("offset", Object::make_integer(offset));
@@ -142,8 +141,7 @@ Object RegisterAlias::inspect() const {
 }
 
 std::string RegisterAlias::print() const {
-    return fmt::format(
-        "#<reg-alias {} :source {} :reg {} :type {} :offset {} :bit-offset {} :bit-size {}>",
-        name.print(), source.print(), reg.print(), type_name.print(), offset, bit_offset, bit_size);
+    return fmt::format("#<reg-alias {} :type {} :reg {} :offset {} :bit-offset {} :bit-size {}>",
+                       name.print(), type_name.print(), reg.print(), offset, bit_offset, bit_size);
 }
 } // namespace script

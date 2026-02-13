@@ -23,6 +23,7 @@
 
 #include "common/CommonTypes.hpp"
 #include "common/versions/revision.h"
+#include "type_system/Type.hpp"
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -74,7 +75,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {object_type_to_string(ObjectType::STRING), ObjectType::STRING},
         {object_type_to_string(ObjectType::PAIR), ObjectType::PAIR},
         {object_type_to_string(ObjectType::ARRAY), ObjectType::ARRAY},
-        {object_type_to_string(ObjectType::LAMBDA), ObjectType::LAMBDA},
+        {object_type_to_string(ObjectType::FUNCTION), ObjectType::FUNCTION},
         {object_type_to_string(ObjectType::MACRO), ObjectType::MACRO},
         {object_type_to_string(ObjectType::ENVIRONMENT), ObjectType::ENVIRONMENT},
         {object_type_to_string(ObjectType::READER), ObjectType::READER},
@@ -104,17 +105,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
         {"while", &Interpreter::eval_while_special, nullptr},
         {"top-level", &Interpreter::eval_begin_special, nullptr}, // top level evaluation
-        {"->", &Interpreter::eval_deref_special, nullptr},
-        {"the", &Interpreter::eval_the_special, nullptr},
-        {"the-as", &Interpreter::eval_the_as_special, nullptr},
-        {"offset-of", &Interpreter::eval_offset_of_special, nullptr},
-        {"size-of", &Interpreter::eval_size_of_special, nullptr},
 
-        {"declare", &Interpreter::eval_declare_special, nullptr},
-        {"declare-type", &Interpreter::eval_declare_type_special, nullptr},
         {"rlet", &Interpreter::eval_rlet_special, nullptr},
-        {"reg-alias", &Interpreter::eval_reg_alias_special, nullptr},
-
+        {"->", &Interpreter::eval_deref_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -332,7 +325,15 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
         {"method-of", &Interpreter::eval_method_of, nullptr},
 
+        {"declare", &Interpreter::eval_declare, nullptr},
+        {"declare-type", &Interpreter::eval_declare_type, nullptr},
+        {"reg-alias", &Interpreter::eval_reg_alias, nullptr},
         {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
+        {"the", &Interpreter::eval_the, nullptr},
+        {"the-as", &Interpreter::eval_the_as, nullptr},
+        {"offset-of", &Interpreter::eval_offset_of, nullptr},
+        {"size-of", &Interpreter::eval_size_of, nullptr},
+        {"~>", &Interpreter::eval_deref, nullptr},
     });
 
     // Type system
@@ -543,19 +544,35 @@ void Interpreter::throw_eval_error(const Object &o, const std::string &err) {
     throw EvalException(o, err);
 }
 
-void Interpreter::throw_arity_mismatch(const Object &form, size_t expected, size_t got,
+void Interpreter::throw_arity_mismatch(const Object &form, uint expected, size_t got,
                                        const Arguments &args) {
     throw_eval_error(form, fmt::format("Arity mismatch: expected {} arguments, but got {} in: {}",
                                        expected, got, args.print_full()));
 }
 
-void Interpreter::throw_type_mismatch(const Object &form, size_t index,
-                                      const std::vector<ObjectType> &expected, ObjectType got,
-                                      const Arguments &args) {
+void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+                                      const std::vector<ObjectType> &expected, ObjectType got) {
     std::string expected_str;
     for (size_t i = 0; i < expected.size(); ++i) {
         expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
     }
+    throw_eval_error(
+        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
+                          index, expected_str, object_type_to_string(got), args.print_full()));
+}
+
+void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+                                      std::initializer_list<const char *> expected,
+                                      ObjectType                          got) {
+    std::string expected_str;
+    bool        first = true;
+    for (const char *name : expected) {
+        if (!first)
+            expected_str += ", ";
+        expected_str += name;
+        first = false;
+    }
+
     throw_eval_error(
         form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
                           index, expected_str, object_type_to_string(got), args.print_full()));
@@ -706,6 +723,7 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
     auto lam_env = lam_env_obj.as_env_ptr();
     lam_env->is_function = true;
     lam_env->ctx = form;
+    lam_env->owner_lambda = lambda.as_heap_obj<LambdaObject>();
     // 4. Биндим аргументы
     Object dummy_form = m_symbol_table.make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
@@ -859,7 +877,7 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::STRING_HASH_TABLE:
     case ObjectType::READER:
         return obj;
-    case ObjectType::LAMBDA:
+    case ObjectType::FUNCTION:
         return obj;
     default:
         throw_eval_error(obj, "cannot evaluate this object");
@@ -979,6 +997,7 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         auto lam_env = lam_env_obj.as_env_ptr();
         lam_env->ctx = obj;
         lam_env->is_function = true;
+        lam_env->owner_lambda = eval_head.as_heap_obj<LambdaObject>();
         // Лексическое связывание: используем окружение, где лямбда была создана
         lam_env->parent_env = lam->parent_env;
 
@@ -986,11 +1005,6 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         return eval_list_return_last(lam->body, lam->body, lam_env);
     }
 
-    if (eval_head.is_native_ref()) {
-        auto alias = eval_head.as_native_ref<RegisterAlias>();
-        if (alias)
-            return eval(alias->source, env->parent_env);
-    }
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(obj,
                      "Object is not callable: " + eval_head.type_name() + " " + eval_head.print());
@@ -1934,7 +1948,7 @@ void Interpreter::vararg_check(
             }
 
             if (!type_ok) {
-                throw_type_mismatch(form, i, allowed_types, args.unnamed[i].type, args);
+                throw_type_mismatch(form, args, i, allowed_types, args.unnamed[i].type);
             }
         }
     }
@@ -2930,11 +2944,11 @@ Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
 Object Interpreter::eval_apply(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Базовая проверка (нам нужно минимум 2 аргумента: функция и список)
-    vararg_check(
-        form, args,
-        {{ObjectType::SYMBOL, ObjectType::LAMBDA, ObjectType::PRIMITIVE, ObjectType::SPECIAL_FORM},
-         {}},
-        {});
+    vararg_check(form, args,
+                 {{ObjectType::SYMBOL, ObjectType::FUNCTION, ObjectType::PRIMITIVE,
+                   ObjectType::SPECIAL_FORM},
+                  {}},
+                 {});
 
     Object callable_obj = args.unnamed[0];
     Object args_list = args.unnamed[1];
@@ -3261,7 +3275,7 @@ Object Interpreter::eval_make_hash_table(const Object &form, Arguments &args,
     Object initial_data = Object::make_null();
     if (args.unnamed.size() > 0) {
         if (!args.unnamed[0].is_pair() && !args.unnamed[0].is_null()) {
-            throw_type_mismatch(form, 0, {ObjectType::PAIR}, args.unnamed[0].type, args);
+            throw_type_mismatch(form, args, 0, {ObjectType::PAIR}, args.unnamed[0].type);
         }
         initial_data = args.unnamed[0];
     }
@@ -4532,67 +4546,101 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
     if (!rest.is_pair())
         return get_null();
 
-    auto   pair = rest.as_pair();
-    Object current = pair->car;
+    auto pair = rest.as_pair();
+
+    // 1. EVAL первого элемента.
+    // Теперь это ОБЯЗАН быть объект (Type, Pointer, RegisterAlias и т.д.)
+    Object current = eval(pair->car, env);
+
+    if (current.is_none()) {
+        throw_eval_error(form, fmt::format("Symbol '{}' not found in environment. "
+                                           "Did you forget to define the type or variable?",
+                                           pair->car.print()));
+    }
+
     Object iterator = pair->cdr;
 
-    // --- 1. ОПРЕДЕЛЕНИЕ КОРНЯ ---
-    if (current.is_pair()) {
-        // Если корень - это выражение, например (-> (get-obj) field)
-        current = eval_with_rewind(current, env);
-    } else if (current.is_symbol()) {
-        // Сначала ищем в переменных Лиспа (динамический объект)
-        Object result;
-        if (try_symbol_lookup(current, env, &result)) {
-            current = result;
-            if (current.is_symbol())
-                current = TypeSystem::instance().make_step_accessor(current);
-        } else {
-            // Если переменной нет, ищем в типах (статический доступ к метаданным)
-            current = TypeSystem::instance().make_step_accessor(current);
-        }
-    }
-
-    // Если корень так и не разрешился
-    if (current.is_none()) {
-        throw_eval_error(form, fmt::format("Deref root '{}' not found in environment or TypeSystem",
-                                           pair->car.print()));
-        return get_null();
-    }
-
-    // --- 2. НАВИГАЦИЯ (ШАГИ) ---
+    // 2. Навигация по ключам
     while (!iterator.is_null()) {
         Object key_form = iterator.as_pair()->car;
 
-        // ВАЖНО: Если это символ с точкой (мета-поле), берем его как есть без вычисления
-        Object key;
-        if (key_form.is_symbol() && key_form.as_symbol().name_ptr[0] == '.') {
-            key = key_form;
-        } else {
-            key = key_form.is_symbol() ? key_form : eval_with_rewind(key_form, env);
-        }
+        // Ключи в спецформе -> по умолчанию символы (имена полей)
+        // Но если это не символ (например, число), мы его вычисляем
+        Object key = key_form.is_symbol() ? key_form : eval(key_form, env);
 
-        Object next;
+        // Весь интеллект теперь здесь.
+        // Если current - это Type, он вернет метаданные.
+        // Если current - это экземпляр, он вернет данные.
         try {
-            // Делаем шаг. current ОБЯЗАТЕЛЬНО должен быть NativeRef (RegisterAlias)
-            next = current.step(key);
-        } catch (const std::exception &e) {
-            // Если упали тут, значит current потерял связь с RegisterAlias
-            throw_eval_error(form, fmt::format("Deref impossible: object is {}, error: {}",
-                                               current.print(), e.what()));
+            current = current.step(key);
+        } catch (std::runtime_error &e) {
+            throw_eval_error(form, e.what());
+        }
+        if (current.is_none()) {
+            throw_eval_error(form,
+                             fmt::format("Field or meta-property '{}' is not accessible in {}",
+                                         key.print(), current.type_name()));
         }
 
-        if (next.is_none()) {
-            throw_eval_error(
-                form, fmt::format("Field '{}' not found in {}", key.print(), current.print()));
-        }
-
-        // ПЕРЕХОДИМ К СЛЕДУЮЩЕМУ ОБЪЕКТУ И СЛЕДУЮЩЕМУ КЛЮЧУ
-        current = next;
         iterator = iterator.as_pair()->cdr;
     }
 
-    // --- 3. ВОЗВРАЩАЕМ УКАЗАТЕЛЬ ---
+    return current;
+}
+Object Interpreter::eval_deref(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка на наличие аргументов (минимум корень)
+    if (args.unnamed.empty()) {
+        return get_null();
+    }
+
+    // 2. Вычисляем корень (Root)
+    // Благодаря твоей новой системе, тут может быть символ 'vec3 (тип)
+    // или символ 'self (экземпляр/регистр). Eval вернет живой объект.
+    Object current = eval(args.unnamed[0], env);
+
+    if (current.is_none()) {
+        throw_eval_error(form, fmt::format("Deref root '{}' evaluated to NONE. "
+                                           "Check if variable or type is defined.",
+                                           args.unnamed[0].print()));
+    }
+
+    // 3. Итерация по ключам навигации
+    // Начинаем с индекса 1, так как индекс 0 — это корень
+    for (size_t i = 1; i < args.unnamed.size(); ++i) {
+        const Object &key_form = args.unnamed[i];
+        Object        key;
+
+        // В спецформе (-> obj field) ключи обычно символы.
+        // Если это символ — берем как есть. Если список/выражение — вычисляем.
+        if (key_form.is_symbol()) {
+            key = key_form;
+        } else {
+            key = eval(key_form, env);
+        }
+
+        // 4. Выполняем шаг навигации
+        try {
+            // Метод step теперь полиморфен: он знает, как работать
+            // и с TypeObject, и с NativeRef/Pointer.
+            Object next = current.step(key);
+
+            if (next.is_none()) {
+                throw_eval_error(form, fmt::format("Access error: field or property '{}' "
+                                                   "not found in object of type {}",
+                                                   key.print(), current.type_name()));
+            }
+
+            current = next;
+
+        } catch (const std::exception &e) {
+            // Пробрасываем внутренние ошибки step (например, выход за границы или неверный тип
+            // ключа)
+            throw_eval_error(form, fmt::format("Deref step failed: {}", e.what()));
+        }
+    }
+
+    // Возвращаем результат последнего шага
     return current;
 }
 
@@ -4667,118 +4715,118 @@ Object Interpreter::eval_addr_plus(const Object &form, Arguments &args,
 // ============================================================
 // Специальные операторы приведения типа
 // ============================================================
-
-Object Interpreter::eval_the_special(const Object &form, const Object &rest,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    // 1. Проверка структуры (the <type> <value>)
-    if (!rest.is_pair() || !rest.as_pair()->cdr.is_pair()) {
-        throw_eval_error(form, "the: expected 2 arguments: (the <type-name> <target>)");
+Object Interpreter::eval_the(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка аргументов (тип и само выражение)
+    if (args.unnamed.size() < 2) {
+        throw_eval_error(form, "the: expected (the <type> <expression>)");
     }
 
-    auto   pair = rest.as_pair();
-    Object type_form = pair->car;
-    Object target_form = pair->cdr.as_pair()->car;
+    auto type_form = args.unnamed[0];
+    auto target_form = args.unnamed[1];
 
-    // 2. Первый аргумент должен быть символом или списком (TypeSpec)
-    // В OpenGOAL (the int x) и (the (pointer int) x) оба валидны.
-    if (!type_form.is_symbol() && !type_form.is_pair()) {
-        throw_eval_error(form, fmt::format("the: first argument must be a type-spec, got {}",
-                                           type_form.print()));
+    // 2. Определяем Expected Type
+    TypeSpec expected_spec;
+
+    // Если мы передали объект типа (уже вычисленный ранее или найденный в env)
+    if (type_form.is_native_ref<Type>()) {
+        expected_spec = TypeSpec(type_form.as_native_ref<Type>()->get_name());
+    }
+    // Если это символ/строка (ищем в системе типов напрямую)
+    else if (type_form.is_symbol() || type_form.is_string()) {
+        expected_spec = TypeSpec(type_form.to_std_string());
+    } else {
+        throw_eval_error(form, "the: first argument must be a type object, symbol or string");
     }
 
-    // Создаем спецификацию того, что мы ОЖИДАЕМ
-    // Предполагаю, что конструктор TypeSpec умеет принимать Object-форму
-    TypeSpec expected_spec(type_form.to_std_string());
+    // 3. ВАЖНО: Вычисляем целевое выражение
+    // В специальной форме аргументы могут быть еще не вычислены
+    Object target = eval(target_form, env);
 
-    // 3. Вычисляем объект, который ПРОВЕРЯЕМ
-    Object target = eval_with_rewind(target_form, env);
-
-    // 4. Определяем спецификацию того, что у нас ЕСТЬ
+    // 4. Получаем актуальный тип объекта
     TypeSpec actual_spec;
     if (target.is_pointer()) {
-        // Если это Pointer, мы проверяем его внутренний тип (на что он указывает)
         actual_spec = TypeSpec(target.as_pointer()->get_type_name());
     } else {
-        // Для обычных объектов (integer, string, vec) берем имя их типа
+        // Используем встроенный метод получения типа объекта в рантайме
         actual_spec = TypeSpec(target.type_name());
     }
 
-    // 5. Проверка через TypeSystem::tc
-    // less_specific = expected (супертип)
-    // more_specific = actual (подтип)
+    // 5. Проверка совместимости типов
+    // actual_spec должен быть таким же или подтипом expected_spec
     if (!TypeSystem::instance().tc(expected_spec, actual_spec)) {
-        // Используем твой новый метод для выброса ошибки
-        // Мы можем передать информацию прямо из TypeSystem
-        throw_eval_error(form, fmt::format("Type assertion failed: expected {}, but got {}",
+        throw_eval_error(form, fmt::format("Type mismatch: expected {}, but object is {}",
                                            expected_spec.print(), actual_spec.print()));
     }
 
-    // 6. Возврат
-    // В GOAL 'the' возвращает тот же объект, но компилятор теперь "уверен" в его типе.
     return target;
 }
-
-Object Interpreter::eval_the_as_special(const Object &form, const Object &rest,
-                                        const std::shared_ptr<EnvironmentObject> &env) {
-    // Проверка структуры (the-as <type> <value>)
-    if (!rest.is_pair() || !rest.as_pair()->cdr.is_pair()) {
-        throw_eval_error(form, "the-as: expected 2 arguments: (the-as <type-name> <target>)");
+Object Interpreter::eval_the_as(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка количества аргументов.
+    // Нам нужно как минимум 2: тип и целевое выражение.
+    if (args.unnamed.size() < 2) {
+        throw_eval_error(form, "the-as: expected (the-as <type> <expression>)");
     }
 
-    auto   pair = rest.as_pair();
-    Object type_form = pair->car;
-    Object target_form = pair->cdr.as_pair()->car;
+    auto type_arg = args.unnamed[0];
+    auto target_arg = args.unnamed[1];
 
-    // 1. Первый аргумент (тип) — не вычисляем, он должен быть символом
-    if (!type_form.is_symbol()) {
-        throw_eval_error(form, fmt::format("the-as: first argument must be a type symbol, got {}",
-                                           type_form.print()));
+    // 2. Определяем имя типа для нового указателя
+    std::string new_type_name;
+
+    // Поддержка "Типов как объектов"
+    if (type_arg.is_native_ref<Type>()) {
+        new_type_name = type_arg.as_native_ref<Type>()->get_name();
+    }
+    // Поддержка символов/строк (классика)
+    else if (type_arg.is_symbol() || type_arg.is_string()) {
+        new_type_name = type_arg.to_std_string();
+    } else {
+        throw_eval_error(form, "the-as: first argument must be a type object, symbol or string");
     }
 
-    std::string type_name = type_form.as_symbol();
+    // 3. Вычисляем целевое выражение
+    Object target = eval(target_arg, env);
 
-    // 2. Второй аргумент — вычисляем
-    Object target = eval_with_rewind(target_form, env);
+    // 4. Логика "Reinterpret"
 
-    // 3. Логика приведения (Cast)
-
-    // Случай А: На входе Integer (адрес) -> создаем новый Pointer с этим типом
+    // Случай А: На входе Integer (сырой адрес) -> превращаем в типизированный указатель
     if (target.is_integer()) {
         void *addr = reinterpret_cast<void *>(static_cast<uintptr_t>(target.as_integer()));
-        // Передаем строку type_name в конструктор
-        return Object::make_pointer(addr, type_name);
+        return Object::make_pointer(addr, new_type_name);
     }
 
-    // Случай Б: На входе уже Pointer -> меняем ему тип "на лету"
+    // Случай Б: На входе уже Pointer -> меняем его тип, не меняя адрес
     if (target.is_pointer()) {
-        auto old_ptr = target.as_pointer();
-
-        // Вместо копирования объекта целиком, создаем новый,
-        // вытаскивая сырой адрес из старого через наш resolve_addr()
-        void *raw_addr = old_ptr->resolve_addr();
-
-        // Создаем новый указатель.
-        // Мы передаем raw_addr и новую строку типа.
-        // Interpreter подхватит это и создаст правильный TypePointer.
-        return Object::make_pointer(raw_addr, type_name);
+        void *raw_addr = target.as_pointer()->resolve_addr();
+        return Object::make_pointer(raw_addr, new_type_name);
     }
 
-    // Если пришло что-то другое — кидаем ошибку несовместимости типов
-    // Используем твой новый метод throw_type_mismatch
-    throw_type_mismatch(form, 1, {ObjectType::INTEGER, ObjectType::POINTER}, target.type,
-                        Arguments{{target}, {}, {}});
+    // Случай В: Специальная логика для Native Object (если они хранятся по ссылке)
+    // В GOAL можно сделать (the-as int my-object), чтобы получить его адрес
+    if (target.is_native_ref()) {
+        // Получаем адрес самого нативного объекта
+        void *raw_addr = target.as_native_ref();
+        // Если мы кастуем к базовым типам (int/uint), возвращаем адрес как число
+        if (new_type_name == "int" || new_type_name == "uint") {
+            return Object::make_integer(reinterpret_cast<uintptr_t>(raw_addr));
+        }
+        // Иначе возвращаем новый указатель на этот адрес
+        return Object::make_pointer(raw_addr, new_type_name);
+    }
 
-    return get_null();
+    // Если мы дошли сюда, значит пытаемся сделать cast того, что не имеет адреса (например, nil)
+    throw_eval_error(form, fmt::format("the-as: cannot cast object of type {} to {}",
+                                       target.type_name(), new_type_name));
 }
-
 // ============================================================
 // Получение размеров и смещений
 // ============================================================
 
-Object Interpreter::eval_offset_of_special(const Object &form, const Object &rest,
-                                           const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_offset_of(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(true, false));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}},
                  {}); // Вторая тоже символ
 
@@ -4817,10 +4865,9 @@ Object Interpreter::eval_offset_of_special(const Object &form, const Object &res
     return get_null();
 }
 
-Object Interpreter::eval_size_of_special(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_size_of(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto  args = get_args(form, rest, ArgumentSpec(true, false));
     auto &ts = TypeSystem::instance();
 
     if (args.unnamed.size() == 1) {
@@ -5249,6 +5296,28 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
             cell_ptr = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
         }
 
+        if (value.is_type(ObjectType::STATIC_BUFFER)) {
+            // 1. Извлекаем исходный буфер (src)
+            auto src_buf = value.as_native_ref<StaticBuffer>();
+
+            // 2. Извлекаем владельца и кастим его к StaticBuffer
+            auto owner_heap = cell_ptr->get_owner();
+            auto dest_buf = std::dynamic_pointer_cast<StaticBuffer>(owner_heap);
+
+            if (!dest_buf) {
+                throw_eval_error(
+                    form, "Target pointer owner is not a StaticBuffer. Blitting impossible.");
+            }
+
+            // 3. Вычисляем смещение (теперь метод есть)
+            size_t offset = cell_ptr->get_offset_in_buffer();
+
+            // 4. Пишем буфер в буфер
+            dest_buf->write_buffer(offset, src_buf.get());
+
+            return Object::make_integer(write_offset); // Возвращаем смещение записи
+        }
+
         // 2. САМА ЗАПИСЬ (Магия пакетов)
         if (value.is_pair()) {
             Object current_item = value;
@@ -5391,11 +5460,9 @@ void Interpreter::recursive_write(const Object &form, Object cell_obj, Object va
                 // СТРОГАЯ ПРОВЕРКА:
                 // В массиве примитивов не должно быть вложенных списков/пар
                 if (val_item.is_pair()) {
-                    throw_eval_error(
-                        form,
-                        fmt::format(
-                            "Type '{}' is a primitive. Cannot write nested list {} as an element.",
-                            type->get_name(), val_item.print()));
+                    throw_eval_error(form, fmt::format("Type '{}' is a primitive. Cannot write "
+                                                       "nested list {} as an element.",
+                                                       type->get_name(), val_item.print()));
                 }
 
                 Object elem_cell = cell_ptr->make_step_accessor(Object::make_integer(idx));
@@ -5482,8 +5549,7 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
 
     auto buf = args.unnamed[0].as_native_ref<StaticBuffer>();
 
-    // По умолчанию считаем ABS_ADDR 16-бит (Z80 style),
-    // но можно расширить аргументами
+    // Проходим по релокациям и заменяем имена меток на их адреса внутри ЭТОГО ЖЕ буфера
     buf->link_internal();
 
     return Object::make_none();
@@ -5505,7 +5571,7 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
 Object Interpreter::eval_static_new(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::NATIVE_REF}}, {});
+    // vararg_check(form, args, {{ObjectType::NATIVE_REF}}, {});
     auto &ts = TypeSystem::instance();
 
     if (args.unnamed.empty()) {
@@ -5570,7 +5636,7 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
 Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::LAMBDA}}, {});
+    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::FUNCTION}}, {});
 
     const std::string &str = args.unnamed[0].as_string()->data;
     Object             lambda = args.unnamed[1];
@@ -5586,7 +5652,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // Проверяем типы: первый аргумент — массив (вектор), второй — лямбда
-    vararg_check(form, args, {{ObjectType::ARRAY}, {ObjectType::LAMBDA}}, {});
+    vararg_check(form, args, {{ObjectType::ARRAY}, {ObjectType::FUNCTION}}, {});
 
     const auto &vec = args.unnamed[0].as_array()->data;
     Object      lambda = args.unnamed[1];
@@ -5608,7 +5674,7 @@ Object Interpreter::eval_vector_for_each(const Object &form, Arguments &args,
 Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args,
                                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {ObjectType::LAMBDA}}, {});
+    vararg_check(form, args, {{ObjectType::STRING_HASH_TABLE}, {ObjectType::FUNCTION}}, {});
 
     auto       &table = args.unnamed[0].as_hash_table()->data;
     Object      lambda = args.unnamed[1];
@@ -5629,7 +5695,7 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
 Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
                                        const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::LAMBDA}}, {});
+    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
 
     Object current = args.unnamed[0];
     Object lambda = args.unnamed[1];
@@ -5732,10 +5798,9 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
 // Declaration
 // ============================================================
 
-Object Interpreter::eval_declare_type_special(const Object &form, const Object &rest,
-                                              const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    auto args = get_args(form, rest, ArgumentSpec(true, false));
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
 
     auto kind = args.unnamed.at(1).to_std_string();
@@ -5792,8 +5857,8 @@ Object Interpreter::eval_declare_type_special(const Object &form, const Object &
  * ;; Пример 6: Ассемблерная функция с разрешением использования saved registers
  * (defun context-switch ()
  *   (declare (asm-func void))
- *   (declare (allow-saved-regs))  ;; Разрешает использовать регистры, сохраняемые между вызовами
- *   (asm "push rbx; push r12; ..."))
+ *   (declare (allow-saved-regs))  ;; Разрешает использовать регистры, сохраняемые между
+ * вызовами (asm "push rbx; push r12; ..."))
  *
  * ;; Пример 7: Комбинация нескольких опций
  * (defun critical-func (x)
@@ -5803,22 +5868,25 @@ Object Interpreter::eval_declare_type_special(const Object &form, const Object &
  *   ;; тело функции
  *   )
  */
-Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_declare(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
 
-    DeclareSettings settings;
-    auto            fe = env->function_env();
+    auto fe = env->get_function_env();
     if (fe.get() == nullptr) {
         throw_eval_error(form, "Cannot use function metadata outside of a function.");
     }
-    settings.is_set = fe->is_metadata_set();
+    auto func = fe->owner_lambda;
+    if (func.get() == nullptr) {
+        throw_eval_error(form, "Fuction environment does not have pointer to function.");
+    }
+    auto &settings = func->declarations;
 
     if (settings.is_set) {
         throw_eval_error(form, "Function cannot have multiple declares");
     }
     settings.is_set = true;
 
-    for_each_in_list(rest, [&](const Object &o) {
+    for (const auto &o : args.unnamed) {
         if (!o.is_pair()) {
             throw_eval_error(o, "Invalid declare specification.");
         }
@@ -5849,22 +5917,30 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
             settings.inline_by_default = false;
             settings.save_code = true;
         } else if (name == "asm-func") {
-
-            fe->add_meta("is-asm-func", Object::make_boolean(true));
+            fe->is_asm_function = true;
             if (!rrest->is_pair()) {
                 throw_eval_error(
                     form,
                     "Declare asm-func must provide the function's return type as an argument.");
             }
-            ///
-            auto type_expr = rrest->as_pair()->car;
-            auto ts_ptr = parse_typespec(&TypeSystem::instance(), type_expr);
-            auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
-            fe->add_meta("asm-func", Object::make_native_ref(ts_shared));
+            /// Get return type
+            auto asm_type_expr = rrest->as_pair()->car;
+            if (!(asm_type_expr.is_symbol() || asm_type_expr.is_string())) {
+                throw_eval_error(first, "Invalid asm-func declare bad return type");
+            }
             ///
             if (!rrest->as_pair()->cdr.is_null()) {
                 throw_eval_error(first, "Invalid asm-func declare");
             }
+            auto rlet_env = env->get_reg_let_env();
+            if (!rrest->as_pair()->cdr.is_null()) {
+                throw_eval_error(first, "Invalid asm-func declare");
+            }
+            if (rlet_env.get() == nullptr) {
+                throw_eval_error(first, "Can't find rlet environment");
+            }
+            auto type_name = asm_type_expr.to_std_string();
+            settings.typespec = TypeSystem::instance().build_typespec_from_env(rlet_env, type_name);
         } else if (name == "print-asm") {
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid print-asm declare");
@@ -5874,31 +5950,10 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
             if (!rrest->is_null()) {
                 throw_eval_error(first, "Invalid allow-saved-regs declare");
             }
-            auto fe = env->function_env();
-            fe->add_meta("asm-func-saved-regs", get_true());
+            auto fe = env->get_function_env();
         } else {
             throw_eval_error(first, "Unrecognized declare option {}.", first.print());
         }
-    });
-
-    if (settings.is_set) { // has the user set these with a (declare)?
-        fe->add_meta("is-set", get_true());
-    }
-    if (settings.inline_by_default) {
-        // if a function, inline when possible?
-        fe->add_meta("inline-by-default", get_true());
-    }
-    if (settings.save_code) {
-        // if a function, should we save the code?
-        fe->add_meta("save-code", get_true());
-    }
-    if (settings.allow_inline) {
-        // should we allow the user to use this an inline function
-        fe->add_meta("allow-inline", get_true());
-    }
-    if (settings.print_asm) {
-        // should we print out the asm for this function?
-        fe->add_meta("print-asm", get_true());
     }
 
     return get_none();
@@ -5909,47 +5964,87 @@ Object Interpreter::eval_declarations(const Object &form, Arguments &args,
 
     vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
 
-    auto fe = env->function_env();
+    auto fe = env->get_function_env();
     if (fe.get() == nullptr) {
         throw_eval_error(form, "Cannot use function metadata outside of a function.");
     }
-    if (args.has_named("name")) {
-        return fe->get_metadata(args.named.at("name"));
-    } else {
-        return fe->get_metadata();
+    auto func = fe->owner_lambda;
+    if (func.get() == nullptr) {
+        throw_eval_error(form, "Fuction environment does not have pointer to function.");
     }
+    auto &settings = func->declarations;
+    // Make result
+    ListBuilder lb;
+    lb.add_keyword("declarations");
+    lb.add_key_value("is-set",
+                     true_or_false(settings.is_set)); // has the user set these with a (declare)?
+    lb.add_key_value(
+        "inline-by-default",
+        true_or_false(settings.inline_by_default)); // if a function, inline when possible?
+    lb.add_key_value("save-code",
+                     true_or_false(settings.save_code)); // if a function, should we save the code?
+    lb.add_key_value(
+        "allow-inline",
+        true_or_false(
+            settings.allow_inline)); // should we allow the user to use this an inline function
+    lb.add_key_value(
+        "print-asm",
+        true_or_false(settings.print_asm)); // should we print out the asm for this function?
+    lb.add_key_value("typespec", settings.typespec);
+
+    return lb.build();
 }
 
 Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
 
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "rlet requires bindings and body");
+    if (!rest.is_pair())
+        throw_eval_error(form, "rlet requires name or bindings");
+
+    Object      current_rest = rest;
+    std::string env_name = "";
+    auto        first = current_rest.as_pair()->car;
+    // 1. Проверяем, не является ли первый аргумент именем (строкой)
+    if (first.is_symbol() || first.is_string()) {
+        env_name = first.to_std_string();
+        current_rest = current_rest.as_pair()->cdr;
     }
 
-    Object bindings = rest.as_pair()->car;
-    Object body = rest.as_pair()->cdr;
+    if (!current_rest.is_pair())
+        throw_eval_error(form, "rlet requires bindings");
+    Object bindings = current_rest.as_pair()->car;
+    Object body = current_rest.as_pair()->cdr;
 
-    // Создаем специальное окружение
+    // Создаем окружение
     auto new_env = std::make_shared<EnvironmentObject>(env);
-    new_env->is_asm_function = true;
-    new_env->ctx = form;
+    new_env->name = env_name;
+    new_env->is_reg_let = true;
+    new_env->is_asm_function = true; // Помечаем как потенциальный интерфейс метода
     new_env->parent_env = env;
+
+    if (!env_name.empty())
+        env->vars.set(Object::intern(env_name.c_str()),
+                      Object::make_heap_object(new_env, ObjectType::ENVIRONMENT));
+
     // Используем helper для обхода списка
     for_each_in_list(bindings, [&](const Object &binding) {
         if (!binding.is_pair())
             throw_eval_error(binding, "Invalid rlet binding");
+        auto name_obj = binding.as_pair()->car;
+        auto rest_obj = binding.as_pair()->cdr;
 
-        Object name_sym = binding.as_pair()->car;
-        if (!name_sym.is_symbol())
-            throw_eval_error(name_sym, "Binding name must be a symbol");
-
+        if (!name_obj.is_symbol())
+            throw_eval_error(form,
+                             fmt::format("Binding name must be a symbol `{}`", name_obj.print()));
+        if (!rest_obj.is_pair())
+            throw_eval_error(form,
+                             fmt::format("Binding name must be a pair `{}`", rest_obj.print()));
         // Создаем shared_ptr на RegisterAlias
         auto alias = std::make_shared<RegisterAlias>();
-        alias->name = name_sym;
-        alias->source = name_sym;
-        Object current = binding.as_pair()->cdr;
+        alias->name = name_obj;
+        alias->type_name = rest_obj.as_pair()->car;
+        Object current = rest_obj.as_pair()->cdr;
 
         while (current.is_pair()) {
             Object key = current.as_pair()->car;
@@ -5964,130 +6059,104 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                 std::string k = key.print();
                 if (k == ":reg") {
                     alias->reg = val;
-                } else if (k == ":type") {
-                    alias->type_name = val;
                 } else if (k == ":offset") {
                     alias->offset = (int)val.as_integer();
-                } else if (k == ":source") {
-                    alias->source = val;
                 } else {
                     throw_eval_error(binding, "Expected :type, :reg, :offset, :source, but got " +
                                                   val.print());
                 }
             }
         }
-        if (alias->type_name.is_none()) {
-            if (alias->source.is_none()) {
-                throw_eval_error(
-                    form, fmt::format("Could not resolve type for {}", alias->print().c_str()));
-            } else {
-                auto obj = eval(alias->source, env);
-                if (obj.is_native_ref<RegisterAlias>()) {
-                    auto parent_reg = obj.as_native_ref<RegisterAlias>();
-                    alias->type_name = parent_reg->type_name;
-                } else {
-                    throw_eval_error(
-                        form, fmt::format("The source object should be RegisterAlias, got {}",
-                                          obj.print().c_str()));
-                }
-            }
-        }
+
         // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
         // new_env->set_at(name_sym, Object::make_native_ref(alias));
 
         // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
-        new_env->vars.set(name_sym.as_symbol(), Object::make_native_ref(alias));
+        auto name_sym = name_obj.as_symbol();
+        new_env->vars.set(name_sym, Object::make_native_ref(alias));
     });
 
     return eval_list_return_last(body, body, new_env);
 }
 
-Object Interpreter::eval_reg_alias_special(const Object &form, const Object &rest,
-                                           const std::shared_ptr<EnvironmentObject> &env) {
-
-    auto args = get_args(form, rest, ArgumentSpec(true, true));
+Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
 
     // 1. Проверяем аргументы: (rlet-ref symbol prop-name)
-    vararg_check(form, args, {{ObjectType::SYMBOL}},
-                 {{"source", {false, {ObjectType::SYMBOL}}},
-                  {"reg", {false, {ObjectType::SYMBOL}}},
-                  {"type", {false, {ObjectType::SYMBOL, ObjectType::STRING}}}});
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::NATIVE_REF, ObjectType::SYMBOL}},
+                 {{"reg", {false, {ObjectType::SYMBOL}}}});
 
     // 2. Ищем контекст в иерархии окружений
-    auto context_obj = env->asm_function_env();
-
     auto alias = std::make_shared<RegisterAlias>();
     alias->name = args.unnamed[0];
-    alias->source = args.unnamed[0];
-    if (args.has_named("source"))
-        alias->source = args.named["source"];
+    auto second = args.unnamed[1];
+    if (second.is_symbol())
+        alias->type_name = second;
+    else if (second.is_native_ref<Type>())
+        alias->type_name = Object::make_symbol(second.as_native_ref<Type>()->type_name());
+    else
+        throw_type_mismatch(form, args, 1, {"type", "symbol"}, second.type);
+
     if (args.has_named("reg"))
         alias->reg = args.named["reg"];
-    if (args.has_named("type"))
-        alias->type_name = args.named["type"];
 
-    if (alias->type_name.is_none()) {
-        if (alias->source.is_none()) {
-            throw_eval_error(form,
-                             fmt::format("Could not resolve type for {}", alias->print().c_str()));
-        } else {
-            auto obj = eval_with_rewind(alias->source, env);
-            if (obj.is_native_ref<RegisterAlias>()) {
-                auto parent_reg = obj.as_native_ref<RegisterAlias>();
-                alias->type_name = parent_reg->type_name;
-            } else {
-                throw_eval_error(form,
-                                 fmt::format("The source object should be RegisterAlias, got {}",
-                                             obj.print().c_str()));
-            }
-        }
-    }
     // Если символ не найден в таблице алиасов
     return Object::make_native_ref(alias);
 }
-
 Object Interpreter::eval_set_method(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
     vararg_check(form, args,
                  {
-                     {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // Type
-                     {ObjectType::INTEGER, ObjectType::SYMBOL},    // Method ID or Name
-                     {}                                            // Implementation (Function)
+                     {ObjectType::SYMBOL, ObjectType::NATIVE_REF}, // 0: Type
+                     {ObjectType::INTEGER, ObjectType::SYMBOL},    // 1: Method ID/Name
+                     {ObjectType::FUNCTION}                        // 2: Implementation (Lambda)
                  },
                  {});
 
     auto &ts = TypeSystem::instance();
-    Type *type = nullptr;
 
     // 1. Извлекаем Тип
-    const auto &type_arg = args.unnamed[0];
-    if (type_arg.is_symbol()) {
-        type = ts.lookup_type(type_arg.to_std_string());
-    } else if (type_arg.is_native_ref<Type>()) {
-        type = type_arg.as_native_ref<Type>().get();
+    Type *type = args.unnamed[0].is_symbol() ? ts.lookup_type(args.unnamed[0].to_std_string())
+                                             : args.unnamed[0].as_native_ref<Type>().get();
+
+    if (!type)
+        throw_eval_error(form, "Could not resolve type");
+
+    // 2. ПОДГОТОВКА: Запускаем лямбду, чтобы сработал (declare ...)
+    // Это заполнит объект LambdaObject::declarations
+    Object implementation = args.unnamed[2];
+
+    // 3. ПРОВЕРКА СИГНАТУРЫ
+    auto lambda_ptr = implementation.as_native_ref<LambdaObject>();
+    if (!lambda_ptr->declarations.is_set) {
+        throw_eval_error(form, "Method implementation must contain a (declare) block");
     }
 
-    if (!type) {
-        throw_eval_error(form, fmt::format("Could not resolve type from {}", type_arg.print()));
+    // Достаем эталонную сигнатуру из TypeSystem
+    MethodInfo info;
+    bool       found = args.unnamed[1].is_symbol()
+                           ? type->get_my_method(args.unnamed[1].to_std_string(), &info)
+                           : type->get_my_method(args.unnamed[1].as_integer(), &info);
+
+    if (!found)
+        throw_eval_error(form, "Method not found in type declaration");
+
+    // Сравниваем то, что сгенерировал (declare) через build_typespec_from_env, с эталоном
+    const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_native_ref<TypeSpec>();
+    int             bad_idx = -1;
+    if (!info.type.is_compatible_child_method(impl_spec, type->get_name(), &bad_idx)) {
+        throw_eval_error(form,
+                         fmt::format("Signature mismatch for {}::{}. Arg {}: expected {}, got {}",
+                                     type->get_name(), info.name, bad_idx,
+                                     info.type.get_arg(bad_idx).print(),
+                                     impl_spec.get_arg(bad_idx).print()));
     }
 
-    // 2. Извлекаем Метод и обновляем его
-    const auto &method_arg = args.unnamed[1];
-    const auto &implementation = args.unnamed[2];
-    bool        success = false;
+    // 4. РЕГИСТРАЦИЯ
+    bool success = args.unnamed[1].is_symbol()
+                       ? type->set_method_impl(args.unnamed[1].to_std_string(), implementation)
+                       : type->set_method_impl(args.unnamed[1].as_integer(), implementation);
 
-    if (method_arg.is_symbol()) {
-        success = type->set_method_by_name(method_arg.to_std_string(), implementation);
-    } else if (method_arg.is_integer()) {
-        success = type->set_method_by_id(method_arg.as_integer(), implementation);
-    }
-
-    if (!success) {
-        throw_eval_error(
-            form, fmt::format("Type {} has no method {}", type->print(), method_arg.print()));
-    }
-
-    return get_true();
+    return Object::make_boolean(success);
 }
 } // namespace script

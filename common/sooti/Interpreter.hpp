@@ -128,17 +128,17 @@ class Interpreter {
 
     // Обработка ошибок
     [[noreturn]] void throw_eval_error(const Object &o, const std::string &err);
-    void              throw_arity_mismatch(const Object &form, size_t expected, size_t got,
-                                           const Arguments &args);
-    void              throw_type_mismatch(const Object &form, size_t index,
-                                          const std::vector<ObjectType> &expected, ObjectType got,
-                                          const Arguments &args);
-    void              throw_missing_named_arg(const Object &form, const std::string &name,
-                                              const Arguments &args);
-    void              throw_unexpected_named_arg(const Object &form, const std::string &name,
-                                                 const Arguments &args);
-    void              throw_named_type_mismatch(const Object &form, const std::string &name,
-                                                const std::vector<ObjectType> &expected, ObjectType got);
+    void throw_arity_mismatch(const Object &form, uint expected, size_t got, const Arguments &args);
+    void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+                             const std::vector<ObjectType> &expected, ObjectType got);
+    void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+                             std::initializer_list<const char *> expected, ObjectType got);
+    void throw_missing_named_arg(const Object &form, const std::string &name,
+                                 const Arguments &args);
+    void throw_unexpected_named_arg(const Object &form, const std::string &name,
+                                    const Arguments &args);
+    void throw_named_type_mismatch(const Object &form, const std::string &name,
+                                   const std::vector<ObjectType> &expected, ObjectType got);
 
     void print_form_info(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
 
@@ -529,16 +529,16 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_type_special(const Object &form, const Object &rest,
-                                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_type(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_method(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declarations(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_reg_alias_special(const Object &form, const Object &rest,
-                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_reg_alias(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
@@ -553,18 +553,20 @@ class Interpreter {
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_deref_special(const Object &form, const Object &rest,
                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_deref(const Object &form, Arguments &args,
+                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_addr_of(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
     Object eval_addr_plus(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_the_special(const Object &form, const Object &rest,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_the_as_special(const Object &form, const Object &rest,
-                               const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_offset_of_special(const Object &form, const Object &rest,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_size_of_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_the(const Object &form, Arguments &args,
+                    const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_the_as(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_offset_of(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_size_of(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
 
     Object eval_method_id_of(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);

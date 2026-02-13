@@ -1,3 +1,4 @@
+#pragma once
 #include "common/sooti/Object.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <string>
@@ -5,7 +6,6 @@
 namespace script {
 struct RegisterAlias : NativeRef {
     Object name;           // Имя переменной
-    Object source;         // Ссылка на оригинал по умолчанию равна name
     Object reg;            // Ссылка на физический регистр
     Object type_name;      // Имя типа
     int    offset = 0;     // Смещение в БАЙТАХ

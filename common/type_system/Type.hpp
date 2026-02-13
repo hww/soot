@@ -376,10 +376,10 @@ class Type : public NativeRef {
     const MethodInfo &add_method(const MethodInfo &info);
     const MethodInfo &add_new_method(const MethodInfo &info);
     std::string       print_method_info() const;
-    bool set_method_by_id(int id, const script::Object method); // Used for the scripting systme
-    bool set_method_by_name(const std::string   &name,
-                            const script::Object method); // Used for the scripting systme
-
+    bool set_method_impl(int id, const script::Object method); // Used for the scripting systme
+    bool set_method_impl(const std::string   &name,
+                         const script::Object method); // Used for the scripting systme
+    bool set_new_method_impl(const script::Object method);
     // New method access
     const MethodInfo *get_new_method_defined_for_type() const {
         if (m_new_method_info_defined) {
