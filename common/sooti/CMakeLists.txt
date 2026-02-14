@@ -9,6 +9,7 @@ add_library(libsoticore
     common/sooti/ParseHelpers.cpp
     common/sooti/PrinterEnv.cpp
     common/sooti/PrettyPrinter.cpp
+    common/sooti/Errors.cpp
 
 )
 # 3. Высокоуровневый интерпретатор и мост к типам

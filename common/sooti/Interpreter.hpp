@@ -172,8 +172,8 @@ class Interpreter {
     Object build_list_with_links(std::vector<QuasiquoteEntry> &&entries, Object tail = Object());
 
   private:
-    Object builtin_set_error_handler(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_with_error_handler_special(const Object &form, const Object &rest,
+                                           const std::shared_ptr<EnvironmentObject> &env);
 
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
     Object eval_quote_special(const Object &form, const Object &rest,

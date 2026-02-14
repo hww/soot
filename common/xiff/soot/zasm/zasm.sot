@@ -410,12 +410,15 @@
       (push! `(begin
                 (set! *source-context* ',form)
                 (if (list? ',form)
-                    ;; Мы вставляем саму форму как вызов функции
-                    ;; Теперь это выполнится только когда лямбду вызовет ассемблер
                     ,form 
                     (asm-error (fmt #f "Expected expression, got {}" ',form))))
              result)))
-    `(begin ,@(reverse result))))
+    ;; Оборачиваем весь блок в ловушку
+    `(with-error-handler 
+       (lambda (msg err-form trace)
+         ;; Добавляем "этаж" контекста
+         (list *source-context* "ZASM Expansion error")) 
+       (begin ,@(reverse result)))))
 
 
 (defun emit (data &key (listing ""))
@@ -815,7 +818,7 @@
     `(let ((impl (lambda ()
                    ;; 1. Системная декларация SOOT (C++ уровень)
                    ;; Она ВСЕГДА должна быть первым выражением в лямбде
-                   (declare-extern ,label-name (function ,arg-types none)) 
+                   (declare-extern ,label-name 1 (function ,arg-types none)) 
                    
                    (rlet ,rlet-bindings 
                         ;; 2. Ассемблерный контекст

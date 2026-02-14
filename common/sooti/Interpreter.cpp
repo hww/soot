@@ -104,6 +104,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"declare-extern", &Interpreter::eval_declare_extern, nullptr},
         {"define-constant", &Interpreter::eval_define_constant, nullptr},
 
+        {"with-error-handler", &Interpreter::eval_with_error_handler_special, nullptr},
+
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -330,6 +332,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"offset-of", &Interpreter::eval_offset_of, nullptr},
         {"size-of", &Interpreter::eval_size_of, nullptr},
         {"~>", &Interpreter::eval_deref, nullptr},
+
     });
 
     // Type system
@@ -539,9 +542,8 @@ void Interpreter::execute_repl() {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
             exit(e.exit_code);
         } catch (script::EvalException &e) {
-            if (e.already_printed)
-                return;
-            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
+            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError:");
+            fmt::print("Error: {}", e.full_report(m_reader));
         } catch (const std::exception &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
         }
@@ -775,10 +777,10 @@ std::string truncate_obj(std::string str, size_t max_len) {
 }
 void Interpreter::render_complex_error(EvalException &e) {
     fmt::print(fg(fmt::color::indian_red), "\n─── ERROR ──────────────────────────────────\n");
-    fmt::print(fg(fmt::color::indian_red), "Error: {}\n", e.original_msg);
+    fmt::print(fg(fmt::color::indian_red), "Error: {}\n", e.message);
 
     // 1. Печатаем первичный контекст (где именно рвануло)
-    std::string primary_info = m_reader.get_db().get_info_for(e.primary_form);
+    std::string primary_info = m_reader.get_db().get_info_for(e.form);
     if (primary_info != "?") {
         fmt::print("\n{}\n", primary_info);
     }
@@ -792,8 +794,8 @@ void Interpreter::render_complex_error(EvalException &e) {
         std::string obj_str = truncate_obj(frame.form.print(), 60);
 
         fmt::print(fg(fmt::color::dim_gray), "  [{:02d}] ", depth++);
-        if (!frame.note.empty())
-            fmt::print("{} ", frame.note);
+        if (!frame.message.empty())
+            fmt::print("{} ", frame.message);
 
         fmt::print("in {}", obj_str);
         if (info && info->line_idx_to_display > 0) {
@@ -844,20 +846,52 @@ Object Interpreter::eval_with_rewind(const Object                             &o
     try {
         return eval(obj, env);
     } catch (EvalException &e) {
+        if (e.env.get() == nullptr)
+            e.env = env;
+
         // Добавляем текущий контекст в трассировку
         // Note может быть пустым или содержать имя функции из env
-        e.add_context(obj, env->name);
-
+        if (e.stack_counter > 0)
+            e.add_context(obj, env->name, env);
+        e.stack_counter++;
         // ПРОВЕРКА ЛОВУШКИ (The Trap)
+        // 2. Проверяем наличие ловушки
         if (env->error_handler.is_lambda()) {
-            // Вызываем лямбду (обсудим ниже, что ей передать)
-            Object recovery = call_error_handler(obj, env->error_handler, e, env);
+            // Вызываем лямбду-обработчик
+            // Передаем ей (msg err-form trace)
+            Object response = call_error_handler(obj, env->error_handler, e, env);
 
-            // Если лямбда вернула не специальный символ "continue",
-            // значит мы "погасили" ошибку
-            if (recovery != m_sym_continue_error) {
-                return recovery;
+            // СЛУЧАЙ 1: #f (null) - Ошибка погашена
+            if (response.is_null()) {
+                return response; // Просто возвращаем null, выполнение продолжается
             }
+
+            // СЛУЧАЙ 2: Список (контекст сообщение)
+            if (response.is_pair()) {
+                Object new_ctx = response.as_pair()->car;
+                Object next = response.as_pair()->cdr;
+
+                std::string new_msg = "Additional context"; // default
+                if (next.is_pair() && next.as_pair()->car.is_string()) {
+                    new_msg = next.as_pair()->car.to_std_string();
+                }
+
+                // Модифицируем объект исключения:
+                // Добавляем новый "этаж" информации, который мы получили из скрипта
+                e.add_context(new_ctx, new_msg, env, true);
+
+                // Если мы обновили контекст, мы почти всегда хотим лететь дальше вверх,
+                // чтобы увидеть весь стек в итоге.
+                throw;
+            }
+
+            // СЛУЧАЙ 3: #t (true) - Проброс без изменений
+            if (truthy(response)) {
+                throw; // Летим выше к следующему catch
+            }
+
+            // По умолчанию (если вернулось что-то иное) — гасим ошибку и возвращаем это значение
+            return response;
         }
 
         // Если ловушки нет или она пропустила ошибку — летим дальше вверх
@@ -873,7 +907,7 @@ Object Interpreter::call_error_handler(const Object &form, const Object handler,
     // Идем с конца в начало, чтобы в Лиспе список был от корня к ошибке (или наоборот, как тебе
     // удобнее)
     for (auto it = e.trace.rbegin(); it != e.trace.rend(); ++it) {
-        Object frame_cell = Object::make_pair(it->form, Object::make_string(it->note));
+        Object frame_cell = Object::make_pair(it->form, Object::make_string(it->message));
         trace_list = Object::make_pair(frame_cell, trace_list);
     }
 
@@ -881,7 +915,7 @@ Object Interpreter::call_error_handler(const Object &form, const Object handler,
     // Арг 0: Сообщение (string)
     // Арг 1: Форма ошибки (object)
     // Арг 2: Весь накопленный стек (list)
-    std::vector<Object> args = {Object::make_string(e.original_msg), e.primary_form, trace_list};
+    std::vector<Object> args = {Object::make_string(e.message), e.form, trace_list};
 
     // Используем твой существующий метод
     // В качестве 'form' передаем саму лямбду или пустой символ
@@ -3629,6 +3663,7 @@ Object Interpreter::eval_load(const Object &form, Arguments &args,
             throw_eval_error(form, "load requires a string or list of strings");
         }
     } catch (EvalException &e) {
+        e.add_context(form, "load failed", env);
         throw;
     } catch (std::runtime_error &e) {
         throw_eval_error(form, e.what());
@@ -6028,11 +6063,14 @@ Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
     if (!sym.is_symbol()) {
         throw_eval_error(form, "First argument of define-extern must be a symbol");
     }
-
+    TypeSpec new_type;
     // 1. Парсим TypeSpec через рекурсивный парсер
     // (функцию parse_typespec нужно добавить в TypeSystem или Interpreter)
-    TypeSpec new_type = parse_typespec_internal(args.unnamed.at(1));
-
+    try {
+        new_type = parse_typespec_internal(args.unnamed.at(1));
+    } catch (std::runtime_error &e) {
+        throw_eval_error(form, e.what());
+    }
     // 2. Проверяем, был ли символ уже объявлен
     auto existing_type = m_symbol_types.lookup(sym.as_symbol());
 
@@ -6440,15 +6478,33 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     return sym_obj; // Обычно возвращают имя функции
 }
 
-Object Interpreter::builtin_set_error_handler(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args,
-                 {
-                     {ObjectType::FUNCTION}, // 0: Имя функции (символ)
-                 },
-                 {});
+Object Interpreter::eval_with_error_handler_special(const Object &form, const Object &rest,
+                                                    const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка структуры (with-error-handler handler-fn . body)
+    if (!rest.is_pair())
+        throw_eval_error(form, "with-error-handler requires a handler function and body");
 
-    env->error_handler = args.unnamed[0];
-    return Object::make_null();
+    Object handler_code = rest.as_pair()->car;
+    Object body = rest.as_pair()->cdr;
+
+    // 2. Вычисляем сам обработчик (лямбду) в текущем окружении
+    Object handler_fn = eval(handler_code, env);
+
+    // Проверка, что это действительно то, что можно вызвать
+    if (!handler_fn.is_lambda()) { // или иная проверка на callable
+        throw_eval_error(handler_code, "error-handler must be a lambda");
+    }
+
+    // 3. Создаем новое окружение (аналог rlet)
+    auto new_env = std::make_shared<EnvironmentObject>(env);
+    new_env->name = "error-handler-scope";
+    new_env->parent_env = env;
+
+    // ВАЖНО: Устанавливаем ловушку именно в это НОВОЕ окружение
+    new_env->error_handler = handler_fn;
+
+    // 4. Выполняем тело внутри этого окружения
+    // Если внутри случится Exception, eval_with_rewind найдет new_env->error_handler
+    return eval_list_return_last(body, body, new_env);
 }
 } // namespace script
