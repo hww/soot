@@ -124,7 +124,7 @@ struct ListBuilder {
     }
 
     ListBuilder &add_native_ref(std::shared_ptr<HeapObject> ptr) {
-        return add(Object::make_native_ref(ptr));
+        return add(Object::make_heap_obj(ptr));
     }
 };
 

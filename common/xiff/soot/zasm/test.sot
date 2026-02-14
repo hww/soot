@@ -20,9 +20,9 @@
       (len (_type_) int16)))
 
 (deftype mat3 (structure)
-  ((r1 vec3)   
-   (r2 vec3)   
-   (r3 vec3))) 
+  ((r1 vec3 :inline)   
+   (r2 vec3 :inline)   
+   (r3 vec3 :inline))) 
 
 (defenum eflag
   :type uint8
@@ -94,6 +94,30 @@
   (declare (once) (asm-func none))
   (fmt #t "DEBUG test-vtable...\n")
   (.vtable 'vec3))
+
+
+;;; ===================================================================== 
+;;; Structure
+;;; ===================================================================== 
+
+(defproc test-structure ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG test-structure...\n")
+  (.static-new foo vec3
+    :x 100
+    :y 50
+    :z 16
+    ))
+
+(defproc process-vector ((v pointer))
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG process-vector...\n")
+  (.ld ix hl)
+  (.ld a (+ix (-> vec3 y))) ;; Автоматически вычисляет смещение поля :y
+  (.ld a (->ix vec3 y))  ;; Сгенерирует LD A, (IX+2)
+  (.ld a (+ix 4))  ;; Сгенерирует LD A, (IX+2)
+  (.ret))
+
 
 ;;; ===================================================================== 
 ;;; Method Call

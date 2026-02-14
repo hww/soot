@@ -344,7 +344,7 @@ Object TypeSpec::make_step_accessor(const Object &key) {
         int64_t idx = key.as_integer();
         if (idx >= 0 && idx < (int64_t)get_args_count()) {
             // Возвращаем аргумент, обернутый в HeapObject, чтобы по нему можно было идти дальше
-            return Object::make_native_ref(std::make_shared<TypeSpec>(get_arg(idx)));
+            return Object::make_heap_obj(std::make_shared<TypeSpec>(get_arg(idx)));
         }
         return Object::make_null();
     }
@@ -410,8 +410,8 @@ Object TypeSpec::inspect() const {
 Object TypeSpec::to_sexpr_typspec() const {
     ListBuilder builder;
     builder.add(
-        Object::make_native_ref(std::make_shared<TypeSpec>(*this) // Создаем копию как HeapObject
-                                ));
+        Object::make_heap_obj(std::make_shared<TypeSpec>(*this) // Создаем копию как HeapObject
+                              ));
 
     // Добавляем базовый тип
     builder.add(Object::make_string(m_type));
@@ -464,7 +464,7 @@ Object TypeSpec::to_sexpr_type_objects() const {
 void TypeSpec::append_to_sexpr(ListBuilder &builder, int mode) const {
     switch (mode) {
     case 0: // TypeSpec objects
-        builder.add(Object::make_native_ref(std::make_shared<TypeSpec>(*this)));
+        builder.add(Object::make_heap_obj(std::make_shared<TypeSpec>(*this)));
         break;
     case 1: // Type names
         builder.add_symbol(m_type);

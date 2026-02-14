@@ -75,7 +75,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {object_type_to_string(ObjectType::POINTER), ObjectType::POINTER},
         {object_type_to_string(ObjectType::STATIC_BUFFER), ObjectType::STATIC_BUFFER},
         {object_type_to_string(ObjectType::STATIC_WRITER), ObjectType::STATIC_WRITER},
-        {object_type_to_string(ObjectType::HEAP_OBJ), ObjectType::HEAP_OBJ},
+        {object_type_to_string(ObjectType::HEAP_OBJECT), ObjectType::HEAP_OBJECT},
     };
     // Разрешить использование неограниченого числа ключей
     ArgumentSpec args_with_varkeys(true, true);
@@ -202,6 +202,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"vector-for-each", &Interpreter::eval_vector_for_each, nullptr},
         {"hash-table-for-each", &Interpreter::eval_hash_table_for_each, nullptr},
         {"list-for-each", &Interpreter::eval_list_for_each, nullptr},
+        {"list-for-each-pair", &Interpreter::eval_list_for_each_pair, nullptr},
+        {"type-for-each-field", &Interpreter::eval_type_for_each_field, nullptr},
 
         // Системные и ввод-вывод
         {"print", &Interpreter::eval_print, nullptr},
@@ -443,7 +445,7 @@ bool Interpreter::try_symbol_lookup(const Object                             &sy
             auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr);
 
             // Теперь вызываем создание объекта
-            *dest = Object::make_heap_obj(heap_ptr, ObjectType::HEAP_OBJ);
+            *dest = Object::make_heap_obj(heap_ptr, ObjectType::HEAP_OBJECT);
             return true;
         }
     }
@@ -886,7 +888,7 @@ Object Interpreter::eval_with_rewind(const Object                             &o
             }
 
             // СЛУЧАЙ 3: #t (true) - Проброс без изменений
-            if (truthy(response)) {
+            if (is_true(response)) {
                 throw; // Летим выше к следующему catch
             }
 
@@ -945,7 +947,7 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     switch (obj.type) {
     case ObjectType::POINTER:
         return obj.as_pointer()->deref();
-    case ObjectType::HEAP_OBJ:
+    case ObjectType::HEAP_OBJECT:
         return obj;
     case ObjectType::SYMBOL:
         if (obj.is_keyword())
@@ -1259,7 +1261,7 @@ Object Interpreter::eval_cond_special(const Object &form, const Object &rest,
 
             // check condition:
             Object condition_result = eval_with_rewind(current_case.as_pair()->car, env);
-            if (truthy(condition_result)) {
+            if (is_true(condition_result)) {
                 if (current_case.as_pair()->cdr.type == ObjectType::EMPTY_LIST) {
                     return condition_result;
                 }
@@ -1292,7 +1294,7 @@ Object Interpreter::eval_if_special(const Object &form, const Object &rest,
 
     Object condition_result = eval_with_rewind(condition_obj, env);
 
-    if (truthy(condition_result)) {
+    if (is_true(condition_result)) {
         return eval_with_rewind(then_part_obj.as_pair()->car, env);
     } else {
         Object else_part = then_part_obj.as_pair()->cdr;
@@ -1311,7 +1313,7 @@ Object Interpreter::eval_or_special(const Object &form, const Object &rest,
 
     while (current.is_pair()) {
         Object result = eval_with_rewind(current.as_pair()->car, env);
-        if (truthy(result)) {
+        if (is_true(result)) {
             return result;
         }
         current = current.as_pair()->cdr;
@@ -1328,7 +1330,7 @@ Object Interpreter::eval_and_special(const Object &form, const Object &rest,
 
     while (current.is_pair()) {
         result = eval_with_rewind(current.as_pair()->car, env);
-        if (!truthy(result)) {
+        if (!is_true(result)) {
             return result;
         }
         current = current.as_pair()->cdr;
@@ -1406,7 +1408,7 @@ Object Interpreter::eval_while_special(const Object &form, const Object &rest,
     while (true) {
         Object condition_result = eval_with_rewind(condition_obj, env);
 
-        if (!truthy(condition_result)) {
+        if (!is_true(condition_result)) {
             break;
         }
 
@@ -2167,7 +2169,7 @@ Object Interpreter::eval_fmt(const Object &form, Arguments &args,
         auto formatted = fmt::vformat(format_str.as_string()->data, arg_store);
 
         // 3. Вывод или возврат строки
-        if (truthy(dest)) {
+        if (is_true(dest)) {
             // Проверяем наличие именованного аргумента :color
             if (args.has_named("color")) {
                 auto                color_val = args.named["color"];
@@ -4487,7 +4489,7 @@ Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
     auto   ts_ptr = parse_typespec(&TypeSystem::instance(), spec_input);
     auto   ts_shared = std::make_shared<TypeSpec>(ts_ptr);
 
-    return Object::make_native_ref(ts_shared);
+    return Object::make_heap_obj(ts_shared);
 }
 
 Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
@@ -4502,8 +4504,8 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
         auto name = result.type_info->get_name();
 
         m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
-                                                Object::make_native_ref(type_shared));
-        return Object::make_native_ref(type_shared);
+                                                Object::make_heap_obj(type_shared));
+        return Object::make_heap_obj(type_shared);
     } catch (std::runtime_error &ex) {
         throw_eval_error(form, ex.what());
     }
@@ -4521,8 +4523,8 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
     auto name = enum_ptr->get_name();
 
     m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
-                                            Object::make_native_ref(enum_shared));
-    return Object::make_native_ref(enum_shared);
+                                            Object::make_heap_obj(enum_shared));
+    return Object::make_heap_obj(enum_shared);
 }
 
 Object Interpreter::eval_types_to_lisp(const Object &, Arguments &,
@@ -4581,7 +4583,7 @@ bool Interpreter::init_types(const std::string &variant) {
         auto       *type_ptr = pair.second.get();
 
         auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
-        auto type_obj = Object::make_native_ref(shared_type);
+        auto type_obj = Object::make_heap_obj(shared_type);
         env->vars.set(Object::intern(name.c_str()), type_obj);
     }
 
@@ -4685,7 +4687,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         }
         if (current.is_none()) {
             throw_eval_error(form,
-                             fmt::format("Field or meta-property '{}' is not accessible in {}",
+                             fmt::format("Field or meta-property '{}' is not accessible in '{}'",
                                          key.print(), current.type_name()));
         }
 
@@ -5035,12 +5037,12 @@ Object Interpreter::eval_method_of(const Object &form, Arguments &args,
         auto method_id = args.unnamed[1].as_integer();
         auto m_info = ts.lookup_method(type->get_name(), method_id);
         auto method_ptr = std::make_shared<MethodInfo>(m_info);
-        return Object::make_native_ref(method_ptr);
+        return Object::make_heap_obj(method_ptr);
     } else {
         auto method_name = args.unnamed[1].as_symbol();
         auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
         auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
-        return Object::make_native_ref(method_ptr);
+        return Object::make_heap_obj(method_ptr);
     }
 }
 
@@ -5318,19 +5320,17 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
 
-    vararg_check(form, args,
-                 {{ObjectType::STATIC_BUFFER},
-                  {ObjectType::INTEGER},
-                  {ObjectType::INTEGER},
-                  {ObjectType::SYMBOL},
-                  {ObjectType::INTEGER}},
-                 {});
+    vararg_check(form, args, {{ObjectType::STATIC_BUFFER}},
+                 {{"address", {false, {ObjectType::INTEGER}}},
+                  {"size", {false, {ObjectType::INTEGER}}},
+                  {"ascii", {false, {ObjectType::SYMBOL}}},
+                  {"width", {false, {ObjectType::INTEGER}}}});
     auto buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
-    auto start_offset = args.unnamed[1].as_integer();
-    auto bytes_to_dump = args.unnamed[2].as_integer();
-    bool show_ascii = args.unnamed[3].as_symbol();
-    int  bytes_per_line = args.unnamed[4].as_integer();
-    auto str = buffer->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
+    auto address = args.has_named("address") ? args.named["address"].as_integer() : 0;
+    auto size = args.has_named("size") ? args.named["size"].as_integer() : 256;
+    auto ascii = args.has_named("ascii") ? is_true(args.named["ascii"]) : true;
+    int  width = args.has_named("width") ? args.named["width"].as_integer() : 16;
+    auto str = buffer->hex_dump(address, size, ascii, width);
     return Object::make_string(str);
 }
 
@@ -5712,7 +5712,7 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
         Object data_package = args.unnamed[1];
 
         try {
-            recursive_write(form, Object::make_native_ref(root_cell), data_package);
+            recursive_write(form, Object::make_heap_obj(root_cell), data_package);
         } catch (const std::exception &e) {
             throw_eval_error(form, fmt::format("static-new initialization failed: {}", e.what()));
         }
@@ -5727,13 +5727,13 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
             Object val = it->second;
             alist = Object::make_pair(Object::make_pair(key, val), alist);
         }
-        recursive_write(form, Object::make_native_ref(root_cell), alist);
+        recursive_write(form, Object::make_heap_obj(root_cell), alist);
     }
 
     // 5. Возвращаем созданный буфер
     // В зависимости от твоей архитектуры, ты можешь возвращать либо сам Buffer,
     // либо Pointer на него. Для ассемблера лучше возвращать Buffer.
-    return Object::make_native_ref(buffer);
+    return Object::make_heap_obj(buffer, ObjectType::STATIC_BUFFER);
 }
 
 // ============================================================
@@ -5818,6 +5818,87 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
     return get_null();
 }
 
+Object Interpreter::eval_list_for_each_pair(const Object &form, Arguments &args,
+                                            const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
+
+    Object current = args.unnamed[0];
+    Object lambda = args.unnamed[1];
+
+    while (current.is_pair()) {
+        Object key = current.as_pair()->car;
+        current = current.as_pair()->cdr;
+
+        if (!current.is_pair()) {
+            throw_eval_error(
+                form, "eval-list-for-pair: expected even number of elements for key-value mapping");
+        }
+
+        Object value = current.as_pair()->car;
+
+        // Вызываем лямбду с двумя аргументами: (key, value)
+        call_lambda_internal(form, lambda, {key, value}, env);
+
+        current = current.as_pair()->cdr;
+    }
+
+    return get_null();
+}
+
+// В Interpreter или TypeSystem
+Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::HEAP_OBJECT}, {ObjectType::FUNCTION}}, {});
+
+    auto root_struct = args.unnamed[0].as_heap_obj<StructureType>();
+    if (!root_struct) {
+        throw_eval_error(form, "for-each-field: expected structure type");
+    }
+    Object lambda = args.unnamed[1];
+
+    auto &ts = TypeSystem::instance();
+    auto  idx = 0;
+    // Рекурсивная функция обхода
+    std::function<void(StructureType *, int)> walk = [&](StructureType *current_struct,
+                                                         int            current_offset) {
+        auto &fields = current_struct->fields();
+        for (auto &field : fields) {
+            int             field_offset = current_offset + field.offset();
+            const TypeSpec &tspec = field.type();
+
+            // Проверка: является ли поле указателем?
+            // В твоей системе это (pointer <type>), т.е. base_type == "pointer"
+            bool is_pointer = (tspec.base_type() == "pointer");
+
+            // Ищем объект типа в системе типов
+            auto field_type_ptr = ts.lookup_type(tspec.base_type());
+            if (!field_type_ptr)
+                continue;
+
+            auto sub_struct = dynamic_cast<StructureType *>(field_type_ptr);
+
+            // Условие рекурсии:
+            // 1. Это структура (sub_struct != nullptr)
+            // 2. Это inline-поле (m_inline == true)
+            // 3. Это НЕ указатель
+            if (sub_struct && field.is_inline() && !is_pointer) {
+                walk(sub_struct, field_offset);
+            } else {
+                // Терминальное поле (базовый тип или указатель на структуру)
+                Arguments callback_args;
+                callback_args.unnamed = {Object::make_integer(idx),
+                                         Object::make_integer(field_offset),
+                                         // Передаем Field как HeapObject (shared_ptr)
+                                         Object::make_heap_obj(std::make_shared<Field>(field))};
+                call_lambda_internal(form, lambda, callback_args.unnamed, env);
+                idx++;
+            }
+        }
+    };
+
+    walk(root_struct.get(), 0);
+    return get_null();
+}
 // ============================================================
 // CRC32
 // ============================================================
@@ -5979,7 +6060,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
         // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
         auto name_sym = name_obj.as_symbol();
-        new_env->vars.set(name_sym, Object::make_native_ref(alias));
+        new_env->vars.set(name_sym, Object::make_heap_obj(alias));
     });
     // Регистрируем окружение в родительском
     if (!env_name.empty())
@@ -5991,9 +6072,8 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
 Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
-
     // 1. Проверяем аргументы: (rlet-ref symbol prop-name)
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::HEAP_OBJ, ObjectType::SYMBOL}},
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::HEAP_OBJECT, ObjectType::SYMBOL}},
                  {{"reg", {false, {ObjectType::SYMBOL}}}});
 
     // 2. Ищем контекст в иерархии окружений
@@ -6011,7 +6091,7 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
         alias->reg = args.named["reg"];
 
     // Если символ не найден в таблице алиасов
-    return Object::make_native_ref(alias);
+    return Object::make_heap_obj(alias);
 }
 
 // ============================================================
@@ -6049,7 +6129,6 @@ Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
 
 Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
                                         const std::shared_ptr<EnvironmentObject> &env) {
-
     (void)env;
 
     auto args = get_args(form, rest, ArgumentSpec(true, false));
@@ -6321,7 +6400,6 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
  */
 Object Interpreter::eval_declarations(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
-
     vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
 
     auto fe = env->get_function_env();
@@ -6361,9 +6439,9 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args,
                  {
-                     {ObjectType::SYMBOL, ObjectType::HEAP_OBJ}, // 0: Тип
-                     {ObjectType::INTEGER, ObjectType::SYMBOL},  // 1: ID или Имя метода
-                     {ObjectType::FUNCTION}                      // 2: Лямбда
+                     {ObjectType::SYMBOL, ObjectType::HEAP_OBJECT}, // 0: Тип
+                     {ObjectType::INTEGER, ObjectType::SYMBOL},     // 1: ID или Имя метода
+                     {ObjectType::FUNCTION}                         // 2: Лямбда
                  },
                  {});
 
@@ -6438,7 +6516,8 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     auto   lambda_ptr = implementation.as_heap_obj<LambdaObject>();
 
     // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что делать.
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
+    // делать.
     if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
         throw_eval_error(
             form,

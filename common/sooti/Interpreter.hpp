@@ -85,7 +85,7 @@ class Interpreter {
 
     // --- Predicates -----------------------
     // Check if value is true
-    bool truthy(const Object &o) const {
+    bool is_true(const Object &o) const {
         return o.truthy(m_sym_false.as_symbol());
     }
     // Помощники для чисел
@@ -358,7 +358,10 @@ class Interpreter {
                                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_list_for_each(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
-
+    Object eval_list_for_each_pair(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_type_for_each_field(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env);
     // Системные и ввод-вывод
     Object eval_print(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);

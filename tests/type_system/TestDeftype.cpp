@@ -51,14 +51,14 @@ TEST_F(DefTypeTest, BasicStructure) {
     std::string   code = R"(
         (deftype test-structure
           (structure)
-          ((x int32)
-           (y int32)
-           (z int32)))
+          ((x int)
+           (y int)
+           (z int)))
     )";
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
-    EXPECT_EQ(result.type.print(), "#<typspec test-structure>");
+    EXPECT_EQ(result.type.print(), "test-structure");
 
     auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);

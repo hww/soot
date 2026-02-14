@@ -65,7 +65,7 @@ Object MethodInfo::make_step_accessor(const Object &key) {
     if (name == ".type-spec") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой make_step_accessor
-        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type));
+        return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type));
     }
 
     if (name == ".type") {
@@ -189,7 +189,7 @@ Object Field::make_step_accessor(const Object &key) {
 
     // 2. Тип (TypeSpec) — создаем HeapObject для дальнейшей навигации
     if (name == ".type-spec") {
-        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
+        return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type()));
     }
     if (name == ".type") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
@@ -452,6 +452,8 @@ Object Type::make_step_accessor(const Object &key) {
         return Object::make_boolean(this->is_boxed());
     if (name == ".methods-count")
         return Object::make_integer(this->get_num_methods());
+    if (name == ".has-methods")
+        return Object::make_boolean(this->get_num_methods() > 0);
 
     // Для специфических типов (например, StructureType) мы переопределим этот метод
     // и вызовем Type::make_step_accessor(key) в конце, если ничего не нашли.
@@ -798,7 +800,7 @@ Object StructureType::make_step_accessor(const Object &key) {
             // так как HeapObject ожидает владения, но мы его обманем.
             // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
             auto field_ptr = std::shared_ptr<Field>(const_cast<Field *>(&field), [](Field *) {});
-            lb.add(Object::make_native_ref(field_ptr));
+            lb.add(Object::make_heap_obj(field_ptr));
         }
         return lb.build();
     }
@@ -819,14 +821,14 @@ Object StructureType::make_step_accessor(const Object &key) {
         if (m_new_method_info_defined) {
             auto method_ptr = std::shared_ptr<MethodInfo>(
                 const_cast<MethodInfo *>(&m_new_method_info), [](MethodInfo *) {});
-            lb.add(Object::make_native_ref(method_ptr));
+            lb.add(Object::make_heap_obj(method_ptr));
         }
 
         // 2. Добавляем все остальные методы из вектора
         for (auto &method : m_methods) {
             auto method_ptr =
                 std::shared_ptr<MethodInfo>(const_cast<MethodInfo *>(&method), [](MethodInfo *) {});
-            lb.add(Object::make_native_ref(method_ptr));
+            lb.add(Object::make_heap_obj(method_ptr));
         }
 
         return lb.build();
@@ -875,7 +877,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         if (m_new_method_info_defined) {
             auto method_ptr = std::shared_ptr<MethodInfo>(
                 const_cast<MethodInfo *>(&m_new_method_info), [](MethodInfo *) {});
-            return Object::make_native_ref(method_ptr);
+            return Object::make_heap_obj(method_ptr);
         }
         return Object::make_none();
     }
@@ -883,7 +885,7 @@ Object StructureType::make_step_accessor(const Object &key) {
     for (auto &field : m_fields) {
         if (field.name() == name) {
             auto field_ptr = std::shared_ptr<Field>(const_cast<Field *>(&field), [](Field *) {});
-            return Object::make_native_ref(field_ptr);
+            return Object::make_heap_obj(field_ptr);
         }
     }
 
@@ -891,7 +893,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         if (method.name == name) {
             auto method_ptr =
                 std::shared_ptr<MethodInfo>(const_cast<MethodInfo *>(&method), [](MethodInfo *) {});
-            return Object::make_native_ref(method_ptr);
+            return Object::make_heap_obj(method_ptr);
         }
     }
     // 2. Если это не "структурное" свойство, передаем запрос родителю.
@@ -993,7 +995,7 @@ Object BitField::make_step_accessor(const Object &key) {
 
     // 2. Сложные поля (рекурсия через HeapObject)
     if (name == ".type") {
-        return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
+        return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type()));
     }
 
     // 3. Базовый класс (если BitField наследуется от HeapObject/HeapObject)
@@ -1067,7 +1069,7 @@ Object BitFieldType::make_step_accessor(const Object &key) {
             // Используем shared_ptr, чтобы объект жил, пока на него ссылается Лисп.
             // Если BitField хранятся в векторе по значению, создаем копию в куче:
             auto bf_ptr = std::make_shared<BitField>(bf);
-            lb.add(Object::make_heap_obj(bf_ptr, ObjectType::HEAP_OBJ));
+            lb.add(Object::make_heap_obj(bf_ptr, ObjectType::HEAP_OBJECT));
         }
         return lb.build();
     }
