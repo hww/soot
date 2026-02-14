@@ -40,7 +40,7 @@ enum class ObjectType : uint8_t {
     MACRO,
     ENVIRONMENT,
     READER,
-    HEAP_OBJ,
+    HEAP_OBJECT,
     POINTER,
     STATIC_BUFFER,
     STATIC_WRITER,
@@ -267,7 +267,7 @@ class Object {
     static Object make_reader(TextStream *textStream);
     static Object make_pointer(std::shared_ptr<Pointer> pointer);
     static Object make_pointer(void *raw_ptr, std::string type);
-    static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
+    static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object);
     static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType type);
 
     // String representation
@@ -321,10 +321,10 @@ class Object {
         return type == ObjectType::POINTER;
     }
     bool is_native_ref() const {
-        return type == ObjectType::HEAP_OBJ;
+        return type == ObjectType::HEAP_OBJECT;
     }
     template <typename T> bool is_native_ref() const {
-        if (type != ObjectType::HEAP_OBJ || !heap_obj) {
+        if (type != ObjectType::HEAP_OBJECT || !heap_obj) {
             return false;
         }
         // КРИТИЧЕСКИ ВАЖНО: если use_count == 0, объект уже удалён!

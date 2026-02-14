@@ -49,7 +49,7 @@ std::string object_type_to_string(ObjectType type) {
         return "reader";
     case ObjectType::POINTER:
         return "pointer";
-    case ObjectType::HEAP_OBJ:
+    case ObjectType::HEAP_OBJECT:
         return "native-ref";
     case ObjectType::STATIC_BUFFER:
         return "static-buffer";
@@ -118,7 +118,7 @@ void SymbolTable::init_core_symbols() {
     core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
     core.type_none = make_symbol(object_type_to_string(ObjectType::NONE));
     core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
-    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::HEAP_OBJ));
+    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::HEAP_OBJECT));
     core.type_static_buffer = make_symbol(object_type_to_string(ObjectType::STATIC_BUFFER));
     core.type_static_writer = make_symbol(object_type_to_string(ObjectType::STATIC_WRITER));
 }
@@ -162,7 +162,7 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.type_static_buffer;
     case ObjectType::STATIC_WRITER:
         return core.type_static_writer;
-    case ObjectType::HEAP_OBJ:
+    case ObjectType::HEAP_OBJECT:
         return core.type_heap_obj;
     default:
         return core.type_none;
@@ -266,13 +266,13 @@ Object SymbolTable::make_keyword(std::string name) {
 // ============================================================================
 
 std::string Object::type_name() const {
-    if (type == ObjectType::HEAP_OBJ && heap_obj.get() != nullptr)
+    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
         heap_obj->type_name();
     return object_type_to_string(type);
 }
 
 Object Object::type_name_obj() const {
-    if (type == ObjectType::HEAP_OBJ && heap_obj.get() != nullptr)
+    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
         heap_obj->type_name_obj();
     return symbol_table().object_type_to_symbol(type);
 }
@@ -435,9 +435,9 @@ Object Object::make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType
     return obj;
 }
 
-Object Object::make_native_ref(std::shared_ptr<HeapObject> heap_object) {
+Object Object::make_heap_obj(std::shared_ptr<HeapObject> heap_object) {
     Object obj;
-    obj.type = ObjectType::HEAP_OBJ;
+    obj.type = ObjectType::HEAP_OBJECT;
     obj.heap_obj = std::move(heap_object);
     return obj;
 }
@@ -1116,7 +1116,7 @@ Object Pointer::get() {
 
     // Если тип не примитивный (например, "vector"), возвращаем сам Pointer.
     // Это позволит продолжить цепочку (-> ptr field)
-    return Object::make_native_ref(shared_from_this());
+    return Object::make_heap_obj(shared_from_this());
 }
 
 void Pointer::set(const Object &val) {

@@ -42,7 +42,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
                 next_step->type_name =
                     Object::make_symbol(field.type().base_type()); // Переходим к типу поля
                 next_step->offset = this->offset + field.offset();
-                return Object::make_native_ref(next_step);
+                return Object::make_heap_obj(next_step);
             }
         }
 
@@ -61,7 +61,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
                 next_step->bit_offset = bf.offset() % 8;
                 next_step->bit_size = bf.size();
 
-                return Object::make_native_ref(next_step);
+                return Object::make_heap_obj(next_step);
             }
         }
 
@@ -88,7 +88,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
                     next_step->offset = this->offset;
                     next_step->type_name = Object::make_symbol(enum_ptr->get_name());
                 }
-                return Object::make_native_ref(next_step);
+                return Object::make_heap_obj(next_step);
             }
         }
     }
@@ -120,7 +120,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
         next_step->bit_offset = this->bit_offset;
         next_step->bit_size = this->bit_size;
 
-        return Object::make_native_ref(next_step);
+        return Object::make_heap_obj(next_step);
     }
     throw std::runtime_error(
         fmt::format("RegisterAlias for type `{}` expects a valid key, got `{}`",

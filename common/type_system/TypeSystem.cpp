@@ -2159,7 +2159,7 @@ Object TypeSystem::make_step_accessor(const Object &key) {
     if (type_ptr) {
         // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
         // Если как unique_ptr, то возвращай HeapObject с пустым делетером (но помни о рисках!)
-        return Object::make_native_ref(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
+        return Object::make_heap_obj(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
     }
 
     return Object::make_none();
@@ -2472,7 +2472,7 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
 
     // Вызываем твой парсер
     TypeSpec ts = parse_typespec(this, func_spec_form);
-    return Object::make_native_ref(std::make_shared<TypeSpec>(ts));
+    return Object::make_heap_obj(std::make_shared<TypeSpec>(ts));
 }
 
 // ============================================================================

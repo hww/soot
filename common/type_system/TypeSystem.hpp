@@ -437,7 +437,7 @@ class TypeSystem : public HeapObject {
     Object make_step_accessor(const Object &key) override;
 
     Object to_alias() {
-        return Object::make_native_ref(shared_from_this());
+        return Object::make_heap_obj(shared_from_this());
     }
 
     // ========================================================================

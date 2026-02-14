@@ -389,7 +389,7 @@ class StaticBuffer : public HeapObject {
         auto label_ptr = std::make_shared<BufferLabel>(offset, segment, meta);
 
         // 2. Создаем Object типа NATIVE_REF, который владеет этим shared_ptr
-        Object new_label = Object::make_native_ref(std::move(label_ptr));
+        Object new_label = Object::make_heap_obj(std::move(label_ptr));
 
         // 3. Сохраняем Object в мапу (мапа теперь держит сильную ссылку на объект)
         m_labels[name] = new_label;

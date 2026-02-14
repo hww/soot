@@ -93,9 +93,25 @@
   "Метка-заполнитель для косвенной адресации (.ld a (@ hl))"
   (list '@ reg))
 
-(defun +ix (offset) (list 'ix-indexed offset))
-(defun +iy (offset) (list 'iy-indexed offset))
-       
+(defun +ix (obj)
+  (let ((offset (if (number? obj) 
+                    obj 
+                    (-> obj .offset))))
+    (list 'ix-indexed offset)))
+
+(defun +iy (obj)
+  (let ((offset (if (number? obj) 
+                    obj 
+                    (-> obj .offset))))
+    (list 'iy-indexed offset)))
+
+(defmacro ->ix (type &rest path)
+  "Сокращение для (+ix (-> (reg-alias 'tmp 'type) path...))"
+  `(+ix (-> (reg-alias 'tmp ',type) ,@path)))
+
+(defmacro ->iy (type &rest path)
+  `(+iy (-> (reg-alias 'tmp ',type) ,@path)))
+         
 ;;; =====================================================================
 ;;; Condition Codes
 ;;; =====================================================================
@@ -639,6 +655,34 @@
           (else (asm-error (fmt #f "Z80 cannot LD ({}) from A" d))))
         (asm-error "Indirect store is only supported from Accumulator (A)"))))
 
+(register-handler '.ld "16-reg-16-reg" 
+  (lambda (dst src)
+    (cond
+      ;; Случай LD IX, HL (или IY, HL)
+      ((and (member dst '(ix iy)) (eq? src 'hl))
+       (begin 
+         ;; Эмитим PUSH HL (0xE5)
+         (emit #xE5 :listing "PUSH HL")
+         ;; Эмитим POP IX (0xDD 0xE1) или POP IY (0xFD 0xE1)
+         (if (eq? dst 'ix)
+             (emit (list #xDD #xE1) :listing "POP IX")
+             (emit (list #xFD #xE1) :listing "POP IY"))))
+      
+      ;; Случай LD HL, IX (или HL, IY)
+      ((and (eq? dst 'hl) (member src '(ix iy)))
+       (begin
+         (if (eq? src 'ix)
+             (emit (list #xDD #xE5) :listing "PUSH IX")
+             (emit (list #xFD #xE5) :listing "PUSH IY"))
+         (emit #xE1 :listing "POP HL")))
+
+      ;; Универсальное копирование для BC, DE, HL через промежуточный регистр
+      ;; (Если процессор не поддерживает прямой LD между ними)
+      (else
+       (begin
+         (emit-ld-reg8 (low-reg dst) (low-reg src))
+         (emit-ld-reg8 (high-reg dst) (high-reg src)))))))
+
 ;; ADD HL, rr (BC=00, DE=10, HL=20, SP=30)
 (register-handler '.add "16-reg-16-reg"
   (lambda (d s)
@@ -785,6 +829,82 @@
         (emit fill :listing (if (= i 0) (fmt #f "ALIGN {} (added {} bytes)" boundary padding) ""))))))
 
 ;;; =====================================================================
+;;; Структура
+;;; =====================================================================
+(defmacro .static-new (instance-name type-name &rest args)
+  (let* ((type-obj (~> type-name))
+         (data-map (make-hash-table))
+         (ops '()))
+    
+    ;; 1. Собираем аргументы из args (там лежат :x 100 :y 50 ...)
+    ;; Используем while, так как он надежнее всего работает с парными списками
+    (let* ((plist args))
+      (while (not (null? plist))
+        (let* ((k (car plist))
+               (v (if (not (null? (cdr plist))) (cadr plist) 0)))
+          ;; Ключ k (например, :x) превращаем в строку "x"
+          ;; Важно: если k это :x, symbol->string вернет ":x" или "x" 
+          ;; в зависимости от реализации, поэтому очистим от двоеточия если надо
+          (hash-table-set! data-map (symbol->string k) v)
+          (set! plist (cddr plist)))))
+
+    ;; 2. Базовая метка структуры (теперь точно есть)
+    (push! `(.label ,instance-name) ops)
+
+    ;; 3. Проход по всем полям через C++ итератор
+    (type-for-each-field type-obj
+      (lambda (idx offset field)
+        (let* ((f-name (-> field .name))
+               (f-tspec (-> field .type-spec))
+               (f-base (-> f-tspec .base-type))
+               ;; Ищем значение в мапе. Пробуем f-name, ":f-name" и т.д.
+               (val (or (hash-table-ref data-map f-name #f)
+                        (hash-table-ref data-map (string-append ":" f-name) 0)))
+               
+               ;; Генерируем метку доступа instance::field
+               (f-label (string->symbol (fmt #f "{}::{}" instance-name f-name))))
+          
+          ;; Метка для каждого байта поля
+          (push! `(.label ,f-label) ops)
+
+          ;; 4. Генерация данных
+          (push! 
+            (cond
+              ((or (eq? f-base "pointer") 
+                   (member f-base '("int16" "uint16" "word" "int" "uint")))
+               `(.dw ,val))
+              (else `(.db ,val)))
+            ops))))
+
+    `(begin ,@(reverse ops))))
+;;; =====================================================================
+;;; Validations of arguments
+;;; =====================================================================
+
+(defun is-ptr? (tspec)
+  (eq? (-> tspec .base-type) "pointer"))
+
+(defun get-type-size (tspec)
+  (let ((type-name (-> tspec .base-type)))
+    (cond
+      ((is-ptr? tspec) 2) ;; Указатели на Z80 всегда 16 бит
+      ((member type-name '("int8" "uint8" "byte")) 1)
+      ((member type-name '("int16" "uint16" "word")) 2)
+      (else (-> (lookup-type type-name) .size)))))
+
+;; Основная логика валидации регистров
+(defun validate-reg-for-type (reg tspec arg-idx)
+  (let ((size (get-type-size tspec))
+        (reg-name (symbol->string reg)))
+    (cond
+      ((and (= size 1) (not (member reg '(a b c d e h l))))
+       (asm-error (fmt #f "Argument {}: expected 8-bit register for type {}, but got {}" 
+                       arg-idx (-> tspec .base-type) reg)))
+      ((and (= size 2) (not (member reg '(hl de bc ix iy))))
+       (asm-error (fmt #f "Argument {}: expected 16-bit register for type {}, but got {}" 
+                       arg-idx (-> tspec .base-type) reg))))))
+
+;;; =====================================================================
 ;;; Обработка всех харегестрированных методов
 ;;; =====================================================================
 
@@ -818,7 +938,7 @@
     `(let ((impl (lambda ()
                    ;; 1. Системная декларация SOOT (C++ уровень)
                    ;; Она ВСЕГДА должна быть первым выражением в лямбде
-                   (declare-extern ,label-name 1 (function ,arg-types none)) 
+                   (declare-extern ,label-name (function ,arg-types none)) 
                    
                    (rlet ,rlet-bindings 
                         ;; 2. Ассемблерный контекст
@@ -965,18 +1085,6 @@
       (fmt #t "DEBUG .vtable {}\n" slots)                            
       ;; 3. Отправляем байты в буфер
       (emit slots :listing (fmt #f "VTable for {}" type-sym)))))
-
-
-;;;  Инстанциация: создание объекта в памяти
-;;; Чтобы объект «знал» свой тип, он должен хранить адрес своей VTable.
-(defun .instance (type-sym)
-  (let ((vtable-label (intern (fmt #f "{}-vtable" type-sym))))
-    (zasm
-      ;; 1. Указатель на VTable (2 байта на Z80)
-      (.dw vtable-label)
-      ;; 2. Резервируем место под поля структуры
-      ;; Мы можем спросить у C++ системы типов размер структуры
-      (.ds (-> type-sym .size)))))
 
 ;;; =====================================================================
 ;;; Top Level Functions
