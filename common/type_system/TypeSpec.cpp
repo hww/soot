@@ -343,7 +343,7 @@ Object TypeSpec::make_step_accessor(const Object &key) {
     if (key.is_integer()) {
         int64_t idx = key.as_integer();
         if (idx >= 0 && idx < (int64_t)get_args_count()) {
-            // Возвращаем аргумент, обернутый в NativeRef, чтобы по нему можно было идти дальше
+            // Возвращаем аргумент, обернутый в HeapObject, чтобы по нему можно было идти дальше
             return Object::make_native_ref(std::make_shared<TypeSpec>(get_arg(idx)));
         }
         return Object::make_null();

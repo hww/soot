@@ -2,6 +2,7 @@
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
+#include "common/type_system/TypeSpec.hpp"
 #include "fmt/color.h"
 #include "fmt/format.h"
 #include <functional>
@@ -141,7 +142,10 @@ class Interpreter {
     void throw_named_type_mismatch(const Object &form, const std::string &name,
                                    const std::vector<ObjectType> &expected, ObjectType got);
 
-    void print_form_info(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
+    void   render_complex_error(EvalException &e);
+    void   print_form_info(const Object &form, const std::shared_ptr<EnvironmentObject> &env);
+    Object call_error_handler(const Object &form, const Object handler, EvalException &e,
+                              const std::shared_ptr<EnvironmentObject> &env);
 
     template <typename... Args>
     [[noreturn]] void throw_eval_error(const Object &code, const std::string &str, Args &&...args) {
@@ -168,6 +172,9 @@ class Interpreter {
     Object build_list_with_links(std::vector<QuasiquoteEntry> &&entries, Object tail = Object());
 
   private:
+    Object builtin_set_error_handler(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env);
+
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
     Object eval_quote_special(const Object &form, const Object &rest,
                               const std::shared_ptr<EnvironmentObject> &env);
@@ -530,21 +537,30 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_type(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_set_method(const Object &form, Arguments &args,
-                           const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_define_constant(const Object &form, const Object &rest,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_special(const Object &form, const Object &rest,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_extern(const Object &form, const Object &rest,
+                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declarations(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_define_method(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_define_function(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_reg_alias(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    bool   init_types(const std::string &variant);
+
+    bool     init_types(const std::string &variant);
+    TypeSpec parse_typespec_internal(const Object &obj);
+    TypeSpec deduce_type(const Object &val);
 
     Object eval_source_info(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
@@ -614,17 +630,19 @@ class Interpreter {
     // Типы и Сеттеры
     std::unordered_map<std::string, ObjectType>              m_string_to_type;
     std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
+    InternedPtrMap<std::shared_ptr<TypeSpec>>                m_symbol_types;
+    InternedPtrMap<Object>                                   m_global_constants;
 
     // Состояние
     Object      m_sym_true;
     Object      m_sym_false;
+    Object      m_sym_continue_error;
     const char *m_symbol_true;
     const char *m_symbol_false;
     Object      m_obj_null;
     Object      m_obj_none;
     int         m_gensym_id = 0;
     Object      m_global_environment;
-    Object      m_comp_env;
     bool        m_disable_printing = false;
     Reader      m_reader;
     SymbolTable m_symbol_table;

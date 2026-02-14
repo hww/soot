@@ -2158,7 +2158,7 @@ Object TypeSystem::make_step_accessor(const Object &key) {
 
     if (type_ptr) {
         // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
-        // Если как unique_ptr, то возвращай NativeRef с пустым делетером (но помни о рисках!)
+        // Если как unique_ptr, то возвращай HeapObject с пустым делетером (но помни о рисках!)
         return Object::make_native_ref(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
     }
 
@@ -2460,7 +2460,7 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
 
     for (int i = (int)entries.size() - 1; i >= 0; --i) {
         if (entries[i].value.is_native_ref<RegisterAlias>()) {
-            auto alias = entries[i].value.as_native_ref<RegisterAlias>();
+            auto alias = entries[i].value.as_heap_obj<RegisterAlias>();
             // Если тип не указан, пусть будет 'object
             Object t_name =
                 alias->type_name.is_none() ? Object::make_symbol("object") : alias->type_name;

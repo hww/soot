@@ -104,7 +104,7 @@ struct DefinitionMetadata {
 // Method Information
 // ============================================================================
 
-class MethodInfo : public NativeRef {
+class MethodInfo : public HeapObject {
 
   public:
     MethodInfo() {}
@@ -160,7 +160,7 @@ class MethodInfo : public NativeRef {
 // Field Definition
 // ============================================================================
 
-class Field : public NativeRef {
+class Field : public HeapObject {
   public:
     Field() {};
     Field(std::string name, TypeSpec type);
@@ -274,7 +274,7 @@ class Field : public NativeRef {
 // BitField Definition
 // ============================================================================
 
-class BitField : public NativeRef {
+class BitField : public HeapObject {
   public:
     BitField() {};
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
@@ -323,7 +323,7 @@ class BitField : public NativeRef {
 // Base Type Definition
 // ============================================================================
 
-class Type : public NativeRef {
+class Type : public HeapObject {
   public:
     static int verbose;
 
@@ -402,7 +402,7 @@ class Type : public NativeRef {
         return m_states;
     }
 
-    // NativeRefs
+    // HeapObjects
     void set_runtime_type(std::string name) {
         m_runtime_name = std::move(name);
     }

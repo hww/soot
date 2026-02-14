@@ -70,7 +70,7 @@ Object TypePointer::get() {
     // ПУТЬ Б (Системный): Вернуть сам указатель.
     // Это позволяет писать (-> ptr-to-struct field), потому что интерпретатор
     // получит TypePointer и вызовет у него step.
-    return Object::make_heap_object(shared_from_this(), ObjectType::POINTER);
+    return Object::make_heap_obj(shared_from_this(), ObjectType::POINTER);
 }
 
 void TypePointer::set(const Object &val) {
