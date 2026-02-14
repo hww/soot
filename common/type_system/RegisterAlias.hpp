@@ -4,7 +4,7 @@
 #include <string>
 
 namespace script {
-struct RegisterAlias : NativeRef {
+struct RegisterAlias : HeapObject {
     Object name;           // Имя переменной
     Object reg;            // Ссылка на физический регистр
     Object type_name;      // Имя типа

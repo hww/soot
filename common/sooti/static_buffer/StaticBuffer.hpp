@@ -30,7 +30,7 @@ struct Relocation {
     std::string target_name; // Имя типа или символа
 };
 
-struct BufferLabel : public NativeRef {
+struct BufferLabel : public HeapObject {
     size_t addr;    // Смещение в буфере
     Object segment; // Имя или объект сегмента (Object для гибкости)
     Object meta;    // Метаданные (asmsym-info из Lisp)
@@ -153,7 +153,7 @@ class StaticSymbolTable {
     }
 };
 
-class StaticBuffer : public NativeRef {
+class StaticBuffer : public HeapObject {
 
   public:
     enum class Endian { Little, Big };
@@ -470,7 +470,7 @@ class StaticBuffer : public NativeRef {
 
             // 2. Достаем указатель на HeapObject Label
             // Используем as_heap<Label>(), так как это NATIVE_REF, указывающий на Label
-            auto label = label_obj.as_native_ref<BufferLabel>();
+            auto label = label_obj.as_heap_obj<BufferLabel>();
 
             // 3. Вычисляем финальный адрес с учетом базы (origin)
             size_t target_addr = label->addr + m_origin;
@@ -531,7 +531,7 @@ class StaticBuffer : public NativeRef {
 
         // 3. Переносим метки
         for (const auto &[name, label_obj] : other->get_all_labels()) {
-            auto label = label_obj.as_native_ref<BufferLabel>();
+            auto label = label_obj.as_heap_obj<BufferLabel>();
             this->add_label(name, offset + label->addr, label->segment, label->meta);
         }
     }

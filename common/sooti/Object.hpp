@@ -2,6 +2,7 @@
 
 #include "common/util/Assert.hpp"
 #include "common/util/Crc32.hpp"
+#include "common/util/Log.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -39,7 +40,7 @@ enum class ObjectType : uint8_t {
     MACRO,
     ENVIRONMENT,
     READER,
-    NATIVE_REF,
+    HEAP_OBJ,
     POINTER,
     STATIC_BUFFER,
     STATIC_WRITER,
@@ -176,6 +177,7 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
         // has methods get_at and set_at?
         return false;
     }
+
     virtual Object   make_step_accessor(const Object &key);
     virtual Object   get_at(const Object &key);
     virtual void     set_at(const Object &key, const Object &val);
@@ -193,16 +195,7 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual std::string type_name() const {
         return "none";
     }
-};
-
-class NativeRef : public HeapObject {
-  public:
-    // NativeRef просто говорит: "Я — ссылка на что-то нативное".
-    // Тут можно оставить только метод для интроспекции или получения сырого адреса самого объекта.
-    virtual ~NativeRef() = default;
-    std::string class_name() const override {
-        return "NativeRef";
-    }
+    Object type_name_obj() const;
 };
 
 // Main Object class
@@ -227,8 +220,11 @@ class Object {
     virtual ~Object() {}
 
     virtual std::string class_name() const {
-        return "Pointer";
+        return "Object";
     }
+    std::string type_name() const;
+    Object      type_name_obj() const;
+
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
         s_table = table;
@@ -272,7 +268,7 @@ class Object {
     static Object make_pointer(std::shared_ptr<Pointer> pointer);
     static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_native_ref(std::shared_ptr<HeapObject> heap_object);
-    static Object make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type);
+    static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType type);
 
     // String representation
     std::string print() const;
@@ -282,10 +278,6 @@ class Object {
     }
     std::string inspect_short() const;
     Object      inspect() const;
-
-    std::string type_name() const {
-        return object_type_to_string(type);
-    }
 
     // Type checking
     bool is_type(ObjectType atype) const {
@@ -329,10 +321,10 @@ class Object {
         return type == ObjectType::POINTER;
     }
     bool is_native_ref() const {
-        return type == ObjectType::NATIVE_REF;
+        return type == ObjectType::HEAP_OBJ;
     }
     template <typename T> bool is_native_ref() const {
-        if (type != ObjectType::NATIVE_REF || !heap_obj) {
+        if (type != ObjectType::HEAP_OBJ || !heap_obj) {
             return false;
         }
         // КРИТИЧЕСКИ ВАЖНО: если use_count == 0, объект уже удалён!
@@ -428,34 +420,18 @@ class Object {
     EnvironmentObject                 *as_env() const;
     ReaderObject                      *as_reader() const;
     Pointer                           *as_pointer() const;
-    NativeRef                         *as_native_ref() const;
-    HeapObject                        *as_heap_object() const;
+    HeapObject                        *as_heap_obj() const;
     const IntegerObject               &as_integer_obj() const;
     const InternedSymbolPtr           &as_symbol() const;
     std::shared_ptr<EnvironmentObject> as_env_ptr() const;
-    std::string                        to_std_string() const;
     uint32_t                           as_crc32() const;
     std::vector<Object>                as_c_vector() const;
     std::vector<std::string>           as_c_vector_of_strings() const;
     PairObject                        *as_pair() const;
 
-    template <typename T> std::shared_ptr<T> as_native_ref() const {
-        // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
-        if (!heap_obj) {
-            throw std::runtime_error("as_native_ref called on the object with heap_obj null " +
-                                     object_type_to_string(type) + " " + print());
-            return nullptr;
-        }
-
-        // 2. Извлекаем базовый указатель на HeapObject (или твой базовый класс для нативов)
-        // Предполагаем, что m_data.heap_obj хранит shared_ptr
-        auto base_ptr = heap_obj;
-
-        // 3. Пытаемся безопасно привести к целевому типу T
-        auto casted_ptr = std::dynamic_pointer_cast<T>(base_ptr);
-
-        return casted_ptr;
-    }
+    // Conversion
+    std::string         to_std_string() const;
+    std::vector<Object> to_vector() const;
 
     template <typename T> std::shared_ptr<T> as_heap_obj() const {
         // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
@@ -987,7 +963,7 @@ class SymbolTable {
         Object type_reader;
         Object type_none;
         Object type_pointer;
-        Object type_native_ref;
+        Object type_heap_obj;
         Object type_static_buffer;
         Object type_static_writer;
         Object type_register_alias;
@@ -1234,12 +1210,15 @@ class EnvironmentObject : public HeapObject {
     bool                               is_function;
     bool                               is_asm_function;
     bool                               is_reg_let;
+    bool                               is_global;
     Object                             ctx;
-    std::shared_ptr<LambdaObject>      owner_lambda;
+    Object                             owner_lambda;
+    Object                             error_handler;
 
     EnvironmentObject() = default;
     EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
-        : parent_env(std::move(parent)), ctx() {}
+        : parent_env(std::move(parent)), is_function(false), is_asm_function(false),
+          is_reg_let(false), is_global(false), ctx() {}
     ~EnvironmentObject() override = default;
 
     int size() const {
@@ -1295,6 +1274,14 @@ class EnvironmentObject : public HeapObject {
             bool name_match = target_name.empty() || (current->name == target_name);
 
             if (flag_match && name_match) {
+                // ВРЕМЕННО: логируем подозрительные случаи
+                if (current->owner_lambda.is_none()) {
+                    lg::warn("Found function environment without owner_lambda at depth {}",
+                             current->print());
+                    lg::warn("  ctx: {}", current->ctx.print());
+                    // Может быть, напечатать стек?
+                }
+
                 return current;
             }
             current = current->parent_env;

@@ -146,7 +146,7 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public NativeRef {
+class TypeSystem : public HeapObject {
     TypeSystem() = default; // Закрытый конструктор
   public:
     // Запрещаем копирование и присваивание

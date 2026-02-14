@@ -100,7 +100,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
                                                     shared_from_this() // Владелец
         );
 
-        return Object::make_heap_object(b_cell, ObjectType::POINTER);
+        return Object::make_heap_obj(b_cell, ObjectType::POINTER);
     }
 
     return Object::make_none();
@@ -126,7 +126,7 @@ Object StaticBuffer::get_at(const Object &key) {
                                                     shared_from_this() // Владелец
         );
 
-        return Object::make_heap_object(b_cell, ObjectType::POINTER);
+        return Object::make_heap_obj(b_cell, ObjectType::POINTER);
     }
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();

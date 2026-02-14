@@ -38,7 +38,7 @@ struct TypeTag {
 // TypeSpec
 // ============================================================================
 
-class TypeSpec : public NativeRef {
+class TypeSpec : public HeapObject {
   public:
     // Constructors
     TypeSpec() = default;

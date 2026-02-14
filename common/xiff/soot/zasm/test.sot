@@ -73,7 +73,6 @@
   (rlet ((self uint8 :reg ix)
          (x    uint8 :reg a)) 
     (zasm
-     
       (.label start)
       (.jr 'start)    ;; Переход назад на 3 байта
       (.jp 'exit)    ;; Переход вперед на метку exit
@@ -92,6 +91,7 @@
 ;;; ===================================================================== 
 
 (defproc test-vtable ()
+  (declare (once) (asm-func none))
   (fmt #t "DEBUG test-vtable...\n")
   (.vtable 'vec3))
 
@@ -100,10 +100,12 @@
 ;;; ===================================================================== 
 
 (defproc test-call-method ()
+  (declare (once) (asm-func none))
   (call-method #x100 vec3::len)
   (.ret))
 
 (defproc test-new-call-method ()
+  (declare (once) (asm-func none))
   (call-method #x100 vec3::new 0 0)
   (.ret))
 
@@ -114,57 +116,62 @@
 (define ADDR_BASE #x4000)
 
 (defproc test-expression ()
+  (declare (once) (asm-func none))
   (zasm 
-     (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
-     (.ret)))
+    (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
+    (.ret)))
 
 (defproc test-jump-optimization ()
-    (zasm
-      (.label start)
-      (.jump #x8000)
-      (.jump 'start)
-      (.jump 'exit)
-      (.label exit)      
-      (.ret)))
+  (declare (once) (asm-func none))
+  (zasm
+    (.label start)
+    (.jump #x8000)
+    (.jump 'start)
+    (.jump 'exit)
+    (.label exit)      
+    (.ret)))
 
 (defproc test-data ()
-    (zasm      
-      (.label msg_hello)
-      (.db "Hello, Z80!" 0)     ;; Строка с нуль-терминатором
+  (declare (once) (asm-func none))
+  (zasm      
+    (.label msg_hello)
+    (.db "Hello, Z80!" 0)     ;; Строка с нуль-терминатором
+    
+    (.label data_table)
+    (.dw #x1234 (+ (address-of 'start) 5))  ;; Таблица адресов
+    
+    (.label buffer)
+    (.ds 8 #xFF)))            ;; Буфер на 32 байта, забитый $FF
       
-      (.label data_table)
-      (.dw #x1234 (+ (address-of 'start) 5))  ;; Таблица адресов
-      
-      (.label buffer)
-      (.ds 8 #xFF)))            ;; Буфер на 32 байта, забитый $FF
-      
- (defproc test-address ()     
-    (zasm
-      (.org #x8000)          ;; Начинаем с адреса 32768
-      
-      (.label main)
-      (.ld a #x41)           ;; Загружаем код символа 'A'
-      (.call 'print_char)    ;; Вызываем процедуру
-      (.jump 'main)          ;; Бесконечный цикл
+(defproc test-address ()     
+  (declare (once) (asm-func none))
+  (zasm
+    (.org #x8000)          ;; Начинаем с адреса 32768
+    
+    (.label main)
+    (.ld a #x41)           ;; Загружаем код символа 'A'
+    (.call 'print_char)    ;; Вызываем процедуру
+    (.jump 'main)          ;; Бесконечный цикл
 
-      (.align 16)            ;; Отделяем данные/процедуры границей в 16 байт
-      
-      (.label print_char)
-      ;; Представим, что здесь вывод в порт
-      (.rst #x10)            ;; Системный вызов (напр. в Sinclair ROM)
-      (.ret)))      
+    (.align 16)            ;; Отделяем данные/процедуры границей в 16 байт
+    
+    (.label print_char)
+    ;; Представим, что здесь вывод в порт
+    (.rst #x10)            ;; Системный вызов (напр. в Sinclair ROM)
+    (.ret)))      
 
- (defproc test-string-copy ()        
-      (zasm
-        (.label strcpy)
-        (.ld a (@ hl))      ;; Опкод 7E (LD A, (HL))
-        (.or a)             ;; Опкод B7 (OR A)
-        (.ret 'z)           ;; Опкод C8 (RET Z)
-        
-        (.ld (@ de) a)      ;; ТЕПЕРЬ Ок: Опкод 12 (LD (DE), A)
-        (.inc hl)           ;; Опкод 23
-        (.inc de)           ;; Опкод 13
-        (.jr 'strcpy)))      ;; Опкод 18 F7 (прыжок назад)
+(defproc test-string-copy ()      
+  (declare (once) (asm-func none))  
+  (zasm
+    (.label strcpy)
+    (.ld a (@ hl))      ;; Опкод 7E (LD A, (HL))
+    (.or a)             ;; Опкод B7 (OR A)
+    (.ret 'z)           ;; Опкод C8 (RET Z)
+    
+    (.ld (@ de) a)      ;; ТЕПЕРЬ Ок: Опкод 12 (LD (DE), A)
+    (.inc hl)           ;; Опкод 23
+    (.inc de)           ;; Опкод 13
+    (.jr 'strcpy)))      ;; Опкод 18 F7 (прыжок назад)
 
 
 ;;; ===================================================================== 
@@ -173,6 +180,7 @@
 
 (defproc test-copy-string ((dest string :reg de) 
                            (src string :reg hl))
+  (declare (once) (asm-func none))
   ;; Вход: DE = dest, HL = src
   (.label 'loop)
   (.ld a (@ hl))      ;; Читаем символ из источника
@@ -186,6 +194,7 @@
 
 (defproc test-indirect (dest src)
   ;; Вход: DE = dest, HL = src
+  (declare (once) (asm-func none))
   (.label loop)
   (.ld a (@ hl))      ;; Читаем символ из источника
   (.ld (@ de) a)      ;; Пишем в приемник

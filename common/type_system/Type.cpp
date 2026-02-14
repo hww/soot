@@ -187,7 +187,7 @@ Object Field::make_step_accessor(const Object &key) {
     if (name == ".alignment")
         return Object::make_integer(this->alignment());
 
-    // 2. Тип (TypeSpec) — создаем NativeRef для дальнейшей навигации
+    // 2. Тип (TypeSpec) — создаем HeapObject для дальнейшей навигации
     if (name == ".type-spec") {
         return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
     }
@@ -795,7 +795,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         ListBuilder lb;
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
-            // так как NativeRef ожидает владения, но мы его обманем.
+            // так как HeapObject ожидает владения, но мы его обманем.
             // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
             auto field_ptr = std::shared_ptr<Field>(const_cast<Field *>(&field), [](Field *) {});
             lb.add(Object::make_native_ref(field_ptr));
@@ -806,7 +806,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         ListBuilder lb;
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
-            // так как NativeRef ожидает владения, но мы его обманем.
+            // так как HeapObject ожидает владения, но мы его обманем.
             // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
             lb.add(Object::make_symbol(field.name().c_str()));
         }
@@ -991,7 +991,7 @@ Object BitField::make_step_accessor(const Object &key) {
     if (name == ".skip-decomp?")
         return Object::make_boolean(this->skip_in_decomp());
 
-    // 2. Сложные поля (рекурсия через NativeRef)
+    // 2. Сложные поля (рекурсия через HeapObject)
     if (name == ".type") {
         return Object::make_native_ref(std::make_shared<TypeSpec>(this->type()));
     }
@@ -1063,11 +1063,11 @@ Object BitFieldType::make_step_accessor(const Object &key) {
     if (name == ".fields") {
         ListBuilder lb;
         for (const auto &bf : m_fields) {
-            // Создаем NativeRef на BitField.
+            // Создаем HeapObject на BitField.
             // Используем shared_ptr, чтобы объект жил, пока на него ссылается Лисп.
             // Если BitField хранятся в векторе по значению, создаем копию в куче:
             auto bf_ptr = std::make_shared<BitField>(bf);
-            lb.add(Object::make_heap_object(bf_ptr, ObjectType::NATIVE_REF));
+            lb.add(Object::make_heap_obj(bf_ptr, ObjectType::HEAP_OBJ));
         }
         return lb.build();
     }

@@ -122,7 +122,7 @@
 ;;; =====================================================================
 
 (defun unquote-sym (s)
-  (if (and (list? s) (eq? (car s) 'quote))
+  (if (and (not (null? s)) (list? s) (eq? (car s) 'quote))
       (unquote-sym (cadr s)) ;; Рекурсивно чистим
       s))
 
@@ -794,27 +794,38 @@
       (print (inspect m))
       ;; 2. Теперь регистрируем в системе типов. 
       ;; Твой C++ код set_method теперь увидит готовый typespec!
-      (if (not (method-static m))
-        (set-method! (method-type m) 
-                    (method-name m) 
-                    (method-func m))))))
+      (if (method-static m)
+          (define-function (method-name m) (method-func m))
+          (define-method (method-type m) (method-name m) (method-func m))))))
 
 ;;; =====================================================================
 ;;; Procedure
 ;;; =====================================================================
+(defun get-keyword (key lst)
+  (cond
+    ((null? lst) 'null)
+    ((eq? key (car lst)) (cadr lst))
+    (else (get-keyword key (cdr lst)))))
 
 (defmacro defproc (name args &rest body)
   (let ((label-name name)
-        ;; Извлекаем только списки: (buf1 :reg de :type string)
+        (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args))
         (rlet-bindings (filter (lambda (x) (list? x)) args)))
-    `(let ((impl (lambda () 
-                   (.label ,label-name :scope 'public)
-                        ;; Если есть аргументы, declare идет ВНУТРЬ rlet
-                        (rlet ,rlet-bindings 
-                           
-                           (zasm ,@body))
-                   (.ret))))
-       ;; Регистрируем в списке для сборки
+    
+    `(let ((impl (lambda ()
+                   ;; 1. Системная декларация SOOT (C++ уровень)
+                   ;; Она ВСЕГДА должна быть первым выражением в лямбде
+                   (declare-extern ,label-name (function ,arg-types none)) 
+                   
+                   (rlet ,rlet-bindings 
+                        ;; 2. Ассемблерный контекст
+                        (zasm 
+                          (.label ,label-name :scope 'public)
+                          ;; Если в @body есть ассемблерный (declare ...), 
+                          ;; нам нужно, чтобы zasm его зацитировал или переименовал
+                          ,@body)
+                        (.ret)))))
+       
        (push! (make-method
                 :static #t
                 :func impl 
@@ -823,7 +834,7 @@
                 :label ',label-name
                 :scope 'public)
               *methods-to-assemble*)
-       ;; Привязываем процедуру к имени
+       
        (define ,name impl))))
 
 (defmacro call-proc (name &rest args)

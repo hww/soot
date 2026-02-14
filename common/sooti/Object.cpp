@@ -49,7 +49,7 @@ std::string object_type_to_string(ObjectType type) {
         return "reader";
     case ObjectType::POINTER:
         return "pointer";
-    case ObjectType::NATIVE_REF:
+    case ObjectType::HEAP_OBJ:
         return "native-ref";
     case ObjectType::STATIC_BUFFER:
         return "static-buffer";
@@ -118,7 +118,7 @@ void SymbolTable::init_core_symbols() {
     core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
     core.type_none = make_symbol(object_type_to_string(ObjectType::NONE));
     core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
-    core.type_native_ref = make_symbol(object_type_to_string(ObjectType::NATIVE_REF));
+    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::HEAP_OBJ));
     core.type_static_buffer = make_symbol(object_type_to_string(ObjectType::STATIC_BUFFER));
     core.type_static_writer = make_symbol(object_type_to_string(ObjectType::STATIC_WRITER));
 }
@@ -158,12 +158,12 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.type_reader;
     case ObjectType::POINTER:
         return core.type_pointer;
-    case ObjectType::NATIVE_REF:
-        return core.type_native_ref;
     case ObjectType::STATIC_BUFFER:
         return core.type_static_buffer;
     case ObjectType::STATIC_WRITER:
         return core.type_static_writer;
+    case ObjectType::HEAP_OBJ:
+        return core.type_heap_obj;
     default:
         return core.type_none;
     }
@@ -262,6 +262,45 @@ Object SymbolTable::make_keyword(std::string name) {
 }
 
 // ============================================================================
+// Object Type
+// ============================================================================
+
+std::string Object::type_name() const {
+    if (type == ObjectType::HEAP_OBJ && heap_obj.get() != nullptr)
+        heap_obj->type_name();
+    return object_type_to_string(type);
+}
+
+Object Object::type_name_obj() const {
+    if (type == ObjectType::HEAP_OBJ && heap_obj.get() != nullptr)
+        heap_obj->type_name_obj();
+    return symbol_table().object_type_to_symbol(type);
+}
+
+std::vector<Object> Object::to_vector() const {
+    std::vector<Object> result;
+    Object              current = *this;
+
+    // Идем по цепочке cdr, пока не упремся в конец списка
+    while (current.is_pair()) {
+        auto pair = current.as_pair();
+        result.push_back(pair->car); // Сохраняем текущий элемент
+        current = pair->cdr;         // Переходим к следующей паре
+    }
+
+    // В GOAL/Lisp список должен заканчиваться на 'empty-list / 'nil.
+    // Если в конце осталось что-то другое (не none) — это "точечная пара" (dotted pair).
+    // Для define-extern это обычно не нужно, но для надежности проверим:
+    if (!current.is_none() && !current.is_null()) {
+        // Опционально: можно кинуть ошибку или добавить последний элемент,
+        // если твоя логика это подразумевает.
+        // result.push_back(current);
+    }
+
+    return result;
+}
+
+// ============================================================================
 // SymbolTable
 // ============================================================================
 
@@ -319,7 +358,7 @@ void Object::throw_type_error(const std::string &expected) const {
 }
 
 Object Object::step(const Object &key) const {
-    // Для всего, что живет в куче (NativeRef, Cell, Buffer, Array, String)
+    // Для всего, что живет в куче (HeapObject, Cell, Buffer, Array, String)
     if (this->heap_obj) {
         return this->heap_obj->make_step_accessor(key);
     }
@@ -375,6 +414,10 @@ void HeapObject::set_at(const Object &key, const Object &value) {
         target.as_pointer()->set(value);
 }
 
+Object HeapObject::type_name_obj() const {
+    return Object::make_symbol(type_name());
+}
+
 // ============================================================================
 // Object factory
 // ============================================================================
@@ -385,7 +428,7 @@ Object Object::make_none() {
     return obj;
 }
 
-Object Object::make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectType type) {
+Object Object::make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType type) {
     Object obj;
     obj.type = type;
     obj.heap_obj = std::move(heap_object);
@@ -394,7 +437,7 @@ Object Object::make_heap_object(std::shared_ptr<HeapObject> heap_object, ObjectT
 
 Object Object::make_native_ref(std::shared_ptr<HeapObject> heap_object) {
     Object obj;
-    obj.type = ObjectType::NATIVE_REF;
+    obj.type = ObjectType::HEAP_OBJ;
     obj.heap_obj = std::move(heap_object);
     return obj;
 }
@@ -710,16 +753,9 @@ Pointer *Object::as_pointer() const {
     return dynamic_cast<Pointer *>(heap_obj.get());
 }
 
-NativeRef *Object::as_native_ref() const {
-    if (type != ObjectType::NATIVE_REF) {
-        throw std::runtime_error("as_reference called on a " + object_type_to_string(type) + " " +
-                                 print());
-    }
-    return dynamic_cast<NativeRef *>(heap_obj.get());
-}
-HeapObject *Object::as_heap_object() const {
+HeapObject *Object::as_heap_obj() const {
     if (heap_obj == nullptr) {
-        throw std::runtime_error("as_heap_object called on a " + object_type_to_string(type) + " " +
+        throw std::runtime_error("as_heap_obj called on a " + object_type_to_string(type) + " " +
                                  print() + " heap_obj is null");
     }
     return dynamic_cast<HeapObject *>(heap_obj.get());
@@ -1204,7 +1240,7 @@ std::string Object::print() const {
         return symbol_obj.print();
     default:
         if (is_heap_object())
-            return heap_obj ? heap_obj->print() : "[invalid-heap-object]";
+            return heap_obj.get() != nullptr ? heap_obj->print() : "[invalid-heap-object]";
         else
             return "[unknown]";
     }
