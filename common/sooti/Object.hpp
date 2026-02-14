@@ -1275,12 +1275,12 @@ class EnvironmentObject : public HeapObject {
 
             if (flag_match && name_match) {
                 // ВРЕМЕННО: логируем подозрительные случаи
-                if (current->owner_lambda.is_none()) {
-                    lg::warn("Found function environment without owner_lambda at depth {}",
-                             current->print());
-                    lg::warn("  ctx: {}", current->ctx.print());
-                    // Может быть, напечатать стек?
-                }
+                // if (current->owner_lambda.is_none()) {
+                //    lg::warn("Found function environment without owner_lambda at depth {}",
+                //             current->print());
+                //    lg::warn("  ctx: {}", current->ctx.print());
+                //    // Может быть, напечатать стек?
+                //}
 
                 return current;
             }

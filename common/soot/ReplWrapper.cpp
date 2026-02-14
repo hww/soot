@@ -354,13 +354,15 @@ void ReplWrapper::load_file(const std::string &filename) {
     try {
         // Предполагаем, что у интерпретатора есть метод для загрузки файла
         result = interpreter_.eval_string(fmt::format("(load \"{}\")", filename), "script");
-    } catch (script::ExitException &e) {
-        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
-        exit(e.exit_code);
     } catch (script::EvalException &e) {
         if (e.already_printed)
             return;
-        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
+        std::string report = e.full_report(interpreter_.get_reader());
+        fmt::print("{}", report);
+        e.already_printed = true;
+    } catch (script::ExitException &e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
+        exit(e.exit_code);
     } catch (const std::exception &e) {
         fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "✗ Script error: {}\n", e.what());
     }
@@ -548,7 +550,15 @@ void ReplWrapper::handle_network_message(const std::string &message, int client_
     } catch (script::EvalException &e) {
         if (e.already_printed)
             return;
-        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
+        std::string report = e.full_report(interpreter_.get_reader());
+
+        // Печатаем локально (для отладки сервера)
+        fmt::print("{}", report);
+
+        // Отправляем клиенту в сокет
+        send(client_socket, report.c_str(), report.size(), 0);
+
+        e.already_printed = true;
     } catch (const std::exception &e) {
         // Не печатаем детали тут, они уже ушли в консоль сервера через eval_with_rewind
         std::string error = "Error: " + std::string(e.what()) + "\n";
@@ -621,7 +631,12 @@ void ReplWrapper::execute_line_internal(const std::string &line, bool print_resu
         } catch (script::EvalException &e) {
             if (e.already_printed)
                 return;
-            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
+
+            std::string report = e.full_report(interpreter_.get_reader());
+            fmt::print("{}", report);
+            // Если работаешь через сокеты:
+            // send(client_socket, report.c_str(), report.size(), 0);
+            e.already_printed = true;
         } catch (const std::exception &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
         }
