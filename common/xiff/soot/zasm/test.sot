@@ -34,6 +34,25 @@
 
 (segment-reset *current-segment*)
 
+;;; ===================================================================== 
+;;; System Methods
+;;; ===================================================================== 
+
+(defproc panic_unimplemented ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG panic_unimplemented...\n"))
+
+;;; ===================================================================== 
+;;; Type System Methods
+;;; ===================================================================== 
+
+(defmethod delete ((this object))
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG object delete..\n"))
+
+(defmethod print ((this object))
+  (declare (once) (asm-func _type_))
+  (fmt #t "DEBUG object print..\n"))
 
 ;;; ===================================================================== 
 ;;; Methods
@@ -95,6 +114,14 @@
   (fmt #t "DEBUG test-vtable...\n")
   (.vtable 'vec3))
 
+;;; ===================================================================== 
+;;; Type Descriptor
+;;; ===================================================================== 
+
+(defproc test-type-descriptor ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG test-type-descriptor...\n")
+  (.type-descriptor 'vec3))
 
 ;;; ===================================================================== 
 ;;; Structure
