@@ -280,5 +280,6 @@
 
 ;; 3. После того как весь код откомпилирован (pass-2 завершен):
 (save-module-practical 'default *my-project-layout*)
+(export-symbols-to-emu "firmware.emu.sym" 'default)
 
 (save-module-passport "firmware.sot" 'default)

@@ -1,0 +1,228 @@
+﻿;;; =====================================================================
+;;; Word to Byte Conversions
+;;; =====================================================================
+
+(defun lower-byte (bla)
+   "Get the lower byte of the integer"
+   (logand bla #b11111111))
+
+(defun higher-byte (bla)
+   "Get the higher byte of the integer"
+   (logand (rshift bla 8) #b11111111))
+
+;;; =====================================================================
+;;; Z80 Registers
+;;; =====================================================================
+
+(define a    'a)
+(define b    'b)
+(define c    'c)
+(define d    'd)
+(define e    'e)
+(define h    'h)
+(define l    'l)
+(define bc   'bc)
+(define de   'de)
+(define hl   'hl)
+(define sp   'sp)
+(define af   'af)
+(define bc2  'bc2)
+(define de2  'de2)
+(define hl2  'hl2)
+(define af2  'af2)
+(define rv   'rv)
+(define ix   'ix)
+(define iy   'iy)
+(define iv   'iv)
+(define mr   'mr)
+
+;;; =====================================================================
+;;; Register codes
+;;; =====================================================================
+
+;; z80 register codes, needed often during instruction assembling
+(define *reg-codes* (make-hash-table '() 11))
+
+(defmacro reg-code (reg)
+   `(hash-table-ref *reg-codes* ,reg))
+
+(defmacro reg-code! (reg value)
+   `(hash-table-set! *reg-codes* ,reg ,value))
+
+(reg-code! 'a 7)
+(reg-code! 'b 0)
+(reg-code! 'c 1)
+(reg-code! 'd 2)
+(reg-code! 'e 3)
+(reg-code! 'h 4)
+(reg-code! 'l 5)
+(reg-code! 'bc 0)
+(reg-code! 'de 1)
+(reg-code! 'hl 2)
+(reg-code! 'sp 3)
+(reg-code! 'af 3)
+
+(reg-code! 'ix 2) ;; Код такой же как у HL
+(reg-code! 'iy 2)
+
+(defun get-low-reg (reg)
+  (case reg
+    ('hl 'l)
+    ('de 'e)
+    ('bc 'c)
+    ('ix 'ixl) ;; Добавляем половинки для индексных
+    ('iy 'iyl)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
+(defun get-high-reg (reg)
+  (case reg
+    ('hl 'h)
+    ('de 'd)
+    ('bc 'b)
+    ('ix 'ixh)
+    ('iy 'iyh)
+    (else (error (fmt #f "Unknown 16-bit register: {}" reg)))))
+
+;;; =====================================================================
+;;; Complex addressing
+;;; =====================================================================
+
+(defun @ (reg) 
+  "Метка-заполнитель для косвенной адресации (.ld a (@ hl))"
+  (list '@ reg))
+
+(defun +ix (obj)
+  (let ((offset (if (number? obj) 
+                    obj 
+                    (-> obj :offset))))
+    (list 'ix-indexed offset)))
+
+(defun +iy (obj)
+  (let ((offset (if (number? obj) 
+                    obj 
+                    (-> obj :offset))))
+    (list 'iy-indexed offset)))
+
+(defmacro ->ix (type &rest path)
+  "Сокращение для (+ix (-> (reg-alias 'tmp 'type) path...))"
+  `(+ix (-> (reg-alias 'tmp ',type) ,@path)))
+
+(defmacro ->iy (type &rest path)
+  `(+iy (-> (reg-alias 'tmp ',type) ,@path)))
+         
+;;; =====================================================================
+;;; Condition Codes
+;;; =====================================================================
+
+; z80 condition codes, needed often during instruction assembling
+(define *con-codes* (make-hash-table))
+
+(defmacro con-code (reg)
+   `(hash-table-ref *con-codes* ,reg))
+(defmacro con-code! (reg value)
+   `(hash-table-set! *con-codes* ,reg ,value))
+
+(con-code! 'nz 0)
+(con-code! 'z 1)
+(con-code! 'nc 2)
+(con-code! 'c 3)
+(con-code! 'pe 4)
+(con-code! 'po 5)
+(con-code! 'p 6)
+(con-code! 'm 7)
+
+;;; =====================================================================
+;;; Token System
+;;; =====================================================================
+
+(defun unquote-sym (s)
+  (if (and (not (null? s)) (list? s) (eq? (car s) 'quote))
+      (unquote-sym (cadr s)) ;; Рекурсивно чистим
+      s))
+
+;; Используем список с тегом 'token для однозначности
+(defun make-asm-token (type value)
+  (list 'token type value))
+
+(defun asm-token? (obj)
+  (and (list? obj) (eq? (car obj) 'token)))
+
+(defun asm-token-type (tok)  (cadr tok))
+(defun asm-token-value (tok) (caddr tok))
+
+(defun alias->token (alias)
+  (let ((base (-> alias :reg))
+        (offs (-> alias :offset))
+        (size (-> alias :bit_size)))
+    (cond
+      ((and (= offs 0) (not (member base '(ix iy))))
+       (make-asm-token (if (>= size 16) '16-reg '8-reg) base))
+      ((member base '(ix iy))
+       (make-asm-token (if (eq? base 'ix) 'ix-indexed 'iy-indexed) offs))
+      (else (error "Unknown alias mapping" alias)))))
+
+(defun symbol->token (sym)
+  (let ((name (unquote-sym sym)))
+    (cond
+      ((member name '(a b c d e h l)) (make-asm-token '8-reg name))
+      ((member name '(bc de hl sp af ix iy)) (make-asm-token '16-reg name))
+      (else (make-asm-token 'number (module-label-addr-get name))))))
+
+;;; =====================================================================
+;;; Convert Argument To 
+;;; =====================================================================
+
+(defun parse-arg (arg)
+  (cond
+    ((asm-token? arg) arg)
+    ((number? arg) (make-asm-token 'number arg))
+    ((native-ref? arg) (alias->token arg))
+    ((symbol? arg) (symbol->token arg))
+
+    ((list? arg)
+     (let ((head (car arg)))
+       (cond
+         ;; 1. Косвенная адресация (@ hl)
+         ((eq? head '@) (make-asm-token 'indirect (unquote-sym (cadr arg))))
+         
+         ;; 2. Квотированные метки 'start
+         ((eq? head 'quote) (symbol->token arg))
+         
+         ;; 3. Результат работы функций ix/iy (уже вычисленный)
+         ((eq? head 'ix-indexed) (make-asm-token 'ix-indexed (cadr arg)))
+         ((eq? head 'iy-indexed) (make-asm-token 'iy-indexed (cadr arg)))
+
+         ;; 4. Все остальное: (ix + 2), (+ offset 1), (ADDR_BASE)
+         (else 
+          (let ((val (eval arg)))
+            (cond
+              ((number? val) (make-asm-token 'number val))
+              ;; Если eval вернул (ix-indexed 2), парсим результат рекурсивно
+              ((or (asm-token? val) (list? val)) (parse-arg val))
+              (else (error "Expression must evaluate to a number or valid operand" arg))))))))
+
+    (else (error (fmt #f "Unknown operand type {}" arg)))))
+
+;;; =====================================================================
+;;; Errors and Logs
+;;; =====================================================================
+
+(defun asm-source-info ()
+  (let ((info (source-info *source-context*)))
+    (if info
+        (fmt #f "at {}:{}" (getf info :file) (getf info :line))
+        "at unknown:0")))
+
+(defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
+
+(defun asm-warning (message) (print (fmt #f "{} {} {}" ( get-pass-signature ) (asm-source-info) message)))
+
+;;; =====================================================================
+;;; Arguments
+;;; =====================================================================
+
+(defmacro check-type (var predicate)
+  `(if (not (,predicate ,var))
+    (error (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" 
+      ',var ',predicate ,var (type-of ,var) *source-context*))))
+

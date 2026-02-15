@@ -63,7 +63,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         if (name == ":filled-size")
             return Object::make_integer(get_end_addr() - get_start_addr());
         // Внутри StaticBuffer::make_step_accessor
-        if (name == ":labels") {
+        if (name == ":label-names") {
             std::vector<Object> names;
             // Предполагаем, что у тебя есть m_labels или аналогичная структура
             // (std::map/unordered_map)
@@ -71,6 +71,15 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
                 names.push_back(Object::make_string(label_name));
             }
             return Object::make_list(names); // Возвращаем как обычный Lisp-список
+        }
+        if (name == ":labels") {
+            std::vector<Object> labels;
+            // Предполагаем, что у тебя есть m_labels или аналогичная структура
+            // (std::map/unordered_map)
+            for (auto const &[label_name, label_obj] : m_labels) {
+                labels.push_back(label_obj);
+            }
+            return Object::make_list(labels); // Возвращаем как обычный Lisp-список
         }
         if (name == ":labels-table") {
             Object table = Object::make_hash_table();

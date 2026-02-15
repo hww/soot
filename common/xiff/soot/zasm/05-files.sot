@@ -1,0 +1,102 @@
+﻿;;; =====================================================================
+;;; Symbols program map
+;;; =====================================================================
+
+(defun get-label-info-v2 (label-obj label-name)
+  "Используем псевдонимы из твоего C++ акцессора."
+  (let ((m (~> label-obj :meta))
+        (addr (~> label-obj :address)))
+    (list 
+      :address (string->symbol (fmt #f "#x{:04X}" addr))
+      :name    label-name
+      ;; Пока вынимаем scope из метаданных, раз в BufferLabel нет прямого поля
+      :scope   (if (list? m) (find-in-meta m :scope :private) :private)
+      :meta    m)))
+
+;; Вспомогательная функция для поиска в мете (если это alist или plist)
+(defun find-in-meta (m key defval)
+  (if (and (list? m) (member key m))
+      (let ((pos (member key m)))
+        (if (cdr pos) (cadr pos) null))
+      defval)) ; По умолчанию считаем приватной
+
+
+(defun save-module-passport (path mod)
+  (check-type path string?)
+  (check-type mod symbol?)
+  (let* ((all-symbols '())
+         (mod-obj (get-module mod))
+         (segments (module-segments mod-obj)))
+    
+    ;; name - ключ (строка), seg - объект сегмента
+    (for-each segments
+      (lambda (name seg) 
+        (let ((buffer (segment-buffer seg)))
+          ;; labels-ht - это та самая хеш-таблица из C++ (BufferLabel::data)
+          (let ((labels-ht (~> buffer :labels-table))) 
+
+                (hash-table-for-each labels-ht
+                  (lambda (lbl-name lbl-obj)
+                    ;; Передаем ОБА аргумента: объект и имя
+                    (let ((info (get-label-info-v2 lbl-obj lbl-name)))
+                      (set! all-symbols (cons info all-symbols)))))))))
+    
+    (let ((output (list :module (module-name mod-obj) :symbols all-symbols)))
+      (write-text-file path (pfmt output))
+      (fmt #t "Passport: {} symbols saved in {}\n" (length all-symbols) path))))
+
+;;; =====================================================================
+;;; Symbols
+;;; =====================================================================
+
+;; Функция для эмуляторов (в плоском формате)
+(defun export-symbols-to-emu (path mod-name)
+  "Генерирует .sym файл, принимая имя модуля (символ)."
+  (let* ((mod (get-module mod-name)) ;; Получаем реальный объект модуля
+         (lines '()))
+    (for-each (module-segments mod) ;; Теперь тут объект, и итератор сработает
+      (lambda (seg-name seg)
+        (let ((labels (~> (segment-buffer seg) :labels)))
+          (if (list? labels)
+              (for-each labels
+                (lambda (lbl)
+                  (let ((addr (~> lbl :address))
+                        (name (~> lbl :name)))
+                    ;; Формат: ADDR NAME (совместим с большинством эмуляторов)
+                    (set! lines (cons (fmt #f "{:04X} {}" addr name) lines)))))))))
+    
+    (if (not (null? lines))
+        (begin
+          (write-text-file path (string-join (reverse lines) "\n"))
+          (fmt #t "Debug symbols (SYM) saved: {}\n" path))
+        (fmt #t "Warning: No symbols to save for module {}\n" mod-name))))
+
+;;; =====================================================================
+;;; Binary
+;;; =====================================================================
+
+(defun save-module-practical (mod-name layout-specs)
+  (let ((mod (get-module mod-name)))
+    (for-each layout-specs
+      (lambda (spec)
+        (let ((filename (car spec))
+              (seg-names (cdr spec))
+              (buffers-to-save '()))
+          
+          (for-each seg-names
+            (lambda (s-name)
+              ;; Передаем null как третий аргумент, чтобы не падать при отсутствии ключа
+              (let ((seg (hash-table-ref (module-segments mod) s-name null)))
+                (if (not (null? seg))
+                    (set! buffers-to-save (cons (segment-buffer seg) buffers-to-save))
+                    (fmt #t "Warning: Segment '{}' not found in module, skipping...\n" s-name)))))
+          
+          (if (not (null? buffers-to-save))
+              (begin
+                (export-hex filename (reverse buffers-to-save))
+                (fmt #t "HEX saved: {} with segments {}\n" filename seg-names))
+              (fmt #t "Error: No data found to save for file {}\n" filename)))))
+    
+    ;; Паспорт всё равно сохраняем, он нам нужен для отладки
+    (save-module-passport (fmt #f "{}.passport" mod-name) mod-name)))
+
