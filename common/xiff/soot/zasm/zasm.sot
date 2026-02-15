@@ -455,6 +455,31 @@
       (when (and (eq? *current-pass* 2))
         (record-listing-line start-addr listing)))))
 
+;; Запись одного байта (8 бит)
+(defun emit-db (val)
+  (emit (list (logand val #xFF)) 
+        :listing (fmt #f "DB  ${:02X}" (logand val #xFF))))
+
+;; Запись слова (16 бит, Little-endian)
+(defun emit-dw (val)
+  (if (number? val)
+      ;; Если число — разбиваем на байты
+      (let ((low (logand val #xFF))
+            (high (logand (rshift val 8) #xFF)))
+        (emit (list low high) 
+              :listing (fmt #f "DW  ${:04X}" val)))
+      (let ((addr (module-label-addr-get val)))
+        ;; Если символ (метка) — передаем как есть, 
+        ;; механизм emit должен сам вычислить адрес позже
+        (emit (list (lower-byte addr) (higher-byte addr)) 
+              :listing (fmt #f "DW  <{}>" val)))))
+
+;; Запись строки (ASCII + нуль-терминатор)
+(defun emit-string (s)
+  (let ((bytes (string->bytes s)))
+    (emit (append bytes (list 0))
+          :listing (fmt #f "DB  \"{}\", 0" s))))
+
 (defun emit-space (&optional (text null)) 
   (if text
     (begin
@@ -974,7 +999,7 @@
                    
                    (rlet ,rlet-bindings 
                         ;; 2. Ассемблерный контекст
-                        (zasm 
+                        (begin 
                           (emit-space (fmt #f "function {}" ',label-name))
                           (.label ,label-name :scope 'public)
                           ;; Если в @body есть ассемблерный (declare ...), 
@@ -995,7 +1020,7 @@
 
 (defmacro call-proc (name &rest args)
   "Пример: (call-proc copy-string :dest buffer :src msg)"
-  `(zasm
+  `(begin
      ;; Здесь макрос должен посмотреть в декларацию defproc
      ;; и сгенерировать LD для каждого аргумента
      (.ld de ,(get-arg args :dest))
@@ -1014,7 +1039,7 @@
                    (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
-                     (zasm ,@body)
+                     (begin ,@body)
                      (.ret)))))
        ;; Сохраняем в реестр вместо немедленной регистрации
        (push! (make-method :func impl 
@@ -1035,7 +1060,7 @@
                       (.label ,label-sym :scope 'public)
                       ;; Тут важно: если body содержит макросы (типа zasm), 
                       ;; они должны раскрыться здесь.
-                      (zasm ,@body)
+                      (begin ,@body)
                       (.ret)
                       (emit '() :listing "\n")))))
        (push! (make-method
@@ -1099,9 +1124,8 @@
         s)))
 
 ;;; 1. Сначала определяем вспомогательную функцию
-(defun emit-vtable-slots (type-arg emit-fn)
-  (let ((type-obj (if (symbol? type-arg) (eval type-arg) type-arg))
-        (data '()))
+(defun emit-vtable-slots (type-obj emit-fn)
+  (let ((data '()))
     ;; Используем новый интринсик: x = ID, y = MethodInfo или null
     (type-for-each-method type-obj 
       (lambda (id method)
@@ -1116,12 +1140,12 @@
     (flatten (reverse data))))
 
 ;;; 2. Теперь определяем функцию генерации таблицы
-(defun .vtable (type-sym)
-  (let ((v-name (intern (fmt #f "{}::vtable" type-sym))))
+(defun .vtable (type-obj)
+  (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj .name)))))
     ;; Базовая метка таблицы
     (label v-name :scope 'public)
   
-    (emit-vtable-slots type-sym 
+    (emit-vtable-slots type-obj 
       (lambda (method-full-name index)
         (let* ((label-name 
                 (if method-full-name 
@@ -1154,31 +1178,31 @@
 ;;; Types
 ;;; =====================================================================   
 
-(defun .type-descriptor (type-sym)
-  (let* ((type-obj (eval type-sym))
-         (t-name (-> type-obj .name))
-         (label-name (intern (fmt #f "{}::struct" t-name)))
-         (parent-name (-> type-obj .parent)))
+(defun .type-descriptor (type-obj)
+  (let* ((t-name (-> type-obj .name))
+         (t-kind (-> type-obj .class)) ; Здесь можно брать реальный вид типа из метаданных
+         (label-base (fmt #f "type.{}.{}" t-kind t-name)))
     
-    (label label-name :scope 'public)
+    ;; Основная метка дескриптора
+    (label (intern label-base) :scope 'public)
     
-    ;; 1. Указатель на родителя
-    (if (and parent-name (not (equal? parent-name "")))
-        (emit-dw (intern (fmt #f "{}::struct" parent-name)))
-        (emit-dw 0)) ; Если родителя нет (Object)
+    ;; Ссылка на родителя (используем ту же схему)
+    (let ((parent-name (-> type-obj .parent)))
+      (if (and parent-name (not (eq? parent-name "")))
+          (emit-dw (intern (fmt #f "type.{}.{}" t-kind parent-name)))
+          (emit-dw 0)))
     
-    ;; 2. Указатель на VTable
-    (emit-dw (intern (fmt #f "{}::vtable" t-name)))
+    ;; Ссылка на VTable
+    (emit-dw (intern (fmt #f "type.vtable.{}" t-name)))
     
-    ;; 3. Указатель на имя (строка в памяти)
-    (emit-dw (intern (fmt #f "{}::name_str" t-name)))
+    ;; Остальные поля...
+    (emit-db (-> type-obj .size))
     
-    ;; 4. Размер экземпляра
-    (emit-db (-> type-obj .instance-size))
-    
-    ;; Генерируем саму строку имени отдельно
-    (label (intern (fmt #f "{}::name_str" t-name)))
-    (emit-string t-name)))
+    ;; Метка для строки имени
+    (let ((name-label (intern (fmt #f "type.name.{}" t-name))))
+      (emit-dw name-label)
+      (label name-label)
+      (emit-string t-name))))
 
 ;;; =====================================================================
 ;;; Top Level Functions

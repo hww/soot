@@ -452,6 +452,8 @@ Object Type::make_step_accessor(const Object &key) {
     // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
     if (name == ".name")
         return Object::make_string(this->get_name());
+    if (name == ".class")
+        return Object::make_string(this->get_class_name());
     if (name == ".parent")
         return Object::make_string(this->get_parent());
     if (name == ".size")
