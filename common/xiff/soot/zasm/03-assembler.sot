@@ -2,7 +2,7 @@
 ;;; Core Assembly
 ;;; =====================================================================
 
-(defun emit (data &key (listing ""))
+(defun emit (data &key (listing "") (prefix "  ")) 
   "Принимает байт или список байтов. Если передан :listing, сохраняет строку в листинг."
   (let ((seg *current-segment*)
         (bytes (if (list? data) data (list data))))
@@ -18,7 +18,7 @@
 
       ;; Если второй проход и есть текст — пишем в листинг
       (when (and (eq? *current-pass* 2))
-        (record-listing-line start-addr listing)))))
+        (record-listing-line start-addr (fmt #f "{}{}" prefix listing))))))
 
 ;; Запись одного байта (8 бит)
 (defun emit-db (val)
@@ -48,9 +48,9 @@
 (defun emit-space (&optional (text null)) 
   (if text
     (begin
-      (emit '() :listing ";; -------------------------------")
-      (emit '() :listing (fmt #f ";; {}" text))))
-  (emit '() :listing ";; -------------------------------"))
+      (emit '() :listing ";; -------------------------------" :prefix "")
+      (emit '() :listing (fmt #f ";; {}" text) :prefix "")))
+  (emit '() :listing ";; " :prefix ""))
 
 (defun is-alias? (obj)
   "Проверяет, является ли объект псевдонимом регистра/памяти."
@@ -68,7 +68,7 @@
           (addr (if (null? address) (segment-ilc seg) address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg name :address addr :scope scope)
-     (emit '() :listing (fmt #f "--- .label {} @ {:04X} ---" name addr))))
+     (emit '() :listing (fmt #f "[{}]" name) :prefix "")))
 
 (defmacro .label (name &key (address null) (scope 'private))
   "Статическая регистрация метки"
@@ -76,7 +76,7 @@
           (addr (if (null? ,address) (segment-ilc seg) ,address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg ',name :address addr :scope ',scope)
-     (emit '() :listing (fmt #f "--- .label {} @ {:04X} ---" ',name addr))))
+     (emit '() :listing (fmt #f "[{}]" ',name) :prefix "")))
 
 (defun address-of (label)
   "Функция для использования внутри Lisp-выражений в zasm"
@@ -135,9 +135,9 @@
 ;;; =====================================================================
 
 ;; Теперь твои определения выглядят супер-лаконично:
-(defun .nop () (emit '(#x00) :listing ".nop"))
-(defun .di  () (emit '(#xF3) :listing ".di"))
-(defun .ei  () (emit '(#xFB) :listing ".ei"))
+(defun .nop () (emit '(#x00) :listing "NOP"))
+(defun .di  () (emit '(#xF3) :listing "DI"))
+(defun .ei  () (emit '(#xFB) :listing "EI"))
 
 (defun .ret (&optional cc)
   (if (null? cc)

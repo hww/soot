@@ -160,7 +160,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"cell?", &Interpreter::eval_pointer_p, nullptr},
         {"primitive?", &Interpreter::eval_primitive_p, nullptr},
         {"special-form?", &Interpreter::eval_special_form_p, nullptr},
-        {"native-ref?", &Interpreter::eval_native_ref_p, nullptr},
+        {"heap-obj?", &Interpreter::eval_heap_obj_p, nullptr},
 
         // Сравнение
         {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
@@ -3036,8 +3036,8 @@ Object Interpreter::eval_special_form_p(const Object &form, Arguments &args,
     return true_or_false(args.unnamed[0].is_special_form());
 }
 
-Object Interpreter::eval_native_ref_p(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_heap_obj_p(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
     return true_or_false(args.unnamed[0].is_native_ref());
