@@ -967,11 +967,13 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::ARRAY:
     case ObjectType::STRING_HASH_TABLE:
     case ObjectType::READER:
+    case ObjectType::STATIC_BUFFER:
+    case ObjectType::STATIC_WRITER:
         return obj;
     case ObjectType::FUNCTION:
         return obj;
     default:
-        throw_eval_error(obj, "cannot evaluate this object");
+        throw_eval_error(obj, fmt::format("cannot evaluate this object '{}'", obj.print()));
     }
     return Object::make_null();
 }

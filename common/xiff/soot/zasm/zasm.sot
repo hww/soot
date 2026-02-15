@@ -1,4 +1,6 @@
-﻿(init-types 'z80)
+﻿(load "common/xiff/soot/zasm/zasm-symbols.sot")
+
+(init-types 'z80)
 
 ;;; =====================================================================
 ;;; Word to Byte Conversions
@@ -379,6 +381,13 @@
       (fmt #t "DEBUG: defmodule {}\n" ',name)
      mod))
 
+(defun get-module (name)
+  (begin 
+     ;; Если модуля нет — создаем его
+     (let ((mod (gethash name *modules*)))
+      (if mod
+        mod
+        (error (fmt #f "Can't find module {}" name))))))
 
 ;;; Исправленный with-module (установка глобального флага)
 (defmacro with-module (name &rest body)
@@ -429,12 +438,8 @@
                     ,form 
                     (asm-error (fmt #f "Expected expression, got {}" ',form))))
              result)))
-    ;; Оборачиваем весь блок в ловушку
-    `(with-error-handler 
-       (lambda (msg err-form trace)
-         ;; Добавляем "этаж" контекста
-         (list *source-context* "ZASM Expansion error")) 
-       (begin ,@(reverse result)))))
+
+       `(begin ,@(reverse result))))
 
 
 (defun emit (data &key (listing ""))
@@ -999,7 +1004,7 @@
                    
                    (rlet ,rlet-bindings 
                         ;; 2. Ассемблерный контекст
-                        (begin 
+                        (zasm 
                           (emit-space (fmt #f "function {}" ',label-name))
                           (.label ,label-name :scope 'public)
                           ;; Если в @body есть ассемблерный (declare ...), 
@@ -1039,7 +1044,7 @@
                    (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
-                     (begin ,@body)
+                     (zasm ,@body)
                      (.ret)))))
        ;; Сохраняем в реестр вместо немедленной регистрации
        (push! (make-method :func impl 
@@ -1056,13 +1061,13 @@
     `(let ((impl (lambda () 
                    ;; Убрали ` перед rlet! Теперь это код, а не данные.
                    (rlet asm-regs ,rlet-bindings  
+                      (zasm 
                       (emit-space (fmt #f "static-method {}" ',label-sym))
                       (.label ,label-sym :scope 'public)
                       ;; Тут важно: если body содержит макросы (типа zasm), 
                       ;; они должны раскрыться здесь.
-                      (begin ,@body)
-                      (.ret)
-                      (emit '() :listing "\n")))))
+                      ,@body
+                      (.ret))))))
        (push! (make-method
                 :func impl 
                 :type ',type 
@@ -1143,6 +1148,7 @@
 (defun .vtable (type-obj)
   (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj .name)))))
     ;; Базовая метка таблицы
+    (emit-space (fmt #f "vtable {}" v-name))
     (label v-name :scope 'public)
   
     (emit-vtable-slots type-obj 
@@ -1180,30 +1186,31 @@
 
 (defun .type-descriptor (type-obj)
   (let* ((t-name (-> type-obj .name))
-         (t-kind (-> type-obj .class)) ; Здесь можно брать реальный вид типа из метаданных
-         (label-base (fmt #f "type.{}.{}" t-kind t-name)))
-    
-    ;; Основная метка дескриптора
+         ;; Используем "def" как универсальный указатель на определение типа
+         (label-base (fmt #f "type.def.{}" t-name)))
+
+    (emit-space (fmt #f "type descriptor: {}" t-name))
     (label (intern label-base) :scope 'public)
     
-    ;; Ссылка на родителя (используем ту же схему)
+    ;; +0: Указатель на родителя (теперь мы всегда знаем префикс!)
     (let ((parent-name (-> type-obj .parent)))
       (if (and parent-name (not (eq? parent-name "")))
-          (emit-dw (intern (fmt #f "type.{}.{}" t-kind parent-name)))
+          (emit-dw (intern (fmt #f "type.def.{}" parent-name)))
           (emit-dw 0)))
-    
-    ;; Ссылка на VTable
-    (emit-dw (intern (fmt #f "type.vtable.{}" t-name)))
-    
-    ;; Остальные поля...
-    (emit-db (-> type-obj .size))
-    
-    ;; Метка для строки имени
-    (let ((name-label (intern (fmt #f "type.name.{}" t-name))))
-      (emit-dw name-label)
-      (label name-label)
-      (emit-string t-name))))
 
+    ;; +2: Указатель на имя
+    (emit-dw (intern (fmt #f "type.name.{}" t-name)))
+
+    ;; +4: Размер и Класс (Kind)
+    (emit-db (-> type-obj .size))
+    (emit-db (crc32 (-> type-obj .class))) ;; Сохраним класс внутри!
+
+    ;; Остальное без изменений...
+    (.vtable type-obj)
+    
+    (label (intern (fmt #f "type.name.{}" t-name)))
+    (emit-string t-name)))
+    
 ;;; =====================================================================
 ;;; Top Level Functions
 ;;; =====================================================================   
@@ -1233,6 +1240,11 @@
           (segment-label-set! *current-segment* (method-label m))
           
           ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
-          ((method-func m))))))
+          ;; Оборачиваем весь блок в ловушку
+          (with-error-handler 
+            (lambda (msg err-form trace)
+              ;; Добавляем "этаж" контекста
+              (list *source-context* "ZASM Expansion error")) 
+            ((method-func m)))))))
       (finalize-method-registration)
       (fmt #t "Assembly of module '{}' finished.\n" name))))

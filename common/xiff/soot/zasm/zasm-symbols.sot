@@ -1,0 +1,53 @@
+﻿(defun get-label-info-v2 (label-obj)
+  "Извлекает данные из объекта метки, используя корректные имена полей C++."
+  (list 
+    ;; Заменяем .addr на .address, как того требует BufferLabel
+    :address (~> label-obj '.address)
+    ;; Если .name не сработает, попробуй вытащить имя из метаданных или 
+    ;; передать его снаружи из цикла итерации.
+    :name    (~> label-obj '.name) 
+    :scope   (~> label-obj '.scope) ; Проверь, есть ли .scope в C++!
+    :meta    (format-label-meta (~> label-obj '.meta))))
+
+(defun export-symbols-to-emu (path mod)
+  (check-type path string?)
+  (check-type mod module?)
+  "Генерирует стандартный .sym файл для эмуляторов Z80."
+  (let* ((all-labels (module-get-all-labels mod)) ; Допустим, такой интринсик есть
+         (lines '()))
+    (begin
+      (for-each all-labels
+        (lambda (lbl)
+          (let ((addr (-> lbl .addr))
+                (name (-> lbl .name)))
+            ;; Формат: 0051 type.def.object
+            (push! (fmt #f "{:04X} {}" addr name) lines))))
+      
+      (write-text-file path (string-join (reverse lines) "\n"))
+      (fmt #t "Emulator symbols saved to {}\n" path))))
+
+(defun save-module-passport (path mod)
+  (check-type path string?)
+  (check-type mod symbol?)
+  (let* ((all-symbols '())
+         (mod-obj (get-module mod))
+         (segments (module-segments mod-obj)))
+    (for-each segments
+      (lambda (seg-pair)
+        (let* ((seg (cdr seg-pair)) 
+               (buffer (segment-buffer seg))
+               ;; Используем ~> и identity для безопасности
+               (lbl-names (~> buffer '.labels))) 
+          
+          ;; Если меток нет (null), просто пропускаем сегмент
+          (if (and (not (null? lbl-names)) (list? lbl-names))
+              (for-each lbl-names
+                (lambda (name)
+                  ;; Достаем объект метки из буфера по имени
+                  (let ((lbl (~> buffer (identity name))))
+                    (if (not (null? lbl))
+                        (set! all-symbols (cons (get-label-info-v2 lbl) all-symbols))))))))))
+    
+    (let ((output (list :module (module-name mod-obj) :symbols all-symbols)))
+      (write-text-file path (pfmt #f "{}" output))
+      (fmt #t "Passport: {} symbols saved.\n" (length all-symbols)))))
