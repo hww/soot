@@ -151,24 +151,112 @@
 (defun .rst (val)
   (emit (+ #xC7 val) :listing (fmt #f "RST {:02X}h" val)))
 
+;;; =====================================================================
+;;; Math & Logic Family (Z80 Complete Set)
+;;; =====================================================================
+
+;;; =====================================================================
+;;; Math & Logic Family (Z80 Complete Set - Fixed Definition)
+;;; =====================================================================
+
+;; 1. Унарные операции
+(defun .neg () (emit '(#xED #x44) :listing "NEG"))
+(defun .daa () (emit #x27 :listing "DAA"))
+(defun .cpl () (emit #x2F :listing "CPL"))
+(defun .scf () (emit #x37 :listing "SCF"))
+(defun .ccf () (emit #x3F :listing "CCF"))
+
+;; 2. Группа операций с аккумулятором (8-bit)
+;; Сначала объявляем функции явно, чтобы избежать "Unbound variable"
+(define-instruction .add)
+(define-instruction .adc)
+(define-instruction .sub)
+(define-instruction .sbc)
+(define-instruction .and)
+(define-instruction .xor)
+(define-instruction .or)
+(define-instruction .cp)
+
+;; Теперь регистрируем хендлеры для них
+(for-each '(
+    (.add #x80 #xC6) 
+    (.adc #x88 #xCE) 
+    (.sub #x90 #xD6) 
+    (.sbc #x98 #xDE) 
+    (.and #xA0 #xE6) 
+    (.xor #xA8 #xEE) 
+    (.or  #xB0 #xF6) 
+    (.cp  #xB8 #xFE))
+  (lambda (spec)
+    (let ((name (car spec)) (base-reg (cadr spec)) (base-imm (caddr spec)))
+      ;; .op r
+      (register-handler name "8-reg"
+        (lambda (r) (emit (+ base-reg (reg-code r)) :listing (fmt #f "{} A, {}" name r))))
+      ;; .op n
+      (register-handler name "number"
+        (lambda (n) (emit (list base-imm (logand n #xFF)) :listing (fmt #f "{} A, ${:02X}" name n))))
+      ;; .op a, r
+      (register-handler name "8-reg-8-reg"
+        (lambda (d s) 
+          (if (eq? d 'a)
+              (emit (+ base-reg (reg-code s)) :listing (fmt #f "{} A, {}" name s))
+              (asm-error (fmt #f "{} destination must be A" name))))))))
+
+;; 3. Инкремент и Декремент
+(define-instruction .inc)
+(define-instruction .dec)
+
+(for-each '((.inc #x04 #x03) (.dec #x05 #x0B))
+  (lambda (spec)
+    (let ((name (car spec)) (base8 (cadr spec)) (base16 (caddr spec)))
+      (register-handler name "8-reg"
+        (lambda (r) (emit (+ base8 (ash (reg-code r) 3)) :listing (fmt #f "{} {}" name r))))
+      (register-handler name "16-reg"
+        (lambda (r) (emit (+ base16 (ash (reg-code r) 4)) :listing (fmt #f "{} {}" name r)))))))
+
+;; 4. 16-битная арифметика с HL
+(define-instruction .adc)
+(define-instruction .sbc)
+
+(register-handler '.add "16-reg-16-reg"
+  (lambda (d s)
+    (if (eq? d 'hl)
+        (emit (+ #x09 (ash (reg-code s) 4)) :listing (fmt #f "ADD HL, {}" s))
+        (asm-error "16-bit ADD only supports HL as destination"))))
+
+(for-each '((.adc #x4A) (.sbc #x42))
+  (lambda (pair)
+    (let ((name (car pair)) (base (cadr pair)))
+      (register-handler name "16-reg-16-reg"
+        (lambda (d s)
+          (if (eq? d 'hl)
+              (emit (list #xED (+ base (ash (reg-code s) 4))) :listing (fmt #f "{} HL, {}" name s))
+              (asm-error "16-bit ADC/SBC only works with HL destination")))))))
+
+;;; =====================================================================
+;;; Сдвиги (Bit Rotation & Shifts)
+;;; =====================================================================
+
+;; Сдвиги через префикс #CB
+(for-each '((.rlc #x00) (.rrc #x08) (.rl #x10) (.rr #x18) 
+            (.sla #x20) (.sra #x28) (.srl #x38))
+  (lambda (pair)
+    (let ((name (car pair)) (base (cadr pair)))
+      (register-handler name "8-reg"
+        (lambda (r) (emit (list #xCB (+ base (reg-code r))) :listing (fmt #f "{} {}" name r))))
+      (define-instruction name))))
+
+;; Быстрые сдвиги аккумулятора (без префикса CB)
+(defun .rla  () (emit #x17 :listing "RLA"))
+(defun .rra  () (emit #x1F :listing "RRA"))
+
+;;; =====================================================================
+;;; 8-bits reg to reg
+;;; =====================================================================
+
 (for-each '(a b c d e h l) (lambda (r)
   (register-handler '.ld "8-reg-8-reg"
     (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s)))))))
-
-;;; =====================================================================
-;;; Math Family
-;;; =====================================================================
-
-;; OR A (часто используется для проверки A на ноль)
-(register-handler '.or "8-reg"
-  (lambda (r) (emit (+ #xB0 (reg-code r)) :listing (fmt #f "OR {}" r))))
-
-;; INC 16-bit register
-(register-handler '.inc "16-reg"
-  (lambda (r) (emit (+ #x03 (ash (reg-code r) 4)) :listing (fmt #f "INC {}" r))))
-
-(define-instruction .or)
-(define-instruction .inc)
 
 ;;; =====================================================================
 ;;; LD
@@ -372,6 +460,131 @@
           :listing (fmt #f "CALL ${:04X}" addr))))
 
 (define-instruction .call)
+
+;;; =====================================================================
+;;; Стек и манипуляция регистрами (PUSH/POP/EX)
+;;; =====================================================================
+
+;; PUSH/POP (Коды: #C5+#D5+#E5+#F5 для BC, DE, HL, AF)
+(for-each '((bc #xC5) (de #xD5) (hl #xE5) (af #xF5))
+  (lambda (pair)
+    (let ((reg (car pair)) (base-op (cadr pair)))
+      (register-handler '.push (list '16-reg)
+        (lambda (r) (if (eq? r reg) (emit base-op :listing (fmt #f "PUSH {}" r)))))
+      (register-handler '.pop (list '16-reg)
+        (lambda (r) (if (eq? r reg) (emit (+ base-op 1) :listing (fmt #f "POP {}" r))))))))
+
+;; Обработка IX/IY для стека
+(register-handler '.push '(16-reg)
+  (lambda (r)
+    (cond ((eq? r 'ix) (emit '(#xDD #xE5) :listing "PUSH IX"))
+          ((eq? r 'iy) (emit '(#xFD #xE5) :listing "PUSH IY")))))
+
+(register-handler '.pop '(16-reg)
+  (lambda (r)
+    (cond ((eq? r 'ix) (emit '(#xDD #xE1) :listing "POP IX"))
+          ((eq? r 'iy) (emit '(#xFD #xE1) :listing "POP IY")))))
+
+;; Обмен (EX)
+(defun .ex (d s)
+  (cond ((and (eq? d 'de) (eq? s 'hl)) (emit #xEB :listing "EX DE, HL"))
+        ((and (eq? d 'af) (eq? s 'af)) (emit #x08 :listing "EX AF, AF'"))
+        (else (asm-error "Unsupported EX operands"))))
+
+;;; =====================================================================
+;;; Логика и сравнение (AND, CP)
+;;; =====================================================================
+
+;; CP n или CP r
+(register-handler '.cp "8-reg"
+  (lambda (r) (emit (+ #xB8 (reg-code r)) :listing (fmt #f "CP {}" r))))
+
+(register-handler '.cp "number"
+  (lambda (n) (emit (list #xFE n) :listing (fmt #f "CP ${:02X}" n))))
+
+;; AND n или AND r
+(register-handler '.and "8-reg"
+  (lambda (r) (emit (+ #xA0 (reg-code r)) :listing (fmt #f "AND {}" r))))
+
+(register-handler '.and "number"
+  (lambda (n) (emit (list #xE6 n) :listing (fmt #f "AND ${:02X}" n))))
+
+(define-instruction .cp)
+(define-instruction .and)
+
+;;; =====================================================================
+;;; Битовые операции (SET, RES, BIT)
+;;; =====================================================================
+
+;; BIT n, r (Код: #CB #x40 + 8*bit + reg)
+(defun .bit (bit reg)
+  (let ((op (+ #x40 (ash bit 3) (reg-code reg))))
+    (emit (list #xCB op) :listing (fmt #f "BIT {}, {}" bit reg))))
+
+;; RES n, r (Код: #CB #x80 + 8*bit + reg)
+(defun .res (bit reg)
+  (let ((op (+ #x80 (ash bit 3) (reg-code reg))))
+    (emit (list #xCB op) :listing (fmt #f "RES {}, {}" bit reg))))
+
+;; SET n, r (Код: #CB #xC0 + 8*bit + reg)
+(defun .set (bit reg)
+  (let ((op (+ #xC0 (ash bit 3) (reg-code reg))))
+    (emit (list #xCB op) :listing (fmt #f "SET {}, {}" bit reg))))
+
+;;; =====================================================================
+;;; Блочные операции и DJNZ
+;;; =====================================================================
+
+;; Блочное копирование/поиск
+(defun .ldir () (emit '(#xED #xB0) :listing "LDIR"))
+(defun .lddr () (emit '(#xED #xB8) :listing "LDDR"))
+(defun .cpir () (emit '(#xED #xB1) :listing "CPIR"))
+
+;; DJNZ (Decrement B, Jump if Not Zero)
+(register-handler '.djnz '(number)
+  (lambda (target-addr)
+    (let* ((current-ilc (segment-ilc *current-segment*))
+           (offset (- target-addr (+ current-ilc 2))))
+      (emit (list #x10 (logand offset #xFF)) 
+            :listing (fmt #f "DJNZ {:+d} (to ${:04X})" offset target-addr)))))
+
+(define-instruction .djnz)
+
+;;; =====================================================================
+;;; Ввод-вывод (IN / OUT)
+;;; =====================================================================
+
+;; OUT (port), A
+(register-handler '.out "(number)-8-reg"
+  (lambda (port reg)
+    (if (eq? reg 'a)
+        (emit (list #xD3 port) :listing (fmt #f "OUT (${:02X}h), A" port))
+        (asm-error "Only OUT (n), A is supported in simple mode"))))
+
+;; IN A, (port)
+(register-handler '.in "8-reg-(number)"
+  (lambda (reg port)
+    (if (eq? reg 'a)
+        (emit (list #xDB port) :listing (fmt #f "IN A, (${:02X}h)" port))
+        (asm-error "Only IN A, (n) is supported in simple mode"))))
+
+(define-instruction .out)
+(define-instruction .in)
+
+;;; =====================================================================
+;;; Прерывания (Interrupts)
+;;; =====================================================================
+
+(defun .im (mode)
+  (cond
+    ((= mode 0) (emit '(#xED #x46) :listing "IM 0"))
+    ((= mode 1) (emit '(#xED #x56) :listing "IM 1"))
+    ((= mode 2) (emit '(#xED #x5E) :listing "IM 2"))
+    (else (asm-error "Invalid Interrupt Mode (0, 1, 2 only)"))))
+
+(defun .reti () (emit '(#xED #x4D) :listing "RETI"))
+(defun .retn () (emit '(#xED #x45) :listing "RETN"))
+(defun .halt () (emit #x76 :listing "HALT"))
 
 ;;; =====================================================================
 ;;; директивы
