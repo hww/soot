@@ -1,0 +1,325 @@
+﻿;;; =====================================================================
+;;; Structures
+;;; =====================================================================
+
+(defmacro .static-new (instance-name type-name &rest args)
+  (let* ((type-obj (~> type-name))
+         (data-map (make-hash-table))
+         (ops '()))
+    
+    ;; 1. Собираем аргументы из args (там лежат :x 100 :y 50 ...)
+    ;; Используем while, так как он надежнее всего работает с парными списками
+    (let* ((plist args))
+      (while (not (null? plist))
+        (let* ((k (car plist))
+               (v (if (not (null? (cdr plist))) (cadr plist) 0)))
+          ;; Ключ k (например, :x) превращаем в строку "x"
+          ;; Важно: если k это :x, symbol->string вернет ":x" или "x" 
+          ;; в зависимости от реализации, поэтому очистим от двоеточия если надо
+          (hash-table-set! data-map (symbol->string k) v)
+          (set! plist (cddr plist)))))
+
+    ;; 2. Базовая метка структуры (теперь точно есть)
+    (push! `(.label ,instance-name) ops)
+    (emit-space (fmt #f "static-new {}" ',instance-name))
+
+    ;; 3. Проход по всем полям через C++ итератор
+    (type-for-each-field type-obj
+      (lambda (idx offset field)
+        (let* ((f-name (-> field :name))
+               (f-tspec (-> field :type-spec))
+               (f-base (-> f-tspec :base-type))
+               ;; Ищем значение в мапе. Пробуем f-name, ":f-name" и т.д.
+               (val (or (hash-table-ref data-map f-name #f)
+                        (hash-table-ref data-map (string-append ":" f-name) 0)))
+               
+               ;; Генерируем метку доступа instance::field
+               (f-label (string->symbol (fmt #f "{}::{}" instance-name f-name))))
+          
+          ;; Метка для каждого байта поля
+          (push! `(.label ,f-label) ops)
+
+          ;; 4. Генерация данных
+          (push! 
+            (cond
+              ((or (eq? f-base "pointer") 
+                   (member f-base '("int16" "uint16" "word" "int" "uint")))
+               `(.dw ,val))
+              (else `(.db ,val)))
+            ops))))
+
+    `(begin ,@(reverse ops))))
+    
+;;; =====================================================================
+;;; Validations of arguments
+;;; =====================================================================
+
+(defun is-ptr? (tspec)
+  (eq? (-> tspec .base-type) "pointer"))
+
+(defun get-type-size (tspec)
+  (let ((type-name (-> tspec .base-type)))
+    (cond
+      ((is-ptr? tspec) 2) ;; Указатели на Z80 всегда 16 бит
+      ((member type-name '("int8" "uint8" "byte")) 1)
+      ((member type-name '("int16" "uint16" "word")) 2)
+      (else (-> (lookup-type type-name) .size)))))
+
+;; Основная логика валидации регистров
+(defun validate-reg-for-type (reg tspec arg-idx)
+  (let ((size (get-type-size tspec))
+        (reg-name (symbol->string reg)))
+    (cond
+      ((and (= size 1) (not (member reg '(a b c d e h l))))
+       (asm-error (fmt #f "Argument {}: expected 8-bit register for type {}, but got {}" 
+                       arg-idx (-> tspec .base-type) reg)))
+      ((and (= size 2) (not (member reg '(hl de bc ix iy))))
+       (asm-error (fmt #f "Argument {}: expected 16-bit register for type {}, but got {}" 
+                       arg-idx (-> tspec .base-type) reg))))))
+
+
+;;; =====================================================================
+;;; Procedures
+;;; =====================================================================
+
+(defun get-keyword (key lst)
+  (cond
+    ((null? lst) 'null)
+    ((eq? key (car lst)) (cadr lst))
+    (else (get-keyword key (cdr lst)))))
+
+(defmacro defproc (name args &rest body)
+  (let ((label-name name)
+        (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args))
+        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+    
+    `(let ((impl (lambda ()
+                   ;; 1. Системная декларация SOOT (C++ уровень)
+                   ;; Она ВСЕГДА должна быть первым выражением в лямбде
+                   (declare-extern ,label-name (function ,arg-types none)) 
+                   
+                   (rlet ,rlet-bindings 
+                        ;; 2. Ассемблерный контекст
+                        (zasm 
+                          (emit-space (fmt #f "function {}" ',label-name))
+                          (.label ,label-name :scope 'public)
+                          ;; Если в @body есть ассемблерный (declare ...), 
+                          ;; нам нужно, чтобы zasm его зацитировал или переименовал
+                          ,@body)
+                        (.ret)))))
+       
+       (push! (make-method
+                :static #t
+                :func impl 
+                :type 'global
+                :name ',label-name
+                :label ',label-name
+                :scope 'public)
+              *methods-to-assemble*)
+       
+       (define ,name impl))))
+
+(defmacro call-proc (name &rest args)
+  "Пример: (call-proc copy-string :dest buffer :src msg)"
+  `(begin
+     ;; Здесь макрос должен посмотреть в декларацию defproc
+     ;; и сгенерировать LD для каждого аргумента
+     (.ld de ,(get-arg args :dest))
+     (.ld hl ,(get-arg args :src))
+     (.call ',name)))
+
+;;; =====================================================================
+;;; Methods 
+;;; =====================================================================
+
+(defmacro defmethod-instance (name args &rest body)
+  (let* ((this-spec (car args))      ;; (self :vec3)
+         (this-type (cadr this-spec))
+         (label-sym (intern (fmt #f "{}::{}" this-type name))))
+    `(let ((impl (lambda () 
+                   (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
+                     (emit-space (fmt #f "instance-method {}" ',label-sym))
+                     (.label ,label-sym :scope 'public)
+                     (zasm ,@body)
+                     (.ret)))))
+       ;; Сохраняем в реестр вместо немедленной регистрации
+       (push! (make-method :func impl 
+                           :type ',this-type 
+                           :name ',name
+                           :label ',label-sym
+                           :scope 'public) 
+              *methods-to-assemble*))))
+
+(defmacro defmethod-static (name type args &rest body)
+  (let ((label-sym (intern (fmt #f "{}::{}" type name)))
+        ;; Извлекаем только списки (arg :reg ... :type ...)
+        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+    `(let ((impl (lambda () 
+                   ;; Убрали ` перед rlet! Теперь это код, а не данные.
+                   (rlet asm-regs ,rlet-bindings  
+                      (zasm 
+                      (emit-space (fmt #f "static-method {}" ',label-sym))
+                      (.label ,label-sym :scope 'public)
+                      ;; Тут важно: если body содержит макросы (типа zasm), 
+                      ;; они должны раскрыться здесь.
+                      ,@body
+                      (.ret))))))
+       (push! (make-method
+                :func impl 
+                :type ',type 
+                :name ',name
+                :label ',label-sym 
+                :scope 'public
+                :static #t) ;; Поправь тут поле, в логе было :static
+              *methods-to-assemble*))))
+
+(defmacro defmethod (name type-or-args &rest body)
+  (cond
+    ;; Случай: (defmethod new vec3 (x y z) ...)
+    ((eq? name 'new)
+     (let ((type type-or-args)
+           (args (car body))
+           (actual-body (cdr body)))
+       `(defmethod-static ,name ,type ,args ,@actual-body)))
+
+    ;; Случай: (defmethod len ((self vec3)) ...)
+    ((list? type-or-args)
+     `(defmethod-instance ,name ,type-or-args ,@body))
+
+    (else 
+     (error "Malformed defmethod: check arguments structure."))))
+
+(defmacro call-method (obj method-full-name &rest args)
+  (let* ((full-str (symbol->string (unquote-sym method-full-name)))
+         (parts (filter (lambda (x) (> (string-length (symbol->string x)) 0)) 
+                        (string-split full-str "::")))
+         (t-name (car parts))
+         (m-name (cadr parts))
+         (m-id (eval `(method-id-of ',t-name ',m-name)))
+         (offset (* 3 m-id)))
+    ;; Оборачиваем в begin, чтобы zasm понял, что это группа команд
+    `(begin
+       (.ld ix 1)
+       (.ld ix ,obj)
+       (.ld l (+ix 0))
+       (.ld h (+ix 1))
+       (.ld de ,offset)
+       (.add hl de)
+       (.jp hl)
+       )
+       ))
+
+;;; =====================================================================
+;;; V-Table 
+;;; =====================================================================
+
+(defun last-element (lst)
+  (if (null? (cdr lst))
+      (car lst)
+      (last-element (cdr lst))))
+
+(defun method-name-only (full-name)
+  (let ((s (symbol->string full-name)))
+    (if (string-contains? s "::")
+        (last-element (string-split s "::"))
+        s)))
+
+;;; 1. Сначала определяем вспомогательную функцию
+(defun emit-vtable-slots (type-obj emit-fn)
+  (let ((data '()))
+    ;; Используем новый интринсик: x = ID, y = MethodInfo или null
+    (type-for-each-method type-obj 
+      (lambda (id method)
+        (if (not (null? method))
+            ;; Если метод найден (в типе или у родителя)
+            ;; Берем имя самого метода, префикс vtable останется за вызывающим
+            (let ((full-name (intern (concat (-> method :type-name) "::" (-> method :name)))))
+              (push! (emit-fn full-name id) data))
+            
+            ;; Если метода нет ни в этом типе, ни выше по иерархии
+            (push! (emit-fn #f id) data))))
+    (flatten (reverse data))))
+
+;;; 2. Теперь определяем функцию генерации таблицы
+(defun .vtable (type-obj)
+  (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj :name)))))
+    ;; Базовая метка таблицы
+    (emit-space (fmt #f "vtable {}" v-name))
+    (label v-name :scope 'public)
+  
+    (emit-vtable-slots type-obj 
+      (lambda (method-full-name index)
+        (let* ((label-name 
+                (if method-full-name 
+                    (intern (fmt #f "{}::{}" v-name (method-name-only method-full-name)))
+                    (intern (fmt #f "{}::empty_{}" v-name index)))))
+          
+          ;; Ставим метку слота
+          (label label-name)
+          
+          (if method-full-name
+            (let ((addr (module-label-addr-get method-full-name)))
+              (if (and addr (not (= addr 0)))
+                  ;; СЛУЧАЙ А: Метод найден и скомпилирован
+                  (emit (list #xC3 (lower-byte addr) (higher-byte addr))
+                        :listing (fmt #f "JMP {}" method-full-name))
+                  
+                  ;; СЛУЧАЙ Б: Метод объявлен в типе, но кода нет (Label not found)
+                  (begin
+                    (asm-warning (fmt #f "Method implementation not found: {}. Plugging with panic." method-full-name))
+                    (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+                      (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
+                            :listing (fmt #f "MISSING: JP panic ({})" method-full-name))))))
+            
+            ;; СЛУЧАЙ В: Слот вообще пустой (даже в интерфейсе)
+            (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+              (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
+                    :listing "EMPTY SLOT: JP panic"))))))))
+
+;;; =====================================================================
+;;; Type Descriptors
+;;; =====================================================================   
+
+(defun .type-descriptor (type-obj)
+  (let* ((t-name (-> type-obj :name))
+         ;; Используем "def" как универсальный указатель на определение типа
+         (label-base (fmt #f "type::def::{}" t-name)))
+
+    (emit-space (fmt #f "type descriptor: {}" t-name))
+    (label (intern label-base) :scope 'public)
+    
+    ;; +0: Указатель на родителя (теперь мы всегда знаем префикс!)
+    (let ((parent-name (-> type-obj :parent)))
+      (if (and parent-name (not (eq? parent-name "")))
+          (emit-dw (intern (fmt #f "type::def::{}" parent-name)))
+          (emit-dw 0)))
+
+    ;; +2: Указатель на имя
+    (emit-dw (intern (fmt #f "type::name::{}" t-name)))
+
+    ;; +4: Размер и Класс (Kind)
+    (emit-db (-> type-obj :size))
+    (emit-db (crc32 (-> type-obj :class))) ;; Сохраним класс внутри!
+
+    ;; Остальное без изменений...
+    (.vtable type-obj)
+    
+    (label (intern (fmt #f "type::name::{}" t-name)))
+    (emit-string t-name)))
+   
+;;; =====================================================================
+;;; Обработка всех харегестрированных методов
+;;; =====================================================================
+
+(defun finalize-method-registration ()
+  (for-each *methods-to-assemble*
+    (lambda (m)
+      ;; 1. Вызываем функцию один раз (сухой запуск)
+      ;; Это заставит сработать (declare) и заполнит LambdaObject->declarations
+      ;(call (method-func m))
+      (print (inspect m))
+      ;; 2. Теперь регистрируем в системе типов. 
+      ;; Твой C++ код set_method теперь увидит готовый typespec!
+      (if (method-static m)
+          (define-function (method-name m) (method-func m))
+          (define-method (method-type m) (method-name m) (method-func m))))))
