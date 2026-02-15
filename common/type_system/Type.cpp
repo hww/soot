@@ -50,25 +50,25 @@ Object MethodInfo::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Простые поля
-    if (name == ".id")
+    if (name == ":id")
         return Object::make_integer(this->id);
-    if (name == ".name")
+    if (name == ":name")
         return Object::make_string(this->name);
-    if (name == ".defined-in")
+    if (name == ":defined-in")
         return Object::make_string(this->defined_in_type);
-    if (name == ".type-name")
+    if (name == ":type-name")
         return Object::make_string(this->type_name);
-    if (name == ".implementation")
+    if (name == ":implementation")
         return this->method_impl;
 
     // 2. Сложные поля (создаем объекты на лету)
-    if (name == ".type-spec") {
+    if (name == ":type-spec") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой make_step_accessor
         return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type));
     }
 
-    if (name == ".type") {
+    if (name == ":type") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой make_step_accessor
         auto base_type = this->type.base_type();
@@ -180,18 +180,18 @@ Object Field::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Базовые свойства
-    if (name == ".name")
+    if (name == ":name")
         return Object::make_string(this->name());
-    if (name == ".offset")
+    if (name == ":offset")
         return Object::make_integer(this->offset());
-    if (name == ".alignment")
+    if (name == ":alignment")
         return Object::make_integer(this->alignment());
 
     // 2. Тип (TypeSpec) — создаем HeapObject для дальнейшей навигации
-    if (name == ".type-spec") {
+    if (name == ":type-spec") {
         return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type()));
     }
-    if (name == ".type") {
+    if (name == ":type") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой make_step_accessor
         auto base_type = this->type().base_type();
@@ -199,19 +199,19 @@ Object Field::make_step_accessor(const Object &key) {
     }
 
     // 3. Флаги состояния (теперь возвращают логический тип)
-    if (name == ".inline?")
+    if (name == ":inline?")
         return Object::make_boolean(this->is_inline());
-    if (name == ".dynamic?")
+    if (name == ":dynamic?")
         return Object::make_boolean(this->is_dynamic());
-    if (name == ".array?")
+    if (name == ":array?")
         return Object::make_boolean(this->is_array());
 
     // 4. Специфичные поля
-    if (name == ".array-size") {
+    if (name == ":array-size") {
         return Object::make_integer(this->is_array() ? this->array_size() : 0);
     }
 
-    if (name == ".comment") {
+    if (name == ":comment") {
         return this->has_comment() ? Object::make_string(this->comment()) : Object::make_null();
     }
 
@@ -450,21 +450,21 @@ Object Type::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
-    if (name == ".name")
+    if (name == ":name")
         return Object::make_string(this->get_name());
-    if (name == ".class")
+    if (name == ":class")
         return Object::make_string(this->get_class_name());
-    if (name == ".parent")
+    if (name == ":parent")
         return Object::make_string(this->get_parent());
-    if (name == ".size")
+    if (name == ":size")
         return Object::make_integer(this->get_size_in_memory());
-    if (name == ".alignment")
+    if (name == ":alignment")
         return Object::make_integer(this->get_in_memory_alignment());
-    if (name == ".boxed?")
+    if (name == ":boxed?")
         return Object::make_boolean(this->is_boxed());
-    if (name == ".methods-count")
+    if (name == ":methods-count")
         return Object::make_integer(this->get_num_methods());
-    if (name == ".has-methods")
+    if (name == ":has-methods")
         return Object::make_boolean(this->get_num_methods() > 0);
 
     // Для специфических типов (например, StructureType) мы переопределим этот метод
@@ -530,7 +530,7 @@ Object NullType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свои специфичные свойства
-    if (name == ".null?") {
+    if (name == ":null?") {
         return Object::make_boolean(true); // Используем boolean вместо integer 1
     }
 
@@ -638,14 +638,14 @@ Object ValueType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфичные поля ValueType
-    if (name == ".size")
+    if (name == ":size")
         return Object::make_integer(this->m_size);
-    if (name == ".sign-extend?")
+    if (name == ":sign-extend?")
         return Object::make_boolean(this->m_sign_extend);
-    if (name == ".offset")
+    if (name == ":offset")
         return Object::make_integer(this->m_offset);
 
-    if (name == ".reg-class") {
+    if (name == ":reg-class") {
         // Допустим, у нас есть маппинг энума в строку
         return Object::make_string(reg_kind_to_string(this->get_preferred_reg_class()));
     }
@@ -671,11 +671,11 @@ Object ReferenceType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем то, что специфично для ссылок
-    if (name == ".heap-base")
+    if (name == ":heap-base")
         return Object::make_integer(this->heap_base());
-    if (name == ".pointer?")
+    if (name == ":pointer?")
         return Object::make_boolean(true);
-    if (name == ".load-size")
+    if (name == ":load-size")
         return Object::make_integer(this->get_load_size());
     if (name == "r:eg-class") {
         // Допустим, у нас есть маппинг энума в строку
@@ -795,17 +795,17 @@ Object StructureType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства структуры (динамическая проверка)
-    if (name == ".dynamic?")
+    if (name == ":dynamic?")
         return Object::make_boolean(this->is_dynamic());
-    if (name == ".packed?")
+    if (name == ":packed?")
         return Object::make_boolean(this->is_packed());
-    if (name == ".always-stack-singleton?")
+    if (name == ":always-stack-singleton?")
         return Object::make_boolean(this->is_always_stack_singleton());
-    if (name == ".fields-count")
+    if (name == ":fields-count")
         return Object::make_integer(this->fields().size());
-    if (name == ".first-unique-field-idx")
+    if (name == ":first-unique-field-idx")
         return Object::make_integer(this->first_unique_field_idx());
-    if (name == ".fields") {
+    if (name == ":fields") {
         ListBuilder lb;
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
@@ -816,7 +816,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         }
         return lb.build();
     }
-    if (name == ".field-names") {
+    if (name == ":field-names") {
         ListBuilder lb;
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
@@ -826,7 +826,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         }
         return lb.build();
     }
-    if (name == ".methods") {
+    if (name == ":methods") {
         ListBuilder lb;
 
         // 1. Добавляем специальный метод 'new', если он определен
@@ -845,7 +845,7 @@ Object StructureType::make_step_accessor(const Object &key) {
 
         return lb.build();
     }
-    if (name == ".methods-names") {
+    if (name == ":methods-names") {
         ListBuilder lb;
 
         // 1. Добавляем специальный метод 'new', если он определен
@@ -860,7 +860,7 @@ Object StructureType::make_step_accessor(const Object &key) {
 
         return lb.build();
     }
-    if (name == ".methods-ids") {
+    if (name == ":methods-ids") {
         ListBuilder lb;
 
         // 1. Добавляем специальный метод 'new', если он определен
@@ -875,7 +875,7 @@ Object StructureType::make_step_accessor(const Object &key) {
 
         return lb.build();
     }
-    if (name == ".methods-max-id") {
+    if (name == ":methods-max-id") {
         int max_id = -1;
         if (m_new_method_info_defined)
             max_id = 0;
@@ -909,7 +909,7 @@ Object StructureType::make_step_accessor(const Object &key) {
         }
     }
     // 2. Если это не "структурное" свойство, передаем запрос родителю.
-    // ReferenceType проверит "heap-base", "pointer?", "load-size".
+    // ReferenceType проверит "heap-base", "pointer?", "load-size":
     // Если и он не найдет, запрос уйдет в Type за "name", "size" и т.д.
     return ReferenceType::make_step_accessor(key);
 }
@@ -961,9 +961,9 @@ Object BasicType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свойства, специфичные для BasicType
-    if (name == ".final?")
+    if (name == ":final?")
         return Object::make_boolean(this->final());
-    if (name == ".class-name")
+    if (name == ":class-name")
         return Object::make_string(this->get_class_name());
 
     // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
@@ -996,17 +996,17 @@ Object BitField::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Прямые свойства BitField
-    if (name == ".name")
+    if (name == ":name")
         return Object::make_string(this->name());
-    if (name == ".offset")
+    if (name == ":offset")
         return Object::make_integer(this->offset());
-    if (name == ".size")
+    if (name == ":size")
         return Object::make_integer(this->size());
-    if (name == ".skip-decomp?")
+    if (name == ":skip-decomp?")
         return Object::make_boolean(this->skip_in_decomp());
 
     // 2. Сложные поля (рекурсия через HeapObject)
-    if (name == ".type") {
+    if (name == ":type") {
         return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type()));
     }
 
@@ -1069,12 +1069,12 @@ Object BitFieldType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфику BitFieldType
-    if (name == ".fields-count") {
+    if (name == ":fields-count") {
         return Object::make_integer(this->fields().size());
     }
 
     // 2. Если пользователь хочет получить список всех бит-полей
-    if (name == ".fields") {
+    if (name == ":fields") {
         ListBuilder lb;
         for (const auto &bf : m_fields) {
             // Создаем HeapObject на BitField.
@@ -1139,9 +1139,9 @@ Object EnumType::make_step_accessor(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства EnumType
-    if (name == ".bitfield-enum?")
+    if (name == ":bitfield-enum?")
         return Object::make_boolean(this->is_bitfield());
-    if (name == ".entries-count")
+    if (name == ":entries-count")
         return Object::make_integer(this->entries().size());
 
     // 2. Возможность получить конкретное значение по имени из Лиспа

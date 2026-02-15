@@ -1,5 +1,5 @@
 ﻿(load "common/xiff/soot/zasm/zasm-symbols.sot")
-
+(load "common/xiff/soot/zasm/zasm-binary.sot")
 (init-types 'z80)
 
 ;;; =====================================================================
@@ -98,13 +98,13 @@
 (defun +ix (obj)
   (let ((offset (if (number? obj) 
                     obj 
-                    (-> obj .offset))))
+                    (-> obj :offset))))
     (list 'ix-indexed offset)))
 
 (defun +iy (obj)
   (let ((offset (if (number? obj) 
                     obj 
-                    (-> obj .offset))))
+                    (-> obj :offset))))
     (list 'iy-indexed offset)))
 
 (defmacro ->ix (type &rest path)
@@ -155,9 +155,9 @@
 (defun asm-token-value (tok) (caddr tok))
 
 (defun alias->token (alias)
-  (let ((base (-> alias .reg))
-        (offs (-> alias .offset))
-        (size (-> alias .bit_size)))
+  (let ((base (-> alias :reg))
+        (offs (-> alias :offset))
+        (size (-> alias :bit_size)))
     (cond
       ((and (= offs 0) (not (member base '(ix iy))))
        (make-asm-token (if (>= size 16) '16-reg '8-reg) base))
@@ -325,7 +325,7 @@
   "На 1-м проходе возвращает 0 для неизвестных меток, на 2-м — кидает ошибку."
   (let ((lab (module-label-get label)))
     (cond
-      ((not (null? lab)) (-> lab .address))
+      ((not (null? lab)) (-> lab :address))
       ((eq? *current-pass* 1) 0) ;; Заглушка для первого прохода
       (else (asm-error (fmt #f "Label not found: `{}`" label))))))
       
@@ -915,9 +915,9 @@
     ;; 3. Проход по всем полям через C++ итератор
     (type-for-each-field type-obj
       (lambda (idx offset field)
-        (let* ((f-name (-> field .name))
-               (f-tspec (-> field .type-spec))
-               (f-base (-> f-tspec .base-type))
+        (let* ((f-name (-> field :name))
+               (f-tspec (-> field :type-spec))
+               (f-base (-> f-tspec :base-type))
                ;; Ищем значение в мапе. Пробуем f-name, ":f-name" и т.д.
                (val (or (hash-table-ref data-map f-name #f)
                         (hash-table-ref data-map (string-append ":" f-name) 0)))
@@ -1137,7 +1137,7 @@
         (if (not (null? method))
             ;; Если метод найден (в типе или у родителя)
             ;; Берем имя самого метода, префикс vtable останется за вызывающим
-            (let ((full-name (intern (concat (-> method .type-name) "::" (-> method .name)))))
+            (let ((full-name (intern (concat (-> method :type-name) "::" (-> method :name)))))
               (push! (emit-fn full-name id) data))
             
             ;; Если метода нет ни в этом типе, ни выше по иерархии
@@ -1146,7 +1146,7 @@
 
 ;;; 2. Теперь определяем функцию генерации таблицы
 (defun .vtable (type-obj)
-  (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj .name)))))
+  (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj :name)))))
     ;; Базовая метка таблицы
     (emit-space (fmt #f "vtable {}" v-name))
     (label v-name :scope 'public)
@@ -1185,7 +1185,7 @@
 ;;; =====================================================================   
 
 (defun .type-descriptor (type-obj)
-  (let* ((t-name (-> type-obj .name))
+  (let* ((t-name (-> type-obj :name))
          ;; Используем "def" как универсальный указатель на определение типа
          (label-base (fmt #f "type.def.{}" t-name)))
 
@@ -1193,7 +1193,7 @@
     (label (intern label-base) :scope 'public)
     
     ;; +0: Указатель на родителя (теперь мы всегда знаем префикс!)
-    (let ((parent-name (-> type-obj .parent)))
+    (let ((parent-name (-> type-obj :parent)))
       (if (and parent-name (not (eq? parent-name "")))
           (emit-dw (intern (fmt #f "type.def.{}" parent-name)))
           (emit-dw 0)))
@@ -1202,8 +1202,8 @@
     (emit-dw (intern (fmt #f "type.name.{}" t-name)))
 
     ;; +4: Размер и Класс (Kind)
-    (emit-db (-> type-obj .size))
-    (emit-db (crc32 (-> type-obj .class))) ;; Сохраним класс внутри!
+    (emit-db (-> type-obj :size))
+    (emit-db (crc32 (-> type-obj :class))) ;; Сохраним класс внутри!
 
     ;; Остальное без изменений...
     (.vtable type-obj)

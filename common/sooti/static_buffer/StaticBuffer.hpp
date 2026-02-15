@@ -31,12 +31,14 @@ struct Relocation {
 };
 
 struct BufferLabel : public HeapObject {
-    size_t addr;    // Смещение в буфере
-    Object segment; // Имя или объект сегмента (Object для гибкости)
-    Object meta;    // Метаданные (asmsym-info из Lisp)
+    std::string name;
+    size_t      addr;    // Смещение в буфере
+    Object      segment; // Имя или объект сегмента (Object для гибкости)
+    Object      meta;    // Метаданные (asmsym-info из Lisp)
 
     // Конструктор для удобства
-    BufferLabel(size_t a, Object seg, Object m) : addr(a), segment(seg), meta(m) {}
+    BufferLabel(std::string n, size_t a, Object seg, Object m)
+        : name(n), addr(a), segment(seg), meta(m) {}
 
     std::string print() const override {
         return fmt::format("#<buffer-label {:08X} {} {}>", addr, segment.print(), meta.print());
@@ -46,6 +48,7 @@ struct BufferLabel : public HeapObject {
         // Создаем Map или список пар для отображения внутреннего состояния
         // Предполагаю, у тебя есть метод создания словаря/карты
         ListBuilder info{};
+        info.add_symbol(name);
         info.add_key_value("address", Object::make_integer(addr));
         info.add_key_value("segment", segment);
         info.add_key_value("meta", meta);
@@ -54,20 +57,23 @@ struct BufferLabel : public HeapObject {
 
     Object make_step_accessor(const Object &key) override {
         if (key.is_symbol() || key.is_string()) {
-            std::string name = key.to_std_string();
+            std::string key_str = key.to_std_string();
+            if (key_str == ":name") {
+                return Object::make_symbol(name);
+            }
 
             // Позволяем доставать адрес
-            if (name == ".address" || name == ".offset") {
+            if (key_str == ":address" || key_str == ":offset") {
                 return Object::make_integer(addr);
             }
 
             // Позволяем доставать сегмент
-            if (name == ".segment" || name == ".seg") {
+            if (key_str == ":segment" || key_str == ":seg") {
                 return segment;
             }
 
             // Позволяем доставать метаданные
-            if (name == ".meta" || name == ".info") {
+            if (key_str == ":meta" || key_str == ":info") {
                 return meta;
             }
         }
@@ -386,7 +392,7 @@ class StaticBuffer : public HeapObject {
      */
     void add_label(const std::string &name, size_t offset, Object segment, Object meta) {
         // 1. Создаем объект Label в куче и оборачиваем в shared_ptr
-        auto label_ptr = std::make_shared<BufferLabel>(offset, segment, meta);
+        auto label_ptr = std::make_shared<BufferLabel>(name, offset, segment, meta);
 
         // 2. Создаем Object типа NATIVE_REF, который владеет этим shared_ptr
         Object new_label = Object::make_heap_obj(std::move(label_ptr));
