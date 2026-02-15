@@ -454,7 +454,14 @@
       ;; Если второй проход и есть текст — пишем в листинг
       (when (and (eq? *current-pass* 2))
         (record-listing-line start-addr listing)))))
-        
+
+(defun emit-space (&optional (text null)) 
+  (if text
+    (begin
+      (emit '() :listing ";; -------------------------------")
+      (emit '() :listing (fmt #f ";; {}" text))))
+  (emit '() :listing ";; -------------------------------"))
+
 (defun is-alias? (obj)
   "Проверяет, является ли объект псевдонимом регистра/памяти."
   ;; Если у тебя есть примитив native-ref?, используй его.
@@ -467,11 +474,26 @@
 
 (defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
 
+(defmacro check-type (var predicate)
+  `(if (not (,predicate ,var))
+    (error (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" 
+      ',var ',predicate ,var (type-of ,var) *source-context*))))
+
+
 ;;; =====================================================================
 ;;; Labels
 ;;; =====================================================================
 
+(defun label (name &key (address null) (scope 'private))
+  "Динамическая регистрация метки"
+  (let* ((seg *current-segment*)
+          (addr (if (null? address) (segment-ilc seg) address)))
+     ;; Снова ставим кавычку перед name, чтобы (.label start) работало
+     (segment-label-set! seg name :address addr :scope scope)
+     (emit '() :listing (fmt #f "--- .label {} @ {:04X} ---" name addr))))
+
 (defmacro .label (name &key (address null) (scope 'private))
+  "Статическая регистрация метки"
   `(let* ((seg *current-segment*)
           (addr (if (null? ,address) (segment-ilc seg) ,address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
@@ -850,6 +872,7 @@
 
     ;; 2. Базовая метка структуры (теперь точно есть)
     (push! `(.label ,instance-name) ops)
+    (emit-space (fmt #f "static-new {}" ',instance-name))
 
     ;; 3. Проход по всем полям через C++ итератор
     (type-for-each-field type-obj
@@ -924,6 +947,7 @@
 ;;; =====================================================================
 ;;; Procedure
 ;;; =====================================================================
+
 (defun get-keyword (key lst)
   (cond
     ((null? lst) 'null)
@@ -943,6 +967,7 @@
                    (rlet ,rlet-bindings 
                         ;; 2. Ассемблерный контекст
                         (zasm 
+                          (emit-space (fmt #f "function {}" ',label-name))
                           (.label ,label-name :scope 'public)
                           ;; Если в @body есть ассемблерный (declare ...), 
                           ;; нам нужно, чтобы zasm его зацитировал или переименовал
@@ -979,8 +1004,8 @@
          (label-sym (intern (fmt #f "{}::{}" this-type name))))
     `(let ((impl (lambda () 
                    (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
+                     (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
-
                      (zasm ,@body)
                      (.ret)))))
        ;; Сохраняем в реестр вместо немедленной регистрации
@@ -998,11 +1023,13 @@
     `(let ((impl (lambda () 
                    ;; Убрали ` перед rlet! Теперь это код, а не данные.
                    (rlet asm-regs ,rlet-bindings  
+                      (emit-space (fmt #f "static-method {}" ',label-sym))
                       (.label ,label-sym :scope 'public)
                       ;; Тут важно: если body содержит макросы (типа zasm), 
                       ;; они должны раскрыться здесь.
                       (zasm ,@body)
-                      (.ret)))))
+                      (.ret)
+                      (emit '() :listing "\n")))))
        (push! (make-method
                 :func impl 
                 :type ',type 
@@ -1051,10 +1078,17 @@
 ;;; =====================================================================
 ;;; V-Table 
 ;;; =====================================================================
-
+(defun last-element (lst)
+  (if (null? (cdr lst))
+      (car lst)
+      (last-element (cdr lst))))
+(defun method-name-only (full-name)
+  (let ((s (symbol->string full-name)))
+    (if (string-contains? s "::")
+        (last-element (string-split s "::"))
+        s)))
 ;;; 1. Сначала определяем вспомогательную функцию
 (defun emit-vtable-slots (type-arg emit-fn &optional ctx)
-  ;; Используем (the-type ...) или просто (eval) чтобы превратить символ в объект типа
   (let* ((type-obj (if (symbol? type-arg) (eval type-arg) type-arg))
          (max-id  (-> type-obj .methods-max-id))
          (methods (-> type-obj .methods))
@@ -1062,29 +1096,30 @@
     (dotimes (i (+ max-id 1))
       (let ((m (find-if (lambda (x) (= (-> x .id) i)) methods)))
         (if m
-            ;; Для intern нам всё еще нужно имя типа как строка/символ
             (let ((type-name (-> type-obj .name)))
-              (push! (emit-fn (intern (concat type-name "::" (-> m .name)))) data))
-            (push! (emit-fn #f) data))))
+              ;; Передаем имя метода И индекс i
+              (push! (emit-fn (intern (concat type-name "::" (-> m .name))) i) data))
+            ;; Передаем #f И индекс i
+            (push! (emit-fn #f i) data))))
     (flatten (reverse data))))
 
 ;;; 2. Теперь определяем функцию генерации таблицы
 (defun .vtable (type-sym)
-  (fmt #t "DEBUG .vtable {}\n" type-sym)           
   (let ((v-name (intern (fmt #f "{}::vtable" type-sym))))
-    ;; 1. Устанавливаем метку вручную
-    (segment-label-set! *current-segment* v-name)
-    
-    ;; 2. Генерируем данные таблицы
-    (let ((slots (emit-vtable-slots type-sym 
-                    (lambda (method-full-name) 
-                      (if method-full-name
-                          (let ((addr (module-label-addr-get method-full-name)))
-                            (list #xC3 (lower-byte addr) (higher-byte addr)))
-                          (list 0 0 0))))))
-      (fmt #t "DEBUG .vtable {}\n" slots)                            
-      ;; 3. Отправляем байты в буфер
-      (emit slots :listing (fmt #f "VTable for {}" type-sym)))))
+    (label v-name :scope 'public)
+    (emit-vtable-slots type-sym 
+      (lambda (method-full-name index) 
+        (let* ((label-name 
+                (if method-full-name 
+                    (intern (fmt #f "{}::{}" v-name (method-name-only method-full-name)))
+                    (intern (fmt #f "{}::empty_{}" v-name index)))))
+          (label label-name)
+          (if method-full-name
+              (let ((addr (module-label-addr-get method-full-name)))
+                (emit (list #xC3 (lower-byte addr) (higher-byte addr))
+                      :listing (fmt #f "JMP {}" method-full-name)))
+              (emit (list 0 0 0) 
+                    :listing (fmt #f "Empty slot {}" index))))))))
 
 ;;; =====================================================================
 ;;; Top Level Functions
