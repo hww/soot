@@ -271,4 +271,14 @@
 
 (assemble-module 'default)
 (dump-listing 'default)
-(save-module-passport "test.sot" 'default)
+
+
+
+;; 2. Определяем структуру проекта (Layout)
+(define *my-project-layout* '(("firmware.hex" "code")
+                              ("vectors.hex"  "interrupts")))
+
+;; 3. После того как весь код откомпилирован (pass-2 завершен):
+(save-module-practical 'default *my-project-layout*)
+
+(save-module-passport "firmware.sot" 'default)

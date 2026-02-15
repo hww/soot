@@ -50,20 +50,20 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         std::string name = key.to_std_string();
 
         // 1. Системные свойства
-        if (name == ".size")
+        if (name == ":size")
             return Object::make_integer(size());
-        if (name == ".origin")
+        if (name == ":origin")
             return Object::make_integer(origin());
-        if (name == ".type")
+        if (name == ":type")
             return Object::make_string(type_name());
-        if (name == ".start-addr")
+        if (name == ":start-addr")
             return Object::make_integer(get_start_addr());
-        if (name == ".end-addr")
+        if (name == ":end-addr")
             return Object::make_integer(get_end_addr());
-        if (name == ".filled-size")
+        if (name == ":filled-size")
             return Object::make_integer(get_end_addr() - get_start_addr());
         // Внутри StaticBuffer::make_step_accessor
-        if (name == ".labels") {
+        if (name == ":labels") {
             std::vector<Object> names;
             // Предполагаем, что у тебя есть m_labels или аналогичная структура
             // (std::map/unordered_map)
@@ -72,7 +72,15 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
             }
             return Object::make_list(names); // Возвращаем как обычный Lisp-список
         }
-
+        if (name == ":labels-table") {
+            Object table = Object::make_hash_table();
+            // Предполагаем, что у тебя есть m_labels или аналогичная структура
+            // (std::map/unordered_map)
+            for (auto const &[label_name, label_obj] : m_labels) {
+                table.as_hash_table()->set(label_name, label_obj);
+            }
+            return table; // Возвращаем как обычный Lisp-список
+        }
         // 2. Умный доступ по метке
         Object label_obj = get_label_obj(name);
         if (label_obj.is_not_null())
@@ -102,6 +110,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
 
         return Object::make_heap_obj(b_cell, ObjectType::POINTER);
     }
+    throw std::runtime_error(fmt::format("StaticBuffer: unknown key {}", key.print()));
 
     return Object::make_none();
 }
@@ -201,7 +210,7 @@ Object StaticBuffer::inspect() const {
     }
 
     if (m_data.size() > 16) {
-        bytes.push_back(Object::make_symbol("..."));
+        bytes.push_back(Object::make_symbol(":.."));
     }
 
     return pretty_print::build_list(

@@ -305,36 +305,36 @@ Object TypeSpec::make_step_accessor(const Object &key) {
 
     auto name = key.to_std_string();
     // 1. Имя базового типа (например, "pointer")
-    if (name == ".base-type") {
+    if (name == ":base-type") {
         return Object::make_string(base_type());
     }
 
     // 2. Количество аргументов
-    if (name == ".args-count") {
+    if (name == ":args-count") {
         return Object::make_integer(get_args_count());
     }
 
     // 3. Список аргументов как объект (опционально, если хочешь видеть всё сразу)
-    if (name == ".args-type-specs") {
+    if (name == ":args-type-specs") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
         return to_sexpr_typspec();
     }
 
-    if (name == ".args-type-names") {
+    if (name == ":args-type-names") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
         return to_sexpr_type_names();
     }
 
-    if (name == ".args-types") {
+    if (name == ":args-types") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
         return to_sexpr_type_objects();
     }
 
     // 4. Количество тегов
-    if (name == ".tags-count") {
+    if (name == ":tags-count") {
         return Object::make_integer(get_tags_count());
     };
 
@@ -349,7 +349,7 @@ Object TypeSpec::make_step_accessor(const Object &key) {
         return Object::make_null();
     }
 
-    if (name == ".type") {
+    if (name == ":type") {
         return TypeSystem::instance().make_step_accessor(Object::make_string(base_type()));
     }
 

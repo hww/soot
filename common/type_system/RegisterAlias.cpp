@@ -18,18 +18,18 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
         // name.c_str(),
         //        type_name.c_str(), this->offset, this->bit_offset);
         //  Мета-свойства алиаса
-        if (name == ".reg")
+        if (name == ":reg")
             return reg;
-        if (name == ".offset")
+        if (name == ":offset")
             return Object::make_integer(this->offset);
-        if (name == ".bit_offset")
+        if (name == ":bit_offset")
             return Object::make_integer(this->bit_offset);
-        if (name == ".bit_size")
+        if (name == ":bit_size")
             return Object::make_integer(this->bit_size);
-        if (name == ".type_name")
+        if (name == ":type_name")
             return this->type_name;
 
-        if (name == ".type")
+        if (name == ":type")
             return TypeSystem::instance().make_step_accessor(type_name);
 
         Type *type_ptr = TypeSystem::instance().lookup_type(type_name.to_std_string());

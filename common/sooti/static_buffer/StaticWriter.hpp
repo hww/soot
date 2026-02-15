@@ -45,15 +45,15 @@ class StaticWriter : public HeapObject {
 
     Object make_step_accessor(const Object &key) override {
         std::string name = key.to_std_string();
-        if (name == ".size")
+        if (name == ":size")
             return Object::make_integer(m_buffer->size());
-        if (name == ".origin")
+        if (name == ":origin")
             return Object::make_integer(m_buffer->origin());
-        if (name == ".type")
+        if (name == ":type")
             return Object::make_string(m_buffer->type_name());
-        if (name == ".position")
+        if (name == ":position")
             return Object::make_integer(m_position);
-        if (name == ".remaining")
+        if (name == ":remaining")
             return Object::make_integer(remaining());
 
         return Object::make_none();
