@@ -140,6 +140,8 @@
       (unquote-sym (cadr s)) ;; Рекурсивно чистим
       s))
 
+(defun unquote-sym->str (s) (symbol->string (unquote-sym s)))
+
 ;; Используем список с тегом 'token для однозначности
 (defun make-asm-token (type value)
   (list 'token type value))
@@ -176,7 +178,7 @@
   (cond
     ((asm-token? arg) arg)
     ((number? arg) (make-asm-token 'number arg))
-    ((native-ref? arg) (alias->token arg))
+    ((heap-obj? arg) (alias->token arg))
     ((symbol? arg) (symbol->token arg))
 
     ((list? arg)

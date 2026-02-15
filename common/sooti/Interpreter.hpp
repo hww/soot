@@ -412,8 +412,8 @@ class Interpreter {
                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_pointer_p(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_native_ref_p(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_heap_obj_p(const Object &form, Arguments &args,
+                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_special_form_p(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_primitive_p(const Object &form, Arguments &args,

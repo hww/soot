@@ -50,7 +50,7 @@ std::string object_type_to_string(ObjectType type) {
     case ObjectType::POINTER:
         return "pointer";
     case ObjectType::HEAP_OBJECT:
-        return "native-ref";
+        return "heap-obj";
     case ObjectType::STATIC_BUFFER:
         return "static-buffer";
     case ObjectType::STATIC_WRITER:
