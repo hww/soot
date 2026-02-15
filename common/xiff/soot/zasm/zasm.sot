@@ -472,7 +472,15 @@
 ;;; 
 ;;; =====================================================================
 
+(defun asm-source-info ()
+  (let ((info (source-info *source-context*)))
+    (if info
+        (fmt #f "at {}:{}" (getf info :file) (getf info :line))
+        "at unknown:0")))
+
 (defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
+
+(defun asm-warning (message) (print (fmt #f "{} {} {}" ( get-pass-signature ) (asm-source-info) message)))
 
 (defmacro check-type (var predicate)
   `(if (not (,predicate ,var))
@@ -1078,48 +1086,99 @@
 ;;; =====================================================================
 ;;; V-Table 
 ;;; =====================================================================
+
 (defun last-element (lst)
   (if (null? (cdr lst))
       (car lst)
       (last-element (cdr lst))))
+
 (defun method-name-only (full-name)
   (let ((s (symbol->string full-name)))
     (if (string-contains? s "::")
         (last-element (string-split s "::"))
         s)))
+
 ;;; 1. Сначала определяем вспомогательную функцию
-(defun emit-vtable-slots (type-arg emit-fn &optional ctx)
-  (let* ((type-obj (if (symbol? type-arg) (eval type-arg) type-arg))
-         (max-id  (-> type-obj .methods-max-id))
-         (methods (-> type-obj .methods))
-         (data '()))
-    (dotimes (i (+ max-id 1))
-      (let ((m (find-if (lambda (x) (= (-> x .id) i)) methods)))
-        (if m
-            (let ((type-name (-> type-obj .name)))
-              ;; Передаем имя метода И индекс i
-              (push! (emit-fn (intern (concat type-name "::" (-> m .name))) i) data))
-            ;; Передаем #f И индекс i
-            (push! (emit-fn #f i) data))))
+(defun emit-vtable-slots (type-arg emit-fn)
+  (let ((type-obj (if (symbol? type-arg) (eval type-arg) type-arg))
+        (data '()))
+    ;; Используем новый интринсик: x = ID, y = MethodInfo или null
+    (type-for-each-method type-obj 
+      (lambda (id method)
+        (if (not (null? method))
+            ;; Если метод найден (в типе или у родителя)
+            ;; Берем имя самого метода, префикс vtable останется за вызывающим
+            (let ((full-name (intern (concat (-> method .type-name) "::" (-> method .name)))))
+              (push! (emit-fn full-name id) data))
+            
+            ;; Если метода нет ни в этом типе, ни выше по иерархии
+            (push! (emit-fn #f id) data))))
     (flatten (reverse data))))
 
 ;;; 2. Теперь определяем функцию генерации таблицы
 (defun .vtable (type-sym)
   (let ((v-name (intern (fmt #f "{}::vtable" type-sym))))
+    ;; Базовая метка таблицы
     (label v-name :scope 'public)
+  
     (emit-vtable-slots type-sym 
-      (lambda (method-full-name index) 
+      (lambda (method-full-name index)
         (let* ((label-name 
                 (if method-full-name 
                     (intern (fmt #f "{}::{}" v-name (method-name-only method-full-name)))
                     (intern (fmt #f "{}::empty_{}" v-name index)))))
+          
+          ;; Ставим метку слота
           (label label-name)
+          
           (if method-full-name
-              (let ((addr (module-label-addr-get method-full-name)))
-                (emit (list #xC3 (lower-byte addr) (higher-byte addr))
-                      :listing (fmt #f "JMP {}" method-full-name)))
-              (emit (list 0 0 0) 
-                    :listing (fmt #f "Empty slot {}" index))))))))
+            (let ((addr (module-label-addr-get method-full-name)))
+              (if (and addr (not (= addr 0)))
+                  ;; СЛУЧАЙ А: Метод найден и скомпилирован
+                  (emit (list #xC3 (lower-byte addr) (higher-byte addr))
+                        :listing (fmt #f "JMP {}" method-full-name))
+                  
+                  ;; СЛУЧАЙ Б: Метод объявлен в типе, но кода нет (Label not found)
+                  (begin
+                    (asm-warning (fmt #f "Method implementation not found: {}. Plugging with panic." method-full-name))
+                    (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+                      (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
+                            :listing (fmt #f "MISSING: JP panic ({})" method-full-name))))))
+            
+            ;; СЛУЧАЙ В: Слот вообще пустой (даже в интерфейсе)
+            (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+              (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
+                    :listing "EMPTY SLOT: JP panic"))))))))
+
+;;; =====================================================================
+;;; Types
+;;; =====================================================================   
+
+(defun .type-descriptor (type-sym)
+  (let* ((type-obj (eval type-sym))
+         (t-name (-> type-obj .name))
+         (label-name (intern (fmt #f "{}::struct" t-name)))
+         (parent-name (-> type-obj .parent)))
+    
+    (label label-name :scope 'public)
+    
+    ;; 1. Указатель на родителя
+    (if (and parent-name (not (equal? parent-name "")))
+        (emit-dw (intern (fmt #f "{}::struct" parent-name)))
+        (emit-dw 0)) ; Если родителя нет (Object)
+    
+    ;; 2. Указатель на VTable
+    (emit-dw (intern (fmt #f "{}::vtable" t-name)))
+    
+    ;; 3. Указатель на имя (строка в памяти)
+    (emit-dw (intern (fmt #f "{}::name_str" t-name)))
+    
+    ;; 4. Размер экземпляра
+    (emit-db (-> type-obj .instance-size))
+    
+    ;; Генерируем саму строку имени отдельно
+    (label (intern (fmt #f "{}::name_str" t-name)))
+    (emit-string t-name)))
 
 ;;; =====================================================================
 ;;; Top Level Functions

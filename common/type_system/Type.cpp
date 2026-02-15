@@ -296,6 +296,16 @@ bool Type::get_my_last_method(MethodInfo *out) const {
     }
     return false;
 }
+size_t Type::methods_max_id() const {
+    size_t id = -1;
+    if (has_new_method())
+        id = 0;
+    for (auto it = m_methods.rbegin(); it != m_methods.rend(); ++it) {
+        if (it->id > id)
+            id = it->id;
+    }
+    return id;
+}
 
 bool Type::get_my_new_method(MethodInfo *out) const {
     if (m_new_method_info_defined) {

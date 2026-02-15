@@ -343,6 +343,7 @@ class Interpreter {
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_hash_table_containsp(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env);
+
     // Universal method working with hash tables
     Object eval_get_at(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -362,6 +363,8 @@ class Interpreter {
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_type_for_each_field(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_type_for_each_method(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env);
     // Системные и ввод-вывод
     Object eval_print(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
@@ -622,8 +625,13 @@ class Interpreter {
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_static_new(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    Object lookup_in_alist(Object list, const std::string &key);
-    void   recursive_write(const Object &form, Object cell_obj, Object value);
+
+    Object eval_getf(const Object &form, Arguments &args,
+                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_assoc(const Object &form, Arguments &args,
+                      const std::shared_ptr<EnvironmentObject> &env);
+
+    void recursive_write(const Object &form, Object cell_obj, Object value);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

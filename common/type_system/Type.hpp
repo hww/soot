@@ -394,13 +394,16 @@ class Type : public HeapObject {
     }
 
     // State system
-    void                           add_state(const std::string &name, const TypeSpec &type);
+    void add_state(const std::string &name, const TypeSpec &type);
+
     const std::vector<MethodInfo> &get_methods_defined_for_type() const {
         return m_methods;
     }
     const std::map<std::string, TypeSpec> &get_states_declared_for_type() const {
         return m_states;
     }
+
+    size_t methods_max_id() const;
 
     // HeapObjects
     void set_runtime_type(std::string name) {

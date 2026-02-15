@@ -204,6 +204,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"list-for-each", &Interpreter::eval_list_for_each, nullptr},
         {"list-for-each-pair", &Interpreter::eval_list_for_each_pair, nullptr},
         {"type-for-each-field", &Interpreter::eval_type_for_each_field, nullptr},
+        {"type-for-each-method", &Interpreter::eval_type_for_each_method, nullptr},
 
         // Системные и ввод-вывод
         {"print", &Interpreter::eval_print, nullptr},
@@ -335,6 +336,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"size-of", &Interpreter::eval_size_of, nullptr},
         {"~>", &Interpreter::eval_deref, nullptr},
 
+        {"getf", &Interpreter::eval_getf, nullptr},
+        {"assoc", &Interpreter::eval_assoc, nullptr},
     });
 
     // Type system
@@ -5737,6 +5740,64 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
 }
 
 // ============================================================
+// Поиск в списках
+// ============================================================
+
+Object Interpreter::eval_getf(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Используем ANY для первого аргумента, так как null (пустой список) — это тоже list
+    vararg_check(form, args, {{ObjectType::PAIR, ObjectType::EMPTY_LIST}, {}}, {});
+
+    Object current = args.unnamed[0];
+    Object key = args.unnamed[1];
+
+    while (!current.is_null() && current.is_list()) {
+        auto pair_ptr = current.as_pair();
+        if (pair_ptr->car == key) {
+            Object rest = pair_ptr->cdr;
+            if (rest.is_list() && !rest.is_null()) {
+                return rest.as_pair()->car;
+            }
+            return get_null();
+        }
+
+        // Прыгаем на два элемента вперед: (cddr current)
+        Object next = pair_ptr->cdr;
+        if (next.is_list() && !next.is_null()) {
+            current = next.as_pair()->cdr;
+        } else {
+            break;
+        }
+    }
+    return get_null();
+}
+
+Object Interpreter::eval_assoc(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // key может быть чем угодно, а список может быть пустым
+    vararg_check(form, args, {{}, {ObjectType::PAIR, ObjectType::EMPTY_LIST}}, {});
+
+    Object key = args.unnamed[0];
+    Object current_list = args.unnamed[1];
+
+    while (!current_list.is_null() && current_list.is_list()) {
+        Object item = current_list.as_pair()->car;
+
+        // В alist каждый элемент — это пара (key . value)
+        if (item.is_pair()) {
+            if (item.as_pair()->car == key) {
+                return item; // Возвращаем всю пару
+            }
+        }
+
+        current_list = current_list.as_pair()->cdr;
+    }
+    return get_null();
+}
+
+// ============================================================
 // Итераторы
 // ============================================================
 
@@ -5899,6 +5960,65 @@ Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args
     walk(root_struct.get(), 0);
     return get_null();
 }
+Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env) {
+    // Проверка аргументов: тип-структура и лямбда
+    vararg_check(form, args, {{ObjectType::HEAP_OBJECT}, {ObjectType::FUNCTION}}, {});
+
+    auto root_type = args.unnamed[0].as_heap_obj<Type>();
+    if (!root_type) {
+        throw_eval_error(form, "for-each-method: expected structure type");
+    }
+    Object lambda = args.unnamed[1];
+
+    // У структур обычно есть список методов
+    // Нам нужно пройтись по всем методам, включая унаследованные,
+    // либо согласно их ID в vtable.
+
+    auto max_id = root_type->methods_max_id();
+    for (int i = 0; i <= max_id; ++i) {
+        MethodInfo method;
+        bool       found_method = false;
+        Type      *current_type = root_type.get();
+
+        while (current_type) {
+            // Ищем метод в ТЕКУЩЕМ типе итерации
+            if (i == 0) {
+                if (current_type->has_new_method())
+                    found_method = current_type->get_my_new_method(&method);
+            } else {
+                found_method = current_type->get_my_method(i, &method);
+            }
+
+            if (found_method) {
+                // Нашли! Либо в самом типе, либо у предка.
+                break;
+            }
+
+            // Если не нашли, идем выше
+            if (current_type->get_name() == "object")
+                break;
+
+            auto parent_name = current_type->get_parent();
+            if (parent_name.empty())
+                break; // Защита от пустых имен родителей
+
+            current_type = TypeSystem::instance().lookup_type(parent_name);
+        }
+
+        // Вызов лямбды
+        Arguments callback_args;
+        callback_args.unnamed.push_back(Object::make_integer(i));
+        callback_args.unnamed.push_back(
+            found_method ? Object::make_heap_obj(std::make_shared<MethodInfo>(method))
+                         : get_null());
+
+        call_lambda_internal(form, lambda, callback_args.unnamed, env);
+    }
+
+    return get_null();
+}
+
 // ============================================================
 // CRC32
 // ============================================================
