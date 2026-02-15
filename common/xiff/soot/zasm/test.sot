@@ -46,6 +46,10 @@
 ;;; Type System Methods
 ;;; ===================================================================== 
 
+(defmethod new object ()
+  (declare (once) (asm-func object))
+  (fmt #t "DEBUG object delete..\n"))
+
 (defmethod delete ((this object))
   (declare (once) (asm-func none))
   (fmt #t "DEBUG object delete..\n"))
@@ -53,6 +57,10 @@
 (defmethod print ((this object))
   (declare (once) (asm-func _type_))
   (fmt #t "DEBUG object print..\n"))
+
+(defmethod new structure ()
+  (declare (once) (asm-func object))
+  (fmt #t "DEBUG structure new..\n"))
 
 ;;; ===================================================================== 
 ;;; Methods
@@ -263,4 +271,4 @@
 
 (assemble-module 'default)
 (dump-listing 'default)
-
+(save-module-passport "test.sot" 'default)

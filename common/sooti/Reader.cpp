@@ -229,8 +229,8 @@ Object Reader::read_from_file(const std::vector<std::string> &file_path, bool ch
         throw std::runtime_error(
             fmt::format("Cannot read {}, file doesn't exist", joined_file_path));
     }
-
-    auto textFrag = std::make_shared<FileText>(joined_file_path, file_descriptor);
+    auto path = file_util::get_absolute_path(joined_file_path);
+    auto textFrag = std::make_shared<FileText>(path, path);
     m_db.insert(textFrag);
 
     auto result = internal_read(textFrag, check_encoding, add_top_level, eval_callback);
