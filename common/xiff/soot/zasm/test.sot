@@ -112,7 +112,7 @@
 (defproc test-vtable ()
   (declare (once) (asm-func none))
   (fmt #t "DEBUG test-vtable...\n")
-  (.vtable 'vec3))
+  (.vtable vec3))
 
 ;;; ===================================================================== 
 ;;; Type Descriptor
@@ -121,7 +121,10 @@
 (defproc test-type-descriptor ()
   (declare (once) (asm-func none))
   (fmt #t "DEBUG test-type-descriptor...\n")
-  (.type-descriptor 'vec3))
+  (.type-descriptor object)
+  (.type-descriptor structure)
+  (.type-descriptor vec3)
+  )
 
 ;;; ===================================================================== 
 ;;; Structure
