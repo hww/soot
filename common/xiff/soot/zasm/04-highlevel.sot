@@ -107,18 +107,12 @@
                        (emit-space (fmt #f "function {}" ',label-name))
                        (.label ,label-name :scope 'public)
                        ,@body
-                       (.ret))))))
+                       (.ret)
+                       (define-function ',name (current-function 'function)))))))
        
        ;; РЕГИСТРАЦИЯ: чтобы ассемблер прошел по этой функции
-       (push! (make-method
-                :static #t
-                :func impl 
-                :type 'global
-                :name ',label-name
-                :label ',label-name
-                :scope 'public)
-              *methods-to-assemble*)
-       
+       (add-function ',label-name ',label-name impl)       
+      
        ;; Экспорт в окружение Липа
        (define ,name impl))))
 
@@ -146,13 +140,11 @@
                      (zasm ,@body)
                      (.ret)
                      (define-method ',this-type  ',name (current-function 'function))))))
-       ;; Сохраняем в реестр вместо немедленной регистрации
-       (push! (make-method :func impl 
-                           :type ',this-type 
-                           :name ',name
-                           :label ',label-sym
-                           :scope 'public) 
-              *methods-to-assemble*))))
+        ;; Экспорт в окружение Липа
+        (define ,label-sym impl)
+        ;; Сохраняем в реестр вместо немедленной регистрации
+        (add-function  ',name ',label-sym impl)
+        )))
 
 (defmacro defmethod-static (name type args &rest body)
   (let ((label-sym (intern (fmt #f "{}::{}" type name)))
@@ -169,14 +161,10 @@
                       ,@body
                       (.ret)
                       (define-method ',type  ',name (current-function 'function)))))))
-       (push! (make-method
-                :func impl 
-                :type ',type 
-                :name ',name
-                :label ',label-sym 
-                :scope 'public
-                :static #t) ;; Поправь тут поле, в логе было :static
-              *methods-to-assemble*))))
+        ;; Экспорт в окружение Липа
+        (define ,label-sym impl)   
+        (add-function  ',name ',label-sym impl)
+        )))
 
 (defmacro defmethod (name type-or-args &rest body)
   (cond
@@ -362,7 +350,7 @@
 
 (defun .type-descriptor (type-obj)
   (let* ((t-name (-> type-obj :name))
-         (label-base (fmt #f "type::def::{}" t-name))
+         (label-base (fmt #f "type::{}::def" t-name))
          (label-sym (intern label-base)))
 
     ;; 1. Сначала ставим метку! Чтобы она уже была в таблице символов
@@ -371,38 +359,22 @@
     ;; 2. Поле +0: указатель на тип 'type'
     (if (eq? t-name "type")
         (emit-dw label-sym) ;; Если это сам тип, ссылаемся на себя
-        (emit-dw (intern "type::def::type"))) ;; Остальные ссылаются на глобальный 'type'
+        (emit-dw (intern "type::type::def"))) ;; Остальные ссылаются на глобальный 'type'
 
     ;; 3. Поле +2: parent
     (let ((parent-name (-> type-obj :parent)))
       (emit-dw (if (and parent-name (not (eq? parent-name "")))
-                   (intern (fmt #f "type::def::{}" parent-name))
+                   (intern (fmt #f "type::{}::def" parent-name))
                    0)))
     
     ;; ... остальной код (name, size, methods-count и т.д.) ...
-    (emit-dw (intern (fmt #f "type::name::{}" t-name)))
+    (emit-dw (intern (fmt #f "type::{}::name" t-name)))
     (emit-dw (-> type-obj :size))
     (emit-db (-> type-obj :methods-count))
     (emit-db (crc32 (-> type-obj :class)))
 
     (.vtable type-obj)
     
-    (label (intern (fmt #f "type::name::{}" t-name)))
+    (label (intern (fmt #f "type::{}::name" t-name)))
     (emit-string t-name)))
    
-;;; =====================================================================
-;;; Обработка всех харегестрированных методов
-;;; =====================================================================
-
-(defun finalize-method-registration ()
-  (for-each *methods-to-assemble*
-    (lambda (m)
-      ;; 1. Вызываем функцию один раз (сухой запуск)
-      ;; Это заставит сработать (declare) и заполнит LambdaObject->declarations
-      ;(call (method-func m))
-      (print (inspect m))
-      ;; 2. Теперь регистрируем в системе типов. 
-      ;; Твой C++ код set_method теперь увидит готовый typespec!
-      (if (method-static m)
-          (define-function (method-name m) (method-func m))
-          (define-method (method-type m) (method-name m) (method-func m))))))

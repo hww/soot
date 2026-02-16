@@ -727,7 +727,6 @@
               ;; Добавляем "этаж" контекста
               (list *source-context* "ZASM Expansion error")) 
             ((method-func m)))))))
-      ;(finalize-method-registration)
       (fmt #t "Assembly of module '{}' finished.\n" name))))
 
 
