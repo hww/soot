@@ -3403,14 +3403,18 @@ Object Interpreter::eval_string_join(const Object &form, Arguments &args,
 Object Interpreter::eval_string_to_symbol(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::STRING}}, {}); // Одна строка
+    vararg_check(form, args, {{ObjectType::STRING, ObjectType::SYMBOL}}, {}); // Одна строка
+    if (args.unnamed[0].is_symbol())
+        return args.unnamed[0];
     return make_symbol(args.unnamed[0].as_string()->data);
 }
 
 Object Interpreter::eval_symbol_to_string(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}}, {}); // Один символ
+    vararg_check(form, args, {{ObjectType::SYMBOL, ObjectType::STRING}}, {}); // Один символ
+    if (args.unnamed[0].is_string())
+        return args.unnamed[0];
     return Object::make_string(
         args.unnamed[0].as_symbol().name_ptr ? args.unnamed[0].as_symbol().name_ptr : "");
 }

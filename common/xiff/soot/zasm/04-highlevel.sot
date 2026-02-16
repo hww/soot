@@ -110,7 +110,7 @@
                        (define-function ',name (current-function 'function)))))))
        
        ;; РЕГИСТРАЦИЯ: чтобы ассемблер прошел по этой функции
-       (add-function ',label-name ',label-name impl)       
+       (add-function 'global ',label-name ',label-name impl)       
       
        ;; Экспорт в окружение Липа
        (define ,name impl))))
@@ -141,9 +141,9 @@
                      (.ret)
                      (define-method ',this-type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
-       (define ,label-sym impl)
+        (define ,label-sym impl)
         ;; Сохраняем в реестр вместо немедленной регистрации
-        (add-function  ',name ',label-sym impl)
+        (add-function ',this-type ',name ',label-sym impl)
         )))
 
 (defmacro defmethod-static (name type args &rest body)
@@ -164,7 +164,7 @@
                       (define-method ',type  ',name (current-function 'function)))))))
         ;; Экспорт в окружение Липа
         (define ,label-sym impl)   
-        (add-function  ',name ',label-sym impl)
+        (add-function ',type ',name ',label-sym impl)
         )))
 
 (defmacro defmethod (name type-or-args &rest body)
@@ -183,58 +183,68 @@
     (else 
      (error "Malformed defmethod: check arguments structure."))))
 
-(defmacro call-method (obj method-full-name &rest calling-args)
-  (let* ((full-str (symbol->string (unquote-sym method-full-name)))
-         (parts (string-split full-str "::"))
+(defun prepare-method-call (t-sym m-sym calling-args)
+  (let* ((m-impl (get-function t-sym m-sym))
+         (spec (function-typespec m-impl))
+         (raw-count (-> spec :args-count))
          
-         ;; 1. Получаем части как символы и как строки
-         (p1 (car parts))
-         (p2 (cadr parts))
-         (t-sym (if (symbol? p1) p1 (string->symbol p1)))
-         (m-sym (if (symbol? p2) p2 (string->symbol p2)))
-         (t-str (if (string? p1) p1 (symbol->string p1)))
-         (m-str (if (string? p2) p2 (symbol->string p2)))
+         ;; ОПРЕДЕЛЯЕМ: это статика (new) или метод (len, add...)
+         ;; Если имя 'new', то self нет. Иначе — есть.
+         (has-self (if (eq? m-sym 'new) #f #t))
+         
+         (expected-params (if has-self 
+                              (- raw-count 2)  ;; Минус self и return
+                              (- raw-count 1))) ;; Только минус return
+         
+         (actual-count (length calling-args))
+         (regs '(hl de bc))
+         (i 0))
 
-         ;; 2. ID метода ищет по символам
+    (if (!= expected-params actual-count)
+        (error (fmt #f "Type Error: {}::{} expects {} params, but got {} (raw-count: {}, has-self: {})" 
+                    t-sym m-sym expected-params actual-count raw-count has-self)))
+
+    (if (null? calling-args)
+        '()
+        (map (lambda (arg)
+               (let ((reg (nth i regs)))
+                 (set! i (+ i 1))
+                 `(.ld ,reg ,arg)))
+             calling-args))))
+
+(defmacro call-method (obj method-full-name &rest calling-args)
+  (let* ((full-name-str (if (string? method-full-name) 
+                            method-full-name 
+                            (symbol->string method-full-name)))
+         (parts (string-split full-name-str "::"))
+         (t-sym (string->symbol (car parts)))
+         (m-sym (string->symbol (cadr parts)))
+         
          (m-id (method-id-of t-sym m-sym))
          (offset (* 2 m-id))
+         (lab-exit (local 'exit))
          
-         ;; 3. Метка возврата строится из строк
-         (ret-lab (string->symbol (string-append "ret_" t-str "_" m-str)))
-         (target-regs '(hl de bc)))
+         ;; Получаем список инструкций загрузки аргументов
+         (arg-setup (prepare-method-call t-sym m-sym calling-args)))
 
     `(begin
-       ;; Настройка аргументов
-       ,@(let ((i 0))
-           (map (lambda (arg)
-                  (let ((reg (nth i target-regs)))
-                    (set! i (+ i 1))
-                    (if reg
-                        `(.ld ,reg ,arg)
-                        (error "Too many arguments for method call (max 3)"))))
-                calling-args))
-
-       (zasm
-         (.ld ix ,obj)
-         (.ld l (+ix 0))
-         (.ld h (+ix 1))
-         
-         (.ld a ,offset)
-         (.add-hl-a) 
-         
-         ;; Читаем адрес из VTable
-         (.ld a (@ hl))
-         (.ld e a)
-         (.inc hl)
-         (.ld a (@ hl))
-         (.ld l e) 
-         (.ld h a) 
-
-         ;; Эмуляция CALL через PUSH адрес_возврата + JP
-         (.ld de ',ret-lab) 
-         (.push de)          
-         (.jump hl)            
-         (.label ,ret-lab :scope 'local)))))
+        ,@arg-setup  ;; Вставляем (.ld hl 1) (.ld de 2) и т.д.
+        (zasm
+          (.ld ix ,obj)
+          (.ld l (+ix 0))
+          (.ld h (+ix 1))
+          (.ld a ,offset)
+          (.add-hl-a) 
+          (.ld a (@ hl)) 
+          (.ld e a)
+          (.inc hl)
+          (.ld a (@ hl)) 
+          (.ld d a)
+          (.ld hl ',lab-exit) 
+          (.push hl)          
+          (.ex-de-hl)
+          (.jump hl)           
+          (.label ,lab-exit)))))
 
 ;;; =====================================================================
 ;;; V-Table 
