@@ -140,6 +140,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
         {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
         {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
+        {"function-typespec", &Interpreter::eval_function_typespec, &args_with_varkeys},
+        {"tc", &Interpreter::eval_tc, &args_with_varkeys},
 
         // Предикаты типов
         {"none?", &Interpreter::eval_none_p, nullptr},
@@ -342,6 +344,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"offset-of", &Interpreter::eval_offset_of, nullptr},
         {"size-of", &Interpreter::eval_size_of, nullptr},
         {"~>", &Interpreter::eval_deref, nullptr},
+        {"current-function", &Interpreter::eval_current_function, nullptr},
 
         {"getf", &Interpreter::eval_getf, nullptr},
         {"assoc", &Interpreter::eval_assoc, nullptr},
@@ -1640,7 +1643,7 @@ double Interpreter::number_to_float(const Object &obj) {
     } else if (obj.is_integer()) {
         return static_cast<double>(obj.as_integer());
     } else {
-        throw_eval_error(obj, "object cannot be converted to float");
+        throw_eval_error(obj, fmt::format("object '{}' cannot be converted to float", obj.print()));
     }
     return 0;
 }
@@ -2289,6 +2292,10 @@ fmt::terminal_color string_to_color(const std::string &name) {
     return (it != colors.end()) ? it->second : fmt::terminal_color::white;
 }
 
+// ============================================================
+// Errors from script and error handling
+// ============================================================
+
 /**
  * (error <message-string> [object])
  * Сигнализирует об ошибке. Если передан второй аргумент,
@@ -2314,6 +2321,36 @@ Object Interpreter::eval_error(const Object &form, Arguments &args,
     throw_eval_error(context_form, message);
 
     return Object::make_null(); // Сюда мы никогда не дойдем
+}
+
+Object Interpreter::eval_with_error_handler_special(const Object &form, const Object &rest,
+                                                    const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Проверка структуры (with-error-handler handler-fn . body)
+    if (!rest.is_pair())
+        throw_eval_error(form, "with-error-handler requires a handler function and body");
+
+    Object handler_code = rest.as_pair()->car;
+    Object body = rest.as_pair()->cdr;
+
+    // 2. Вычисляем сам обработчик (лямбду) в текущем окружении
+    Object handler_fn = eval(handler_code, env);
+
+    // Проверка, что это действительно то, что можно вызвать
+    if (!handler_fn.is_lambda()) { // или иная проверка на callable
+        throw_eval_error(handler_code, "error-handler must be a lambda");
+    }
+
+    // 3. Создаем новое окружение (аналог rlet)
+    auto new_env = std::make_shared<EnvironmentObject>(env);
+    new_env->name = "error-handler-scope";
+    new_env->parent_env = env;
+
+    // ВАЖНО: Устанавливаем ловушку именно в это НОВОЕ окружение
+    new_env->error_handler = handler_fn;
+
+    // 4. Выполняем тело внутри этого окружения
+    // Если внутри случится Exception, eval_with_rewind найдет new_env->error_handler
+    return eval_list_return_last(body, body, new_env);
 }
 
 // ============================================================
@@ -6290,7 +6327,11 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
             // --- ДОБАВЛЯЕМ РАСЧЕТ РАЗМЕРА ---
             auto type_ptr = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
             if (type_ptr) {
-                alias->bit_size = type_ptr->get_size_in_memory() * 8;
+                if (type_ptr->get_name() == "_type_") {
+                    alias->bit_size = TypeConfig::pointer_size * 8;
+                } else {
+                    alias->bit_size = type_ptr->get_size_in_memory() * 8;
+                }
             } else {
                 // Если тип не найден, можно либо кинуть ошибку,
                 // либо поставить 0 (но тогда ассемблер упадет позже)
@@ -6610,7 +6651,7 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
         throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
     }
     settings.is_set = true;
-
+    bool autodefine = false;
     // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
     for_each_in_list(rest, [&](const Object &o) {
         if (!o.is_pair()) {
@@ -6843,33 +6884,102 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     return sym_obj; // Обычно возвращают имя функции
 }
 
-Object Interpreter::eval_with_error_handler_special(const Object &form, const Object &rest,
-                                                    const std::shared_ptr<EnvironmentObject> &env) {
-    // 1. Проверка структуры (with-error-handler handler-fn . body)
-    if (!rest.is_pair())
-        throw_eval_error(form, "with-error-handler requires a handler function and body");
+Object Interpreter::eval_function_typespec(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args,
+                 {
+                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
+                 },
+                 {});
 
-    Object handler_code = rest.as_pair()->car;
-    Object body = rest.as_pair()->cdr;
+    Object implementation = args.unnamed[0];
+    auto   lambda_ptr = implementation.as_heap_obj<LambdaObject>();
 
-    // 2. Вычисляем сам обработчик (лямбду) в текущем окружении
-    Object handler_fn = eval(handler_code, env);
-
-    // Проверка, что это действительно то, что можно вызвать
-    if (!handler_fn.is_lambda()) { // или иная проверка на callable
-        throw_eval_error(handler_code, "error-handler must be a lambda");
+    // 2. Проверка наличия декларации типов внутри лямбды
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
+    // делать.
+    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
+        throw_eval_error(
+            form,
+            fmt::format("function-typespec '{}' expects a declared typespec in the lambda object",
+                        implementation.print()));
     }
 
-    // 3. Создаем новое окружение (аналог rlet)
-    auto new_env = std::make_shared<EnvironmentObject>(env);
-    new_env->name = "error-handler-scope";
-    new_env->parent_env = env;
+    return lambda_ptr->declarations.typespec; // Обычно возвращают имя функции
+}
 
-    // ВАЖНО: Устанавливаем ловушку именно в это НОВОЕ окружение
-    new_env->error_handler = handler_fn;
+Object Interpreter::eval_current_function(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
 
-    // 4. Выполняем тело внутри этого окружения
-    // Если внутри случится Exception, eval_with_rewind найдет new_env->error_handler
-    return eval_list_return_last(body, body, new_env);
+    auto                               desc = args.unnamed[0].as_symbol();
+    std::shared_ptr<EnvironmentObject> func_env;
+    if (desc == "function") {
+        // Find any function
+        func_env = env->get_function_env();
+        if (!func_env.get()) {
+            throw_eval_error(form, "Environment does not have a function");
+        }
+    } else if (desc == "asm") {
+        // Find any function
+        func_env = env->get_asm_function_env();
+        if (!func_env.get()) {
+            throw_eval_error(form, "Environment does not have any asm-function");
+        }
+    }
+    if (func_env->owner_lambda.is_none())
+        throw_eval_error(form, "Environment does not have owner function");
+
+    return func_env->owner_lambda;
+}
+
+Object Interpreter::eval_tc(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args,
+                 {
+                     {ObjectType::SYMBOL},
+                     {ObjectType::HEAP_OBJECT}, // 0: Имя функции (символ)
+                     {ObjectType::HEAP_OBJECT}, // 1: Тело функции (лямбда)
+
+                 },
+                 {});
+
+    auto doprint = is_true(args.unnamed[0]);
+    auto func1_obj = args.unnamed[1];
+    auto func1_ptr = func1_obj.as_heap_obj<TypeSpec>();
+    auto func2_obj = args.unnamed[2];
+    auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
+
+    // 2. Проверка наличия декларации типов внутри лямбды
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
+    // делать.
+    if (!func1_ptr) {
+        throw_eval_error(form, fmt::format("tc arg[1] is less-specific expects a ",
+                                           "typespec, got {}", func1_obj.print()));
+    }
+    if (!func2_ptr) {
+        throw_eval_error(form, fmt::format("tc arg[2] is less-specific expects a ",
+                                           "typespec, got {}", func2_obj.print()));
+    }
+
+    // 4. Проверка сигнатуры через существующую таблицу типов символов
+    auto t1 = func1_ptr.get();
+    auto t2 = func2_ptr.get();
+    // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
+    if (!TypeSystem::instance().tc(*t1, *t2)) {
+        if (doprint) {
+            throw_eval_error(form, fmt::format("WARNING: Signature mismatch, expected {}, got {}\n",
+                                               t1->print(), t2->print()));
+        }
+
+        return get_false(); // Обычно возвращают имя функции
+    }
+    return get_true(); // Обычно возвращают имя функци
 }
 } // namespace script

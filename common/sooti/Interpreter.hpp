@@ -576,6 +576,12 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_typespec(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_current_function(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_tc(const Object &form, Arguments &args,
+                   const std::shared_ptr<EnvironmentObject> &env);
 
     bool     init_types(const std::string &variant);
     TypeSpec parse_typespec_internal(const Object &obj);
