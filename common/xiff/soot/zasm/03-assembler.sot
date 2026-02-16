@@ -2,7 +2,7 @@
 ;;; Core Assembly
 ;;; =====================================================================
 
-(defun emit (data &key (listing "") (prefix "  ")) 
+(defun emit (data &key (listing "") (prefix "    ")) 
   "Принимает байт или список байтов. Если передан :listing, сохраняет строку в листинг."
   (let ((seg *current-segment*)
         (bytes (if (list? data) data (list data))))
@@ -52,6 +52,10 @@
       (emit '() :listing (fmt #f ";; {}" text) :prefix "")))
   (emit '() :listing ";; " :prefix ""))
 
+(defun emit-comment (text) 
+  (emit '() :listing (fmt #f ";; {}" text) :prefix ""))
+
+
 (defun is-alias? (obj)
   "Проверяет, является ли объект псевдонимом регистра/памяти."
   ;; Если у тебя есть примитив native-ref?, используй его.
@@ -68,15 +72,11 @@
           (addr (if (null? address) (segment-ilc seg) address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg name :address addr :scope scope)
-     (emit '() :listing (fmt #f "[{}]" name) :prefix "")))
+     (emit '() :listing (fmt #f "[{}]" (unquote-sym name)) :prefix "")))
 
 (defmacro .label (name &key (address null) (scope 'private))
   "Статическая регистрация метки"
-  `(let* ((seg *current-segment*)
-          (addr (if (null? ,address) (segment-ilc seg) ,address)))
-     ;; Снова ставим кавычку перед name, чтобы (.label start) работало
-     (segment-label-set! seg ',name :address addr :scope ',scope)
-     (emit '() :listing (fmt #f "[{}]" ',name) :prefix "")))
+  `(label ',name :address ,address :scope ,scope))
 
 (defun address-of (label)
   "Функция для использования внутри Lisp-выражений в zasm"
@@ -145,15 +145,27 @@
       (emit #xC9 :listing "RET")
       ;; Условный RET: #xC0 + (code << 3)
       (let ((op (+ #xC0 (ash (con-code cc) 3))))
-        (emit op :listing (fmt #f "RET {}" cc)))))
+        (emit op :listing (fmt #f "RET {}" (upcase cc))))))
 
   ;; RST n: коды от #xC7 до #xFF с шагом 8
 (defun .rst (val)
   (emit (+ #xC7 val) :listing (fmt #f "RST {:02X}h" val)))
 
 ;;; =====================================================================
-;;; Math & Logic Family (Z80 Complete Set)
+;;; Normalize mnemonics for listing
 ;;; =====================================================================
+
+(defun upcase-string (name)
+  "Remove . and make upcase for string"
+  (if (eq? (string-ref name 0) #\.)
+    (string-to-upper (string-substr name 1 -1))
+    (string-to-upper name)))
+
+(defun upcase (name)
+  "Remove . and make upcase for string or symbol"
+  (if (symbol? name)
+    (upcase-string (symbol->string name))
+    (upcase-string name)))
 
 ;;; =====================================================================
 ;;; Math & Logic Family (Z80 Complete Set - Fixed Definition)
@@ -191,15 +203,15 @@
     (let ((name (car spec)) (base-reg (cadr spec)) (base-imm (caddr spec)))
       ;; .op r
       (register-handler name "8-reg"
-        (lambda (r) (emit (+ base-reg (reg-code r)) :listing (fmt #f "{} A, {}" name r))))
+        (lambda (r) (emit (+ base-reg (reg-code r)) :listing (fmt #f "{} A, {}" (upcase name) (upcase r)))))
       ;; .op n
       (register-handler name "number"
-        (lambda (n) (emit (list base-imm (logand n #xFF)) :listing (fmt #f "{} A, ${:02X}" name n))))
+        (lambda (n) (emit (list base-imm (logand n #xFF)) :listing (fmt #f "{} A, ${:02X}" (upcase name) n))))
       ;; .op a, r
       (register-handler name "8-reg-8-reg"
         (lambda (d s) 
           (if (eq? d 'a)
-              (emit (+ base-reg (reg-code s)) :listing (fmt #f "{} A, {}" name s))
+              (emit (+ base-reg (reg-code s)) :listing (fmt #f "{} A, {}" (upcase name) (upcase s)))
               (asm-error (fmt #f "{} destination must be A" name))))))))
 
 ;; 3. Инкремент и Декремент
@@ -210,9 +222,9 @@
   (lambda (spec)
     (let ((name (car spec)) (base8 (cadr spec)) (base16 (caddr spec)))
       (register-handler name "8-reg"
-        (lambda (r) (emit (+ base8 (ash (reg-code r) 3)) :listing (fmt #f "{} {}" name r))))
+        (lambda (r) (emit (+ base8 (ash (reg-code r) 3)) :listing (fmt #f "{} {}" (upcase name) (upcase r)))))
       (register-handler name "16-reg"
-        (lambda (r) (emit (+ base16 (ash (reg-code r) 4)) :listing (fmt #f "{} {}" name r)))))))
+        (lambda (r) (emit (+ base16 (ash (reg-code r) 4)) :listing (fmt #f "{} {}" (upcase name) (upcase r))))))))
 
 ;; 4. 16-битная арифметика с HL
 (define-instruction .adc)
@@ -221,7 +233,7 @@
 (register-handler '.add "16-reg-16-reg"
   (lambda (d s)
     (if (eq? d 'hl)
-        (emit (+ #x09 (ash (reg-code s) 4)) :listing (fmt #f "ADD HL, {}" s))
+        (emit (+ #x09 (ash (reg-code s) 4)) :listing (fmt #f "ADD HL, {}" (upcase s)))
         (asm-error "16-bit ADD only supports HL as destination"))))
 
 (for-each '((.adc #x4A) (.sbc #x42))
@@ -230,7 +242,7 @@
       (register-handler name "16-reg-16-reg"
         (lambda (d s)
           (if (eq? d 'hl)
-              (emit (list #xED (+ base (ash (reg-code s) 4))) :listing (fmt #f "{} HL, {}" name s))
+              (emit (list #xED (+ base (ash (reg-code s) 4))) :listing (fmt #f "{} HL, {}" (upcase name) (upcase s)))
               (asm-error "16-bit ADC/SBC only works with HL destination")))))))
 
 ;;; =====================================================================
@@ -243,7 +255,7 @@
   (lambda (pair)
     (let ((name (car pair)) (base (cadr pair)))
       (register-handler name "8-reg"
-        (lambda (r) (emit (list #xCB (+ base (reg-code r))) :listing (fmt #f "{} {}" name r))))
+        (lambda (r) (emit (list #xCB (+ base (reg-code r))) :listing (fmt #f "{} {}" (upcase name) (upcase r)))))
       (define-instruction name))))
 
 ;; Быстрые сдвиги аккумулятора (без префикса CB)
@@ -256,7 +268,7 @@
 
 (for-each '(a b c d e h l) (lambda (r)
   (register-handler '.ld "8-reg-8-reg"
-    (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s)))))))
+    (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s) :listing (fmt #f "LD {} {}" (upcase d) (upcase s))))))))
 
 ;;; =====================================================================
 ;;; LD
@@ -285,7 +297,7 @@
       (else
        (let ((op (+ #x01 (ash (reg-code d) 4))))
          (emit (list op (lower-byte s) (higher-byte s))
-               :listing (fmt #f "LD {}, ${:04X}" d s)))))))
+               :listing (fmt #f "LD {}, ${:04X}" (upcase d) s)))))))
 
 (register-handler '.ld "16-reg-ix-indexed"
   (lambda (d s) 
@@ -300,7 +312,7 @@
       ;; Опкод: #x40 + (r << 3) + 6
       (let ((opcode (+ #x40 (ash r-code 3) 6)))
         (emit (list #xDD opcode off)
-              :listing (fmt #f "LD {}, (IX+{})" reg off))))))
+              :listing (fmt #f "LD {}, (IX+{})" (upcase reg) off))))))
 
 ;; LD (IX+d), R -> DD 70+reg d
 (register-handler '.ld '(ix-indexed 8-reg)
@@ -389,7 +401,6 @@
 ;;; Переходы
 ;;; =====================================================================
 
-
 ;; Для JR
 (register-handler '.jr '(number)
   (lambda (target-addr)
@@ -406,10 +417,7 @@
            ;; Внимание: в Z80 для JR доступны только NZ, Z, NC, C
            (op (+ #x20 (ash (con-code cc) 3))))
       (emit (list op (logand offset #xFF))
-            :listing (fmt #f "JR {}, {:+d}" cc offset)))))
-
-(define-instruction .jr)
-(define-instruction .call)
+            :listing (fmt #f "JR {}, {:+d}" (upcase cc) offset)))))
 
 ;; Без условия: JP nn (тип сигнатуры: (number))
 (register-handler '.jp '(number)
@@ -422,7 +430,7 @@
   (lambda (cc addr)
     (let ((op (+ #xC2 (ash (con-code cc) 3))))
       (emit (list op (lower-byte addr) (higher-byte addr))
-            :listing (fmt #f "JP {}, ${:04X}" cc addr)))))
+            :listing (fmt #f "JP {}, ${:04X}" (upcase cc) addr)))))
 
 (register-handler '.jp "16-reg"
   (lambda (reg)
@@ -432,7 +440,6 @@
       ((eq? reg 'iy) (emit (list #xFD #xE9) :listing "JP (IY)"))
       (else (asm-error "Z80 can only JP to HL, IX, or IY")))))
       
-(define-instruction .jp)
 
 (defun .jump (target)
   (let* ((t-tok (parse-arg target))
@@ -450,15 +457,13 @@
              (emit (list #xC3 (lower-byte target-addr) (higher-byte target-addr))
                    :listing (fmt #f "JP ${:04X}" target-addr))))))))
 
-;;; =====================================================================
-;;; Calls
-;;; =====================================================================
-
 (register-handler '.call 'number
   (lambda (addr)
     (emit (list #xCD (lower-byte addr) (higher-byte addr))
           :listing (fmt #f "CALL ${:04X}" addr))))
 
+(define-instruction .jr)
+(define-instruction .jp)
 (define-instruction .call)
 
 ;;; =====================================================================

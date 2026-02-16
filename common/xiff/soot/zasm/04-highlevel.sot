@@ -276,6 +276,48 @@
               (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
                     :listing "EMPTY SLOT: JP panic"))))))))
 
+
+;;; =====================================================================
+;;; Driver switcher
+;;; =====================================================================  
+
+(defun .vtable-proxy (type-obj name-symbol)
+  ;; Генерируем имя: например, active_gfx_driver
+  (emit-space (fmt #f "Proxy VTable for {}" (-> type-obj :name)))
+  (label name-symbol :scope 'public)
+
+  ;; Проходим по всем слотам, которые определены в базовом типе
+  (emit-vtable-slots type-obj 
+    (lambda (method-full-name index)
+      (let ((slot-label (if method-full-name
+                            (intern (fmt #f "{}::{}" name-symbol (method-name-only method-full-name)))
+                            (intern (fmt #f "{}::empty_{}" name-symbol index)))))
+        
+        ;; Ставим метку слота, чтобы можно было обращаться к конкретному методу
+        (label slot-label)
+        
+        ;; Генерируем JP 0000. 
+        ;; Эти 3 байта будут заменяться при переключении драйвера.
+        (emit (list #xC3 #x00 #x00) 
+              :listing (if method-full-name 
+                           (fmt #f "PROXY for {}" (method-name-only method-full-name))
+                           "EMPTY PROXY SLOT"))))))
+
+(defmacro .switch-vtable (source-type proxy-label)
+  ;; source-type — это объект типа, proxy-label — это символ-метка в RAM
+  (let* ((source-vtable (intern (fmt #f "{}::vtable" (~> source-type :name))))
+         ;; Считаем размер прямо здесь, используя метаданные типа
+         (methods-count (~> source-type :methods-count))
+         (vtable-size (* methods-count 3)))
+    
+    (emit-comment (fmt #f "Switching proxy {} to {}" proxy-label (~> source-type :name)))
+    
+    ;; Генерируем чистый и понятный код
+    (.ld hl source-vtable)
+    (.ld de proxy-label)
+    (.ld bc vtable-size)
+    (.ldir)))
+
 ;;; =====================================================================
 ;;; Type Descriptors
 ;;; =====================================================================   
