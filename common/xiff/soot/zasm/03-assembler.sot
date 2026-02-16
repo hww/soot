@@ -78,6 +78,9 @@
   "Статическая регистрация метки"
   `(label ',name :address ,address :scope ,scope))
 
+(defun local (name) 
+  (string->symbol (fmt #f "loc-{}-{}" (method-label *current-method*) name)))
+
 (defun address-of (label)
   "Функция для использования внутри Lisp-выражений в zasm"
   (module-label-addr-get label))
@@ -513,6 +516,10 @@
         ((and (eq? d 'af) (eq? s 'af)) (emit #x08 :listing "EX AF, AF'"))
         (else (asm-error "Unsupported EX operands"))))
 
+(defun .ex-de-hl ()
+  "Обмен значениями регистров DE и HL (opcode #xEB)"
+  (emit #xEB))
+  
 (define-instruction .push)
 
 ;;; =====================================================================
@@ -726,6 +733,7 @@
             (lambda (msg err-form trace)
               ;; Добавляем "этаж" контекста
               (list *source-context* "ZASM Expansion error")) 
+            (set! *current-method* m)
             ((method-func m)))))))
       (fmt #t "Assembly of module '{}' finished.\n" name))))
 

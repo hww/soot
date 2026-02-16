@@ -189,7 +189,7 @@
 
 (defproc test-call-method ()
   (declare (once) (asm-func none))
-  (call-method #x100 vec3::len 1 2 3)
+  (call-method #x100 vec3::len)
   (.ret))
 
 (defproc test-new-call-method ()
