@@ -122,7 +122,6 @@
   (fmt #t "DEBUG test-vtable...\n")
   (.vtable vec3))
 
-
 (defproc test-vtable-proxy ()
   (declare (once) (asm-func none))
   (fmt #t "DEBUG test-vtable-proxy...\n")
@@ -159,10 +158,11 @@
     :z 16
     ))
 
-(defproc process-vector ((v pointer))
+(defproc process-vector ((v pointer hl))
   (declare (once) (asm-func none))
   (fmt #t "DEBUG process-vector...\n")
   (.ld ix hl)
+  (.ld ix v)
   (.ld a (+ix (-> vec3 y))) ;; Автоматически вычисляет смещение поля :y
   (.ld a (->ix vec3 y))  ;; Сгенерирует LD A, (IX+2)
   (.ld a (+ix 4))  ;; Сгенерирует LD A, (IX+2)
@@ -175,13 +175,14 @@
 
 (defproc test-call-method ()
   (declare (once) (asm-func none))
-  (call-method #x100 vec3::len)
+  (call-method #x100 vec3::len 1 2 3)
   (.ret))
 
 (defproc test-new-call-method ()
   (declare (once) (asm-func none))
   (call-method #x100 vec3::new 0 0)
   (.ret))
+
 
 ;;; ===================================================================== 
 ;;; Other Tests

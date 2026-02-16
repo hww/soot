@@ -37,11 +37,15 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
         if (auto struct_ptr = dynamic_cast<StructureType *>(type_ptr)) {
             Field field;
             if (struct_ptr->lookup_field(name, &field)) {
+                auto field_type_name = field.type().base_type();
                 auto next_step = std::make_shared<RegisterAlias>();
                 next_step->reg = this->reg;
                 next_step->type_name =
-                    Object::make_symbol(field.type().base_type()); // Переходим к типу поля
+                    Object::make_symbol(field_type_name); // Переходим к типу поля
                 next_step->offset = this->offset + field.offset();
+                // получить размер поля
+                auto bt = TypeSystem::instance().lookup_type(field_type_name);
+                next_step->bit_size = bt->get_size_in_memory() * 8;
                 return Object::make_heap_obj(next_step);
             }
         }
