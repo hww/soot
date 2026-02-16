@@ -228,3 +228,97 @@
     (error (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" 
       ',var ',predicate ,var (type-of ,var) *source-context*))))
 
+;;; =====================================================================
+;;; Contracts
+;;; =====================================================================
+
+(defun match-rule? (val rule)
+  (cond
+    ;; 1. Если правило — предикат (symbol?, number?, процедура)
+    ((procedure? rule) (rule val))
+    
+    ;; 2. Специальные типы Z80 (Ключевые слова)
+    ((eq? rule :u8)    (and (number? val) (between val 0 255)))
+    ((eq? rule :u16)   (and (number? val) (between val 0 65535)))
+    ((eq? rule :i8)    (and (number? val) (between val -128 127)))
+    ((eq? rule :i16)   (and (number? val) (between val -3276 32767)))
+    ((eq? rule :reg8)  (is-8bit-reg? val))
+    ((eq? rule :any)   #t)
+    
+    ;; 3. Логика OR: (or :u8 symbol?)
+    ((and (list? rule) (eq? (car rule) 'or))
+     (any (lambda (r) (match-rule? val r)) (cdr rule)))
+
+    ;; 4. Проверка списков (самое интересное)
+    ((list? rule)
+     (and (list? val) (match-list-pattern? val rule)))
+
+    ;; 5. Прямое совпадение (для конкретных символов или чисел)
+    (else (equal? val rule))))
+
+(defun match-list-pattern? (vals rules)
+  (cond
+    ;; Оба пусты — победа
+    ((and (null? vals) (null? rules)) #t)
+    
+    ;; Вариативность: ( ... ) в конце правила разрешает любой остаток
+    ((eq? (car rules) '...) #t)
+    
+    ;; Опциональность: (optional rule)
+    ((and (pair? (car rules)) (eq? (caar rules) 'optional))
+     (if (null? vals)
+         (match-list-pattern? vals (cdr rules)) ;; Пропускаем опциональный
+         (or (and (match-rule? (car vals) (cadar rules))
+                  (match-list-pattern? (cdr vals) (cdr rules)))
+             (match-list-pattern? vals (cdr rules)))))
+
+    ;; Если одно из двух закончилось раньше времени — провал
+    ((or (null? vals) (null? rules)) #f)
+
+    ;; Рекурсивная проверка головы и хвоста
+    (else (and (match-rule? (car vals) (car rules))
+               (match-list-pattern? (cdr vals) (cdr rules))))))
+
+;;; =====================================================================
+;;; ZASM CONTRACT SYSTEM (Documentation)
+;;; =====================================================================
+;;; (check-args (arg-name rule) ...)
+;;;
+;;; ПРАВИЛА (rules):
+;;; 1. Предикаты: symbol?, number?, procedure? (базовая проверка Лиспа).
+;;; 2. Z80 Типы: :u8, :u16, :reg8, :reg16 (проверка границ и имен регистров).
+;;; 3. Варианты: (or rule1 rule2 ...) — истинно, если подходит хотя бы одно.
+;;; 4. Списки: (rule1 rule2 ...) — жесткое совпадение структуры и типов.
+;;; 5. Опциональность: (optional rule) — элемент может отсутствовать в списке.
+;;; 6. Вариативность: ... — в конце списка правил, разрешает любой хвост.
+;;;
+;;; ПРИМЕР:
+;;; (check-args 
+;;;   (args (:reg8 (or :u8 symbol?) (optional :any))))
+;;;
+;;; Означает:
+;;; - args[0] должен быть 8-битным регистром.
+;;; - args[1] должен быть числом 0..255 ИЛИ символом (меткой).
+;;; - args[2] может быть чем угодно (флаг), а может отсутствовать.
+;;; =====================================================================
+
+(defmacro check-args (is-asm &rest clauses)
+  (let ((is-asm-val is-asm)) ; фиксируем значение флага
+    `(begin
+       ,@(map (lambda (clause)
+                (let ((var-name (car clause))
+                      (rule (cadr clause)))
+                  `(if (not (match-rule? ,var-name ',rule))
+                       (let ((message (fmt #f 
+"Contract violation!
+  Argument:  '{}'
+  Expected:  {}
+  Actual:    {} (type: {})"
+                                      ',var-name 
+                                      ',rule 
+                                      ,var-name
+                                      (type-of ,var-name))))
+                         (if ,is-asm-val 
+                             (asm-error message)
+                             (error message :ctx (get-context 4) ))))))
+              clauses)))) 

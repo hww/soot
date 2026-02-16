@@ -176,6 +176,13 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"string-contains?", &Interpreter::eval_string_containsp, nullptr},
         {"string-split", &Interpreter::eval_string_split, nullptr},
         {"string-join", &Interpreter::eval_string_join, nullptr},
+        {"string-to-lower", &Interpreter::eval_string_to_lower, nullptr},
+        {"string-to-upper", &Interpreter::eval_string_to_upper, nullptr},
+        {"string-titelize", &Interpreter::eval_string_titlize, nullptr},
+        {"string-trim", &Interpreter::eval_string_trim, nullptr},
+        {"string-rtrim", &Interpreter::eval_string_rtrim, nullptr},
+        {"string-ltrim", &Interpreter::eval_string_ltrim, nullptr},
+        {"string-trim-idents", &Interpreter::eval_string_trim_indents, nullptr},
 
         // Векторы
         {"vector", &Interpreter::eval_vector, nullptr},
@@ -743,8 +750,9 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
     }
     // 3. Создаем окружение для выполнения
     // ВАЖНО: lam->parent_env - это уже shared_ptr<EnvironmentObject>
-    auto lam_env_obj = EnvironmentObject::make_new("lambda-call", lam->parent_env);
+    auto lam_env_obj = EnvironmentObject::make_new("lambda-call", nullptr);
     auto lam_env = lam_env_obj.as_env_ptr();
+    lam_env->parent_env = lam->parent_env;
     lam_env->is_function = true;
     lam_env->owner_lambda = lambda;
     lam_env->ctx = form;
@@ -849,8 +857,14 @@ void Interpreter::print_form_info(const Object                             &form
 Object Interpreter::eval_with_rewind(const Object                             &obj,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     try {
-        return eval(obj, env);
+        m_dynamic_stack.push_back(env);
+        auto res = eval(obj, env);
+        m_dynamic_stack.pop_back();
+        return res;
     } catch (EvalException &e) {
+        if (!m_dynamic_stack.empty()) {
+            m_dynamic_stack.pop_back();
+        }
         if (e.env.get() == nullptr)
             e.env = env;
 
@@ -1085,8 +1099,7 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         Arguments args = get_args_with_spec(obj, rest, lam->args);
         eval_args(obj, &args, env);
 
-        auto lam_env_obj = EnvironmentObject::make_new();
-
+        auto lam_env_obj = EnvironmentObject::make_new("lambda-call", nullptr);
         auto lam_env = lam_env_obj.as_env_ptr();
         lam_env->ctx = obj;
         lam_env->is_function = true;
@@ -1371,28 +1384,39 @@ Object Interpreter::eval_let_common_special(const Object &form, const Object &re
     std::shared_ptr<EnvironmentObject> new_env = std::make_shared<EnvironmentObject>();
     new_env->ctx = form;
     new_env->parent_env = env;
+    m_dynamic_stack.push_back(new_env);
+    try {
+        while (!bindings_iter->is_null()) {
+            const auto *binding = &bindings_iter->as_pair()->car;
+            if (!binding->is_pair()) {
+                throw_eval_error(form, "let binding invalid");
+            }
+            const auto &name = binding->as_pair()->car;
+            if (!name.is_symbol()) {
+                throw_eval_error(form, "let binding invalid");
+            }
 
-    while (!bindings_iter->is_null()) {
-        const auto *binding = &bindings_iter->as_pair()->car;
-        if (!binding->is_pair()) {
-            throw_eval_error(form, "let binding invalid");
+            binding = &binding->as_pair()->cdr;
+            if (!binding->is_pair() || !binding->as_pair()->cdr.is_null()) {
+                throw_eval_error(form, "let binding invalid");
+            }
+
+            new_env->vars.set(name.as_symbol(),
+                              eval(binding->as_pair()->car, is_star ? new_env : env));
+
+            bindings_iter = &bindings_iter->as_pair()->cdr;
         }
-        const auto &name = binding->as_pair()->car;
-        if (!name.is_symbol()) {
-            throw_eval_error(form, "let binding invalid");
-        }
 
-        binding = &binding->as_pair()->cdr;
-        if (!binding->is_pair() || !binding->as_pair()->cdr.is_null()) {
-            throw_eval_error(form, "let binding invalid");
-        }
+        auto res = eval_list_return_last(form, *body_iter, new_env);
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
 
-        new_env->vars.set(name.as_symbol(), eval(binding->as_pair()->car, is_star ? new_env : env));
-
-        bindings_iter = &bindings_iter->as_pair()->cdr;
+        return res;
+    } catch (EvalException &e) {
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
+        throw;
     }
-
-    return eval_list_return_last(form, *body_iter, new_env);
 }
 
 Object Interpreter::eval_while_special(const Object &form, const Object &rest,
@@ -3090,7 +3114,7 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
     // СЛУЧАЙ Б: Это обычная Лямбда
     if (callable_obj.is_lambda()) {
         const auto &lam = callable_obj.as_lambda();
-        auto        lam_env = EnvironmentObject::make_new().as_env_ptr();
+        auto        lam_env = EnvironmentObject::make_new("apply").as_env_ptr();
         lam_env->ctx = form;
         lam_env->is_function = true;
         lam_env->owner_lambda = callable_obj;
@@ -3168,14 +3192,22 @@ Object Interpreter::eval_string_substr(const Object &form, Arguments &args,
                  {}); // Строка, начало, конец
 
     const std::string &str = args.unnamed[0].as_string()->data;
-    int64_t            start = args.unnamed[1].as_integer();
-    int64_t            end = args.unnamed[2].as_integer();
+    int64_t            arg_start = args.unnamed[1].as_integer();
+    int64_t            arg_end = args.unnamed[2].as_integer();
+    int64_t            start = arg_start;
+    int64_t            end = arg_end;
+    if (start < 0)
+        start = str.length() + start;
+    if (end < 0)
+        end = str.length() + end;
 
-    if (start < 0 || end > static_cast<int64_t>(str.length()) || start > end) {
-        throw_eval_error(form, "substring: invalid start or end index");
+    if (start < 0 || end < 0 || start > end || end > static_cast<int64_t>(str.length())) {
+        throw_eval_error(
+            form, fmt::format("substring: invalid start {} or end {} index for string \"{}\"",
+                              arg_start, arg_end, str));
     }
 
-    return Object::make_string(str.substr(start, end - start));
+    return Object::make_string(str.substr(arg_start, arg_end - arg_start));
 }
 
 Object Interpreter::eval_string_replace(const Object &form, Arguments &args,
@@ -3274,6 +3306,7 @@ Object Interpreter::eval_string_join(const Object &form, Arguments &args,
 
     return Object::make_string(result);
 }
+
 Object Interpreter::eval_string_to_symbol(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3289,6 +3322,56 @@ Object Interpreter::eval_symbol_to_string(const Object &form, Arguments &args,
         args.unnamed[0].as_symbol().name_ptr ? args.unnamed[0].as_symbol().name_ptr : "");
 }
 
+Object Interpreter::eval_string_to_upper(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::to_upper(args.unnamed[0].as_string()->data));
+}
+
+Object Interpreter::eval_string_to_lower(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::to_lower(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_string_titlize(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::titlize(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_string_rtrim(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::rtrim(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_string_ltrim(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::ltrim(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_string_trim(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::trim(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_string_trim_indents(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
+    vararg_check(form, args, {{ObjectType::STRING}}, {});
+    return Object::make_string(str_util::trim_newline_indents(args.unnamed[0].as_string()->data));
+}
 // ============================================================
 // Векторные функции с проверками
 // ============================================================
@@ -4325,17 +4408,10 @@ Object Interpreter::eval_get_context(const Object &form, Arguments &args,
     auto    current = env;
     int64_t count = 0;
 
-    // Шагаем вглубь стека
-    while (current != nullptr) {
-        // Если мы нашли нужный индекс
-        if (count == ctx_index) {
-            // Возвращаем форму, сохраненную в этом кадре
-            return current->ctx;
-        }
-
-        current = current->parent_env;
-        count++;
-    }
+    auto index = m_dynamic_stack.size() - 1 - ctx_index;
+    if (index >= 0)
+        // Возвращаем форму, сохраненную в этом кадре
+        return m_dynamic_stack[index]->ctx;
     // Если индекс за пределами глубины стека, возвращаем null (или можно кинуть ошибку)
     throw_eval_error(form, "Requested stack depth is to big");
     return Object::make_null();
@@ -6135,61 +6211,71 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
     new_env->name = env_name;
     new_env->is_reg_let = true;
     new_env->parent_env = env;
+    m_dynamic_stack.push_back(new_env);
+    try {
+        // Используем helper для обхода списка
+        for_each_in_list(bindings, [&](const Object &binding) {
+            if (!binding.is_pair())
+                throw_eval_error(binding, "Invalid rlet binding");
+            auto name_obj = binding.as_pair()->car;
+            auto rest_obj = binding.as_pair()->cdr;
 
-    // Используем helper для обхода списка
-    for_each_in_list(bindings, [&](const Object &binding) {
-        if (!binding.is_pair())
-            throw_eval_error(binding, "Invalid rlet binding");
-        auto name_obj = binding.as_pair()->car;
-        auto rest_obj = binding.as_pair()->cdr;
+            if (!name_obj.is_symbol())
+                throw_eval_error(
+                    form, fmt::format("Binding name must be a symbol `{}`", name_obj.print()));
+            if (!rest_obj.is_pair())
+                throw_eval_error(form,
+                                 fmt::format("Binding name must be a pair `{}`", rest_obj.print()));
+            // Создаем shared_ptr на RegisterAlias
+            auto alias = std::make_shared<RegisterAlias>();
+            alias->name = name_obj;
+            alias->type_name = rest_obj.as_pair()->car;
+            Object current = rest_obj.as_pair()->cdr;
 
-        if (!name_obj.is_symbol())
-            throw_eval_error(form,
-                             fmt::format("Binding name must be a symbol `{}`", name_obj.print()));
-        if (!rest_obj.is_pair())
-            throw_eval_error(form,
-                             fmt::format("Binding name must be a pair `{}`", rest_obj.print()));
-        // Создаем shared_ptr на RegisterAlias
-        auto alias = std::make_shared<RegisterAlias>();
-        alias->name = name_obj;
-        alias->type_name = rest_obj.as_pair()->car;
-        Object current = rest_obj.as_pair()->cdr;
+            while (current.is_pair()) {
+                Object key = current.as_pair()->car;
+                current = current.as_pair()->cdr;
 
-        while (current.is_pair()) {
-            Object key = current.as_pair()->car;
-            current = current.as_pair()->cdr;
+                if (!current.is_pair())
+                    throw_eval_error(key, "Missing value for keyword");
+                Object val = current.as_pair()->car;
+                current = current.as_pair()->cdr;
 
-            if (!current.is_pair())
-                throw_eval_error(key, "Missing value for keyword");
-            Object val = current.as_pair()->car;
-            current = current.as_pair()->cdr;
-
-            if (key.is_symbol()) {
-                std::string k = key.print();
-                if (k == ":reg") {
-                    alias->reg = val;
-                } else if (k == ":offset") {
-                    alias->offset = (int)val.as_integer();
-                } else {
-                    throw_eval_error(binding, "Expected :type, :reg, :offset, :source, but got " +
-                                                  val.print());
+                if (key.is_symbol()) {
+                    std::string k = key.print();
+                    if (k == ":reg") {
+                        alias->reg = val;
+                    } else if (k == ":offset") {
+                        alias->offset = (int)val.as_integer();
+                    } else {
+                        throw_eval_error(binding,
+                                         "Expected :type, :reg, :offset, :source, but got " +
+                                             val.print());
+                    }
                 }
             }
-        }
 
-        // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
-        // new_env->set_at(name_sym, Object::make_native_ref(alias));
+            // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
+            // new_env->set_at(name_sym, Object::make_native_ref(alias));
 
-        // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
-        auto name_sym = name_obj.as_symbol();
-        new_env->vars.set(name_sym, Object::make_heap_obj(alias));
-    });
-    // Регистрируем окружение в родительском
-    if (!env_name.empty())
-        env->vars.set(Object::intern(env_name.c_str()),
-                      Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
+            // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
+            auto name_sym = name_obj.as_symbol();
+            new_env->vars.set(name_sym, Object::make_heap_obj(alias));
+        });
+        // Регистрируем окружение в родительском
+        if (!env_name.empty())
+            env->vars.set(Object::intern(env_name.c_str()),
+                          Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
 
-    return eval_list_return_last(body, body, new_env);
+        auto res = eval_list_return_last(body, body, new_env);
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
+        return res;
+    } catch (EvalException &e) {
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
+        throw;
+    }
 }
 
 Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,

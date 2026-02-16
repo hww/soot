@@ -313,7 +313,20 @@ class Interpreter {
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_symbol_to_string(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
-
+    Object eval_string_to_upper(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_to_lower(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_titlize(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_trim_indents(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_trim(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_rtrim(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_string_ltrim(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
     // Векторы
     Object eval_vector(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -645,18 +658,19 @@ class Interpreter {
     InternedPtrMap<Object>                                   m_global_constants;
 
     // Состояние
-    Object      m_sym_true;
-    Object      m_sym_false;
-    Object      m_sym_continue_error;
-    const char *m_symbol_true;
-    const char *m_symbol_false;
-    Object      m_obj_null;
-    Object      m_obj_none;
-    int         m_gensym_id = 0;
-    Object      m_global_environment;
-    bool        m_disable_printing = false;
-    Reader      m_reader;
-    SymbolTable m_symbol_table;
+    Object                                          m_sym_true;
+    Object                                          m_sym_false;
+    Object                                          m_sym_continue_error;
+    const char                                     *m_symbol_true;
+    const char                                     *m_symbol_false;
+    Object                                          m_obj_null;
+    Object                                          m_obj_none;
+    int                                             m_gensym_id = 0;
+    Object                                          m_global_environment;
+    bool                                            m_disable_printing = false;
+    Reader                                          m_reader;
+    SymbolTable                                     m_symbol_table;
+    std::vector<std::shared_ptr<EnvironmentObject>> m_dynamic_stack;
 };
 
 fmt::terminal_color string_to_color(const std::string &name);

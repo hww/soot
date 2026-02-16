@@ -122,6 +122,18 @@
   (fmt #t "DEBUG test-vtable...\n")
   (.vtable vec3))
 
+
+(defproc test-vtable-proxy ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG test-vtable-proxy...\n")
+  (.vtable-proxy vec3 'vec3-active ))
+
+(defproc test-vtable-proxy-switch ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG test-vtable-proxy-switch...\n")
+  (.switch-vtable vec3 'vec3-active ))
+
+
 ;;; ===================================================================== 
 ;;; Type Descriptor
 ;;; ===================================================================== 
