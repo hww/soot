@@ -136,14 +136,7 @@
 ;;; Глобальное состояние 
 ;;; =====================================================================
 
-(defstruct method 
-  "Регистрируем фкнецию или метод в базе методов для многопроходной компиляции" 
-  (name null)       ;; len, or size or other name
-  (type null)       ;; vector3 or other type
-  (label null)      ;; full name vector3::len
-  (func null)       ;; assigned lambda
-  (static #f)       ;; static or object
-  (scope 'private)) ;; private or public
+
 
 (defvar *modules* (make-hash-table) 
   "Глобальный реестр всех загруженных модулей.")
@@ -153,7 +146,6 @@
 (defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
 (defvar *current-pass* 1 "Глобальный флаг прохода")  
 (defvar *source-context* null "Контекст ассемблера")
-(defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
 
 (defun get-pass-signature () (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
 
@@ -161,6 +153,22 @@
   `(if (eq? *current-pass* 1)
        ,p1
        ,p2))
+
+;;; =====================================================================
+;;; Functions Queue
+;;; =====================================================================
+
+(defstruct method 
+  "Регистрируем фкнецию или метод в базе методов для многопроходной компиляции" 
+  (label null)  ;; Полное имя метки (для JMP/CALL)
+  (func  null)  ;; Лямбда с кодом (внутри которой zasm)
+  (name  null)) ;; Короткое имя для логов/ошибок
+
+(defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
+
+(defun add-function (name label fun)
+        (push! (make-method :func fun :name name :label label) 
+               *methods-to-assemble*))
 
 ;;; =====================================================================
 ;;; Module Macros
