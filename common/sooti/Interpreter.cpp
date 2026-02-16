@@ -6230,6 +6230,17 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
             auto alias = std::make_shared<RegisterAlias>();
             alias->name = name_obj;
             alias->type_name = rest_obj.as_pair()->car;
+
+            // --- ДОБАВЛЯЕМ РАСЧЕТ РАЗМЕРА ---
+            auto type_ptr = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
+            if (type_ptr) {
+                alias->bit_size = type_ptr->get_size_in_memory() * 8;
+            } else {
+                // Если тип не найден, можно либо кинуть ошибку,
+                // либо поставить 0 (но тогда ассемблер упадет позже)
+                alias->bit_size = 0;
+            }
+
             Object current = rest_obj.as_pair()->cdr;
 
             while (current.is_pair()) {
@@ -6280,25 +6291,36 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
 Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
-    // 1. Проверяем аргументы: (rlet-ref symbol prop-name)
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::HEAP_OBJECT, ObjectType::SYMBOL}},
                  {{"reg", {false, {ObjectType::SYMBOL}}}});
 
-    // 2. Ищем контекст в иерархии окружений
     auto alias = std::make_shared<RegisterAlias>();
     alias->name = args.unnamed[0];
+
+    // 1. Определяем имя типа
     auto second = args.unnamed[1];
     if (second.is_symbol())
         alias->type_name = second;
     else if (second.is_native_ref<Type>())
-        alias->type_name = Object::make_symbol(second.as_heap_obj<Type>()->type_name());
-    else
-        throw_type_mismatch(form, args, 1, {"type", "symbol"}, second.type);
+        alias->type_name =
+            Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
 
+    // 2. Привязываем регистр
     if (args.has_named("reg"))
         alias->reg = args.named["reg"];
 
-    // Если символ не найден в таблице алиасов
+    // 3. ИНИЦИАЛИЗАЦИЯ ПАРАМЕТРОВ
+    auto type = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
+    if (type) {
+        alias->offset = 0;     // Всегда 0 для корня!
+        alias->bit_offset = 0; // Всегда 0 для корня!
+        alias->bit_size = type->get_size_in_memory() * 8;
+    } else {
+        // Фоллбек, если тип не найден (например, для простых символов)
+        alias->offset = 0;
+        alias->bit_size = 0;
+    }
+
     return Object::make_heap_obj(alias);
 }
 

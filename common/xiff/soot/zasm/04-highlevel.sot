@@ -89,25 +89,27 @@
     (else (get-keyword key (cdr lst)))))
 
 (defmacro defproc (name args &rest body)
-  (let ((label-name name)
-        (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args))
-        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+  (let* ((label-name name)
+         ;; Собираем аргументы для rlet: (имя тип регистр) -> (имя тип :reg регистр)
+         (reg-args (filter (lambda (x) (and (list? x) (= (length x) 3))) args))
+         (rlet-args (map (lambda (x) 
+                           `(,(car x) ,(cadr x) :reg ,(caddr x))) 
+                         reg-args))
+         ;; Для системы типов SOOT (C++ уровень)
+         (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args)))
     
     `(let ((impl (lambda ()
-                   ;; 1. Системная декларация SOOT (C++ уровень)
-                   ;; Она ВСЕГДА должна быть первым выражением в лямбде
-                   (declare-extern ,label-name (function ,arg-types none)) 
-                   
-                   (rlet ,rlet-bindings 
-                        ;; 2. Ассемблерный контекст
-                        (zasm 
-                          (emit-space (fmt #f "function {}" ',label-name))
-                          (.label ,label-name :scope 'public)
-                          ;; Если в @body есть ассемблерный (declare ...), 
-                          ;; нам нужно, чтобы zasm его зацитировал или переименовал
-                          ,@body)
-                        (.ret)))))
+                   ;; Системная декларация для SOOT
+                   (declare-extern ,label-name (function ,arg-types none))
+                   ;; Настройка псевдонимов регистров
+                   (rlet asm-regs ,rlet-args
+                     (zasm 
+                       (emit-space (fmt #f "function {}" ',label-name))
+                       (.label ,label-name :scope 'public)
+                       ,@body
+                       (.ret))))))
        
+       ;; РЕГИСТРАЦИЯ: чтобы ассемблер прошел по этой функции
        (push! (make-method
                 :static #t
                 :func impl 
@@ -117,6 +119,7 @@
                 :scope 'public)
               *methods-to-assemble*)
        
+       ;; Экспорт в окружение Липа
        (define ,name impl))))
 
 (defmacro call-proc (name &rest args)
@@ -199,13 +202,15 @@
          (offset (* 3 m-id)))
     ;; Оборачиваем в begin, чтобы zasm понял, что это группа команд
     `(begin
-       (.ld ix 1)
        (.ld ix ,obj)
        (.ld l (+ix 0))
        (.ld h (+ix 1))
        (.ld de ,offset)
        (.add hl de)
+       (.ld de 'exit)
+       (.push de)
        (.jp hl)
+       (.label exit)
        )
        ))
 
