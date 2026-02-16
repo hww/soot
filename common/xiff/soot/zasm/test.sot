@@ -46,11 +46,10 @@
 ;;; Type System Methods
 ;;; ===================================================================== 
 
-(defmethod new object (a b c)
-  (rlet ((a symbol) (b type) (c int))
+(defmethod new object ((a symbol) (b type) (c int))
     (declare (once) (asm-func _type_))
     (fmt #t "DEBUG new object..\n")
-  ))
+  )
 
 (defmethod delete ((this object))
   (declare (once) (asm-func none))
@@ -105,7 +104,7 @@
       (.ld (-> self z) 0)
       (.ret))))
 
-(defmethod len ((this vec3) (x uint8))
+(defmethod len ((this vec3))
   (declare (once) (asm-func int16))
   (fmt #t "DECLARATIONS vec3::len {}" (declarations))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.

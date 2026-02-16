@@ -88,13 +88,12 @@
     ((eq? key (car lst)) (cadr lst))
     (else (get-keyword key (cdr lst)))))
 
+
 (defmacro defproc (name args &rest body)
   (let* ((label-name name)
          ;; Собираем аргументы для rlet: (имя тип регистр) -> (имя тип :reg регистр)
          (reg-args (filter (lambda (x) (and (list? x) (= (length x) 3))) args))
-         (rlet-args (map (lambda (x) 
-                           `(,(car x) ,(cadr x) :reg ,(caddr x))) 
-                         reg-args))
+         (rlet-args (map (lambda (x) `(,(car x) ,(cadr x) :reg ,(caddr x))) reg-args))
          ;; Для системы типов SOOT (C++ уровень)
          (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args)))
     
@@ -132,27 +131,29 @@
 (defmacro defmethod-instance (name args &rest body)
   (let* ((this-spec (car args))      ;; (self :vec3)
          (this-type (cadr this-spec))
-         (label-sym (intern (fmt #f "{}::{}" this-type name))))
-    `(let ((impl (lambda () 
-                   (rlet asm-regs ((,(car this-spec) ,this-type :reg ix))
+         (label-sym (intern (fmt #f "{}::{}" this-type name)))
+         )
+    `(let ((impl (lambda ()
+                   (rlet asm-regs ,args;((,(car this-spec) ,this-type :reg ix))
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
                      (zasm ,@body)
                      (.ret)
                      (define-method ',this-type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
-        (define ,label-sym impl)
+       (define ,label-sym impl)
         ;; Сохраняем в реестр вместо немедленной регистрации
         (add-function  ',name ',label-sym impl)
         )))
 
 (defmacro defmethod-static (name type args &rest body)
-  (let ((label-sym (intern (fmt #f "{}::{}" type name)))
+  (let* ((label-sym (intern (fmt #f "{}::{}" type name)))
         ;; Извлекаем только списки (arg :reg ... :type ...)
-        (rlet-bindings (filter (lambda (x) (list? x)) args)))
+        (rlet-bindings (filter (lambda (x) (list? x)) args))
+        )
     `(let ((impl (lambda () 
                    ;; Убрали ` перед rlet! Теперь это код, а не данные.
-                   (rlet asm-regs ,rlet-bindings  
+                   (rlet asm-regs ,args ;,rlet-bindings  
                       (zasm 
                       (emit-space (fmt #f "static-method {}" ',label-sym))
                       (.label ,label-sym :scope 'public)

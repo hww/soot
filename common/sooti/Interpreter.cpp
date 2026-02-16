@@ -6340,6 +6340,15 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
             Object current = rest_obj.as_pair()->cdr;
 
+            // ПРОВЕРКА: Если следующий элемент НЕ ключевое слово, считаем его регистром
+            if (current.is_pair()) {
+                Object next = current.as_pair()->car;
+                if (!next.is_keyword()) {
+                    alias->reg = next;
+                    current = current.as_pair()->cdr; // Потребляем этот элемент
+                }
+            }
+
             while (current.is_pair()) {
                 Object key = current.as_pair()->car;
                 current = current.as_pair()->cdr;
