@@ -245,6 +245,7 @@
               (emit (list #xED (+ base (ash (reg-code s) 4))) :listing (fmt #f "{} HL, {}" (upcase name) (upcase s)))
               (asm-error "16-bit ADC/SBC only works with HL destination")))))))
 
+
 ;;; =====================================================================
 ;;; Сдвиги (Bit Rotation & Shifts)
 ;;; =====================================================================
@@ -268,7 +269,7 @@
 
 (for-each '(a b c d e h l) (lambda (r)
   (register-handler '.ld "8-reg-8-reg"
-    (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s) :listing (fmt #f "LD {} {}" (upcase d) (upcase s))))))))
+    (lambda (d s) (emit (logior #x40 (ash (reg-code d) 3) (reg-code s)) :listing (fmt #f "LD {} {}" (upcase d) (upcase s)))))))
 
 ;;; =====================================================================
 ;;; LD
@@ -397,6 +398,13 @@
 (define-instruction .sub)
 (define-instruction .xor)
 
+
+(defmacro .add-hl-a ()
+  '(zasm
+     (.ld c a)
+     (.ld b 0)
+     (.add hl bc)))
+
 ;;; =====================================================================
 ;;; Переходы
 ;;; =====================================================================
@@ -444,11 +452,20 @@
 (defun .jump (target)
   (let* ((t-tok (parse-arg target))
          (target-addr (asm-token-value t-tok))
+         (target-type (asm-token-type t-tok)) ;; Проверяем тип токена
          (current-ilc (segment-ilc *current-segment*)))
     (cond
+      ;; Случай 1: JP HL (или JP (HL) в зависимости от синтаксиса)
+      ((eq? target-addr 'hl)
+       (emit #xE9 :listing "JP (HL)"))
+
+      ;; Случай 2: Обычный переход по метке/адресу
       ((eq? *current-pass* 1)
-       (emit '(#xC3 #x00 #x00) :listing (fmt #f "JP ${:04X} (placeholder)" target-addr)))
+       (emit '(#xC3 #x00 #x00) :listing (fmt #f "JP ${:04X} (placeholder)" 0))) ;; Печатаем 0 вместо символа
+      
       (else
+       (if (not (number? target-addr)) 
+           (error "Jump target must be a number or HL register" target-addr))
        (let ((offset (- target-addr (+ current-ilc 2))))
          (if (and (>= offset -128) (<= offset 127))
              (begin
