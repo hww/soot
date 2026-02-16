@@ -1357,14 +1357,14 @@ Object Interpreter::eval_and_special(const Object &form, const Object &rest,
     return result;
 }
 
-Object Interpreter::eval_let_star_special(const Object &form, const Object &rest,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    return eval_let_common_special(form, rest, env, true);
-}
-
 Object Interpreter::eval_let_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     return eval_let_common_special(form, rest, env, false);
+}
+
+Object Interpreter::eval_let_star_special(const Object &form, const Object &rest,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    return eval_let_common_special(form, rest, env, true);
 }
 
 Object Interpreter::eval_let_common_special(const Object &form, const Object &rest,
@@ -1374,37 +1374,92 @@ Object Interpreter::eval_let_common_special(const Object &form, const Object &re
         throw_eval_error(form, "first argument to let must be bindings");
     }
 
-    const auto *bindings_iter = &rest.as_pair()->car;
-    const auto *body_iter = &rest.as_pair()->cdr;
+    // Проверяем, есть ли имя у let-блока
+    std::string block_name = "";
+    Object      current_rest = rest;
 
-    if (!bindings_iter->is_pair()) {
-        throw_eval_error(form, "let cannot have empty bindings");
+    // Первый аргумент может быть именем (символ, строка или quoted символ)
+    auto first = current_rest.as_pair()->car;
+
+    // Распаковываем quote если есть
+    Object name_obj = first;
+    if (first.is_pair() && first.as_pair()->car.is_symbol("quote")) {
+        // Это (quote name) - берем внутренний аргумент
+        if (first.as_pair()->cdr.is_pair()) {
+            name_obj = first.as_pair()->cdr.as_pair()->car;
+        }
+    }
+
+    // Проверяем, является ли распакованный объект именем
+    if (name_obj.is_symbol() || name_obj.is_string()) {
+        block_name = name_obj.to_std_string();
+        current_rest = current_rest.as_pair()->cdr;
+
+        if (!current_rest.is_pair()) {
+            throw_eval_error(form, "let requires bindings after name");
+        }
+    }
+
+    // Далее проверяем биндинги
+    const auto *bindings_iter = &current_rest.as_pair()->car;
+    const auto *body_iter = &current_rest.as_pair()->cdr;
+
+    // Проверка, что биндинги - это список
+    if (!bindings_iter->is_pair() && !bindings_iter->is_null()) {
+        throw_eval_error(form, "let bindings must be a list");
     }
 
     std::shared_ptr<EnvironmentObject> new_env = std::make_shared<EnvironmentObject>();
     new_env->ctx = form;
     new_env->parent_env = env;
+    new_env->name = block_name;
+
     m_dynamic_stack.push_back(new_env);
     try {
-        while (!bindings_iter->is_null()) {
+        // Обрабатываем биндинги
+        while (bindings_iter->is_pair()) {
             const auto *binding = &bindings_iter->as_pair()->car;
+
+            // Каждый биндинг должен быть парой (variable value)
             if (!binding->is_pair()) {
-                throw_eval_error(form, "let binding invalid");
+                throw_eval_error(form,
+                                 fmt::format("Invalid binding: expected (variable value), got {}",
+                                             binding->print()));
             }
+
             const auto &name = binding->as_pair()->car;
             if (!name.is_symbol()) {
-                throw_eval_error(form, "let binding invalid");
+                throw_eval_error(
+                    form, fmt::format("Binding name must be a symbol, got {}", name.print()));
             }
 
-            binding = &binding->as_pair()->cdr;
-            if (!binding->is_pair() || !binding->as_pair()->cdr.is_null()) {
-                throw_eval_error(form, "let binding invalid");
+            const auto &value_part = binding->as_pair()->cdr;
+            if (!value_part.is_pair() || !value_part.as_pair()->cdr.is_null()) {
+                throw_eval_error(
+                    form, fmt::format("Invalid binding format for {}: expected ({} value), got {}",
+                                      name.print(), name.print(), binding->print()));
             }
 
-            new_env->vars.set(name.as_symbol(),
-                              eval(binding->as_pair()->car, is_star ? new_env : env));
+            const auto &value = value_part.as_pair()->car;
+
+            // Вычисляем значение в правильном окружении
+            Object evaluated_value;
+            if (is_star) {
+                // Для let* каждое следующее выражение видит предыдущие
+                evaluated_value = eval(value, new_env);
+            } else {
+                // Для let все выражения вычисляются в исходном окружении
+                evaluated_value = eval(value, env);
+            }
+
+            new_env->vars.set(name.as_symbol(), evaluated_value);
 
             bindings_iter = &bindings_iter->as_pair()->cdr;
+        }
+
+        // Проверяем, что после биндингов нет мусора
+        if (!bindings_iter->is_null()) {
+            throw_eval_error(form, "Malformed let: unexpected elements after bindings");
         }
 
         auto res = eval_list_return_last(form, *body_iter, new_env);
@@ -1573,7 +1628,8 @@ int64_t Interpreter::number_to_integer(const Object &obj) {
     } else if (obj.is_float()) {
         return static_cast<int64_t>(obj.as_float());
     } else {
-        throw_eval_error(obj, "object cannot be converted to integer");
+        throw_eval_error(obj,
+                         fmt::format("object '{}' cannot be converted to integer", obj.print()));
     }
     return 0;
 }

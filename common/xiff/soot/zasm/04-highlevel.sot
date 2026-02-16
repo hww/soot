@@ -192,27 +192,58 @@
     (else 
      (error "Malformed defmethod: check arguments structure."))))
 
-(defmacro call-method (obj method-full-name &rest args)
+(defmacro call-method (obj method-full-name &rest calling-args)
   (let* ((full-str (symbol->string (unquote-sym method-full-name)))
-         (parts (filter (lambda (x) (> (string-length (symbol->string x)) 0)) 
-                        (string-split full-str "::")))
-         (t-name (car parts))
-         (m-name (cadr parts))
-         (m-id (eval `(method-id-of ',t-name ',m-name)))
-         (offset (* 3 m-id)))
-    ;; Оборачиваем в begin, чтобы zasm понял, что это группа команд
+         (parts (string-split full-str "::"))
+         
+         ;; 1. Получаем части как символы и как строки
+         (p1 (car parts))
+         (p2 (cadr parts))
+         (t-sym (if (symbol? p1) p1 (string->symbol p1)))
+         (m-sym (if (symbol? p2) p2 (string->symbol p2)))
+         (t-str (if (string? p1) p1 (symbol->string p1)))
+         (m-str (if (string? p2) p2 (symbol->string p2)))
+         
+         ;; 2. ID метода ищет по символам
+         (m-id (method-id-of t-sym m-sym))
+         (offset (* 2 m-id))
+         
+         ;; 3. Метка возврата строится из строк
+         (ret-lab (string->symbol (string-append "ret_" t-str "_" m-str)))
+         (target-regs '(hl de bc)))
+    
     `(begin
-       (.ld ix ,obj)
-       (.ld l (+ix 0))
-       (.ld h (+ix 1))
-       (.ld de ,offset)
-       (.add hl de)
-       (.ld de 'exit)
-       (.push de)
-       (.jp hl)
-       (.label exit)
-       )
-       ))
+       ;; Настройка аргументов
+       ,@(let ((i 0))
+           (map (lambda (arg)
+                  (let ((reg (nth i target-regs)))
+                    (set! i (+ i 1))
+                    (if reg
+                        `(.ld ,reg ,arg)
+                        (error "Too many arguments for method call (max 3)"))))
+                calling-args))
+
+       (zasm
+         (.ld ix ,obj)
+         (.ld l (+ix 0))
+         (.ld h (+ix 1))
+         
+         (.ld a ,offset)
+         (.add-hl-a) 
+         
+         ;; Читаем адрес из VTable
+         (.ld a (@ hl))
+         (.ld e a)
+         (.inc hl)
+         (.ld a (@ hl))
+         (.ld l e) 
+         (.ld h a) 
+
+         ;; Эмуляция CALL через PUSH адрес_возврата + JP
+         (.ld de ',ret-lab) 
+         (.push de)          
+         (.jump hl)            
+         (.label ,ret-lab :scope 'local)))))
 
 ;;; =====================================================================
 ;;; V-Table 
