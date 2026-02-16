@@ -46,9 +46,11 @@
 ;;; Type System Methods
 ;;; ===================================================================== 
 
-(defmethod new object ()
-  (declare (once) (asm-func object))
-  (fmt #t "DEBUG object delete..\n"))
+(defmethod new object (a b c)
+  (rlet ((a symbol) (b type) (c int))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new object..\n")
+  ))
 
 (defmethod delete ((this object))
   (declare (once) (asm-func none))
@@ -59,18 +61,29 @@
   (fmt #t "DEBUG object print..\n"))
 
 (defmethod new structure ()
-  (declare (once) (asm-func object))
-  (fmt #t "DEBUG structure new..\n"))
+  (rlet ((a symbol) (b type))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))
+
+(defmethod new basic ()
+  (rlet ((a symbol) (b type))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))
+
+(defmethod new type ()
+  (rlet ((a symbol) (b type) (c int))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))
 
 ;;; ===================================================================== 
 ;;; Methods
 ;;; ===================================================================== 
 
 ;; Пример для твоего синтаксиса (как в sprite-aux-list)
-(defmethod new vec3 ((x int16) (x int16))
+(defmethod new vec3 ((x int16) (y int16))
   ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
   ;; (.call 'object-new)
-  (declare (once) (asm-func object))
+  (declare (once) (asm-func _type_))
   (fmt #t "DECLARATIONS vec3::new {}" (declarations))
   ;; 2. Инициализируем VTable объекта (первые 2 байта)
   (.ld hl 'vec3::vtable)
@@ -140,8 +153,10 @@
 (defproc test-type-descriptor ()
   (declare (once) (asm-func none))
   (fmt #t "DEBUG test-type-descriptor...\n")
-  (.type-descriptor object)
-  (.type-descriptor structure)
+  (.type-descriptor object)    ;; Родитель 0, проблем нет
+  (.type-descriptor structure) ;; Родитель object, метка уже есть
+  (.type-descriptor basic)     ;; Родитель structure, метка уже есть
+  (.type-descriptor type)      ;; Родитель basic, метка уже есть
   (.type-descriptor vec3)
   )
 

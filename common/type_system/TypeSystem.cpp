@@ -1147,10 +1147,11 @@ void TypeSystem::add_builtin_types_z80() {
 
     // TYPE для Z80
     builtin_structure_inherit(type_type);
-    add_field_to_type(type_type, "parent", make_typespec("type"), 2);      // offset 2
-    add_field_to_type(type_type, "size", make_typespec("uint16"), 4);      // offset 4
-    add_field_to_type(type_type, "psize", make_typespec("uint16"), 6);     // offset 6 (placeholder)
-    add_field_to_type(type_type, "heap-base", make_typespec("uint16"), 8); // offset 8
+    add_field_to_type(type_type, "parent", make_typespec("type"), 0);         // Было 2
+    add_field_to_type(type_type, "name", make_typespec("pointer"), 2);        // Было 4
+    add_field_to_type(type_type, "size", make_typespec("uint16"), 4);         // Было 6
+    add_field_to_type(type_type, "methods-count", make_typespec("uint8"), 6); // Было 8
+    add_field_to_type(type_type, "class", make_typespec("uint8"), 7);         // Было 9
 
     // FUNCTION для Z80
     builtin_structure_inherit(function_type);

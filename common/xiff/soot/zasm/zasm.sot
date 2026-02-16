@@ -1,4 +1,6 @@
-﻿;;; zasm.sot - Master include file
+﻿(init-types 'z80)
+
+;;; zasm.sot - Master include file
 (load "common/xiff/soot/zasm/01-core.sot")
 (load "common/xiff/soot/zasm/02-segment.sot") 
 (load "common/xiff/soot/zasm/03-assembler.sot")

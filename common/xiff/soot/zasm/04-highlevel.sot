@@ -144,7 +144,8 @@
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
                      (zasm ,@body)
-                     (.ret)))))
+                     (.ret)
+                     (define-method ',this-type  ',name (current-function 'function))))))
        ;; Сохраняем в реестр вместо немедленной регистрации
        (push! (make-method :func impl 
                            :type ',this-type 
@@ -166,7 +167,8 @@
                       ;; Тут важно: если body содержит макросы (типа zasm), 
                       ;; они должны раскрыться здесь.
                       ,@body
-                      (.ret))))))
+                      (.ret)
+                      (define-method ',type  ',name (current-function 'function)))))))
        (push! (make-method
                 :func impl 
                 :type ',type 
@@ -203,7 +205,7 @@
          (m-sym (if (symbol? p2) p2 (string->symbol p2)))
          (t-str (if (string? p1) p1 (symbol->string p1)))
          (m-str (if (string? p2) p2 (symbol->string p2)))
-         
+
          ;; 2. ID метода ищет по символам
          (m-id (method-id-of t-sym m-sym))
          (offset (* 2 m-id))
@@ -211,7 +213,7 @@
          ;; 3. Метка возврата строится из строк
          (ret-lab (string->symbol (string-append "ret_" t-str "_" m-str)))
          (target-regs '(hl de bc)))
-    
+
     `(begin
        ;; Настройка аргументов
        ,@(let ((i 0))
@@ -360,26 +362,29 @@
 
 (defun .type-descriptor (type-obj)
   (let* ((t-name (-> type-obj :name))
-         ;; Используем "def" как универсальный указатель на определение типа
-         (label-base (fmt #f "type::def::{}" t-name)))
+         (label-base (fmt #f "type::def::{}" t-name))
+         (label-sym (intern label-base)))
 
-    (emit-space (fmt #f "type descriptor: {}" t-name))
-    (label (intern label-base) :scope 'public)
+    ;; 1. Сначала ставим метку! Чтобы она уже была в таблице символов
+    (label label-sym :scope 'public)
     
-    ;; +0: Указатель на родителя (теперь мы всегда знаем префикс!)
+    ;; 2. Поле +0: указатель на тип 'type'
+    (if (eq? t-name "type")
+        (emit-dw label-sym) ;; Если это сам тип, ссылаемся на себя
+        (emit-dw (intern "type::def::type"))) ;; Остальные ссылаются на глобальный 'type'
+
+    ;; 3. Поле +2: parent
     (let ((parent-name (-> type-obj :parent)))
-      (if (and parent-name (not (eq? parent-name "")))
-          (emit-dw (intern (fmt #f "type::def::{}" parent-name)))
-          (emit-dw 0)))
-
-    ;; +2: Указатель на имя
+      (emit-dw (if (and parent-name (not (eq? parent-name "")))
+                   (intern (fmt #f "type::def::{}" parent-name))
+                   0)))
+    
+    ;; ... остальной код (name, size, methods-count и т.д.) ...
     (emit-dw (intern (fmt #f "type::name::{}" t-name)))
+    (emit-dw (-> type-obj :size))
+    (emit-db (-> type-obj :methods-count))
+    (emit-db (crc32 (-> type-obj :class)))
 
-    ;; +4: Размер и Класс (Kind)
-    (emit-db (-> type-obj :size))
-    (emit-db (crc32 (-> type-obj :class))) ;; Сохраним класс внутри!
-
-    ;; Остальное без изменений...
     (.vtable type-obj)
     
     (label (intern (fmt #f "type::name::{}" t-name)))

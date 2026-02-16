@@ -783,6 +783,12 @@ TypeSpec parse_typespec(TypeSystem *type_system, const script::Object &src) {
 
         while (rest->is_pair()) {
             auto &it = rest->as_pair()->car;
+            // Если встретили пустой список (), мы его просто ИГНОРИРУЕМ.
+            // Мы не вызываем для него add_arg и не создаем никаких typespec.
+            if (it.is_null()) {
+                rest = &rest->as_pair()->cdr;
+                continue; // Просто идем к следующему элементу
+            }
 
             if (it.is_symbol() && it.as_symbol().name_ptr[0] == ':') {
                 auto tag_name = it.as_symbol().name_ptr + 1;
