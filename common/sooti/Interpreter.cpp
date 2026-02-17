@@ -631,6 +631,16 @@ void Interpreter::throw_named_type_mismatch(const Object &form, const std::strin
                                  name, expected_str, object_type_to_string(got)));
 }
 
+/*!
+ * If o isn't an environment object, throws an evaluation error on form.
+ */
+void Interpreter::expect_env(const Object &form, const Object &o) {
+    if (!o.is_env()) {
+        throw_eval_error(form, "Object " + o.print() + " is a " + object_type_to_string(o.type) +
+                                   " but was expected to be an environment");
+    }
+}
+
 Object Interpreter::eval_string(const std::string &expression, const std::string &filename) {
     auto   env = m_global_environment.as_env_ptr();
     Object last_result = Object::make_null();
@@ -1120,32 +1130,27 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
 
 Object Interpreter::eval_define_special(const Object &form, const Object &rest,
                                         const std::shared_ptr<EnvironmentObject> &env) {
-    if (!rest.is_pair()) {
-        throw_eval_error(form, "define requires arguments");
-    }
 
-    Object name_obj = rest.as_pair()->car;
-    if (!name_obj.is_symbol()) {
-        throw_eval_error(form, "define name must be a symbol");
-    }
+    auto args = get_args(form, rest, ArgumentSpec(true, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {}}, {{"env", {false, {}}}});
 
+    auto name = args.unnamed[0];
     // ПРОВЕРКА: Если мы в глобальном окружении, нельзя переопределять константу
     // (Или вообще запрещаем, если константы у нас только глобальные)
-    if (m_global_constants.lookup(name_obj.as_symbol())) {
-        throw_eval_error(name_obj, "Cannot define variable: symbol '" + name_obj.to_std_string() +
-                                       "' is already a constant");
+    if (m_global_constants.lookup(name.as_symbol())) {
+        throw_eval_error(name, "Cannot define variable: symbol '" + name.to_std_string() +
+                                   "' is already a constant");
     }
 
-    Object value_part = rest.as_pair()->cdr;
-    if (!value_part.is_pair()) {
-        throw_eval_error(form, "define must have a value");
+    auto define_env = env;
+    if (args.has_named("env")) {
+        auto result = eval_with_rewind(args.get_named("env"), env);
+        expect_env(form, result);
+        define_env = result.as_env_ptr();
     }
 
-    Object value = eval_with_rewind(value_part.as_pair()->car, env);
-
-    // Сохраняем в ПЕРЕДАННЫЙ environment
-    env->vars.set(name_obj.as_symbol(), value);
-
+    Object value = eval_with_rewind(args.unnamed[1], env);
+    define_env->vars.set(name.as_symbol(), value);
     return value;
 }
 
