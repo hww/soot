@@ -260,7 +260,7 @@ Object SymbolTable::make_keyword(std::string name) {
 // Object Type
 // ============================================================================
 
-std::string Object::type_name() const {
+std::string Object::class_name() const {
     if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->class_name();
     return object_type_to_string(type);
@@ -270,6 +270,12 @@ Object Object::type_name_obj() const {
     if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->type_name_obj();
     return symbol_table().object_type_to_symbol(type);
+}
+
+bool Object::is_class_name(std::string name) const {
+    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
+        return heap_obj->is_class_name(name);
+    return name == object_type_to_string(type);
 }
 
 std::vector<Object> Object::to_vector() const {
@@ -359,7 +365,7 @@ Object Object::step(const Object &key) const {
     }
 
     throw std::runtime_error(
-        fmt::format("Type {} does not support '->' operator", this->type_name()));
+        fmt::format("Type {} does not support '->' operator", this->class_name()));
 }
 
 // ============================================================================

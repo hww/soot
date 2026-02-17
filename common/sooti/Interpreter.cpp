@@ -1114,7 +1114,7 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
 
     // 3. Если мы дошли сюда, значит голова — не функция и не спецформа
     throw_eval_error(obj,
-                     "Object is not callable: " + eval_head.type_name() + " " + eval_head.print());
+                     "Object is not callable: " + eval_head.class_name() + " " + eval_head.print());
     return m_obj_null; // unreachable
 }
 
@@ -2306,13 +2306,14 @@ Object Interpreter::eval_error(const Object &form, Arguments &args,
     // 1-й обязательно STRING.
     // 2-й опционально ЛЮБОЙ (поэтому пустые скобки {} во втором векторе)
     vararg_check(form, args, {{ObjectType::STRING}},
-                 {{"ctx", {false, {ObjectType::PAIR, ObjectType::NONE}}}});
+                 {{"ctx", {false, {ObjectType::PAIR, ObjectType::NONE, ObjectType::EMPTY_LIST}}}});
 
     std::string message = args.unnamed.at(0).as_string()->data;
-
+    Object      context_form = form;
     // Если передан второй аргумент, используем его как "место преступления"
     // Иначе используем 'form' (всю строку вызова (error ..))
-    Object context_form = args.has_named("ctx") ? args.named["ctx"] : form;
+    if (args.has_named("ctx") && !args.named["ctx"].is_null() && !args.named["ctx"].is_none())
+        context_form = args.named["ctx"];
 
     // Вызываем стандартный механизм исключений с учетом контекста
     throw_eval_error(context_form, message);
@@ -3018,15 +3019,14 @@ Object Interpreter::eval_type_p(const Object &form, Arguments &args,
     if (args.unnamed[0].type != ObjectType::HEAP_OBJECT) {
         auto kv = m_string_to_type.find(type_name);
         if (kv == m_string_to_type.end()) {
-            throw_eval_error(form, fmt::format("invalid type name: {}", type_name));
+            return Object::make_boolean(args.unnamed[0].is_class_name(type_name));
         }
-
         return true_or_false(args.unnamed[0].type == kv->second);
     } else {
         auto ho = args.unnamed[0].as_heap_obj();
         if (ho == nullptr)
             throw_eval_error(form, fmt::format("invalid heap object"));
-        return Object::make_boolean(ho->class_name() == type_name);
+        return Object::make_boolean(ho->is_class_name(type_name));
     }
 
     return get_false();
@@ -4871,7 +4871,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         if (current.is_none()) {
             throw_eval_error(form,
                              fmt::format("Field or meta-property '{}' is not accessible in '{}'",
-                                         key.print(), current.type_name()));
+                                         key.print(), current.class_name()));
         }
 
         iterator = iterator.as_pair()->cdr;
@@ -4920,7 +4920,7 @@ Object Interpreter::eval_deref(const Object &form, Arguments &args,
             if (next.is_none()) {
                 throw_eval_error(form, fmt::format("Access error: field or property '{}' "
                                                    "not found in object of type {}",
-                                                   key.print(), current.type_name()));
+                                                   key.print(), current.class_name()));
             }
 
             current = next;
@@ -5041,7 +5041,7 @@ Object Interpreter::eval_the(const Object &form, Arguments &args,
         actual_spec = TypeSpec(target.as_pointer()->type());
     } else {
         // Используем встроенный метод получения типа объекта в рантайме
-        actual_spec = TypeSpec(target.type_name());
+        actual_spec = TypeSpec(target.class_name());
     }
 
     // 5. Проверка совместимости типов
@@ -5110,7 +5110,7 @@ Object Interpreter::eval_the_as(const Object &form, Arguments &args,
 
     // Если мы дошли сюда, значит пытаемся сделать cast того, что не имеет адреса (например, nil)
     throw_eval_error(form, fmt::format("the-as: cannot cast object of type {} to {}",
-                                       target.type_name(), new_type_name));
+                                       target.class_name(), new_type_name));
 }
 // ============================================================
 // Получение размеров и смещений

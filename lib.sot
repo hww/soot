@@ -514,8 +514,8 @@
 ;; ===========================================================================
 
 (defmacro neq? (a b) `(not (eq? ,a ,b)))
-(defmacro !=   (a b) `(not (= ,a ,b)))
-(defmacro ==   (a b) `(= ,a ,b))
+(defmacro !=   (a b) `(not (eq?,a ,b)))
+(defmacro ==   (a b) `(eq? ,a ,b))
 (defmacro between (val min max)
   `(and (<= ,min ,val) (<= ,val ,max)))
 

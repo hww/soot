@@ -52,6 +52,16 @@ class TypeSpec : public HeapObject {
     TypeSpec &operator=(TypeSpec &&other) noexcept;
     ~TypeSpec() = default;
 
+    std::string full_class_name() const override {
+        return "TypeSpec";
+    }
+    std::string class_name() const override {
+        return "type-spec";
+    }
+    bool is_class_name(std::string name) const override {
+        return name == "type-type" || HeapObject::is_class_name(name);
+    }
+
     // Comparison
     bool operator==(const TypeSpec &other) const;
     bool operator!=(const TypeSpec &other) const;
