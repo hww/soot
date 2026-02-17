@@ -195,6 +195,10 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
         return "heap-object";
     }
     Object type_name_obj() const;
+
+    virtual bool is_class_name(std::string type) const {
+        return type == HeapObject::class_name();
+    }
 };
 
 // Main Object class
@@ -218,11 +222,11 @@ class Object {
   public:
     virtual ~Object() {}
 
-    virtual std::string class_name() const {
-        return "Object";
-    }
-    std::string type_name() const;
-    Object      type_name_obj() const;
+    std::string full_class_name() const;
+    std::string class_name() const;
+    bool        is_class_name(std::string name) const;
+
+    Object type_name_obj() const;
 
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
@@ -1445,6 +1449,10 @@ class Pointer : public HeapObject {
     }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::POINTER);
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == Pointer::class_name() || HeapObject::is_class_name(name);
     }
 };
 

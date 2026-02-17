@@ -5,6 +5,7 @@
  * Representation of a GOAL type in the type system.
  */
 
+#include "Object.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <cstdint>
@@ -143,6 +144,9 @@ class MethodInfo : public HeapObject {
     std::string class_name() const override {
         return "method-info";
     }
+    bool is_class_name(std::string name) const override {
+        return name == class_name() || HeapObject::is_class_name(name);
+    }
 
     Object inspect() const override {
         ListBuilder builder;
@@ -188,6 +192,9 @@ class Field : public HeapObject {
     }
     std::string class_name() const override {
         return "field";
+    }
+    bool is_class_name(std::string name) const override {
+        return name == class_name() || HeapObject::is_class_name(name);
     }
 
     const TypeSpec &type() const {
@@ -300,6 +307,9 @@ class BitField : public HeapObject {
     std::string class_name() const override {
         return "bit-field";
     }
+    bool is_class_name(std::string name) const override {
+        return name == class_name() || HeapObject::is_class_name(name);
+    }
 
     const std::string name() const {
         return m_name;
@@ -358,6 +368,9 @@ class Type : public HeapObject {
     }
     std::string class_name() const override {
         return "type";
+    }
+    bool is_class_name(std::string name) const override {
+        return name == Type::class_name() || HeapObject::is_class_name(name);
     }
 
     uint32_t get_type_tag() {
@@ -523,6 +536,9 @@ class NullType : public Type {
     std::string class_name() const override {
         return "null-type";
     }
+    bool is_class_name(std::string name) const override {
+        return name == NullType::class_name() || Type::is_class_name(name);
+    }
 
     bool     is_reference() const override;
     int      get_load_size() const override;
@@ -563,6 +579,9 @@ class ValueType : public Type {
     }
     std::string class_name() const override {
         return "value-type";
+    }
+    bool is_class_name(std::string name) const override {
+        return name == ValueType::class_name() || Type::is_class_name(name);
     }
 
     bool     is_reference() const override;
@@ -618,7 +637,9 @@ class ReferenceType : public Type {
     std::string class_name() const override {
         return "reference-type";
     }
-
+    bool is_class_name(std::string name) const override {
+        return name == ReferenceType::class_name() || Type::is_class_name(name);
+    }
     bool is_reference() const override {
         return true;
     }
@@ -664,7 +685,9 @@ class StructureType : public ReferenceType {
     std::string class_name() const override {
         return "structure-type";
     }
-
+    bool is_class_name(std::string name) const override {
+        return name == StructureType::class_name() || ReferenceType::is_class_name(name);
+    }
     std::string print() const override;
     Object      inspect() const override {
         ListBuilder builder;
@@ -779,7 +802,9 @@ class BasicType : public StructureType {
     std::string class_name() const override {
         return "basic-type";
     }
-
+    bool is_class_name(std::string name) const override {
+        return name == BasicType::class_name() || StructureType::is_class_name(name);
+    }
     int get_offset() const override {
         return 0;
     } // BASIC_OFFSET
@@ -824,7 +849,9 @@ class BitFieldType : public ValueType {
     std::string class_name() const override {
         return "bit-field-type";
     }
-
+    bool is_class_name(std::string name) const override {
+        return name == BitFieldType::class_name() || ValueType::is_class_name(name);
+    }
     bool        lookup_field(const std::string &name, BitField *out) const;
     std::string print() const override;
     Object      inspect() const override {
@@ -866,7 +893,9 @@ class EnumType : public ValueType {
     std::string class_name() const override {
         return "enum-type";
     }
-
+    bool is_class_name(std::string name) const override {
+        return name == EnumType::class_name() || ValueType::is_class_name(name);
+    }
     std::string print() const override;
     Object      inspect() const override {
         ListBuilder builder;
