@@ -185,11 +185,11 @@ class StaticBuffer : public HeapObject {
         return m_data.data();
     }
 
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::STATIC_BUFFER);
     }
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "StaticBuffer";
     }
     Object      inspect() const override;

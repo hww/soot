@@ -16,7 +16,6 @@ add_library(libsoticore
 add_library(libsoti
     common/sooti/Interpreter.cpp
     common/sooti/static_buffer/TypePointer.cpp
-    common/sooti/static_buffer/StaticWriter.cpp
     common/sooti/static_buffer/StaticBuffer.cpp
     common/sooti/static_buffer/StaticBufferFactory.cpp
     common/sooti/static_buffer/StaticBufferBlitter.cpp

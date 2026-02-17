@@ -453,7 +453,7 @@ Object Type::make_step_accessor(const Object &key) {
     if (name == ":name")
         return Object::make_string(this->get_name());
     if (name == ":class")
-        return Object::make_string(this->get_class_name());
+        return Object::make_string(this->class_name());
     if (name == ":parent")
         return Object::make_string(this->get_parent());
     if (name == ":size")
@@ -966,7 +966,7 @@ Object BasicType::make_step_accessor(const Object &key) {
     if (name == ":final?")
         return Object::make_boolean(this->final());
     if (name == ":class-name")
-        return Object::make_string(this->get_class_name());
+        return Object::make_string(this->class_name());
 
     // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
     // BasicType -> StructureType -> ReferenceType -> Type

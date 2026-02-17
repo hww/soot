@@ -49,8 +49,8 @@ Object TypePointer::get() {
 
     // 1. Если это примитив (ValueType, Enum, Bitfield)
     // Мы делегируем чтение ридеру, который вернет число, символ или список флагов.
-    if (type->get_class_name() == "value" || type->get_class_name() == "enum" ||
-        type->get_class_name() == "bitfield") {
+    if (type->class_name() == "value-type" || type->class_name() == "enum-type" ||
+        type->class_name() == "bit-field-type") {
         return StaticBufferReader::read_value_at_ptr(&TypeSystem::instance(), ptr, type);
     }
 
