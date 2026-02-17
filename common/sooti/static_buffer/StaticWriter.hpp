@@ -15,6 +15,18 @@ class StaticWriter : public HeapObject {
   public:
     StaticWriter(const std::shared_ptr<StaticBuffer> &buffer);
 
+    std::string full_class_name() const override {
+        return "StaticWriter";
+    }
+
+    std::string class_name() const override {
+        return "static-writer";
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == StaticWriter::class_name() || HeapObject::is_class_name(name);
+    }
+
     /**
      * Основной метод: "Зарезервировать" место под тип и вернуть ячейку для записи.
      */
@@ -50,7 +62,7 @@ class StaticWriter : public HeapObject {
         if (name == ":origin")
             return Object::make_integer(m_buffer->origin());
         if (name == ":type")
-            return Object::make_string(m_buffer->type_name());
+            return Object::make_string(m_buffer->class_name());
         if (name == ":position")
             return Object::make_integer(m_position);
         if (name == ":remaining")
@@ -66,13 +78,6 @@ class StaticWriter : public HeapObject {
         lb.add_integer(m_position);
 
         return lb.build();
-    }
-
-    std::string type_name() const override {
-        return object_type_to_string(ObjectType::STATIC_WRITER);
-    }
-    std::string class_name() const override {
-        return "StaticWriter";
     }
 };
 

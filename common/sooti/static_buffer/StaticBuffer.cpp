@@ -55,7 +55,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
         if (name == ":origin")
             return Object::make_integer(origin());
         if (name == ":type")
-            return Object::make_string(type_name());
+            return Object::make_string(class_name());
         if (name == ":start-addr")
             return Object::make_integer(get_start_addr());
         if (name == ":end-addr")

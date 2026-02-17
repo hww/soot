@@ -189,13 +189,17 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual std::string printc() const {
         return print();
     }
-    virtual std::string class_name() const {
+    virtual std::string full_class_name() const {
         return "HeapObject";
     }
-    virtual std::string type_name() const {
-        return "none";
+    virtual std::string class_name() const {
+        return "heap-object";
     }
     Object type_name_obj() const;
+
+    virtual bool is_class_name(std::string type) const {
+        return type == HeapObject::class_name();
+    }
 };
 
 // Main Object class
@@ -219,11 +223,11 @@ class Object {
   public:
     virtual ~Object() {}
 
-    virtual std::string class_name() const {
-        return "Object";
-    }
-    std::string type_name() const;
-    Object      type_name_obj() const;
+    std::string full_class_name() const;
+    std::string class_name() const;
+    bool        is_class_name(std::string name) const;
+
+    Object type_name_obj() const;
 
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
@@ -508,10 +512,10 @@ class PairObject : public HeapObject {
         return Object::make_none();
     }
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "PairObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::PAIR);
     }
 };
@@ -543,10 +547,10 @@ class StringObject : public HeapObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "StringObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::STRING);
     }
     // Неявное преобразование в std::string
@@ -640,10 +644,10 @@ class ArrayObject : public HeapObject {
             }
         }
     }
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "ArrayObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::ARRAY);
     }
 };
@@ -685,10 +689,10 @@ class HashTableObject : public HeapObject {
     }
 
     Object      inspect() const override;
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "HashTableObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         if (!type.is_none()) {
             return fmt::format("{}::{}>", object_type_to_string(ObjectType::STRING_HASH_TABLE),
                                type.print());
@@ -1258,10 +1262,10 @@ class EnvironmentObject : public HeapObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "EnvironmentObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::ENVIRONMENT);
     }
     // Универсальный хелпер для поиска вверх по иерархии
@@ -1347,11 +1351,11 @@ class LambdaObject : public HeapObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "LambdaObject";
     }
 
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::FUNCTION);
     }
 };
@@ -1379,10 +1383,10 @@ class MacroObject : public HeapObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "MacroObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::MACRO);
     }
 };
@@ -1409,10 +1413,10 @@ class ReaderObject : public HeapObject {
     std::string print() const override;
     Object      inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "ReaderObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::READER);
     }
 };
@@ -1426,7 +1430,7 @@ class Pointer : public HeapObject {
     Pointer(void *ptr) : m_ptr(ptr), m_type("void") {}
     Pointer(void *ptr, std::string type) : m_ptr(ptr), m_type(type) {}
 
-    virtual std::string get_type_name() const {
+    virtual std::string type() const {
         return m_type;
     };
 
@@ -1445,11 +1449,15 @@ class Pointer : public HeapObject {
     std::string print() const override;
     Object      inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "Pointer";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::POINTER);
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == Pointer::class_name() || HeapObject::is_class_name(name);
     }
 };
 
@@ -1491,10 +1499,10 @@ struct SpecialFormObject : public CallableObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "SpecialFormObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::SPECIAL_FORM);
     }
 };
@@ -1520,10 +1528,10 @@ struct BuiltinFunctionObject : public CallableObject {
 
     Object inspect() const override;
 
-    std::string class_name() const override {
+    std::string full_class_name() const override {
         return "BuiltinFunctionObject";
     }
-    std::string type_name() const override {
+    std::string class_name() const override {
         return object_type_to_string(ObjectType::PRIMITIVE);
     }
 };

@@ -40,6 +40,18 @@ struct BufferLabel : public HeapObject {
     BufferLabel(std::string n, size_t a, Object seg, Object m)
         : name(n), addr(a), segment(seg), meta(m) {}
 
+    std::string full_class_name() const override {
+        return "BufferLabel";
+    }
+
+    std::string class_name() const override {
+        return "buffer-label";
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == BufferLabel::class_name() || HeapObject::is_class_name(name);
+    }
+
     std::string print() const override {
         return fmt::format("#<buffer-label {:08X} {} {}>", addr, segment.print(), meta.print());
     };
@@ -185,13 +197,18 @@ class StaticBuffer : public HeapObject {
         return m_data.data();
     }
 
-    std::string type_name() const override {
-        return object_type_to_string(ObjectType::STATIC_BUFFER);
+    std::string full_class_name() const override {
+        return "StaticBuffer";
     }
 
     std::string class_name() const override {
-        return "StaticBuffer";
+        return object_type_to_string(ObjectType::STATIC_BUFFER);
     }
+
+    bool is_class_name(std::string name) const override {
+        return name == StaticBuffer::class_name() || HeapObject::is_class_name(name);
+    }
+
     Object      inspect() const override;
     std::string hex_dump(size_t start_offset = 0, size_t bytes_to_dump = 0, bool show_ascii = true,
                          size_t bytes_per_line = 16) const;

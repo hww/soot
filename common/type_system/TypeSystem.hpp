@@ -164,7 +164,15 @@ class TypeSystem : public HeapObject {
         static std::shared_ptr<TypeSystem> inst = std::shared_ptr<TypeSystem>(new TypeSystem());
         return *inst;
     }
-
+    std::string full_class_name() const override {
+        return "TypeSystem";
+    }
+    std::string class_name() const override {
+        return "type-system";
+    }
+    bool is_class_name(std::string name) const override {
+        return name == "type-system" || HeapObject::is_class_name(name);
+    }
     // ========================================================================
     // Type Management
     // ========================================================================
