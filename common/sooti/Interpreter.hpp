@@ -141,6 +141,7 @@ class Interpreter {
                                     const Arguments &args);
     void throw_named_type_mismatch(const Object &form, const std::string &name,
                                    const std::vector<ObjectType> &expected, ObjectType got);
+    void expect_env(const Object &form, const Object &o);
 
     void   render_complex_error(EvalException &e);
     void   print_form_info(const Object &form, const std::shared_ptr<EnvironmentObject> &env);

@@ -165,16 +165,13 @@
   (name  null)) ;; Короткое имя для логов/ошибок
 
 (defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
-(defvar *methods-table* (make-hash-table))
 (defvar *current-method* null)
 
 (defun add-function (type name label fun)
-  (hash-table-set! *methods-table* (fmt #f "{}::{}" type name) fun)
-        (push! (make-method :func fun :name name :label label) 
-               *methods-to-assemble*))
+  (push! (make-method :func fun :name name :label label) *methods-to-assemble*))
 
 (defun get-function (type name)
-    (hash-table-ref *methods-table* (fmt #f "{}::{}" type name)))
+    (eval (string->symbol (fmt #f "{}::{}" type name)))
 
 ;;; =====================================================================
 ;;; Module Macros

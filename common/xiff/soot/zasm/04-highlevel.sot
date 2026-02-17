@@ -113,7 +113,7 @@
        (add-function 'global ',label-name ',label-name impl)       
       
        ;; Экспорт в окружение Липа
-       (define ,name impl))))
+       (define ,name impl :env *global-env*))))
 
 (defmacro call-proc (name &rest args)
   "Пример: (call-proc copy-string :dest buffer :src msg)"
@@ -141,7 +141,8 @@
                      (.ret)
                      (define-method ',this-type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
-        (define ,label-sym impl)
+        (define ,label-sym impl :env *global-env*)
+        (fmt #t "!!!! {}\n!!!" ',label-sym )
         ;; Сохраняем в реестр вместо немедленной регистрации
         (add-function ',this-type ',name ',label-sym impl)
         )))
@@ -163,7 +164,7 @@
                       (.ret)
                       (define-method ',type  ',name (current-function 'function)))))))
         ;; Экспорт в окружение Липа
-        (define ,label-sym impl)   
+        (define ,label-sym impl :env *global-env*)   
         (add-function ',type ',name ',label-sym impl)
         )))
 
