@@ -37,9 +37,9 @@
 (buffer-link buf)
 
 (fmt #t "Состояние буфера ПОСЛЕ линковки (адреса должны прошиться):\n")
-(fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+(fmt #t "Dump:\n{}\n" (buffer-dump buf ))
 
 
 ;; Проверка конкретных значений
 (define target-addr (buffer-read buf :address 1 :type 'uint8))
-(fmt #t "Прошитый адрес 'app-version': {:#x} (ожидаем #x8020)\n" target-addr)
+(fmt #t "Прошитый адрес 'app-version': {:04x} (ожидаем #x8020)\n" target-addr)

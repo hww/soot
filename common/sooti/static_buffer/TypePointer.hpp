@@ -29,5 +29,17 @@ class TypePointer : public Pointer {
     }
 
     size_t get_offset_in_buffer() const;
+
+    std::string full_class_name() const override {
+        return "TypePointer";
+    }
+
+    std::string class_name() const override {
+        return "type-pointer";
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == TypePointer::class_name() || Pointer::is_class_name(name);
+    }
 };
 } // namespace script
