@@ -6,7 +6,11 @@ namespace script {
 // Универсальный диспетчер чтения по указателю
 Object StaticBufferReader::read_value_at_ptr(TypeSystem *ts, void *ptr, Type *type) {
     if (!ptr || !type)
+<<<<<<< HEAD
         return Object::make_null();
+=======
+        throw std::runtime_error("StaticBufferReader invalid poiner");
+>>>>>>> temp-branch
 
     const std::string &name = type->get_name();
 
@@ -17,6 +21,7 @@ Object StaticBufferReader::read_value_at_ptr(TypeSystem *ts, void *ptr, Type *ty
         return Object::make_symbol(read_string_at_ptr(ptr).as_string()->data);
     }
 
+<<<<<<< HEAD
     std::string class_name = type->class_name();
 
     if (class_name == "value") {
@@ -26,6 +31,17 @@ Object StaticBufferReader::read_value_at_ptr(TypeSystem *ts, void *ptr, Type *ty
         return read_enum_at_ptr(ts, ptr, static_cast<EnumType *>(type));
     }
     if (class_name == "bitfield") {
+=======
+    std::string class_name = type->full_class_name();
+
+    if (class_name == "ValueType") {
+        return read_primitive_at_ptr(ptr, static_cast<ValueType *>(type));
+    }
+    if (class_name == "EnumType") {
+        return read_enum_at_ptr(ts, ptr, static_cast<EnumType *>(type));
+    }
+    if (class_name == "BitFieldType") {
+>>>>>>> temp-branch
         return read_bitfield_at_ptr(ptr, static_cast<BitFieldType *>(type));
     }
 

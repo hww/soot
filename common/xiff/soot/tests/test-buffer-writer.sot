@@ -16,53 +16,50 @@
 ))
 
 ;; 2. Запускаем запись снова
-(let* ((buf (make-buffer "test" 100 0))
-       (wr (make-buffer-writer buf)))
+(define buf (make-buffer "test" 100 0))
         
-   (buffer-write wr 
-                    '((tag  . #x55) 
-                      (data . ((val_i8 . #x7F)
-                                (val_i16 . #x7FFF)
-                                (val_u8 . #x7F)
-                                (val_u16 . #x7FFF)))) 
-                    :type 'outer)
-      
-   (fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+(buffer-write buf 
+                 '((tag  . #x55) 
+                   (data . ((val_i8 . #x7F)
+                             (val_i16 . #x7FFF)
+                             (val_u8 . #x7F)
+                             (val_u16 . #x7FFF)))) 
+                                 :address 0
+                 :type 'outer)
    
-   
-   ;; Чтение (слайсинг)
-   (let ((obj (buffer-read buf :type 'outer :address 0)))
-    ;; obj сейчас — это TypePointer, так как 'outer это структура
-    
-    (let ((val-cell (-> obj 'data 'val_i8)))
-       (fmt #t "Value val_i8 is: {}\n" (mem-get val-cell)))
-    
-    (let ((tag-cell (-> obj 'tag)))
-       (fmt #t "Tag is: #x{:x}\n" (mem-get tag-cell)))
-       
-    (let ((val-cell (-> obj 'data 'val_i8)))
-       (setf (-> obj 'data 'val_i8) 45) 
-       (fmt #t "Value val_i8 after set 45 is: {}\n" (mem-get val-cell)))
+(fmt #t "Dump:\n{}\n" (buffer-dump buf))
 
-   )
-   ;; Запист с переполнением
-   (let ((obj (buffer-read buf :type 'outer :address 0)))
-    ;; obj сейчас — это TypePointer, так как 'outer это структура
-       
-    (let ((val-cell (-> obj data val_i8)))
-       (setf (-> obj data val_i8) #x7F) 
-       (fmt #t "Value val_i8 after set #x80 is: {}\n" (mem-get val-cell)))
-    (let ((val-cell (-> obj data val_u8)))
-       (setf (-> obj data 'val_u8) #x80) 
-       (fmt #t "Value val_u8 after set #x80 is: {}\n" (mem-get val-cell)))
-    (let ((val-cell (-> obj data val_i16)))
-       (setf (-> obj data 'val_i16) #x7FFF) 
-       (fmt #t "Value val_i16 after set #x8000 is: {}\n" (mem-get val-cell)))
-    (let ((val-cell (-> obj data val_u16)))
-       (setf (-> obj data val_u16) #x8000) 
-       (fmt #t "Value val_u16 after set #x8000 is: {}\n" (mem-get val-cell)))
 
-   )
-   
-   (fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
-   )
+;; Чтение (слайсинг)
+(let ((obj (buffer-read buf :type 'outer :address 0)))
+ ;; obj сейчас — это TypePointer, так как 'outer это структура
+ 
+ (let ((val-cell (-> obj 'data 'val_i8)))
+    (fmt #t "Value val_i8 is: {}\n" (mem-get val-cell)))
+ 
+ (let ((tag-cell (-> obj 'tag)))
+    (fmt #t "Tag is: #x{:x}\n" (mem-get tag-cell)))
+    
+ (let ((val-cell (-> obj 'data 'val_i8)))
+    (setf (-> obj 'data 'val_i8) 45) 
+    (fmt #t "Value val_i8 after set 45 is: {}\n" (mem-get val-cell)))
+)
+;; Запист с переполнением
+(let ((obj (buffer-read buf :type 'outer :address 0)))
+ ;; obj сейчас — это TypePointer, так как 'outer это структура
+    
+ (let ((val-cell (-> obj data val_i8)))
+    (setf (-> obj data val_i8) #x7F) 
+    (fmt #t "Value val_i8 after set #x80 is: {}\n" (mem-get val-cell)))
+ (let ((val-cell (-> obj data val_u8)))
+    (setf (-> obj data 'val_u8) #x80) 
+    (fmt #t "Value val_u8 after set #x80 is: {}\n" (mem-get val-cell)))
+ (let ((val-cell (-> obj data val_i16)))
+    (setf (-> obj data 'val_i16) #x7FFF) 
+    (fmt #t "Value val_i16 after set #x8000 is: {}\n" (mem-get val-cell)))
+ (let ((val-cell (-> obj data val_u16)))
+    (setf (-> obj data val_u16) #x8000) 
+    (fmt #t "Value val_u16 after set #x8000 is: {}\n" (mem-get val-cell)))
+)
+
+(fmt #t "Dump:\n{}\n" (buffer-dump buf))

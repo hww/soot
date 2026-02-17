@@ -46,4 +46,4 @@
 (fmt #t "Метка 'init-routine'  на: {}\n" (-> buf 'init-routine))
 (fmt #t "Метка 'rst-handler'   на: {}\n" (-> buf 'rst-handler))
 ;; Дамп буфера
-(fmt #t "Dump of DRV_SEG:\n{}\n" (buffer-dump buf 0 32 #t 8))
+(fmt #t "Dump of DRV_SEG:\n{}\n" (buffer-dump buf))
