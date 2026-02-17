@@ -136,6 +136,14 @@ class MethodInfo : public HeapObject {
     std::string print() const override {
         return "#<method-info>";
     }
+
+    std::string full_class_name() const override {
+        return "MethodInfo";
+    }
+    std::string class_name() const override {
+        return "method-info";
+    }
+
     Object inspect() const override {
         ListBuilder builder;
         builder.add_key_value("id", Object::make_integer(id));
@@ -174,6 +182,13 @@ class Field : public HeapObject {
 
     std::string print() const override;
     Object      inspect() const override;
+
+    std::string full_class_name() const override {
+        return "Field";
+    }
+    std::string class_name() const override {
+        return "field";
+    }
 
     const TypeSpec &type() const {
         return m_type;
@@ -279,6 +294,13 @@ class BitField : public HeapObject {
     BitField() {};
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
 
+    std::string full_class_name() const override {
+        return "BitField";
+    }
+    std::string class_name() const override {
+        return "bit-field";
+    }
+
     const std::string name() const {
         return m_name;
     }
@@ -331,8 +353,14 @@ class Type : public HeapObject {
     Type(std::string parent, std::string name, bool is_boxed, int heap_base);
     virtual ~Type() = default;
 
-    virtual std::string get_class_name() const = 0;
-    uint32_t            get_type_tag() {
+    std::string full_class_name() const override {
+        return "Type";
+    }
+    std::string class_name() const override {
+        return "type";
+    }
+
+    uint32_t get_type_tag() {
         return util::compute_crc32(get_name());
     }
 
@@ -355,11 +383,11 @@ class Type : public HeapObject {
 
     // Printing and debugging
     virtual std::string print() const override {
-        return "#<" + get_class_name() + " " + get_name() + ">";
+        return "#<" + class_name() + " " + get_name() + ">";
     }
     virtual Object inspect() const override {
         ListBuilder builder;
-        builder.add_symbol(get_class_name());
+        builder.add_symbol(class_name());
         builder.add_key_value("name", Object::make_string(get_name()));
         return builder.build();
     }
@@ -489,8 +517,11 @@ class NullType : public Type {
   public:
     NullType(std::string name);
 
-    std::string get_class_name() const override {
-        return "null";
+    std::string full_class_name() const override {
+        return "NullType";
+    }
+    std::string class_name() const override {
+        return "null-type";
     }
 
     bool     is_reference() const override;
@@ -527,8 +558,11 @@ class ValueType : public Type {
     ValueType(std::string parent, std::string name, bool is_boxed, int size, bool sign_extend,
               RegClass reg);
 
-    std::string get_class_name() const override {
-        return "value";
+    std::string full_class_name() const override {
+        return "ValueType";
+    }
+    std::string class_name() const override {
+        return "value-type";
     }
 
     bool     is_reference() const override;
@@ -578,8 +612,11 @@ class ReferenceType : public Type {
   public:
     ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base);
 
-    std::string get_class_name() const override {
-        return "reference";
+    std::string full_class_name() const override {
+        return "ReferenceType";
+    }
+    std::string class_name() const override {
+        return "reference-type";
     }
 
     bool is_reference() const override {
@@ -621,8 +658,11 @@ class StructureType : public ReferenceType {
     StructureType(std::string parent, std::string name, bool boxed, bool dynamic, bool pack,
                   int heap_base);
 
-    std::string get_class_name() const override {
-        return "structure";
+    std::string full_class_name() const override {
+        return "StructureType";
+    }
+    std::string class_name() const override {
+        return "structure-type";
     }
 
     std::string print() const override;
@@ -733,8 +773,11 @@ class BasicType : public StructureType {
   public:
     BasicType(std::string parent, std::string name, bool dynamic, int heap_base);
 
-    std::string get_class_name() const override {
-        return "basic";
+    std::string full_class_name() const override {
+        return "BasicType";
+    }
+    std::string class_name() const override {
+        return "basic-type";
     }
 
     int get_offset() const override {
@@ -775,8 +818,11 @@ class BitFieldType : public ValueType {
   public:
     BitFieldType(std::string parent, std::string name, int size, bool sign_extend);
 
-    std::string get_class_name() const override {
-        return "bitfield";
+    std::string full_class_name() const override {
+        return "BitFieldType";
+    }
+    std::string class_name() const override {
+        return "bit-field-type";
     }
 
     bool        lookup_field(const std::string &name, BitField *out) const;
@@ -814,8 +860,11 @@ class EnumType : public ValueType {
     EnumType(const ValueType *parent, std::string name, bool is_bitfield,
              const std::unordered_map<std::string, int64_t> &entries);
 
-    std::string get_class_name() const override {
-        return "enum";
+    std::string full_class_name() const override {
+        return "EnumType";
+    }
+    std::string class_name() const override {
+        return "enum-type";
     }
 
     std::string print() const override;

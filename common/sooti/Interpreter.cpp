@@ -74,7 +74,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {object_type_to_string(ObjectType::READER), ObjectType::READER},
         {object_type_to_string(ObjectType::POINTER), ObjectType::POINTER},
         {object_type_to_string(ObjectType::STATIC_BUFFER), ObjectType::STATIC_BUFFER},
-        {object_type_to_string(ObjectType::STATIC_WRITER), ObjectType::STATIC_WRITER},
         {object_type_to_string(ObjectType::HEAP_OBJECT), ObjectType::HEAP_OBJECT},
     };
     // Разрешить использование неограниченого числа ключей
@@ -324,7 +323,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
         // Buffer
         {"make-buffer", &Interpreter::eval_make_static_buffer, nullptr},
-        {"make-buffer-writer", &Interpreter::eval_make_static_writer, nullptr},
         {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
         {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
         {"buffer-write", &Interpreter::eval_buffer_write, &args_with_varkeys},
@@ -594,7 +592,7 @@ void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args,
 
 void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
                                       std::initializer_list<const char *> expected,
-                                      ObjectType                          got) {
+                                      std::string                         got) {
     std::string expected_str;
     bool        first = true;
     for (const char *name : expected) {
@@ -606,7 +604,7 @@ void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args,
 
     throw_eval_error(
         form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
-                          index, expected_str, object_type_to_string(got), args.print_full()));
+                          index, expected_str, got, args.print_full()));
 }
 
 void Interpreter::throw_missing_named_arg(const Object &form, const std::string &name,
@@ -985,7 +983,6 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::STRING_HASH_TABLE:
     case ObjectType::READER:
     case ObjectType::STATIC_BUFFER:
-    case ObjectType::STATIC_WRITER:
         return obj;
     case ObjectType::FUNCTION:
         return obj;
@@ -3007,9 +3004,7 @@ Object Interpreter::eval_type_of(const Object &form, Arguments &args,
         if (!table->type.is_none())
             return table->type;
     }
-    if (obj.is_heap_object() && obj.heap_obj.get() != nullptr) {
-        return obj.heap_obj->type_name_obj();
-    }
+
     return args.unnamed[0].type_name_obj();
 }
 
@@ -3019,12 +3014,22 @@ Object Interpreter::eval_type_p(const Object &form, Arguments &args,
     vararg_check(form, args, {{}, {ObjectType::SYMBOL}}, {});
 
     auto type_name = args.unnamed[1].as_symbol().name_ptr;
-    auto kv = m_string_to_type.find(type_name);
-    if (kv == m_string_to_type.end()) {
-        throw_eval_error(form, fmt::format("invalid type name: {}", type_name));
+
+    if (args.unnamed[0].type != ObjectType::HEAP_OBJECT) {
+        auto kv = m_string_to_type.find(type_name);
+        if (kv == m_string_to_type.end()) {
+            throw_eval_error(form, fmt::format("invalid type name: {}", type_name));
+        }
+
+        return true_or_false(args.unnamed[0].type == kv->second);
+    } else {
+        auto ho = args.unnamed[0].as_heap_obj();
+        if (ho == nullptr)
+            throw_eval_error(form, fmt::format("invalid heap object"));
+        return Object::make_boolean(ho->class_name() == type_name);
     }
 
-    return true_or_false(args.unnamed[0].type == kv->second);
+    return get_false();
 }
 
 Object Interpreter::eval_null_p(const Object &form, Arguments &args,
@@ -5033,7 +5038,7 @@ Object Interpreter::eval_the(const Object &form, Arguments &args,
     // 4. Получаем актуальный тип объекта
     TypeSpec actual_spec;
     if (target.is_pointer()) {
-        actual_spec = TypeSpec(target.as_pointer()->get_type_name());
+        actual_spec = TypeSpec(target.as_pointer()->type());
     } else {
         // Используем встроенный метод получения типа объекта в рантайме
         actual_spec = TypeSpec(target.type_name());
@@ -5312,28 +5317,6 @@ Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
 }
 
 /**
- * @brief Создание курсора записи (Поток/Врайтер).
- * * * Роль: Обертка над буфером, которая управляет "текущей позицией" записи.
- * Позволяет писать данные последовательно, не вычисляя каждый раз оффсет вручную.
- * Хранит ссылку на TypeSystem для автоматического выравнивания (alignment) типов.
- * * * Особенности:
- * - Связывает физический буфер с логикой типов.
- * - Позволяет выполнять автоматическую аллокацию места под структуры.
- * * * Lisp Logic:
- * (make-static-writer my-buf)
- * * * @param args[0] Существующий объект STATIC_BUFFER.
- * @return Object (HeapObject типа STATIC_WRITER).
- */
-Object Interpreter::eval_make_static_writer(const Object &form, Arguments &args,
-                                            const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
-    auto buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
-    auto writer = std::make_shared<StaticWriter>(buffer);
-    return Object::make_heap_obj(writer, ObjectType::STATIC_WRITER);
-}
-
-/**
  * @brief Фабрика ячеек памяти (Типизированный указатель).
  * * * Роль: Создает объект TypePointer, который связывает конкретный адрес в памяти с типом.
  * Поддерживает два режима работы:
@@ -5351,16 +5334,6 @@ Object Interpreter::eval_make_buffer_pointer(const Object &form, Arguments &args
                                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
-    // (static-cell buffer offset 'type) ИЛИ (static-cell writer 'type)
-    if (args.unnamed[0].is_type(ObjectType::STATIC_WRITER)) {
-        auto        writer = args.unnamed[0].as_heap_obj<StaticWriter>();
-        std::string type_name = args.unnamed[1].as_symbol();
-        auto       *type = TypeSystem::instance().lookup_type(type_name);
-        if (type == nullptr) {
-            throw_eval_error(form, "Unknown type: " + type_name);
-        }
-        return writer->allocate(type); // Возвращает TypePointer через HeapObject
-    }
 
     auto        buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
     size_t      offset = static_cast<size_t>(args.unnamed[1].as_integer());
@@ -5380,8 +5353,7 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
     (void)env;
     // 1. Проверка аргументов
     vararg_check(form, args,
-                 {{ObjectType::STATIC_BUFFER, ObjectType::STATIC_WRITER},
-                  {ObjectType::STRING, ObjectType::SYMBOL}},
+                 {{ObjectType::STATIC_BUFFER}, {ObjectType::STRING, ObjectType::SYMBOL}},
                  {
                      {"address", {false, {ObjectType::INTEGER}}},
                      {"segment", {false, {ObjectType::STRING, ObjectType::SYMBOL}}},
@@ -5396,11 +5368,7 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
     StaticBuffer *buffer = nullptr;
     size_t        offset = 0;
 
-    if (first_arg.is_buffer_writer()) {
-        auto writer = first_arg.as_heap_obj<StaticWriter>();
-        buffer = writer->get_buffer().get();
-        offset = writer->tell();
-    } else if (first_arg.is_static_buffer()) {
+    if (first_arg.is_static_buffer()) {
         buffer = first_arg.as_heap_obj<StaticBuffer>().get();
         // Для прямого обращения к буферу адрес обязателен, если метка новая
         if (!args.has_named("address") && !buffer->has_label(label_name)) {
@@ -5421,7 +5389,7 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
         auto label = label_obj.as_heap_obj<BufferLabel>();
 
         // Обновляем адрес, только если он был явно передан или мы пишем через writer
-        if (args.has_named("address") || first_arg.is_buffer_writer()) {
+        if (args.has_named("address")) {
             label->addr = offset;
         }
 
@@ -5465,9 +5433,7 @@ Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
 
     StaticBuffer *buffer = nullptr;
 
-    if (first_arg.is_buffer_writer()) {
-        buffer = first_arg.as_heap_obj<StaticWriter>()->get_buffer().get();
-    } else if (first_arg.is_static_buffer()) {
+    if (first_arg.is_static_buffer()) {
         buffer = first_arg.as_heap_obj<StaticBuffer>().get();
     } else {
         throw_eval_error(form, "Expected writer or buffer as first argument");
@@ -5556,17 +5522,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
         size_t                       write_offset = 0;
 
         // 1. Подготовка ячейки (Слайса)
-        if (target.is_type(ObjectType::STATIC_WRITER)) {
-            auto writer = target.as_heap_obj<StaticWriter>();
-
-            cell_obj = writer->allocate(type);
-
-            // Здесь cell_obj должен быть POINTER (TypePointer)
-            cell_ptr = cell_obj.as_heap_obj<TypePointer>();
-
-            // Вычисляем оффсет относительно начала буфера писателя для возвращаемого значения
-            write_offset = writer->tell() - cell_ptr->get_type()->get_size_in_memory();
-        } else {
+        {
             if (!args.named.count("address")) {
                 throw_eval_error(form, "Keyword :address required for buffer write");
                 return get_null();

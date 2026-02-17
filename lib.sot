@@ -687,16 +687,6 @@
 ;; Оборачиваем в функции
 (define original-type-of type-of)
 
-(defun type-of (obj)
-  (let ((t (original-type-of obj)))
-    (if (eq? t 'hash-table)
-        ;; Ищем поле _type_, которое должен записывать defstruct
-        (hash-table-ref obj :_type_ t)
-        t)))
-
-(defun type? (obj type-name)
-  (eq? (type-of obj) type-name))
-
 ;; -----------------------------------------------------------------------------
 ;; RLET
 ;; -----------------------------------------------------------------------------

@@ -53,8 +53,6 @@ std::string object_type_to_string(ObjectType type) {
         return "heap-obj";
     case ObjectType::STATIC_BUFFER:
         return "static-buffer";
-    case ObjectType::STATIC_WRITER:
-        return "static-writer]";
     case ObjectType::PRIMITIVE:
         return "primitive";
     case ObjectType::SPECIAL_FORM:
@@ -120,7 +118,6 @@ void SymbolTable::init_core_symbols() {
     core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
     core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::HEAP_OBJECT));
     core.type_static_buffer = make_symbol(object_type_to_string(ObjectType::STATIC_BUFFER));
-    core.type_static_writer = make_symbol(object_type_to_string(ObjectType::STATIC_WRITER));
 }
 Object SymbolTable::object_type_to_symbol(ObjectType type) {
     switch (type) {
@@ -160,8 +157,6 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.type_pointer;
     case ObjectType::STATIC_BUFFER:
         return core.type_static_buffer;
-    case ObjectType::STATIC_WRITER:
-        return core.type_static_writer;
     case ObjectType::HEAP_OBJECT:
         return core.type_heap_obj;
     default:
@@ -267,13 +262,13 @@ Object SymbolTable::make_keyword(std::string name) {
 
 std::string Object::type_name() const {
     if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
-        heap_obj->type_name();
+        return heap_obj->class_name();
     return object_type_to_string(type);
 }
 
 Object Object::type_name_obj() const {
     if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
-        heap_obj->type_name_obj();
+        return heap_obj->type_name_obj();
     return symbol_table().object_type_to_symbol(type);
 }
 
@@ -415,7 +410,7 @@ void HeapObject::set_at(const Object &key, const Object &value) {
 }
 
 Object HeapObject::type_name_obj() const {
-    return Object::make_symbol(type_name());
+    return Object::make_symbol(class_name());
 }
 
 // ============================================================================

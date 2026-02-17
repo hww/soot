@@ -134,7 +134,7 @@ class Interpreter {
     void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
                              const std::vector<ObjectType> &expected, ObjectType got);
     void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
-                             std::initializer_list<const char *> expected, ObjectType got);
+                             std::initializer_list<const char *> expected, std::string got);
     void throw_missing_named_arg(const Object &form, const std::string &name,
                                  const Arguments &args);
     void throw_unexpected_named_arg(const Object &form, const std::string &name,
@@ -623,8 +623,6 @@ class Interpreter {
                         const std::shared_ptr<EnvironmentObject> &env);
 
     Object eval_make_static_buffer(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_static_writer(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_buffer_write(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
