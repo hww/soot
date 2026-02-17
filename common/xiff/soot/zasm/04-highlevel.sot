@@ -183,36 +183,32 @@
     (else 
      (error "Malformed defmethod: check arguments structure."))))
 
-(defun prepare-method-call (t-sym m-sym calling-args)
+;;; =====================================================================
+;;; CallMethods 
+;;; =====================================================================
+
+(defun check-method-contract (t-sym m-sym provided-args)
   (let* ((m-impl (get-function t-sym m-sym))
          (spec (function-typespec m-impl))
          (raw-count (-> spec :args-count))
          
-         ;; ОПРЕДЕЛЯЕМ: это статика (new) или метод (len, add...)
-         ;; Если имя 'new', то self нет. Иначе — есть.
+         ;; Логика остается прежней: для методов self съедает один слот аргумента
          (has-self (if (eq? m-sym 'new) #f #t))
-         
          (expected-params (if has-self 
-                              (- raw-count 2)  ;; Минус self и return
-                              (- raw-count 1))) ;; Только минус return
+                              (- raw-count 2)  ;; self + return
+                              (- raw-count 1))) ;; return
          
-         (actual-count (length calling-args))
-         (regs '(hl de bc))
-         (i 0))
+         (actual-count (length provided-args)))
 
     (if (!= expected-params actual-count)
-        (error (fmt #f "Type Error: {}::{} expects {} params, but got {} (raw-count: {}, has-self: {})" 
-                    t-sym m-sym expected-params actual-count raw-count has-self)))
+        (error (fmt #f "Contract Error: {}::{} expects {} regs, but got {}" 
+                    t-sym m-sym expected-params actual-count)))
+    
+    ;; Здесь можно добавить проверку, что в provided-args переданы именно символы регистров
+    ;; (hl de bc), а не случайные числа.
+    #t))
 
-    (if (null? calling-args)
-        '()
-        (map (lambda (arg)
-               (let ((reg (nth i regs)))
-                 (set! i (+ i 1))
-                 `(.ld ,reg ,arg)))
-             calling-args))))
-
-(defmacro call-method (obj method-full-name &rest calling-args)
+(defmacro call-method (obj-reg method-full-name &rest calling-regs)
   (let* ((full-name-str (if (string? method-full-name) 
                             method-full-name 
                             (symbol->string method-full-name)))
@@ -223,28 +219,33 @@
          (m-id (method-id-of t-sym m-sym))
          (offset (* 2 m-id))
          (lab-exit (local 'exit))
-         
-         ;; Получаем список инструкций загрузки аргументов
-         (arg-setup (prepare-method-call t-sym m-sym calling-args)))
+         (ir-reg (string->symbol (fmt #f "+{}" obj-reg))))
 
-    `(begin
-        ,@arg-setup  ;; Вставляем (.ld hl 1) (.ld de 2) и т.д.
-        (zasm
-          (.ld ix ,obj)
-          (.ld l (+ix 0))
-          (.ld h (+ix 1))
-          (.ld a ,offset)
-          (.add-hl-a) 
-          (.ld a (@ hl)) 
-          (.ld e a)
-          (.inc hl)
-          (.ld a (@ hl)) 
-          (.ld d a)
-          (.ld hl ',lab-exit) 
-          (.push hl)          
-          (.ex-de-hl)
-          (.jump hl)           
-          (.label ,lab-exit)))))
+    ;; 1. Просто проверяем контракт. Если не совпадет — вылетит Error.
+    (check-method-contract t-sym m-sym calling-regs)
+
+    ;; 2. Генерируем только прыжок. 
+    ;; Мы верим, что в calling-regs (hl, de...) уже всё лежит.
+    `(zasm
+        ;; Настройка VTable через переданный базовый регистр (IX или IY)
+        (.ld l (,ir-reg 0))
+        (.ld h (,ir-reg 1))
+        (.ld a ,offset)
+        (.add-hl-a) 
+        
+        ;; Читаем адрес метода из таблицы в DE
+        (.ld a (@ hl)) 
+        (.ld e a)
+        (.inc hl)
+        (.ld a (@ hl)) 
+        (.ld d a)
+        
+        ;; Подготовка возврата
+        (.ld hl ',lab-exit) 
+        (.push hl)          ;; Адрес возврата на стек
+        (.ex-de-hl)         ;; Адрес метода в HL, DE свободен
+        (.jump hl)          ;; Полетели
+        (.label ,lab-exit))))
 
 ;;; =====================================================================
 ;;; V-Table 
