@@ -209,7 +209,6 @@
             ;; Если метод найден (в типе или у родителя)
             ;; Берем имя самого метода, префикс vtable останется за вызывающим
             (let ((full-name (intern (concat (-> method :type-name) "::" (-> method :name)))))
-             
               (push! (emit-fn full-name id method) data))
             
             ;; Если метода нет ни в этом типе, ни выше по иерархии
@@ -232,7 +231,7 @@
           
           ;; Ставим метку слота
           (label label-name)
-          (let ((type-spec (~> method :type-spec))) (declare-extern label-name type-spec))
+          ;(let ((type-spec (~> method :type-spec))) (declare-extern label-name type-spec))
           (if method-full-name
             (let ((addr (module-label-addr-get method-full-name)))
               (if (and addr (not (= addr 0)))
@@ -264,7 +263,7 @@
 
   ;; Проходим по всем слотам, которые определены в базовом типе
   (emit-vtable-slots type-obj 
-    (lambda (method-full-name index)
+    (lambda (method-full-name index method)
       (let ((slot-label (if method-full-name
                             (intern (fmt #f "{}::{}" name-symbol (method-name-only method-full-name)))
                             (intern (fmt #f "{}::empty_{}" name-symbol index)))))
@@ -360,7 +359,7 @@
 
 (defun resolve-method-name (name)
   (let ((val (if (defined? name) (eval name) #f)))
-    (if (type? val 'function)
+    (if (type? 'function val)
         val
         ;; Если это не функция в Лиспе, значит это метка (адрес) в ассемблере
         (module-label-addr-get name)
@@ -369,15 +368,15 @@
 
 (defun resolve-method (name-or-function)
   (cond
-    ((type? name-or-function 'function)
+    ((type? 'function name-or-function )
       name-or-function)
     ((symbol? name-or-function)
       (resolve-method-name name-or-function))
     (#t (asm-error (fmt #f "Expected label or function, got {}" name-or-function)))))
 
 (defmacro dcall (method-sym &rest declared-args)
-  (let* ((func (resolve-method method-sym)))
-    (unless (type? func 'function)
+  (let* ((func (eval method-sym)))
+    (unless (type? 'function func)
       (asm-error (fmt #f "Expected function got {}" func)))  
     (let* ((spec-func (function-typespec func))     ;; (function int16 int16 none)
            (actual-objects (map (lambda (arg) (eval arg)) declared-args))
@@ -395,7 +394,7 @@
 (defmacro ycall (method-sym &rest declared-args)
 
   (let* ((func (eval method-sym)))
-    (unless (type? func 'function)
+    (unless (type? 'function func)
       (asm-error (fmt #f "Expected function got {}" func)))
     (let* ((spec-func (function-typespec func))     ;; (function int16 int16 none)
            (actual-objects (map (lambda (arg) (eval arg)) declared-args))

@@ -67,7 +67,7 @@ Node to_node(const Object &obj) {
     case ObjectType::EMPTY_LIST:
         return Node("null");
 
-    case ObjectType::INTEGER:
+    case ObjectType::INT:
     case ObjectType::FLOAT:
     case ObjectType::CHAR:
     case ObjectType::SYMBOL:

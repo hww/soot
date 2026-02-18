@@ -237,7 +237,7 @@
 ;;; =====================================================================
 
 (defmacro check-type (var predicate)
-  `(if (not (,predicate ,var))
+  `(when (not (,predicate ,var))
     (error (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" 
       ',var ',predicate ,var (type-of ,var) *source-context*))))
 

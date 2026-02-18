@@ -23,7 +23,7 @@ std::string object_type_to_string(ObjectType type) {
         return "none";
     case ObjectType::EMPTY_LIST:
         return "null";
-    case ObjectType::INTEGER:
+    case ObjectType::INT:
         return "int";
     case ObjectType::FLOAT:
         return "float";
@@ -43,7 +43,7 @@ std::string object_type_to_string(ObjectType type) {
         return "macro";
     case ObjectType::ENVIRONMENT:
         return "environment";
-    case ObjectType::STRING_HASH_TABLE:
+    case ObjectType::HASH_TABLE:
         return "hash-table";
     case ObjectType::READER:
         return "reader";
@@ -418,7 +418,7 @@ template <> Object Object::make_number(IntType value) {
 
 Object Object::make_integer(IntType value) {
     Object obj;
-    obj.type = ObjectType::INTEGER;
+    obj.type = ObjectType::INT;
     obj.integer_obj.value = value;
     return obj;
 }
@@ -492,13 +492,13 @@ Object Object::make_vector(const std::vector<Object> &elements) {
 
 Object Object::make_hash_table(int size) {
     Object obj;
-    obj.type = ObjectType::STRING_HASH_TABLE;
+    obj.type = ObjectType::HASH_TABLE;
     obj.heap_obj = std::make_shared<HashTableObject>(size);
     return obj;
 }
 Object Object::make_hash_table(Object type_name, int size) {
     Object obj;
-    obj.type = ObjectType::STRING_HASH_TABLE;
+    obj.type = ObjectType::HASH_TABLE;
     obj.heap_obj = std::make_shared<HashTableObject>(type_name, size);
     return obj;
 }
@@ -605,7 +605,7 @@ MacroObject *Object::as_macro() const {
 }
 
 IntType Object::as_integer() const {
-    if (type != ObjectType::INTEGER) {
+    if (type != ObjectType::INT) {
         throw std::runtime_error("as_integer called on a " + object_type_to_string(type) + " " +
                                  print());
     }
@@ -645,7 +645,7 @@ ArrayObject *Object::as_array() const {
 }
 
 HashTableObject *Object::as_hash_table() const {
-    if (type != ObjectType::STRING_HASH_TABLE) {
+    if (type != ObjectType::HASH_TABLE) {
         throw std::runtime_error("as_string_hash_table called on a " + object_type_to_string(type) +
                                  " " + print());
     }
@@ -721,7 +721,7 @@ uint32_t Object::as_crc32() const {
         return util::compute_crc32("none");
     case ObjectType::EMPTY_LIST:
         return util::compute_crc32("null");
-    case ObjectType::INTEGER:
+    case ObjectType::INT:
         return util::compute_crc32(print());
     case ObjectType::FLOAT:
         return util::compute_crc32(print());
@@ -782,7 +782,7 @@ bool Object::operator==(const Object &other) const {
 
     case ObjectType::STRING:
         return as_string()->data == other.as_string()->data;
-    case ObjectType::INTEGER:
+    case ObjectType::INT:
         return integer_obj.value == other.integer_obj.value;
     case ObjectType::FLOAT:
         return float_obj.value == other.float_obj.value;
@@ -812,7 +812,7 @@ bool Object::operator==(const Object &other) const {
         return this_arr->data == other_arr->data;
     }
 
-    case ObjectType::STRING_HASH_TABLE:
+    case ObjectType::HASH_TABLE:
         return as_hash_table()->data == other.as_hash_table()->data;
 
     default:
@@ -1184,7 +1184,7 @@ std::string Object::print() const {
         return "none";
     case ObjectType::EMPTY_LIST:
         return "null";
-    case ObjectType::INTEGER:
+    case ObjectType::INT:
         return integer_obj.print();
     case ObjectType::FLOAT:
         return float_obj.print();
@@ -1378,7 +1378,7 @@ Object Object::inspect() const {
     case ObjectType::EMPTY_LIST:
         return Object::make_symbol("null");
 
-    case ObjectType::INTEGER: {
+    case ObjectType::INT: {
         ListBuilder lb{};
         lb.push_back(Object::make_symbol("integer"));
         lb.push_kv("value", *this);

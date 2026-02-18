@@ -113,7 +113,7 @@
                 ;; ВНИМАНИЕ: Используем for-each-hash для хэш-таблицы сегментов
                 (for-each (module-segments mod) (lambda (name seg)
                   (let ((l (segment-label-get seg label)))
-                    (if (not (null? l)) (set! found-label l)))))))
+                    (when (not (null? l)) (set! found-label l)))))))
           found-label))))
 
 (defun module-label-addr-get (label)

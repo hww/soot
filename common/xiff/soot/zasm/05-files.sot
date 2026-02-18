@@ -57,7 +57,7 @@
     (for-each (module-segments mod) ;; Теперь тут объект, и итератор сработает
       (lambda (seg-name seg)
         (let ((labels (~> (segment-buffer seg) :labels)))
-          (if (list? labels)
+          (when (list? labels)
               (for-each labels
                 (lambda (lbl)
                   (let ((addr (~> lbl :address))

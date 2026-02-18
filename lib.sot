@@ -56,11 +56,11 @@
 (defmacro float? (x)
   `(type? 'float ,x))
 
-(defmacro integer? (x)
-  `(type? 'integer ,x))
+(defmacro int? (x)
+  `(type? 'int ,x))
 
 (defmacro number? (x)
-  `(or (float? ,x) (integer? ,x)))
+  `(or (float? ,x) (int? ,x)))
 
 (defmacro native-obj? (x)
   `(type? 'native-obj ,x))
@@ -129,6 +129,11 @@
 ;; ===========================================================================
 ;; Управляющие конструкции 
 ;; ===========================================================================
+
+
+(defmacro if (clause true false)
+  `(cond (,clause ,true) (#t ,false))
+  )
 
 ;; @doc (when clause &rest body)
 ;; Выполняет body, если clause истинно.
@@ -663,7 +668,7 @@
 ;;      (vector-x v)       ;; Должно быть 10
 ;; -----------------------------------------------------------------------------
 (defmacro defstruct (name &rest fields)
-  (if (not (list? fields)) (error "expected list with arguments"))
+  (when (not (list? fields)) (error "expected list with arguments"))
   (let* ((struct-name-sym name)
           (doc? (string? (car fields)))
           ;; Если первый элемент строка — это докстринг, берем остальное как поля
@@ -727,12 +732,6 @@
 ;; RLET
 ;; -----------------------------------------------------------------------------
 
-;(defmacro -> (obj-sym field-sym)
-;  (let ((type (rlet-ref ,obj-sym 'type))
-;        (reg  (rlet-ref ,obj-sym 'reg)))
-;    (if (none? type)
-;        (error "Not an ASM register")
-;        `(mem ,reg ,(get-field-offset type field-sym)))))
 
 ;; =============================================================================
 ;; Маркер успешной загрузки библиотеки
