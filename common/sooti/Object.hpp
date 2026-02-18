@@ -29,8 +29,8 @@ enum class ObjectType : uint8_t {
     SPECIAL_FORM,
     PAIR,
     ARRAY,
-    STRING_HASH_TABLE,
-    INTEGER,
+    HASH_TABLE,
+    INT,
     FLOAT,
     CHAR,
     SYMBOL,
@@ -154,7 +154,7 @@ template <typename T> class FixedObject {
         if constexpr (std::is_same_v<T, FloatType>)
             return object_type_to_string(ObjectType::FLOAT);
         if constexpr (std::is_same_v<T, IntType>)
-            return object_type_to_string(ObjectType::INTEGER);
+            return object_type_to_string(ObjectType::INT);
         if constexpr (std::is_same_v<T, char>)
             return object_type_to_string(ObjectType::CHAR);
         if constexpr (std::is_same_v<T, InternedSymbolPtr>)
@@ -258,7 +258,7 @@ class Object {
         return heap_obj != nullptr;
     }
     bool is_integer() const {
-        return type == ObjectType::INTEGER;
+        return type == ObjectType::INT;
     }
     bool is_float() const {
         return type == ObjectType::FLOAT;
@@ -326,7 +326,7 @@ class Object {
         return type == ObjectType::ARRAY;
     }
     bool is_hash_table() const {
-        return type == ObjectType::STRING_HASH_TABLE;
+        return type == ObjectType::HASH_TABLE;
     }
     bool is_env() const {
         return type == ObjectType::ENVIRONMENT;
@@ -984,14 +984,14 @@ class HashTableObject : public HeapObject {
     }
     std::string class_name() const override {
         if (!type.is_none()) {
-            return fmt::format("{}::{}>", object_type_to_string(ObjectType::STRING_HASH_TABLE),
+            return fmt::format("{}::{}>", object_type_to_string(ObjectType::HASH_TABLE),
                                type.print());
         }
-        return object_type_to_string(ObjectType::STRING_HASH_TABLE);
+        return object_type_to_string(ObjectType::HASH_TABLE);
     }
 
     Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::STRING_HASH_TABLE);
+        return Object::symbol_table().object_type_to_symbol(ObjectType::HASH_TABLE);
     }
 
     bool is_class_name(const Object &name) const override {

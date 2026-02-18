@@ -46,7 +46,7 @@
           :listing (fmt #f "DB  \"{}\", 0" s))))
 
 (defun emit-space (&optional (text null)) 
-  (if text
+  (when text
     (begin
       (emit '() :listing ";; -------------------------------" :prefix "")
       (emit '() :listing (fmt #f ";; {}" text) :prefix "")))
@@ -488,7 +488,7 @@
        (emit '(#xC3 #x00 #x00) :listing (fmt #f "JP ${:04X} (placeholder)" 0))) ;; Печатаем 0 вместо символа
       
       (else
-       (if (not (number? target-addr)) 
+       (when (not (number? target-addr)) 
            (error "Jump target must be a number or HL register" target-addr))
        (let ((offset (- target-addr (+ current-ilc 2))))
          (if (and (>= offset -128) (<= offset 127))

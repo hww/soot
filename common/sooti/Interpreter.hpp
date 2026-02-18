@@ -215,8 +215,6 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_special(const Object &form, const Object &rest,
                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_if_special(const Object &form, const Object &rest,
-                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_and_special(const Object &form, const Object &rest,
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_or_special(const Object &form, const Object &rest,
@@ -240,8 +238,10 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_macroexpand(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_defined_p_special(const Object &form, const Object &rest,
-                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_defined_p(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_lookup(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
 

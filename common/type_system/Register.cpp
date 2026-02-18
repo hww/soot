@@ -98,7 +98,7 @@ Object Register::make_step_accessor(const Object &key) {
     }
 
     // --- 2. Обработка ЧИСЛОВЫХ ключей (Индексация) ---
-    if (key.type == ObjectType::INTEGER) {
+    if (key.type == ObjectType::INT) {
         int64_t index = key.integer_obj.value;
 
         // Получаем информацию о текущем типе
