@@ -1083,7 +1083,7 @@ Object BitFieldType::make_step_accessor(const Object &key) {
             // Используем shared_ptr, чтобы объект жил, пока на него ссылается Лисп.
             // Если BitField хранятся в векторе по значению, создаем копию в куче:
             auto bf_ptr = std::make_shared<BitField>(bf);
-            lb.add(Object::make_heap_obj(bf_ptr, ObjectType::HEAP_OBJECT));
+            lb.add(Object::make_heap_obj(bf_ptr, ObjectType::NATIVE_OBJECT));
         }
         return lb.build();
     }

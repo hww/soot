@@ -557,6 +557,8 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec_special(const Object &form, const Object &rest,
                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_typespec(const Object &form, Arguments &args,
+                         const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_type(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_define_constant(const Object &form, const Object &rest,

@@ -30,7 +30,7 @@ struct Relocation {
     std::string target_name; // Имя типа или символа
 };
 
-struct BufferLabel : public HeapObject {
+struct BufferLabel : public NativeObject {
     std::string name;
     size_t      addr;    // Смещение в буфере
     Object      segment; // Имя или объект сегмента (Object для гибкости)
@@ -49,7 +49,7 @@ struct BufferLabel : public HeapObject {
     }
 
     bool is_class_name(std::string name) const override {
-        return name == BufferLabel::class_name() || HeapObject::is_class_name(name);
+        return name == BufferLabel::class_name() || NativeObject::is_class_name(name);
     }
 
     std::string print() const override {
@@ -171,7 +171,7 @@ class StaticSymbolTable {
     }
 };
 
-class StaticBuffer : public HeapObject {
+class StaticBuffer : public NativeObject {
 
   public:
     enum class Endian { Little, Big };
@@ -202,11 +202,11 @@ class StaticBuffer : public HeapObject {
     }
 
     std::string class_name() const override {
-        return object_type_to_string(ObjectType::STATIC_BUFFER);
+        return "static-buffer";
     }
 
     bool is_class_name(std::string name) const override {
-        return name == StaticBuffer::class_name() || HeapObject::is_class_name(name);
+        return name == StaticBuffer::class_name() || NativeObject::is_class_name(name);
     }
 
     Object      inspect() const override;
@@ -491,7 +491,7 @@ class StaticBuffer : public HeapObject {
             if (label_obj.is_null())
                 continue;
 
-            // 2. Достаем указатель на HeapObject Label
+            // 2. Достаем указатель на NativeObject Label
             // Используем as_heap<Label>(), так как это NATIVE_REF, указывающий на Label
             auto label = label_obj.as_heap_obj<BufferLabel>();
 

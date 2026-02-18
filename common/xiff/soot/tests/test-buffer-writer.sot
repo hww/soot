@@ -20,7 +20,7 @@
         
 (buffer-write buf 
                  '((tag  . #x55) 
-                   (data . ((val_i8 . #x7F)
+                   (data  ((val_i8 . #x7F)
                              (val_i16 . #x7FFF)
                              (val_u8 . #x7F)
                              (val_u16 . #x7FFF)))) 
@@ -28,7 +28,6 @@
                  :type 'outer)
    
 (fmt #t "Dump:\n{}\n" (buffer-dump buf))
-
 
 ;; Чтение (слайсинг)
 (let ((obj (buffer-read buf :type 'outer :address 0)))

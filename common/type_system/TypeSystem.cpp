@@ -2460,7 +2460,7 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
     args_list = Object::make_pair(Object::make_symbol(ret_type_name), args_list);
 
     for (int i = (int)entries.size() - 1; i >= 0; --i) {
-        if (entries[i].value.is_native_ref<RegisterAlias>()) {
+        if (entries[i].value.is_native_obj<RegisterAlias>()) {
             auto alias = entries[i].value.as_heap_obj<RegisterAlias>();
             // Если тип не указан, пусть будет 'object
             Object t_name =

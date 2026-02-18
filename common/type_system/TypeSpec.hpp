@@ -38,7 +38,7 @@ struct TypeTag {
 // TypeSpec
 // ============================================================================
 
-class TypeSpec : public HeapObject {
+class TypeSpec : public NativeObject {
   public:
     // Constructors
     TypeSpec() = default;
@@ -59,7 +59,7 @@ class TypeSpec : public HeapObject {
         return "type-spec";
     }
     bool is_class_name(std::string name) const override {
-        return name == "type-type" || HeapObject::is_class_name(name);
+        return name == "type-type" || NativeObject::is_class_name(name);
     }
 
     // Comparison

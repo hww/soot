@@ -49,10 +49,8 @@ std::string object_type_to_string(ObjectType type) {
         return "reader";
     case ObjectType::POINTER:
         return "pointer";
-    case ObjectType::HEAP_OBJECT:
-        return "heap-obj";
-    case ObjectType::STATIC_BUFFER:
-        return "static-buffer";
+    case ObjectType::NATIVE_OBJECT:
+        return "native-obj";
     case ObjectType::PRIMITIVE:
         return "primitive";
     case ObjectType::SPECIAL_FORM:
@@ -116,8 +114,7 @@ void SymbolTable::init_core_symbols() {
     core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
     core.type_none = make_symbol(object_type_to_string(ObjectType::NONE));
     core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
-    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::HEAP_OBJECT));
-    core.type_static_buffer = make_symbol(object_type_to_string(ObjectType::STATIC_BUFFER));
+    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::NATIVE_OBJECT));
 }
 Object SymbolTable::object_type_to_symbol(ObjectType type) {
     switch (type) {
@@ -155,9 +152,7 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
         return core.type_reader;
     case ObjectType::POINTER:
         return core.type_pointer;
-    case ObjectType::STATIC_BUFFER:
-        return core.type_static_buffer;
-    case ObjectType::HEAP_OBJECT:
+    case ObjectType::NATIVE_OBJECT:
         return core.type_heap_obj;
     default:
         return core.type_none;
@@ -261,19 +256,19 @@ Object SymbolTable::make_keyword(std::string name) {
 // ============================================================================
 
 std::string Object::class_name() const {
-    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
+    if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->class_name();
     return object_type_to_string(type);
 }
 
 Object Object::type_name_obj() const {
-    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
+    if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->type_name_obj();
     return symbol_table().object_type_to_symbol(type);
 }
 
 bool Object::is_class_name(std::string name) const {
-    if (type == ObjectType::HEAP_OBJECT && heap_obj.get() != nullptr)
+    if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->is_class_name(name);
     return name == object_type_to_string(type);
 }
@@ -438,7 +433,7 @@ Object Object::make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType
 
 Object Object::make_heap_obj(std::shared_ptr<HeapObject> heap_object) {
     Object obj;
-    obj.type = ObjectType::HEAP_OBJECT;
+    obj.type = ObjectType::NATIVE_OBJECT;
     obj.heap_obj = std::move(heap_object);
     return obj;
 }

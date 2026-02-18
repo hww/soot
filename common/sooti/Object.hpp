@@ -40,9 +40,8 @@ enum class ObjectType : uint8_t {
     MACRO,
     ENVIRONMENT,
     READER,
-    HEAP_OBJECT,
     POINTER,
-    STATIC_BUFFER,
+    NATIVE_OBJECT
 };
 
 std::string object_type_to_string(ObjectType type);
@@ -201,6 +200,20 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     }
 };
 
+class NativeObject : public HeapObject {
+  public:
+    std::string full_class_name() const override {
+        return "NativeObject";
+    }
+    std::string class_name() const override {
+        return "native-object";
+    }
+
+    bool is_class_name(std::string type) const override {
+        return type == HeapObject::class_name();
+    }
+};
+
 // Main Object class
 class Object {
     friend class EnvironmentPrettyPrinter;
@@ -323,11 +336,11 @@ class Object {
     bool is_pointer() const {
         return type == ObjectType::POINTER;
     }
-    bool is_native_ref() const {
-        return type == ObjectType::HEAP_OBJECT;
+    bool is_native_obj() const {
+        return type == ObjectType::NATIVE_OBJECT;
     }
-    template <typename T> bool is_native_ref() const {
-        if (type != ObjectType::HEAP_OBJECT || !heap_obj) {
+    template <typename T> bool is_native_obj() const {
+        if (type != ObjectType::NATIVE_OBJECT || !heap_obj) {
             return false;
         }
         // КРИТИЧЕСКИ ВАЖНО: если use_count == 0, объект уже удалён!
@@ -365,9 +378,6 @@ class Object {
     }
     bool is_reader() const {
         return type == ObjectType::READER;
-    }
-    bool is_static_buffer() const {
-        return type == ObjectType::STATIC_BUFFER;
     }
     bool is_primitive() const {
         return type == ObjectType::PRIMITIVE;
@@ -433,11 +443,13 @@ class Object {
     std::string         to_std_string() const;
     std::vector<Object> to_vector() const;
 
-    template <typename T> std::shared_ptr<T> as_heap_obj() const {
+    template <typename T> std::shared_ptr<T> as_heap_obj(bool throw_error = true) const {
         // 1. Проверяем, что объект вообще является нативной ссылкой (инкапсулированным указателем)
         if (!heap_obj) {
-            throw std::runtime_error("as_heap_obj<T> called on the object with heap_obj null " +
-                                     object_type_to_string(type) + " " + print());
+            if (throw_error) {
+                throw std::runtime_error("as_heap_obj<T> called on the object with heap_obj null " +
+                                         object_type_to_string(type) + " " + print());
+            }
             return nullptr;
         }
 
@@ -449,6 +461,17 @@ class Object {
         auto casted_ptr = std::dynamic_pointer_cast<T>(base_ptr);
 
         return casted_ptr;
+    }
+
+    template <typename T> std::shared_ptr<T> as_native_obj(bool throw_error = true) const {
+        if (type != ObjectType::NATIVE_OBJECT) {
+            if (throw_error) {
+                throw std::runtime_error("as_native_obj<T> called on the object with not native " +
+                                         object_type_to_string(type) + " " + print());
+            }
+            return nullptr;
+        }
+        return as_heap_obj<T>();
     }
 
     bool operator==(const Object &other) const;
@@ -964,7 +987,6 @@ class SymbolTable {
         Object type_none;
         Object type_pointer;
         Object type_heap_obj;
-        Object type_static_buffer;
         Object type_register_alias;
 
         Object true_or_false(bool val) {
@@ -1416,46 +1438,6 @@ class ReaderObject : public HeapObject {
     }
 };
 
-class Pointer : public HeapObject {
-  public:
-    void       *m_ptr;  // Прямой адрес в памяти (base_addr + offset)
-    std::string m_type; // Метаданные (как именно читать этот кусок памяти)
-
-    Pointer() : m_ptr(nullptr), m_type("undefined") {}
-    Pointer(void *ptr) : m_ptr(ptr), m_type("void") {}
-    Pointer(void *ptr, std::string type) : m_ptr(ptr), m_type(type) {}
-
-    virtual std::string type() const {
-        return m_type;
-    };
-
-    Object         make_step_accessor(const Object &key) override;
-    Object         get_at(const Object &key) override;
-    void           set_at(const Object &key, const Object &val) override;
-    virtual Object get();
-    virtual void   set(const Object &val);
-    virtual Object deref() {
-        return get();
-    }
-    virtual void *resolve_addr() const {
-        return m_ptr;
-    }
-
-    std::string print() const override;
-    Object      inspect() const override;
-
-    std::string full_class_name() const override {
-        return "Pointer";
-    }
-    std::string class_name() const override {
-        return object_type_to_string(ObjectType::POINTER);
-    }
-
-    bool is_class_name(std::string name) const override {
-        return name == Pointer::class_name() || HeapObject::is_class_name(name);
-    }
-};
-
 // 1. Предварительное объявление
 class Interpreter;
 
@@ -1528,6 +1510,46 @@ struct BuiltinFunctionObject : public CallableObject {
     }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::PRIMITIVE);
+    }
+};
+
+class Pointer : public HeapObject {
+  public:
+    void       *m_ptr;  // Прямой адрес в памяти (base_addr + offset)
+    std::string m_type; // Метаданные (как именно читать этот кусок памяти)
+
+    Pointer() : m_ptr(nullptr), m_type("undefined") {}
+    Pointer(void *ptr) : m_ptr(ptr), m_type("void") {}
+    Pointer(void *ptr, std::string type) : m_ptr(ptr), m_type(type) {}
+
+    virtual std::string type() const {
+        return m_type;
+    };
+
+    Object         make_step_accessor(const Object &key) override;
+    Object         get_at(const Object &key) override;
+    void           set_at(const Object &key, const Object &val) override;
+    virtual Object get();
+    virtual void   set(const Object &val);
+    virtual Object deref() {
+        return get();
+    }
+    virtual void *resolve_addr() const {
+        return m_ptr;
+    }
+
+    std::string print() const override;
+    Object      inspect() const override;
+
+    std::string full_class_name() const override {
+        return "Pointer";
+    }
+    std::string class_name() const override {
+        return object_type_to_string(ObjectType::POINTER);
+    }
+
+    bool is_class_name(std::string name) const override {
+        return name == Pointer::class_name() || HeapObject::is_class_name(name);
     }
 };
 
