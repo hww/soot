@@ -105,7 +105,7 @@ struct DefinitionMetadata {
 // Method Information
 // ============================================================================
 
-class MethodInfo : public HeapObject {
+class MethodInfo : public NativeObject {
 
   public:
     MethodInfo() {}
@@ -145,7 +145,7 @@ class MethodInfo : public HeapObject {
         return "method-info";
     }
     bool is_class_name(std::string name) const override {
-        return name == class_name() || HeapObject::is_class_name(name);
+        return name == class_name() || NativeObject::is_class_name(name);
     }
 
     Object inspect() const override {
@@ -172,7 +172,7 @@ class MethodInfo : public HeapObject {
 // Field Definition
 // ============================================================================
 
-class Field : public HeapObject {
+class Field : public NativeObject {
   public:
     Field() {};
     Field(std::string name, TypeSpec type);
@@ -194,7 +194,7 @@ class Field : public HeapObject {
         return "field";
     }
     bool is_class_name(std::string name) const override {
-        return name == class_name() || HeapObject::is_class_name(name);
+        return name == class_name() || NativeObject::is_class_name(name);
     }
 
     const TypeSpec &type() const {
@@ -296,7 +296,7 @@ class Field : public HeapObject {
 // BitField Definition
 // ============================================================================
 
-class BitField : public HeapObject {
+class BitField : public NativeObject {
   public:
     BitField() {};
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
@@ -308,7 +308,7 @@ class BitField : public HeapObject {
         return "bit-field";
     }
     bool is_class_name(std::string name) const override {
-        return name == class_name() || HeapObject::is_class_name(name);
+        return name == class_name() || NativeObject::is_class_name(name);
     }
 
     const std::string name() const {
@@ -355,7 +355,7 @@ class BitField : public HeapObject {
 // Base Type Definition
 // ============================================================================
 
-class Type : public HeapObject {
+class Type : public NativeObject {
   public:
     static int verbose;
 
@@ -370,7 +370,7 @@ class Type : public HeapObject {
         return "type";
     }
     bool is_class_name(std::string name) const override {
-        return name == Type::class_name() || HeapObject::is_class_name(name);
+        return name == Type::class_name() || NativeObject::is_class_name(name);
     }
 
     uint32_t get_type_tag() {
@@ -446,7 +446,7 @@ class Type : public HeapObject {
 
     size_t methods_max_id() const;
 
-    // HeapObjects
+    // NativeObjects
     void set_runtime_type(std::string name) {
         m_runtime_name = std::move(name);
     }

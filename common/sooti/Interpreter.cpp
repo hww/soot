@@ -73,290 +73,288 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {object_type_to_string(ObjectType::ENVIRONMENT), ObjectType::ENVIRONMENT},
         {object_type_to_string(ObjectType::READER), ObjectType::READER},
         {object_type_to_string(ObjectType::POINTER), ObjectType::POINTER},
-        {object_type_to_string(ObjectType::STATIC_BUFFER), ObjectType::STATIC_BUFFER},
-        {object_type_to_string(ObjectType::HEAP_OBJECT), ObjectType::HEAP_OBJECT},
+        {object_type_to_string(ObjectType::NATIVE_OBJECT), ObjectType::NATIVE_OBJECT},
     };
     // Разрешить использование неограниченого числа ключей
     ArgumentSpec args_with_varkeys(true, true);
 
     // === СПЕЦИАЛЬНЫЕ ФОРМЫ (не вычисляют аргументы) ===
-    init_special_forms({
-        {"define", &Interpreter::eval_define_special, nullptr},
-        {"quote", &Interpreter::eval_quote_special, nullptr},
-        {"set!", &Interpreter::eval_set_special, nullptr},
-        {"let", &Interpreter::eval_let_special, nullptr},
-        {"let*", &Interpreter::eval_let_star_special, nullptr},
-        {"lambda", &Interpreter::eval_lambda_special, nullptr},
-        {"cond", &Interpreter::eval_cond_special, nullptr},
-        {"begin", &Interpreter::eval_begin_special, nullptr},
-        {"or", &Interpreter::eval_or_special, nullptr},
-        {"and", &Interpreter::eval_and_special, nullptr},
-        {"if", &Interpreter::eval_if_special, nullptr},
-        {"macro", &Interpreter::eval_macro_special, nullptr},
-        {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
-        {"while", &Interpreter::eval_while_special, nullptr},
-        {"top-level", &Interpreter::eval_begin_special, nullptr}, // top level evaluation
+    init_special_forms(
+        {{"define", &Interpreter::eval_define_special, nullptr},
+         {"quote", &Interpreter::eval_quote_special, nullptr},
+         {"set!", &Interpreter::eval_set_special, nullptr},
+         {"let", &Interpreter::eval_let_special, nullptr},
+         {"let*", &Interpreter::eval_let_star_special, nullptr},
+         {"lambda", &Interpreter::eval_lambda_special, nullptr},
+         {"cond", &Interpreter::eval_cond_special, nullptr},
+         {"begin", &Interpreter::eval_begin_special, nullptr},
+         {"or", &Interpreter::eval_or_special, nullptr},
+         {"and", &Interpreter::eval_and_special, nullptr},
+         {"if", &Interpreter::eval_if_special, nullptr},
+         {"macro", &Interpreter::eval_macro_special, nullptr},
+         {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
+         {"while", &Interpreter::eval_while_special, nullptr},
+         {"top-level", &Interpreter::eval_begin_special, nullptr}, // top level evaluation
 
-        {"rlet", &Interpreter::eval_rlet_special, nullptr},
-        {"->", &Interpreter::eval_deref_special, nullptr},
-        {"declare", &Interpreter::eval_declare_special, nullptr},
-        {"declare-extern", &Interpreter::eval_declare_extern, nullptr},
-        {"define-constant", &Interpreter::eval_define_constant, nullptr},
+         {"rlet", &Interpreter::eval_rlet_special, nullptr},
+         {"->", &Interpreter::eval_deref_special, nullptr},
+         {"declare", &Interpreter::eval_declare_special, nullptr},
+         {"declare-extern", &Interpreter::eval_declare_extern, nullptr},
+         {"define-constant", &Interpreter::eval_define_constant, nullptr},
 
-        {"with-error-handler", &Interpreter::eval_with_error_handler_special, nullptr},
+         {"with-error-handler", &Interpreter::eval_with_error_handler_special, nullptr},
+         {"defenum", &Interpreter::eval_defenum_special, nullptr},
+         {"deftype", &Interpreter::eval_deftype_special, nullptr},
+         {"typespec", &Interpreter::eval_typespec_special, nullptr}
 
-    });
+        });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
-    init_builtin_forms({
-        // Математически
-        {"+", &Interpreter::eval_plus, nullptr},
-        {"-", &Interpreter::eval_minus, nullptr},
-        {"*", &Interpreter::eval_times, nullptr},
-        {"/", &Interpreter::eval_divide, nullptr},
-        {"=", &Interpreter::eval_numequals, nullptr}, // было eval_equals
-        {"<", &Interpreter::eval_lt, nullptr},
-        {">", &Interpreter::eval_gt, nullptr},
-        {"<=", &Interpreter::eval_leq, nullptr},
-        {">=", &Interpreter::eval_geq, nullptr},
+    init_builtin_forms(
+        {// Математически
+         {"+", &Interpreter::eval_plus, nullptr},
+         {"-", &Interpreter::eval_minus, nullptr},
+         {"*", &Interpreter::eval_times, nullptr},
+         {"/", &Interpreter::eval_divide, nullptr},
+         {"=", &Interpreter::eval_numequals, nullptr}, // было eval_equals
+         {"<", &Interpreter::eval_lt, nullptr},
+         {">", &Interpreter::eval_gt, nullptr},
+         {"<=", &Interpreter::eval_leq, nullptr},
+         {">=", &Interpreter::eval_geq, nullptr},
 
-        // Списки и пары
-        {"cons", &Interpreter::eval_cons, nullptr}, // было eval_cons_builtin
-        {"car", &Interpreter::eval_car, nullptr},   // было eval_car_builtin
-        {"cdr", &Interpreter::eval_cdr, nullptr},   // было eval_cdr_builtin
-        {"set-car!", &Interpreter::eval_set_car, nullptr},
-        {"set-cdr!", &Interpreter::eval_set_cdr, nullptr},
-        {"list", &Interpreter::eval_list_func, nullptr},
-        {"length", &Interpreter::eval_length, nullptr},
-        {"append", &Interpreter::eval_append, nullptr},
-        {"apply", &Interpreter::eval_apply, nullptr},
+         // Списки и пары
+         {"cons", &Interpreter::eval_cons, nullptr}, // было eval_cons_builtin
+         {"car", &Interpreter::eval_car, nullptr},   // было eval_car_builtin
+         {"cdr", &Interpreter::eval_cdr, nullptr},   // было eval_cdr_builtin
+         {"set-car!", &Interpreter::eval_set_car, nullptr},
+         {"set-cdr!", &Interpreter::eval_set_cdr, nullptr},
+         {"list", &Interpreter::eval_list_func, nullptr},
+         {"length", &Interpreter::eval_length, nullptr},
+         {"append", &Interpreter::eval_append, nullptr},
+         {"apply", &Interpreter::eval_apply, nullptr},
 
-        {"bound?", &Interpreter::eval_bound_p, nullptr},
+         {"bound?", &Interpreter::eval_bound_p, nullptr},
 
-        // Работа с типом
-        {"type-of", &Interpreter::eval_type_of, nullptr},
-        {"type?", &Interpreter::eval_type_p, nullptr},
-        {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
-        {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
-        {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
-        {"function-typespec", &Interpreter::eval_function_typespec, &args_with_varkeys},
-        {"tc", &Interpreter::eval_tc, &args_with_varkeys},
+         // Работа с типом
+         {"type-of", &Interpreter::eval_type_of, nullptr},
+         {"type?", &Interpreter::eval_type_p, nullptr},
+         {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
+         {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
+         {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
+         {"function-typespec", &Interpreter::eval_function_typespec, &args_with_varkeys},
+         {"tc", &Interpreter::eval_tc, &args_with_varkeys},
 
-        // Предикаты типов
-        {"none?", &Interpreter::eval_none_p, nullptr},
-        {"null?", &Interpreter::eval_null_p, nullptr},
-        {"pair?", &Interpreter::eval_pair_p, nullptr},
-        {"symbol?", &Interpreter::eval_symbol_p, nullptr},
-        {"keyword?", &Interpreter::eval_keyword_p, nullptr},
-        {"number?", &Interpreter::eval_number_p, nullptr},
-        {"integer?", &Interpreter::eval_integer_p, nullptr},
-        {"float?", &Interpreter::eval_float_p, nullptr},
-        {"string?", &Interpreter::eval_string_p, nullptr},
-        {"char?", &Interpreter::eval_char_p, nullptr},
-        {"vector?", &Interpreter::eval_vector_p, nullptr},
-        {"hash-table?", &Interpreter::eval_hash_table_p, nullptr},
-        {"procedure?", &Interpreter::eval_procedure_p, nullptr},
-        {"boolean?", &Interpreter::eval_boolean_p, nullptr},
-        {"reader?", &Interpreter::eval_reader_p, nullptr},
-        {"cell?", &Interpreter::eval_pointer_p, nullptr},
-        {"primitive?", &Interpreter::eval_primitive_p, nullptr},
-        {"special-form?", &Interpreter::eval_special_form_p, nullptr},
-        {"heap-obj?", &Interpreter::eval_heap_obj_p, nullptr},
+         // Предикаты типов
+         {"none?", &Interpreter::eval_none_p, nullptr},
+         {"null?", &Interpreter::eval_null_p, nullptr},
+         {"pair?", &Interpreter::eval_pair_p, nullptr},
+         {"symbol?", &Interpreter::eval_symbol_p, nullptr},
+         {"keyword?", &Interpreter::eval_keyword_p, nullptr},
+         {"number?", &Interpreter::eval_number_p, nullptr},
+         {"integer?", &Interpreter::eval_integer_p, nullptr},
+         {"float?", &Interpreter::eval_float_p, nullptr},
+         {"string?", &Interpreter::eval_string_p, nullptr},
+         {"char?", &Interpreter::eval_char_p, nullptr},
+         {"vector?", &Interpreter::eval_vector_p, nullptr},
+         {"hash-table?", &Interpreter::eval_hash_table_p, nullptr},
+         {"procedure?", &Interpreter::eval_procedure_p, nullptr},
+         {"boolean?", &Interpreter::eval_boolean_p, nullptr},
+         {"reader?", &Interpreter::eval_reader_p, nullptr},
+         {"cell?", &Interpreter::eval_pointer_p, nullptr},
+         {"primitive?", &Interpreter::eval_primitive_p, nullptr},
+         {"special-form?", &Interpreter::eval_special_form_p, nullptr},
+         {"heap-obj?", &Interpreter::eval_heap_obj_p, nullptr},
 
-        // Сравнение
-        {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
+         // Сравнение
+         {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
 
-        // Строки
-        {"string-append", &Interpreter::eval_string_append, nullptr},
-        {"string-length", &Interpreter::eval_string_length, nullptr},
-        {"string-ref", &Interpreter::eval_string_ref, nullptr},
-        {"string-replace", &Interpreter::eval_string_replace, nullptr}, // было eval_substring
-        {"string-substr", &Interpreter::eval_string_substr, nullptr},   // было eval_substring
-        {"string-prefix?", &Interpreter::eval_string_starts_with, nullptr},
-        {"string-suffix?", &Interpreter::eval_string_ends_with, nullptr},
-        {"string-contains?", &Interpreter::eval_string_containsp, nullptr},
-        {"string-split", &Interpreter::eval_string_split, nullptr},
-        {"string-join", &Interpreter::eval_string_join, nullptr},
-        {"string-to-lower", &Interpreter::eval_string_to_lower, nullptr},
-        {"string-to-upper", &Interpreter::eval_string_to_upper, nullptr},
-        {"string-titelize", &Interpreter::eval_string_titlize, nullptr},
-        {"string-trim", &Interpreter::eval_string_trim, nullptr},
-        {"string-rtrim", &Interpreter::eval_string_rtrim, nullptr},
-        {"string-ltrim", &Interpreter::eval_string_ltrim, nullptr},
-        {"string-trim-idents", &Interpreter::eval_string_trim_indents, nullptr},
+         // Строки
+         {"string-append", &Interpreter::eval_string_append, nullptr},
+         {"string-length", &Interpreter::eval_string_length, nullptr},
+         {"string-ref", &Interpreter::eval_string_ref, nullptr},
+         {"string-replace", &Interpreter::eval_string_replace, nullptr}, // было eval_substring
+         {"string-substr", &Interpreter::eval_string_substr, nullptr},   // было eval_substring
+         {"string-prefix?", &Interpreter::eval_string_starts_with, nullptr},
+         {"string-suffix?", &Interpreter::eval_string_ends_with, nullptr},
+         {"string-contains?", &Interpreter::eval_string_containsp, nullptr},
+         {"string-split", &Interpreter::eval_string_split, nullptr},
+         {"string-join", &Interpreter::eval_string_join, nullptr},
+         {"string-to-lower", &Interpreter::eval_string_to_lower, nullptr},
+         {"string-to-upper", &Interpreter::eval_string_to_upper, nullptr},
+         {"string-titelize", &Interpreter::eval_string_titlize, nullptr},
+         {"string-trim", &Interpreter::eval_string_trim, nullptr},
+         {"string-rtrim", &Interpreter::eval_string_rtrim, nullptr},
+         {"string-ltrim", &Interpreter::eval_string_ltrim, nullptr},
+         {"string-trim-idents", &Interpreter::eval_string_trim_indents, nullptr},
 
-        // Векторы
-        {"vector", &Interpreter::eval_vector, nullptr},
-        {"vector-ref", &Interpreter::eval_vector_ref, nullptr},
-        {"vector-set!", &Interpreter::eval_vector_set, nullptr},
-        {"vector-length", &Interpreter::eval_vector_length, nullptr},
-        {"vector->list", &Interpreter::eval_vector_to_list, nullptr},
+         // Векторы
+         {"vector", &Interpreter::eval_vector, nullptr},
+         {"vector-ref", &Interpreter::eval_vector_ref, nullptr},
+         {"vector-set!", &Interpreter::eval_vector_set, nullptr},
+         {"vector-length", &Interpreter::eval_vector_length, nullptr},
+         {"vector->list", &Interpreter::eval_vector_to_list, nullptr},
 
-        // Хэш-таблицы
-        {"make-hash-table", &Interpreter::eval_make_hash_table, &args_with_varkeys},
-        {"hash-table-set!", &Interpreter::eval_hash_table_set, nullptr},
-        {"hash-table-ref", &Interpreter::eval_hash_table_ref, nullptr},
-        {"hash-table-contains?", &Interpreter::eval_hash_table_containsp, nullptr},
-        {"hash-table-try-ref", &Interpreter::eval_hash_table_try_ref, nullptr},
-        {"hash-table-length", &Interpreter::eval_hash_table_length, nullptr},
-        {"hash-table->list", &Interpreter::eval_hash_table_to_list, nullptr},
+         // Хэш-таблицы
+         {"make-hash-table", &Interpreter::eval_make_hash_table, &args_with_varkeys},
+         {"hash-table-set!", &Interpreter::eval_hash_table_set, nullptr},
+         {"hash-table-ref", &Interpreter::eval_hash_table_ref, nullptr},
+         {"hash-table-contains?", &Interpreter::eval_hash_table_containsp, nullptr},
+         {"hash-table-try-ref", &Interpreter::eval_hash_table_try_ref, nullptr},
+         {"hash-table-length", &Interpreter::eval_hash_table_length, nullptr},
+         {"hash-table->list", &Interpreter::eval_hash_table_to_list, nullptr},
 
-        // Universtal table
-        {"get-at", &Interpreter::eval_get_at, nullptr},
-        {"set-at!", &Interpreter::eval_set_at, nullptr},
+         // Universtal table
+         {"get-at", &Interpreter::eval_get_at, nullptr},
+         {"set-at!", &Interpreter::eval_set_at, nullptr},
 
-        // Итераторв
-        {"string-for-each", &Interpreter::eval_string_for_each, nullptr},
-        {"vector-for-each", &Interpreter::eval_vector_for_each, nullptr},
-        {"hash-table-for-each", &Interpreter::eval_hash_table_for_each, nullptr},
-        {"list-for-each", &Interpreter::eval_list_for_each, nullptr},
-        {"list-for-each-pair", &Interpreter::eval_list_for_each_pair, nullptr},
-        {"type-for-each-field", &Interpreter::eval_type_for_each_field, nullptr},
-        {"type-for-each-method", &Interpreter::eval_type_for_each_method, nullptr},
+         // Итераторв
+         {"string-for-each", &Interpreter::eval_string_for_each, nullptr},
+         {"vector-for-each", &Interpreter::eval_vector_for_each, nullptr},
+         {"hash-table-for-each", &Interpreter::eval_hash_table_for_each, nullptr},
+         {"list-for-each", &Interpreter::eval_list_for_each, nullptr},
+         {"list-for-each-pair", &Interpreter::eval_list_for_each_pair, nullptr},
+         {"type-for-each-field", &Interpreter::eval_type_for_each_field, nullptr},
+         {"type-for-each-method", &Interpreter::eval_type_for_each_method, nullptr},
 
-        // Системные и ввод-вывод
-        {"print", &Interpreter::eval_print, nullptr},
-        {"pfmt", &Interpreter::eval_pfmt, &args_with_varkeys},
-        {"inspect", &Interpreter::eval_inspect, nullptr},
-        {"fmt", &Interpreter::eval_fmt, &args_with_varkeys},
-        {"error", &Interpreter::eval_error, &args_with_varkeys},
+         // Системные и ввод-вывод
+         {"print", &Interpreter::eval_print, nullptr},
+         {"pfmt", &Interpreter::eval_pfmt, &args_with_varkeys},
+         {"inspect", &Interpreter::eval_inspect, nullptr},
+         {"fmt", &Interpreter::eval_fmt, &args_with_varkeys},
+         {"error", &Interpreter::eval_error, &args_with_varkeys},
 
-        // Logger
-        {"log", &Interpreter::eval_log, nullptr},
+         // Logger
+         {"log", &Interpreter::eval_log, nullptr},
 
-        // Evaluation and parsing
-        {"read-str", &Interpreter::eval_read_str, nullptr},
-        {"parse-str", &Interpreter::eval_parse_str, nullptr},
-        {"read-file", &Interpreter::eval_read_file, nullptr},
-        {"load", &Interpreter::eval_load, nullptr},
+         // Evaluation and parsing
+         {"read-str", &Interpreter::eval_read_str, nullptr},
+         {"parse-str", &Interpreter::eval_parse_str, nullptr},
+         {"read-file", &Interpreter::eval_read_file, nullptr},
+         {"load", &Interpreter::eval_load, nullptr},
 
-        // Files
-        {"file-exists?", &Interpreter::eval_file_exists_p, nullptr},
-        {"get-path", &Interpreter::eval_get_path, nullptr},
-        {"find-file", &Interpreter::eval_find_file, nullptr},
-        {"read-binary-file", &Interpreter::eval_read_binary_file, nullptr},
-        {"write-binary-file", &Interpreter::eval_write_binary_file, nullptr},
-        {"read-text-file", &Interpreter::eval_read_text_file, nullptr},
-        {"write-text-file", &Interpreter::eval_write_text_file, nullptr},
-        {"export-hex", &Interpreter::eval_export_intel_hex, nullptr},
-        {"crc32", &Interpreter::eval_crc32, nullptr},
+         // Files
+         {"file-exists?", &Interpreter::eval_file_exists_p, nullptr},
+         {"get-path", &Interpreter::eval_get_path, nullptr},
+         {"find-file", &Interpreter::eval_find_file, nullptr},
+         {"read-binary-file", &Interpreter::eval_read_binary_file, nullptr},
+         {"write-binary-file", &Interpreter::eval_write_binary_file, nullptr},
+         {"read-text-file", &Interpreter::eval_read_text_file, nullptr},
+         {"write-text-file", &Interpreter::eval_write_text_file, nullptr},
+         {"export-hex", &Interpreter::eval_export_intel_hex, nullptr},
+         {"crc32", &Interpreter::eval_crc32, nullptr},
 
-        // Reader
-        {"set-macro-character", &Interpreter::eval_set_macro_character, nullptr},
-        {"remove-macro-character", &Interpreter::eval_remove_macro_character, nullptr},
-        {"get-macro-character", &Interpreter::eval_get_macro_character, nullptr},
-        {"read", &Interpreter::eval_read, nullptr},
-        {"read-char", &Interpreter::eval_read_char, nullptr},
-        {"peek-char", &Interpreter::eval_peek_char, nullptr},
-        {"read-delimited-list", &Interpreter::eval_read_delimited_list, nullptr},
+         // Reader
+         {"set-macro-character", &Interpreter::eval_set_macro_character, nullptr},
+         {"remove-macro-character", &Interpreter::eval_remove_macro_character, nullptr},
+         {"get-macro-character", &Interpreter::eval_get_macro_character, nullptr},
+         {"read", &Interpreter::eval_read, nullptr},
+         {"read-char", &Interpreter::eval_read_char, nullptr},
+         {"peek-char", &Interpreter::eval_peek_char, nullptr},
+         {"read-delimited-list", &Interpreter::eval_read_delimited_list, nullptr},
 
-        // Macro system
-        {"macroexpand", &Interpreter::eval_macroexpand, nullptr},
+         // Macro system
+         {"macroexpand", &Interpreter::eval_macroexpand, nullptr},
 
-        // System
-        {"system", &Interpreter::eval_system, nullptr},
-        {"exit", &Interpreter::eval_exit, nullptr},
-        {"get-environment-variable", &Interpreter::eval_get_env,
-         nullptr}, // было eval_get_environment_variable
+         // System
+         {"system", &Interpreter::eval_system, nullptr},
+         {"exit", &Interpreter::eval_exit, nullptr},
+         {"get-environment-variable", &Interpreter::eval_get_env,
+          nullptr}, // было eval_get_environment_variable
 
-        // Прочие
-        {"gensym", &Interpreter::eval_gensym, nullptr},
-        {"eval", &Interpreter::eval_eval, nullptr},
-        {"defsetf", &Interpreter::eval_defsetf, nullptr},
-        {"get-setter", &Interpreter::eval_get_setter, nullptr},
+         // Прочие
+         {"gensym", &Interpreter::eval_gensym, nullptr},
+         {"eval", &Interpreter::eval_eval, nullptr},
+         {"defsetf", &Interpreter::eval_defsetf, nullptr},
+         {"get-setter", &Interpreter::eval_get_setter, nullptr},
 
-        // Преобразования типов
-        {"number->string", &Interpreter::eval_number_to_string, &args_with_varkeys},
-        {"string->number", &Interpreter::eval_string_to_number, nullptr},
-        {"char->integer", &Interpreter::eval_char_to_integer, nullptr},
-        {"integer->char", &Interpreter::eval_integer_to_char, nullptr},
-        {"string->symbol", &Interpreter::eval_string_to_symbol, nullptr},
-        {"symbol->string", &Interpreter::eval_symbol_to_string, nullptr},
+         // Преобразования типов
+         {"number->string", &Interpreter::eval_number_to_string, &args_with_varkeys},
+         {"string->number", &Interpreter::eval_string_to_number, nullptr},
+         {"char->integer", &Interpreter::eval_char_to_integer, nullptr},
+         {"integer->char", &Interpreter::eval_integer_to_char, nullptr},
+         {"string->symbol", &Interpreter::eval_string_to_symbol, nullptr},
+         {"symbol->string", &Interpreter::eval_symbol_to_string, nullptr},
 
-        // Математические функции
-        {"abs", &Interpreter::eval_abs, nullptr},
-        {"max", &Interpreter::eval_max, nullptr},
-        {"min", &Interpreter::eval_min, nullptr},
-        {"expt", &Interpreter::eval_expt, nullptr},
-        {"sqrt", &Interpreter::eval_sqrt, nullptr},
-        {"ash", &Interpreter::eval_ash, nullptr},
+         // Математические функции
+         {"abs", &Interpreter::eval_abs, nullptr},
+         {"max", &Interpreter::eval_max, nullptr},
+         {"min", &Interpreter::eval_min, nullptr},
+         {"expt", &Interpreter::eval_expt, nullptr},
+         {"sqrt", &Interpreter::eval_sqrt, nullptr},
+         {"ash", &Interpreter::eval_ash, nullptr},
 
-        // Математика: округление и остаток
-        {"floor", &Interpreter::eval_floor, nullptr},
-        {"ceiling", &Interpreter::eval_ceiling, nullptr},
-        {"round", &Interpreter::eval_round, nullptr},
-        {"mod", &Interpreter::eval_mod, nullptr},
-        {"abs", &Interpreter::eval_abs, nullptr},
+         // Математика: округление и остаток
+         {"floor", &Interpreter::eval_floor, nullptr},
+         {"ceiling", &Interpreter::eval_ceiling, nullptr},
+         {"round", &Interpreter::eval_round, nullptr},
+         {"mod", &Interpreter::eval_mod, nullptr},
+         {"abs", &Interpreter::eval_abs, nullptr},
 
-        // Тригонометрия
-        {"sin", &Interpreter::eval_sin, nullptr},
-        {"cos", &Interpreter::eval_cos, nullptr},
-        {"tan", &Interpreter::eval_tan, nullptr},
-        {"atan", &Interpreter::eval_atan, nullptr},
+         // Тригонометрия
+         {"sin", &Interpreter::eval_sin, nullptr},
+         {"cos", &Interpreter::eval_cos, nullptr},
+         {"tan", &Interpreter::eval_tan, nullptr},
+         {"atan", &Interpreter::eval_atan, nullptr},
 
-        // Константы
-        {"pi", &Interpreter::eval_pi, nullptr},
+         // Константы
+         {"pi", &Interpreter::eval_pi, nullptr},
 
-        {"logand", &Interpreter::eval_logand, nullptr},
-        {"logior", &Interpreter::eval_logior, nullptr},
-        {"logxor", &Interpreter::eval_logxor, nullptr},
-        {"lognot", &Interpreter::eval_lognot, nullptr},
-        {"lshift", &Interpreter::eval_lshift, nullptr},
-        {"rshift", &Interpreter::eval_rshift, nullptr},
+         {"logand", &Interpreter::eval_logand, nullptr},
+         {"logior", &Interpreter::eval_logior, nullptr},
+         {"logxor", &Interpreter::eval_logxor, nullptr},
+         {"lognot", &Interpreter::eval_lognot, nullptr},
+         {"lshift", &Interpreter::eval_lshift, nullptr},
+         {"rshift", &Interpreter::eval_rshift, nullptr},
 
-        // Время
-        {"time-seconds", &Interpreter::eval_time_seconds, nullptr},
-        {"time-milliseconds", &Interpreter::eval_time_milliseconds, nullptr},
-        {"time-microseconds", &Interpreter::eval_time_microseconds, nullptr},
-        {"time-nanoseconds", &Interpreter::eval_time_nanoseconds, nullptr},
-        // Отладка
-        {"source-info", &Interpreter::eval_source_info, nullptr},
-        {"get-context", &Interpreter::eval_get_context, nullptr},
+         // Время
+         {"time-seconds", &Interpreter::eval_time_seconds, nullptr},
+         {"time-milliseconds", &Interpreter::eval_time_milliseconds, nullptr},
+         {"time-microseconds", &Interpreter::eval_time_microseconds, nullptr},
+         {"time-nanoseconds", &Interpreter::eval_time_nanoseconds, nullptr},
+         // Отладка
+         {"source-info", &Interpreter::eval_source_info, nullptr},
+         {"get-context", &Interpreter::eval_get_context, nullptr},
 
-        //
-        {"step", &Interpreter::eval_step, nullptr},
-        {"&", &Interpreter::eval_addr_of, nullptr},
-        {"&+", &Interpreter::eval_addr_plus, nullptr},
+         //
+         {"step", &Interpreter::eval_step, nullptr},
+         {"&", &Interpreter::eval_addr_of, nullptr},
+         {"&+", &Interpreter::eval_addr_plus, nullptr},
 
-        {"mem-get", &Interpreter::eval_mem_get, nullptr},
-        {"mem-set!", &Interpreter::eval_mem_set, nullptr},
+         {"mem-get", &Interpreter::eval_mem_get, nullptr},
+         {"mem-set!", &Interpreter::eval_mem_set, nullptr},
 
-        // Buffer
-        {"make-buffer", &Interpreter::eval_make_static_buffer, nullptr},
-        {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
-        {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
-        {"buffer-write", &Interpreter::eval_buffer_write, &args_with_varkeys},
-        {"buffer-read", &Interpreter::eval_buffer_read, &args_with_varkeys},
-        {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_varkeys},
-        {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_varkeys},
-        {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
-        {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
-        {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
-        {"method-of", &Interpreter::eval_method_of, nullptr},
+         // Buffer
+         {"make-buffer", &Interpreter::eval_make_static_buffer, nullptr},
+         {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
+         {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
+         {"buffer-write", &Interpreter::eval_buffer_write, &args_with_varkeys},
+         {"buffer-read", &Interpreter::eval_buffer_read, &args_with_varkeys},
+         {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_varkeys},
+         {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_varkeys},
+         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
+         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
+         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
+         {"method-of", &Interpreter::eval_method_of, nullptr},
 
-        {"declare-type", &Interpreter::eval_declare_type, nullptr},
-        {"reg-alias", &Interpreter::eval_reg_alias, nullptr},
-        {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
-        {"the", &Interpreter::eval_the, nullptr},
-        {"the-as", &Interpreter::eval_the_as, nullptr},
-        {"offset-of", &Interpreter::eval_offset_of, nullptr},
-        {"size-of", &Interpreter::eval_size_of, nullptr},
-        {"~>", &Interpreter::eval_deref, nullptr},
-        {"current-function", &Interpreter::eval_current_function, nullptr},
+         {"declare-type", &Interpreter::eval_declare_type, nullptr},
+         {"reg-alias", &Interpreter::eval_reg_alias, nullptr},
+         {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
+         {"the", &Interpreter::eval_the, nullptr},
+         {"the-as", &Interpreter::eval_the_as, nullptr},
+         {"offset-of", &Interpreter::eval_offset_of, nullptr},
+         {"size-of", &Interpreter::eval_size_of, nullptr},
+         {"~>", &Interpreter::eval_deref, nullptr},
+         {"current-function", &Interpreter::eval_current_function, nullptr},
 
-        {"getf", &Interpreter::eval_getf, nullptr},
-        {"assoc", &Interpreter::eval_assoc, nullptr},
-    });
+         {"getf", &Interpreter::eval_getf, nullptr},
+         {"assoc", &Interpreter::eval_assoc, nullptr},
+         {"init-types", &Interpreter::eval_init_types, nullptr},
+         {"typespec~>", &Interpreter::eval_typespec, nullptr}
+
+        });
 
     // Type system
     init_types("default");
-
-    // Special forms
-    add_special_form("defenum", &Interpreter::eval_defenum_special); // does not return anything
-    add_special_form("deftype", &Interpreter::eval_deftype_special); // does not return anything
-    add_special_form("typespec",
-                     &Interpreter::eval_typespec_special); // return s-expression of typespec
-    add_builtin_form("init-types", &Interpreter::eval_init_types); // does not return anything
 
     // load the standard library
     if (load_libs)
@@ -456,7 +454,7 @@ bool Interpreter::try_symbol_lookup(const Object                             &sy
             auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr);
 
             // Теперь вызываем создание объекта
-            *dest = Object::make_heap_obj(heap_ptr, ObjectType::HEAP_OBJECT);
+            *dest = Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
             return true;
         }
     }
@@ -973,10 +971,6 @@ void Interpreter::print_stack_frame(EvalException &e, const Object &obj) {
 
 Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObject> &env) {
     switch (obj.type) {
-    case ObjectType::POINTER:
-        return obj.as_pointer()->deref();
-    case ObjectType::HEAP_OBJECT:
-        return obj;
     case ObjectType::SYMBOL:
         if (obj.is_keyword())
             return obj;
@@ -984,6 +978,10 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
             return eval_symbol(obj, env);
     case ObjectType::PAIR:
         return eval_pair(obj, env);
+    case ObjectType::POINTER:
+        return obj.as_pointer()->deref();
+    case ObjectType::NATIVE_OBJECT:
+        return obj;
     case ObjectType::INTEGER:
     case ObjectType::FLOAT:
     case ObjectType::STRING:
@@ -992,8 +990,6 @@ Object Interpreter::eval(const Object &obj, const std::shared_ptr<EnvironmentObj
     case ObjectType::ARRAY:
     case ObjectType::STRING_HASH_TABLE:
     case ObjectType::READER:
-    case ObjectType::STATIC_BUFFER:
-        return obj;
     case ObjectType::FUNCTION:
         return obj;
     default:
@@ -3021,7 +3017,7 @@ Object Interpreter::eval_type_p(const Object &form, Arguments &args,
 
     auto type_name = args.unnamed[1].as_symbol().name_ptr;
 
-    if (args.unnamed[0].type != ObjectType::HEAP_OBJECT) {
+    if (args.unnamed[0].type != ObjectType::NATIVE_OBJECT) {
         auto kv = m_string_to_type.find(type_name);
         if (kv == m_string_to_type.end()) {
             return Object::make_boolean(args.unnamed[0].is_class_name(type_name));
@@ -3167,7 +3163,7 @@ Object Interpreter::eval_heap_obj_p(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
-    return true_or_false(args.unnamed[0].is_native_ref());
+    return true_or_false(args.unnamed[0].is_native_obj());
 }
 
 Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
@@ -4512,8 +4508,7 @@ Object Interpreter::eval_get_context(const Object &form, Arguments &args,
     }
 
     // Начинаем с самого верхнего кадра
-    auto    current = env;
-    int64_t count = 0;
+    auto current = env;
 
     auto index = m_dynamic_stack.size() - 1 - ctx_index;
     if (index >= 0)
@@ -4679,6 +4674,56 @@ Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
 
     return Object::make_heap_obj(ts_shared);
 }
+Object Interpreter::eval_typespec(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::PAIR, ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}},
+                 {});
+    Object spec_input = args.unnamed[0];
+
+    // Рекурсивная функция для очистки входных данных от алиасов
+    std::function<Object(Object)> resolve_aliases = [&](Object obj) -> Object {
+        if (obj.is_symbol())
+            return obj;
+
+        if (obj.is_pair()) {
+            // Обрабатываем список (например, (function ,x))
+            return Object::make_pair(resolve_aliases(obj.as_pair()->car),
+                                     resolve_aliases(obj.as_pair()->cdr));
+        }
+
+        // КЛЮЧЕВОЙ МОМЕНТ:
+        // Если встретили HEAP_OBJ, проверяем, не reg-alias ли это
+        if (obj.type == ObjectType::NATIVE_OBJECT) {
+            auto alias = obj.as_heap_obj<RegisterAlias>();
+            // Предположим, у тебя есть метод проверки типа в рантайме
+            if (alias) {
+                // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
+                return alias->type_name;
+            }
+
+            auto type = obj.as_heap_obj<Type>();
+            // Предположим, у тебя есть метод проверки типа в рантайме
+            if (type) {
+                // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
+                return Object::make_symbol(type->get_name());
+            }
+
+            throw_eval_error(
+                form, fmt::format("typespec parsing go unexpected type {}", obj.class_name()));
+        }
+
+        return obj;
+    };
+
+    // Очищаем входную форму от алиасов
+    Object resolved_input = resolve_aliases(spec_input);
+
+    // Теперь parse_typespec увидит (function int) вместо (function #<reg-alias...>)
+    auto ts_ptr = parse_typespec(&TypeSystem::instance(), resolved_input);
+    auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
+
+    return Object::make_heap_obj(ts_shared);
+}
 
 Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
@@ -4744,7 +4789,7 @@ bool Interpreter::init_types(const std::string &variant) {
     std::vector<const char *> to_remove;
     const auto               &entries = env->vars.get_all_entries();
     for (const auto &entry : entries) {
-        if (entry.value.is_native_ref()) {
+        if (entry.value.is_native_obj()) {
             to_remove.push_back(entry.key);
         }
     }
@@ -4973,7 +5018,7 @@ Object Interpreter::eval_addr_of(const Object &form, Arguments &args,
 
     // 3. Для всех HeapObject (Field, MethodInfo, StaticBuffer, StructureType...)
     // Правило одно: берем адрес самого объекта (или его данных), которые лежат в C++.
-    if (target.is_native_ref()) {
+    if (target.is_native_obj()) {
         // Получаем shared_ptr на обертку
         auto hr = target.as_heap_obj<HeapObject>();
 
@@ -5026,7 +5071,7 @@ Object Interpreter::eval_the(const Object &form, Arguments &args,
     TypeSpec expected_spec;
 
     // Если мы передали объект типа (уже вычисленный ранее или найденный в env)
-    if (type_form.is_native_ref<Type>()) {
+    if (type_form.is_native_obj<Type>()) {
         expected_spec = TypeSpec(type_form.as_heap_obj<Type>()->get_name());
     }
     // Если это символ/строка (ищем в системе типов напрямую)
@@ -5073,7 +5118,7 @@ Object Interpreter::eval_the_as(const Object &form, Arguments &args,
     std::string new_type_name;
 
     // Поддержка "Типов как объектов"
-    if (type_arg.is_native_ref<Type>()) {
+    if (type_arg.is_native_obj<Type>()) {
         new_type_name = type_arg.as_heap_obj<Type>()->get_name();
     }
     // Поддержка символов/строк (классика)
@@ -5102,7 +5147,7 @@ Object Interpreter::eval_the_as(const Object &form, Arguments &args,
 
     // Случай В: Специальная логика для Native Object (если они хранятся по ссылке)
     // В GOAL можно сделать (the-as int my-object), чтобы получить его адрес
-    if (target.is_native_ref()) {
+    if (target.is_native_obj()) {
         // Получаем адрес самого нативного объекта
         void *raw_addr = target.as_heap_obj();
         // Если мы кастуем к базовым типам (int/uint), возвращаем адрес как число
@@ -5318,7 +5363,7 @@ Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
     int         size = args.unnamed[1].as_integer();
     uint32_t origin = static_cast<uint32_t>(args.unnamed[2].as_integer()); // исправлено имя и тип
     auto     buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
-    return Object::make_heap_obj(buffer, ObjectType::STATIC_BUFFER);
+    return Object::make_heap_obj(buffer, ObjectType::NATIVE_OBJECT);
 }
 
 /**
@@ -5340,7 +5385,7 @@ Object Interpreter::eval_make_buffer_pointer(const Object &form, Arguments &args
     (void)env;
     vararg_check(form, args, {{}, {ObjectType::INTEGER}, {ObjectType::SYMBOL}}, {});
 
-    auto        buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
+    auto        buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
     size_t      offset = static_cast<size_t>(args.unnamed[1].as_integer());
     std::string type_name = args.unnamed[2].as_symbol();
 
@@ -5358,7 +5403,7 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
     (void)env;
     // 1. Проверка аргументов
     vararg_check(form, args,
-                 {{ObjectType::STATIC_BUFFER}, {ObjectType::STRING, ObjectType::SYMBOL}},
+                 {{ObjectType::NATIVE_OBJECT}, {ObjectType::STRING, ObjectType::SYMBOL}},
                  {
                      {"address", {false, {ObjectType::INTEGER}}},
                      {"segment", {false, {ObjectType::STRING, ObjectType::SYMBOL}}},
@@ -5370,11 +5415,11 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
     auto label_name = args.unnamed.at(1).to_std_string();
 
     // 2. Определяем целевой буфер и базовый офсет
-    StaticBuffer *buffer = nullptr;
-    size_t        offset = 0;
+    size_t offset = 0;
+    auto   buffer = first_arg.as_native_obj<StaticBuffer>();
 
-    if (first_arg.is_static_buffer()) {
-        buffer = first_arg.as_heap_obj<StaticBuffer>().get();
+    if (buffer.get()) {
+
         // Для прямого обращения к буферу адрес обязателен, если метка новая
         if (!args.has_named("address") && !buffer->has_label(label_name)) {
             throw_eval_error(form, "Direct buffer labeling requires :address for new labels");
@@ -5436,11 +5481,9 @@ Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
     auto first_arg = args.unnamed.at(0);
     auto label_name = args.unnamed.at(1).to_std_string();
 
-    StaticBuffer *buffer = nullptr;
+    auto buffer = first_arg.as_native_obj<StaticBuffer>();
 
-    if (first_arg.is_static_buffer()) {
-        buffer = first_arg.as_heap_obj<StaticBuffer>().get();
-    } else {
+    if (!buffer.get()) {
         throw_eval_error(form, "Expected writer or buffer as first argument");
     }
 
@@ -5469,12 +5512,14 @@ Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
 
-    vararg_check(form, args, {{ObjectType::STATIC_BUFFER}},
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}},
                  {{"address", {false, {ObjectType::INTEGER}}},
                   {"size", {false, {ObjectType::INTEGER}}},
                   {"ascii", {false, {ObjectType::SYMBOL}}},
                   {"width", {false, {ObjectType::INTEGER}}}});
-    auto buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
+    auto buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
+    if (!buffer.get())
+        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
     auto address = args.has_named("address") ? args.named["address"].as_integer() : 0;
     auto size = args.has_named("size") ? args.named["size"].as_integer() : 256;
     auto ascii = args.has_named("ascii") ? is_true(args.named["ascii"]) : true;
@@ -5533,7 +5578,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                 return get_null();
             }
 
-            auto buffer_ptr = target.as_heap_obj<StaticBuffer>();
+            auto buffer_ptr = target.as_native_obj<StaticBuffer>();
             write_offset = static_cast<size_t>(args.named["address"].as_integer());
 
             void *physical_ptr = buffer_ptr->data() + write_offset;
@@ -5541,11 +5586,14 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
             // ОБНОВЛЕНО: Используем новый конструктор с 3 аргументами
             cell_ptr = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
         }
+        // 1. Извлекаем исходный буфер (src)
+        if (value.is_native_obj()) {
 
-        if (value.is_type(ObjectType::STATIC_BUFFER)) {
-            // 1. Извлекаем исходный буфер (src)
-            auto src_buf = value.as_heap_obj<StaticBuffer>();
-
+            auto src_buf = value.as_native_obj<StaticBuffer>();
+            if (!src_buf) {
+                throw_eval_error(
+                    form, "Source pointer owner is not a StaticBuffer. Blitting impossible.");
+            }
             // 2. Извлекаем владельца и кастим его к StaticBuffer
             auto owner_heap = cell_ptr->get_owner();
             auto dest_buf = std::dynamic_pointer_cast<StaticBuffer>(owner_heap);
@@ -5736,7 +5784,7 @@ Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
         form, args, {{}},
         {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {true, {ObjectType::INTEGER}}}});
 
-    auto        buffer = args.unnamed[0].as_heap_obj<StaticBuffer>();
+    auto        buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
     std::string type_name = args.named["type"].to_std_string();
     size_t      offset = static_cast<size_t>(args.named["address"].as_integer());
 
@@ -5775,12 +5823,13 @@ Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args,
-                 {{ObjectType::STATIC_BUFFER}, {ObjectType::INTEGER}, {ObjectType::STRING}}, {});
+                 {{ObjectType::NATIVE_OBJECT}, {ObjectType::INTEGER}, {ObjectType::STRING}}, {});
 
-    auto        buf = args.unnamed[0].as_heap_obj<StaticBuffer>();
+    auto        buf = args.unnamed[0].as_native_obj<StaticBuffer>();
     size_t      offset = args.unnamed[1].as_integer();
     std::string target = args.unnamed[2].to_std_string();
-
+    if (!buf)
+        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
     // По умолчанию считаем ABS_ADDR 16-бит (Z80 style),
     // но можно расширить аргументами
     buf->write_reloc(offset, target, RelocType::ABS_ADDR);
@@ -5791,10 +5840,11 @@ Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
 Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::STATIC_BUFFER}}, {});
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
 
-    auto buf = args.unnamed[0].as_heap_obj<StaticBuffer>();
-
+    auto buf = args.unnamed[0].as_native_obj<StaticBuffer>();
+    if (!buf.get())
+        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
     // Проходим по релокациям и заменяем имена меток на их адреса внутри ЭТОГО ЖЕ буфера
     buf->link_internal();
 
@@ -5826,7 +5876,7 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
     }
     Type *type;
     // 1. Извлекаем имя типа (например, vector)
-    if (args.unnamed[0].is_native_ref<Type>()) {
+    if (args.unnamed[0].is_native_obj<Type>()) {
         type = args.unnamed[0].as_heap_obj<Type>().get();
     } else {
         throw_eval_error(form, "static-new: expected type, got " + args.unnamed[0].print());
@@ -5872,7 +5922,7 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
     // 5. Возвращаем созданный буфер
     // В зависимости от твоей архитектуры, ты можешь возвращать либо сам Buffer,
     // либо Pointer на него. Для ассемблера лучше возвращать Buffer.
-    return Object::make_heap_obj(buffer, ObjectType::STATIC_BUFFER);
+    return Object::make_heap_obj(buffer, ObjectType::NATIVE_OBJECT);
 }
 
 // ============================================================
@@ -6045,7 +6095,7 @@ Object Interpreter::eval_list_for_each_pair(const Object &form, Arguments &args,
 // В Interpreter или TypeSystem
 Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args,
                                              const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::HEAP_OBJECT}, {ObjectType::FUNCTION}}, {});
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
 
     auto root_struct = args.unnamed[0].as_heap_obj<StructureType>();
     if (!root_struct) {
@@ -6096,10 +6146,11 @@ Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args
     walk(root_struct.get(), 0);
     return get_null();
 }
+
 Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &args,
                                               const std::shared_ptr<EnvironmentObject> &env) {
     // Проверка аргументов: тип-структура и лямбда
-    vararg_check(form, args, {{ObjectType::HEAP_OBJECT}, {ObjectType::FUNCTION}}, {});
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
 
     auto root_type = args.unnamed[0].as_heap_obj<Type>();
     if (!root_type) {
@@ -6187,7 +6238,7 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // Ожидаем: (export-hex "path/to/file.hex" buffer_or_list)
-    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::STATIC_BUFFER, ObjectType::PAIR}},
+    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::NATIVE_OBJECT, ObjectType::PAIR}},
                  {});
 
     std::string path = args.unnamed[0].to_std_string();
@@ -6216,18 +6267,22 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
             full_content += format_hex_record(chunk, hex_addr, 0x00, &raw_data[i]);
         }
     };
-
-    if (source.is_type(ObjectType::STATIC_BUFFER)) {
-        process_buffer(source.as_heap_obj<StaticBuffer>());
-    } else {
+    auto buffer = source.as_native_obj<StaticBuffer>(false);
+    if (buffer.get()) {
+        process_buffer(buffer);
+    } else if (source.is_pair()) {
         // Если это список буферов (наш гибридный лэйаут)
         auto current = source;
         if (current.is_pair()) {
             auto pair = current.as_pair();
-            auto buf = pair->car.as_heap_obj<StaticBuffer>();
+            auto buf = pair->car.as_native_obj<StaticBuffer>();
+            if (!buf)
+                throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
             process_buffer(buf);
             current = pair->cdr;
         }
+    } else {
+        throw_type_mismatch(form, args, 0, {"static-buffer", "pair"}, args.unnamed[0].class_name());
     }
 
     // Финальный маркер конца файла
@@ -6362,7 +6417,8 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
 
 Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::HEAP_OBJECT, ObjectType::SYMBOL}},
+    vararg_check(form, args,
+                 {{ObjectType::SYMBOL}, {ObjectType::NATIVE_OBJECT, ObjectType::SYMBOL}},
                  {{"reg", {false, {ObjectType::SYMBOL}}}});
 
     auto alias = std::make_shared<RegisterAlias>();
@@ -6372,7 +6428,7 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
     auto second = args.unnamed[1];
     if (second.is_symbol())
         alias->type_name = second;
-    else if (second.is_native_ref<Type>())
+    else if (second.is_native_obj<Type>())
         alias->type_name =
             Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
 
@@ -6451,8 +6507,6 @@ Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
     } catch (std::runtime_error &e) {
         throw_eval_error(form, e.what());
     }
-    // 2. Проверяем, был ли символ уже объявлен
-    auto existing_type = m_symbol_types.lookup(sym.as_symbol());
 
     // 1. Получаем указатель на запись в таблице
     auto existing_type_ptr = m_symbol_types.lookup(sym.as_symbol());
@@ -6625,7 +6679,7 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
         throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
     }
     settings.is_set = true;
-    bool autodefine = false;
+
     // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
     for_each_in_list(rest, [&](const Object &o) {
         if (!o.is_pair()) {
@@ -6740,9 +6794,9 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args,
                  {
-                     {ObjectType::SYMBOL, ObjectType::HEAP_OBJECT}, // 0: Тип
-                     {ObjectType::INTEGER, ObjectType::SYMBOL},     // 1: ID или Имя метода
-                     {ObjectType::FUNCTION}                         // 2: Лямбда
+                     {ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}, // 0: Тип
+                     {ObjectType::INTEGER, ObjectType::SYMBOL},       // 1: ID или Имя метода
+                     {ObjectType::FUNCTION}                           // 2: Лямбда
                  },
                  {});
 
@@ -6917,12 +6971,16 @@ Object Interpreter::eval_tc(const Object &form, Arguments &args,
     // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
     vararg_check(form, args,
                  {
-                     {ObjectType::SYMBOL},
-                     {ObjectType::HEAP_OBJECT}, // 0: Имя функции (символ)
-                     {ObjectType::HEAP_OBJECT}, // 1: Тело функции (лямбда)
+                     {ObjectType::NATIVE_OBJECT}, // 0: Имя функции (символ)
+                     {ObjectType::NATIVE_OBJECT}, // 1: Тело функции (лямбда)
 
                  },
-                 {});
+                 {
+                     {"print", {false, {ObjectType::SYMBOL}}},
+                     {"throw", {false, {ObjectType::SYMBOL}}},
+                     {"allow-alias", {false, {ObjectType::SYMBOL}}},
+                     {"source", {false, {ObjectType::STRING}}},
+                 });
 
     auto doprint = is_true(args.unnamed[0]);
     auto func1_obj = args.unnamed[1];
@@ -6931,8 +6989,8 @@ Object Interpreter::eval_tc(const Object &form, Arguments &args,
     auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
 
     // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
-    // делать.
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор
+    // знал, что делать.
     if (!func1_ptr) {
         throw_eval_error(form, fmt::format("tc arg[1] is less-specific expects a ",
                                            "typespec, got {}", func1_obj.print()));
@@ -6942,11 +7000,29 @@ Object Interpreter::eval_tc(const Object &form, Arguments &args,
                                            "typespec, got {}", func2_obj.print()));
     }
 
+    std::string error_source_name;
+    bool        print_on_error = false;
+    bool        throw_on_error = false;
+    bool        allow_type_alias = false;
+
+    if (args.has_named("source"))
+        error_source_name = args.named["source"].to_std_string();
+
+    if (args.has_named("print"))
+        print_on_error = is_true(args.named["print"]);
+
+    if (args.has_named("throw"))
+        throw_on_error = is_true(args.named["throw"]);
+
+    if (args.has_named("allow-alias"))
+        allow_type_alias = is_true(args.named["allow-alias"]);
+
     // 4. Проверка сигнатуры через существующую таблицу типов символов
     auto t1 = func1_ptr.get();
     auto t2 = func2_ptr.get();
     // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
-    if (!TypeSystem::instance().tc(*t1, *t2)) {
+    if (!TypeSystem::instance().typecheck_and_throw(*t1, *t2, error_source_name, print_on_error,
+                                                    throw_on_error, allow_type_alias)) {
         if (doprint) {
             throw_eval_error(form, fmt::format("WARNING: Signature mismatch, expected {}, got {}\n",
                                                t1->print(), t2->print()));

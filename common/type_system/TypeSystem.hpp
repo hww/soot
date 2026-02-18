@@ -146,7 +146,7 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public HeapObject {
+class TypeSystem : public NativeObject {
     TypeSystem() = default; // Закрытый конструктор
   public:
     // Запрещаем копирование и присваивание
@@ -171,7 +171,7 @@ class TypeSystem : public HeapObject {
         return "type-system";
     }
     bool is_class_name(std::string name) const override {
-        return name == "type-system" || HeapObject::is_class_name(name);
+        return name == "type-system" || NativeObject::is_class_name(name);
     }
     // ========================================================================
     // Type Management
