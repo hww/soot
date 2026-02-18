@@ -19,7 +19,7 @@ class VectorTest : public ::testing::Test {
 
 // Тест создания векторов
 TEST_F(VectorTest, VectorCreation) {
-    Object obj = eval("(vector 1 2 3)");
+    Object obj = eval("(make-array 1 2 3)");
     EXPECT_TRUE(obj.is_vector());
 
     auto elements = *obj.as_array();
@@ -31,31 +31,31 @@ TEST_F(VectorTest, VectorCreation) {
 
 // Тест vector-ref
 TEST_F(VectorTest, VectorRef) {
-    Object obj = eval("(vector-ref (vector 1 2 3) 0)");
+    Object obj = eval("(array-ref (make-array 1 2 3) 0)");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 1);
 
-    obj = eval("(vector-ref (vector 1 2 3) 2)");
+    obj = eval("(array-ref (make-array 1 2 3) 2)");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 3);
 }
 
 // Тест vector-set!
 TEST_F(VectorTest, VectorSet) {
-    eval("(define v (vector 1 2 3))");
-    eval("(vector-set! v 1 99)");
-    Object obj = eval("(vector-ref v 1)");
+    eval("(define v (make-array 1 2 3))");
+    eval("(array-set! v 1 99)");
+    Object obj = eval("(array-ref v 1)");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 99);
 }
 
 // Тест vector-length
 TEST_F(VectorTest, VectorLength) {
-    Object obj = eval("(vector-length (vector 1 2 3))");
+    Object obj = eval("(array-length (make-array 1 2 3))");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 3);
 
-    obj = eval("(vector-length (vector))");
+    obj = eval("(array-length (make-array))");
     EXPECT_TRUE(obj.is_integer());
     EXPECT_EQ(obj.as_integer(), 0);
 }

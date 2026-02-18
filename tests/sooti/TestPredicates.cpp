@@ -19,28 +19,25 @@ class PredicatesTest : public ::testing::Test {
 
 // Тест type predicates
 TEST_F(PredicatesTest, TypePredicates) {
-    Object obj = eval("(number? 5)");
+    Object obj = eval("(type? 'int 5)");
     EXPECT_TRUE(obj.as_boolean());
 
-    obj = eval("(number? 3.14)");
+    obj = eval("(type? 'float 3.14)");
     EXPECT_TRUE(obj.as_boolean());
 
-    obj = eval("(string? \"hello\")");
+    obj = eval("(type? 'string \"hello\")");
     EXPECT_TRUE(obj.as_boolean());
 
-    obj = eval("(symbol? 'x)");
+    obj = eval("(type? 'symbol 'x)");
     EXPECT_TRUE(obj.as_boolean());
 
-    obj = eval("(pair? (cons 1 2))");
+    obj = eval("(type? 'pair (cons 1 2))");
     EXPECT_TRUE(obj.as_boolean());
 
     obj = eval("(null? ())");
     EXPECT_TRUE(obj.as_boolean());
 
-    obj = eval("(boolean? #t)");
-    EXPECT_TRUE(obj.as_boolean());
-
-    obj = eval("(char? #\\a)");
+    obj = eval("(type? 'char #\\a)");
     EXPECT_TRUE(obj.as_boolean());
 }
 

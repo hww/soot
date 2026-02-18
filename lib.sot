@@ -62,6 +62,9 @@
 (defmacro number? (x)
   `(or (float? ,x) (int? ,x)))
 
+(defmacro bool? (x)
+  `(or (eq? #t ,x) (eq? #f ,x)))
+
 (defmacro native-obj? (x)
   `(type? 'native-obj ,x))
 
