@@ -1,13 +1,13 @@
-#include "RegisterAlias.hpp"
+#include "Register.hpp"
 #include "ListBuilder.hpp"
 #include "TypeSystem.hpp"
 
 namespace script {
 
-Object RegisterAlias::make_step_accessor(const Object &key) {
+Object Register::make_step_accessor(const Object &key) {
 
     if (type_name.is_none()) {
-        throw std::runtime_error("RegisterAlias expects non empt type field");
+        throw std::runtime_error("Register expects non empt type field");
         return Object::make_none();
     }
 
@@ -38,7 +38,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
             Field field;
             if (struct_ptr->lookup_field(name, &field)) {
                 auto field_type_name = field.type().base_type();
-                auto next_step = std::make_shared<RegisterAlias>();
+                auto next_step = std::make_shared<Register>();
                 next_step->reg = this->reg;
                 next_step->type_name =
                     Object::make_symbol(field_type_name); // Переходим к типу поля
@@ -53,7 +53,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
         if (auto bit_ptr = dynamic_cast<BitFieldType *>(type_ptr)) {
             BitField bf;
             if (bit_ptr->lookup_field(name, &bf)) {
-                auto next_step = std::make_shared<RegisterAlias>();
+                auto next_step = std::make_shared<Register>();
                 next_step->reg = this->reg;
                 next_step->type_name = Object::make_symbol(bf.type().base_type());
 
@@ -74,7 +74,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
             auto        it = entries.find(name);
 
             if (it != entries.end()) {
-                auto next_step = std::make_shared<RegisterAlias>();
+                auto next_step = std::make_shared<Register>();
                 next_step->reg = this->reg;
 
                 // Для bitfield-энума значение — это позиция бита
@@ -113,7 +113,7 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
             stride = struct_ptr->get_inline_array_stride_alignment();
         }
 
-        auto next_step = std::make_shared<RegisterAlias>();
+        auto next_step = std::make_shared<Register>();
         next_step->reg = this->reg;
         next_step->type_name = this->type_name; // Тип элемента остается прежним
 
@@ -126,13 +126,12 @@ Object RegisterAlias::make_step_accessor(const Object &key) {
 
         return Object::make_heap_obj(next_step);
     }
-    throw std::runtime_error(
-        fmt::format("RegisterAlias for type `{}` expects a valid key, got `{}`",
-                    type_name.to_std_string(), key.print()));
+    throw std::runtime_error(fmt::format("Register for type `{}` expects a valid key, got `{}`",
+                                         type_name.to_std_string(), key.print()));
     return Object::make_none();
 }
 
-Object RegisterAlias::inspect() const {
+Object Register::inspect() const {
     ListBuilder lb;
     lb.add_symbol("reg-alias");
     lb.add_key_value("name", name);
@@ -144,7 +143,7 @@ Object RegisterAlias::inspect() const {
     return lb.build();
 }
 
-std::string RegisterAlias::print() const {
+std::string Register::print() const {
     return fmt::format("#<reg-alias {} :type {} :reg {} :offset {} :bit-offset {} :bit-size {}>",
                        name.print(), type_name.print(), reg.print(), offset, bit_offset, bit_size);
 }

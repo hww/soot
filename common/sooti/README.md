@@ -1502,7 +1502,7 @@ Assign or replace method implementations at runtime.
 
 The `AsmEnvironmentObject` extends regular environments with:
 
-1. **Register Alias Table**: Maps symbol names to `RegisterAlias` objects
+1. **Register Table**: Maps symbol names to `Register` objects
 2. **Scoped Access**: Aliases are only visible within the `rlet` body
 3. **Type Integration**: Aliases can have associated types for safe access
 4. **Automatic Cleanup**: Aliases don't persist beyond the scope
@@ -1510,7 +1510,7 @@ The `AsmEnvironmentObject` extends regular environments with:
 ### Internal Structure
 
 ```cpp
-struct RegisterAlias {
+struct Register {
     Object name;          // Symbol name (e.g., 'self, 'temp)
     Object physical_reg;  // Physical register (e.g., 'eax, 'r13)
     std::string type_name; // Associated type name

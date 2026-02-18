@@ -49,7 +49,7 @@ std::string object_type_to_string(ObjectType type);
 // Forward declarations
 class EnvironmentObject;
 class MacroObject;
-class LambdaObject;
+class FunctionObject;
 class PairObject;
 class HashTableObject;
 class FilePortObject;
@@ -274,8 +274,8 @@ class Object {
     };
     static Object make_string(const std::string &text);
     static Object make_pair(const Object &car, const Object &cdr);
-    static Object make_lambda(const ArgumentSpec &args, const Object &body,
-                              const std::shared_ptr<EnvironmentObject> &env);
+    static Object make_function(const ArgumentSpec &args, const Object &body,
+                                const std::shared_ptr<EnvironmentObject> &env);
     static Object make_macro(const ArgumentSpec &args, const Object &body,
                              const std::shared_ptr<EnvironmentObject> &env);
     static Object make_hash_table(int size = 16);
@@ -365,7 +365,7 @@ class Object {
     bool is_list() const {
         return is_null() || is_pair();
     }
-    bool is_lambda() const {
+    bool is_function() const {
         return type == ObjectType::FUNCTION;
     }
     bool is_macro() const {
@@ -430,7 +430,7 @@ class Object {
     ArrayObject                       *as_array() const;
     HashTableObject                   *as_hash_table() const;
     MacroObject                       *as_macro() const;
-    LambdaObject                      *as_lambda() const;
+    FunctionObject                    *as_function() const;
     EnvironmentObject                 *as_env() const;
     ReaderObject                      *as_reader() const;
     Pointer                           *as_pointer() const;
@@ -984,7 +984,7 @@ class SymbolTable {
         Object type_pair;
         Object type_array;
         Object type_hash_table;
-        Object type_lambda;
+        Object type_function;
         Object type_macro;
         Object type_environment;
         Object type_reader;
@@ -1137,7 +1137,7 @@ struct PositionalArg {
     Object default_value{};
 };
 /**
- * @brief Спецификация аргументов функции (lambda-list).
+ * @brief Спецификация аргументов функции (function-list).
  * * Описывает структуру ожидаемых входных данных, разделяя их на категории
  * согласно стандартам Lisp (позиционные, опциональные, ключевые и rest-аргументы).
  */
@@ -1237,7 +1237,7 @@ class EnvironmentObject : public HeapObject {
     bool                               is_reg_let;
     bool                               is_global;
     Object                             ctx;
-    Object                             owner_lambda;
+    Object                             owner_function;
     Object                             error_handler;
 
     EnvironmentObject() = default;
@@ -1300,8 +1300,8 @@ class EnvironmentObject : public HeapObject {
 
             if (flag_match && name_match) {
                 // ВРЕМЕННО: логируем подозрительные случаи
-                // if (current->owner_lambda.is_none()) {
-                //    lg::warn("Found function environment without owner_lambda at depth {}",
+                // if (current->owner_function.is_none()) {
+                //    lg::warn("Found function environment without owner_function at depth {}",
                 //             current->print());
                 //    lg::warn("  ctx: {}", current->ctx.print());
                 //    // Может быть, напечатать стек?
@@ -1339,7 +1339,7 @@ struct DeclareSettings {
     Object typespec; // Type spec of this function
 };
 
-class LambdaObject : public HeapObject {
+class FunctionObject : public HeapObject {
   public:
     std::string                        name;
     std::shared_ptr<EnvironmentObject> parent_env;
@@ -1347,18 +1347,18 @@ class LambdaObject : public HeapObject {
     ArgumentSpec                       args;
     DeclareSettings                    declarations;
 
-    LambdaObject() = default;
-    ~LambdaObject() override = default;
+    FunctionObject() = default;
+    ~FunctionObject() override = default;
 
     static Object make_new() {
         Object obj;
         obj.type = ObjectType::FUNCTION;
-        obj.heap_obj = std::make_shared<LambdaObject>();
+        obj.heap_obj = std::make_shared<FunctionObject>();
         return obj;
     }
 
     std::string print() const override {
-        std::string str = "#<lambda";
+        std::string str = "#<function";
         if (!name.empty()) {
             str += " ";
             str += name;
@@ -1373,7 +1373,7 @@ class LambdaObject : public HeapObject {
     Object inspect() const override;
 
     std::string full_class_name() const override {
-        return "LambdaObject";
+        return "FunctionObject";
     }
 
     std::string class_name() const override {

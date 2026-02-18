@@ -16,6 +16,7 @@
    (z int16))
  (:methods
       (new (int16 int16) _type_)
+      (set (_type_ int16 int16 int16) none)
       (clear (_type_) none)
       (len (_type_) int16)))
 
@@ -104,26 +105,32 @@
       (.ld (-> self z) 0)
       (.ret))))
 
-(defmethod len ((this vec3))
+(defmethod len ((this vec3 ix))
   (declare (once) (asm-func int16))
   (fmt #t "DECLARATIONS vec3::len {}" (declarations))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
-  (rlet ((self uint8 :reg ix)
-         (x    uint8 :reg a)) 
+  (rlet ((ret  int16 :reg a)) 
     (zasm
-      (.label start)
-      (.jr 'start)    ;; Переход назад на 3 байта
-      (.jp 'exit)    ;; Переход вперед на метку exit
-      (.nop)    
-      (.ld self 10)
-      (.ld self #x0A)  ;; Запишет 10 в (IX+0)
-      (.ld a #x55)    ;; Загрузит 85 в A
-      (.ld self #x0A) ;; Это (IX+0)
-      (.jr 'start)    ;; Переход назад на 3 байта
-      (.jp 'exit)    ;; Переход вперед на метку exit
-      (.label exit)      
+      (.push de)
+      (.ld hl (-> this x))
+      (.ld de (-> this y))
+      (.add hl de)
+      (.ld de (-> this z))
+      (.add hl de)
       (.ret))))
+
+(defmethod set ((this vec3 ix) (x int16 hl) (y int16 de) (z int16 bc))
+  (declare (once) (asm-func none))
+  (fmt #t "DECLARATIONS vec3::len {}" (declarations))
+  ;; Первый rlet (информационный) уже добавлен макросом скрыто.
+  ;; Теперь программист добавляет свой (машинный) rlet:
+
+    (zasm
+      (.ld (-> this x) hl)
+      (.ld (-> this y) de)
+      (.ld (-> this z) bc)
+      (.ret)))
 
 ;;; ===================================================================== 
 ;;; V-Table
@@ -189,14 +196,33 @@
 
 (defproc test-call-method ()
   (declare (once) (asm-func none))
-  (call-method ix vec3::len)
+  (dcall vec3::len vec3 int16)
   (.ret))
 
 (defproc test-new-call-method ()
   (declare (once) (asm-func none))
-  (call-method ix vec3::new a de)
+  (dcall vec3::new int16 int16 _type_) ; addrss of instance in ix
+
+  (.ld hl #x100)
+  (.ld de #x101)
+  (.ld bc #x102)
+  (dcall vec3::set vec3 int16 int16 int16 none)
   (.ret))
 
+(defproc test-call-method-adv ()
+  (declare (once) (asm-func none))
+  (rlet ((len int16 hl))
+    ;; 1. Загружаем адрес метода
+    (.ld ix #x8000)
+
+    ;; 2. Готовим адрес (регистры еще свободны)
+    (obj-method->iy ix vec3::len) 
+    
+    ;; 3. Вызываем
+    ;; scall проверит, что в HL реально int16, а возврат — none
+    (ycall vec3::len vec3 len)
+    
+    ))
 
 ;;; ===================================================================== 
 ;;; Other Tests
@@ -296,9 +322,9 @@
 
 
 
+
 (assemble-module 'default)
 (dump-listing 'default)
-
 
 
 ;; 2. Определяем структуру проекта (Layout)

@@ -185,71 +185,6 @@
      (error "Malformed defmethod: check arguments structure."))))
 
 ;;; =====================================================================
-;;; CallMethods 
-;;; =====================================================================
-
-
-(defun check-method-contract (t-sym m-sym provided-args)
-  (let* ((m-impl (get-function t-sym m-sym))
-         (spec (function-typespec m-impl))
-         (raw-count (-> spec :args-count))
-         
-         ;; Логика остается прежней: для методов self съедает один слот аргумента
-         (has-self (if (eq? m-sym 'new) #f #t))
-         (expected-params (if has-self 
-                              (- raw-count 2)  ;; self + return
-                              (- raw-count 1))) ;; return
-         
-         (actual-count (length provided-args)))
-
-    (if (!= expected-params actual-count)
-        (error (fmt #f "Contract Error: {}::{} expects {} regs, but got {}" 
-                    t-sym m-sym expected-params actual-count)))
-    
-    ;; Здесь можно добавить проверку, что в provided-args переданы именно символы регистров
-    ;; (hl de bc), а не случайные числа.
-    #t))
-
-(defmacro call-method (obj-reg method-full-name &rest calling-regs)
-  (let* ((full-name-str (if (string? method-full-name) 
-                            method-full-name 
-                            (symbol->string method-full-name)))
-         (parts (string-split full-name-str "::"))
-         (t-sym (string->symbol (car parts)))
-         (m-sym (string->symbol (cadr parts)))
-         
-         (m-id (method-id-of t-sym m-sym))
-         (offset (* 2 m-id))
-         (lab-exit (local 'exit))
-         (ir-reg (string->symbol (fmt #f "+{}" obj-reg))))
-
-    ;; 1. Просто проверяем контракт. Если не совпадет — вылетит Error.
-    (check-method-contract t-sym m-sym calling-regs)
-
-    ;; 2. Генерируем только прыжок. 
-    ;; Мы верим, что в calling-regs (hl, de...) уже всё лежит.
-    `(zasm
-        ;; Настройка VTable через переданный базовый регистр (IX или IY)
-        (.ld l (,ir-reg 0))
-        (.ld h (,ir-reg 1))
-        (.ld a ,offset)
-        (.add-hl-a) 
-        
-        ;; Читаем адрес метода из таблицы в DE
-        (.ld a (@ hl)) 
-        (.ld e a)
-        (.inc hl)
-        (.ld a (@ hl)) 
-        (.ld d a)
-        
-        ;; Подготовка возврата
-        (.ld hl ',lab-exit) 
-        (.push hl)          ;; Адрес возврата на стек
-        (.ex-de-hl)         ;; Адрес метода в HL, DE свободен
-        (.jump hl)          ;; Полетели
-        (.label ,lab-exit))))
-
-;;; =====================================================================
 ;;; V-Table 
 ;;; =====================================================================
 
@@ -390,5 +325,80 @@
     (.vtable type-obj)
     
     (label (intern (fmt #f "type::{}::name" t-name)))
-    (emit-string t-name)))
-   
+    (emit-string t-name)))  
+
+;;; =====================================================================
+;;; Получить адресс метода
+;;; =====================================================================  
+
+(defmacro obj-method->iy (obj-reg method-sym)
+  (let* ((parts (string-split (symbol->string method-sym) "::")) ;; (vec3 len)
+         (m-id (method-id-of (car parts) (cadr parts)))
+         (offset (* 3 m-id))) ;; Смещение в VTable (3 байта на JMP)
+`(zasm
+       (.push hl)       ; Сохраняем HL (аргумент)
+       (.push bc)       ; Сохраняем BC (может быть аргументом)
+       
+       ;; 1. Достаем адрес VTable
+       (.ld l (+ii ,obj-reg 0))
+       (.ld h (+ii ,obj-reg 1)) 
+       
+       ;; 2. Смещение к нужному методу
+       (.ld bc ,offset)
+       (.add hl bc)     ; HL теперь указывает прямо на байты адреса в VTable
+       (.ld iy hl)
+       ;; 4. Рокировка на стеке
+       (.pop bc)
+       (.pop hl)
+       )))
+
+;;; =====================================================================
+;;; Direct method call
+;;; =====================================================================  
+
+(defmacro dcall (method-sym &rest declared-args)
+  (let* ((func (eval method-sym)))
+    (unless (type? func 'function)
+      (asm-error (fmt #f "Expected function got {}" func)))  
+    (let* ((spec-func (function-typespec func))     ;; (function int16 int16 none)
+           (actual-objects (map (lambda (arg) (eval arg)) declared-args))
+           (spec-args (typespec~> (cons 'function actual-objects )))         ;; (int16 int16 none)
+          )
+
+    ;; 1. Проверка сигнатуры (наша вчерашняя логика)
+    (unless (types-match? spec-func spec-args)
+      (error (fmt "DCall Args Mismatch для {}: ожидали {}, дали {}" 
+                  method-sym expected-args provided-args)))
+
+    ;; 3. Генерация кода
+    `(zasm (.call ,(module-label-addr-get method-sym))))))
+
+(defmacro ycall (method-sym &rest declared-args)
+
+  (let* ((func (eval method-sym)))
+    (unless (type? func 'function)
+      (asm-error (fmt #f "Expected function got {}" func)))
+    (let* ((spec-func (function-typespec func))     ;; (function int16 int16 none)
+           (actual-objects (map (lambda (arg) (eval arg)) declared-args))
+           (spec-args (typespec~> (cons 'function actual-objects)))         ;; (int16 int16 none)         
+           (lab-exit (local 'exit)))
+
+      ;; 1. Проверка сигнатуры (наша вчерашняя логика)
+      (unless (types-match? spec-func spec-args)
+        (error (fmt "DCall Args Mismatch для {}: ожидали {}, дали {}" 
+                    method-sym expected-args provided-args)))
+
+      `(zasm
+        ;; Адрес метода уже на стеке (от obj-method-address-push)
+        ;; Нам нужно положить адрес возврата ПОВЕРХ него
+        (.ld iy ',lab-exit)
+        (.push iy)   ; Стек: [RET_ADDR, METHOD_ADDR, ...]
+        
+        ;; Прыжок. Используем RET для перехода в метод, 
+        ;; сохранив ВСЕ регистры (HL, DE, BC, A)
+        (.ret)       
+        (.label ,lab-exit)))))
+
+;;; =====================================================================
+;;; Direct method call
+;;; =====================================================================  

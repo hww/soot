@@ -164,7 +164,7 @@ Object Reader::read_single_form(TextStream &ts, EvalCallback eval_callback) {
         const auto &macro = it->second;
 
         // А) Функциональный макрос (Лямбда)
-        if (macro.lambda.is_lambda()) {
+        if (macro.lambda.is_function()) {
             if (eval_callback) {
                 ReaderEvent evt = {.type = ReaderEvent::Type::MACRO_REQUEST,
                                    .form = macro.lambda,
