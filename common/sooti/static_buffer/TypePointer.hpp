@@ -38,8 +38,12 @@ class TypePointer : public Pointer {
         return "type-pointer";
     }
 
-    bool is_class_name(std::string name) const override {
-        return name == TypePointer::class_name() || Pointer::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == TypePointer::type_name_obj() || Pointer::is_class_name(name);
     }
 };
 } // namespace script

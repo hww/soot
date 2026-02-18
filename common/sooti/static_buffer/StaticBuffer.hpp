@@ -48,8 +48,12 @@ struct BufferLabel : public NativeObject {
         return "buffer-label";
     }
 
-    bool is_class_name(std::string name) const override {
-        return name == BufferLabel::class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == BufferLabel::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     std::string print() const override {
@@ -205,8 +209,12 @@ class StaticBuffer : public NativeObject {
         return "static-buffer";
     }
 
-    bool is_class_name(std::string name) const override {
-        return name == StaticBuffer::class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == StaticBuffer::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     Object      inspect() const override;

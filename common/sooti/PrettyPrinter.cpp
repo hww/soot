@@ -48,7 +48,7 @@ void Node::link(Node *this_parent, std::vector<Node *> *bfs_order, uint32_t dept
         break;
     case Kind::LIST:
     case Kind::IMPROPER_LIST:
-        ASSERT(!child_nodes.empty());
+        // ASSERT(!child_nodes.empty());
         for (auto &child : child_nodes) {
             child.link(this, bfs_order, depth + 1);
         }

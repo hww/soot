@@ -37,8 +37,8 @@
          (target-addr (if (not (null? address)) address ilc)))
     
     (buffer-label-set! buf clean-name :address target-addr)
-    (fmt #t "  [Segment:{}] Label '{}' set to {}\n" 
-         (segment-name seg) clean-name target-addr)))
+      ;(fmt #t "  [Segment:{}] Label '{}' set to {}\n" (segment-name seg) clean-name target-addr)
+         ))
 
 (defun segment-record-listing-line (seg start-addr text)
   ;(fmt #t "DEBUG: segment-record-listing-line addr: {} :listing {}\n" start-addr text)
@@ -106,7 +106,7 @@
         (let ((found-label null))
           ;; 1. Проверяем текущий сегмент
           (let ((local (segment-label-get *current-segment* label)))
-            (fmt #t "module-label-get {} -> {}\n" label local) ;; Исправлено seg -> mod
+            ;(fmt #t "module-label-get {} -> {}\n" label local) ;; Исправлено seg -> mod
             (if (not (null? local))
                 (set! found-label local)
                 ;; 2. Проверяем остальные сегменты модуля

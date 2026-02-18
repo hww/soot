@@ -58,10 +58,13 @@ class TypeSpec : public NativeObject {
     std::string class_name() const override {
         return "type-spec";
     }
-    bool is_class_name(std::string name) const override {
-        return name == "type-type" || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
     }
 
+    bool is_class_name(const Object &name) const override {
+        return name == TypeSpec::type_name_obj() || NativeObject::is_class_name(name);
+    }
     // Comparison
     bool operator==(const TypeSpec &other) const;
     bool operator!=(const TypeSpec &other) const;

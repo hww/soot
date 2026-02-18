@@ -209,10 +209,11 @@
             ;; Если метод найден (в типе или у родителя)
             ;; Берем имя самого метода, префикс vtable останется за вызывающим
             (let ((full-name (intern (concat (-> method :type-name) "::" (-> method :name)))))
-              (push! (emit-fn full-name id) data))
+             
+              (push! (emit-fn full-name id method) data))
             
             ;; Если метода нет ни в этом типе, ни выше по иерархии
-            (push! (emit-fn #f id) data))))
+            (push! (emit-fn #f id method) data))))
     (flatten (reverse data))))
 
 ;;; 2. Теперь определяем функцию генерации таблицы
@@ -223,7 +224,7 @@
     (label v-name :scope 'public)
   
     (emit-vtable-slots type-obj 
-      (lambda (method-full-name index)
+      (lambda (method-full-name index method)
         (let* ((label-name 
                 (if method-full-name 
                     (intern (fmt #f "{}::{}" v-name (method-name-only method-full-name)))
@@ -231,7 +232,7 @@
           
           ;; Ставим метку слота
           (label label-name)
-          
+          (let ((type-spec (~> method :type-spec))) (declare-extern label-name type-spec))
           (if method-full-name
             (let ((addr (module-label-addr-get method-full-name)))
               (if (and addr (not (= addr 0)))
@@ -356,8 +357,26 @@
 ;;; Direct method call
 ;;; =====================================================================  
 
+
+(defun resolve-method-name (name)
+  (let ((val (if (defined? name) (eval name) #f)))
+    (if (type? val 'function)
+        val
+        ;; Если это не функция в Лиспе, значит это метка (адрес) в ассемблере
+        (module-label-addr-get name)
+        ;name
+        )))
+
+(defun resolve-method (name-or-function)
+  (cond
+    ((type? name-or-function 'function)
+      name-or-function)
+    ((symbol? name-or-function)
+      (resolve-method-name name-or-function))
+    (#t (asm-error (fmt #f "Expected label or function, got {}" name-or-function)))))
+
 (defmacro dcall (method-sym &rest declared-args)
-  (let* ((func (eval method-sym)))
+  (let* ((func (resolve-method method-sym)))
     (unless (type? func 'function)
       (asm-error (fmt #f "Expected function got {}" func)))  
     (let* ((spec-func (function-typespec func))     ;; (function int16 int16 none)
@@ -382,7 +401,7 @@
            (actual-objects (map (lambda (arg) (eval arg)) declared-args))
            (spec-args (typespec~> (cons 'function actual-objects)))         ;; (int16 int16 none)         
            (lab-exit (local 'exit)))
-
+      (fmt #t "DEBUG ycall {}\n" lab-exit)
       ;; 1. Проверка сигнатуры (наша вчерашняя логика)
       (unless (types-match? spec-func spec-args)
         (error (fmt "DCall Args Mismatch для {}: ожидали {}, дали {}" 

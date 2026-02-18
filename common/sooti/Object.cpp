@@ -97,66 +97,20 @@ void SymbolTable::init_core_symbols() {
     core.kw_rest = make_symbol(":rest");
     core.sym_true = make_symbol("#t");
     core.sym_false = make_symbol("#f");
-    core.type_null = make_symbol(object_type_to_string(ObjectType::EMPTY_LIST));
-    core.type_primitive = make_symbol(object_type_to_string(ObjectType::PRIMITIVE));
-    core.type_special_form = make_symbol(object_type_to_string(ObjectType::SPECIAL_FORM));
-    core.type_int = make_symbol(object_type_to_string(ObjectType::INTEGER));
-    core.type_float = make_symbol(object_type_to_string(ObjectType::FLOAT));
-    core.type_char = make_symbol(object_type_to_string(ObjectType::CHAR));
-    core.type_symbol = make_symbol(object_type_to_string(ObjectType::SYMBOL));
-    core.type_string = make_symbol(object_type_to_string(ObjectType::STRING));
-    core.type_pair = make_symbol(object_type_to_string(ObjectType::PAIR));
-    core.type_array = make_symbol(object_type_to_string(ObjectType::ARRAY));
-    core.type_hash_table = make_symbol(object_type_to_string(ObjectType::STRING_HASH_TABLE));
-    core.type_function = make_symbol(object_type_to_string(ObjectType::FUNCTION));
-    core.type_macro = make_symbol(object_type_to_string(ObjectType::MACRO));
-    core.type_environment = make_symbol(object_type_to_string(ObjectType::ENVIRONMENT));
-    core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
-    core.type_none = make_symbol(object_type_to_string(ObjectType::NONE));
-    core.type_pointer = make_symbol(object_type_to_string(ObjectType::POINTER));
-    core.type_heap_obj = make_symbol(object_type_to_string(ObjectType::NATIVE_OBJECT));
-}
-Object SymbolTable::object_type_to_symbol(ObjectType type) {
-    switch (type) {
-    case ObjectType::NONE:
-        return core.type_none;
-    case ObjectType::PRIMITIVE:
-        return core.type_primitive;
-    case ObjectType::SPECIAL_FORM:
-        return core.type_special_form;
-    case ObjectType::EMPTY_LIST:
-        return core.type_null; // было EmptyList
-    case ObjectType::INTEGER:
-        return core.type_int; // было Integer
-    case ObjectType::FLOAT:
-        return core.type_float; // было Float
-    case ObjectType::CHAR:
-        return core.type_char; // было Char
-    case ObjectType::SYMBOL:
-        return core.type_symbol;
-    case ObjectType::STRING:
-        return core.type_string;
-    case ObjectType::PAIR:
-        return core.type_pair;
-    case ObjectType::ARRAY:
-        return core.type_array;
-    case ObjectType::STRING_HASH_TABLE:
-        return core.type_hash_table;
-    case ObjectType::FUNCTION:
-        return core.type_function;
-    case ObjectType::MACRO:
-        return core.type_macro;
-    case ObjectType::ENVIRONMENT:
-        return core.type_environment;
-    case ObjectType::READER:
-        return core.type_reader;
-    case ObjectType::POINTER:
-        return core.type_pointer;
-    case ObjectType::NATIVE_OBJECT:
-        return core.type_heap_obj;
-    default:
-        return core.type_none;
+    // 2. Автоматическая инициализация карты типов
+    // Мы проходим по всем значениям enum до MAX_TYPES
+    for (int i = 0; i < (int)ObjectType::MAX_TYPES; ++i) {
+        ObjectType type = static_cast<ObjectType>(i);
+
+        // Берем строковое имя (например, "int", "string", "native-obj")
+        std::string name = object_type_to_string(type);
+
+        // Создаем символ и кладем его в массив по индексу типа
+        core.type_to_symbol_map[i] = make_symbol(name);
     }
+}
+const Object &SymbolTable::object_type_to_symbol(const ObjectType type) const {
+    return core.type_to_symbol_map[(int)type];
 }
 
 InternedSymbolPtr SymbolTable::intern(const char *str) {
@@ -267,10 +221,10 @@ Object Object::type_name_obj() const {
     return symbol_table().object_type_to_symbol(type);
 }
 
-bool Object::is_class_name(std::string name) const {
+bool Object::is_class_name(const Object &name) const {
     if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->is_class_name(name);
-    return name == object_type_to_string(type);
+    return name == symbol_table().object_type_to_symbol(type);
 }
 
 std::vector<Object> Object::to_vector() const {
@@ -408,10 +362,6 @@ void HeapObject::set_at(const Object &key, const Object &value) {
     Object target = this->make_step_accessor(key);
     if (target.is_pointer())
         target.as_pointer()->set(value);
-}
-
-Object HeapObject::type_name_obj() const {
-    return Object::make_symbol(class_name());
 }
 
 // ============================================================================
@@ -1050,7 +1000,7 @@ static size_t get_primitive_size(const std::string &type) {
 Object Pointer::inspect() const {
     ListBuilder lb{};
     // Используем символ 'pointer' для идентификации в инспекции
-    lb.push_back(Object::symbol_table().core.type_pointer);
+    lb.add(type_name_obj());
 
     lb.push_kv("address", Object::make_integer((uintptr_t)m_ptr));
     lb.push_kv("type", Object::make_string(m_type));
@@ -1249,7 +1199,10 @@ std::string Object::print() const {
             return "[unknown]";
     }
 }
-
+std::string Object::printc() const {
+    // сырой формат например без "" для строки
+    return is_heap_object() && heap_obj ? heap_obj->printc() : print();
+}
 std::string ArgumentSpec::print() const {
     // Вместо "ArgumentSpec: unnamed=2..." сделаем более сжатый системный вид
     return fmt::format("#<arg-spec u:{} n:{} r:{}{}{}>", unnamed.size(), named.size(),

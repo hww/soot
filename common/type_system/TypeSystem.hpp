@@ -170,9 +170,15 @@ class TypeSystem : public NativeObject {
     std::string class_name() const override {
         return "type-system";
     }
-    bool is_class_name(std::string name) const override {
-        return name == "type-system" || NativeObject::is_class_name(name);
+
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
     }
+
+    bool is_class_name(const Object &name) const override {
+        return name == TypeSystem::type_name_obj() || NativeObject::is_class_name(name);
+    }
+
     // ========================================================================
     // Type Management
     // ========================================================================

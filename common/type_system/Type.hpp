@@ -115,7 +115,7 @@ class MethodInfo : public NativeObject {
         : id(id), name(std::move(name)), type(std::move(type)),
           defined_in_type(std::move(defined_in)), type_name(std::move(type_name)),
           no_virtual(no_virtual), overrides_parent(overrides), only_overrides_docstring(only_doc),
-          docstring(std::move(doc)), overlay_name(std::move(overlay)), method_impl() {}
+          docstring(std::move(doc)), overlay_name(std::move(overlay)) {}
 
     int                        id = -1;
     std::string                name;
@@ -127,7 +127,6 @@ class MethodInfo : public NativeObject {
     bool                       only_overrides_docstring = false;
     std::optional<std::string> docstring;
     std::optional<std::string> overlay_name;
-    script::Object             method_impl; // SOOT feature assigned definition from script
 
     bool        operator==(const MethodInfo &other) const;
     bool        operator!=(const MethodInfo &other) const;
@@ -144,8 +143,11 @@ class MethodInfo : public NativeObject {
     std::string class_name() const override {
         return "method-info";
     }
-    bool is_class_name(std::string name) const override {
-        return name == class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == MethodInfo::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     Object inspect() const override {
@@ -161,7 +163,6 @@ class MethodInfo : public NativeObject {
                               Object::make_boolean(only_overrides_docstring));
         builder.add_key_value("docstring", Object::make_string(docstring.value_or("")));
         builder.add_key_value("overlay-name", Object::make_string(overlay_name.value_or("")));
-        builder.add_key_value("method-impl", method_impl);
         return builder.build();
     }
 
@@ -193,8 +194,13 @@ class Field : public NativeObject {
     std::string class_name() const override {
         return "field";
     }
-    bool is_class_name(std::string name) const override {
-        return name == class_name() || NativeObject::is_class_name(name);
+
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == Field::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     const TypeSpec &type() const {
@@ -307,8 +313,12 @@ class BitField : public NativeObject {
     std::string class_name() const override {
         return "bit-field";
     }
-    bool is_class_name(std::string name) const override {
-        return name == class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == BitField::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     const std::string name() const {
@@ -369,8 +379,12 @@ class Type : public NativeObject {
     std::string class_name() const override {
         return "type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == Type::class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == Type::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     uint32_t get_type_tag() {
@@ -417,10 +431,7 @@ class Type : public NativeObject {
     const MethodInfo &add_method(const MethodInfo &info);
     const MethodInfo &add_new_method(const MethodInfo &info);
     std::string       print_method_info() const;
-    bool set_method_impl(int id, const script::Object method); // Used for the scripting systme
-    bool set_method_impl(const std::string   &name,
-                         const script::Object method); // Used for the scripting systme
-    bool set_new_method_impl(const script::Object method);
+
     // New method access
     const MethodInfo *get_new_method_defined_for_type() const {
         if (m_new_method_info_defined) {
@@ -536,8 +547,8 @@ class NullType : public Type {
     std::string class_name() const override {
         return "null-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == NullType::class_name() || Type::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == NullType::type_name_obj() || Type::is_class_name(name);
     }
 
     bool     is_reference() const override;
@@ -580,8 +591,8 @@ class ValueType : public Type {
     std::string class_name() const override {
         return "value-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == ValueType::class_name() || Type::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == ValueType::type_name_obj() || Type::is_class_name(name);
     }
 
     bool     is_reference() const override;
@@ -637,8 +648,8 @@ class ReferenceType : public Type {
     std::string class_name() const override {
         return "reference-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == ReferenceType::class_name() || Type::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == ReferenceType::type_name_obj() || Type::is_class_name(name);
     }
     bool is_reference() const override {
         return true;
@@ -685,8 +696,8 @@ class StructureType : public ReferenceType {
     std::string class_name() const override {
         return "structure-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == StructureType::class_name() || ReferenceType::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == StructureType::type_name_obj() || ReferenceType::is_class_name(name);
     }
     std::string print() const override;
     Object      inspect() const override {
@@ -802,8 +813,8 @@ class BasicType : public StructureType {
     std::string class_name() const override {
         return "basic-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == BasicType::class_name() || StructureType::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == BasicType::type_name_obj() || StructureType::is_class_name(name);
     }
     int get_offset() const override {
         return 0;
@@ -849,8 +860,8 @@ class BitFieldType : public ValueType {
     std::string class_name() const override {
         return "bit-field-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == BitFieldType::class_name() || ValueType::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == BitFieldType::type_name_obj() || ValueType::is_class_name(name);
     }
     bool        lookup_field(const std::string &name, BitField *out) const;
     std::string print() const override;
@@ -893,8 +904,8 @@ class EnumType : public ValueType {
     std::string class_name() const override {
         return "enum-type";
     }
-    bool is_class_name(std::string name) const override {
-        return name == EnumType::class_name() || ValueType::is_class_name(name);
+    bool is_class_name(const Object &name) const override {
+        return name == EnumType::type_name_obj() || ValueType::is_class_name(name);
     }
     std::string print() const override;
     Object      inspect() const override {
