@@ -89,7 +89,6 @@ class Interpreter {
         return o.truthy(m_sym_false.as_symbol());
     }
     // Помощники для чисел
-    bool    is_number(const Object &obj);
     int64_t number_to_integer(const Object &obj);
     double  number_to_float(const Object &obj);
 
@@ -110,9 +109,9 @@ class Interpreter {
     void load_library();
 
     // Символы и окружение
-    Object            make_symbol(const char *name);
-    Object            make_symbol(const std::string &name);
-    InternedSymbolPtr intern(const std::string &name);
+    Object            intern(const char *name);
+    Object            intern(const std::string &name);
+    InternedSymbolPtr intern_ptr(const std::string &name);
     bool   try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
                              Object *dest);
     Object eval_symbol(const Object &sym, const std::shared_ptr<EnvironmentObject> &env);

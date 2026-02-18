@@ -54,7 +54,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     define_var_in_env(m_global_environment, m_sym_true, "else");
     define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
 
-    auto user = make_symbol(username.c_str());
+    auto user = intern(username.c_str());
     define_var_in_env(m_global_environment, user, "*user*");
 
     // Инициализация string_to_type для type?
@@ -476,12 +476,12 @@ void Interpreter::set_args_in_env(const Object &form, const Arguments &args,
 
     // unnamed args
     for (size_t i = 0; i < arg_spec.unnamed.size(); i++) {
-        env->vars.set(intern(arg_spec.unnamed.at(i).name), args.unnamed.at(i));
+        env->vars.set(intern_ptr(arg_spec.unnamed.at(i).name), args.unnamed.at(i));
     }
 
     // named args
     for (const auto &kv : arg_spec.named) {
-        env->vars.set(intern(kv.first), args.named.at(kv.first));
+        env->vars.set(intern_ptr(kv.first), args.named.at(kv.first));
     }
 
     // rest args
@@ -489,9 +489,9 @@ void Interpreter::set_args_in_env(const Object &form, const Arguments &args,
         // args.rest теперь сам по себе является списком Pair или Null.
         // Мы просто биндим его в окружение. Никаких копирований!
         if (args.rest.is_none())
-            env->vars.set(intern(arg_spec.rest), get_null());
+            env->vars.set(intern_ptr(arg_spec.rest), get_null());
         else
-            env->vars.set(intern(arg_spec.rest), args.rest);
+            env->vars.set(intern_ptr(arg_spec.rest), args.rest);
     } else {
         // Если rest не пустой, но спецификация его не ждет
         if (args.has_rest()) {
@@ -503,28 +503,32 @@ void Interpreter::set_args_in_env(const Object &form, const Arguments &args,
  * In env, set the variable named "name" to the value var.
  */
 void Interpreter::define_var_in_env(const Object &env, const Object &var, const char *name) {
-    env.as_env()->vars.set(InternedSymbolPtr{intern(name)}, var);
+    env.as_env()->vars.set(InternedSymbolPtr{intern_ptr(name)}, var);
 }
 
 // ============================================================
 // Tools and utilities
 // ============================================================
 
-Object Interpreter::make_symbol(const char *name) {
+Object Interpreter::intern(const char *name) {
     return m_symbol_table.make_symbol(name);
 }
 
-Object Interpreter::make_symbol(const std::string &name) {
+/*!
+ * Get a symbol with the given name, creating one if none exist.
+ */
+Object Interpreter::intern(const std::string &name) {
     return m_symbol_table.make_symbol(name.c_str());
 }
 
-InternedSymbolPtr Interpreter::intern(const std::string &name) {
+InternedSymbolPtr Interpreter::intern_ptr(const std::string &name) {
     return m_symbol_table.intern(name.c_str());
 }
 
 // ============================================================
 // REPL
 // ============================================================
+
 /*!
  * Display the REPL, which will run until the user executes exit.
  */
@@ -1019,7 +1023,9 @@ std::vector<Object> Interpreter::eval_list(const Object                         
     return result;
 }
 
-// Запуск функции
+/*!
+ * Evaluate a list and return the result of the last evaluation.
+ */
 Object Interpreter::eval_list_return_last(const Object &form, Object rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -1623,31 +1629,36 @@ Object Interpreter::quasiquote_helper(const Object                             &
 // Конвертирование типов lpres
 // ============================================================
 
+/*!
+ * Convert a number to an integer
+ */
 int64_t Interpreter::number_to_integer(const Object &obj) {
-    if (obj.is_integer()) {
-        return obj.as_integer();
-    } else if (obj.is_float()) {
-        return static_cast<int64_t>(obj.as_float());
-    } else {
-        throw_eval_error(obj,
-                         fmt::format("object '{}' cannot be converted to integer", obj.print()));
+    switch (obj.type) {
+    case ObjectType::INTEGER:
+        return obj.integer_obj.value;
+    case ObjectType::FLOAT:
+        return (int64_t)obj.float_obj.value;
+    case ObjectType::CHAR:
+        return (int8_t)obj.char_obj.value;
+    default:
+        throw_eval_error(obj, "object cannot be interpreted as a number!");
     }
     return 0;
 }
 
+/*!
+ * Convert a number to floating point
+ */
 double Interpreter::number_to_float(const Object &obj) {
-    if (obj.is_float()) {
-        return obj.as_float();
-    } else if (obj.is_integer()) {
-        return static_cast<double>(obj.as_integer());
-    } else {
-        throw_eval_error(obj, fmt::format("object '{}' cannot be converted to float", obj.print()));
+    switch (obj.type) {
+    case ObjectType::INTEGER:
+        return obj.integer_obj.value;
+    case ObjectType::FLOAT:
+        return obj.float_obj.value;
+    default:
+        throw_eval_error(obj, "object cannot be interpreted as a number!");
     }
     return 0;
-}
-
-bool Interpreter::is_number(const Object &obj) {
-    return obj.is_integer() || obj.is_float();
 }
 
 // ============================================================
@@ -2179,6 +2190,10 @@ void Interpreter::vararg_check(
 // Системные функции(print, pprint, inspect)
 // ============================================================
 
+/*!
+ * Print the inspection of a form to stdout, including a newline.
+ * Returns ()
+ */
 Object Interpreter::eval_inspect(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2193,6 +2208,10 @@ Object Interpreter::eval_inspect(const Object &form, Arguments &args,
     return target.inspect();
 }
 
+/*!
+ * Print the form to stdout, including a newline.
+ * Returns ()
+ */
 Object Interpreter::eval_print(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2205,6 +2224,10 @@ Object Interpreter::eval_print(const Object &form, Arguments &args,
     return Object::make_null();
 }
 
+/*!
+ * Return preformated string from the s-expression
+ * Returns string
+ */
 Object Interpreter::eval_pfmt(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2356,6 +2379,9 @@ Object Interpreter::eval_with_error_handler_special(const Object &form, const Ob
 // Математические функции с проверками
 // ============================================================
 
+/*!
+ * implementation of addition.
+ */
 Object Interpreter::eval_plus(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2365,7 +2391,7 @@ Object Interpreter::eval_plus(const Object &form, Arguments &args,
 
     // Проверяем что все аргументы - числа
     for (const auto &arg : args.unnamed) {
-        if (!is_number(arg)) {
+        if (!arg.is_number()) {
             throw_eval_error(form, "+ requires number arguments");
         }
     }
@@ -2385,6 +2411,9 @@ Object Interpreter::eval_plus(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of substaction.
+ */
 Object Interpreter::eval_minus(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2395,7 +2424,7 @@ Object Interpreter::eval_minus(const Object &form, Arguments &args,
 
     // Проверяем что все аргументы - числа
     for (const auto &arg : args.unnamed) {
-        if (!is_number(arg)) {
+        if (!arg.is_number()) {
             throw_eval_error(form, "- requires number arguments");
         }
     }
@@ -2421,6 +2450,9 @@ Object Interpreter::eval_minus(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of multiplication.
+ */
 Object Interpreter::eval_times(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2431,7 +2463,7 @@ Object Interpreter::eval_times(const Object &form, Arguments &args,
 
     // Проверяем что все аргументы - числа
     for (const auto &arg : args.unnamed) {
-        if (!is_number(arg)) {
+        if (!arg.is_number()) {
             throw_eval_error(form, "* requires number arguments");
         }
     }
@@ -2451,12 +2483,15 @@ Object Interpreter::eval_times(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of deviding.
+ */
 Object Interpreter::eval_divide(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {});
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "/ requires number arguments");
     }
 
@@ -2470,6 +2505,9 @@ Object Interpreter::eval_divide(const Object &form, Arguments &args,
     return Object::make_float(numerator / denominator);
 }
 
+/*!
+ * implementation of absolute value.
+ */
 Object Interpreter::eval_abs(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2477,7 +2515,7 @@ Object Interpreter::eval_abs(const Object &form, Arguments &args,
         throw_eval_error(form, "abs must receive at least one unnamed argument!");
     }
 
-    if (!is_number(args.unnamed[0])) {
+    if (!args.unnamed[0].is_number()) {
         throw_eval_error(form, "abs requires a number argument");
     }
 
@@ -2490,6 +2528,9 @@ Object Interpreter::eval_abs(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of max.
+ */
 Object Interpreter::eval_max(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2503,7 +2544,7 @@ Object Interpreter::eval_max(const Object &form, Arguments &args,
 
     // Проверяем что все аргументы - числа
     for (const auto &arg : args.unnamed) {
-        if (!is_number(arg)) {
+        if (!arg.is_number()) {
             throw_eval_error(form, "max requires number arguments");
         }
     }
@@ -2527,6 +2568,9 @@ Object Interpreter::eval_max(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of min.
+ */
 Object Interpreter::eval_min(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2540,7 +2584,7 @@ Object Interpreter::eval_min(const Object &form, Arguments &args,
 
     // Проверяем что все аргументы - числа
     for (const auto &arg : args.unnamed) {
-        if (!is_number(arg)) {
+        if (!arg.is_number()) {
             throw_eval_error(form, "min requires number arguments");
         }
     }
@@ -2564,12 +2608,15 @@ Object Interpreter::eval_min(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of exponent.
+ */
 Object Interpreter::eval_expt(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {});
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "expt requires number arguments");
     }
 
@@ -2593,12 +2640,15 @@ Object Interpreter::eval_expt(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of square root.
+ */
 Object Interpreter::eval_sqrt(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}}, {}); // Один аргумент
 
-    if (!is_number(args.unnamed[0])) {
+    if (!args.unnamed[0].is_number()) {
         throw_eval_error(form, "sqrt requires a number argument");
     }
 
@@ -2610,6 +2660,9 @@ Object Interpreter::eval_sqrt(const Object &form, Arguments &args,
     return Object::make_float(std::sqrt(val));
 }
 
+/*!
+ * implementation of ariphmetic shift.
+ */
 Object Interpreter::eval_ash(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2626,7 +2679,9 @@ Object Interpreter::eval_ash(const Object &form, Arguments &args,
     return Object::make_null();
 }
 
-// --- Floor / Ceiling / Round ---
+/*!
+ * implementation of flore.
+ */
 Object Interpreter::eval_floor(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2634,6 +2689,9 @@ Object Interpreter::eval_floor(const Object &form, Arguments &args,
     return Object::make_integer(static_cast<int64_t>(std::floor(args.unnamed[0].as_float())));
 }
 
+/*!
+ * implementation of ceil.
+ */
 Object Interpreter::eval_ceiling(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2641,6 +2699,9 @@ Object Interpreter::eval_ceiling(const Object &form, Arguments &args,
     return Object::make_integer(static_cast<int64_t>(std::ceil(args.unnamed[0].as_float())));
 }
 
+/*!
+ * implementation of round.
+ */
 Object Interpreter::eval_round(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2648,7 +2709,9 @@ Object Interpreter::eval_round(const Object &form, Arguments &args,
     return Object::make_integer(static_cast<int64_t>(std::round(args.unnamed[0].as_float())));
 }
 
-// --- Modulo (целочисленный) ---
+/*!
+ * implementation of integer modulo.
+ */
 Object Interpreter::eval_mod(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2662,7 +2725,9 @@ Object Interpreter::eval_mod(const Object &form, Arguments &args,
     return Object::make_integer(a % b);
 }
 
-// --- Trigonometry ---
+/*!
+ * implementation of sinus.
+ */
 Object Interpreter::eval_sin(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2670,6 +2735,9 @@ Object Interpreter::eval_sin(const Object &form, Arguments &args,
     return Object::make_float(std::sin(args.unnamed[0].as_float()));
 }
 
+/*!
+ * implementation of cosine.
+ */
 Object Interpreter::eval_cos(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2677,6 +2745,9 @@ Object Interpreter::eval_cos(const Object &form, Arguments &args,
     return Object::make_float(std::cos(args.unnamed[0].as_float()));
 }
 
+/*!
+ * implementation of atan.
+ */
 Object Interpreter::eval_atan(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2698,6 +2769,9 @@ Object Interpreter::eval_atan(const Object &form, Arguments &args,
     }
 }
 
+/*!
+ * implementation of tangens.
+ */
 Object Interpreter::eval_tan(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2707,6 +2781,9 @@ Object Interpreter::eval_tan(const Object &form, Arguments &args,
     return Object::make_float(std::tan(args.unnamed[0].as_float()));
 }
 
+/*!
+ * implementation of pi.
+ */
 Object Interpreter::eval_pi(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2719,7 +2796,9 @@ Object Interpreter::eval_pi(const Object &form, Arguments &args,
 // Bit operations
 // ============================================================
 
-// (logand n1 n2 ..)
+/*!
+ * implementation of logical and (logand n1 n2 ..).
+ */
 Object Interpreter::eval_logand(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -2735,7 +2814,9 @@ Object Interpreter::eval_logand(const Object &form, Arguments &args,
     return Object::make_integer(result);
 }
 
-// (logior n1 n2 ..)
+/*!
+ * implementation of logical or (logior n1 n2 ..).
+ */
 Object Interpreter::eval_logior(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -2747,7 +2828,9 @@ Object Interpreter::eval_logior(const Object &form, Arguments &args,
     return Object::make_integer(result);
 }
 
-// (logxor n1 n2 ..)
+/*!
+ * implementation of logical xor (logxor n1 n2 ..).
+ */
 Object Interpreter::eval_logxor(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -2762,7 +2845,9 @@ Object Interpreter::eval_logxor(const Object &form, Arguments &args,
     return Object::make_integer(result);
 }
 
-// (lognot n)
+/*!
+ * implementation of logical not (lognot n1 n2 ..).
+ */
 Object Interpreter::eval_lognot(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2771,6 +2856,9 @@ Object Interpreter::eval_lognot(const Object &form, Arguments &args,
     return Object::make_integer(~val);
 }
 
+/*!
+ * implementation of logical left shift (lshift n1 bits).
+ */
 Object Interpreter::eval_lshift(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -2790,6 +2878,9 @@ Object Interpreter::eval_lshift(const Object &form, Arguments &args,
     return Object::make_integer(val << sa);
 }
 
+/*!
+ * implementation of logical right shift (rshift n1 bits).
+ */
 Object Interpreter::eval_rshift(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -2812,12 +2903,15 @@ Object Interpreter::eval_rshift(const Object &form, Arguments &args,
 // Функции сравнения с проверками
 // ============================================================
 
+/*!
+ * implementation of numerical comparisong.
+ */
 Object Interpreter::eval_numequals(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {}); // Два числа
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "= requires number arguments");
     }
 
@@ -2827,12 +2921,15 @@ Object Interpreter::eval_numequals(const Object &form, Arguments &args,
     return true_or_false(a_val == b_val);
 }
 
+/*!
+ * implementation of less than comparisong.
+ */
 Object Interpreter::eval_lt(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {}); // Два числа
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "< requires number arguments");
     }
 
@@ -2842,12 +2939,15 @@ Object Interpreter::eval_lt(const Object &form, Arguments &args,
     return true_or_false(a_val < b_val);
 }
 
+/*!
+ * implementation of greater than comparisong.
+ */
 Object Interpreter::eval_gt(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {}); // Два числа
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "> requires number arguments");
     }
 
@@ -2857,12 +2957,15 @@ Object Interpreter::eval_gt(const Object &form, Arguments &args,
     return true_or_false(a_val > b_val);
 }
 
+/*!
+ * implementation of less or equal than comparisong.
+ */
 Object Interpreter::eval_leq(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {}); // Два числа
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, "<= requires number arguments");
     }
 
@@ -2872,12 +2975,15 @@ Object Interpreter::eval_leq(const Object &form, Arguments &args,
     return true_or_false(a_val <= b_val);
 }
 
+/*!
+ * implementation of greater or queal than comparisong.
+ */
 Object Interpreter::eval_geq(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{}, {}}, {}); // Два числа
 
-    if (!is_number(args.unnamed[0]) || !is_number(args.unnamed[1])) {
+    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
         throw_eval_error(form, ">= requires number arguments");
     }
 
@@ -3176,6 +3282,7 @@ Object Interpreter::eval_primitive_p(const Object &form, Arguments &args,
 // ============================================================
 // Apply
 // ============================================================
+
 Object Interpreter::eval_apply(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Базовая проверка (нам нужно минимум 2 аргумента: функция и список)
@@ -3236,6 +3343,9 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
 // Функции сравнения
 // ============================================================
 
+/*!
+ * Fancy equality check (using Object::operator==)
+ */
 Object Interpreter::eval_equals(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3412,7 +3522,7 @@ Object Interpreter::eval_string_to_symbol(const Object &form, Arguments &args,
     vararg_check(form, args, {{ObjectType::STRING, ObjectType::SYMBOL}}, {}); // Одна строка
     if (args.unnamed[0].is_symbol())
         return args.unnamed[0];
-    return make_symbol(args.unnamed[0].as_string()->data);
+    return intern(args.unnamed[0].as_string()->data);
 }
 
 Object Interpreter::eval_symbol_to_string(const Object &form, Arguments &args,
@@ -3475,6 +3585,7 @@ Object Interpreter::eval_string_trim_indents(const Object &form, Arguments &args
     vararg_check(form, args, {{ObjectType::STRING}}, {});
     return Object::make_string(str_util::trim_newline_indents(args.unnamed[0].as_string()->data));
 }
+
 // ============================================================
 // Векторные функции с проверками
 // ============================================================
@@ -3547,6 +3658,9 @@ Object Interpreter::eval_vector_to_list(const Object &form, Arguments &args,
 // Хэш - таблицы с проверками
 // ============================================================
 
+/*!
+ * Утилитарная фунция. Генерирует ключ для таблицы
+ */
 const char *get_hash_key(Object item_pair) {
     if (item_pair.is_symbol()) {
         return item_pair.as_symbol().name_ptr;
@@ -3557,7 +3671,7 @@ const char *get_hash_key(Object item_pair) {
     }
 }
 
-/**
+/*!
  * Пустая таблица: (make-hash-table)
  *
  * Только данные (размер будет 8): (make-hash-table '((:HL . 1) (:BC . 2)))
@@ -3623,6 +3737,10 @@ Object Interpreter::eval_make_hash_table(const Object &form, Arguments &args,
     return table;
 }
 
+/*!
+ * Set a value in a hash table. Overwrites a previous value or inserts a new one.
+ * Returns empty list always.
+ */
 Object Interpreter::eval_hash_table_set(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3637,58 +3755,9 @@ Object Interpreter::eval_hash_table_set(const Object &form, Arguments &args,
     return Object::make_null();
 }
 
-Object Interpreter::eval_get_at(const Object &form, Arguments &args,
-                                const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // (get-at target key [default])
-    if (args.unnamed.size() < 2 || args.unnamed.size() > 3) {
-        throw_eval_error(form, "get-at: expected 2 or 3 arguments");
-    }
-
-    Object target = args.unnamed[0];
-    Object key = args.unnamed[1];
-
-    if (!target.is_heap_object()) {
-        throw_eval_error(form, "get-at: target must be a heap object");
-    }
-
-    // Вызываем виртуальный метод объекта
-    Object result = target.as_heap_obj()->get_at(key);
-
-    // Если ключ не найден (объект вернул undefined)
-    if (result.is_none()) {
-        // Если есть 3-й аргумент (default) — возвращаем его
-        if (args.unnamed.size() == 3) {
-            return args.unnamed[2];
-        }
-        // Иначе — ошибка
-        throw_eval_error(form, "get-at: key or index not found");
-    }
-
-    return result;
-}
-
-Object Interpreter::eval_set_at(const Object &form, Arguments &args,
-                                const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}, {}}, {}); // [цель] [ключ] [значение]
-
-    Object target = args.unnamed[0];
-    Object key = args.unnamed[1];
-    Object value = args.unnamed[2];
-
-    if (target.is_heap_object()) {
-        // Вызываем виртуальный метод.
-        // Если это StaticBuffer — запишется в память.
-        // Если HashTable — запишется в мапу.
-        target.as_heap_obj()->set_at(key, value);
-    } else {
-        throw_eval_error(form, "set-at!: target must be a heap object (buffer, table, etc)");
-    }
-
-    return get_null();
-}
-
+/*!
+ * Try to look up a value by key in a hash table. The result is a pair of (success . value).
+ */
 Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
                                         const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3722,8 +3791,10 @@ Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
     return get_null();
 }
 
-// Try to look up a value by key in a hash table.The result is a pair of(success.value).
-
+/*!
+ * Try to look up a value by key in a hash table.The result is a pair
+ * of(success.value).
+ */
 Object Interpreter::eval_hash_table_try_ref(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3746,6 +3817,9 @@ Object Interpreter::eval_hash_table_try_ref(const Object &form, Arguments &args,
     return get_null();
 }
 
+/*!
+ * Check if hashtable has the key, returns true or faslse
+ */
 Object Interpreter::eval_hash_table_containsp(const Object &form, Arguments &args,
                                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3768,6 +3842,9 @@ Object Interpreter::eval_hash_table_containsp(const Object &form, Arguments &arg
     return get_null();
 }
 
+/*!
+ * Get the size of hastable
+ */
 Object Interpreter::eval_hash_table_length(const Object &form, Arguments &args,
                                            const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3778,6 +3855,9 @@ Object Interpreter::eval_hash_table_length(const Object &form, Arguments &args,
     return Object::make_integer(ht->data.size());
 }
 
+/*!
+ * Convert hash table to list
+ */
 Object Interpreter::eval_hash_table_to_list(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3797,6 +3877,9 @@ Object Interpreter::eval_hash_table_to_list(const Object &form, Arguments &args,
     return result;
 }
 
+/*!
+ * Check if the object is hashbale
+ */
 Object Interpreter::eval_hash_table_p(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3805,10 +3888,78 @@ Object Interpreter::eval_hash_table_p(const Object &form, Arguments &args,
 }
 
 // ============================================================
+// Фунции работы с таблицами
+//
+// Некоторые типы объкктом могут предоставлять универсальный
+// способ доступа и это не только hash table
+// ============================================================
+
+/*!
+ * Try to look up a value by key in a table kind object. The result
+ * is a pair of (success . value).
+ */
+Object Interpreter::eval_get_at(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // (get-at target key [default])
+    if (args.unnamed.size() < 2 || args.unnamed.size() > 3) {
+        throw_eval_error(form, "get-at: expected 2 or 3 arguments");
+    }
+
+    Object target = args.unnamed[0];
+    Object key = args.unnamed[1];
+
+    if (!target.is_heap_object()) {
+        throw_eval_error(form, "get-at: target must be a heap object");
+    }
+
+    // Вызываем виртуальный метод объекта
+    Object result = target.as_heap_obj()->get_at(key);
+
+    // Если ключ не найден (объект вернул undefined)
+    if (result.is_none()) {
+        // Если есть 3-й аргумент (default) — возвращаем его
+        if (args.unnamed.size() == 3) {
+            return args.unnamed[2];
+        }
+        // Иначе — ошибка
+        throw_eval_error(form, "get-at: key or index not found");
+    }
+
+    return result;
+}
+
+/*!
+ * Try to set a value by key in a table kind object. The result is null
+ */
+Object Interpreter::eval_set_at(const Object &form, Arguments &args,
+                                const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}, {}, {}}, {}); // [цель] [ключ] [значение]
+
+    Object target = args.unnamed[0];
+    Object key = args.unnamed[1];
+    Object value = args.unnamed[2];
+
+    if (target.is_heap_object()) {
+        // Вызываем виртуальный метод.
+        // Если это StaticBuffer — запишется в память.
+        // Если HashTable — запишется в мапу.
+        target.as_heap_obj()->set_at(key, value);
+    } else {
+        throw_eval_error(form, "set-at!: target must be a heap object (buffer, table, etc)");
+    }
+
+    return get_null();
+}
+
+// ============================================================
 // Системные функции с проверками
 // ============================================================
 
-// Читает весь файл как текст.
+/*!
+ * Читает весь файл как текст.
+ */
 Object Interpreter::eval_read_str(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3818,7 +3969,9 @@ Object Interpreter::eval_read_str(const Object &form, Arguments &args,
     return Object::make_string(file_util::read_text(filename));
 }
 
-// Превращает строку в список команд: (top-level .. ). Удобно для eval.
+/*!
+ * Превращает строку в список команд: (top-level .. ). Удобно для eval.
+ */
 Object Interpreter::eval_parse_str(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3826,7 +3979,9 @@ Object Interpreter::eval_parse_str(const Object &form, Arguments &args,
     return m_reader.read_from_string(args.unnamed[0].as_string()->data, true, "read string");
 }
 
-// Читает весь файл как данные, обернутые в top-level.
+/*!
+ * Читает весь файл как данные, обернутые в top-level.
+ */
 Object Interpreter::eval_read_file(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3837,7 +3992,9 @@ Object Interpreter::eval_read_file(const Object &form, Arguments &args,
     return m_reader.read_from_string(content, true, filename);
 }
 
-// Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
+/*!
+ * Читает и исполняет файл. (Обычно исполняет объекты по одному, top-level не нужен).
+ */
 Object Interpreter::eval_load(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -3866,6 +4023,9 @@ Object Interpreter::eval_load(const Object &form, Arguments &args,
     return last_result;
 }
 
+/*!
+ * Проверяет если файл существует
+ */
 Object Interpreter::eval_file_exists_p(const Object &form, Arguments &args,
                                        const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -4078,7 +4238,7 @@ Object Interpreter::eval_gensym(const Object &form, Arguments &args,
     vararg_check(form, args, {}, {}); // Без аргументов
 
     std::string name = "gensym" + std::to_string(m_gensym_id++);
-    return make_symbol(name.c_str());
+    return intern(name.c_str());
 }
 
 Object Interpreter::eval_eval(const Object &form, Arguments &args,
@@ -4159,7 +4319,7 @@ Object Interpreter::eval_number_to_string(const Object &form, Arguments &args,
     vararg_check(form, args, {{}}, {{"base", {false, {ObjectType::INTEGER}}}});
 
     // Проверяем что это ЧИСЛО (любое)
-    if (!is_number(args.unnamed[0])) {
+    if (!args.unnamed[0].is_number()) {
         throw_eval_error(form, "number->string requires a number argument");
     }
 
@@ -4489,9 +4649,9 @@ Object Interpreter::eval_source_info(const Object &form, Arguments &args,
     }
 
     return pretty_print::build_list({
-        make_symbol(":file"), Object::make_string(result->filename), make_symbol(":line"),
-        Object::make_integer(result->line_idx_to_display), make_symbol(":column"),
-        Object::make_integer(result->pos_in_line), make_symbol(":text"),
+        intern(":file"), Object::make_string(result->filename), intern(":line"),
+        Object::make_integer(result->line_idx_to_display), intern(":column"),
+        Object::make_integer(result->pos_in_line), intern(":text"),
         Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
     });
 }
@@ -4651,7 +4811,7 @@ Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
     auto it = m_setter_map.find(getter);
     if (it != m_setter_map.end()) {
         // Если нашли, создаем объект-символ из сохраненного указателя
-        return make_symbol(it->second.c_str());
+        return intern(it->second.c_str());
     }
 
     // Если ничего не нашли, возвращаем пустой список (nil)
