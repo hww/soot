@@ -2,7 +2,6 @@
 
 #include "common/util/Assert.hpp"
 #include "common/util/Crc32.hpp"
-#include "common/util/Log.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -25,9 +24,9 @@ using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
     NONE,
+    EMPTY_LIST,
     PRIMITIVE,
     SPECIAL_FORM,
-    EMPTY_LIST,
     PAIR,
     ARRAY,
     STRING_HASH_TABLE,
@@ -41,12 +40,14 @@ enum class ObjectType : uint8_t {
     ENVIRONMENT,
     READER,
     POINTER,
-    NATIVE_OBJECT
+    NATIVE_OBJECT,
+    MAX_TYPES
 };
 
 std::string object_type_to_string(ObjectType type);
 
 // Forward declarations
+class HeapObject;
 class EnvironmentObject;
 class MacroObject;
 class FunctionObject;
@@ -62,6 +63,7 @@ class Reader;
 class PlaceObject;
 class Object;
 class Pointer;
+class NativeObject;
 
 struct ArgumentSpec;
 
@@ -167,53 +169,6 @@ using FloatObject = FixedObject<FloatType>;
 using CharObject = FixedObject<char>;
 using SymbolObject = FixedObject<InternedSymbolPtr>;
 
-// Базовый класс для heap-allocated объектов
-class HeapObject : public std::enable_shared_from_this<HeapObject> {
-  public:
-    virtual ~HeapObject() = default;
-    virtual bool is_table() const {
-        // has methods get_at and set_at?
-        return false;
-    }
-
-    virtual Object   make_step_accessor(const Object &key);
-    virtual Object   get_at(const Object &key);
-    virtual void     set_at(const Object &key, const Object &val);
-    virtual uint32_t as_crc32() {
-        return 0;
-    };
-    virtual Object      inspect() const = 0;
-    virtual std::string print() const = 0;
-    virtual std::string printc() const {
-        return print();
-    }
-    virtual std::string full_class_name() const {
-        return "HeapObject";
-    }
-    virtual std::string class_name() const {
-        return "heap-object";
-    }
-    Object type_name_obj() const;
-
-    virtual bool is_class_name(std::string type) const {
-        return type == HeapObject::class_name();
-    }
-};
-
-class NativeObject : public HeapObject {
-  public:
-    std::string full_class_name() const override {
-        return "NativeObject";
-    }
-    std::string class_name() const override {
-        return "native-object";
-    }
-
-    bool is_class_name(std::string type) const override {
-        return type == NativeObject::class_name();
-    }
-};
-
 // Main Object class
 class Object {
     friend class EnvironmentPrettyPrinter;
@@ -235,11 +190,10 @@ class Object {
   public:
     virtual ~Object() {}
 
-    std::string full_class_name() const;
-    std::string class_name() const;
-    bool        is_class_name(std::string name) const;
-
-    Object type_name_obj() const;
+    std::string    full_class_name() const;
+    std::string    class_name() const;
+    virtual Object type_name_obj() const;
+    virtual bool   is_class_name(const Object &name) const;
 
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
@@ -289,10 +243,7 @@ class Object {
 
     // String representation
     std::string print() const;
-    std::string printc() const {
-        // сырой формат например без "" для строки
-        return is_heap_object() && heap_obj ? heap_obj->printc() : print();
-    }
+    std::string printc() const;
     std::string inspect_short() const;
     Object      inspect() const;
 
@@ -487,295 +438,6 @@ class Object {
   private:
     void                throw_type_error(const std::string &expected) const;
     static SymbolTable *s_table; // Просто статический указатель
-};
-
-// Now define PairObject AFTER Object
-class PairObject : public HeapObject {
-  public:
-    Object car;
-    Object cdr;
-    PairObject() = default;
-    PairObject(const Object &car, const Object &cdr) : car(car), cdr(cdr) {}
-    ~PairObject() override = default;
-
-    std::string print() const override;
-    Object      inspect() const override;
-
-    int lenght() {
-        int  count = 1;
-        auto lst = cdr;
-        while (lst.is_pair()) {
-            count++;
-            lst = lst.as_pair()->cdr;
-        }
-        return count;
-    }
-
-    Object make_step_accessor(const Object &key) override {
-        if (key.is_integer()) {
-            int index = key.as_integer();
-            if (index < 0)
-                return Object::make_none();
-
-            auto current = this;
-
-            // Шагаем по списку
-            for (int i = 0; i < index; ++i) {
-                Object next = current->cdr; // Предполагаю, что поле называется cdr
-                if (next.is_pair()) {
-                    current = next.as_pair();
-                } else {
-                    // Список закончился раньше, чем мы дошли до нужного индекса
-                    return Object::make_none();
-                }
-            }
-
-            return current->car; // Предполагаю, что поле называется car
-        }
-        return Object::make_none();
-    }
-
-    std::string full_class_name() const override {
-        return "PairObject";
-    }
-    std::string class_name() const override {
-        return object_type_to_string(ObjectType::PAIR);
-    }
-};
-
-class StringObject : public HeapObject {
-  public:
-    std::string data;
-    explicit StringObject(std::string text) : data(std::move(text)) {}
-    ~StringObject() override = default;
-
-    int length() const {
-        return data.length();
-    }
-    bool empty() const {
-        return data.empty();
-    }
-
-    char at(const int index) {
-        return data[index];
-    }
-
-    std::string print() const override {
-        return "\"" + data + "\"";
-    }
-
-    std::string printc() const override {
-        return data;
-    }
-
-    Object inspect() const override;
-
-    std::string full_class_name() const override {
-        return "StringObject";
-    }
-    std::string class_name() const override {
-        return object_type_to_string(ObjectType::STRING);
-    }
-    // Неявное преобразование в std::string
-    operator std::string() const {
-        return data;
-    }
-
-    operator const char *() const {
-        return data.c_str();
-    }
-};
-
-class ArrayObject : public HeapObject {
-  public:
-    std::vector<Object> data;
-
-    explicit ArrayObject(std::vector<Object> elements) : data(std::move(elements)) {}
-    ~ArrayObject() override = default;
-
-    int size() {
-        return data.size();
-    }
-
-    Object &get(int index) {
-        return data[index];
-    }
-    void set(int index, Object value) {
-        data[index] = value;
-    }
-
-    const Object &operator[](size_t idx) const {
-        return data.at(idx);
-    }
-    Object &operator[](size_t idx) {
-        return data.at(idx);
-    }
-
-    std::string print() const override {
-        std::string result = "#(";
-        if (data.empty()) {
-            return result + ")";
-        }
-        for (const auto &obj : data) {
-            result += obj.print() + " ";
-        }
-        result.pop_back(); // remove last space
-        return result + ")";
-    }
-
-    Object inspect() const override;
-
-    Object make_step_accessor(const Object &key) override {
-        if (key.is_integer()) {
-            int index = key.as_integer();
-
-            // Защита от выхода за границы
-            if (index >= 0 && index < static_cast<int>(data.size())) {
-                return data[index];
-            }
-            return Object::make_none();
-        }
-
-        // Можно добавить свойство 'length' для массива
-        if (key.is_symbol() && key.to_std_string() == "length") {
-            return Object::make_integer(data.size());
-        }
-
-        return Object::make_none();
-    }
-    // has methods get_at and set_at?
-
-    bool is_table() const override {
-        return true;
-    }
-
-    Object get_at(const Object &key) override {
-        if (key.is_integer()) {
-            int index = key.as_integer();
-            if (index >= 0 && index < static_cast<int>(data.size())) {
-                return data[index];
-            }
-        }
-        return Object::make_none();
-    }
-
-    void set_at(const Object &key, const Object &val) override {
-        if (key.is_integer()) {
-            int index = key.as_integer();
-            if (index >= 0 && index < static_cast<int>(data.size())) {
-                data[index] = val;
-            }
-        }
-    }
-    std::string full_class_name() const override {
-        return "ArrayObject";
-    }
-    std::string class_name() const override {
-        return object_type_to_string(ObjectType::ARRAY);
-    }
-};
-
-class HashTableObject : public HeapObject {
-  public:
-    std::unordered_map<std::string, Object> data;
-    Object                                  type;
-
-    HashTableObject() = default;
-    HashTableObject(int size = 16) : data(size), type() {};
-    HashTableObject(Object type, int size = 16) : data(size), type(type) {};
-
-    ~HashTableObject() override = default;
-
-    std::string print() const override {
-        // Короткий системный принт: #<hash-table size:5>
-        if (!type.is_none()) {
-            return fmt::format("#<hash-table type:{} size:{}>", type.print(), data.size());
-        }
-        return fmt::format("#<hash-table size:{}>", data.size());
-    }
-
-    std::string print_long() const {
-        std::string result = "{";
-        for (const auto &kv : data) {
-            result += '(';
-            result += kv.first;
-            result += ' ';
-            result += kv.second.print();
-            result += ')';
-            result += ' ';
-        }
-        if (!data.empty()) {
-            result.pop_back();
-        }
-        result += '}';
-        return result;
-    }
-
-    Object      inspect() const override;
-    std::string full_class_name() const override {
-        return "HashTableObject";
-    }
-    std::string class_name() const override {
-        if (!type.is_none()) {
-            return fmt::format("{}::{}>", object_type_to_string(ObjectType::STRING_HASH_TABLE),
-                               type.print());
-        }
-        return object_type_to_string(ObjectType::STRING_HASH_TABLE);
-    }
-    // Метод получения: возвращает ссылку на объект.
-    // Если ключа нет, unordered_map создаст объект по умолчанию.
-    Object &get(const std::string &key) {
-        return data[key];
-    }
-
-    // Метод установки: записывает значение и возвращает ссылку на обновленное место.
-    Object &set(const std::string &key, Object value) {
-        data[key] = std::move(value); // используем move для эффективности
-        return data[key];
-    }
-
-    // Доступ по строковому ключу (неконстантный):
-    // стандартное поведение для ассоциативных контейнеров.
-    Object &operator[](const std::string &key) {
-        return data[key];
-    }
-
-    // Доступ по индексу (size_t):
-    // В unordered_map нет прямого доступа по индексу, как в векторе.
-    // Если это необходимо, используем итераторы (но помни, что порядок не гарантирован).
-    const Object &operator[](size_t idx) const {
-        if (idx >= data.size()) {
-            throw std::out_of_range("HashTable index out of bounds");
-        }
-        auto it = data.begin();
-        std::advance(it, idx);
-        return it->second;
-    }
-
-    Object make_step_accessor(const Object &key) override {
-        if (key.is_symbol() || key.is_string()) {
-            auto skey = key.to_std_string();
-            return data[skey];
-        }
-        return Object::make_none();
-    }
-    // has methods get_at and set_at?
-    bool is_table() const override {
-        return true;
-    }
-
-    Object get_at(const Object &key) override {
-        if (key.is_string()) {
-            return data[key.to_std_string()];
-        }
-        return Object::make_none();
-    }
-
-    void set_at(const Object &key, const Object &val) override {
-        if (key.is_string()) {
-            data[key.to_std_string()] = val;
-        }
-    }
 };
 
 template <typename T> class InternedPtrMap {
@@ -973,32 +635,15 @@ class SymbolTable {
         Object kw_rest;
         Object sym_true;
         Object sym_false;
-        Object type_null;
-        Object type_special_form;
-        Object type_primitive;
-        Object type_int;
-        Object type_float;
-        Object type_char;
-        Object type_symbol;
-        Object type_string;
-        Object type_pair;
-        Object type_array;
-        Object type_hash_table;
-        Object type_function;
-        Object type_macro;
-        Object type_environment;
-        Object type_reader;
-        Object type_none;
-        Object type_pointer;
-        Object type_heap_obj;
-        Object type_register_alias;
+
+        Object type_to_symbol_map[(int)ObjectType::MAX_TYPES];
 
         Object true_or_false(bool val) {
             return val ? sym_true : sym_false;
         }
     } core;
-    void   init_core_symbols();
-    Object object_type_to_symbol(ObjectType type);
+    void          init_core_symbols();
+    const Object &object_type_to_symbol(const ObjectType type) const;
 
   public:
     SymbolTable(const SymbolTable &) = delete;
@@ -1037,6 +682,376 @@ class SymbolTable {
     int                    m_next_resize = 0;
     uint32_t               m_mask = 0;
     static constexpr float kMaxUsed = 0.7;
+};
+
+// Базовый класс для heap-allocated объектов
+class HeapObject : public std::enable_shared_from_this<HeapObject> {
+  public:
+    virtual ~HeapObject() = default;
+    virtual bool is_table() const {
+        // has methods get_at and set_at?
+        return false;
+    }
+
+    virtual Object   make_step_accessor(const Object &key);
+    virtual Object   get_at(const Object &key);
+    virtual void     set_at(const Object &key, const Object &val);
+    virtual uint32_t as_crc32() {
+        return 0;
+    };
+    virtual Object      inspect() const = 0;
+    virtual std::string print() const = 0;
+    virtual std::string printc() const {
+        return print();
+    }
+    virtual std::string full_class_name() const {
+        return "HeapObject";
+    }
+    virtual std::string class_name() const {
+        return "heap-object";
+    }
+
+    virtual Object type_name_obj() const = 0;
+
+    virtual bool is_class_name(const Object &name) const = 0;
+};
+
+class NativeObject : public HeapObject {
+  public:
+    std::string full_class_name() const override {
+        return "NativeObject";
+    }
+    std::string class_name() const override {
+        return "native-object";
+    }
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::NATIVE_OBJECT);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == NativeObject::type_name_obj();
+    }
+};
+
+// Now define PairObject AFTER Object
+class PairObject : public HeapObject {
+  public:
+    Object car;
+    Object cdr;
+    PairObject() = default;
+    PairObject(const Object &car, const Object &cdr) : car(car), cdr(cdr) {}
+    ~PairObject() override = default;
+
+    std::string print() const override;
+    Object      inspect() const override;
+
+    int lenght() {
+        int  count = 1;
+        auto lst = cdr;
+        while (lst.is_pair()) {
+            count++;
+            lst = lst.as_pair()->cdr;
+        }
+        return count;
+    }
+
+    Object make_step_accessor(const Object &key) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+            if (index < 0)
+                return Object::make_none();
+
+            auto current = this;
+
+            // Шагаем по списку
+            for (int i = 0; i < index; ++i) {
+                Object next = current->cdr; // Предполагаю, что поле называется cdr
+                if (next.is_pair()) {
+                    current = next.as_pair();
+                } else {
+                    // Список закончился раньше, чем мы дошли до нужного индекса
+                    return Object::make_none();
+                }
+            }
+
+            return current->car; // Предполагаю, что поле называется car
+        }
+        return Object::make_none();
+    }
+
+    std::string full_class_name() const override {
+        return "PairObject";
+    }
+    std::string class_name() const override {
+        return object_type_to_string(ObjectType::PAIR);
+    }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::PAIR);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == PairObject::type_name_obj();
+    }
+};
+
+class StringObject : public HeapObject {
+  public:
+    std::string data;
+    explicit StringObject(std::string text) : data(std::move(text)) {}
+    ~StringObject() override = default;
+
+    int length() const {
+        return data.length();
+    }
+    bool empty() const {
+        return data.empty();
+    }
+
+    char at(const int index) {
+        return data[index];
+    }
+
+    std::string print() const override {
+        return "\"" + data + "\"";
+    }
+
+    std::string printc() const override {
+        return data;
+    }
+
+    Object inspect() const override;
+
+    std::string full_class_name() const override {
+        return "StringObject";
+    }
+    std::string class_name() const override {
+        return object_type_to_string(ObjectType::STRING);
+    }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::STRING);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == StringObject::type_name_obj();
+    }
+
+    // Неявное преобразование в std::string
+    operator std::string() const {
+        return data;
+    }
+
+    operator const char *() const {
+        return data.c_str();
+    }
+};
+
+class ArrayObject : public HeapObject {
+  public:
+    std::vector<Object> data;
+
+    explicit ArrayObject(std::vector<Object> elements) : data(std::move(elements)) {}
+    ~ArrayObject() override = default;
+
+    int size() {
+        return data.size();
+    }
+
+    Object &get(int index) {
+        return data[index];
+    }
+    void set(int index, Object value) {
+        data[index] = value;
+    }
+
+    const Object &operator[](size_t idx) const {
+        return data.at(idx);
+    }
+    Object &operator[](size_t idx) {
+        return data.at(idx);
+    }
+
+    std::string print() const override {
+        std::string result = "#(";
+        if (data.empty()) {
+            return result + ")";
+        }
+        for (const auto &obj : data) {
+            result += obj.print() + " ";
+        }
+        result.pop_back(); // remove last space
+        return result + ")";
+    }
+
+    Object inspect() const override;
+
+    Object make_step_accessor(const Object &key) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+
+            // Защита от выхода за границы
+            if (index >= 0 && index < static_cast<int>(data.size())) {
+                return data[index];
+            }
+            return Object::make_none();
+        }
+
+        // Можно добавить свойство 'length' для массива
+        if (key.is_symbol() && key.to_std_string() == "length") {
+            return Object::make_integer(data.size());
+        }
+
+        return Object::make_none();
+    }
+    // has methods get_at and set_at?
+
+    bool is_table() const override {
+        return true;
+    }
+
+    Object get_at(const Object &key) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+            if (index >= 0 && index < static_cast<int>(data.size())) {
+                return data[index];
+            }
+        }
+        return Object::make_none();
+    }
+
+    void set_at(const Object &key, const Object &val) override {
+        if (key.is_integer()) {
+            int index = key.as_integer();
+            if (index >= 0 && index < static_cast<int>(data.size())) {
+                data[index] = val;
+            }
+        }
+    }
+    std::string full_class_name() const override {
+        return "ArrayObject";
+    }
+    std::string class_name() const override {
+        return object_type_to_string(ObjectType::ARRAY);
+    }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::ARRAY);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == ArrayObject::type_name_obj();
+    }
+};
+
+class HashTableObject : public HeapObject {
+  public:
+    std::unordered_map<std::string, Object> data;
+    Object                                  type;
+
+    HashTableObject() = default;
+    HashTableObject(int size = 16) : data(size), type() {};
+    HashTableObject(Object type, int size = 16) : data(size), type(type) {};
+
+    ~HashTableObject() override = default;
+
+    std::string print() const override {
+        // Короткий системный принт: #<hash-table size:5>
+        if (!type.is_none()) {
+            return fmt::format("#<hash-table type:{} size:{}>", type.print(), data.size());
+        }
+        return fmt::format("#<hash-table size:{}>", data.size());
+    }
+
+    std::string print_long() const {
+        std::string result = "{";
+        for (const auto &kv : data) {
+            result += '(';
+            result += kv.first;
+            result += ' ';
+            result += kv.second.print();
+            result += ')';
+            result += ' ';
+        }
+        if (!data.empty()) {
+            result.pop_back();
+        }
+        result += '}';
+        return result;
+    }
+
+    Object      inspect() const override;
+    std::string full_class_name() const override {
+        return "HashTableObject";
+    }
+    std::string class_name() const override {
+        if (!type.is_none()) {
+            return fmt::format("{}::{}>", object_type_to_string(ObjectType::STRING_HASH_TABLE),
+                               type.print());
+        }
+        return object_type_to_string(ObjectType::STRING_HASH_TABLE);
+    }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::STRING_HASH_TABLE);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == HashTableObject::type_name_obj();
+    }
+
+    // Метод получения: возвращает ссылку на объект.
+    // Если ключа нет, unordered_map создаст объект по умолчанию.
+    Object &get(const std::string &key) {
+        return data[key];
+    }
+
+    // Метод установки: записывает значение и возвращает ссылку на обновленное место.
+    Object &set(const std::string &key, Object value) {
+        data[key] = std::move(value); // используем move для эффективности
+        return data[key];
+    }
+
+    // Доступ по строковому ключу (неконстантный):
+    // стандартное поведение для ассоциативных контейнеров.
+    Object &operator[](const std::string &key) {
+        return data[key];
+    }
+
+    // Доступ по индексу (size_t):
+    // В unordered_map нет прямого доступа по индексу, как в векторе.
+    // Если это необходимо, используем итераторы (но помни, что порядок не гарантирован).
+    const Object &operator[](size_t idx) const {
+        if (idx >= data.size()) {
+            throw std::out_of_range("HashTable index out of bounds");
+        }
+        auto it = data.begin();
+        std::advance(it, idx);
+        return it->second;
+    }
+
+    Object make_step_accessor(const Object &key) override {
+        if (key.is_symbol() || key.is_string()) {
+            auto skey = key.to_std_string();
+            return data[skey];
+        }
+        return Object::make_none();
+    }
+    // has methods get_at and set_at?
+    bool is_table() const override {
+        return true;
+    }
+
+    Object get_at(const Object &key) override {
+        if (key.is_string()) {
+            return data[key.to_std_string()];
+        }
+        return Object::make_none();
+    }
+
+    void set_at(const Object &key, const Object &val) override {
+        if (key.is_string()) {
+            data[key.to_std_string()] = val;
+        }
+    }
 };
 
 // Аргументы функций
@@ -1289,6 +1304,15 @@ class EnvironmentObject : public HeapObject {
     std::string class_name() const override {
         return object_type_to_string(ObjectType::ENVIRONMENT);
     }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::ENVIRONMENT);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == EnvironmentObject::type_name_obj();
+    }
+
     // Универсальный хелпер для поиска вверх по иерархии
     std::shared_ptr<EnvironmentObject> find_env_up(const std::string &target_name,
                                                    bool(EnvironmentObject::*flag)) {
@@ -1379,6 +1403,14 @@ class FunctionObject : public HeapObject {
     std::string class_name() const override {
         return object_type_to_string(ObjectType::FUNCTION);
     }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::FUNCTION);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == FunctionObject::type_name_obj();
+    }
 };
 
 class MacroObject : public HeapObject {
@@ -1410,6 +1442,13 @@ class MacroObject : public HeapObject {
     std::string class_name() const override {
         return object_type_to_string(ObjectType::MACRO);
     }
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::MACRO);
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == MacroObject::type_name_obj();
+    }
 };
 
 class ReaderObject : public HeapObject {
@@ -1439,6 +1478,12 @@ class ReaderObject : public HeapObject {
     }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::READER);
+    }
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::READER);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == ReaderObject::type_name_obj();
     }
 };
 
@@ -1486,6 +1531,13 @@ struct SpecialFormObject : public CallableObject {
     std::string class_name() const override {
         return object_type_to_string(ObjectType::SPECIAL_FORM);
     }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::SPECIAL_FORM);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == SpecialFormObject::type_name_obj();
+    }
 };
 
 struct BuiltinFunctionObject : public CallableObject {
@@ -1514,6 +1566,13 @@ struct BuiltinFunctionObject : public CallableObject {
     }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::PRIMITIVE);
+    }
+
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::PRIMITIVE);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == BuiltinFunctionObject::type_name_obj();
     }
 };
 
@@ -1552,8 +1611,11 @@ class Pointer : public HeapObject {
         return object_type_to_string(ObjectType::POINTER);
     }
 
-    bool is_class_name(std::string name) const override {
-        return name == Pointer::class_name() || HeapObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::POINTER);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == Pointer::type_name_obj();
     }
 };
 

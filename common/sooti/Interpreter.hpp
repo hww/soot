@@ -163,12 +163,12 @@ class Interpreter {
                              const std::vector<ObjectType> &expected, ObjectType got);
     void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
                              std::initializer_list<const char *> expected, std::string got);
-    void throw_missing_named_arg(const Object &form, const std::string &name,
-                                 const Arguments &args);
-    void throw_unexpected_named_arg(const Object &form, const std::string &name,
-                                    const Arguments &args);
-    void throw_named_type_mismatch(const Object &form, const std::string &name,
-                                   const std::vector<ObjectType> &expected, ObjectType got);
+    void throw_missing_named_arg(const Object &form, const Arguments &args,
+                                 const std::string &name);
+    void throw_unexpected_named_arg(const Object &form, const Arguments &args,
+                                    const std::string &name);
+    void throw_named_type_mismatch(const Object &form, const std::vector<ObjectType> &expected,
+                                   const std::string &name, ObjectType got);
     void expect_env(const Object &form, const Object &o);
 
     void   render_complex_error(EvalException &e);
@@ -211,8 +211,8 @@ class Interpreter {
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lambda_special(const Object &form, const Object &rest,
                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_begin_special(const Object &form, const Object &rest,
-                              const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_begin(const Object &form, Arguments &args,
+                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_special(const Object &form, const Object &rest,
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_if_special(const Object &form, const Object &rest,
@@ -240,6 +240,8 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_macroexpand(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_defined_p_special(const Object &form, const Object &rest,
+                                  const std::shared_ptr<EnvironmentObject> &env);
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
 
@@ -276,41 +278,19 @@ class Interpreter {
                        const std::shared_ptr<EnvironmentObject> &env);
     Object eval_append(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_null_p(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_none_p(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_pair_p(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
 
-    // Предикат дефиниции
-    Object eval_bound_p(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-
-    // Предикаты типов
-    Object eval_symbol_p(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_keyword_p(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_number_p(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_integer_p(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_float_p(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_string_p(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_char_p(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_p(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_procedure_p(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_boolean_p(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
+    // Предикаты
     Object eval_type_p(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
     Object eval_type_of(const Object &form, Arguments &args,
+                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_null_p(const Object &form, Arguments &args,
+                       const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_keyword_p(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+
+    // Предикат дефиниции
+    Object eval_bound_p(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
 
     // Сравнение
@@ -357,16 +337,16 @@ class Interpreter {
     Object eval_string_ltrim(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
     // Векторы
-    Object eval_vector(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_ref(const Object &form, Arguments &args,
+    Object eval_make_array(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_set(const Object &form, Arguments &args,
-                           const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_length(const Object &form, Arguments &args,
+    Object eval_array_ref(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_array_set(const Object &form, Arguments &args,
+                          const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_array_length(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_array_to_list(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_to_list(const Object &form, Arguments &args,
-                               const std::shared_ptr<EnvironmentObject> &env);
 
     // Хэш-таблицы
     Object eval_make_hash_table(const Object &form, Arguments &args,
@@ -395,8 +375,8 @@ class Interpreter {
     // Итераторы
     Object eval_string_for_each(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_vector_for_each(const Object &form, Arguments &args,
-                                const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_array_for_each(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_hash_table_for_each(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_list_for_each(const Object &form, Arguments &args,
@@ -454,8 +434,8 @@ class Interpreter {
                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_pointer_p(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_heap_obj_p(const Object &form, Arguments &args,
-                           const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_native_obj_p(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_special_form_p(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_primitive_p(const Object &form, Arguments &args,
@@ -687,7 +667,6 @@ class Interpreter {
     // --- Хранилища ---
     void for_each_in_list(const Object &list, const std::function<void(const Object &)> &f);
     // Типы и Сеттеры
-    std::unordered_map<std::string, ObjectType>              m_string_to_type;
     std::unordered_map<InternedSymbolPtr, InternedSymbolPtr> m_setter_map;
     InternedPtrMap<std::shared_ptr<TypeSpec>>                m_symbol_types;
     InternedPtrMap<Object>                                   m_global_constants;

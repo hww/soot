@@ -22,8 +22,12 @@ struct Register : NativeObject {
         return "register";
     }
 
-    bool is_class_name(std::string name) const override {
-        return name == class_name() || NativeObject::is_class_name(name);
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == Register::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     Object make_step_accessor(const Object &key) override;

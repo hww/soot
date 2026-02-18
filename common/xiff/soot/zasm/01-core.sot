@@ -191,7 +191,7 @@
   (cond
     ((asm-token? arg) arg)
     ((number? arg) (make-asm-token 'number arg))
-    ((heap-obj? arg) (alias->token arg))
+    ((native-obj? arg) (alias->token arg))
     ((symbol? arg) (symbol->token arg))
 
     ((list? arg)

@@ -58,8 +58,6 @@ Object MethodInfo::make_step_accessor(const Object &key) {
         return Object::make_string(this->defined_in_type);
     if (name == ":type-name")
         return Object::make_string(this->type_name);
-    if (name == ":implementation")
-        return this->method_impl;
 
     // 2. Сложные поля (создаем объекты на лету)
     if (name == ":type-spec") {
@@ -231,30 +229,6 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
     : m_parent(std::move(parent)), m_name(std::move(name)), m_is_boxed(is_boxed),
       m_heap_base(heap_base) {
     m_runtime_name = m_name;
-}
-// Used for the scripting systme
-bool Type::set_method_impl(int id, const script::Object method) {
-    ASSERT(id > 0);
-    MethodInfo info;
-    if (get_my_method(id, &info)) {
-        info.method_impl = method;
-        return true;
-    }
-    return false;
-}
-// Used for the scripting systme
-bool Type::set_method_impl(const std::string &name, const script::Object method) {
-    MethodInfo info;
-    if (get_my_method(name, &info)) {
-        info.method_impl = method;
-        return true;
-    }
-
-    return false;
-}
-bool Type::set_new_method_impl(const script::Object method) {
-    m_new_method_info.method_impl = method;
-    return true;
 }
 
 bool Type::get_my_method(const std::string &name, MethodInfo *out) const {
