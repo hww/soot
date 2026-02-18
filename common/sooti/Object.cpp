@@ -458,6 +458,14 @@ Object Object::make_pointer(void *raw_ptr, std::string type) {
     return make_pointer(std::move(pointer_shr));
 }
 
+template <> Object Object::make_number(FloatType value) {
+    return Object::make_float(value);
+}
+
+template <> Object Object::make_number(IntType value) {
+    return Object::make_integer(value);
+}
+
 Object Object::make_integer(IntType value) {
     Object obj;
     obj.type = ObjectType::INTEGER;

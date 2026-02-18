@@ -210,7 +210,7 @@ class NativeObject : public HeapObject {
     }
 
     bool is_class_name(std::string type) const override {
-        return type == HeapObject::class_name();
+        return type == NativeObject::class_name();
     }
 };
 
@@ -285,6 +285,7 @@ class Object {
     static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object);
     static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object, ObjectType type);
+    template <typename T> static Object make_number(T value);
 
     // String representation
     std::string print() const;
@@ -310,6 +311,9 @@ class Object {
     }
     bool is_float() const {
         return type == ObjectType::FLOAT;
+    }
+    bool is_number() const {
+        return is_integer() || is_float();
     }
     bool is_char() const {
         return type == ObjectType::CHAR;
