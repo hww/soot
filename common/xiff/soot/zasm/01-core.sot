@@ -109,7 +109,20 @@
 
 (defmacro ->iy (type &rest path)
   `(+iy (-> (reg-alias 'tmp ',type) ,@path)))
-         
+
+(defun +ii (ix-iy obj)
+  "Make equivalet on +ix +iy "
+  (let ((offset (if (number? obj) 
+                    obj 
+                    (-> obj :offset))))
+   (cond 
+      ((eq? ix-iy 'ix)
+        (list 'ix-indexed offset))
+      ((eq? ix-iy 'iy)
+        (list 'iy-indexed offset))
+      (#t 
+        (asm-error (fmt #f "Unknown register {}" ix-iy))))))
+
 ;;; =====================================================================
 ;;; Condition Codes
 ;;; =====================================================================

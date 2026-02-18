@@ -1,7 +1,7 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
 #include "common/type_system/Deftype.hpp"
-#include "common/type_system/RegisterAlias.hpp"
+#include "common/type_system/Register.hpp"
 
 #include "common/util/Assert.hpp"
 
@@ -2446,32 +2446,48 @@ script::Object TypeSystem::inspect() const {
 
 Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
                                            const std::string &ret_type_name) {
-    // Собираем список: (function arg1 arg2 ... ret)
-    // Важно: в EnvironmentMap порядок может быть не гарантирован,
-    // если ты не используешь OrderPreservingMap.
-    // Если порядок важен (а для сигнатуры он важен),
-    // лучше брать его прямо из bindings в eval_rlet.
+    auto entries = env->vars.get_all_entries();
 
-    // Но если мы доверяем порядку в vars:
-    Object args_list = Object::make_null();
-    auto   entries = env->vars.get_all_entries();
-
-    // Идем с конца в начало, чтобы собрать список через cons
-    args_list = Object::make_pair(Object::make_symbol(ret_type_name), args_list);
-
-    for (int i = (int)entries.size() - 1; i >= 0; --i) {
-        if (entries[i].value.is_native_obj<RegisterAlias>()) {
-            auto alias = entries[i].value.as_heap_obj<RegisterAlias>();
-            // Если тип не указан, пусть будет 'object
-            Object t_name =
-                alias->type_name.is_none() ? Object::make_symbol("object") : alias->type_name;
-            args_list = Object::make_pair(t_name, args_list);
+    // 1. Сначала считаем, сколько у нас РЕАЛЬНЫХ аргументов
+    int max_idx = -1;
+    for (const auto &entry : entries) {
+        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
+            int idx = entry.value.as_heap_obj<Register>()->arg_index;
+            if (idx > max_idx)
+                max_idx = idx;
         }
+    }
+
+    // 2. Создаем временный массив нужного размера
+    // Используем Object(), чтобы инициализировать пустышками
+    std::vector<Object> ordered_args(max_idx + 1);
+
+    for (const auto &entry : entries) {
+        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
+            auto reg = entry.value.as_heap_obj<Register>();
+            if (reg->arg_index >= 0) {
+                // Кладем в массив САМ объект или его имя типа
+                // Раз typespec~> x работает, положим имя типа
+                ordered_args[reg->arg_index] = reg->type_name;
+            }
+        }
+    }
+
+    // 3. Собираем список для (function ...)
+    // Начинаем с возвращаемого типа
+    Object args_list = Object::make_pair(Object::make_symbol(ret_type_name), Object::make_null());
+
+    // Добавляем аргументы в обратном порядке (для cons)
+    for (int i = max_idx; i >= 0; --i) {
+        Object t = ordered_args[i];
+        if (t.is_none())
+            t = Object::make_symbol("object");
+        args_list = Object::make_pair(t, args_list);
     }
 
     Object func_spec_form = Object::make_pair(Object::make_symbol("function"), args_list);
 
-    // Вызываем твой парсер
+    // 4. Парсим
     TypeSpec ts = parse_typespec(this, func_spec_form);
     return Object::make_heap_obj(std::make_shared<TypeSpec>(ts));
 }

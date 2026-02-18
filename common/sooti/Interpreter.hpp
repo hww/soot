@@ -88,9 +88,38 @@ class Interpreter {
     bool is_true(const Object &o) const {
         return o.truthy(m_sym_false.as_symbol());
     }
+
+  private:
     // Помощники для чисел
     int64_t number_to_integer(const Object &obj);
     double  number_to_float(const Object &obj);
+
+    template <typename T> T number(const Object &obj);
+
+    template <typename T>
+    Object num_lt(const Object &form, Arguments &args,
+                  const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_gt(const Object &form, Arguments &args,
+                  const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_leq(const Object &form, Arguments &args,
+                   const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_geq(const Object &form, Arguments &args,
+                   const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_plus(const Object &form, Arguments &args,
+                    const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_minus(const Object &form, Arguments &args,
+                     const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_divide(const Object &form, Arguments &args,
+                      const std::shared_ptr<EnvironmentObject> &env);
+    template <typename T>
+    Object num_times(const Object &form, Arguments &args,
+                     const std::shared_ptr<EnvironmentObject> &env);
 
   private:
     Object call_lambda_internal(const Object &form, const Object &lambda,
@@ -582,8 +611,8 @@ class Interpreter {
                                   const std::shared_ptr<EnvironmentObject> &env);
     Object eval_current_function(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_tc(const Object &form, Arguments &args,
-                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_types_match_p(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env);
 
     bool     init_types(const std::string &variant);
     TypeSpec parse_typespec_internal(const Object &obj);

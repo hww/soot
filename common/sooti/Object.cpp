@@ -38,7 +38,7 @@ std::string object_type_to_string(ObjectType type) {
     case ObjectType::ARRAY:
         return "array";
     case ObjectType::FUNCTION:
-        return "lambda";
+        return "function";
     case ObjectType::MACRO:
         return "macro";
     case ObjectType::ENVIRONMENT:
@@ -108,7 +108,7 @@ void SymbolTable::init_core_symbols() {
     core.type_pair = make_symbol(object_type_to_string(ObjectType::PAIR));
     core.type_array = make_symbol(object_type_to_string(ObjectType::ARRAY));
     core.type_hash_table = make_symbol(object_type_to_string(ObjectType::STRING_HASH_TABLE));
-    core.type_lambda = make_symbol(object_type_to_string(ObjectType::FUNCTION));
+    core.type_function = make_symbol(object_type_to_string(ObjectType::FUNCTION));
     core.type_macro = make_symbol(object_type_to_string(ObjectType::MACRO));
     core.type_environment = make_symbol(object_type_to_string(ObjectType::ENVIRONMENT));
     core.type_reader = make_symbol(object_type_to_string(ObjectType::READER));
@@ -143,7 +143,7 @@ Object SymbolTable::object_type_to_symbol(ObjectType type) {
     case ObjectType::STRING_HASH_TABLE:
         return core.type_hash_table;
     case ObjectType::FUNCTION:
-        return core.type_lambda;
+        return core.type_function;
     case ObjectType::MACRO:
         return core.type_macro;
     case ObjectType::ENVIRONMENT:
@@ -552,10 +552,10 @@ Object Object::make_hash_table(Object type_name, int size) {
     obj.heap_obj = std::make_shared<HashTableObject>(type_name, size);
     return obj;
 }
-Object Object::make_lambda(const ArgumentSpec &args, const Object &body,
-                           const std::shared_ptr<EnvironmentObject> &env) {
-    Object obj = LambdaObject::make_new();
-    auto   lambda = obj.as_lambda();
+Object Object::make_function(const ArgumentSpec &args, const Object &body,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    Object obj = FunctionObject::make_new();
+    auto   lambda = obj.as_function();
     lambda->args = args;
     lambda->body = body;
     lambda->parent_env = env;
@@ -638,12 +638,12 @@ std::string Object::to_std_string() const {
     }
 }
 
-LambdaObject *Object::as_lambda() const {
+FunctionObject *Object::as_function() const {
     if (type != ObjectType::FUNCTION) {
         throw std::runtime_error("as_lambda called on a " + object_type_to_string(type) + " " +
                                  print());
     }
-    return static_cast<LambdaObject *>(heap_obj.get());
+    return static_cast<FunctionObject *>(heap_obj.get());
 }
 
 MacroObject *Object::as_macro() const {
@@ -1423,7 +1423,7 @@ std::string Object::inspect_short() const {
 Object Object::inspect() const {
     switch (type) {
     case ObjectType::EMPTY_LIST:
-        return Object::make_symbol("nil");
+        return Object::make_symbol("null");
 
     case ObjectType::INTEGER: {
         ListBuilder lb{};
@@ -1542,7 +1542,7 @@ Object EnvironmentObject::inspect() const {
     return lb.build();
 }
 
-Object LambdaObject::inspect() const {
+Object FunctionObject::inspect() const {
     ListBuilder lb{};
     lb.push_back(Object::make_symbol("lambda"));
     lb.push_kv("name",

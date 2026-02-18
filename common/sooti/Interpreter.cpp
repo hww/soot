@@ -8,7 +8,7 @@
 
 #include "common/type_system/Defenum.hpp"
 #include "common/type_system/Deftype.hpp"
-#include "common/type_system/RegisterAlias.hpp"
+#include "common/type_system/Register.hpp"
 
 #include "common/type_system/TypeSystem.hpp"
 
@@ -142,7 +142,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
          {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
          {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
          {"function-typespec", &Interpreter::eval_function_typespec, &args_with_varkeys},
-         {"tc", &Interpreter::eval_tc, &args_with_varkeys},
+         {"types-match?", &Interpreter::eval_types_match_p, &args_with_varkeys},
 
          // Предикаты типов
          {"none?", &Interpreter::eval_none_p, nullptr},
@@ -719,11 +719,11 @@ Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<Environme
 Object Interpreter::call_lambda_internal(const Object &form, const Object &lambda,
                                          const std::vector<Object>                &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
-    if (!lambda.is_lambda()) {
+    if (!lambda.is_function()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
 
-    const auto &lam = lambda.as_lambda();
+    const auto &lam = lambda.as_function();
 
     // 1. Проверка аргументов
     size_t min_args = lam->args.unnamed.size();
@@ -767,9 +767,9 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
     auto lam_env = lam_env_obj.as_env_ptr();
     lam_env->parent_env = lam->parent_env;
     lam_env->is_function = true;
-    lam_env->owner_lambda = lambda;
+    lam_env->owner_function = lambda;
     lam_env->ctx = form;
-    ASSERT(lam_env->owner_lambda.is_lambda());
+    ASSERT(lam_env->owner_function.is_function());
 
     //  4. Биндим аргументы
     Object dummy_form = m_symbol_table.make_symbol("call-lambda");
@@ -888,7 +888,7 @@ Object Interpreter::eval_with_rewind(const Object                             &o
         e.stack_counter++;
         // ПРОВЕРКА ЛОВУШКИ (The Trap)
         // 2. Проверяем наличие ловушки
-        if (env->error_handler.is_lambda()) {
+        if (env->error_handler.is_function()) {
             // Вызываем лямбду-обработчик
             // Передаем ей (msg err-form trace)
             Object response = call_error_handler(obj, env->error_handler, e, env);
@@ -1105,8 +1105,8 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
     }
 
     // --- LAMBDAS (User defined functions) ---
-    if (eval_head.is_lambda()) {
-        const auto &lam = eval_head.as_lambda();
+    if (eval_head.is_function()) {
+        const auto &lam = eval_head.as_function();
 
         Arguments args = get_args_with_spec(obj, rest, lam->args);
         eval_args(obj, &args, env);
@@ -1115,8 +1115,8 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         auto lam_env = lam_env_obj.as_env_ptr();
         lam_env->ctx = obj;
         lam_env->is_function = true;
-        lam_env->owner_lambda = eval_head;
-        ASSERT(lam_env->owner_lambda.is_lambda());
+        lam_env->owner_function = eval_head;
+        ASSERT(lam_env->owner_function.is_function());
         // Лексическое связывание: используем окружение, где лямбда была создана
         lam_env->parent_env = lam->parent_env;
 
@@ -1205,8 +1205,8 @@ Object Interpreter::eval_lambda_special(const Object &form, const Object &rest,
         throw_eval_error(form, "lambda: expected body after parameter list");
     }
 
-    Object lambda_obj = LambdaObject::make_new();
-    auto   lambda = lambda_obj.as_lambda();
+    Object lambda_obj = FunctionObject::make_new();
+    auto   lambda = lambda_obj.as_function();
 
     lambda->args = args;
     lambda->body = body_obj; // ← ВСЁ тело, а не только .as_pair()->car!
@@ -1364,6 +1364,10 @@ Object Interpreter::eval_and_special(const Object &form, const Object &rest,
     return result;
 }
 
+// ============================================================
+// LET & RLET
+// ============================================================
+
 Object Interpreter::eval_let_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     return eval_let_common_special(form, rest, env, false);
@@ -1480,6 +1484,133 @@ Object Interpreter::eval_let_common_special(const Object &form, const Object &re
         throw;
     }
 }
+
+Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+
+    if (!rest.is_pair())
+        throw_eval_error(form, "rlet requires name or bindings");
+
+    Object      current_rest = rest;
+    std::string env_name = "";
+    auto        first = current_rest.as_pair()->car;
+    // 1. Проверяем, не является ли первый аргумент именем (строкой)
+    if (first.is_symbol() || first.is_string()) {
+        env_name = first.to_std_string();
+        current_rest = current_rest.as_pair()->cdr;
+    }
+
+    if (!current_rest.is_pair())
+        throw_eval_error(form, "rlet requires bindings");
+    Object bindings = current_rest.as_pair()->car;
+    Object body = current_rest.as_pair()->cdr;
+
+    // Создаем окружение
+    auto new_env = std::make_shared<EnvironmentObject>(env);
+    new_env->name = env_name;
+    new_env->is_reg_let = true;
+    new_env->parent_env = env;
+    m_dynamic_stack.push_back(new_env);
+    try {
+        int current_idx = 0; // Инициализируем счетчик
+        // Используем helper для обхода списка
+        for_each_in_list(bindings, [&](const Object &binding) {
+            if (!binding.is_pair())
+                throw_eval_error(binding, "Invalid rlet binding");
+            auto name_obj = binding.as_pair()->car;
+            auto rest_obj = binding.as_pair()->cdr;
+
+            if (!name_obj.is_symbol())
+                throw_eval_error(
+                    form, fmt::format("Binding name must be a symbol `{}`", name_obj.print()));
+            if (!rest_obj.is_pair())
+                throw_eval_error(form,
+                                 fmt::format("Binding name must be a pair `{}`", rest_obj.print()));
+            // Создаем shared_ptr на Register
+            auto alias = std::make_shared<Register>();
+            alias->name = name_obj;
+            alias->type_name = rest_obj.as_pair()->car;
+
+            // --- ДОБАВЛЯЕМ РАСЧЕТ РАЗМЕРА ---
+            auto type_ptr = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
+            if (type_ptr) {
+                if (type_ptr->get_name() == "_type_") {
+                    alias->bit_size = TypeConfig::pointer_size * 8;
+                    // Явно проверяем на "none" или "void"
+                } else if (type_ptr->get_name() == "none") {
+                    alias->bit_size = 0;
+                } else if (type_ptr->get_name() == "void") {
+                    alias->bit_size = 0;
+                } else {
+                    alias->bit_size = type_ptr->get_size_in_memory() * 8;
+                }
+            } else {
+                // Если тип не найден, можно либо кинуть ошибку,
+                // либо поставить 0 (но тогда ассемблер упадет позже)
+                alias->bit_size = 0;
+            }
+
+            Object current = rest_obj.as_pair()->cdr;
+
+            // ПРОВЕРКА: Если следующий элемент НЕ ключевое слово, считаем его регистром
+            if (current.is_pair()) {
+                Object next = current.as_pair()->car;
+                if (!next.is_keyword()) {
+                    alias->reg = next;
+                    current = current.as_pair()->cdr; // Потребляем этот элемент
+                }
+            }
+
+            while (current.is_pair()) {
+                Object key = current.as_pair()->car;
+                current = current.as_pair()->cdr;
+
+                if (!current.is_pair())
+                    throw_eval_error(key, "Missing value for keyword");
+                Object val = current.as_pair()->car;
+                current = current.as_pair()->cdr;
+
+                if (key.is_symbol()) {
+                    std::string k = key.print();
+                    if (k == ":reg") {
+                        alias->reg = val;
+                    } else if (k == ":offset") {
+                        alias->offset = (int)val.as_integer();
+                    } else {
+                        throw_eval_error(binding,
+                                         "Expected :type, :reg, :offset, :source, but got " +
+                                             val.print());
+                    }
+                }
+            }
+
+            // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
+            // new_env->set_at(name_sym, Object::make_native_ref(alias));
+            alias->arg_index = current_idx++;
+            // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
+            auto name_sym = name_obj.as_symbol();
+            new_env->vars.set(name_sym, Object::make_heap_obj(alias));
+        });
+        // Регистрируем окружение в родительском
+        if (!env_name.empty())
+            env->vars.set(Object::intern(env_name.c_str()),
+                          Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
+
+        auto res = eval_list_return_last(body, body, new_env);
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
+        return res;
+    } catch (EvalException &e) {
+        if (!m_dynamic_stack.empty())
+            m_dynamic_stack.pop_back();
+        throw;
+    }
+}
+
+// ============================================================
+// Whitle
+// ============================================================
 
 Object Interpreter::eval_while_special(const Object &form, const Object &rest,
                                        const std::shared_ptr<EnvironmentObject> &env) {
@@ -1623,42 +1754,6 @@ Object Interpreter::quasiquote_helper(const Object                             &
             return build_list_with_links(std::move(entries), last_val);
         }
     }
-}
-
-// ============================================================
-// Конвертирование типов lpres
-// ============================================================
-
-/*!
- * Convert a number to an integer
- */
-int64_t Interpreter::number_to_integer(const Object &obj) {
-    switch (obj.type) {
-    case ObjectType::INTEGER:
-        return obj.integer_obj.value;
-    case ObjectType::FLOAT:
-        return (int64_t)obj.float_obj.value;
-    case ObjectType::CHAR:
-        return (int8_t)obj.char_obj.value;
-    default:
-        throw_eval_error(obj, "object cannot be interpreted as a number!");
-    }
-    return 0;
-}
-
-/*!
- * Convert a number to floating point
- */
-double Interpreter::number_to_float(const Object &obj) {
-    switch (obj.type) {
-    case ObjectType::INTEGER:
-        return obj.integer_obj.value;
-    case ObjectType::FLOAT:
-        return obj.float_obj.value;
-    default:
-        throw_eval_error(obj, "object cannot be interpreted as a number!");
-    }
-    return 0;
 }
 
 // ============================================================
@@ -2358,7 +2453,7 @@ Object Interpreter::eval_with_error_handler_special(const Object &form, const Ob
     Object handler_fn = eval(handler_code, env);
 
     // Проверка, что это действительно то, что можно вызвать
-    if (!handler_fn.is_lambda()) { // или иная проверка на callable
+    if (!handler_fn.is_function()) { // или иная проверка на callable
         throw_eval_error(handler_code, "error-handler must be a lambda");
     }
 
@@ -2380,129 +2475,340 @@ Object Interpreter::eval_with_error_handler_special(const Object &form, const Ob
 // ============================================================
 
 /*!
- * implementation of addition.
+ * Convert a number to an integer
+ */
+int64_t Interpreter::number_to_integer(const Object &obj) {
+    switch (obj.type) {
+    case ObjectType::INTEGER:
+        return obj.integer_obj.value;
+    case ObjectType::FLOAT:
+        return (int64_t)obj.float_obj.value;
+    case ObjectType::CHAR:
+        return (int8_t)obj.char_obj.value;
+    default:
+        throw_eval_error(obj, "object cannot be interpreted as a number!");
+    }
+    return 0;
+}
+
+/*!
+ * Convert a number to floating point
+ */
+double Interpreter::number_to_float(const Object &obj) {
+    switch (obj.type) {
+    case ObjectType::INTEGER:
+        return obj.integer_obj.value;
+    case ObjectType::FLOAT:
+        return obj.float_obj.value;
+    default:
+        throw_eval_error(obj, "object cannot be interpreted as a number!");
+    }
+    return 0;
+}
+
+/*!
+ * Convert number to template type.
+ */
+template <> FloatType Interpreter::number(const Object &obj) {
+    return number_to_float(obj);
+}
+
+/*!
+ * Convert number to template type.
+ */
+template <> IntType Interpreter::number(const Object &obj) {
+    return number_to_integer(obj);
+}
+
+/*!
+ * Template implementation of addition.
+ */
+template <typename T>
+Object Interpreter::num_plus(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    (void)form;
+    T result = 0;
+    for (const auto &arg : args.unnamed) {
+        result += number<T>(arg);
+    }
+    return Object::make_number<T>(result);
+}
+
+/*!
+ * Addition
  */
 Object Interpreter::eval_plus(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
     if (!args.named.empty() || args.unnamed.empty()) {
-        return Object::make_integer(0);
+        throw_eval_error(form, "+ must receive at least one unnamed argument!");
     }
 
-    // Проверяем что все аргументы - числа
-    for (const auto &arg : args.unnamed) {
-        if (!arg.is_number()) {
-            throw_eval_error(form, "+ requires number arguments");
-        }
-    }
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_plus<int64_t>(form, args, env);
 
-    if (args.unnamed[0].is_integer()) {
-        IntType result = 0;
-        for (const auto &arg : args.unnamed) {
-            result += number_to_integer(arg);
-        }
-        return Object::make_integer(result);
-    } else {
-        FloatType result = 0.0;
-        for (const auto &arg : args.unnamed) {
-            result += number_to_float(arg);
-        }
-        return Object::make_float(result);
+    case ObjectType::FLOAT:
+        return num_plus<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "+ must have a numeric argument");
+        return Object::make_null();
     }
 }
 
 /*!
- * implementation of substaction.
+ * Template implementation of multiplication.
+ */
+template <typename T>
+Object Interpreter::num_times(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    (void)form;
+    T result = 1;
+    for (const auto &arg : args.unnamed) {
+        result *= number<T>(arg);
+    }
+    return Object::make_number<T>(result);
+}
+
+/*!
+ * Multiplication
+ */
+Object Interpreter::eval_times(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    if (!args.named.empty() || args.unnamed.empty()) {
+        throw_eval_error(form, "* must receive at least one unnamed argument!");
+    }
+
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_times<int64_t>(form, args, env);
+
+    case ObjectType::FLOAT:
+        return num_times<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "* must have a numeric argument");
+        return Object::make_null();
+    }
+}
+
+/*!
+ * Template implementation of subtraction.
+ */
+template <typename T>
+Object Interpreter::num_minus(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    (void)form;
+    T result;
+    if (args.unnamed.size() > 1) {
+        result = number<T>(args.unnamed[0]);
+        for (uint32_t i = 1; i < args.unnamed.size(); i++) {
+            result -= number<T>(args.unnamed[i]);
+        }
+    } else {
+        result = -number<T>(args.unnamed[0]);
+    }
+    return Object::make_number<T>(result);
+}
+
+/*!
+ * Subtraction
  */
 Object Interpreter::eval_minus(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-
     if (!args.named.empty() || args.unnamed.empty()) {
         throw_eval_error(form, "- must receive at least one unnamed argument!");
     }
 
-    // Проверяем что все аргументы - числа
-    for (const auto &arg : args.unnamed) {
-        if (!arg.is_number()) {
-            throw_eval_error(form, "- requires number arguments");
-        }
-    }
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_minus<int64_t>(form, args, env);
 
-    if (args.unnamed[0].is_integer()) {
-        if (args.unnamed.size() == 1) {
-            return Object::make_integer(-number_to_integer(args.unnamed[0]));
-        }
-        IntType result = number_to_integer(args.unnamed[0]);
-        for (size_t i = 1; i < args.unnamed.size(); ++i) {
-            result -= number_to_integer(args.unnamed[i]);
-        }
-        return Object::make_integer(result);
-    } else {
-        if (args.unnamed.size() == 1) {
-            return Object::make_float(-number_to_float(args.unnamed[0]));
-        }
-        FloatType result = number_to_float(args.unnamed[0]);
-        for (size_t i = 1; i < args.unnamed.size(); ++i) {
-            result -= number_to_float(args.unnamed[i]);
-        }
-        return Object::make_float(result);
+    case ObjectType::FLOAT:
+        return num_minus<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "- must have a numeric argument");
+        return Object::make_null();
     }
 }
 
 /*!
- * implementation of multiplication.
+ * Template implementation of division.
  */
-Object Interpreter::eval_times(const Object &form, Arguments &args,
+template <typename T>
+Object Interpreter::num_divide(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-
-    if (!args.named.empty() || args.unnamed.empty()) {
-        return Object::make_integer(1);
-    }
-
-    // Проверяем что все аргументы - числа
-    for (const auto &arg : args.unnamed) {
-        if (!arg.is_number()) {
-            throw_eval_error(form, "* requires number arguments");
-        }
-    }
-
-    if (args.unnamed[0].is_integer()) {
-        IntType result = 1;
-        for (const auto &arg : args.unnamed) {
-            result *= number_to_integer(arg);
-        }
-        return Object::make_integer(result);
-    } else {
-        FloatType result = 1.0;
-        for (const auto &arg : args.unnamed) {
-            result *= number_to_float(arg);
-        }
-        return Object::make_float(result);
-    }
+    (void)form;
+    T result = number<T>(args.unnamed[0]) / number<T>(args.unnamed[1]);
+    return Object::make_number<T>(result);
 }
 
 /*!
- * implementation of deviding.
+ * Division
  */
 Object Interpreter::eval_divide(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
     vararg_check(form, args, {{}, {}}, {});
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_divide<int64_t>(form, args, env);
 
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, "/ requires number arguments");
+    case ObjectType::FLOAT:
+        return num_divide<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "/ must have a numeric argument");
+        return Object::make_null();
+    }
+}
+
+/*!
+ * Compare numbers for equality
+ */
+Object Interpreter::eval_numequals(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    if (!args.named.empty() || args.unnamed.size() < 2) {
+        throw_eval_error(form, "= must receive at least two unnamed arguments!");
     }
 
-    FloatType numerator = number_to_float(args.unnamed[0]);
-    FloatType denominator = number_to_float(args.unnamed[1]);
+    bool result = true;
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER: {
+        int64_t ref = number_to_integer(args.unnamed.front());
+        for (uint32_t i = 1; i < args.unnamed.size(); i++) {
+            if (ref != number_to_integer(args.unnamed[i])) {
+                result = false;
+                break;
+            }
+        }
+    } break;
 
-    if (denominator == 0.0) {
-        throw_eval_error(form, "/: division by zero");
+    case ObjectType::FLOAT: {
+        double ref = number_to_float(args.unnamed.front());
+        for (uint32_t i = 1; i < args.unnamed.size(); i++) {
+            if (ref != number_to_float(args.unnamed[i])) {
+                result = false;
+                break;
+            }
+        }
+    } break;
+
+    default:
+        throw_eval_error(form, "= must have a numeric argument");
+        return Object::make_null();
     }
 
-    return Object::make_float(numerator / denominator);
+    return true_or_false(result);
+}
+
+template <typename T>
+Object Interpreter::num_lt(const Object &form, Arguments &args,
+                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)env;
+    T a = number<T>(args.unnamed[0]);
+    T b = number<T>(args.unnamed[1]);
+    return true_or_false(a < b);
+}
+
+Object Interpreter::eval_lt(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}, {}}, {});
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_lt<int64_t>(form, args, env);
+
+    case ObjectType::FLOAT:
+        return num_lt<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "< must have a numeric argument");
+        return Object::make_null();
+    }
+}
+
+template <typename T>
+Object Interpreter::num_gt(const Object &form, Arguments &args,
+                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)env;
+    T a = number<T>(args.unnamed[0]);
+    T b = number<T>(args.unnamed[1]);
+    return true_or_false(a > b);
+}
+
+Object Interpreter::eval_gt(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}, {}}, {});
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_gt<int64_t>(form, args, env);
+
+    case ObjectType::FLOAT:
+        return num_gt<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "> must have a numeric argument");
+        return Object::make_null();
+    }
+}
+
+template <typename T>
+Object Interpreter::num_leq(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)env;
+    T a = number<T>(args.unnamed[0]);
+    T b = number<T>(args.unnamed[1]);
+    return true_or_false(a <= b);
+}
+
+Object Interpreter::eval_leq(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}, {}}, {});
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_leq<int64_t>(form, args, env);
+
+    case ObjectType::FLOAT:
+        return num_leq<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, "<= must have a numeric argument");
+        return Object::make_null();
+    }
+}
+
+template <typename T>
+Object Interpreter::num_geq(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)env;
+    T a = number<T>(args.unnamed[0]);
+    T b = number<T>(args.unnamed[1]);
+    return true_or_false(a >= b);
+}
+
+Object Interpreter::eval_geq(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{}, {}}, {});
+    switch (args.unnamed.front().type) {
+    case ObjectType::INTEGER:
+        return num_geq<int64_t>(form, args, env);
+
+    case ObjectType::FLOAT:
+        return num_geq<double>(form, args, env);
+
+    default:
+        throw_eval_error(form, ">= must have a numeric argument");
+        return Object::make_null();
+    }
 }
 
 /*!
@@ -2900,100 +3206,6 @@ Object Interpreter::eval_rshift(const Object &form, Arguments &args,
 }
 
 // ============================================================
-// Функции сравнения с проверками
-// ============================================================
-
-/*!
- * implementation of numerical comparisong.
- */
-Object Interpreter::eval_numequals(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}}, {}); // Два числа
-
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, "= requires number arguments");
-    }
-
-    FloatType a_val = number_to_float(args.unnamed[0]);
-    FloatType b_val = number_to_float(args.unnamed[1]);
-
-    return true_or_false(a_val == b_val);
-}
-
-/*!
- * implementation of less than comparisong.
- */
-Object Interpreter::eval_lt(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}}, {}); // Два числа
-
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, "< requires number arguments");
-    }
-
-    FloatType a_val = number_to_float(args.unnamed[0]);
-    FloatType b_val = number_to_float(args.unnamed[1]);
-
-    return true_or_false(a_val < b_val);
-}
-
-/*!
- * implementation of greater than comparisong.
- */
-Object Interpreter::eval_gt(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}}, {}); // Два числа
-
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, "> requires number arguments");
-    }
-
-    FloatType a_val = number_to_float(args.unnamed[0]);
-    FloatType b_val = number_to_float(args.unnamed[1]);
-
-    return true_or_false(a_val > b_val);
-}
-
-/*!
- * implementation of less or equal than comparisong.
- */
-Object Interpreter::eval_leq(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}}, {}); // Два числа
-
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, "<= requires number arguments");
-    }
-
-    FloatType a_val = number_to_float(args.unnamed[0]);
-    FloatType b_val = number_to_float(args.unnamed[1]);
-
-    return true_or_false(a_val <= b_val);
-}
-
-/*!
- * implementation of greater or queal than comparisong.
- */
-Object Interpreter::eval_geq(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}}, {}); // Два числа
-
-    if (!args.unnamed[0].is_number() || !args.unnamed[1].is_number()) {
-        throw_eval_error(form, ">= requires number arguments");
-    }
-
-    FloatType a_val = number_to_float(args.unnamed[0]);
-    FloatType b_val = number_to_float(args.unnamed[1]);
-
-    return true_or_false(a_val >= b_val);
-}
-
-// ============================================================
 // Функции работы со списками с проверками
 // ============================================================
 
@@ -3227,7 +3439,7 @@ Object Interpreter::eval_procedure_p(const Object &form, Arguments &args,
     // 1. Лямбда (пользовательская функция)
     // 2. Макрос
     // 3. Любой объект, наследующий CallableObject (наши новые примитивы и спецформы)
-    bool is_proc = target.is_lambda() || target.is_macro() ||
+    bool is_proc = target.is_function() || target.is_macro() ||
                    target.is_callable(); // Проверка на SPECIAL_FORM или PRIMITIVE
 
     return true_or_false(is_proc);
@@ -3318,14 +3530,14 @@ Object Interpreter::eval_apply(const Object &form, Arguments &args,
     }
 
     // СЛУЧАЙ Б: Это обычная Лямбда
-    if (callable_obj.is_lambda()) {
-        const auto &lam = callable_obj.as_lambda();
+    if (callable_obj.is_function()) {
+        const auto &lam = callable_obj.as_function();
         auto        lam_env = EnvironmentObject::make_new("apply").as_env_ptr();
         lam_env->ctx = form;
         lam_env->is_function = true;
-        lam_env->owner_lambda = callable_obj;
+        lam_env->owner_function = callable_obj;
         lam_env->parent_env = lam->parent_env;
-        ASSERT(lam_env->owner_lambda.is_lambda());
+        ASSERT(lam_env->owner_function.is_function());
 
         set_args_in_env(form, applied_args, lam->args, lam_env);
         return eval_list_return_last(lam->body, lam->body, lam_env);
@@ -4267,7 +4479,7 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
         call_args.push_back(args.unnamed.at(i));
     }
 
-    if (first.is_lambda()) {
+    if (first.is_function()) {
         // Используем твой call_lambda_internal.
         // Он создаст окружение, привяжет аргументы и выполнит тело.
         return call_lambda_internal(form, first, call_args, env);
@@ -4470,7 +4682,7 @@ Object Interpreter::eval_set_macro_character(const Object &form, Arguments &args
         const char *sym_name = object.as_symbol().name_ptr;
         replacement = sym_name ? sym_name : "";
         m_reader.add_reader_macro(shortcut, replacement, true);
-    } else if (object.is_lambda()) {
+    } else if (object.is_function()) {
         m_reader.add_reader_macro(shortcut, object, false);
     } else {
         throw_eval_error(form, "set-reader-macro: second argument must be string or symbol");
@@ -4637,8 +4849,8 @@ Object Interpreter::eval_source_info(const Object &form, Arguments &args,
     std::optional<ShortInfo> result;
 
     // Ищем информацию по адресу объекта в памяти
-    if (args.unnamed[0].is_lambda()) {
-        auto lambda = args.unnamed[0].as_lambda();
+    if (args.unnamed[0].is_function()) {
+        auto lambda = args.unnamed[0].as_function();
         result = get_db().get_short_info_for(lambda->body);
     } else {
         result = get_db().get_short_info_for(args.unnamed[0]);
@@ -4822,6 +5034,9 @@ Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
 // Type System
 // ============================================================
 
+/*!
+ * Make typespecification with the special form
+ */
 Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -4834,6 +5049,10 @@ Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
 
     return Object::make_heap_obj(ts_shared);
 }
+
+/*!
+ * Make typespecification with the primitive
+ */
 Object Interpreter::eval_typespec(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args, {{ObjectType::PAIR, ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}},
@@ -4854,7 +5073,7 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
         // КЛЮЧЕВОЙ МОМЕНТ:
         // Если встретили HEAP_OBJ, проверяем, не reg-alias ли это
         if (obj.type == ObjectType::NATIVE_OBJECT) {
-            auto alias = obj.as_heap_obj<RegisterAlias>();
+            auto alias = obj.as_heap_obj<Register>();
             // Предположим, у тебя есть метод проверки типа в рантайме
             if (alias) {
                 // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
@@ -4884,6 +5103,10 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
 
     return Object::make_heap_obj(ts_shared);
 }
+
+// ============================================================
+// Type System define type
+// ============================================================
 
 Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
@@ -5051,7 +5274,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
     auto pair = rest.as_pair();
 
     // 1. EVAL первого элемента.
-    // Теперь это ОБЯЗАН быть объект (Type, Pointer, RegisterAlias и т.д.)
+    // Теперь это ОБЯЗАН быть объект (Type, Pointer, Register и т.д.)
     Object current = eval(pair->car, env);
 
     if (current.is_none()) {
@@ -6192,7 +6415,7 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
 
     auto       &table = args.unnamed[0].as_hash_table()->data;
     Object      lambda = args.unnamed[1];
-    const auto &lam_data = lambda.as_lambda();
+    const auto &lam_data = lambda.as_function();
 
     for (auto const &[key, val] : table) {
         if (lam_data->args.unnamed.size() == 1) {
@@ -6454,134 +6677,13 @@ Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
     return Object::make_boolean(true);
 }
 
-// ============================================================
-// RLET
-// ============================================================
-
-Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    (void)form;
-
-    if (!rest.is_pair())
-        throw_eval_error(form, "rlet requires name or bindings");
-
-    Object      current_rest = rest;
-    std::string env_name = "";
-    auto        first = current_rest.as_pair()->car;
-    // 1. Проверяем, не является ли первый аргумент именем (строкой)
-    if (first.is_symbol() || first.is_string()) {
-        env_name = first.to_std_string();
-        current_rest = current_rest.as_pair()->cdr;
-    }
-
-    if (!current_rest.is_pair())
-        throw_eval_error(form, "rlet requires bindings");
-    Object bindings = current_rest.as_pair()->car;
-    Object body = current_rest.as_pair()->cdr;
-
-    // Создаем окружение
-    auto new_env = std::make_shared<EnvironmentObject>(env);
-    new_env->name = env_name;
-    new_env->is_reg_let = true;
-    new_env->parent_env = env;
-    m_dynamic_stack.push_back(new_env);
-    try {
-        // Используем helper для обхода списка
-        for_each_in_list(bindings, [&](const Object &binding) {
-            if (!binding.is_pair())
-                throw_eval_error(binding, "Invalid rlet binding");
-            auto name_obj = binding.as_pair()->car;
-            auto rest_obj = binding.as_pair()->cdr;
-
-            if (!name_obj.is_symbol())
-                throw_eval_error(
-                    form, fmt::format("Binding name must be a symbol `{}`", name_obj.print()));
-            if (!rest_obj.is_pair())
-                throw_eval_error(form,
-                                 fmt::format("Binding name must be a pair `{}`", rest_obj.print()));
-            // Создаем shared_ptr на RegisterAlias
-            auto alias = std::make_shared<RegisterAlias>();
-            alias->name = name_obj;
-            alias->type_name = rest_obj.as_pair()->car;
-
-            // --- ДОБАВЛЯЕМ РАСЧЕТ РАЗМЕРА ---
-            auto type_ptr = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
-            if (type_ptr) {
-                if (type_ptr->get_name() == "_type_") {
-                    alias->bit_size = TypeConfig::pointer_size * 8;
-                } else {
-                    alias->bit_size = type_ptr->get_size_in_memory() * 8;
-                }
-            } else {
-                // Если тип не найден, можно либо кинуть ошибку,
-                // либо поставить 0 (но тогда ассемблер упадет позже)
-                alias->bit_size = 0;
-            }
-
-            Object current = rest_obj.as_pair()->cdr;
-
-            // ПРОВЕРКА: Если следующий элемент НЕ ключевое слово, считаем его регистром
-            if (current.is_pair()) {
-                Object next = current.as_pair()->car;
-                if (!next.is_keyword()) {
-                    alias->reg = next;
-                    current = current.as_pair()->cdr; // Потребляем этот элемент
-                }
-            }
-
-            while (current.is_pair()) {
-                Object key = current.as_pair()->car;
-                current = current.as_pair()->cdr;
-
-                if (!current.is_pair())
-                    throw_eval_error(key, "Missing value for keyword");
-                Object val = current.as_pair()->car;
-                current = current.as_pair()->cdr;
-
-                if (key.is_symbol()) {
-                    std::string k = key.print();
-                    if (k == ":reg") {
-                        alias->reg = val;
-                    } else if (k == ":offset") {
-                        alias->offset = (int)val.as_integer();
-                    } else {
-                        throw_eval_error(binding,
-                                         "Expected :type, :reg, :offset, :source, but got " +
-                                             val.print());
-                    }
-                }
-            }
-
-            // Сохраняем алиас (alias уже является shared_ptr, так что все правильно)
-            // new_env->set_at(name_sym, Object::make_native_ref(alias));
-
-            // Регистрируем в обычном окружении, чтобы символ 'pp возвращал 'r13
-            auto name_sym = name_obj.as_symbol();
-            new_env->vars.set(name_sym, Object::make_heap_obj(alias));
-        });
-        // Регистрируем окружение в родительском
-        if (!env_name.empty())
-            env->vars.set(Object::intern(env_name.c_str()),
-                          Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
-
-        auto res = eval_list_return_last(body, body, new_env);
-        if (!m_dynamic_stack.empty())
-            m_dynamic_stack.pop_back();
-        return res;
-    } catch (EvalException &e) {
-        if (!m_dynamic_stack.empty())
-            m_dynamic_stack.pop_back();
-        throw;
-    }
-}
-
 Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args,
                  {{ObjectType::SYMBOL}, {ObjectType::NATIVE_OBJECT, ObjectType::SYMBOL}},
                  {{"reg", {false, {ObjectType::SYMBOL}}}});
 
-    auto alias = std::make_shared<RegisterAlias>();
+    auto alias = std::make_shared<Register>();
     alias->name = args.unnamed[0];
 
     // 1. Определяем имя типа
@@ -6825,11 +6927,11 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Поиск функционального окружения
     auto fe = env->get_function_env();
-    if (!fe || fe->owner_lambda.is_none()) {
+    if (!fe || fe->owner_function.is_none()) {
         throw_eval_error(form, "Cannot use 'declare' outside of a function body.");
     }
 
-    auto  func = fe->owner_lambda.as_lambda();
+    auto  func = fe->owner_function.as_function();
     auto &settings = func->declarations;
 
     // Запрещаем двойной declare (как в GOAL)
@@ -6922,10 +7024,10 @@ Object Interpreter::eval_declarations(const Object &form, Arguments &args,
         throw_eval_error(form, "Cannot use function metadata outside of a function.");
     }
 
-    if (!fe->owner_lambda.is_lambda()) {
+    if (!fe->owner_function.is_function()) {
         throw_eval_error(form, "Fuction environment does not have pointer to function.");
     }
-    auto  func = fe->owner_lambda.as_lambda();
+    auto  func = fe->owner_function.as_function();
     auto &settings = func->declarations;
     // Make result
     ListBuilder lb;
@@ -6971,7 +7073,7 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
 
     // 2. Получаем реализацию и проверяем наличие (declare)
     Object implementation = args.unnamed[2];
-    auto   lambda_ptr = implementation.as_heap_obj<LambdaObject>();
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
 
     if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
         throw_eval_error(
@@ -7028,7 +7130,7 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     auto   sym_obj = args.unnamed[0];
     auto   sym = sym_obj.as_symbol();
     Object implementation = args.unnamed[1];
-    auto   lambda_ptr = implementation.as_heap_obj<LambdaObject>();
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
 
     // 2. Проверка наличия декларации типов внутри лямбды
     // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
@@ -7083,7 +7185,7 @@ Object Interpreter::eval_function_typespec(const Object &form, Arguments &args,
                  {});
 
     Object implementation = args.unnamed[0];
-    auto   lambda_ptr = implementation.as_heap_obj<LambdaObject>();
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
 
     // 2. Проверка наличия декларации типов внутри лямбды
     // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
@@ -7119,14 +7221,14 @@ Object Interpreter::eval_current_function(const Object &form, Arguments &args,
             throw_eval_error(form, "Environment does not have any asm-function");
         }
     }
-    if (func_env->owner_lambda.is_none())
+    if (func_env->owner_function.is_none())
         throw_eval_error(form, "Environment does not have owner function");
 
-    return func_env->owner_lambda;
+    return func_env->owner_function;
 }
 
-Object Interpreter::eval_tc(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
     vararg_check(form, args,
@@ -7143,21 +7245,19 @@ Object Interpreter::eval_tc(const Object &form, Arguments &args,
                  });
 
     auto doprint = is_true(args.unnamed[0]);
-    auto func1_obj = args.unnamed[1];
+    auto func1_obj = args.unnamed[0];
     auto func1_ptr = func1_obj.as_heap_obj<TypeSpec>();
-    auto func2_obj = args.unnamed[2];
+    auto func2_obj = args.unnamed[1];
     auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
 
     // 2. Проверка наличия декларации типов внутри лямбды
     // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор
     // знал, что делать.
     if (!func1_ptr) {
-        throw_eval_error(form, fmt::format("tc arg[1] is less-specific expects a ",
-                                           "typespec, got {}", func1_obj.print()));
+        throw_type_mismatch(form, args, 0, {"type-spec"}, func1_obj.class_name());
     }
     if (!func2_ptr) {
-        throw_eval_error(form, fmt::format("tc arg[2] is less-specific expects a ",
-                                           "typespec, got {}", func2_obj.print()));
+        throw_type_mismatch(form, args, 1, {"type-spec"}, func2_obj.class_name());
     }
 
     std::string error_source_name;

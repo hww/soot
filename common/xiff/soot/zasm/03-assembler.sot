@@ -249,6 +249,9 @@
               (asm-error "16-bit ADC/SBC only works with HL destination")))))))
 
 
+
+
+
 ;;; =====================================================================
 ;;; Сдвиги (Bit Rotation & Shifts)
 ;;; =====================================================================
@@ -278,6 +281,9 @@
 ;;; LD
 ;;; =====================================================================
 
+;; Теперь вместо написания функций вручную:
+(define-instruction .ld)
+
 (register-handler '.ld "8-reg-number"
   (lambda (d s) (emit (list #x3E s) :listing (fmt #f "LD {}, ${:02X}" d s))))
 
@@ -305,8 +311,13 @@
 
 (register-handler '.ld "16-reg-ix-indexed"
   (lambda (d s) 
-    (let ((off (cdr s)))
-       (emit (list #xDD #x6E off #xDD #x66 (+ off 1))))))
+    (let* ((reg (if (pair? s) (car s) 'ix)) ;; Если пришло число, считаем что база ix
+           (off (if (pair? s) (cdr s) s))   ;; Если пришла пара - берем cdr, если число - берем его
+           (prefix (if (eq? reg 'ix) #xDD #xFD)))
+      
+      (emit (list prefix #x6E off       ;; LD L, (I?+off)
+                  prefix #x66 (+ off 1)) ;; LD H, (I?+off+1)
+            :listing (fmt #f "LD {}, ({}+{})" d reg off)))))
 
 ;; LD A, (IX+d) -> DD 7E d
 (register-handler '.ld "8-reg-ix-indexed"
@@ -323,6 +334,30 @@
   (lambda (dist r)
     (emit (list #xDD (+ #x70 (reg-code r)) dist)
           :listing (fmt #f "LD (IX+{}), {}" dist r))))
+
+(register-handler '.ld "ix-indexed-16-reg"
+  (lambda (d s) 
+    (let* ((off (if (pair? d) (cdr d) d))
+           (reg-base (if (pair? d) (car d) 'ix))
+           (prefix (if (eq? reg-base 'ix) #xDD #xFD)))
+      
+      (cond ((eq? s 'hl)
+             (emit (list prefix #x75 off       ;; LD (IX+off), L
+                         prefix #x74 (+ off 1)) ;; LD (IX+off+1), H
+                   :listing (fmt #f "LD ({}+{}), {}" reg-base off s)))
+            
+            ((eq? s 'de)
+             (emit (list prefix #x73 off
+                         prefix #x72 (+ off 1))
+                   :listing (fmt #f "LD ({}+{}), {}" reg-base off s)))
+
+            ((eq? s 'bc)
+             (emit (list prefix #x71 off        ;; LD (IX+off), C
+                         prefix #x70 (+ off 1)) ;; LD (IX+off+1), B
+                   :listing (fmt #f "LD ({}+{}), {}" reg-base off s)))
+
+            ;; ИСПРАВЛЕНИЕ: используем #t вместо t
+            (#t (error (fmt #f "Unsupported 16-bit source for indexed LD: {}" s)))))))
 
 ;; LD (IX+d), n  -> #xDD #x36 dist n
 (register-handler '.ld "ix-indexed-number"
@@ -386,20 +421,6 @@
        (begin
          (emit-ld-reg8 (low-reg dst) (low-reg src))
          (emit-ld-reg8 (high-reg dst) (high-reg src)))))))
-
-;; ADD HL, rr (BC=00, DE=10, HL=20, SP=30)
-(register-handler '.add "16-reg-16-reg"
-  (lambda (d s)
-    (if (eq? d 'hl)
-        (let ((op (+ #x09 (ash (reg-code s) 4))))
-          (emit op :listing (fmt #f "ADD HL, {}" s)))
-        (asm-error "Z80 can only ADD to HL (or IX/IY) for 16-bit registers"))))
-
-;; Теперь вместо написания функций вручную:
-(define-instruction .ld)
-(define-instruction .add)
-(define-instruction .sub)
-(define-instruction .xor)
 
 
 (defmacro .add-hl-a ()
@@ -502,12 +523,20 @@
 ;; Обработка IX/IY для стека
 (register-handler '.push '(16-reg)
   (lambda (r)
-    (cond ((eq? r 'ix) (emit '(#xDD #xE5) :listing "PUSH IX"))
+    (cond ((eq? r 'bc) (emit '(#xC5) :listing "PUSH BC"))
+          ((eq? r 'de) (emit '(#xD5) :listing "PUSH DE"))
+          ((eq? r 'hl) (emit '(#xE5) :listing "PUSH HL"))
+          ((eq? r 'af) (emit '(#xF5) :listing "PUSH AF"))
+          ((eq? r 'ix) (emit '(#xDD #xE5) :listing "PUSH IX"))
           ((eq? r 'iy) (emit '(#xFD #xE5) :listing "PUSH IY")))))
 
 (register-handler '.pop '(16-reg)
   (lambda (r)
-    (cond ((eq? r 'ix) (emit '(#xDD #xE1) :listing "POP IX"))
+    (cond ((eq? r 'bc) (emit '(#xC1) :listing "POP BC"))
+          ((eq? r 'de) (emit '(#xD1) :listing "POP DE"))
+          ((eq? r 'hl) (emit '(#xE1) :listing "POP HL"))
+          ((eq? r 'af) (emit '(#xF1) :listing "POP AF"))
+          ((eq? r 'ix) (emit '(#xDD #xE1) :listing "POP IX"))
           ((eq? r 'iy) (emit '(#xFD #xE1) :listing "POP IY")))))
 
 ;; Обмен (EX)
@@ -516,11 +545,10 @@
         ((and (eq? d 'af) (eq? s 'af)) (emit #x08 :listing "EX AF, AF'"))
         (else (asm-error "Unsupported EX operands"))))
 
-(defun .ex-de-hl ()
-  "Обмен значениями регистров DE и HL (opcode #xEB)"
-  (emit #xEB))
   
 (define-instruction .push)
+(define-instruction .pop)
+(define-instruction .ex)
 
 ;;; =====================================================================
 ;;; Логика и сравнение (AND, CP)
