@@ -326,7 +326,8 @@ class TypeSystem : public NativeObject {
 
     bool typecheck_and_throw(const TypeSpec &expected, const TypeSpec &actual,
                              const std::string &error_source_name = "", bool print_on_error = true,
-                             bool throw_on_error = true, bool allow_type_alias = false) const;
+                             bool throw_on_error = true, bool allow_type_alias = false,
+                             bool allow_abstract = false) const;
 
     bool tc(const TypeSpec &less_specific, const TypeSpec &more_specific) const;
 
@@ -468,7 +469,7 @@ class TypeSystem : public NativeObject {
 
     std::string lca_base(const std::string &a, const std::string &b) const;
     bool        typecheck_base_types(const std::string &expected, const std::string &actual,
-                                     bool allow_alias) const;
+                                     bool allow_alias, bool allow_abstract = false) const;
     int         get_alignment_in_type(const Field &field);
 
     void builtin_structure_inherit(StructureType *st);

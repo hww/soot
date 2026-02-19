@@ -78,7 +78,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"while", &Interpreter::eval_while_special, nullptr},
         // Declare new types
         {"declare", &Interpreter::eval_declare_special, nullptr},
-        {"declare-extern", &Interpreter::eval_declare_extern, nullptr},
+
         // Define new constrant
         {"define-constant", &Interpreter::eval_define_constant, nullptr},
         // Parse type object
@@ -102,6 +102,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"env", &Interpreter::eval_env, nullptr},
         {"defined?", &Interpreter::eval_defined_p, nullptr},
         {"lookup", &Interpreter::eval_lookup, nullptr},
+        {"lookup-type", &Interpreter::eval_lookup_type, nullptr},
         {"current-function", &Interpreter::eval_current_function, nullptr},
         {"gensym", &Interpreter::eval_gensym, nullptr},
 
@@ -306,7 +307,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"function-type", &Interpreter::eval_function_type, &args_with_varkeys},
         {"types-match?", &Interpreter::eval_types_match_p, &args_with_varkeys},
         {"declare-type", &Interpreter::eval_declare_type, nullptr},
-
+        {"declare-external", &Interpreter::eval_declare_external, nullptr},
         // Methods and types
         {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
@@ -612,14 +613,14 @@ void Interpreter::throw_unexpected_named_arg(const Object &form, const Arguments
 
 void Interpreter::throw_named_type_mismatch(const Object                  &form,
                                             const std::vector<ObjectType> &expected,
-                                            const std::string &name, ObjectType got) {
+                                            const std::string &name, const Object &got) {
     std::string expected_str;
     for (size_t i = 0; i < expected.size(); ++i) {
         expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
     }
-    throw_eval_error(form,
-                     fmt::format("Type error for named argument ':{}': expected [{}], but got {}",
-                                 name, expected_str, object_type_to_string(got)));
+    throw_eval_error(
+        form, fmt::format("Type error for named argument ':{}': expected [{}], but got {} {}", name,
+                          expected_str, object_type_to_string(got.type), got.print()));
 }
 
 /*!
@@ -1187,6 +1188,37 @@ Object Interpreter::eval_lookup(const Object &form, Arguments &args,
     if (try_symbol_lookup(evaluated_name, define_env, &result)) {
         return result;
     }
+    return get_none();
+}
+
+/*!
+ * Check if symbol is defined
+ */
+Object Interpreter::eval_lookup_type(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+
+    auto type_name = args.unnamed[0].as_symbol();
+
+    // 1. Сначала ищем в m_symbol_types
+    auto type_ptr_ptr = m_symbol_types.lookup(type_name);
+    if (type_ptr_ptr) {
+        // *type_ptr_ptr - это shared_ptr<TypeSpec>
+        auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr_ptr);
+        return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+    }
+
+    // 2. Если не нашли, ищем в TypeSystem
+    // ПРЕДПОЛОЖИМ: lookup_type возвращает std::shared_ptr<Type>
+    Type *type = TypeSystem::instance().lookup_type(type_name.as_string());
+    if (type) {
+        // Создаем shared_ptr с no-op deleter, потому что TypeSystem управляет памятью
+        auto heap_ptr =
+            std::shared_ptr<HeapObject>(static_cast<HeapObject *>(type), [](HeapObject *) {});
+        return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+    }
+
     return get_none();
 }
 
@@ -2405,7 +2437,7 @@ void Interpreter::vararg_check(
                 }
             }
             if (!type_ok) {
-                throw_named_type_mismatch(form, allowed_types, name, it->second.type);
+                throw_named_type_mismatch(form, allowed_types, name, it->second);
             }
         }
     }
@@ -5209,34 +5241,34 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
                  {{ObjectType::SYMBOL}, {ObjectType::NATIVE_OBJECT, ObjectType::SYMBOL}},
                  {{"reg", {false, {ObjectType::SYMBOL}}}});
 
-    auto alias = std::make_shared<Register>();
-    alias->name = args.unnamed[0];
+    auto reg = std::make_shared<Register>();
+    reg->name = args.unnamed[0];
 
     // 1. Определяем имя типа
     auto second = args.unnamed[1];
     if (second.is_symbol())
-        alias->type_name = second;
+        reg->type_name = second;
     else if (second.is_native_obj<Type>())
-        alias->type_name =
+        reg->type_name =
             Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
 
     // 2. Привязываем регистр
     if (args.has_named("reg"))
-        alias->reg = args.named["reg"];
+        reg->reg = args.named["reg"];
 
     // 3. ИНИЦИАЛИЗАЦИЯ ПАРАМЕТРОВ
-    auto type = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
+    auto type = TypeSystem::instance().lookup_type(reg->type_name.to_std_string());
     if (type) {
-        alias->offset = 0;     // Всегда 0 для корня!
-        alias->bit_offset = 0; // Всегда 0 для корня!
-        alias->bit_size = type->get_size_in_memory() * 8;
+        reg->offset = 0;     // Всегда 0 для корня!
+        reg->bit_offset = 0; // Всегда 0 для корня!
+        reg->bit_size = type->get_size_in_memory() * 8;
     } else {
         // Фоллбек, если тип не найден (например, для простых символов)
-        alias->offset = 0;
-        alias->bit_size = 0;
+        reg->offset = 0;
+        reg->bit_size = 0;
     }
 
-    return Object::make_heap_obj(alias);
+    return Object::make_heap_obj(reg);
 }
 
 // ============================================================
@@ -5374,6 +5406,7 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
  */
 Object Interpreter::eval_typespec(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     vararg_check(form, args, {{ObjectType::PAIR, ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}},
                  {});
     Object spec_input = args.unnamed[0];
@@ -5392,11 +5425,11 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
         // КЛЮЧЕВОЙ МОМЕНТ:
         // Если встретили HEAP_OBJ, проверяем, не reg-alias ли это
         if (obj.type == ObjectType::NATIVE_OBJECT) {
-            auto alias = obj.as_heap_obj<Register>();
+            auto reg = obj.as_heap_obj<Register>();
             // Предположим, у тебя есть метод проверки типа в рантайме
-            if (alias) {
+            if (reg) {
                 // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
-                return alias->type_name;
+                return reg->type_name;
             }
 
             auto type = obj.as_heap_obj<Type>();
@@ -5417,10 +5450,15 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
     Object resolved_input = resolve_aliases(spec_input);
 
     // Теперь parse_typespec увидит (function int) вместо (function #<reg-alias...>)
-    auto ts_ptr = parse_typespec(&TypeSystem::instance(), resolved_input);
-    auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
+    try {
+        auto ts_ptr = parse_typespec(&TypeSystem::instance(), resolved_input);
+        auto ts_shared = std::make_shared<TypeSpec>(ts_ptr);
 
-    return Object::make_heap_obj(ts_shared);
+        return Object::make_heap_obj(ts_shared);
+    } catch (std::runtime_error &e) {
+        throw_eval_error(form, e.what());
+    }
+    return get_none();
 }
 
 /*!
@@ -6263,20 +6301,18 @@ Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
 /*!
  * Declare type for type specification
  */
-Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
-                                        const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_declare_external(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-
-    auto args = get_args(form, rest, ArgumentSpec(true, false));
 
     // Проверка аргументов: (define-extern симбол тип)
     if (args.unnamed.size() < 2) {
         throw_eval_error(form, "define-extern must have at least 2 arguments: symbol and typespec");
     }
 
-    auto sym = args.unnamed.at(0);
-    if (!sym.is_symbol()) {
-        throw_eval_error(form, "First argument of define-extern must be a symbol");
+    auto type_name = args.unnamed.at(0);
+    if (!type_name.is_symbol()) {
+        throw_type_mismatch(form, args, 0, {ObjectType::SYMBOL}, type_name.type);
     }
     auto     type_arg = args.unnamed.at(1);
     TypeSpec new_type;
@@ -6295,7 +6331,7 @@ Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
     }
 
     // 1. Получаем указатель на запись в таблице
-    auto existing_type_ptr = m_symbol_types.lookup(sym.as_symbol());
+    auto existing_type_ptr = m_symbol_types.lookup(type_name.as_symbol());
 
     if (existing_type_ptr) {
         // Извлекаем сам объект TypeSpec для удобства (через разыменование shared_ptr)
@@ -6305,13 +6341,13 @@ Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
             // Проверяем совместимость: может ли new_type заменить old_ts?
             if (!TypeSystem::instance().tc(old_ts, new_type)) {
                 fmt::print("WARNING: Redefining symbol {} from {} to {}\n",
-                           sym.as_symbol().name_ptr, old_ts.print(), new_type.print());
+                           type_name.as_symbol().name_ptr, old_ts.print(), new_type.print());
             }
         }
     }
 
     // 3. Регистрируем тип символа (оборачиваем в shared_ptr)
-    m_symbol_types.set(sym.as_symbol(), std::make_shared<TypeSpec>(new_type));
+    m_symbol_types.set(type_name.as_symbol(), std::make_shared<TypeSpec>(new_type));
 
     return get_none();
 }
@@ -6590,6 +6626,7 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
                      {"print", {false, {ObjectType::SYMBOL}}},
                      {"throw", {false, {ObjectType::SYMBOL}}},
                      {"allow-alias", {false, {ObjectType::SYMBOL}}},
+                     {"allow-abstract", {false, {ObjectType::SYMBOL}}},
                      {"source", {false, {ObjectType::STRING}}},
                  });
 
@@ -6613,7 +6650,7 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
     bool        print_on_error = false;
     bool        throw_on_error = false;
     bool        allow_type_alias = false;
-
+    bool        allow_type_abstract = false;
     if (args.has_named("source"))
         error_source_name = args.named["source"].to_std_string();
 
@@ -6626,12 +6663,16 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
     if (args.has_named("allow-alias"))
         allow_type_alias = is_true(args.named["allow-alias"]);
 
+    if (args.has_named("allow-abstract"))
+        allow_type_abstract = is_true(args.named["allow-abstract"]);
+
     // 4. Проверка сигнатуры через существующую таблицу типов символов
     auto t1 = func1_ptr.get();
     auto t2 = func2_ptr.get();
     // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
     if (!TypeSystem::instance().typecheck_and_throw(*t1, *t2, error_source_name, print_on_error,
-                                                    throw_on_error, allow_type_alias)) {
+                                                    throw_on_error, allow_type_alias,
+                                                    allow_type_abstract)) {
         if (doprint) {
             throw_eval_error(form, fmt::format("WARNING: Signature mismatch, expected {}, got {}\n",
                                                t1->print(), t2->print()));

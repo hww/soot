@@ -262,18 +262,21 @@ TypeSpec TypeSystem::make_function_typespec(const std::vector<std::string> &arg_
 
 bool TypeSystem::typecheck_and_throw(const TypeSpec &expected, const TypeSpec &actual,
                                      const std::string &error_source_name, bool print_on_error,
-                                     bool throw_on_error, bool allow_type_alias) const {
+                                     bool throw_on_error, bool allow_type_alias,
+                                     bool allow_abstract) const {
     bool success = true;
 
     // Check base types
-    if (!typecheck_base_types(expected.base_type(), actual.base_type(), allow_type_alias)) {
+    if (!typecheck_base_types(expected.base_type(), actual.base_type(), allow_type_alias,
+                              allow_abstract)) {
         success = false;
     }
 
     // Check arguments
     if (expected.get_args_count() == actual.get_args_count()) {
         for (size_t i = 0; i < expected.get_args_count(); i++) {
-            if (!tc(expected.get_arg(i), actual.get_arg(i))) {
+            if (!typecheck_and_throw(expected.get_arg(i), actual.get_arg(i), "", false, false,
+                                     allow_type_alias, allow_abstract)) {
                 success = false;
                 break;
             }
@@ -293,7 +296,8 @@ bool TypeSystem::typecheck_and_throw(const TypeSpec &expected, const TypeSpec &a
                 // Используем TypeSpec для значений тега behavior
                 TypeSpec expected_behavior(tag.value);
                 TypeSpec actual_behavior(*got);
-                if (!tc(expected_behavior, actual_behavior)) {
+                if (!typecheck_and_throw(expected_behavior, actual_behavior, "", false, false,
+                                         allow_type_alias, allow_abstract)) {
                     success = false;
                 }
             }
@@ -334,7 +338,7 @@ bool TypeSystem::tc(const TypeSpec &less_specific, const TypeSpec &more_specific
 }
 
 bool TypeSystem::typecheck_base_types(const std::string &expected, const std::string &actual,
-                                      bool allow_alias) const {
+                                      bool allow_alias, bool allow_abstract) const {
     std::string exp = expected;
     std::string act = actual;
 
@@ -349,6 +353,19 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
             exp = "int";
         if (act == "time-frame")
             act = "int";
+    }
+
+    // SPECIAL CASE: expected is "_type_" (polymorphic placeholder)
+    if (allow_abstract && exp == "_type_") {
+        // Check if actual is a valid type
+        try {
+            auto *type = lookup_type_allow_partial_def(act);
+            // Optionally check if it's within allowed hierarchy
+            // (if we had type constraints for _type_)
+            return type != nullptr;
+        } catch (...) {
+            return false;
+        }
     }
 
     // Make sure types exist

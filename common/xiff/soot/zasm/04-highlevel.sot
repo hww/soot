@@ -231,7 +231,9 @@
           
           ;; Ставим метку слота
           (label label-name)
-          ;(let ((type-spec (~> method :type-spec))) (declare-extern label-name type-spec))
+          (let ((type-spec (~> method :type-spec))) 
+            (declare-external label-name type-spec)
+            )
           (if method-full-name
             (let ((addr (module-label-addr-get method-full-name)))
               (if (and addr (not (= addr 0)))
@@ -270,7 +272,9 @@
         
         ;; Ставим метку слота, чтобы можно было обращаться к конкретному методу
         (label slot-label)
-        
+        (let ((type-spec (~> method :type-spec))) 
+            (declare-external slot-label type-spec)
+            )
         ;; Генерируем JP 0000. 
         ;; Эти 3 байта будут заменяться при переключении драйвера.
         (emit (list #xC3 #x00 #x00) 
@@ -357,65 +361,80 @@
 ;;; =====================================================================  
 
 
-(defun resolve-method-name (name)
-  (let ((val (if (defined? name) (eval name) #f)))
-    (if (type? 'function val)
-        val
-        ;; Если это не функция в Лиспе, значит это метка (адрес) в ассемблере
-        (module-label-addr-get name)
-        ;name
-        )))
+(defmacro ycall (target &rest args)
+  (let* ((lab-exit (local 'exit))
+         (func (if (symbol? target) (eval target) target))
+         (target-sig (cond
+                       ((function? func) (function-type func))
+                       ((type-spec? func) func)
+                       (else (error (fmt #f "Not callable: {}" target)))))
+         
+         ;; ВАЖНО: вычисляем каждый аргумент, чтобы получить типы
+         (resolved-args (map (lambda (arg) (eval arg)) args))
+         
+         ;; Создаем сигнатуру вызова
+         (call-sig (typespec (cons 'function resolved-args))))
+    
+    ;; Отладка
+    (fmt #t "ycall: target-sig={} call-sig={}\n" target-sig call-sig)
+    
+    ;; Проверка совместимости
+    (unless (types-match? target-sig call-sig :allow-abstract #t)
+      (error (fmt #f "Signature mismatch: expected {}, got {}" 
+                  target-sig call-sig)))
+    
+    ;; Генерация кода
+    `(zasm
+       ;; Адрес метода уже на стеке (от obj-method-address-push)
+       ;; Кладем адрес возврата
+       (.ld iy ',lab-exit)  ;; убрали quote - это метка, а не символ
+       (.push iy)
+       
+       ;; Переход к методу
+       (.ret)
+       
+       ;; Метка возврата
+       (.label ,lab-exit)
+       )))
 
-(defun resolve-method (name-or-function)
-  (cond
-    ((type? 'function name-or-function )
-      name-or-function)
-    ((symbol? name-or-function)
-      (resolve-method-name name-or-function))
-    (#t (asm-error (fmt #f "Expected label or function, got {}" name-or-function)))))
 
-(defmacro dcall (method-sym &rest declared-args)
-  (let* ((func (eval method-sym)))
-    (unless (type? 'function func)
-      (asm-error (fmt #f "Expected function got {}" func)))  
-    (let* ((spec-func (function-type func))     ;; (function int16 int16 none)
-           (actual-objects (map (lambda (arg) (eval arg)) declared-args))
-           (spec-args (typespec (cons 'function actual-objects )))         ;; (int16 int16 none)
-          )
 
-    ;; 1. Проверка сигнатуры (наша вчерашняя логика)
-    (unless (types-match? spec-func spec-args)
-      (error (fmt "DCall Args Mismatch для {}: ожидали {}, дали {}" 
-                  method-sym expected-args provided-args)))
+;; Единый макрос для вызова
+(defmacro dcall (target &rest args)
+  (let* ((func (if (symbol? target) (eval target) target))
+         (target-sig (cond
+                       ((function? func) (function-type func))
+                       ((type-spec? func) func)
+                       (else (error (fmt #f "Not callable: {}" target)))))
+         
+         ;; ВАЖНО: вычисляем каждый аргумент, чтобы получить типы
+         (resolved-args (map (lambda (arg) (eval arg)) args))
 
-    ;; 3. Генерация кода
-    `(zasm (.call ,(module-label-addr-get method-sym))))))
-
-(defmacro ycall (method-sym &rest declared-args)
-
-  (let* ((func (eval method-sym)))
-    (unless (type? 'function func)
-      (asm-error (fmt #f "Expected function got {}" func)))
-    (let* ((spec-func (function-type func))     ;; (function int16 int16 none)
-           (actual-objects (map (lambda (arg) (eval arg)) declared-args))
-           (spec-args (typespec (cons 'function actual-objects)))         ;; (int16 int16 none)         
-           (lab-exit (local 'exit)))
-      (fmt #t "DEBUG ycall {}\n" lab-exit)
-      ;; 1. Проверка сигнатуры (наша вчерашняя логика)
-      (unless (types-match? spec-func spec-args)
-        (error (fmt "DCall Args Mismatch для {}: ожидали {}, дали {}" 
-                    method-sym expected-args provided-args)))
-
-      `(zasm
-        ;; Адрес метода уже на стеке (от obj-method-address-push)
-        ;; Нам нужно положить адрес возврата ПОВЕРХ него
-        (.ld iy ',lab-exit)
-        (.push iy)   ; Стек: [RET_ADDR, METHOD_ADDR, ...]
-        
-        ;; Прыжок. Используем RET для перехода в метод, 
-        ;; сохранив ВСЕ регистры (HL, DE, BC, A)
-        (.ret)       
-        (.label ,lab-exit)))))
+         ;; Строим список аргументов для новой сигнатуры
+         (sig-args resolved-args) 
+         
+         ;; Создаем сигнатуру вызова
+         (call-sig (typespec (cons 'function sig-args))))
+    
+    ;; Отладка (можно убрать)
+    ;;(fmt #t "call: target-sig={} call-sig={}\n" target-sig call-sig)
+    
+    ;; Проверка совместимости
+    (unless (types-match? target-sig call-sig :allow-abstract #t)
+      (error (fmt #f "Signature mismatch: expected {}, got {}" 
+                  target-sig call-sig)))
+    
+    ;; Генерация кода
+    (cond
+      ;; Метка VTable (TypeSpec, но не функция)
+      ((and (type-spec? func) (not (type? 'function func)))
+       `(zasm (.call ,(module-label-addr-get target))))
+      
+      ;; Настоящая функция
+      ((function? func)
+       `(zasm (.call ,(module-label-addr-get target))))
+      
+      (else (error "Unexpected")))))
 
 ;;; =====================================================================
 ;;; Direct method call

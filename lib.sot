@@ -34,6 +34,11 @@
        (define ,name ,value)
        null))
 
+;; Определяет сигнатуру типа для системы типов
+;; использует динамическую версию метода
+(defmacro declare-extern (name type)
+  `(declare-external ',name ',type))
+
 ;; ===========================================================================
 ;; Предикаты
 ;; ===========================================================================
@@ -65,6 +70,9 @@
 (defmacro bool? (x)
   `(or (eq? #t ,x) (eq? #f ,x)))
 
+(defmacro function? (x)
+  `(type? 'function ,x))
+
 (defmacro native-obj? (x)
   `(type? 'native-obj ,x))
 
@@ -73,6 +81,12 @@
 
 (defmacro hash-table? (x)
   `(type? 'hash-table ,x))
+
+(defmacro type-type? (x)
+  `(type? 'type ,x))
+
+(defmacro type-spec? (x)
+  `(type? 'type-spec ,x))
 
 ;; Проверяет, является ли объект каноничным списком.
 ;; Список — это либо пустой список '(), либо пара (cons),

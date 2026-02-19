@@ -212,6 +212,7 @@
 (defproc test-call-method-adv ()
   (declare (once) (asm-func none))
   (rlet ((len int16 hl))
+    (zasm
     ;; 1. Загружаем адрес метода
     (.ld ix #x8000)
 
@@ -222,8 +223,8 @@
     ;; scall проверит, что в HL реально int16, а возврат — none
     (ycall vec3::len vec3 len)
     ;; вызоа напрямую в v-table
-    ;(dcall vec3-active::new int16 int16 _type_)
-    ))
+    (dcall vec3-active::new int16 int16 _type_)
+  )))
 
 ;;; ===================================================================== 
 ;;; Other Tests
