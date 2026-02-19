@@ -158,7 +158,8 @@ class Interpreter {
 
     // Обработка ошибок
     [[noreturn]] void throw_eval_error(const Object &o, const std::string &err);
-    void throw_arity_mismatch(const Object &form, uint expected, size_t got, const Arguments &args);
+    void throw_arity_mismatch(const Object &form, const Arguments &args, uint expected_min,
+                              uint expected_max, size_t got);
     void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
                              const std::vector<ObjectType> &expected, ObjectType got);
     void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
@@ -238,6 +239,8 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
     Object eval_macroexpand(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_env(const Object &form, Arguments &args,
+                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_defined_p(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lookup(const Object &form, Arguments &args,
@@ -555,8 +558,8 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_deftype_special(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_typespec_special(const Object &form, const Object &rest,
-                                 const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_deftypespec_special(const Object &form, const Object &rest,
+                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_typespec(const Object &form, Arguments &args,
                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_type(const Object &form, Arguments &args,
@@ -579,23 +582,21 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_typespec(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_type(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_current_function(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_match_p(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
 
     bool     init_types(const std::string &variant);
-    TypeSpec parse_typespec_internal(const Object &obj);
-    TypeSpec deduce_type(const Object &val);
+    TypeSpec parse_typespec_helper(const Object &obj);
+    TypeSpec deduct_type_for_constant_helper(const Object &val);
 
     Object eval_source_info(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_get_context(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_step(const Object &form, Arguments &args,
-                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_deref_special(const Object &form, const Object &rest,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_deref(const Object &form, Arguments &args,
