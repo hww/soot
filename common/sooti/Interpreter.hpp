@@ -289,10 +289,6 @@ class Interpreter {
     Object eval_keyword_p(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
 
-    // Предикат дефиниции
-    Object eval_bound_p(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-
     // Сравнение
     Object eval_equals(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -443,8 +439,8 @@ class Interpreter {
     // Система
     Object eval_system(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_get_env(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_get_sys_env(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_exit(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_get_path(const Object &form, Arguments &args,
@@ -534,10 +530,6 @@ class Interpreter {
                     const std::shared_ptr<EnvironmentObject> &env);
     Object eval_atan(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
-
-    // Константы
-    Object eval_pi(const Object &form, Arguments &args,
-                   const std::shared_ptr<EnvironmentObject> &env);
 
     // Время
     Object eval_time_seconds(const Object &form, Arguments &args,

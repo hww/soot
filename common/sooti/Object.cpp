@@ -47,6 +47,8 @@ std::string object_type_to_string(ObjectType type) {
         return "hash-table";
     case ObjectType::READER:
         return "reader";
+    case ObjectType::WRITER:
+        return "writer";
     case ObjectType::POINTER:
         return "pointer";
     case ObjectType::NATIVE_OBJECT:
@@ -55,6 +57,8 @@ std::string object_type_to_string(ObjectType type) {
         return "primitive";
     case ObjectType::SPECIAL_FORM:
         return "specialform";
+    case ObjectType::MAX_TYPES:
+        return "max-types";
     default:
         throw std::runtime_error(
             fmt::format("unknown object type {} in object_type_to_string", (int)type));

@@ -23,24 +23,38 @@ using FloatType = double;
 using IntType = int64_t;
 
 enum class ObjectType : uint8_t {
-    NONE,
-    EMPTY_LIST,
-    PRIMITIVE,
-    SPECIAL_FORM,
-    PAIR,
-    ARRAY,
-    HASH_TABLE,
+    NONE,       // Was INVALID
+    EMPTY_LIST, // Means NULL
+
+    // fixed
     INT,
     FLOAT,
     CHAR,
     SYMBOL,
+
+    // allocated
     STRING,
-    FUNCTION,
+    PAIR,
+    ARRAY,
+
+    // callable
+    FUNCTION, // Was LAMBDA
     MACRO,
+    PRIMITIVE,
+    SPECIAL_FORM,
+
+    // containers
     ENVIRONMENT,
-    READER,
+    HASH_TABLE,
+
+    // pointer to memory
     POINTER,
+    //
     NATIVE_OBJECT,
+
+    // IO
+    READER,
+    WRITER,
     MAX_TYPES
 };
 
