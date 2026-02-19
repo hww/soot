@@ -16,8 +16,7 @@ common/util/FileUtil.cpp
 common/util/PrintFloat.cpp
 common/util/Diff.cpp  
 common/util/math/Geometry.cpp  
-common/util/Compress.cpp  
 )
 
 # Линкуем fmt если нужно
-target_link_libraries(libsootutils PRIVATE fmt::fmt zstd)
+target_link_libraries(libsootutils PRIVATE fmt::fmt)

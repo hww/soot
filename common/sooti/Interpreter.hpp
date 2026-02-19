@@ -3,7 +3,7 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
 #include "common/type_system/TypeSpec.hpp"
-#include "common/util/global_profiler/GlobalProfiler.hpp"
+#include "common/util/SimpleProfiler.hpp"
 #include "fmt/color.h"
 #include "fmt/format.h"
 #include <functional>
@@ -20,7 +20,7 @@ class Interpreter {
     Interpreter(const std::string &username = "user", bool load_libs = false);
 
     void Terminate() {
-        m_profiler.dump_to_json();
+        m_profiler.dump("profiler_dump.json");
     }
 
     struct BuiltinEntryConfig {
@@ -684,7 +684,7 @@ class Interpreter {
     Reader                                          m_reader;
     SymbolTable                                     m_symbol_table;
     std::vector<std::shared_ptr<EnvironmentObject>> m_dynamic_stack;
-    GlobalProfiler                                  m_profiler;
+    SimpleProfiler                                  m_profiler;
 };
 
 fmt::terminal_color string_to_color(const std::string &name);
