@@ -67,6 +67,10 @@
 
 ;; Основная логика валидации регистров
 (defun validate-reg-for-type (reg tspec arg-idx)
+  (check-args #t
+    (reg symbol?)
+    (tspec type-spec?)
+    (arg-idx integer?))
   (let ((size (get-type-size tspec))
         (reg-name (symbol->string reg)))
     (cond
