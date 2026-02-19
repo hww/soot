@@ -224,6 +224,8 @@
     (ycall vec3::len vec3 len)
     ;; вызоа напрямую в v-table
     (dcall vec3-active::new int16 int16 _type_)
+    ;; вызов метода не в таблице
+    (dcall test-call-method-adv none)
   )))
 
 ;;; ===================================================================== 
