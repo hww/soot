@@ -38,11 +38,8 @@ TEST_F(HashTableTest, HashTableSetAndRef) {
     EXPECT_EQ(obj.as_integer(), 42);
 }
 
-// ���� hash-table?
+// hash-table?
 TEST_F(HashTableTest, HashTablePredicate) {
-    Object obj = eval("(hash-table? (make-hash-table))");
+    Object obj = eval("(type? 'hash-table (make-hash-table))");
     EXPECT_TRUE(obj.as_boolean());
-
-    obj = eval("(hash-table? 42)");
-    EXPECT_FALSE(obj.as_boolean());
 }

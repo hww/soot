@@ -338,9 +338,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
     // Type system
     init_types("default");
-    m_profiler.update_event_buffer_size(100000);
-    m_profiler.set_enable(true);
-    m_profiler.root_event();
 
     // load the standard library
     if (load_libs)
@@ -1076,9 +1073,9 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         Arguments args = get_args(obj, rest, builtin->specs);
         // Примитивы всегда требуют вычисленных аргументов
         eval_args(obj, &args, env);
-        m_profiler.begin_event(eval_head.print().c_str());
+        m_profiler.begin(eval_head.print().c_str());
         auto result = ((*this).*(builtin->method))(obj, args, env);
-        m_profiler.end_event();
+        m_profiler.end();
         return result;
     }
 
@@ -1097,9 +1094,9 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
         // ШАГ 1: Запускаем программу-макрос, чтобы она создала (выпекла) код.
         Object expansion = eval_list_return_last(macro->body, macro->body, mac_env);
         // ШАГ 2: Выполняем то, что макрос нам вернул, в исходном окружении.
-        m_profiler.begin_event(eval_head.print().c_str());
+        m_profiler.begin(eval_head.print().c_str());
         auto result = eval_with_rewind(expansion, env);
-        m_profiler.end_event();
+        m_profiler.end();
         return result;
     }
 
@@ -2718,6 +2715,9 @@ Object Interpreter::num_plus(const Object &form, Arguments &args,
 Object Interpreter::eval_plus(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env) {
     if (!args.named.empty() || args.unnamed.empty()) {
+        // DYNAMIC
+        return Object::make_integer(0);
+        // PURITAN
         throw_eval_error(form, "+ must receive at least one unnamed argument!");
     }
 
@@ -2755,6 +2755,9 @@ Object Interpreter::num_times(const Object &form, Arguments &args,
 Object Interpreter::eval_times(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     if (!args.named.empty() || args.unnamed.empty()) {
+        // DYNAMIC
+        return Object::make_integer(1);
+        // PURITAN
         throw_eval_error(form, "* must receive at least one unnamed argument!");
     }
 
@@ -2797,6 +2800,9 @@ Object Interpreter::num_minus(const Object &form, Arguments &args,
 Object Interpreter::eval_minus(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     if (!args.named.empty() || args.unnamed.empty()) {
+        // DYNAMIC
+        return Object::make_integer(0);
+        // PURITAN
         throw_eval_error(form, "- must receive at least one unnamed argument!");
     }
 

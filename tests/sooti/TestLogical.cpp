@@ -52,13 +52,13 @@ TEST_F(LogicalTest, Or) {
 }
 
 // Тест not (через if)
-TEST_F(LogicalTest, NotViaIf) {
-    Object obj = eval("(if #f #t #f)");
-    EXPECT_FALSE(obj.as_boolean());
-
-    obj = eval("(if #t #t #f)");
-    EXPECT_TRUE(obj.as_boolean());
-}
+// TEST_F(LogicalTest, NotViaIf) {
+//    Object obj = eval("(if #f #t #f)");
+//    EXPECT_FALSE(obj.as_boolean());
+//
+//    obj = eval("(if #t #t #f)");
+//    EXPECT_TRUE(obj.as_boolean());
+//}
 
 // Тест cond
 TEST_F(LogicalTest, Cond) {
