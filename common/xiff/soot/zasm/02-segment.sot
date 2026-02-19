@@ -184,7 +184,7 @@
        (set! mod (make-module :name ',name 
                               :segments (make-hash-table)))
        (sethash ',name *modules* mod))
-      (fmt #t "DEBUG: defmodule {}\n" ',name)
+      ;(fmt #t "DEBUG: defmodule {}\n" ',name)
      mod))
 
 (defun get-module (name)

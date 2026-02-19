@@ -37,13 +37,13 @@ std::vector<uint8_t> read_binary(const fs::path &path) {
     return buffer;
 }
 
-void write_binary(const fs::path &path, const std::vector<uint8_t> &data) {
+void write_binary(const fs::path &path, const std::vector<uint8_t> &data, size_t size) {
     create_dirs_for_file(path);
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot create file: " + path.string());
     }
-    file.write(reinterpret_cast<const char *>(data.data()), data.size());
+    file.write(reinterpret_cast<const char *>(data.data()), size);
 }
 
 // ==================== РАБОТА С ПУТЯМИ ====================

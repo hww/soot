@@ -105,7 +105,7 @@
 
 (defun register-handler (cmd sig fn)
   (let ((key (make-sig-key cmd sig)))
-    (fmt #t "Register handler: {}\n" key)
+    ;(fmt #t "DEBUG Register handler: {}\n" key)
     (hash-table-set! *asm-handlers* key fn)))
 
 (defun find-handler! (cmd sig)
@@ -362,7 +362,7 @@
 ;; LD (IX+d), n  -> #xDD #x36 dist n
 (register-handler '.ld "ix-indexed-number"
   (lambda (off val)
-    (fmt #t "DEBUG: val is {} type is {}\n" val (type-of val))
+    ;(fmt #t "DEBUG: val is {} type is {}\n" val (type-of val))
     (emit (list #xDD #x36 off val) 
           :listing (fmt #f "LD (IX+{}), ${:02X}" off val))))
 
@@ -725,7 +725,7 @@
   (let ((mod (gethash mod-name *modules*)))
     (if (not (null? mod))
         (module-dump-listing mod)
-        (fmt #t "Error: Module '{}' not found in *modules*\n" mod-name))))
+        (error (fmt #f "Error: Module '{}' not found in *modules*\n" mod-name)))))
 
 ;;; =====================================================================
 ;;; Top Level Functions

@@ -142,7 +142,6 @@
                      (define-method ',this-type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
         (define ,label-sym impl :env *global-env*)
-        (fmt #t "!!!! {}\n!!!" ',label-sym )
         ;; Сохраняем в реестр вместо немедленной регистрации
         (add-function ',this-type ',name ',label-sym impl)
         )))
@@ -376,7 +375,7 @@
          (call-sig (typespec (cons 'function resolved-args))))
     
     ;; Отладка
-    (fmt #t "ycall: target-sig={} call-sig={}\n" target-sig call-sig)
+    ;(fmt #t "ycall: target-sig={} call-sig={}\n" target-sig call-sig)
     
     ;; Проверка совместимости
     (unless (types-match? target-sig call-sig :allow-abstract #t)
