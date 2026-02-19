@@ -25,6 +25,7 @@ ReplWrapper::ReplWrapper(const std::string &username)
 }
 
 ReplWrapper::~ReplWrapper() {
+    interpreter_.Terminate();
     stop_network_server();
 }
 

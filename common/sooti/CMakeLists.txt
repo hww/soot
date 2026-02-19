@@ -14,6 +14,8 @@ add_library(libsoticore
 )
 # 3. Высокоуровневый интерпретатор и мост к типам
 add_library(libsoti
+    common/util/global_profiler/GlobalProfiler.cpp
+    common/util/Compress.cpp
     common/sooti/Interpreter.cpp
     common/sooti/static_buffer/TypePointer.cpp
     common/sooti/static_buffer/StaticBuffer.cpp
@@ -21,13 +23,14 @@ add_library(libsoti
     common/sooti/static_buffer/StaticBufferBlitter.cpp
     common/sooti/static_buffer/StaticBufferReader.cpp
     common/sooti/static_buffer/StaticBufferWriter.cpp
+    common/sooti/static_buffer/StaticBufferWriter.cpp
 )
 
 target_link_libraries(libsoticore PRIVATE fmt::fmt libsootutils)
 
 # Линкуем исполняемый файл
 add_executable(sooti common/sooti/SOOTiMain.cpp)
-target_link_libraries(sooti PRIVATE libsoti libtypesys libsoticore fmt::fmt  libsootutils)
+target_link_libraries(sooti PRIVATE libsoti libtypesys libsoticore fmt::fmt  libsootutils zstd)
 
 set_target_properties(sooti PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(sooti PROPERTIES 

@@ -60,6 +60,17 @@ else()
     endif()
 endif()
 
+function(build_third_party_lib dir_name target_name)
+    add_subdirectory(third_party/${dir_name} EXCLUDE_FROM_ALL)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        # For Microsoft Visual C++ Compiler (MSVC)
+        target_compile_options(${target_name} PRIVATE /w)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # For GNU Compiler Collection (GCC) or Clang
+        target_compile_options(${target_name} PRIVATE -w)
+    endif()
+endfunction()
+
 # --- Build options -------------------------------------------
 # Флаг для сборки тестов (по умолчанию выключен)
 option(BUILD_TESTS "Build tests" ON)
@@ -80,6 +91,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(common)
 include_directories(common/cross_sockets)
 include_directories(third_party/fmt/include)
+
+# build libco and zstd
+build_third_party_lib(libco libco)
+build_third_party_lib(zstd libzstd_static)
 
 # build format library
 include_directories(third_party/fmt/include)

@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 // ==================== ОСНОВНЫЕ УТИЛИТЫ ====================
 std::string          read_text(const fs::path &path);
 void                 write_text(const fs::path &path, const std::string &content);
-std::vector<uint8_t> read_binary(const fs::path &path);
+std::vector<uint8_t> read_binary(const fs::path &path, size_t size);
 void                 write_binary(const fs::path &path, const std::vector<uint8_t> &data);
 
 // ==================== РАБОТА С ПУТЯМИ ====================

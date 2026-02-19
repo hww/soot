@@ -3,12 +3,12 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
 #include "common/type_system/TypeSpec.hpp"
+#include "common/util/global_profiler/GlobalProfiler.hpp"
 #include "fmt/color.h"
 #include "fmt/format.h"
 #include <functional>
 #include <memory>
 #include <unordered_map>
-
 class TypeSystem;
 
 namespace script {
@@ -18,6 +18,10 @@ class Interpreter {
 
   public:
     Interpreter(const std::string &username = "user", bool load_libs = false);
+
+    void Terminate() {
+        m_profiler.dump_to_json();
+    }
 
     struct BuiltinEntryConfig {
         std::string       name;
@@ -680,6 +684,7 @@ class Interpreter {
     Reader                                          m_reader;
     SymbolTable                                     m_symbol_table;
     std::vector<std::shared_ptr<EnvironmentObject>> m_dynamic_stack;
+    GlobalProfiler                                  m_profiler;
 };
 
 fmt::terminal_color string_to_color(const std::string &name);
