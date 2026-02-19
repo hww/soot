@@ -118,6 +118,8 @@
 
 (defun module-label-addr-get (label)
   "На 1-м проходе возвращает 0 для неизвестных меток, на 2-м — кидает ошибку."
+  (check-args #t
+    (label symbol?))
   (let ((lab (module-label-get label)))
     (cond
       ((not (null? lab)) (-> lab :address))

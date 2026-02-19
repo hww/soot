@@ -73,6 +73,9 @@
 (defmacro function? (x)
   `(type? 'function ,x))
 
+(defmacro macro? (x)
+  `(type? 'macro ,x))
+
 (defmacro native-obj? (x)
   `(type? 'native-obj ,x))
 
@@ -341,6 +344,10 @@
             ; Рекурсивно переходим к хвостам (cdr) всех трех списков.
             (mapcar3 func (cdr lst1) (cdr lst2) (cdr lst3)))))
 
+(defun any (pred lst)
+  (cond ((null? lst) #f)
+        ((pred (car lst)) #t)
+        (else (any pred (cdr lst)))))
 
 ;; ===========================================================================
 ;; GENSYM

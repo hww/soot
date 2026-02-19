@@ -188,6 +188,8 @@
 ;;; =====================================================================
 
 (defun parse-arg (arg)
+  (check-args #t
+    (arg (or symbol? number? list? native-obj?)))
   (cond
     ((asm-token? arg) arg)
     ((number? arg) (make-asm-token 'number arg))
@@ -247,26 +249,35 @@
 
 (defun match-rule? (val rule)
   (cond
-    ;; 1. Если правило — предикат (symbol?, number?, процедура)
-    ((procedure? rule) (rule val))
+    ;; 0. Если правило — символ, пробуем получить функцию по имени
+    ((symbol? rule)
+     (let ((pred (eval rule)))
+       (cond
+         ((function? pred) (pred val))        ; обычная функция
+         ((macro? pred)    (pred val))        ; макрос (на всякий случай)
+         (else (error (fmt #f "Not a callable predicate: {}" rule))))))
     
-    ;; 2. Специальные типы Z80 (Ключевые слова)
+    ;; 1. Если правило — функция (lambda)
+    ((function? rule) (rule val))
+    
+    ;; 2. Специальные типы Z80
     ((eq? rule :u8)    (and (number? val) (between val 0 255)))
     ((eq? rule :u16)   (and (number? val) (between val 0 65535)))
     ((eq? rule :i8)    (and (number? val) (between val -128 127)))
-    ((eq? rule :i16)   (and (number? val) (between val -3276 32767)))
+    ((eq? rule :i16)   (and (number? val) (between val -32768 32767)))
     ((eq? rule :reg8)  (is-8bit-reg? val))
+    ((eq? rule :reg16) (is-16bit-reg? val))
     ((eq? rule :any)   #t)
     
     ;; 3. Логика OR: (or :u8 symbol?)
     ((and (list? rule) (eq? (car rule) 'or))
      (any (lambda (r) (match-rule? val r)) (cdr rule)))
 
-    ;; 4. Проверка списков (самое интересное)
+    ;; 4. Проверка списков (паттерны)
     ((list? rule)
      (and (list? val) (match-list-pattern? val rule)))
 
-    ;; 5. Прямое совпадение (для конкретных символов или чисел)
+    ;; 5. Прямое совпадение (для констант)
     (else (equal? val rule))))
 
 (defun match-list-pattern? (vals rules)
@@ -321,7 +332,7 @@
        ,@(map (lambda (clause)
                 (let ((var-name (car clause))
                       (rule (cadr clause)))
-                  `(if (not (match-rule? ,var-name ',rule))
+                  `(when (not (match-rule? ,var-name ',rule))
                        (let ((message (fmt #f 
 "Contract violation!
   Argument:  '{}'

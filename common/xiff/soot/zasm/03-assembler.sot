@@ -4,6 +4,10 @@
 
 (defun emit (data &key (listing "") (prefix "    ")) 
   "Принимает байт или список байтов. Если передан :listing, сохраняет строку в листинг."
+  (check-args #t
+    (data (or number? list?))
+    (listing (or string? null?))
+    (prefix string?))
   (let ((seg *current-segment*)
         (bytes (if (list? data) data (list data))))
     (unless seg
@@ -109,6 +113,9 @@
     (hash-table-set! *asm-handlers* key fn)))
 
 (defun find-handler! (cmd sig)
+  (check-args #t
+    (cmd symbol?)
+    (sig list?))
   (let* ((key (make-sig-key cmd sig))
          (h   (hash-table-ref *asm-handlers* key #f)))
     (or h 
