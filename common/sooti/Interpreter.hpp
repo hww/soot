@@ -169,7 +169,7 @@ class Interpreter {
     void throw_unexpected_named_arg(const Object &form, const Arguments &args,
                                     const std::string &name);
     void throw_named_type_mismatch(const Object &form, const std::vector<ObjectType> &expected,
-                                   const std::string &name, ObjectType got);
+                                   const std::string &name, const Object &got);
     void expect_env(const Object &form, const Object &o);
 
     void   render_complex_error(EvalException &e);
@@ -245,6 +245,8 @@ class Interpreter {
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lookup(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_lookup_type(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
 
@@ -568,8 +570,8 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declare_special(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_extern(const Object &form, const Object &rest,
-                               const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_declare_external(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_declarations(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_define_method(const Object &form, Arguments &args,
