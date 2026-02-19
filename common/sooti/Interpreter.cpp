@@ -82,9 +82,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Define new constrant
         {"define-constant", &Interpreter::eval_define_constant, nullptr},
         // Parse type object
-        {"typespec", &Interpreter::eval_typespec_special, nullptr},
-        {"defenum", &Interpreter::eval_defenum_special, nullptr},
         {"deftype", &Interpreter::eval_deftype_special, nullptr},
+        {"defenum", &Interpreter::eval_defenum_special, nullptr},
+        {"deftypespec", &Interpreter::eval_deftypespec_special, nullptr},
         // Dereference
         {"->", &Interpreter::eval_deref_special, nullptr},
         // Exception handling
@@ -99,6 +99,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"begin", &Interpreter::eval_begin, nullptr},
 
         // Работа с окружением
+        {"env", &Interpreter::eval_env, nullptr},
         {"defined?", &Interpreter::eval_defined_p, nullptr},
         {"lookup", &Interpreter::eval_lookup, nullptr},
         {"current-function", &Interpreter::eval_current_function, nullptr},
@@ -284,30 +285,41 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"defsetf", &Interpreter::eval_defsetf, nullptr},
         {"get-setter", &Interpreter::eval_get_setter, nullptr},
 
-        // Работа с указателем
-        {"step", &Interpreter::eval_step, nullptr},
+        // Low-level pointer operations
         {"&", &Interpreter::eval_addr_of, nullptr},
         {"&+", &Interpreter::eval_addr_plus, nullptr},
-        {"mem-get", &Interpreter::eval_mem_get, nullptr},
+
+        // Memory access
+        {"mem-ref", &Interpreter::eval_mem_get, nullptr},
         {"mem-set!", &Interpreter::eval_mem_set, nullptr},
 
-        // Система типов
+        // Type system
         {"init-types", &Interpreter::eval_init_types, nullptr},
+
+        // Type system -- Type navigation
         {"~>", &Interpreter::eval_deref, nullptr},
-        {"typespec~>", &Interpreter::eval_typespec, nullptr},
+        {"typespec", &Interpreter::eval_typespec, nullptr},
+
+        // Type system
         {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
-        {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
         {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
-        {"function-typespec", &Interpreter::eval_function_typespec, &args_with_varkeys},
+        {"function-type", &Interpreter::eval_function_type, &args_with_varkeys},
         {"types-match?", &Interpreter::eval_types_match_p, &args_with_varkeys},
         {"declare-type", &Interpreter::eval_declare_type, nullptr},
-        {"reg-alias", &Interpreter::eval_reg_alias, nullptr},
-        {"the", &Interpreter::eval_the, nullptr},
-        {"the-as", &Interpreter::eval_the_as, nullptr},
-        {"offset-of", &Interpreter::eval_offset_of, nullptr},
-        {"size-of", &Interpreter::eval_size_of, nullptr},
+
+        // Methods and types
+        {"define-method", &Interpreter::eval_define_method, &args_with_varkeys},
         {"method-id-of", &Interpreter::eval_method_id_of, nullptr},
         {"method-of", &Interpreter::eval_method_of, nullptr},
+        {"offset-of", &Interpreter::eval_offset_of, nullptr},
+        {"size-of", &Interpreter::eval_size_of, nullptr},
+
+        // Register aliases
+        {"reg", &Interpreter::eval_reg_alias, nullptr},
+
+        // Type casting
+        {"the", &Interpreter::eval_the, nullptr},
+        {"the-as", &Interpreter::eval_the_as, nullptr},
 
         // Static Buffer
         {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
@@ -545,10 +557,17 @@ void Interpreter::throw_eval_error(const Object &o, const std::string &err) {
     throw EvalException(o, err);
 }
 
-void Interpreter::throw_arity_mismatch(const Object &form, uint expected, size_t got,
-                                       const Arguments &args) {
-    throw_eval_error(form, fmt::format("Arity mismatch: expected {} arguments, but got {} in: {}",
-                                       expected, got, args.print_full()));
+void Interpreter::throw_arity_mismatch(const Object &form, const Arguments &args, uint expected_min,
+                                       uint expected_max, size_t got) {
+    if (expected_min == expected_max) {
+        throw_eval_error(form,
+                         fmt::format("Arity mismatch: expected {} arguments, but got {} in: {}",
+                                     expected_min, got, args.print_full()));
+    } else {
+        throw_eval_error(form,
+                         fmt::format("Arity mismatch: expected {}-{} arguments, but got {} in: {}",
+                                     expected_min, expected_max, got, args.print_full()));
+    }
 }
 
 void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
@@ -755,6 +774,7 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
 // ============================================================
 // Eval With Rewind (Main Recursion)
 // ============================================================
+
 std::string truncate_obj(std::string str, size_t max_len) {
     // 1. Если строка слишком длинная — обрезаем и ставим "..."
     if (str.length() > max_len) {
@@ -1100,6 +1120,19 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
     return m_obj_null; // unreachable
 }
 
+// ============================================================
+// The environment access
+// ============================================================
+
+/*!
+ * Get current environment
+ */
+Object Interpreter::eval_env(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {}, {});
+    return Object::make_heap_obj(env, ObjectType::ENVIRONMENT); // Твой #f / NIL
+}
+
 /*!
  * Check if symbol is defined
  */
@@ -1157,6 +1190,40 @@ Object Interpreter::eval_lookup(const Object &form, Arguments &args,
     return get_none();
 }
 
+Object Interpreter::eval_current_function(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+
+    auto                               desc = args.unnamed[0].as_symbol();
+    std::shared_ptr<EnvironmentObject> func_env;
+    if (desc == "function") {
+        // Find any function
+        func_env = env->get_function_env();
+        if (!func_env.get()) {
+            throw_eval_error(form, "Environment does not have a function");
+        }
+    } else if (desc == "asm") {
+        // Find any function
+        func_env = env->get_asm_function_env();
+        if (!func_env.get()) {
+            throw_eval_error(form, "Environment does not have any asm-function");
+        }
+    }
+    if (func_env->owner_function.is_none())
+        throw_eval_error(form, "Environment does not have owner function");
+
+    return func_env->owner_function;
+}
+
+// ============================================================
+// The environment modifiers
+// ============================================================
+
+/*!
+ * Define object
+ */
 Object Interpreter::eval_define_special(const Object &form, const Object &rest,
                                         const std::shared_ptr<EnvironmentObject> &env) {
 
@@ -1183,6 +1250,65 @@ Object Interpreter::eval_define_special(const Object &form, const Object &rest,
     return value;
 }
 
+/*!
+ * Define constant
+ */
+Object Interpreter::eval_define_constant(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    auto args = rest.to_vector();
+    auto sym = args[0].as_symbol();
+    auto value = args[1]; // В SOOT это может быть результат eval
+
+    // Проверка: нельзя объявлять константу, если уже есть переменная с таким именем
+    if (m_symbol_types.lookup(sym)) {
+        throw_eval_error(form, "Cannot define constant: symbol already has a type definition");
+    }
+
+    // Определяем тип константы автоматически
+    // Например, если это число < 256, тип может быть uint8 и т.д.
+    TypeSpec ts = deduct_type_for_constant_helper(value);
+
+    m_global_constants.set(sym, value);
+    // Оборачиваем TypeSpec в shared_ptr для таблицы типов
+    m_symbol_types.set(sym, std::make_shared<TypeSpec>(ts));
+
+    return get_none();
+}
+
+/*!
+ * Convert the lisp object to the type systems type
+ */
+TypeSpec Interpreter::deduct_type_for_constant_helper(const Object &val) {
+    if (val.is_integer()) {
+        int64_t v = val.as_integer();
+
+        // Маленькое положительное число -> uint8
+        if (v >= 0 && v <= 255) {
+            return TypeSystem::instance().make_typespec("uint8");
+        }
+        // Маленькое отрицательное число -> int8
+        if (v >= -128 && v < 0) {
+            return TypeSystem::instance().make_typespec("int8");
+        }
+        // Всё остальное, что влезает в 16 бит
+        return TypeSystem::instance().make_typespec("int16");
+    }
+
+    if (val.is_string()) {
+        return TypeSystem::instance().make_typespec("string");
+    }
+
+    if (val.is_symbol()) {
+        return TypeSystem::instance().make_typespec("symbol");
+    }
+
+    // По умолчанию, если не знаем что это
+    return TypeSystem::instance().make_typespec("object");
+}
+
+/*!
+ * Set object
+ */
 Object Interpreter::eval_set_special(const Object &form, const Object &rest,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     auto args = get_args(form, rest, ArgumentSpec(true, false));
@@ -2238,7 +2364,7 @@ void Interpreter::vararg_check(
     // 1. Проверка unnamed аргументов
     if (!unnamed.empty()) {
         if (args.unnamed.size() != unnamed.size()) {
-            throw_arity_mismatch(form, unnamed.size(), args.unnamed.size(), args);
+            throw_arity_mismatch(form, args, unnamed.size(), unnamed.size(), args.unnamed.size());
         }
 
         for (size_t i = 0; i < unnamed.size(); ++i) {
@@ -3298,6 +3424,70 @@ Object Interpreter::eval_append(const Object &form, Arguments &args,
 }
 
 // ============================================================
+// Поиск в списках
+// ============================================================
+
+/*!
+ * Search field by name (getf 'foo '(:a 1 :b 2 :foo 3))
+ */
+Object Interpreter::eval_getf(const Object &form, Arguments &args,
+                              const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Используем ANY для первого аргумента, так как null (пустой список) — это тоже list
+    vararg_check(form, args, {{ObjectType::PAIR, ObjectType::EMPTY_LIST}, {}}, {});
+
+    Object current = args.unnamed[0];
+    Object key = args.unnamed[1];
+
+    while (!current.is_null() && current.is_list()) {
+        auto pair_ptr = current.as_pair();
+        if (pair_ptr->car == key) {
+            Object rest = pair_ptr->cdr;
+            if (rest.is_list() && !rest.is_null()) {
+                return rest.as_pair()->car;
+            }
+            return get_null();
+        }
+
+        // Прыгаем на два элемента вперед: (cddr current)
+        Object next = pair_ptr->cdr;
+        if (next.is_list() && !next.is_null()) {
+            current = next.as_pair()->cdr;
+        } else {
+            break;
+        }
+    }
+    return get_null();
+}
+
+/*!
+ * Search field by name (getf 'foo '((:a . 1) (:b . 2) (:foo . 3)))
+ */
+Object Interpreter::eval_assoc(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // key может быть чем угодно, а список может быть пустым
+    vararg_check(form, args, {{}, {ObjectType::PAIR, ObjectType::EMPTY_LIST}}, {});
+
+    Object key = args.unnamed[0];
+    Object current_list = args.unnamed[1];
+
+    while (!current_list.is_null() && current_list.is_list()) {
+        Object item = current_list.as_pair()->car;
+
+        // В alist каждый элемент — это пара (key . value)
+        if (item.is_pair()) {
+            if (item.as_pair()->car == key) {
+                return item; // Возвращаем всю пару
+            }
+        }
+
+        current_list = current_list.as_pair()->cdr;
+    }
+    return get_null();
+}
+
+// ============================================================
 // Предикаты типов с проверками
 // ============================================================
 
@@ -3646,6 +3836,13 @@ Object Interpreter::eval_string_trim_indents(const Object &form, Arguments &args
     // Проверяем аргументы: 1. Список (Pair) 2. Разделитель (String)
     vararg_check(form, args, {{ObjectType::STRING}}, {});
     return Object::make_string(str_util::trim_newline_indents(args.unnamed[0].as_string()->data));
+}
+Object Interpreter::eval_crc32(const Object &form, Arguments &args,
+                               const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{}}, {});
+
+    return Object::make_integer(args.unnamed[0].as_crc32());
 }
 
 // ============================================================
@@ -4509,6 +4706,128 @@ Object Interpreter::eval_time_nanoseconds(const Object &form, Arguments &args,
 }
 
 // ============================================================
+// Итераторы
+// ============================================================
+
+/*
+ * Iterate over each character
+ */
+Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::FUNCTION}}, {});
+
+    const std::string &str = args.unnamed[0].as_string()->data;
+    Object             lambda = args.unnamed[1];
+
+    for (unsigned char c : str) {
+        // Передаем код символа как Integer
+        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))}, env);
+    }
+    return get_null();
+}
+
+/*
+ * Iterate over each aray item
+ */
+Object Interpreter::eval_array_for_each(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Проверяем типы: первый аргумент — массив (вектор), второй — лямбда
+    vararg_check(form, args, {{ObjectType::ARRAY}, {ObjectType::FUNCTION}}, {});
+
+    const auto &vec = args.unnamed[0].as_array()->data;
+    Object      lambda = args.unnamed[1];
+
+    for (const auto &item : vec) {
+        // Вызываем лямбду для каждого элемента вектора
+        call_lambda_internal(form, lambda, {item}, env);
+    }
+
+    return get_null();
+}
+/*!
+ * @brief Специальная форма для обхода хеш-таблицы с лямбдой.
+ * @param form Специальная форма "for-each".
+ * @param args Аргументы к форме:
+ *     - 1-й аргумент: хеш-таблица
+ *     - 2-й аргумент: лямбда, которая будет вызвана для каждого элемента хеш-таблицы
+ * @return undefined
+ */
+Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::HASH_TABLE}, {ObjectType::FUNCTION}}, {});
+
+    auto       &table = args.unnamed[0].as_hash_table()->data;
+    Object      lambda = args.unnamed[1];
+    const auto &lam_data = lambda.as_function();
+
+    for (auto const &[key, val] : table) {
+        if (lam_data->args.unnamed.size() == 1) {
+            // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
+            call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)},
+                                 env);
+        } else {
+            // Если ждет 2 (или больше/rest), передаем как два аргумента
+            call_lambda_internal(form, lambda, {Object::make_string(key), val}, env);
+        }
+    }
+    return get_null();
+}
+
+/*
+ * Iterate over each list item
+ */
+Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
+
+    Object current = args.unnamed[0];
+    Object lambda = args.unnamed[1];
+
+    while (current.is_pair()) {
+        // Вызываем твой надежный call_lambda_internal
+        call_lambda_internal(form, lambda, {current.as_pair()->car}, env);
+        // print_form_info(form);
+        current = current.as_pair()->cdr;
+    }
+
+    return get_null();
+}
+
+/*
+ * Iterate over each list pair
+ */
+Object Interpreter::eval_list_for_each_pair(const Object &form, Arguments &args,
+                                            const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
+
+    Object current = args.unnamed[0];
+    Object lambda = args.unnamed[1];
+
+    while (current.is_pair()) {
+        Object key = current.as_pair()->car;
+        current = current.as_pair()->cdr;
+
+        if (!current.is_pair()) {
+            throw_eval_error(
+                form, "eval-list-for-pair: expected even number of elements for key-value mapping");
+        }
+
+        Object value = current.as_pair()->car;
+
+        // Вызываем лямбду с двумя аргументами: (key, value)
+        call_lambda_internal(form, lambda, {key, value}, env);
+
+        current = current.as_pair()->cdr;
+    }
+
+    return get_null();
+}
+
+// ============================================================
 // Macro Character
 // ============================================================
 
@@ -4878,24 +5197,177 @@ Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
 }
 
 // ============================================================
+// Register Alias
+// ============================================================
+
+/*!
+ * Make register alias, a container used inside rlet form
+ */
+Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args,
+                 {{ObjectType::SYMBOL}, {ObjectType::NATIVE_OBJECT, ObjectType::SYMBOL}},
+                 {{"reg", {false, {ObjectType::SYMBOL}}}});
+
+    auto alias = std::make_shared<Register>();
+    alias->name = args.unnamed[0];
+
+    // 1. Определяем имя типа
+    auto second = args.unnamed[1];
+    if (second.is_symbol())
+        alias->type_name = second;
+    else if (second.is_native_obj<Type>())
+        alias->type_name =
+            Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
+
+    // 2. Привязываем регистр
+    if (args.has_named("reg"))
+        alias->reg = args.named["reg"];
+
+    // 3. ИНИЦИАЛИЗАЦИЯ ПАРАМЕТРОВ
+    auto type = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
+    if (type) {
+        alias->offset = 0;     // Всегда 0 для корня!
+        alias->bit_offset = 0; // Всегда 0 для корня!
+        alias->bit_size = type->get_size_in_memory() * 8;
+    } else {
+        // Фоллбек, если тип не найден (например, для простых символов)
+        alias->offset = 0;
+        alias->bit_size = 0;
+    }
+
+    return Object::make_heap_obj(alias);
+}
+
+// ============================================================
 // Type System
 // ============================================================
 
 /*!
- * Make typespecification with the special form
+ * Initialize the type system
  */
-Object Interpreter::eval_typespec_special(const Object &, const Object &rest,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_init_types(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
     (void)env;
-    if (rest.is_null())
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+    TypeSystem::instance().clear();
+    if (init_types(args.unnamed[0].as_symbol())) {
+        return get_true();
+    } else {
+        throw_eval_error(form,
+                         fmt::format("Expected 'default or 'z80, got {}", args.unnamed[0].print()));
         return get_null();
-
-    Object spec_input = rest.as_pair()->car;
-    auto   ts_ptr = parse_typespec(&TypeSystem::instance(), spec_input);
-    auto   ts_shared = std::make_shared<TypeSpec>(ts_ptr);
-
-    return Object::make_heap_obj(ts_shared);
+    }
 }
+
+/*!
+ * Helper Initialize the type system
+ */
+bool Interpreter::init_types(const std::string &variant) {
+    auto &ts = TypeSystem::instance();
+    auto  env = m_global_environment.as_env();
+
+    // 1. УДАЛЯЕМ старые типы из окружения
+    std::vector<const char *> to_remove;
+    const auto               &entries = env->vars.get_all_entries();
+    for (const auto &entry : entries) {
+        if (entry.value.is_native_obj()) {
+            to_remove.push_back(entry.key);
+        }
+    }
+    for (const auto &key : to_remove) {
+        env->vars.remove(key);
+    }
+
+    // 2. ОЧИЩАЕМ TypeSystem
+    ts.clear();
+
+    // 3. СОЗДАЁМ новые типы
+    if (variant == "z80") {
+        ts.add_builtin_types_z80();
+    } else if (variant == "default") {
+        ts.add_builtin_types();
+    } else {
+        return false;
+    }
+
+    // 4. ЭКСПОРТИРУЕМ новые типы
+    const auto &all_types = ts.get_types(); // теперь константная ссылка!
+    for (const auto &pair : all_types) {    // pair, а не [name, type_ptr]
+        const auto &name = pair.first;
+        auto       *type_ptr = pair.second.get();
+
+        auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
+        auto type_obj = Object::make_heap_obj(shared_type);
+        env->vars.set(Object::intern(name.c_str()), type_obj);
+    }
+
+    // 5. Обновляем ссылку на TypeSystem
+    define_var_in_env(get_global_environment(), ts.to_alias(), "*type-system*");
+
+    return true;
+}
+
+/*!
+ * Get all types to the script language
+ */
+Object Interpreter::eval_types_to_lisp(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)args;
+    (void)env;
+    return TypeSystem::instance().get_all_type_names_as_objects();
+}
+
+// ------------------------------------------------------------
+// Type System define type, enum
+// ------------------------------------------------------------
+
+/*!
+ * Parse define type special form
+ */
+Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto env_ptr = get_global_environment().as_env();
+    try {
+        auto result = parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
+        auto type_shared = std::shared_ptr<Type>(result.type_info, [](Type *) {
+            /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
+        });
+        auto name = result.type_info->get_name();
+
+        m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+                                                Object::make_heap_obj(type_shared));
+        return Object::make_heap_obj(type_shared);
+    } catch (std::runtime_error &ex) {
+        throw_eval_error(form, ex.what());
+    }
+    return get_null();
+}
+
+/*!
+ * Parse defenum special form
+ */
+Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto enum_ptr = parse_defenum(rest, &TypeSystem::instance(), nullptr);
+    auto enum_shared = std::shared_ptr<Type>(enum_ptr, [](Type *) {
+        /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
+    });
+
+    auto name = enum_ptr->get_name();
+
+    m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+                                            Object::make_heap_obj(enum_shared));
+    return Object::make_heap_obj(enum_shared);
+}
+
+// ------------------------------------------------------------
+// Type System define typespecification
+// ------------------------------------------------------------
 
 /*!
  * Make typespecification with the primitive
@@ -4951,215 +5423,68 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
     return Object::make_heap_obj(ts_shared);
 }
 
-// ============================================================
-// Type System define type
-// ============================================================
-
-Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    auto env_ptr = get_global_environment().as_env();
-    try {
-        auto result = parse_deftype(rest, &TypeSystem::instance(), &env_ptr->vars);
-        auto type_shared = std::shared_ptr<Type>(result.type_info, [](Type *) {
-            /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
-        });
-        auto name = result.type_info->get_name();
-
-        m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
-                                                Object::make_heap_obj(type_shared));
-        return Object::make_heap_obj(type_shared);
-    } catch (std::runtime_error &ex) {
-        throw_eval_error(form, ex.what());
-    }
-    return get_null();
-}
-
-Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    auto enum_ptr = parse_defenum(rest, &TypeSystem::instance(), nullptr);
-    auto enum_shared = std::shared_ptr<Type>(enum_ptr, [](Type *) {
-        /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
-    });
-
-    auto name = enum_ptr->get_name();
-
-    m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
-                                            Object::make_heap_obj(enum_shared));
-    return Object::make_heap_obj(enum_shared);
-}
-
-Object Interpreter::eval_types_to_lisp(const Object &, Arguments &,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    return TypeSystem::instance().get_all_type_names_as_objects();
-}
-
-Object Interpreter::eval_init_types(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env) {
-    (void)form;
-    (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
-    TypeSystem::instance().clear();
-    // Здесь должна быть логика из твоего старого кода для init-types
-    if (init_types(args.unnamed[0].as_symbol())) {
-        return get_true();
-    } else {
-        throw_eval_error(form,
-                         fmt::format("Expected 'default or 'z80, got {}", args.unnamed[0].print()));
-        return get_null();
-    }
-}
-bool Interpreter::init_types(const std::string &variant) {
-    auto &ts = TypeSystem::instance();
-    auto  env = m_global_environment.as_env();
-
-    // 1. УДАЛЯЕМ старые типы из окружения
-    std::vector<const char *> to_remove;
-    const auto               &entries = env->vars.get_all_entries();
-    for (const auto &entry : entries) {
-        if (entry.value.is_native_obj()) {
-            to_remove.push_back(entry.key);
-        }
-    }
-    for (const auto &key : to_remove) {
-        env->vars.remove(key);
-    }
-
-    // 2. ОЧИЩАЕМ TypeSystem
-    ts.clear();
-
-    // 3. СОЗДАЁМ новые типы
-    if (variant == "z80") {
-        ts.add_builtin_types_z80();
-    } else if (variant == "default") {
-        ts.add_builtin_types();
-    } else {
-        return false;
-    }
-
-    // 4. ЭКСПОРТИРУЕМ новые типы - ИСПРАВЛЕНО!
-    const auto &all_types = ts.get_types(); // теперь константная ссылка!
-    for (const auto &pair : all_types) {    // pair, а не [name, type_ptr]
-        const auto &name = pair.first;
-        auto       *type_ptr = pair.second.get();
-
-        auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
-        auto type_obj = Object::make_heap_obj(shared_type);
-        env->vars.set(Object::intern(name.c_str()), type_obj);
-    }
-
-    // 5. Обновляем ссылку на TypeSystem
-    define_var_in_env(get_global_environment(), ts.to_alias(), "*type-system*");
-
-    return true;
-}
-// ============================================================
-// Работа с адресацией подобно dot sytnax в C++
-// ============================================================
-
 /*!
- * @brief Примитив создания "окна" доступа (Шаг навигации).
- * * * Роль в системе:
- * Это атомарная операция перехода, на которой базируется макрос `->`.
- * Она "склеивает" логику метаданных с адресацией в памяти.
- * * * Принцип работы:
- * Превращает пару (Объект, Ключ) в новую точку доступа (Alias).
- * - Если база — HeapObject (метаданные), извлекает свойства типа.
- * - Если база — TypePointer (память), вычисляет адрес поля и возвращает дочерний TypePointer.
- * * * Использование в Lisp (неявное):
- * Используется внутри функций навигации. Например, в выражении:
- * (-> cell 'x 'y)
- * Интерпретатор дважды вызовет `make-alias`:
- * 1. (make-accessor cell 'x) -> вернет ячейку поля x
- * 2. (make-accessor cell_x 'y) -> вернет ячейку поля y внутри x
- * * @return Object (TypePointer со смещением или метаданные из HeapObject)
+ * Make typespecification with the special form
  */
-Object Interpreter::eval_step(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env) {
+Object Interpreter::eval_deftypespec_special(const Object &, const Object &rest,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{}, {}}, {});
-
-    auto base = args.unnamed[0];
-    auto key = args.unnamed[1];
-
-    if (base.is_none() || base.is_null())
+    if (rest.is_null())
         return get_null();
 
-    // Пытаемся сделать шаг (вернет новый Pointer или Field)
-    Object next = base.step(key);
+    Object spec_input = rest.as_pair()->car;
+    auto   ts_ptr = parse_typespec(&TypeSystem::instance(), spec_input);
+    auto   ts_shared = std::make_shared<TypeSpec>(ts_ptr);
 
-    if (next.is_none()) {
-        throw_eval_error(form, "Step failed: property '" + key.print() + "' not found");
-    }
-    return next;
+    return Object::make_heap_obj(ts_shared);
 }
 
 /*!
- * @brief Специальная форма глубокой навигации (Макрос `->`).
- * * * Роль в системе:
- * Последовательно применяет цепочку ключей к объекту, "проваливаясь" внутрь
- * структур, массивов или метаданных. Реализует высокоуровневый синтаксис доступа.
- * * * Особенности реализации:
- * 1. Первый аргумент вычисляется (eval) — это корень (например, переменная с TypePointer).
- * 2. Последующие аргументы-символы трактуются как имена полей БЕЗ вычисления.
- * 3. Аргументы-списки или числа вычисляются (позволяет динамические индексы).
- * * * Синтаксис в Lisp: (-> root field1 index field2)
- * Пример:
- * (-> my-vec 'x)           ; корень my-vec, шаг к полю x
- * (-> my-buf 10 'int)      ; корень my-buf, вычислить индекс 10, шаг к типу int
- * (-> obj (get-idx) 'name) ; индекс вычисляется вызовом функции
- * * * @param rest Список аргументов навигации.
- * * @return Конечный объект (TypePointer, значение или метаданные) после прохождения всего
- * пути.
+ * Construct type specification
  */
-Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    if (!rest.is_pair())
-        return get_null();
+TypeSpec Interpreter::parse_typespec_helper(const Object &obj) {
+    if (obj.is_symbol()) {
+        // Простой тип: 'int16
+        return TypeSystem::instance().make_typespec(obj.as_symbol().name_ptr);
+    } else if (obj.is_pair()) {
+        auto list = obj.to_vector();
+        auto head = list.at(0);
 
-    auto pair = rest.as_pair();
+        if (head.is_symbol()) {
+            std::string head_name = head.as_symbol().name_ptr;
 
-    // 1. EVAL первого элемента.
-    // Теперь это ОБЯЗАН быть объект (Type, Pointer, Register и т.д.)
-    Object current = eval(pair->car, env);
+            if (head_name == "function") {
+                // (function (arg-types...) return-type)
+                if (list.size() < 3)
+                    throw std::runtime_error("Invalid function typespec");
 
-    if (current.is_none()) {
-        throw_eval_error(form, fmt::format("Symbol '{}' not found in environment. "
-                                           "Did you forget to define the type or variable?",
-                                           pair->car.print()));
-    }
+                std::vector<std::string> arg_types;
+                for (auto &arg : list.at(1).to_vector()) {
+                    arg_types.push_back(parse_typespec_helper(arg).print());
+                }
+                std::string ret_type = parse_typespec_helper(list.at(2)).print();
 
-    Object iterator = pair->cdr;
-
-    // 2. Навигация по ключам
-    while (!iterator.is_null()) {
-        Object key_form = iterator.as_pair()->car;
-
-        // Ключи в спецформе -> по умолчанию символы (имена полей)
-        // Но если это не символ (например, число), мы его вычисляем
-        Object key = key_form.is_symbol() ? key_form : eval(key_form, env);
-
-        // Весь интеллект теперь здесь.
-        // Если current - это Type, он вернет метаданные.
-        // Если current - это экземпляр, он вернет данные.
-        try {
-            current = current.step(key);
-        } catch (std::runtime_error &e) {
-            throw_eval_error(form, e.what());
+                return TypeSystem::instance().make_function_typespec(arg_types, ret_type);
+            } else if (head_name == "pointer") {
+                // (pointer uint8)
+                return TypeSystem::instance().make_pointer_typespec(
+                    parse_typespec_helper(list.at(1)));
+            } else if (head_name == "inline-array") {
+                return TypeSystem::instance().make_inline_array_typespec(
+                    parse_typespec_helper(list.at(1)));
+            }
         }
-        if (current.is_none()) {
-            throw_eval_error(form,
-                             fmt::format("Field or meta-property '{}' is not accessible in '{}'",
-                                         key.print(), current.class_name()));
-        }
-
-        iterator = iterator.as_pair()->cdr;
     }
-
-    return current;
+    throw std::runtime_error("Could not parse typespec: " + obj.print());
 }
+
+// ============================================================
+// Type system -- Type navigation
+// ============================================================
+
+/*!
+ * Dereference with primitive
+ */
 Object Interpreter::eval_deref(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Проверка на наличие аргументов (минимум корень)
@@ -5217,8 +5542,72 @@ Object Interpreter::eval_deref(const Object &form, Arguments &args,
     return current;
 }
 
+/*!
+ * @brief Специальная форма глубокой навигации (Макрос `->`).
+ * Роль в системе:
+ * Последовательно применяет цепочку ключей к объекту, "проваливаясь" внутрь
+ * структур, массивов или метаданных. Реализует высокоуровневый синтаксис доступа.
+ * Особенности реализации:
+ * 1. Первый аргумент вычисляется (eval) — это корень (например, переменная с TypePointer).
+ * 2. Последующие аргументы-символы трактуются как имена полей БЕЗ вычисления.
+ * 3. Аргументы-списки или числа вычисляются (позволяет динамические индексы).
+ * Синтаксис в Lisp: (-> root field1 index field2)
+ * Пример:
+ * (-> my-vec 'x)           ; корень my-vec, шаг к полю x
+ * (-> my-buf 10 'int)      ; корень my-buf, вычислить индекс 10, шаг к типу int
+ * (-> obj (get-idx) 'name) ; индекс вычисляется вызовом функции
+ * @param rest Список аргументов навигации.
+ * @return Конечный объект (TypePointer, значение или метаданные) после прохождения всего пути.
+ */
+Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    if (!rest.is_pair())
+        return get_null();
+
+    auto pair = rest.as_pair();
+
+    // 1. EVAL первого элемента.
+    // Теперь это ОБЯЗАН быть объект (Type, Pointer, Register и т.д.)
+    Object current = eval(pair->car, env);
+
+    if (current.is_none()) {
+        throw_eval_error(form, fmt::format("Symbol '{}' not found in environment. "
+                                           "Did you forget to define the type or variable?",
+                                           pair->car.print()));
+    }
+
+    Object iterator = pair->cdr;
+
+    // 2. Навигация по ключам
+    while (!iterator.is_null()) {
+        Object key_form = iterator.as_pair()->car;
+
+        // Ключи в спецформе -> по умолчанию символы (имена полей)
+        // Но если это не символ (например, число), мы его вычисляем
+        Object key = key_form.is_symbol() ? key_form : eval(key_form, env);
+
+        // Весь интеллект теперь здесь.
+        // Если current - это Type, он вернет метаданные.
+        // Если current - это экземпляр, он вернет данные.
+        try {
+            current = current.step(key);
+        } catch (std::runtime_error &e) {
+            throw_eval_error(form, e.what());
+        }
+        if (current.is_none()) {
+            throw_eval_error(form,
+                             fmt::format("Field or meta-property '{}' is not accessible in '{}'",
+                                         key.print(), current.class_name()));
+        }
+
+        iterator = iterator.as_pair()->cdr;
+    }
+
+    return current;
+}
+
 // ============================================================
-// Работа с адресом
+// Low-level pointer operations
 // ============================================================
 
 /*!
@@ -5287,8 +5676,254 @@ Object Interpreter::eval_addr_plus(const Object &form, Arguments &args,
 }
 
 // ============================================================
-// Специальные операторы приведения типа
+// Memory access
 // ============================================================
+
+/*!
+ * @brief Чтение значения из ячейки памяти (Dereference).
+ */
+Object Interpreter::eval_mem_get(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::POINTER}}, {});
+    try {
+        // Просто дергаем метод Pointer::get(), который мы обсуждали
+        return args.unnamed[0].as_pointer()->get();
+    } catch (std::runtime_error &ex) {
+        throw_eval_error(form, ex.what());
+    }
+}
+/*!
+ * @brief Запись значения в ячейку памяти (Assignment).
+ */
+Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::POINTER}, {}}, {});
+    auto ptr = args.unnamed[0].as_pointer();
+    try {
+        ptr->set(args.unnamed[1]); // Пишем значение
+    } catch (std::runtime_error &ex) {
+        throw_eval_error(form, ex.what());
+    }
+    return get_none();
+}
+
+// ============================================================
+// Methods and types
+// ============================================================
+
+/*!
+ * Define method
+ */
+Object Interpreter::eval_define_method(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args,
+                 {
+                     {ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}, // 0: Тип
+                     {ObjectType::SYMBOL},                            // 1: ID или Имя метода
+                     {ObjectType::FUNCTION}                           // 2: Лямбда
+                 },
+                 {{"declare-extern", {false, {ObjectType::SYMBOL}}}});
+
+    auto &ts = TypeSystem::instance();
+    auto  arg0_obj = args.unnamed[0];
+    // 1. Разрешаем тип
+    Type *type = nullptr;
+    if (arg0_obj.is_symbol())
+        type = ts.lookup_type(arg0_obj.to_std_string());
+    else if (arg0_obj.is_native_obj<Type>())
+        type = arg0_obj.as_heap_obj<Type>().get();
+    else
+        throw_type_mismatch(form, args, 0, {"type", "symbol"}, arg0_obj.class_name());
+
+    if (!type)
+        throw_eval_error(form, "Could not resolve type n arg0");
+
+    // 2. Получаем реализацию и проверяем наличие (declare)
+    Object implementation = args.unnamed[2];
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
+
+    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
+        throw_eval_error(
+            form, fmt::format("set-method {}::{} expect declared typespec in the lambda object {}",
+                              args.unnamed[0].to_std_string(), args.unnamed[1].print(),
+                              implementation.print()));
+    }
+
+    const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_heap_obj<TypeSpec>();
+    auto            success = false;
+    // 3. ПРОВЕРКА ЧЕРЕЗ DEFINE_METHOD (Тот самый шаг!)
+    try {
+        std::string method_name;
+        if (args.unnamed[1].is_symbol()) {
+            method_name = args.unnamed[1].to_std_string();
+        } else {
+            // Если пришло число (ID), вытягиваем имя из типа, чтобы передать в define_method
+            MethodInfo info;
+            if (!type->get_my_method(args.unnamed[1].as_integer(), &info)) {
+                throw_eval_error(form, fmt::format("Method ID {} not found in type {}",
+                                                   args.unnamed[1].as_integer(), type->get_name()));
+            }
+            method_name = info.name;
+        }
+
+        // Вызываем высокоуровневый метод системы типов.
+        // Он сделает всю грязную работу по проверке сигнатур и бросит подробный exception.
+        ts.define_method(type, method_name, impl_spec, std::nullopt);
+
+        if (args.has_named("declare-extern") && is_true(args.named["declare-extern"])) {
+            auto full_name =
+                fmt::format("{}::{}", type->get_name(), args.unnamed[1].to_std_string());
+            auto full_name_ptr = intern_ptr(full_name);
+            if (m_symbol_types.lookup(full_name_ptr)) {
+                throw_eval_error(form, fmt::format("The method is already {} defined", full_name));
+            } else {
+                std::shared_ptr<TypeSpec> shared_type_spec = std::make_shared<TypeSpec>(impl_spec);
+                m_symbol_types.set(full_name_ptr, shared_type_spec);
+                success = true;
+            }
+        } else {
+            success = true;
+        }
+    } catch (const std::exception &e) {
+        // Пробрасываем качественную ошибку из TypeSystem в REPL
+        throw_eval_error(form, e.what());
+    }
+
+    return Object::make_boolean(success);
+}
+
+/*!
+ * Get method of (method-of type method-name) or (method-of type method-id)
+ */
+Object Interpreter::eval_method_of(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL, ObjectType::INT}}, {});
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto &ts = TypeSystem::instance();
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(form,
+                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    if (args.unnamed[1].is_integer()) {
+        auto method_id = args.unnamed[1].as_integer();
+        auto m_info = ts.lookup_method(type->get_name(), method_id);
+        auto method_ptr = std::make_shared<MethodInfo>(m_info);
+        return Object::make_heap_obj(method_ptr);
+    } else {
+        auto method_name = args.unnamed[1].as_symbol();
+        auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+        auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
+        return Object::make_heap_obj(method_ptr);
+    }
+}
+
+/*!
+ * Get method id of (method-id-of type-name method-name)
+ */
+Object Interpreter::eval_method_id_of(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto  method_name = args.unnamed[1].as_symbol();
+    auto &ts = TypeSystem::instance();
+
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(form,
+                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+
+    return Object::make_integer(m_info.id);
+}
+
+/*!
+ * Get offset of field (offset-of type-name field-name)
+ */
+Object Interpreter::eval_offset_of(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+
+    auto  type_name = args.unnamed[0].as_symbol();
+    auto &ts = TypeSystem::instance();
+
+    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
+        throw_eval_error(
+            form, fmt::format("Type '{}' not found or not fully defined.", type_name.c_str()));
+    }
+
+    auto type = ts.lookup_type(type_name.name_ptr);
+    auto as_struct = dynamic_cast<StructureType *>(type);
+
+    // Защита от nullptr
+    if (!as_struct) {
+        throw_eval_error(
+            form, fmt::format("Type '{}' is not a structure/reference type.", type_name.c_str()));
+    }
+
+    auto field_name = args.unnamed[1].as_symbol();
+    // Проверяем существование поля перед получением инфо
+    try {
+        auto info = ts.lookup_field_info(type->get_name(), field_name);
+
+        // Логика смещения: если объект boxed, смещение в коде обычно считается от начала
+        // данных, а не от тега.
+        auto off = info.field.offset();
+
+        return Object::make_integer(off);
+    } catch (const std::exception &e) {
+        throw_eval_error(form, fmt::format("Field '{}' not found in type '{}'.", field_name.c_str(),
+                                           type_name.c_str()));
+    }
+
+    return get_null();
+}
+/*!
+ * Get the size of type or field (size-of type)
+ */
+Object Interpreter::eval_size_of(const Object &form, Arguments &args,
+                                 const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    auto &ts = TypeSystem::instance();
+
+    if (args.unnamed.size() == 1) {
+        // Обычный size-of типа: (size-of vector)
+        vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+        auto type_name = args.unnamed[0].as_symbol();
+        return Object::make_integer(ts.lookup_type(type_name.name_ptr)->get_size_in_memory());
+    } else if (args.unnamed.size() == 2) {
+        // Умный size-of поля: (size-of vector x)
+        vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
+        auto type_name = args.unnamed[0].as_symbol();
+        auto field_name = args.unnamed[1].as_symbol();
+
+        auto type = ts.lookup_type(type_name.name_ptr);
+        auto info = ts.lookup_field_info(type->get_name(), field_name.name_ptr);
+
+        // Берем тип самого поля и узнаем его размер
+        auto field_type = ts.lookup_type(info.field.type().base_type());
+        return Object::make_integer(field_type->get_size_in_memory());
+    }
+
+    throw_arity_mismatch(form, args, 1, 2, args.unnamed.size());
+    return get_null();
+}
+
+// ============================================================
+// Type casting
+// ============================================================
+
 Object Interpreter::eval_the(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Проверка аргументов (тип и само выражение)
@@ -5335,6 +5970,7 @@ Object Interpreter::eval_the(const Object &form, Arguments &args,
 
     return target;
 }
+
 Object Interpreter::eval_the_as(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env) {
     // 1. Проверка количества аргументов.
@@ -5395,175 +6031,615 @@ Object Interpreter::eval_the_as(const Object &form, Arguments &args,
     throw_eval_error(form, fmt::format("the-as: cannot cast object of type {} to {}",
                                        target.class_name(), new_type_name));
 }
-// ============================================================
-// Получение размеров и смещений
-// ============================================================
 
-Object Interpreter::eval_offset_of(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}},
-                 {}); // Вторая тоже символ
+/*!
+ * Iterate over all fields
+ */
+Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
 
-    auto  type_name = args.unnamed[0].as_symbol();
+    auto root_struct = args.unnamed[0].as_heap_obj<StructureType>();
+    if (!root_struct) {
+        throw_eval_error(form, "for-each-field: expected structure type");
+    }
+    Object lambda = args.unnamed[1];
+
     auto &ts = TypeSystem::instance();
+    auto  idx = 0;
+    // Рекурсивная функция обхода
+    std::function<void(StructureType *, int)> walk = [&](StructureType *current_struct,
+                                                         int            current_offset) {
+        auto &fields = current_struct->fields();
+        for (auto &field : fields) {
+            int             field_offset = current_offset + field.offset();
+            const TypeSpec &tspec = field.type();
 
-    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
-        throw_eval_error(
-            form, fmt::format("Type '{}' not found or not fully defined.", type_name.c_str()));
+            // Проверка: является ли поле указателем?
+            // В твоей системе это (pointer <type>), т.е. base_type == "pointer"
+            bool is_pointer = (tspec.base_type() == "pointer");
+
+            // Ищем объект типа в системе типов
+            auto field_type_ptr = ts.lookup_type(tspec.base_type());
+            if (!field_type_ptr)
+                continue;
+
+            auto sub_struct = dynamic_cast<StructureType *>(field_type_ptr);
+
+            // Условие рекурсии:
+            // 1. Это структура (sub_struct != nullptr)
+            // 2. Это inline-поле (m_inline == true)
+            // 3. Это НЕ указатель
+            if (sub_struct && field.is_inline() && !is_pointer) {
+                walk(sub_struct, field_offset);
+            } else {
+                // Терминальное поле (базовый тип или указатель на структуру)
+                Arguments callback_args;
+                callback_args.unnamed = {Object::make_integer(idx),
+                                         Object::make_integer(field_offset),
+                                         // Передаем Field как HeapObject (shared_ptr)
+                                         Object::make_heap_obj(std::make_shared<Field>(field))};
+                call_lambda_internal(form, lambda, callback_args.unnamed, env);
+                idx++;
+            }
+        }
+    };
+
+    walk(root_struct.get(), 0);
+    return get_null();
+}
+
+/*!
+ * Iterate over all methods
+ */
+Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env) {
+    // Проверка аргументов: тип-структура и лямбда
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
+
+    auto root_type = args.unnamed[0].as_heap_obj<Type>();
+    if (!root_type) {
+        throw_eval_error(form, "for-each-method: expected structure type");
     }
+    Object lambda = args.unnamed[1];
 
-    auto type = ts.lookup_type(type_name.name_ptr);
-    auto as_struct = dynamic_cast<StructureType *>(type);
+    // У структур обычно есть список методов
+    // Нам нужно пройтись по всем методам, включая унаследованные,
+    // либо согласно их ID в vtable.
 
-    // Защита от nullptr
-    if (!as_struct) {
-        throw_eval_error(
-            form, fmt::format("Type '{}' is not a structure/reference type.", type_name.c_str()));
-    }
+    auto max_id = root_type->methods_max_id();
+    for (int i = 0; i <= max_id; ++i) {
+        MethodInfo method;
+        bool       found_method = false;
+        Type      *current_type = root_type.get();
 
-    auto field_name = args.unnamed[1].as_symbol();
-    // Проверяем существование поля перед получением инфо
-    try {
-        auto info = ts.lookup_field_info(type->get_name(), field_name);
+        while (current_type) {
+            // Ищем метод в ТЕКУЩЕМ типе итерации
+            if (i == 0) {
+                if (current_type->has_new_method())
+                    found_method = current_type->get_my_new_method(&method);
+            } else {
+                found_method = current_type->get_my_method(i, &method);
+            }
 
-        // Логика смещения: если объект boxed, смещение в коде обычно считается от начала
-        // данных, а не от тега.
-        auto off = info.field.offset();
+            if (found_method) {
+                // Нашли! Либо в самом типе, либо у предка.
+                break;
+            }
 
-        return Object::make_integer(off);
-    } catch (const std::exception &e) {
-        throw_eval_error(form, fmt::format("Field '{}' not found in type '{}'.", field_name.c_str(),
-                                           type_name.c_str()));
+            // Если не нашли, идем выше
+            if (current_type->get_name() == "object")
+                break;
+
+            auto parent_name = current_type->get_parent();
+            if (parent_name.empty())
+                break; // Защита от пустых имен родителей
+
+            current_type = TypeSystem::instance().lookup_type(parent_name);
+        }
+
+        // Вызов лямбды
+        Arguments callback_args;
+        callback_args.unnamed.push_back(Object::make_integer(i));
+        callback_args.unnamed.push_back(
+            found_method ? Object::make_heap_obj(std::make_shared<MethodInfo>(method))
+                         : get_null());
+
+        call_lambda_internal(form, lambda, callback_args.unnamed, env);
     }
 
     return get_null();
 }
 
-Object Interpreter::eval_size_of(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    auto &ts = TypeSystem::instance();
+// ============================================================
+// HexFile Format
+// ============================================================
 
-    if (args.unnamed.size() == 1) {
-        // Обычный size-of типа: (size-of vector)
-        auto type_name = args.unnamed[0].as_symbol();
-        return Object::make_integer(ts.lookup_type(type_name.name_ptr)->get_size_in_memory());
-    } else if (args.unnamed.size() == 2) {
-        // Умный size-of поля: (size-of vector x)
-        auto type_name = args.unnamed[0].as_symbol();
-        auto field_name = args.unnamed[1].as_symbol();
-
-        auto type = ts.lookup_type(type_name.name_ptr);
-        auto info = ts.lookup_field_info(type->get_name(), field_name.name_ptr);
-
-        // Берем тип самого поля и узнаем его размер
-        auto field_type = ts.lookup_type(info.field.type().base_type());
-        return Object::make_integer(field_type->get_size_in_memory());
+// Вспомогательная функция для расчета контрольной суммы и форматирования строки
+std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type, const uint8_t *data) {
+    uint8_t     checksum = length + (addr >> 8) + (addr & 0xFF) + type;
+    std::string hex_data;
+    for (int i = 0; i < length; ++i) {
+        checksum += data[i];
+        hex_data += fmt::format("{:02X}", data[i]);
     }
-
-    throw_eval_error(form, "size-of: expected 1 or 2 arguments");
-    return get_null();
+    checksum = static_cast<uint8_t>((~checksum) + 1);
+    return fmt::format(":{:02X}{:04X}{:02X}{}{:02X}\n", length, addr, type, hex_data, checksum);
 }
 
-Object Interpreter::eval_method_id_of(const Object &form, Arguments &args,
+Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // Ожидаем: (export-hex "path/to/file.hex" buffer_or_list)
+    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::NATIVE_OBJECT, ObjectType::PAIR}},
+                 {});
+
+    std::string path = args.unnamed[0].to_std_string();
+    Object      source = args.unnamed[1];
+    std::string full_content;
+
+    auto process_buffer = [&](const std::shared_ptr<StaticBuffer> &buf) {
+        uint8_t *raw_data = buf->data();
+        uint32_t base_origin = buf->origin();
+        uint32_t start_off = buf->get_start_addr(); // Смещение относительно origin
+        uint32_t end_off = buf->get_end_addr();     // Смещение относительно origin
+
+        // Если в буфер ничего не писали, start_off будет 0xFFFFFFFF
+        if (start_off > end_off)
+            return;
+
+        // Итерируемся от start_off до end_off
+        for (size_t i = start_off; i <= end_off; i += 16) {
+            // Вычисляем размер текущего чанка (не более 16 байт и не заходя за end_off)
+            uint8_t chunk = static_cast<uint8_t>(std::min((size_t)16, (size_t)(end_off - i + 1)));
+
+            // Реальный адрес в Intel HEX: origin + смещение внутри буфера
+            uint16_t hex_addr = static_cast<uint16_t>(base_origin + i);
+
+            // Записываем кусок данных из raw_data, начиная с индекса i
+            full_content += format_hex_record(chunk, hex_addr, 0x00, &raw_data[i]);
+        }
+    };
+    auto buffer = source.as_native_obj<StaticBuffer>(false);
+    if (buffer.get()) {
+        process_buffer(buffer);
+    } else if (source.is_pair()) {
+        // Если это список буферов (наш гибридный лэйаут)
+        auto current = source;
+        if (current.is_pair()) {
+            auto pair = current.as_pair();
+            auto buf = pair->car.as_native_obj<StaticBuffer>();
+            if (!buf)
+                throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
+            process_buffer(buf);
+            current = pair->cdr;
+        }
+    } else {
+        throw_type_mismatch(form, args, 0, {"static-buffer", "pair"}, args.unnamed[0].class_name());
+    }
+
+    // Финальный маркер конца файла
+    full_content += ":00000001FF";
+    auto project_path = file_util::get_path(file_util::PathType::PROJECT);
+    if (path[0] != '/' && path[0] != '\\')
+        path = project_path.string() + "/" + path;
+    file_util::write_text(path, full_content);
+    return Object::make_boolean(true);
+}
+
+// ============================================================
+// Declaration
+// ============================================================
+
+Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-
     vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
 
-    auto  type_name = args.unnamed[0].as_symbol();
-    auto  method_name = args.unnamed[1].as_symbol();
+    auto kind = args.unnamed.at(1).to_std_string();
+    auto type_name = args.unnamed.at(0).as_symbol();
+
     auto &ts = TypeSystem::instance();
+    ts.forward_declare_type_as(type_name.name_ptr, kind);
 
-    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
-        throw_eval_error(form,
-                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
+    // Local table of types
+    // 1. Достаем shared_ptr из таблицы
+    auto existing_type_ptr = m_symbol_types.lookup(type_name);
+
+    // 2. Если он есть, разыменовываем его дважды для сравнения объектов
+    if (existing_type_ptr) {
+        // (*existing_type_ptr) -> это shared_ptr
+        // (**existing_type_ptr) -> это сам объект TypeSpec
+        if (**existing_type_ptr != TypeSpec("type")) {
+            throw_eval_error(form, "Cannot forward declare {} as a type: it is already a {}",
+                             type_name.name_ptr, (*existing_type_ptr)->print());
+        }
     }
+    m_symbol_types.set(type_name, std::make_shared<TypeSpec>("type"));
 
-    auto type = ts.lookup_type(type_name.name_ptr);
-    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
-
-    return Object::make_integer(m_info.id);
-}
-
-Object Interpreter::eval_method_of(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL, ObjectType::INT}}, {});
-    auto  type_name = args.unnamed[0].as_symbol();
-    auto &ts = TypeSystem::instance();
-    if (!ts.fully_defined_type_exists(type_name.name_ptr)) {
-        throw_eval_error(form,
-                         fmt::format("Type '{}' not found for method-id.", type_name.c_str()));
-    }
-
-    auto type = ts.lookup_type(type_name.name_ptr);
-    if (args.unnamed[1].is_integer()) {
-        auto method_id = args.unnamed[1].as_integer();
-        auto m_info = ts.lookup_method(type->get_name(), method_id);
-        auto method_ptr = std::make_shared<MethodInfo>(m_info);
-        return Object::make_heap_obj(method_ptr);
-    } else {
-        auto method_name = args.unnamed[1].as_symbol();
-        auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
-        auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
-        return Object::make_heap_obj(method_ptr);
-    }
-}
-
-// ============================================================
-// Чтение запись памяти
-// ============================================================
-
-/*!
- * @brief Чтение значения из ячейки памяти (Dereference).
- * * * Роль: Преобразует сырые байты из буфера в объект интерпретатора.
- * Использует метаданные типа, хранящиеся в TypePointer, чтобы понять,
- * сколько байт читать и как их интерпретировать (как число, строку или энум).
- * * * Lisp Logic:
- * (mem-get cell) -> возвращает значение.
- * Обычно используется автоматически при обращении к ячейке в контексте выражения.
- * * * @param args[0] Объект TypePointer.
- * @return Object (Число, строка или другой примитив).
- */
-Object Interpreter::eval_mem_get(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::POINTER}}, {});
-    try {
-        // Просто дергаем метод Pointer::get(), который мы обсуждали
-        return args.unnamed[0].as_pointer()->get();
-    } catch (std::runtime_error &ex) {
-        throw_eval_error(form, ex.what());
-    }
-}
-/*!
- * @brief Запись значения в ячейку памяти (Assignment).
- * * * Роль: Сериализует объект интерпретатора в сырые байты буфера.
- * Это "физический" уровень записи. Функция берет TypePointer, находит
- * связанный с ней StaticBuffer и записывает данные по адресу TypePointer->ptr.
- * * * Особенности:
- * - Учитывает порядок байтов (Endianness) целевой платформы (Z80).
- * - Выполняет проверку типов (нельзя записать строку в ячейку int8).
- * * * Lisp Logic:
- * (mem-set! cell value)
- * (set! (-> my-struct 'field) 10) ; Внутри развернется в call-set!
- * * * @param args[0] Объект TypePointer (куда писать).
- * @param args[1] Значение (что писать).
- * @return undefined
- */
-Object Interpreter::eval_mem_set(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::POINTER}, {}}, {});
-    auto ptr = args.unnamed[0].as_pointer();
-    try {
-        ptr->set(args.unnamed[1]); // Пишем значение
-    } catch (std::runtime_error &ex) {
-        throw_eval_error(form, ex.what());
-    }
     return get_none();
+}
+
+/*!
+ * Declare type for type specification
+ */
+Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+
+    auto args = get_args(form, rest, ArgumentSpec(true, false));
+
+    // Проверка аргументов: (define-extern симбол тип)
+    if (args.unnamed.size() < 2) {
+        throw_eval_error(form, "define-extern must have at least 2 arguments: symbol and typespec");
+    }
+
+    auto sym = args.unnamed.at(0);
+    if (!sym.is_symbol()) {
+        throw_eval_error(form, "First argument of define-extern must be a symbol");
+    }
+    auto     type_arg = args.unnamed.at(1);
+    TypeSpec new_type;
+    if (type_arg.is_symbol() || type_arg.is_pair()) {
+        // 1. Парсим TypeSpec через рекурсивный парсер
+        // (функцию parse_typespec нужно добавить в TypeSystem или Interpreter)
+        try {
+            new_type = parse_typespec_helper(type_arg);
+        } catch (std::runtime_error &e) {
+            throw_eval_error(form, e.what());
+        }
+    } else if (type_arg.is_native_obj<TypeSpec>()) {
+        new_type = *type_arg.as_native_obj<TypeSpec>();
+    } else {
+        throw_type_mismatch(form, args, 1, {"symbol", "pair", "type-spec"}, type_arg.class_name());
+    }
+
+    // 1. Получаем указатель на запись в таблице
+    auto existing_type_ptr = m_symbol_types.lookup(sym.as_symbol());
+
+    if (existing_type_ptr) {
+        // Извлекаем сам объект TypeSpec для удобства (через разыменование shared_ptr)
+        const TypeSpec &old_ts = **existing_type_ptr;
+
+        if (old_ts != new_type) {
+            // Проверяем совместимость: может ли new_type заменить old_ts?
+            if (!TypeSystem::instance().tc(old_ts, new_type)) {
+                fmt::print("WARNING: Redefining symbol {} from {} to {}\n",
+                           sym.as_symbol().name_ptr, old_ts.print(), new_type.print());
+            }
+        }
+    }
+
+    // 3. Регистрируем тип символа (оборачиваем в shared_ptr)
+    m_symbol_types.set(sym.as_symbol(), std::make_shared<TypeSpec>(new_type));
+
+    return get_none();
+}
+
+/*!
+ * A (declare ...) form can be used to configure settings inside a function.
+ * Currently there aren't many useful settings, but more may be added in the future.
+ *
+ *  ;; Пример 1: Объявление встраиваемой функции
+ * (defun add (x y)
+ *   (declare (inline))  ;; Функция будет автоматически встраиваться
+ *   (+ x y))
+ *
+ * ;; Пример 2: Разрешение встраивания (но не по умолчанию)
+ * (defun multiply (x y)
+ *   (declare (allow-inline))  ;; Компилятор может встроить по своему усмотрению
+ *   (* x y))
+ *
+ * ;; Пример 3: Объявление ассемблерной функции с типом возврата
+ * (defun sys-call (a b)
+ *   (declare (asm-func int))  ;; Ассемблерная функция, возвращающая int
+ *   (asm "..." a b))
+ *
+ * ;; Пример 4: Ассемблерная функция с разными типами
+ * (defun get-pointer ()
+ *   (declare (asm-func void*))  ;; Возвращает указатель
+ *   (asm "mov rax, [rbp+8]; ret"))
+ *
+ * (defun read-byte ()
+ *   (declare (asm-func unsigned-char))  ;; Возвращает беззнаковый символ
+ *   (asm "mov al, [rdi]; ret"))
+ *
+ * ;; Пример 5: Включение печати ассемблерного кода
+ * (defun optimized-func (x)
+ *   (declare (print-asm))  ;; Выведет сгенерированный ассемблерный код
+ *   (declare (inline))     ;; Комбинация нескольких declare
+ *   (* x 42))
+ *
+ * ;; Пример 6: Ассемблерная функция с разрешением использования saved registers
+ * (defun context-switch ()
+ *   (declare (asm-func void))
+ *   (declare (allow-saved-regs))  ;; Разрешает использовать регистры, сохраняемые между
+ * вызовами (asm "push rbx; push r12; ..."))
+ *
+ * ;; Пример 7: Комбинация нескольких опций
+ * (defun critical-func (x)
+ *   (declare (inline))
+ *   (declare (print-asm))
+ *   (declare (allow-saved-regs))
+ *   ;; тело функции
+ *   )
+ */
+Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    // 1. Поиск функционального окружения
+    auto fe = env->get_function_env();
+    if (!fe || fe->owner_function.is_none()) {
+        throw_eval_error(form, "Cannot use 'declare' outside of a function body.");
+    }
+
+    auto  func = fe->owner_function.as_function();
+    auto &settings = func->declarations;
+
+    // Запрещаем двойной declare (как в GOAL)
+    if (settings.is_set) {
+        if (settings.once)
+            return m_obj_none;
+        throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
+    }
+    settings.is_set = true;
+
+    // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
+    for_each_in_list(rest, [&](const Object &o) {
+        if (!o.is_pair()) {
+            throw_eval_error(o, "Invalid declare specification: expected a list.");
+        }
+
+        auto spec = o.as_pair();
+        auto first = spec->car;
+        auto args = spec->cdr; // Это список аргументов опции
+
+        if (!first.is_symbol()) {
+            throw_eval_error(first, "Declare option must be a symbol.");
+        }
+
+        std::string name = first.to_std_string();
+        if (name == "once") {
+            settings.once = true;
+        } else if (name == "inline") {
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'inline' expects no arguments.");
+            settings.allow_inline = true;
+            settings.inline_by_default = true;
+            settings.save_code = true;
+        } else if (name == "allow-inline") {
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'allow-inline' expects no arguments.");
+            settings.allow_inline = true;
+            settings.inline_by_default = false;
+            settings.save_code = true;
+        } else if (name == "asm-func") {
+            fe->is_asm_function = true;
+
+            // Ожидаем (asm-func return_type)
+            if (!args.is_pair() || !args.as_pair()->cdr.is_null()) {
+                throw_eval_error(first,
+                                 "Option 'asm-func' expects exactly one argument: return_type.");
+            }
+
+            auto ret_type_expr = args.as_pair()->car;
+            if (!(ret_type_expr.is_symbol() || ret_type_expr.is_string())) {
+                throw_eval_error(ret_type_expr, "Return type must be a symbol or string.");
+            }
+
+            // Нам нужно rlet окружение, чтобы собрать типы аргументов
+            auto rlet_env = env->get_reg_let_env();
+            if (!rlet_env) {
+                throw_eval_error(
+                    first, "Option 'asm-func' requires an 'rlet' scope to determine arguments.");
+            }
+
+            auto type_name = ret_type_expr.to_std_string();
+            // Строим сигнатуру функции на основе текущих регистровых алиасов
+            settings.typespec = TypeSystem::instance().build_typespec_from_env(rlet_env, type_name);
+        } else if (name == "print-asm") {
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'print-asm' expects no arguments.");
+            settings.print_asm = true;
+        } else if (name == "allow-saved-regs") {
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'allow-saved-regs' expects no arguments.");
+            settings.allow_saved_regs = true;
+        } else {
+            throw_eval_error(first, "Unrecognized declare option: {}.", name);
+            return;
+        }
+    });
+
+    return get_none();
+}
+
+/*!
+ * Make a list of all declarations of lambda (see declare method)
+ */
+Object Interpreter::eval_declarations(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
+
+    auto fe = env->get_function_env();
+    if (fe.get() == nullptr) {
+        throw_eval_error(form, "Cannot use function metadata outside of a function.");
+    }
+
+    if (!fe->owner_function.is_function()) {
+        throw_eval_error(form, "Fuction environment does not have pointer to function.");
+    }
+    auto  func = fe->owner_function.as_function();
+    auto &settings = func->declarations;
+    // Make result
+    ListBuilder lb;
+    lb.add_keyword("declarations");
+    lb.add_key_value("is-set",
+                     true_or_false(settings.is_set)); // has the user set these with a (declare)?
+    lb.add_key_value(
+        "inline-by-default",
+        true_or_false(settings.inline_by_default)); // if a function, inline when possible?
+    lb.add_key_value("save-code",
+                     true_or_false(settings.save_code)); // if a function, should we save the code?
+    lb.add_key_value(
+        "allow-inline",
+        true_or_false(
+            settings.allow_inline)); // should we allow the user to use this an inline function
+    lb.add_key_value(
+        "print-asm",
+        true_or_false(settings.print_asm)); // should we print out the asm for this function?
+    lb.add_key_value("typespec", settings.typespec);
+
+    return lb.build();
+}
+
+Object Interpreter::eval_define_function(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args,
+                 {
+                     {ObjectType::SYMBOL},  // 0: Имя функции (символ)
+                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
+                 },
+                 {});
+
+    auto   sym_obj = args.unnamed[0];
+    auto   sym = sym_obj.as_symbol();
+    Object implementation = args.unnamed[1];
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
+
+    // 2. Проверка наличия декларации типов внутри лямбды
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
+    // делать.
+    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
+        throw_eval_error(
+            form,
+            fmt::format("define-function '{}' expects a declared typespec in the lambda object",
+                        sym.name_ptr));
+    }
+
+    const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_heap_obj<TypeSpec>();
+
+    // 3. Проверка констант и существующих типов (защита от коллизий)
+    if (m_global_constants.lookup(sym)) {
+        throw_eval_error(sym_obj, fmt::format("Cannot define function: symbol '{}' is a constant",
+                                              sym.name_ptr));
+    }
+
+    // 4. Проверка сигнатуры через существующую таблицу типов символов
+    auto existing_type_ptr = m_symbol_types.lookup(sym);
+    if (existing_type_ptr) {
+        const TypeSpec &old_ts = **existing_type_ptr;
+
+        // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
+        if (!TypeSystem::instance().tc(old_ts, impl_spec)) {
+            fmt::print(stderr,
+                       "WARNING: Signature mismatch for function '{}'. Expected {}, got {}\n",
+                       sym.name_ptr, old_ts.print(), impl_spec.print());
+        }
+    }
+
+    // 5. Регистрация
+    // Записываем тип (сигнатуру) в глобальную таблицу типов
+    m_symbol_types.set(sym, std::make_shared<TypeSpec>(impl_spec));
+
+    // Записываем саму реализацию в глобальное окружение
+    // (Используем m_global_environment, чтобы функция была видна везде)
+    m_global_environment.as_env()->vars.set(sym, implementation);
+
+    return sym_obj; // Обычно возвращают имя функции
+}
+
+Object Interpreter::eval_function_type(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args,
+                 {
+                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
+                 },
+                 {});
+
+    Object implementation = args.unnamed[0];
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
+
+    // 2. Проверка наличия декларации типов внутри лямбды
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
+    // делать.
+    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
+        throw_eval_error(
+            form,
+            fmt::format("function-typespec '{}' expects a declared typespec in the lambda object",
+                        implementation.print()));
+    }
+
+    return lambda_ptr->declarations.typespec; // Обычно возвращают имя функции
+}
+
+Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
+    vararg_check(form, args,
+                 {
+                     {ObjectType::NATIVE_OBJECT}, // 0: Имя функции (символ)
+                     {ObjectType::NATIVE_OBJECT}, // 1: Тело функции (лямбда)
+
+                 },
+                 {
+                     {"print", {false, {ObjectType::SYMBOL}}},
+                     {"throw", {false, {ObjectType::SYMBOL}}},
+                     {"allow-alias", {false, {ObjectType::SYMBOL}}},
+                     {"source", {false, {ObjectType::STRING}}},
+                 });
+
+    auto doprint = is_true(args.unnamed[0]);
+    auto func1_obj = args.unnamed[0];
+    auto func1_ptr = func1_obj.as_heap_obj<TypeSpec>();
+    auto func2_obj = args.unnamed[1];
+    auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
+
+    // 2. Проверка наличия декларации типов внутри лямбды
+    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор
+    // знал, что делать.
+    if (!func1_ptr) {
+        throw_type_mismatch(form, args, 0, {"type-spec"}, func1_obj.class_name());
+    }
+    if (!func2_ptr) {
+        throw_type_mismatch(form, args, 1, {"type-spec"}, func2_obj.class_name());
+    }
+
+    std::string error_source_name;
+    bool        print_on_error = false;
+    bool        throw_on_error = false;
+    bool        allow_type_alias = false;
+
+    if (args.has_named("source"))
+        error_source_name = args.named["source"].to_std_string();
+
+    if (args.has_named("print"))
+        print_on_error = is_true(args.named["print"]);
+
+    if (args.has_named("throw"))
+        throw_on_error = is_true(args.named["throw"]);
+
+    if (args.has_named("allow-alias"))
+        allow_type_alias = is_true(args.named["allow-alias"]);
+
+    // 4. Проверка сигнатуры через существующую таблицу типов символов
+    auto t1 = func1_ptr.get();
+    auto t2 = func2_ptr.get();
+    // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
+    if (!TypeSystem::instance().typecheck_and_throw(*t1, *t2, error_source_name, print_on_error,
+                                                    throw_on_error, allow_type_alias)) {
+        if (doprint) {
+            throw_eval_error(form, fmt::format("WARNING: Signature mismatch, expected {}, got {}\n",
+                                               t1->print(), t2->print()));
+        }
+
+        return get_false(); // Обычно возвращают имя функции
+    }
+    return get_true(); // Обычно возвращают имя функци
 }
 
 // ============================================================
@@ -5694,12 +6770,6 @@ Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
 }
 
 /*!
- * @brief Get buffer label by name.
- * @param form The form of function call.
- * @param args The arguments passed to the function.
- * @param env The environment object.
- * @return The buffer label object.
- *
  * This function gets the buffer label object by name. It takes two arguments:
  * the buffer writer or buffer, and the name of the label.
  *
@@ -5729,17 +6799,8 @@ Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
 
 /*!
  * @brief Визуализация содержимого памяти (Hex Dump).
- * * * Роль: Генерирует форматированную строку, представляющую сырые байты буфера
+ * Генерирует форматированную строку, представляющую сырые байты буфера
  * в человекочитаемом виде (шестнадцатеричный код + ASCII).
- * * * Параметры:
- * 1. buffer         — целевой буфер.
- * 2. start_offset   — начальная точка чтения.
- * 3. bytes_to_dump  — количество байт для отображения.
- * 4. show_ascii     — флаг включения символьного представления (справа).
- * 5. bytes_per_line — ширина строки дампа (обычно 8 или 16).
- * * * Lisp Logic:
- * (fmt #t (static-buffer-dump buf 0 256 #t 16))
- * * * @return Object (String с отформатированным дампом).
  */
 Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
@@ -6009,6 +7070,9 @@ void Interpreter::recursive_write(const Object &form, Object cell_obj, Object va
     }
 }
 
+/*!
+ * Read data from the buffer
+ */
 Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -6039,6 +7103,22 @@ Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
     return cell->get();
 }
 
+/*
+ * Process for relocating all symbols in the buffer
+ */
+Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
+
+    auto buf = args.unnamed[0].as_native_obj<StaticBuffer>();
+    if (!buf.get())
+        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
+
+    buf->link_internal();
+    return Object::make_none();
+}
+
 /*!
  * (define buf (make-static-buffer "ROM" 1024))
  *
@@ -6049,7 +7129,6 @@ Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
  * ;; ... где-то позже или в другом файле ...
  * (buffer-add-label buf "irq_handler" #x0100)
  */
-
 Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -6064,20 +7143,6 @@ Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
     // По умолчанию считаем ABS_ADDR 16-бит (Z80 style),
     // но можно расширить аргументами
     buf->write_reloc(offset, target, RelocType::ABS_ADDR);
-
-    return Object::make_none();
-}
-
-Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
-
-    auto buf = args.unnamed[0].as_native_obj<StaticBuffer>();
-    if (!buf.get())
-        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-    // Проходим по релокациям и заменяем имена меток на их адреса внутри ЭТОГО ЖЕ буфера
-    buf->link_internal();
 
     return Object::make_none();
 }
@@ -6098,13 +7163,12 @@ Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
 Object Interpreter::eval_static_new(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // vararg_check(form, args, {{ObjectType::NATIVE_REF}}, {});
-    auto &ts = TypeSystem::instance();
 
     if (args.unnamed.empty()) {
         throw_eval_error(form, "static-new: expected at least type name");
         return get_null();
     }
+
     Type *type;
     // 1. Извлекаем имя типа (например, vector)
     if (args.unnamed[0].is_native_obj<Type>()) {
@@ -6156,1027 +7220,4 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
     return Object::make_heap_obj(buffer, ObjectType::NATIVE_OBJECT);
 }
 
-// ============================================================
-// Поиск в списках
-// ============================================================
-
-Object Interpreter::eval_getf(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Используем ANY для первого аргумента, так как null (пустой список) — это тоже list
-    vararg_check(form, args, {{ObjectType::PAIR, ObjectType::EMPTY_LIST}, {}}, {});
-
-    Object current = args.unnamed[0];
-    Object key = args.unnamed[1];
-
-    while (!current.is_null() && current.is_list()) {
-        auto pair_ptr = current.as_pair();
-        if (pair_ptr->car == key) {
-            Object rest = pair_ptr->cdr;
-            if (rest.is_list() && !rest.is_null()) {
-                return rest.as_pair()->car;
-            }
-            return get_null();
-        }
-
-        // Прыгаем на два элемента вперед: (cddr current)
-        Object next = pair_ptr->cdr;
-        if (next.is_list() && !next.is_null()) {
-            current = next.as_pair()->cdr;
-        } else {
-            break;
-        }
-    }
-    return get_null();
-}
-
-Object Interpreter::eval_assoc(const Object &form, Arguments &args,
-                               const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // key может быть чем угодно, а список может быть пустым
-    vararg_check(form, args, {{}, {ObjectType::PAIR, ObjectType::EMPTY_LIST}}, {});
-
-    Object key = args.unnamed[0];
-    Object current_list = args.unnamed[1];
-
-    while (!current_list.is_null() && current_list.is_list()) {
-        Object item = current_list.as_pair()->car;
-
-        // В alist каждый элемент — это пара (key . value)
-        if (item.is_pair()) {
-            if (item.as_pair()->car == key) {
-                return item; // Возвращаем всю пару
-            }
-        }
-
-        current_list = current_list.as_pair()->cdr;
-    }
-    return get_null();
-}
-
-// ============================================================
-// Итераторы
-// ============================================================
-
-Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::FUNCTION}}, {});
-
-    const std::string &str = args.unnamed[0].as_string()->data;
-    Object             lambda = args.unnamed[1];
-
-    for (unsigned char c : str) {
-        // Передаем код символа как Integer
-        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))}, env);
-    }
-    return get_null();
-}
-
-Object Interpreter::eval_array_for_each(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Проверяем типы: первый аргумент — массив (вектор), второй — лямбда
-    vararg_check(form, args, {{ObjectType::ARRAY}, {ObjectType::FUNCTION}}, {});
-
-    const auto &vec = args.unnamed[0].as_array()->data;
-    Object      lambda = args.unnamed[1];
-
-    for (const auto &item : vec) {
-        // Вызываем лямбду для каждого элемента вектора
-        call_lambda_internal(form, lambda, {item}, env);
-    }
-
-    return get_null();
-}
-
-/// @brief Специальная форма для обхода хеш-таблицы с лямбдой.
-/// @param form Специальная форма "for-each".
-/// @param args Аргументы к форме:
-///     - 1-й аргумент: хеш-таблица
-///     - 2-й аргумент: лямбда, которая будет вызвана для каждого элемента хеш-таблицы
-/// @return undefined
-Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::HASH_TABLE}, {ObjectType::FUNCTION}}, {});
-
-    auto       &table = args.unnamed[0].as_hash_table()->data;
-    Object      lambda = args.unnamed[1];
-    const auto &lam_data = lambda.as_function();
-
-    for (auto const &[key, val] : table) {
-        if (lam_data->args.unnamed.size() == 1) {
-            // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
-            call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)},
-                                 env);
-        } else {
-            // Если ждет 2 (или больше/rest), передаем как два аргумента
-            call_lambda_internal(form, lambda, {Object::make_string(key), val}, env);
-        }
-    }
-    return get_null();
-}
-
-Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
-
-    Object current = args.unnamed[0];
-    Object lambda = args.unnamed[1];
-
-    while (current.is_pair()) {
-        // Вызываем твой надежный call_lambda_internal
-        call_lambda_internal(form, lambda, {current.as_pair()->car}, env);
-        // print_form_info(form);
-        current = current.as_pair()->cdr;
-    }
-
-    return get_null();
-}
-
-Object Interpreter::eval_list_for_each_pair(const Object &form, Arguments &args,
-                                            const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
-
-    Object current = args.unnamed[0];
-    Object lambda = args.unnamed[1];
-
-    while (current.is_pair()) {
-        Object key = current.as_pair()->car;
-        current = current.as_pair()->cdr;
-
-        if (!current.is_pair()) {
-            throw_eval_error(
-                form, "eval-list-for-pair: expected even number of elements for key-value mapping");
-        }
-
-        Object value = current.as_pair()->car;
-
-        // Вызываем лямбду с двумя аргументами: (key, value)
-        call_lambda_internal(form, lambda, {key, value}, env);
-
-        current = current.as_pair()->cdr;
-    }
-
-    return get_null();
-}
-
-// В Interpreter или TypeSystem
-Object Interpreter::eval_type_for_each_field(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
-
-    auto root_struct = args.unnamed[0].as_heap_obj<StructureType>();
-    if (!root_struct) {
-        throw_eval_error(form, "for-each-field: expected structure type");
-    }
-    Object lambda = args.unnamed[1];
-
-    auto &ts = TypeSystem::instance();
-    auto  idx = 0;
-    // Рекурсивная функция обхода
-    std::function<void(StructureType *, int)> walk = [&](StructureType *current_struct,
-                                                         int            current_offset) {
-        auto &fields = current_struct->fields();
-        for (auto &field : fields) {
-            int             field_offset = current_offset + field.offset();
-            const TypeSpec &tspec = field.type();
-
-            // Проверка: является ли поле указателем?
-            // В твоей системе это (pointer <type>), т.е. base_type == "pointer"
-            bool is_pointer = (tspec.base_type() == "pointer");
-
-            // Ищем объект типа в системе типов
-            auto field_type_ptr = ts.lookup_type(tspec.base_type());
-            if (!field_type_ptr)
-                continue;
-
-            auto sub_struct = dynamic_cast<StructureType *>(field_type_ptr);
-
-            // Условие рекурсии:
-            // 1. Это структура (sub_struct != nullptr)
-            // 2. Это inline-поле (m_inline == true)
-            // 3. Это НЕ указатель
-            if (sub_struct && field.is_inline() && !is_pointer) {
-                walk(sub_struct, field_offset);
-            } else {
-                // Терминальное поле (базовый тип или указатель на структуру)
-                Arguments callback_args;
-                callback_args.unnamed = {Object::make_integer(idx),
-                                         Object::make_integer(field_offset),
-                                         // Передаем Field как HeapObject (shared_ptr)
-                                         Object::make_heap_obj(std::make_shared<Field>(field))};
-                call_lambda_internal(form, lambda, callback_args.unnamed, env);
-                idx++;
-            }
-        }
-    };
-
-    walk(root_struct.get(), 0);
-    return get_null();
-}
-
-Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env) {
-    // Проверка аргументов: тип-структура и лямбда
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::FUNCTION}}, {});
-
-    auto root_type = args.unnamed[0].as_heap_obj<Type>();
-    if (!root_type) {
-        throw_eval_error(form, "for-each-method: expected structure type");
-    }
-    Object lambda = args.unnamed[1];
-
-    // У структур обычно есть список методов
-    // Нам нужно пройтись по всем методам, включая унаследованные,
-    // либо согласно их ID в vtable.
-
-    auto max_id = root_type->methods_max_id();
-    for (int i = 0; i <= max_id; ++i) {
-        MethodInfo method;
-        bool       found_method = false;
-        Type      *current_type = root_type.get();
-
-        while (current_type) {
-            // Ищем метод в ТЕКУЩЕМ типе итерации
-            if (i == 0) {
-                if (current_type->has_new_method())
-                    found_method = current_type->get_my_new_method(&method);
-            } else {
-                found_method = current_type->get_my_method(i, &method);
-            }
-
-            if (found_method) {
-                // Нашли! Либо в самом типе, либо у предка.
-                break;
-            }
-
-            // Если не нашли, идем выше
-            if (current_type->get_name() == "object")
-                break;
-
-            auto parent_name = current_type->get_parent();
-            if (parent_name.empty())
-                break; // Защита от пустых имен родителей
-
-            current_type = TypeSystem::instance().lookup_type(parent_name);
-        }
-
-        // Вызов лямбды
-        Arguments callback_args;
-        callback_args.unnamed.push_back(Object::make_integer(i));
-        callback_args.unnamed.push_back(
-            found_method ? Object::make_heap_obj(std::make_shared<MethodInfo>(method))
-                         : get_null());
-
-        call_lambda_internal(form, lambda, callback_args.unnamed, env);
-    }
-
-    return get_null();
-}
-
-// ============================================================
-// CRC32
-// ============================================================
-
-Object Interpreter::eval_crc32(const Object &form, Arguments &args,
-                               const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}}, {});
-
-    return Object::make_integer(args.unnamed[0].as_crc32());
-}
-
-// ============================================================
-// HexFile Format
-// ============================================================
-
-// Вспомогательная функция для расчета контрольной суммы и форматирования строки
-std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type, const uint8_t *data) {
-    uint8_t     checksum = length + (addr >> 8) + (addr & 0xFF) + type;
-    std::string hex_data;
-    for (int i = 0; i < length; ++i) {
-        checksum += data[i];
-        hex_data += fmt::format("{:02X}", data[i]);
-    }
-    checksum = static_cast<uint8_t>((~checksum) + 1);
-    return fmt::format(":{:02X}{:04X}{:02X}{}{:02X}\n", length, addr, type, hex_data, checksum);
-}
-
-Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Ожидаем: (export-hex "path/to/file.hex" buffer_or_list)
-    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::NATIVE_OBJECT, ObjectType::PAIR}},
-                 {});
-
-    std::string path = args.unnamed[0].to_std_string();
-    Object      source = args.unnamed[1];
-    std::string full_content;
-
-    auto process_buffer = [&](const std::shared_ptr<StaticBuffer> &buf) {
-        uint8_t *raw_data = buf->data();
-        uint32_t base_origin = buf->origin();
-        uint32_t start_off = buf->get_start_addr(); // Смещение относительно origin
-        uint32_t end_off = buf->get_end_addr();     // Смещение относительно origin
-
-        // Если в буфер ничего не писали, start_off будет 0xFFFFFFFF
-        if (start_off > end_off)
-            return;
-
-        // Итерируемся от start_off до end_off
-        for (size_t i = start_off; i <= end_off; i += 16) {
-            // Вычисляем размер текущего чанка (не более 16 байт и не заходя за end_off)
-            uint8_t chunk = static_cast<uint8_t>(std::min((size_t)16, (size_t)(end_off - i + 1)));
-
-            // Реальный адрес в Intel HEX: origin + смещение внутри буфера
-            uint16_t hex_addr = static_cast<uint16_t>(base_origin + i);
-
-            // Записываем кусок данных из raw_data, начиная с индекса i
-            full_content += format_hex_record(chunk, hex_addr, 0x00, &raw_data[i]);
-        }
-    };
-    auto buffer = source.as_native_obj<StaticBuffer>(false);
-    if (buffer.get()) {
-        process_buffer(buffer);
-    } else if (source.is_pair()) {
-        // Если это список буферов (наш гибридный лэйаут)
-        auto current = source;
-        if (current.is_pair()) {
-            auto pair = current.as_pair();
-            auto buf = pair->car.as_native_obj<StaticBuffer>();
-            if (!buf)
-                throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-            process_buffer(buf);
-            current = pair->cdr;
-        }
-    } else {
-        throw_type_mismatch(form, args, 0, {"static-buffer", "pair"}, args.unnamed[0].class_name());
-    }
-
-    // Финальный маркер конца файла
-    full_content += ":00000001FF";
-    auto project_path = file_util::get_path(file_util::PathType::PROJECT);
-    if (path[0] != '/' && path[0] != '\\')
-        path = project_path.string() + "/" + path;
-    file_util::write_text(path, full_content);
-    return Object::make_boolean(true);
-}
-
-Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args,
-                 {{ObjectType::SYMBOL}, {ObjectType::NATIVE_OBJECT, ObjectType::SYMBOL}},
-                 {{"reg", {false, {ObjectType::SYMBOL}}}});
-
-    auto alias = std::make_shared<Register>();
-    alias->name = args.unnamed[0];
-
-    // 1. Определяем имя типа
-    auto second = args.unnamed[1];
-    if (second.is_symbol())
-        alias->type_name = second;
-    else if (second.is_native_obj<Type>())
-        alias->type_name =
-            Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
-
-    // 2. Привязываем регистр
-    if (args.has_named("reg"))
-        alias->reg = args.named["reg"];
-
-    // 3. ИНИЦИАЛИЗАЦИЯ ПАРАМЕТРОВ
-    auto type = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
-    if (type) {
-        alias->offset = 0;     // Всегда 0 для корня!
-        alias->bit_offset = 0; // Всегда 0 для корня!
-        alias->bit_size = type->get_size_in_memory() * 8;
-    } else {
-        // Фоллбек, если тип не найден (например, для простых символов)
-        alias->offset = 0;
-        alias->bit_size = 0;
-    }
-
-    return Object::make_heap_obj(alias);
-}
-
-// ============================================================
-// Declaration
-// ============================================================
-
-Object Interpreter::eval_declare_type(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {ObjectType::SYMBOL}}, {});
-
-    auto kind = args.unnamed.at(1).to_std_string();
-    auto type_name = args.unnamed.at(0).as_symbol();
-
-    auto &ts = TypeSystem::instance();
-    ts.forward_declare_type_as(type_name.name_ptr, kind);
-
-    // Local table of types
-    // 1. Достаем shared_ptr из таблицы
-    auto existing_type_ptr = m_symbol_types.lookup(type_name);
-
-    // 2. Если он есть, разыменовываем его дважды для сравнения объектов
-    if (existing_type_ptr) {
-        // (*existing_type_ptr) -> это shared_ptr
-        // (**existing_type_ptr) -> это сам объект TypeSpec
-        if (**existing_type_ptr != TypeSpec("type")) {
-            throw_eval_error(form, "Cannot forward declare {} as a type: it is already a {}",
-                             type_name.name_ptr, (*existing_type_ptr)->print());
-        }
-    }
-    m_symbol_types.set(type_name, std::make_shared<TypeSpec>("type"));
-
-    return get_none();
-}
-
-/*!
- * Declare type for type specification
- */
-Object Interpreter::eval_declare_extern(const Object &form, const Object &rest,
-                                        const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-
-    auto args = get_args(form, rest, ArgumentSpec(true, false));
-
-    // Проверка аргументов: (define-extern симбол тип)
-    if (args.unnamed.size() < 2) {
-        throw_eval_error(form, "define-extern must have at least 2 arguments: symbol and typespec");
-    }
-
-    auto sym = args.unnamed.at(0);
-    if (!sym.is_symbol()) {
-        throw_eval_error(form, "First argument of define-extern must be a symbol");
-    }
-    auto     type_arg = args.unnamed.at(1);
-    TypeSpec new_type;
-    if (type_arg.is_symbol() || type_arg.is_pair()) {
-        // 1. Парсим TypeSpec через рекурсивный парсер
-        // (функцию parse_typespec нужно добавить в TypeSystem или Interpreter)
-        try {
-            new_type = parse_typespec_internal(type_arg);
-        } catch (std::runtime_error &e) {
-            throw_eval_error(form, e.what());
-        }
-    } else if (type_arg.is_native_obj<TypeSpec>()) {
-        new_type = *type_arg.as_native_obj<TypeSpec>();
-    } else {
-        throw_type_mismatch(form, args, 1, {"symbol", "pair", "type-spec"}, type_arg.class_name());
-    }
-
-    // 1. Получаем указатель на запись в таблице
-    auto existing_type_ptr = m_symbol_types.lookup(sym.as_symbol());
-
-    if (existing_type_ptr) {
-        // Извлекаем сам объект TypeSpec для удобства (через разыменование shared_ptr)
-        const TypeSpec &old_ts = **existing_type_ptr;
-
-        if (old_ts != new_type) {
-            // Проверяем совместимость: может ли new_type заменить old_ts?
-            if (!TypeSystem::instance().tc(old_ts, new_type)) {
-                fmt::print("WARNING: Redefining symbol {} from {} to {}\n",
-                           sym.as_symbol().name_ptr, old_ts.print(), new_type.print());
-            }
-        }
-    }
-
-    // 3. Регистрируем тип символа (оборачиваем в shared_ptr)
-    m_symbol_types.set(sym.as_symbol(), std::make_shared<TypeSpec>(new_type));
-
-    return get_none();
-}
-
-/*!
- * Construct type specification
- */
-TypeSpec Interpreter::parse_typespec_internal(const Object &obj) {
-    if (obj.is_symbol()) {
-        // Простой тип: 'int16
-        return TypeSystem::instance().make_typespec(obj.as_symbol().name_ptr);
-    } else if (obj.is_pair()) {
-        auto list = obj.to_vector();
-        auto head = list.at(0);
-
-        if (head.is_symbol()) {
-            std::string head_name = head.as_symbol().name_ptr;
-
-            if (head_name == "function") {
-                // (function (arg-types...) return-type)
-                if (list.size() < 3)
-                    throw std::runtime_error("Invalid function typespec");
-
-                std::vector<std::string> arg_types;
-                for (auto &arg : list.at(1).to_vector()) {
-                    arg_types.push_back(parse_typespec_internal(arg).print());
-                }
-                std::string ret_type = parse_typespec_internal(list.at(2)).print();
-
-                return TypeSystem::instance().make_function_typespec(arg_types, ret_type);
-            } else if (head_name == "pointer") {
-                // (pointer uint8)
-                return TypeSystem::instance().make_pointer_typespec(
-                    parse_typespec_internal(list.at(1)));
-            } else if (head_name == "inline-array") {
-                return TypeSystem::instance().make_inline_array_typespec(
-                    parse_typespec_internal(list.at(1)));
-            }
-        }
-    }
-    throw std::runtime_error("Could not parse typespec: " + obj.print());
-}
-
-/*!
- * Convert the lisp object to the type systems type
- */
-TypeSpec Interpreter::deduce_type(const Object &val) {
-    if (val.is_integer()) {
-        int64_t v = val.as_integer();
-
-        // Маленькое положительное число -> uint8
-        if (v >= 0 && v <= 255) {
-            return TypeSystem::instance().make_typespec("uint8");
-        }
-        // Маленькое отрицательное число -> int8
-        if (v >= -128 && v < 0) {
-            return TypeSystem::instance().make_typespec("int8");
-        }
-        // Всё остальное, что влезает в 16 бит
-        return TypeSystem::instance().make_typespec("int16");
-    }
-
-    if (val.is_string()) {
-        return TypeSystem::instance().make_typespec("string");
-    }
-
-    if (val.is_symbol()) {
-        return TypeSystem::instance().make_typespec("symbol");
-    }
-
-    // По умолчанию, если не знаем что это
-    return TypeSystem::instance().make_typespec("object");
-}
-
-/*!
- * Define constant
- */
-Object Interpreter::eval_define_constant(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    auto args = rest.to_vector();
-    auto sym = args[0].as_symbol();
-    auto value = args[1]; // В SOOT это может быть результат eval
-
-    // Проверка: нельзя объявлять константу, если уже есть переменная с таким именем
-    if (m_symbol_types.lookup(sym)) {
-        throw_eval_error(form, "Cannot define constant: symbol already has a type definition");
-    }
-
-    // Определяем тип константы автоматически
-    // Например, если это число < 256, тип может быть uint8 и т.д.
-    TypeSpec ts = deduce_type(value);
-
-    m_global_constants.set(sym, value);
-    // Оборачиваем TypeSpec в shared_ptr для таблицы типов
-    m_symbol_types.set(sym, std::make_shared<TypeSpec>(ts));
-
-    return get_none();
-}
-
-/*!
- * A (declare ...) form can be used to configure settings inside a function.
- * Currently there aren't many useful settings, but more may be added in the future.
- *
- *  ;; Пример 1: Объявление встраиваемой функции
- * (defun add (x y)
- *   (declare (inline))  ;; Функция будет автоматически встраиваться
- *   (+ x y))
- *
- * ;; Пример 2: Разрешение встраивания (но не по умолчанию)
- * (defun multiply (x y)
- *   (declare (allow-inline))  ;; Компилятор может встроить по своему усмотрению
- *   (* x y))
- *
- * ;; Пример 3: Объявление ассемблерной функции с типом возврата
- * (defun sys-call (a b)
- *   (declare (asm-func int))  ;; Ассемблерная функция, возвращающая int
- *   (asm "..." a b))
- *
- * ;; Пример 4: Ассемблерная функция с разными типами
- * (defun get-pointer ()
- *   (declare (asm-func void*))  ;; Возвращает указатель
- *   (asm "mov rax, [rbp+8]; ret"))
- *
- * (defun read-byte ()
- *   (declare (asm-func unsigned-char))  ;; Возвращает беззнаковый символ
- *   (asm "mov al, [rdi]; ret"))
- *
- * ;; Пример 5: Включение печати ассемблерного кода
- * (defun optimized-func (x)
- *   (declare (print-asm))  ;; Выведет сгенерированный ассемблерный код
- *   (declare (inline))     ;; Комбинация нескольких declare
- *   (* x 42))
- *
- * ;; Пример 6: Ассемблерная функция с разрешением использования saved registers
- * (defun context-switch ()
- *   (declare (asm-func void))
- *   (declare (allow-saved-regs))  ;; Разрешает использовать регистры, сохраняемые между
- * вызовами (asm "push rbx; push r12; ..."))
- *
- * ;; Пример 7: Комбинация нескольких опций
- * (defun critical-func (x)
- *   (declare (inline))
- *   (declare (print-asm))
- *   (declare (allow-saved-regs))
- *   ;; тело функции
- *   )
- */
-Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    // 1. Поиск функционального окружения
-    auto fe = env->get_function_env();
-    if (!fe || fe->owner_function.is_none()) {
-        throw_eval_error(form, "Cannot use 'declare' outside of a function body.");
-    }
-
-    auto  func = fe->owner_function.as_function();
-    auto &settings = func->declarations;
-
-    // Запрещаем двойной declare (как в GOAL)
-    if (settings.is_set) {
-        if (settings.once)
-            return m_obj_none;
-        throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
-    }
-    settings.is_set = true;
-
-    // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
-    for_each_in_list(rest, [&](const Object &o) {
-        if (!o.is_pair()) {
-            throw_eval_error(o, "Invalid declare specification: expected a list.");
-        }
-
-        auto spec = o.as_pair();
-        auto first = spec->car;
-        auto args = spec->cdr; // Это список аргументов опции
-
-        if (!first.is_symbol()) {
-            throw_eval_error(first, "Declare option must be a symbol.");
-        }
-
-        std::string name = first.to_std_string();
-        if (name == "once") {
-            settings.once = true;
-        } else if (name == "inline") {
-            if (!args.is_null())
-                throw_eval_error(first, "Option 'inline' expects no arguments.");
-            settings.allow_inline = true;
-            settings.inline_by_default = true;
-            settings.save_code = true;
-        } else if (name == "allow-inline") {
-            if (!args.is_null())
-                throw_eval_error(first, "Option 'allow-inline' expects no arguments.");
-            settings.allow_inline = true;
-            settings.inline_by_default = false;
-            settings.save_code = true;
-        } else if (name == "asm-func") {
-            fe->is_asm_function = true;
-
-            // Ожидаем (asm-func return_type)
-            if (!args.is_pair() || !args.as_pair()->cdr.is_null()) {
-                throw_eval_error(first,
-                                 "Option 'asm-func' expects exactly one argument: return_type.");
-            }
-
-            auto ret_type_expr = args.as_pair()->car;
-            if (!(ret_type_expr.is_symbol() || ret_type_expr.is_string())) {
-                throw_eval_error(ret_type_expr, "Return type must be a symbol or string.");
-            }
-
-            // Нам нужно rlet окружение, чтобы собрать типы аргументов
-            auto rlet_env = env->get_reg_let_env();
-            if (!rlet_env) {
-                throw_eval_error(
-                    first, "Option 'asm-func' requires an 'rlet' scope to determine arguments.");
-            }
-
-            auto type_name = ret_type_expr.to_std_string();
-            // Строим сигнатуру функции на основе текущих регистровых алиасов
-            settings.typespec = TypeSystem::instance().build_typespec_from_env(rlet_env, type_name);
-        } else if (name == "print-asm") {
-            if (!args.is_null())
-                throw_eval_error(first, "Option 'print-asm' expects no arguments.");
-            settings.print_asm = true;
-        } else if (name == "allow-saved-regs") {
-            if (!args.is_null())
-                throw_eval_error(first, "Option 'allow-saved-regs' expects no arguments.");
-            settings.allow_saved_regs = true;
-        } else {
-            throw_eval_error(first, "Unrecognized declare option: {}.", name);
-            return;
-        }
-    });
-
-    return get_none();
-}
-
-/*!
- * Make a list of all declarations of lambda (see declare method)
- */
-Object Interpreter::eval_declarations(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    vararg_check(form, args, {}, {{"name", {false, {ObjectType::SYMBOL}}}});
-
-    auto fe = env->get_function_env();
-    if (fe.get() == nullptr) {
-        throw_eval_error(form, "Cannot use function metadata outside of a function.");
-    }
-
-    if (!fe->owner_function.is_function()) {
-        throw_eval_error(form, "Fuction environment does not have pointer to function.");
-    }
-    auto  func = fe->owner_function.as_function();
-    auto &settings = func->declarations;
-    // Make result
-    ListBuilder lb;
-    lb.add_keyword("declarations");
-    lb.add_key_value("is-set",
-                     true_or_false(settings.is_set)); // has the user set these with a (declare)?
-    lb.add_key_value(
-        "inline-by-default",
-        true_or_false(settings.inline_by_default)); // if a function, inline when possible?
-    lb.add_key_value("save-code",
-                     true_or_false(settings.save_code)); // if a function, should we save the code?
-    lb.add_key_value(
-        "allow-inline",
-        true_or_false(
-            settings.allow_inline)); // should we allow the user to use this an inline function
-    lb.add_key_value(
-        "print-asm",
-        true_or_false(settings.print_asm)); // should we print out the asm for this function?
-    lb.add_key_value("typespec", settings.typespec);
-
-    return lb.build();
-}
-
-/*!
- * Define method
- */
-Object Interpreter::eval_define_method(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args,
-                 {
-                     {ObjectType::SYMBOL, ObjectType::NATIVE_OBJECT}, // 0: Тип
-                     {ObjectType::SYMBOL},                            // 1: ID или Имя метода
-                     {ObjectType::FUNCTION}                           // 2: Лямбда
-                 },
-                 {{"declare-extern", {false, {ObjectType::SYMBOL}}}});
-
-    auto &ts = TypeSystem::instance();
-    auto  arg0_obj = args.unnamed[0];
-    // 1. Разрешаем тип
-    Type *type = nullptr;
-    if (arg0_obj.is_symbol())
-        type = ts.lookup_type(arg0_obj.to_std_string());
-    else if (arg0_obj.is_native_obj<Type>())
-        type = arg0_obj.as_heap_obj<Type>().get();
-    else
-        throw_type_mismatch(form, args, 0, {"type", "symbol"}, arg0_obj.class_name());
-
-    if (!type)
-        throw_eval_error(form, "Could not resolve type n arg0");
-
-    // 2. Получаем реализацию и проверяем наличие (declare)
-    Object implementation = args.unnamed[2];
-    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
-
-    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
-        throw_eval_error(
-            form, fmt::format("set-method {}::{} expect declared typespec in the lambda object {}",
-                              args.unnamed[0].to_std_string(), args.unnamed[1].print(),
-                              implementation.print()));
-    }
-
-    const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_heap_obj<TypeSpec>();
-    auto            success = false;
-    // 3. ПРОВЕРКА ЧЕРЕЗ DEFINE_METHOD (Тот самый шаг!)
-    try {
-        std::string method_name;
-        if (args.unnamed[1].is_symbol()) {
-            method_name = args.unnamed[1].to_std_string();
-        } else {
-            // Если пришло число (ID), вытягиваем имя из типа, чтобы передать в define_method
-            MethodInfo info;
-            if (!type->get_my_method(args.unnamed[1].as_integer(), &info)) {
-                throw_eval_error(form, fmt::format("Method ID {} not found in type {}",
-                                                   args.unnamed[1].as_integer(), type->get_name()));
-            }
-            method_name = info.name;
-        }
-
-        // Вызываем высокоуровневый метод системы типов.
-        // Он сделает всю грязную работу по проверке сигнатур и бросит подробный exception.
-        ts.define_method(type, method_name, impl_spec, std::nullopt);
-
-        if (args.has_named("declare-extern") && is_true(args.named["declare-extern"])) {
-            auto full_name =
-                fmt::format("{}::{}", type->get_name(), args.unnamed[1].to_std_string());
-            auto full_name_ptr = intern_ptr(full_name);
-            if (m_symbol_types.lookup(full_name_ptr)) {
-                throw_eval_error(form, fmt::format("The method is already {} defined", full_name));
-            } else {
-                std::shared_ptr<TypeSpec> shared_type_spec = std::make_shared<TypeSpec>(impl_spec);
-                m_symbol_types.set(full_name_ptr, shared_type_spec);
-                success = true;
-            }
-        } else {
-            success = true;
-        }
-    } catch (const std::exception &e) {
-        // Пробрасываем качественную ошибку из TypeSystem в REPL
-        throw_eval_error(form, e.what());
-    }
-
-    return Object::make_boolean(success);
-}
-
-Object Interpreter::eval_define_function(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
-    vararg_check(form, args,
-                 {
-                     {ObjectType::SYMBOL},  // 0: Имя функции (символ)
-                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
-                 },
-                 {});
-
-    auto   sym_obj = args.unnamed[0];
-    auto   sym = sym_obj.as_symbol();
-    Object implementation = args.unnamed[1];
-    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
-
-    // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
-    // делать.
-    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
-        throw_eval_error(
-            form,
-            fmt::format("define-function '{}' expects a declared typespec in the lambda object",
-                        sym.name_ptr));
-    }
-
-    const TypeSpec &impl_spec = *lambda_ptr->declarations.typespec.as_heap_obj<TypeSpec>();
-
-    // 3. Проверка констант и существующих типов (защита от коллизий)
-    if (m_global_constants.lookup(sym)) {
-        throw_eval_error(sym_obj, fmt::format("Cannot define function: symbol '{}' is a constant",
-                                              sym.name_ptr));
-    }
-
-    // 4. Проверка сигнатуры через существующую таблицу типов символов
-    auto existing_type_ptr = m_symbol_types.lookup(sym);
-    if (existing_type_ptr) {
-        const TypeSpec &old_ts = **existing_type_ptr;
-
-        // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
-        if (!TypeSystem::instance().tc(old_ts, impl_spec)) {
-            fmt::print(stderr,
-                       "WARNING: Signature mismatch for function '{}'. Expected {}, got {}\n",
-                       sym.name_ptr, old_ts.print(), impl_spec.print());
-        }
-    }
-
-    // 5. Регистрация
-    // Записываем тип (сигнатуру) в глобальную таблицу типов
-    m_symbol_types.set(sym, std::make_shared<TypeSpec>(impl_spec));
-
-    // Записываем саму реализацию в глобальное окружение
-    // (Используем m_global_environment, чтобы функция была видна везде)
-    m_global_environment.as_env()->vars.set(sym, implementation);
-
-    return sym_obj; // Обычно возвращают имя функции
-}
-
-Object Interpreter::eval_function_typespec(const Object &form, Arguments &args,
-                                           const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
-    vararg_check(form, args,
-                 {
-                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
-                 },
-                 {});
-
-    Object implementation = args.unnamed[0];
-    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
-
-    // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор знал, что
-    // делать.
-    if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
-        throw_eval_error(
-            form,
-            fmt::format("function-typespec '{}' expects a declared typespec in the lambda object",
-                        implementation.print()));
-    }
-
-    return lambda_ptr->declarations.typespec; // Обычно возвращают имя функции
-}
-
-Object Interpreter::eval_current_function(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
-    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
-
-    auto                               desc = args.unnamed[0].as_symbol();
-    std::shared_ptr<EnvironmentObject> func_env;
-    if (desc == "function") {
-        // Find any function
-        func_env = env->get_function_env();
-        if (!func_env.get()) {
-            throw_eval_error(form, "Environment does not have a function");
-        }
-    } else if (desc == "asm") {
-        // Find any function
-        func_env = env->get_asm_function_env();
-        if (!func_env.get()) {
-            throw_eval_error(form, "Environment does not have any asm-function");
-        }
-    }
-    if (func_env->owner_function.is_none())
-        throw_eval_error(form, "Environment does not have owner function");
-
-    return func_env->owner_function;
-}
-
-Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
-    vararg_check(form, args,
-                 {
-                     {ObjectType::NATIVE_OBJECT}, // 0: Имя функции (символ)
-                     {ObjectType::NATIVE_OBJECT}, // 1: Тело функции (лямбда)
-
-                 },
-                 {
-                     {"print", {false, {ObjectType::SYMBOL}}},
-                     {"throw", {false, {ObjectType::SYMBOL}}},
-                     {"allow-alias", {false, {ObjectType::SYMBOL}}},
-                     {"source", {false, {ObjectType::STRING}}},
-                 });
-
-    auto doprint = is_true(args.unnamed[0]);
-    auto func1_obj = args.unnamed[0];
-    auto func1_ptr = func1_obj.as_heap_obj<TypeSpec>();
-    auto func2_obj = args.unnamed[1];
-    auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
-
-    // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор
-    // знал, что делать.
-    if (!func1_ptr) {
-        throw_type_mismatch(form, args, 0, {"type-spec"}, func1_obj.class_name());
-    }
-    if (!func2_ptr) {
-        throw_type_mismatch(form, args, 1, {"type-spec"}, func2_obj.class_name());
-    }
-
-    std::string error_source_name;
-    bool        print_on_error = false;
-    bool        throw_on_error = false;
-    bool        allow_type_alias = false;
-
-    if (args.has_named("source"))
-        error_source_name = args.named["source"].to_std_string();
-
-    if (args.has_named("print"))
-        print_on_error = is_true(args.named["print"]);
-
-    if (args.has_named("throw"))
-        throw_on_error = is_true(args.named["throw"]);
-
-    if (args.has_named("allow-alias"))
-        allow_type_alias = is_true(args.named["allow-alias"]);
-
-    // 4. Проверка сигнатуры через существующую таблицу типов символов
-    auto t1 = func1_ptr.get();
-    auto t2 = func2_ptr.get();
-    // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
-    if (!TypeSystem::instance().typecheck_and_throw(*t1, *t2, error_source_name, print_on_error,
-                                                    throw_on_error, allow_type_alias)) {
-        if (doprint) {
-            throw_eval_error(form, fmt::format("WARNING: Signature mismatch, expected {}, got {}\n",
-                                               t1->print(), t2->print()));
-        }
-
-        return get_false(); // Обычно возвращают имя функции
-    }
-    return get_true(); // Обычно возвращают имя функци
-}
 } // namespace script

@@ -104,11 +104,11 @@
     (list 'iy-indexed offset)))
 
 (defmacro ->ix (type &rest path)
-  "Сокращение для (+ix (-> (reg-alias 'tmp 'type) path...))"
-  `(+ix (-> (reg-alias 'tmp ',type) ,@path)))
+  "Сокращение для (+ix (-> (reg 'tmp 'type) path...))"
+  `(+ix (-> (reg 'tmp ',type) ,@path)))
 
 (defmacro ->iy (type &rest path)
-  `(+iy (-> (reg-alias 'tmp ',type) ,@path)))
+  `(+iy (-> (reg 'tmp ',type) ,@path)))
 
 (defun +ii (ix-iy obj)
   "Make equivalet on +ix +iy "
