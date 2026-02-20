@@ -1402,6 +1402,7 @@ class FunctionObject : public HeapObject {
             str += name;
         }
         if (!declarations.typespec.is_none()) {
+            str += " ";
             str += declarations.typespec.print();
         }
         str += ">";

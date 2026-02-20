@@ -304,7 +304,10 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Type system
         {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
         {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
-        {"function-type", &Interpreter::eval_function_type, &args_with_varkeys},
+        {"function-type", &Interpreter::eval_function_type_get, &args_with_varkeys},
+        {"function-type!", &Interpreter::eval_function_type_set, &args_with_varkeys},
+        {"function-name", &Interpreter::eval_function_name_get, &args_with_varkeys},
+        {"function-name!", &Interpreter::eval_function_name_set, &args_with_varkeys},
         {"types-match?", &Interpreter::eval_types_match_p, &args_with_varkeys},
         {"declare-type", &Interpreter::eval_declare_type, nullptr},
         {"declare-external", &Interpreter::eval_declare_external, nullptr},
@@ -1202,28 +1205,40 @@ Object Interpreter::eval_lookup(const Object &form, Arguments &args,
 Object Interpreter::eval_lookup_type(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+    vararg_check(
+        form, args, {{ObjectType::SYMBOL}},
+        {{"types", {false, {ObjectType::SYMBOL}}}, {"extern", {false, {ObjectType::SYMBOL}}}});
 
     auto type_name = args.unnamed[0].as_symbol();
 
-    // 1. Сначала ищем в m_symbol_types
-    auto type_ptr_ptr = m_symbol_types.lookup(type_name);
-    if (type_ptr_ptr) {
-        // *type_ptr_ptr - это shared_ptr<TypeSpec>
-        auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr_ptr);
-        return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+    bool lookup_types = true;
+    bool lookup_extern = true;
+    if (args.has_named("types"))
+        lookup_types = is_true(args.named["types"]);
+    if (args.has_named("extern"))
+        lookup_extern = is_true(args.named["extern"]);
+
+    if (lookup_extern) {
+        // 1. Сначала ищем в m_symbol_types
+        auto type_ptr_ptr = m_symbol_types.lookup(type_name);
+        if (type_ptr_ptr) {
+            // *type_ptr_ptr - это shared_ptr<TypeSpec>
+            auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr_ptr);
+            return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+        }
     }
 
-    // 2. Если не нашли, ищем в TypeSystem
-    // ПРЕДПОЛОЖИМ: lookup_type возвращает std::shared_ptr<Type>
-    Type *type = TypeSystem::instance().lookup_type(type_name.as_string());
-    if (type) {
-        // Создаем shared_ptr с no-op deleter, потому что TypeSystem управляет памятью
-        auto heap_ptr =
-            std::shared_ptr<HeapObject>(static_cast<HeapObject *>(type), [](HeapObject *) {});
-        return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+    if (lookup_types) {
+        // 2. Если не нашли, ищем в TypeSystem
+        // ПРЕДПОЛОЖИМ: lookup_type возвращает std::shared_ptr<Type>
+        Type *type = TypeSystem::instance().lookup_type(type_name.as_string());
+        if (type) {
+            // Создаем shared_ptr с no-op deleter, потому что TypeSystem управляет памятью
+            auto heap_ptr =
+                std::shared_ptr<HeapObject>(static_cast<HeapObject *>(type), [](HeapObject *) {});
+            return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
+        }
     }
-
     return get_none();
 }
 
@@ -1658,6 +1673,14 @@ Object Interpreter::eval_let_common_special(const Object &form, const Object &re
     }
 }
 
+/*!
+ * Same as the `let` but with extended synatax each slot will be
+ * created as `reg` container. (rlet ((name type reg) ...) )
+ * where is:
+ *   @name - is the name in environment
+ *   @type - a type of the value (a type in the type system)
+ *   @reg  - the register alias: af, hl, ix etc
+ */
 Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     (void)form;
@@ -6321,7 +6344,8 @@ Object Interpreter::eval_declare_external(const Object &form, Arguments &args,
 
     // Проверка аргументов: (define-extern симбол тип)
     if (args.unnamed.size() < 2) {
-        throw_eval_error(form, "define-extern must have at least 2 arguments: symbol and typespec");
+        throw_eval_error(form,
+                         "declare-extern must have at least 2 arguments: symbol and typespec");
     }
 
     auto type_name = args.unnamed.at(0);
@@ -6600,8 +6624,11 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     return sym_obj; // Обычно возвращают имя функции
 }
 
-Object Interpreter::eval_function_type(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
+/*!
+ * Get type signature of function
+ */
+Object Interpreter::eval_function_type_get(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
     vararg_check(form, args,
@@ -6618,41 +6645,100 @@ Object Interpreter::eval_function_type(const Object &form, Arguments &args,
     // делать.
     if (!lambda_ptr->declarations.is_set || lambda_ptr->declarations.typespec.is_null()) {
         throw_eval_error(
-            form,
-            fmt::format("function-typespec '{}' expects a declared typespec in the lambda object",
-                        implementation.print()));
+            form, fmt::format("function-type '{}' expects a declared typespec in the lambda object",
+                              implementation.print()));
     }
 
     return lambda_ptr->declarations.typespec; // Обычно возвращают имя функции
 }
 
-Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
+/*!
+ * Set type signature of function
+ */
+Object Interpreter::eval_function_type_set(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::FUNCTION}, {ObjectType::NATIVE_OBJECT}}, {});
+
+    Object function_arg = args.unnamed[0];
+    auto   function_ptr = function_arg.as_heap_obj<FunctionObject>();
+
+    auto type_arg = args.unnamed[1];
+    if (!type_arg.is_native_obj<TypeSpec>()) {
+        throw_type_mismatch(form, args, 1, {"type-spec"}, type_arg.class_name());
+    }
+
+    function_ptr->declarations.is_set = true;
+    function_ptr->declarations.typespec = type_arg;
+    return get_none();
+}
+
+/*!
+ * Get name of function if it was defined with (function-name! func name)
+ */
+Object Interpreter::eval_function_name_get(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     // 1. Проверка аргументов: (define-function ИМЯ ЛЯМБДА)
     vararg_check(form, args,
                  {
-                     {ObjectType::NATIVE_OBJECT}, // 0: Имя функции (символ)
-                     {ObjectType::NATIVE_OBJECT}, // 1: Тело функции (лямбда)
-
+                     {ObjectType::FUNCTION} // 1: Тело функции (лямбда)
                  },
-                 {
-                     {"print", {false, {ObjectType::SYMBOL}}},
-                     {"throw", {false, {ObjectType::SYMBOL}}},
-                     {"allow-alias", {false, {ObjectType::SYMBOL}}},
-                     {"allow-abstract", {false, {ObjectType::SYMBOL}}},
-                     {"source", {false, {ObjectType::STRING}}},
-                 });
+                 {});
 
+    Object implementation = args.unnamed[0];
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
+
+    return Object::make_symbol(lambda_ptr->name);
+}
+
+/*!
+ * Set name of function (function-name! func name)
+ */
+Object Interpreter::eval_function_name_set(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::FUNCTION}, {ObjectType::SYMBOL}}, {});
+
+    Object implementation = args.unnamed[0];
+    auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
+    lambda_ptr->name = args.unnamed[1].to_std_string();
+    return get_none();
+}
+
+/*!
+ * Check if types are equal
+ */
+Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(
+        form, args,
+        {
+            {ObjectType::NATIVE_OBJECT}, // 0: Имя функции (символ)
+            {ObjectType::NATIVE_OBJECT}, // 1: Тело функции (лямбда)
+
+        },
+        {
+            {"print", {false, {ObjectType::SYMBOL}}},          // Print on screen when not match
+            {"throw", {false, {ObjectType::SYMBOL}}},          // Throw exception when not match
+            {"allow-alias", {false, {ObjectType::SYMBOL}}},    // Allow few hardcoded names
+            {"allow-abstract", {false, {ObjectType::SYMBOL}}}, // Make _type_ match to anything
+            {"source", {false, {ObjectType::STRING}}},         // The error will have this text
+        });
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // N.B. The aliases are:
+    // meters float
+    // degrees float
+    // time-frame int
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     auto doprint = is_true(args.unnamed[0]);
     auto func1_obj = args.unnamed[0];
     auto func1_ptr = func1_obj.as_heap_obj<TypeSpec>();
     auto func2_obj = args.unnamed[1];
     auto func2_ptr = func2_obj.as_heap_obj<TypeSpec>();
 
-    // 2. Проверка наличия декларации типов внутри лямбды
-    // В GOAL/SOOT функция обязана иметь typespec (сигнатуру), чтобы компилятор
-    // знал, что делать.
+    // Проверка наличия декларации типов внутри лямбды
     if (!func1_ptr) {
         throw_type_mismatch(form, args, 0, {"type-spec"}, func1_obj.class_name());
     }
@@ -6680,9 +6766,10 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
     if (args.has_named("allow-abstract"))
         allow_type_abstract = is_true(args.named["allow-abstract"]);
 
-    // 4. Проверка сигнатуры через существующую таблицу типов символов
+    // Проверка сигнатуры через существующую таблицу типов символов
     auto t1 = func1_ptr.get();
     auto t2 = func2_ptr.get();
+
     // Если это не функция или сигнатуры несовместимы — ругаемся или предупреждаем
     if (!TypeSystem::instance().typecheck_and_throw(*t1, *t2, error_source_name, print_on_error,
                                                     throw_on_error, allow_type_alias,
@@ -6692,9 +6779,9 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
                                                t1->print(), t2->print()));
         }
 
-        return get_false(); // Обычно возвращают имя функции
+        return get_false();
     }
-    return get_true(); // Обычно возвращают имя функци
+    return get_true();
 }
 
 // ============================================================

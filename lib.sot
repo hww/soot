@@ -18,7 +18,9 @@
 ;; @doc (defun name args &rest body)
 ;; Определяет функцию (обертка над lambda).
 (defmacro defun (name args &rest body)
-  `(define ,name (lambda ,args ,@body)))
+  `(begin
+    (define ,name (lambda ,args ,@body))
+    (function-name! ,name ',name)))
 
 ;; Определяет переменную и присваивает ей значение.
 ;; Использует &rest для имитации опционального значения и документации.

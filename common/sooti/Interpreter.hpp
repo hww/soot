@@ -588,8 +588,14 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_type(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_type_get(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_type_set(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_name_get(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_name_set(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_current_function(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_match_p(const Object &form, Arguments &args,
