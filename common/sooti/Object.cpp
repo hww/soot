@@ -399,6 +399,13 @@ Object Object::make_reader(TextStream *textStream) {
     return obj;
 }
 
+Object Object::make_writer(TextStream *textStream) {
+    Object obj;
+    obj.type = ObjectType::WRITER;
+    obj.heap_obj = std::make_shared<WriterObject>(textStream);
+    return obj;
+}
+
 Object Object::make_pointer(std::shared_ptr<Pointer> pointer) {
     Object obj;
     obj.type = ObjectType::POINTER;
@@ -662,6 +669,14 @@ ReaderObject *Object::as_reader() const {
                                  print());
     }
     return dynamic_cast<ReaderObject *>(heap_obj.get());
+}
+
+WriterObject *Object::as_writer() const {
+    if (type != ObjectType::WRITER) {
+        throw std::runtime_error("as_writer called on a " + object_type_to_string(type) + " " +
+                                 print());
+    }
+    return dynamic_cast<WriterObject *>(heap_obj.get());
 }
 
 std::vector<Object> Object::as_c_vector() const {
@@ -1333,7 +1348,11 @@ std::string Arguments::print_full(size_t max_len, size_t max_arg_len) const {
 }
 
 std::string ReaderObject::print() const {
-    return "#<reader-stream>";
+    return "#<reader>";
+}
+
+std::string WriterObject::print() const {
+    return "#<writer>";
 }
 
 // PairObject implementations
@@ -1536,6 +1555,12 @@ Object ReaderObject::inspect() const {
     ListBuilder lb{};
     lb.push_back(Object::make_symbol("reader"));
     lb.push_kv("line", Object::make_integer(ts ? ts->line_count : 0));
+    return lb.build();
+}
+
+Object WriterObject::inspect() const {
+    ListBuilder lb{};
+    lb.push_back(Object::make_symbol("writer"));
     return lb.build();
 }
 

@@ -303,7 +303,7 @@ class StaticBuffer : public NativeObject {
         else
             write_u32(offset, value);
     }
-    /**
+    /*!
      * Записывает C-строку (массив байт) заданной длины.
      * Не добавляет нулевой терминатор автоматически.
      */
@@ -322,7 +322,7 @@ class StaticBuffer : public NativeObject {
         update_addr_range(offset, len);
     }
 
-    /**
+    /*!
      * Записывает std::string целиком.
      * По умолчанию добавляет нулевой терминатор (null-terminated string).
      */
@@ -412,7 +412,7 @@ class StaticBuffer : public NativeObject {
     // ============================================================================
 
   public:
-    /**
+    /*!
      * Добавляет новую метку. Вызывается только если метки нет.
      */
     void add_label(const std::string &name, size_t offset, Object segment, Object meta) {
@@ -426,7 +426,7 @@ class StaticBuffer : public NativeObject {
         m_labels[name] = new_label;
     }
 
-    /**
+    /*!
      * Возвращает Object, который уже содержит shared_ptr<Label>
      */
     Object get_label_obj(const std::string &name) const {
@@ -437,14 +437,14 @@ class StaticBuffer : public NativeObject {
         return Object::make_null(); // Возвращаем пустой объект
     }
 
-    /**
+    /*!
      * Вспомогательный метод для проверки существования
      */
     bool has_label(const std::string &name) const {
         return m_labels.find(name) != m_labels.end();
     }
 
-    /**
+    /*!
      * Позволяет получить все метаданные для экспорта в символы (.sym.sot)
      */
     const std::unordered_map<std::string, Object> &get_all_labels() const {
@@ -456,7 +456,7 @@ class StaticBuffer : public NativeObject {
     // ============================================================================
 
   public:
-    /**
+    /*!
      * Записывает релоцируемое значение.
      * @param offset Куда пишем в буфере
      * @param target Имя метки или символа, на который ссылаемся
@@ -510,7 +510,8 @@ class StaticBuffer : public NativeObject {
                 write_pointer(reloc.offset, target_addr);
             } else if (reloc.type == RelocType::RELATIVE) {
                 // Расчет относительного прыжка (например, для JR или CALL)
-                // Учитываем размер самого указателя, так как PC обычно указывает на следующий байт
+                // Учитываем размер самого указателя, так как PC обычно указывает на следующий
+                // байт
                 int64_t diff = static_cast<int64_t>(target_addr) -
                                static_cast<int64_t>(reloc.offset + TypeConfig::pointer_size);
 

@@ -81,8 +81,6 @@
 
 ;; Пример для твоего синтаксиса (как в sprite-aux-list)
 (defmethod new vec3 ((x int16) (y int16))
-  ;; 1. Допустим, адрес аллокации передается в HL (через object-new)
-  ;; (.call 'object-new)
   (declare (once) (asm-func _type_))
   ;(fmt #t "DECLARATIONS vec3::new {}" (declarations))
   ;; 2. Инициализируем VTable объекта (первые 2 байта)

@@ -23,26 +23,25 @@
 
 ;; --- Тестовая логика ---
 
-(let* ((buf (make-buffer "test" 512 #x100))
-       (wr (make-buffer-writer buf)))
+(let* ((buf (make-buffer "test" 512 #x100)))
   
   (fmt #t "--- Starting Advanced TS Test ---\n")
 
   ;; 1. Проверка инициализации дефолтов
   ;; Просто пишем пустой список, ожидая, что сработают дефолты из deftype
-  (buffer-write wr '() :type 'vec2)
+  (buffer-write buf '() :type 'vec2)
   
   ;; 2. Проверка частичной перезаписи
   ;; Пишем только 'y', 'x' должен остаться дефолтным (5)
-  (buffer-write wr '((y . 99)) :type 'vec2)
+  (buffer-write buf '((y . 99)) :type 'vec2)
 
 ;; 3. Смешанная запись (Enum + Mask)
   ;; Передаем символы, которые enum должен уметь распознать
-  (buffer-write wr 'blue :type 'color-type)
-  (buffer-write wr 5 :type 'permissions) ;; (read | exec) = 1 | 4 = 5
+  (buffer-write buf 'blue :type 'color-type)
+  (buffer-write buf 5 :type 'permissions) ;; (read | exec) = 1 | 4 = 5
 
   ;; 4. Маркеры для визуального контроля (AAAAs)
-  (buffer-write wr #xAAAA :type 'uint16)
+  (buffer-write buf #xAAAA :type 'uint16)
 
   ;; --- Валидация ---
   

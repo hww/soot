@@ -8,18 +8,18 @@
    (checksum   uint16)))   ;; Просто поле следом
 
 ;; 2. Создаем буфер и записываем туда данные вручную (для теста)
-(let* ((buf (make-buffer "array-test" 100 0))
-       (wr (make-buffer-writer buf)))
+(let* ((buf (make-buffer "array-test" 100 0)))
   
   ;; Запишем что-нибудь по адресу, где должен быть массив (например, с отступом 2-4 байта)
   ;; В структуре типа 'basic' первые 4 байта обычно заняты типом, 
   ;; но в static-writer всё зависит от твоих смещений.
   
-  (buffer-write wr 
+  (buffer-write buf 
                '((data-bytes  (10 20 30 40 50 60 70 80 90 100))) 
+                :address 0
                 :type 'array-test-struct)
 
-  (fmt #t "Dump with array:\n{}\n" (buffer-dump buf 0 64 #t 8))
+  (fmt #t "Dump with array:\n{}\n" (buffer-dump buf))
 
   ;; 3. Проверка доступа через (-> ...)
   (let ((obj (buffer-read buf :type 'array-test-struct :address 0)))
@@ -29,7 +29,7 @@
     
     (fmt #t "Address of byte 2 {}\n" (& (-> obj data-bytes 2)))
 
-    (fmt #t "Element 0: {}\n" (mem-get (-> obj data-bytes 0)))
-    (fmt #t "Element 2: {}\n" (mem-get (-> obj data-bytes 2)))
-    (fmt #t "Element 9: {}\n" (mem-get (-> obj data-bytes 9))))
+    (fmt #t "Element 0: {}\n" (mem-ref (-> obj data-bytes 0)))
+    (fmt #t "Element 2: {}\n" (mem-ref (-> obj data-bytes 2)))
+    (fmt #t "Element 9: {}\n" (mem-ref (-> obj data-bytes 9))))
 )

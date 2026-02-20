@@ -7,7 +7,13 @@
 #include "sooti/static_buffer/StaticBufferWriter.hpp"
 namespace script {
 
-// Записать таблицу в буфер
+// ============================================================================
+// StaticSymbolTable
+// ============================================================================
+
+/*!
+ * Записать таблицу символов в буфер
+ */
 size_t StaticSymbolTable::write_to_buffer(StaticBuffer *dest, size_t offset) {
     const uint32_t MAGIC = 0x53594D54; // "SYMT" в little-endian
 
@@ -44,6 +50,9 @@ size_t StaticSymbolTable::write_to_buffer(StaticBuffer *dest, size_t offset) {
 // StaticBuffer
 // ============================================================================
 
+/*!
+ * Основной step accessor
+ */
 Object StaticBuffer::make_step_accessor(const Object &key) {
     // 1. Системные свойства
     if (key.is_symbol() || key.is_string()) {
@@ -124,6 +133,9 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
     return Object::make_none();
 }
 
+/*!
+ * Get value with the key
+ */
 Object StaticBuffer::get_at(const Object &key) {
     // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
     if (key.is_integer()) {
@@ -155,6 +167,9 @@ Object StaticBuffer::get_at(const Object &key) {
     return Object::make_none();
 }
 
+/*!
+ * Set value at the key
+ */
 void StaticBuffer::set_at(const Object &key, const Object &value) {
     // 1. Если ключ — число (оффсет), пишем как uint8 (по аналогии с get_at)
     if (key.is_integer()) {
@@ -180,6 +195,10 @@ void StaticBuffer::set_at(const Object &key, const Object &value) {
 
     throw std::runtime_error("StaticBuffer::set_at: invalid key or target not writable");
 }
+
+/*!
+ * Write to buffer at the pointer
+ */
 void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) {
     /*
     printf("PHYSICAL WRITE: data=%p ptr=%p, type=%s, val=%s\n", m_data.data(), ptr,
@@ -209,6 +228,9 @@ void StaticBuffer::write_value_at_ptr(void *ptr, Type *type, const Object &val) 
     this->update_addr_range(offset, size);
 }
 
+/*!
+ * Inspect buffer data
+ */
 Object StaticBuffer::inspect() const {
     std::vector<Object> bytes;
     size_t              limit = std::min(m_data.size(), (size_t)1024);
@@ -234,7 +256,9 @@ Object StaticBuffer::inspect() const {
         pretty_print::build_list(Object::make_symbol(":data"), Object::make_list(bytes)));
 }
 
-// Новый метод для красивого hex-дампа
+/*!
+ * Dump buffer to string
+ */
 std::string StaticBuffer::hex_dump(size_t start_offset, size_t bytes_to_dump, bool show_ascii,
                                    size_t bytes_per_line) const {
     if (bytes_to_dump == 0) {

@@ -11,7 +11,7 @@ namespace script {
 
 class StaticBufferWriter {
   public:
-    /**
+    /*!
      * Главная точка входа для записи значения по указателю.
      * Используется TypePointer::set().
      */

@@ -6,7 +6,7 @@
 
 namespace script {
 
-/**
+/*!
  * Запись значения в указатель.
  * Специальная обработка строк (так как они могут быть "string" или "symbol").
  * В остальных случаях - вызывает write_primitive_at_ptr, write_enum_at_ptr или
@@ -31,7 +31,7 @@ void StaticBufferWriter::write_value_at_ptr(void *ptr, Type *type, const Object 
                                  type->get_name());
     }
 }
-/**
+/*!
  * Запись примитивного значения в указатель.
  * Используется для записи значений, тип которых является
  * ValueType (например, int, float, double и т.д.).
@@ -152,7 +152,7 @@ void StaticBufferWriter::write_primitive_at_ptr(void *ptr, ValueType *type, cons
     }
 }
 
-/**
+/*!
  * @brief Запись значения enum в указатель.
  *
  * @param[in] ptr Указатель на место записи
@@ -190,7 +190,7 @@ void StaticBufferWriter::write_enum_at_ptr(void *ptr, EnumType *type, const Obje
     write_primitive_at_ptr(ptr, type, Object::make_integer(numeric_to_write));
 }
 
-/**
+/*!
  * @brief Запись значения битового поля в указатель.
  *
  * @param[in] ptr Указатель на место записи
@@ -236,7 +236,7 @@ void StaticBufferWriter::write_bitfield_at_ptr(void *ptr, BitFieldType *type, co
     write_primitive_at_ptr(ptr, type, Object::make_integer(final_mask));
 }
 
-/**
+/*!
  * @brief Запись строки в указатель.
  *
  * Если val является строкой или символом, то мы копируем строку

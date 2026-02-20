@@ -4,8 +4,8 @@
 namespace script {
 
 class StaticBufferBlitter {
-public:
-    /**
+  public:
+    /*!
      * @brief Копирует содержимое одного статического буфера в другой.
      * * @param src Исходный буфер (источник данных, релокаций и символов).
      * @param dest Целевой буфер (куда пишем).
@@ -13,13 +13,13 @@ public:
      * @param src_offset Начало области копирования в источнике.
      * @param size Количество байт для копирования.
      */
-    static void blit(StaticBuffer* src, StaticBuffer* dest, 
-                    size_t dest_offset, size_t src_offset, size_t size) ;
+    static void blit(StaticBuffer *src, StaticBuffer *dest, size_t dest_offset, size_t src_offset,
+                     size_t size);
 
-    /**
+    /*!
      * @brief Копирует буфер целиком.
      */
-    static void blit_full(StaticBuffer* src, StaticBuffer* dest, size_t dest_offset) ;
+    static void blit_full(StaticBuffer *src, StaticBuffer *dest, size_t dest_offset);
 };
 
 } // namespace script

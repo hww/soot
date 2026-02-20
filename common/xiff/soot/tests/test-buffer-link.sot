@@ -20,7 +20,7 @@
 (buffer-write-reloc buf 4 "init-routine")
 
 (fmt #t "Состояние буфера до линковки (ожидаем нули в адресах):\n")
-(fmt #t "Dump:\n{}\n" (buffer-dump buf 0 64 #t 8))
+(fmt #t "Dump:\n{}\n" (buffer-dump buf))
 
 (fmt #t "--- Шаг 2: Определение меток ---\n")
 

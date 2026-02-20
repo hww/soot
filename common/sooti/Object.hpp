@@ -73,11 +73,13 @@ class StringObject;
 class ArrayObject;
 class TextStream;
 class ReaderObject;
+class WriterObject;
 class Reader;
 class PlaceObject;
 class Object;
 class Pointer;
 class NativeObject;
+class Archive;
 
 struct ArgumentSpec;
 
@@ -249,6 +251,7 @@ class Object {
     static Object make_hash_table(int size = 16);
     static Object make_hash_table(Object type_name, int size = 16);
     static Object make_reader(TextStream *textStream);
+    static Object make_writer(TextStream *textStream);
     static Object make_pointer(std::shared_ptr<Pointer> pointer);
     static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object);
@@ -348,6 +351,9 @@ class Object {
     bool is_reader() const {
         return type == ObjectType::READER;
     }
+    bool is_writer() const {
+        return type == ObjectType::WRITER;
+    }
     bool is_primitive() const {
         return type == ObjectType::PRIMITIVE;
     }
@@ -398,6 +404,7 @@ class Object {
     FunctionObject                    *as_function() const;
     EnvironmentObject                 *as_env() const;
     ReaderObject                      *as_reader() const;
+    WriterObject                      *as_writer() const;
     Pointer                           *as_pointer() const;
     HeapObject                        *as_heap_obj() const;
     const IntegerObject               &as_integer_obj() const;
@@ -728,6 +735,8 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual Object type_name_obj() const = 0;
 
     virtual bool is_class_name(const Object &name) const = 0;
+
+    virtual void serialize(Archive &ar) {}
 };
 
 class NativeObject : public HeapObject {
@@ -1499,6 +1508,35 @@ class ReaderObject : public HeapObject {
     }
     bool is_class_name(const Object &name) const override {
         return name == ReaderObject::type_name_obj();
+    }
+};
+
+class WriterObject : public HeapObject {
+  public:
+    // Передаем указатель на активный поток разбора
+    TextStream *ts = nullptr;
+
+    explicit WriterObject(TextStream *stream) : ts(stream) {}
+    ~WriterObject() override = default;
+
+    // read-char: извлекаем символ через твой ts->read()
+    void write_char(const char c) {}
+
+    // Проверка на конец файла
+    std::string print() const override;
+    Object      inspect() const override;
+
+    std::string full_class_name() const override {
+        return "WriterObject";
+    }
+    std::string class_name() const override {
+        return object_type_to_string(ObjectType::READER);
+    }
+    Object type_name_obj() const override {
+        return Object::symbol_table().object_type_to_symbol(ObjectType::READER);
+    }
+    bool is_class_name(const Object &name) const override {
+        return name == WriterObject::type_name_obj();
     }
 };
 

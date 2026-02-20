@@ -6989,17 +6989,17 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
     vararg_check(form, args, {{}, {}},
                  {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {false, {ObjectType::INT}}}});
 
-    Object target = args.unnamed[0];
-    Object value = args.unnamed[1];
+    Object buf_obj = args.unnamed[0];
+    Object val_obj = args.unnamed[1];
 
-    std::string type_name = args.named["type"].to_std_string();
     // Get the type
-    auto *type = TypeSystem::instance().lookup_type(type_name);
-
+    std::string type_name_obj = args.named["type"].to_std_string();
+    auto       *type = TypeSystem::instance().lookup_type(type_name_obj);
     if (!type) {
-        throw_eval_error(form, "Unknown type: " + type_name);
+        throw_eval_error(form, "Unknown type: " + type_name_obj);
         return get_null();
     }
+
     // fmt::print("{}\n", pretty_print::to_string(value, 80).c_str());
     try {
         Object                       cell_obj;
@@ -7013,7 +7013,7 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                 return get_null();
             }
 
-            auto buffer_ptr = target.as_native_obj<StaticBuffer>();
+            auto buffer_ptr = buf_obj.as_native_obj<StaticBuffer>();
             write_offset = static_cast<size_t>(args.named["address"].as_integer());
 
             void *physical_ptr = buffer_ptr->data() + write_offset;
@@ -7022,9 +7022,9 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
             cell_ptr = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
         }
         // 1. Извлекаем исходный буфер (src)
-        if (value.is_native_obj()) {
+        if (val_obj.is_native_obj()) {
 
-            auto src_buf = value.as_native_obj<StaticBuffer>();
+            auto src_buf = val_obj.as_native_obj<StaticBuffer>();
             if (!src_buf) {
                 throw_eval_error(
                     form, "Source pointer owner is not a StaticBuffer. Blitting impossible.");
@@ -7048,8 +7048,8 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
         }
 
         // 2. САМА ЗАПИСЬ (Магия пакетов)
-        if (value.is_pair()) {
-            Object current_item = value;
+        if (val_obj.is_pair()) {
+            Object current_item = val_obj;
             size_t internal_index = 0;
 
             // Итерируемся по списку (пакету данных)
@@ -7098,9 +7098,9 @@ Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
                 // Переходим к следующему элементу входного списка
                 current_item = current_item.as_pair()->cdr;
             }
-        } else if (!value.is_null()) {
+        } else if (!val_obj.is_null()) {
             // Если пришло одиночное значение — пишем как раньше
-            cell_ptr->set(value);
+            cell_ptr->set(val_obj);
         } else {
             // Если пришло NULL, то не пишем ничего
             return Object::make_integer(write_offset);

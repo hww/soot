@@ -22,6 +22,12 @@ add_library(libsoti
     common/sooti/static_buffer/StaticBufferReader.cpp
     common/sooti/static_buffer/StaticBufferWriter.cpp
     common/sooti/static_buffer/StaticBufferWriter.cpp
+    common/sooti/archive/Archive.cpp
+    common/sooti/archive/MemoryArchive.cpp
+    common/sooti/archive/RelocationTable.cpp
+    common/sooti/archive/MemorySymbolTable.cpp
+    common/sooti/archive/MemoryRegion.cpp
+    common/sooti/archive/MemoryBuffer.cpp
 )
 
 target_link_libraries(libsoticore PRIVATE fmt::fmt libsootutils)

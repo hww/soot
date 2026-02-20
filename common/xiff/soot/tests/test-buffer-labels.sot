@@ -15,28 +15,29 @@
 
 ;; 2. Создаем буфер и "писателя"
 (define buf (make-buffer "DRV_SEG" 64 0))
-(define wr  (make-buffer-writer buf))
+
 
 (fmt #t "--- Шаг 1: Запись начальных данных ---\n")
 
 ;; Ставим метку в самом начале
-(buffer-label-set! wr "segment-start")
+(buffer-label-set! buf "segment-start" :address 0)
 
 ;; Записываем структуру через alist
-(buffer-write wr 
+(buffer-write buf 
     '((name . (#x41 #x42 #x43 #x00)) ;; "ABC\0"
       (config . ((id . #x1234) 
                  (version . 1) 
                  (flags . #x80))))
+    :address 0
     :type 'device-header)
 (fmt #t "--- Шаг 2: Использование меток ---\n")
 ;; Допустим, здесь начинается какой-то код инициализации
 ;; Мы ставим метку через курсор
-(buffer-label-set! wr "init-routine")
+(buffer-label-set! buf "init-routine" :address 0)
 
 ;; Пишем пару "пустых" команд (например, NOP = 0)
-(buffer-write wr 0 :type 'uint8)
-(buffer-write wr 0 :type 'uint8)
+(buffer-write buf 0 :type 'uint8 :address 0)
+(buffer-write buf 0 :type 'uint8 :address 1)
 ;; А теперь ставим метку вручную на фиксированный адрес
 ;; (например, системный обработчик Z80 на адресе #x0038)
 (buffer-label-set! buf 'rst-handler :address #x38)
