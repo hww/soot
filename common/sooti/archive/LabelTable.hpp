@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Archive.hpp"
+#include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
 #include <optional>
@@ -14,16 +14,20 @@ namespace script {
  *
  * Никакой логики линковки, только хранение и сериализация.
  */
-class LabelTable : public HeapObject {
+class LabelTable : public NativeObject {
   private:
     std::unordered_map<std::string, size_t> m_labels;
 
   public:
     LabelTable() = default;
+    ~LabelTable() {}
 
     // ============================================================
-    // HeapObject implementation
+    // NativeObject implementation
     // ============================================================
+
+    Object get_at(const Object &key) override;
+    void   set_at(const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "label-table";
@@ -38,7 +42,7 @@ class LabelTable : public HeapObject {
     }
 
     bool is_class_name(const Object &name) const override {
-        return name == type_name_obj() || HeapObject::is_class_name(name);
+        return name == LabelTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     std::string print() const override {
@@ -76,7 +80,7 @@ class LabelTable : public HeapObject {
 
     void serialize(Archive &ar) override {
         // Магия для идентификации
-        Crc32Value magic{0x4C41424C}; // "LABL"
+        CompactCrc32 magic{0x4C41424C}; // "LABL"
         ar << magic;
 
         // Версия формата

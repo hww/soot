@@ -213,6 +213,10 @@ class TypeSystem : public NativeObject {
 
     Type *lookup_type(const TypeSpec &ts) const;
     Type *lookup_type(const std::string &name) const;
+    Type *lookup_type_by_crc(uint32_t crc) const {
+        auto it = m_types_by_crc.find(crc);
+        return it != m_types_by_crc.end() ? it->second : nullptr;
+    }
 
     Type *lookup_type_no_throw(const TypeSpec &ts) const;
     Type *lookup_type_no_throw(const std::string &name) const;
@@ -354,7 +358,7 @@ class TypeSystem : public NativeObject {
     void verify_type_sizes_z80();
 
     void clear() {
-        m_types.clear();
+        m_types_by_crc.clear(), m_types.clear();
         m_forward_declared_types.clear();
         m_forward_declared_method_counts.clear();
         m_old_types.clear();
@@ -449,7 +453,7 @@ class TypeSystem : public NativeObject {
     // ========================================================================
 
     // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 
     Object to_alias() {
         return Object::make_heap_obj(shared_from_this());
@@ -478,6 +482,7 @@ class TypeSystem : public NativeObject {
     // Private Data Members
     // ========================================================================
 
+    std::unordered_map<uint32_t, Type *>                   m_types_by_crc;
     std::unordered_map<std::string, std::unique_ptr<Type>> m_types;
     std::unordered_map<std::string, std::string>           m_forward_declared_types;
     std::unordered_map<std::string, int>                   m_forward_declared_method_counts;

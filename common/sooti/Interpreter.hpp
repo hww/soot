@@ -90,7 +90,7 @@ class Interpreter {
     // --- Predicates -----------------------
     // Check if value is true
     bool is_true(const Object &o) const {
-        return o.truthy(m_sym_false.as_symbol());
+        return o.truthy();
     }
 
   private:
@@ -172,8 +172,10 @@ class Interpreter {
                                  const std::string &name);
     void throw_unexpected_named_arg(const Object &form, const Arguments &args,
                                     const std::string &name);
-    void throw_named_type_mismatch(const Object &form, const std::vector<ObjectType> &expected,
-                                   const std::string &name, const Object &got);
+    void throw_named_type_mismatch(const Object &form, const std::string &name,
+                                   const std::vector<ObjectType> &expected, const Object &got);
+    void throw_named_type_mismatch(const Object &form, const std::string &name,
+                                   std::initializer_list<const char *> expected, std::string got);
     void expect_env(const Object &form, const Object &o);
 
     void   render_complex_error(EvalException &e);
@@ -665,6 +667,32 @@ class Interpreter {
                       const std::shared_ptr<EnvironmentObject> &env);
 
     void recursive_write(const Object &form, Object cell_obj, Object value);
+
+    // Archiving and buffering
+    Object eval_make_archive(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_make_memory_archive(const Object &form, Arguments &args,
+                                    const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_make_memory_region(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_make_memory_buffer(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_region_export_hex(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_region_dump(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_reloc_set(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_symbol_set(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_symbol_ref(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_label_set(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_memory_buffer_label_ref(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

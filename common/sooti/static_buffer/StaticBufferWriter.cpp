@@ -1,6 +1,6 @@
 #include "StaticBufferWriter.hpp"
-// Include the header file for TypeSystem class
 #include "common/sooti/Object.hpp"
+// Include the header file for TypeSystem class
 #include "common/type_system/TypeSystem.hpp"
 #include <cstring>
 

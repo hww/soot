@@ -43,7 +43,7 @@ class StaticWriter : public HeapObject {
                            (float)m_position / m_buffer->size() * 100.f);
     }
 
-    Object make_step_accessor(const Object &key) override {
+    Object get_at(const Object &key) override {
         std::string name = key.to_std_string();
         if (name == ":size")
             return Object::make_integer(m_buffer->size());

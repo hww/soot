@@ -71,7 +71,7 @@ struct BufferLabel : public NativeObject {
         return info.build();
     }
 
-    Object make_step_accessor(const Object &key) override {
+    Object get_at(const Object &key) override {
         if (key.is_symbol() || key.is_string()) {
             std::string key_str = key.to_std_string();
             if (key_str == ":name") {
@@ -227,7 +227,7 @@ class StaticBuffer : public NativeObject {
                            m_data.size(), m_origin);
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 
     void write_value_at_ptr(void *ptr, Type *type, const Object &val);
 
@@ -235,8 +235,8 @@ class StaticBuffer : public NativeObject {
         return true;
     }
 
-    Object get_at(const Object &key) override;
-    void   set_at(const Object &key, const Object &value) override;
+    // Object get_at(const Object &key) override;
+    void set_at(const Object &key, const Object &value) override;
 
     // ============================================================================
     // --- Реализация чтения различных данных ---

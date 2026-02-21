@@ -1,5 +1,6 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
+#include "common/sooti/Printer.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/type_system/Register.hpp"
 
@@ -61,7 +62,10 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 // Keep old type for reference
                 m_old_types.push_back(std::move(m_types[name]));
                 // Update with new type
+                uint32_t crc = util::compute_crc32(type->get_name());
+                m_types_by_crc[crc] = type.get();
                 m_types[name] = std::move(type);
+
             } else {
                 throw_typesystem_error("Inconsistent type definition. Type {} was originally:\n{}\n"
                                        "and is redefined as:\n{}\nDiff:\n{}",
@@ -94,6 +98,8 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
             }
         }
 
+        uint32_t crc = util::compute_crc32(type->get_name());
+        m_types_by_crc[crc] = type.get();
         m_types[name] = std::move(type);
 
         // Check forward declarations
@@ -2134,9 +2140,9 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 // Aliases
 // ============================================================================
 
-Object TypeSystem::make_step_accessor(const Object &key) {
+Object TypeSystem::get_at(const Object &key) {
     // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = HeapObject::make_step_accessor(key);
+    Object base_attempt = HeapObject::get_at(key);
     if (!base_attempt.is_none())
         return base_attempt;
 
@@ -2452,9 +2458,9 @@ std::string FieldReverseLookupOutput::Token::print() const {
 }
 
 script::Object TypeSystem::inspect() const {
-    return pretty_print::build_list(Object::make_symbol("type-system"),
-                                    Object::make_symbol(":size"),
-                                    Object::make_integer(m_types.size()));
+    return script::pretty_print::build_list(Object::make_symbol("type-system"),
+                                            Object::make_symbol(":size"),
+                                            Object::make_integer(m_types.size()));
 }
 
 // ============================================================================

@@ -5,8 +5,9 @@
  * Representation of a GOAL type in the type system.
  */
 
+#include "Config.hpp"
 #include "Object.hpp"
-#include "common/CommonTypes.hpp"
+#include "common/sooti/Archive.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <cstdint>
 #include <map>
@@ -14,8 +15,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "common/sooti/Export.hpp"
 
 // Forward declarations
 class Type;
@@ -31,46 +30,6 @@ class MethodInfo;
 class TypeSpec;
 
 using namespace script;
-
-// ============================================================================
-// Common Constants
-// ============================================================================
-
-enum class RegClass { GPR_8, GPR_16, GPR_32, GPR_64, FPR, INVALID };
-
-std::string reg_kind_to_string(RegClass reg_class);
-
-constexpr u32 SOOT_NEW_METHOD = 0;      // method ID of GOAL new
-constexpr u32 SOOT_DEL_METHOD = 1;      // method ID of GOAL delete
-constexpr u32 SOOT_PRINT_METHOD = 2;    // method ID of GOAL print
-constexpr u32 SOOT_INSPECT_METHOD = 3;  // method ID of GOAL inspect
-constexpr u32 SOOT_LENGTH_METHOD = 4;   // method ID of GOAL length
-constexpr u32 SOOT_ASIZE_METHOD = 5;    // method ID of GOAL size
-constexpr u32 SOOT_COPY_METHOD = 6;     // method ID of GOAL copy
-constexpr u32 SOOT_RELOC_METHOD = 7;    // method ID of GOAL relocate
-constexpr u32 SOOT_MEMUSAGE_METHOD = 8; // method ID of GOAL mem-usage
-
-struct TypeConfig {
-    static RegClass pointer_reg_class;
-    static int      pointer_size;
-    static int      array_data_offset;
-    static int      default_alignment;
-    static int      crc_value_size;
-    static int      struct_alignment;
-    static int      struct_array_stride_alignment;
-    static int      struct_array_start_alignment;
-    static int      basic_array_start_alignment;
-};
-
-inline RegClass TypeConfig::pointer_reg_class = RegClass::GPR_64;
-inline int      TypeConfig::pointer_size = 4;
-inline int      TypeConfig::array_data_offset = 12;
-inline int      TypeConfig::default_alignment = 4;
-inline int      TypeConfig::crc_value_size = 4;
-inline int      TypeConfig::struct_alignment = 16;
-inline int      TypeConfig::struct_array_stride_alignment = 16;
-inline int      TypeConfig::struct_array_start_alignment = 16;
-inline int      TypeConfig::basic_array_start_alignment = 16;
 
 // ============================================================================
 // Definition Metadata
@@ -166,7 +125,7 @@ class MethodInfo : public NativeObject {
         return builder.build();
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 };
 
 // ============================================================================
@@ -268,7 +227,7 @@ class Field : public NativeObject {
         m_decomp_as_ts = ts;
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 
   private:
     friend class TypeSystem;
@@ -351,7 +310,7 @@ class BitField : public NativeObject {
     }
     std::string diff(const BitField &other) const;
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 
   private:
     TypeSpec    m_type;
@@ -420,7 +379,7 @@ class Type : public NativeObject {
     }
 
     std::string diff(const Type &other) const;
-    Object      make_step_accessor(const Object &key) override;
+    Object      get_at(const Object &key) override;
 
     // Method system
     bool              get_my_method(const std::string &name, MethodInfo *out) const;
@@ -510,6 +469,8 @@ class Type : public NativeObject {
     // Metadata
     DefinitionMetadata m_metadata;
 
+    virtual bool serialize_obj(Archive &ar, Object &data) = 0;
+
   protected:
     virtual std::string diff_impl(const Type &other) const = 0;
     std::string         incompatible_diff(const Type &other) const;
@@ -570,7 +531,13 @@ class NullType : public Type {
     }
     bool operator==(const Type &other) const override;
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override {
+        (void)ar;
+        (void)data;
+        return false;
+    }
 
   protected:
     std::string diff_impl(const Type &other) const override;
@@ -619,7 +586,9 @@ class ValueType : public Type {
 
     void inherit(const ValueType *parent);
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
   protected:
     friend class TypeSystem;
@@ -671,7 +640,9 @@ class ReferenceType : public Type {
         return builder.build();
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
     // These remain pure virtual - must be implemented by derived classes
     int get_size_in_memory() const override = 0;
@@ -765,10 +736,13 @@ class StructureType : public ReferenceType {
     }
     void override_field_type(const std::string &field_name, const TypeSpec &new_type);
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
   protected:
     friend class TypeSystem;
+
     void override_offset(int offset) {
         m_offset = offset;
     }
@@ -838,7 +812,9 @@ class BasicType : public StructureType {
         m_final = true;
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
   protected:
     std::string diff_impl(const Type &other) const override;
@@ -880,7 +856,9 @@ class BitFieldType : public ValueType {
         m_generate_inspect = gen_inspect;
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
   protected:
     friend class TypeSystem;
@@ -924,12 +902,17 @@ class EnumType : public ValueType {
         return m_is_bitfield;
     }
 
-    Object make_step_accessor(const Object &key) override;
+    std::string get_name_for_value(int64_t value) const;
+
+    Object get_at(const Object &key) override;
+
+    bool serialize_obj(Archive &ar, Object &data) override;
 
   protected:
     friend class TypeSystem;
     std::string diff_impl(const Type &other) const override;
 
+  protected:
     bool                                     m_is_bitfield = false;
     std::unordered_map<std::string, int64_t> m_entries;
 };

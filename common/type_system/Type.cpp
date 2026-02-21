@@ -1,6 +1,8 @@
 #include "common/type_system/Type.hpp"
 #include "TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
+#include "common/sooti/Printer.hpp"
+
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
 #include <algorithm>
@@ -46,7 +48,7 @@ bool MethodInfo::operator!=(const MethodInfo &other) const {
     return !(*this == other);
 }
 
-Object MethodInfo::make_step_accessor(const Object &key) {
+Object MethodInfo::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Простые поля
@@ -62,15 +64,15 @@ Object MethodInfo::make_step_accessor(const Object &key) {
     // 2. Сложные поля (создаем объекты на лету)
     if (name == ":type-spec") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
-        // потому что у TypeSpec тоже будет свой make_step_accessor
+        // потому что у TypeSpec тоже будет свой get_at
         return Object::make_heap_obj(std::make_shared<TypeSpec>(this->type));
     }
 
     if (name == ":type") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
-        // потому что у TypeSpec тоже будет свой make_step_accessor
+        // потому что у TypeSpec тоже будет свой get_at
         auto base_type = this->type.base_type();
-        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type));
+        return TypeSystem::instance().get_at(Object::make_string(base_type));
     }
 
     // 3. Флаги и логика
@@ -174,7 +176,7 @@ Object Field::inspect() const {
     return lb.build();
 }
 
-Object Field::make_step_accessor(const Object &key) {
+Object Field::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Базовые свойства
@@ -191,9 +193,9 @@ Object Field::make_step_accessor(const Object &key) {
     }
     if (name == ":type") {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
-        // потому что у TypeSpec тоже будет свой make_step_accessor
+        // потому что у TypeSpec тоже будет свой get_at
         auto base_type = this->type().base_type();
-        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type));
+        return TypeSystem::instance().get_at(Object::make_string(base_type));
     }
 
     // 3. Флаги состояния (теперь возвращают логический тип)
@@ -215,7 +217,7 @@ Object Field::make_step_accessor(const Object &key) {
 
     auto type = TypeSystem::instance().lookup_type(m_type);
     if (type) {
-        return type->make_step_accessor(key);
+        return type->get_at(key);
     }
     // Если ключ не найден, возвращаем undefined, чтобы navigation понял, что пути нет
     return Object::make_none();
@@ -420,7 +422,7 @@ std::string Type::get_runtime_name() const {
     return m_runtime_name;
 }
 
-Object Type::make_step_accessor(const Object &key) {
+Object Type::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
@@ -576,7 +578,7 @@ std::string NullType::diff_impl(const Type &other) const {
     return (*this == other) ? "" : "NullType comparison failed";
 }
 
-Object NullType::make_step_accessor(const Object &key) {
+Object NullType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свои специфичные свойства
@@ -586,7 +588,7 @@ Object NullType::make_step_accessor(const Object &key) {
 
     // 2. Если это не наше свойство, пробрасываем вызов родителю (Type)
     // Это и есть настоящая мощь наследования в нашей системе аксессоров.
-    return Type::make_step_accessor(key);
+    return Type::get_at(key);
 }
 
 // ============================================================================
@@ -684,7 +686,7 @@ RegClass ValueType::get_preferred_reg_class() const {
     return m_reg_kind;
 }
 
-Object ValueType::make_step_accessor(const Object &key) {
+Object ValueType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфичные поля ValueType
@@ -702,7 +704,183 @@ Object ValueType::make_step_accessor(const Object &key) {
 
     // 2. Если это не наше поле, просим родителя (Type) ответить.
     // Тот проверит "name", "parent", "alignment" и т.д.
-    return Type::make_step_accessor(key);
+    return Type::get_at(key);
+}
+
+/*!
+ * Serialize value type
+ */
+bool ValueType::serialize_obj(Archive &ar, Object &data) {
+    std::string type_name = get_name();
+
+    if (ar.is_loading()) {
+        // ============================================================
+        // РЕЖИМ ЧТЕНИЯ: из архива в Object
+        // ============================================================
+
+        if (type_name == "pointer" || type_name == "object") {
+            // Указатель - читаем как 16-битное смещение
+            uint16_t offset;
+            ar << offset;
+            data = Object::make_integer(offset);
+
+        } else if (type_name == "string" || type_name == "symbol") {
+            // Строка или символ - читаем как Pascal-строку (длина + данные)
+            CompactIndex len;
+            ar << len;
+
+            std::string str;
+            str.resize(len.value);
+            ar.serialize(&str[0], len.value);
+
+            if (type_name == "symbol") {
+                data = Object::make_symbol(str);
+            } else {
+                data = Object::make_string(str);
+            }
+
+        } else if (type_name == "bool") {
+            // Булево значение - 1 байт
+            uint8_t b;
+            ar << b;
+            data = Object::make_boolean(b != 0);
+
+        } else {
+            // Числовые типы
+            int64_t value = 0;
+
+            switch (get_load_size()) {
+            case 1: {
+                uint8_t v;
+                ar << v;
+                value = v;
+                break;
+            }
+            case 2: {
+                uint16_t v;
+                ar << v;
+                value = v;
+                break;
+            }
+            case 4: {
+                if (type_name == "float") {
+                    float v;
+                    ar << v;
+                    data = Object::make_float(v);
+                    return true;
+                } else {
+                    uint32_t v;
+                    ar << v;
+                    value = v;
+                }
+                break;
+            }
+            case 8: {
+                if (type_name == "double") {
+                    double v;
+                    ar << v;
+                    data = Object::make_float(v);
+                    return true;
+                } else {
+                    uint64_t v;
+                    ar << v;
+                    value = v;
+                }
+                break;
+            }
+            default:
+                throw std::runtime_error("ValueType: unsupported size for " + type_name);
+            }
+
+            data = Object::make_integer(value);
+        }
+
+        return true;
+
+    } else {
+        // ============================================================
+        // РЕЖИМ ЗАПИСИ: из Object в архив
+        // ============================================================
+
+        if (type_name == "pointer" || type_name == "object") {
+            // Указатель - ожидаем число (смещение)
+            if (!data.is_number()) {
+                throw std::runtime_error("ValueType '" + type_name + "': expected number");
+            }
+            uint16_t offset = data.as_integer();
+            ar << offset;
+
+        } else if (type_name == "string" || type_name == "symbol") {
+            // Строка или символ
+            std::string str;
+            if (type_name == "symbol") {
+                if (!data.is_symbol()) {
+                    throw std::runtime_error("ValueType 'symbol': expected symbol");
+                }
+                str = data.to_std_string();
+            } else {
+                if (!data.is_string()) {
+                    throw std::runtime_error("ValueType 'string': expected string");
+                }
+                str = data.as_string()->data;
+            }
+
+            CompactIndex len(str.length());
+            ar << len;
+            ar.serialize(&str[0], str.length());
+
+        } else if (type_name == "bool") {
+            // Булево значение
+            bool    b = data.is_true();
+            uint8_t byte = b ? 1 : 0;
+            ar << byte;
+
+        } else {
+            // Числовые типы
+            if (!data.is_number()) {
+                throw std::runtime_error("ValueType '" + type_name + "': expected number");
+            }
+
+            int64_t value = data.as_integer();
+
+            switch (get_load_size()) {
+            case 1: {
+                uint8_t v = value;
+                ar << v;
+                break;
+            }
+            case 2: {
+                uint16_t v = value;
+                ar << v;
+                break;
+            }
+            case 4: {
+                if (type_name == "float") {
+                    float v = data.as_float();
+                    ar << v;
+                } else {
+                    uint32_t v = value;
+                    ar << v;
+                }
+                break;
+            }
+            case 8: {
+                if (type_name == "double") {
+                    double v = data.as_float();
+                    ar << v;
+                } else {
+                    uint64_t v = value;
+                    ar << v;
+                }
+                break;
+            }
+            default:
+                throw std::runtime_error("ValueType: unsupported size for " + type_name);
+            }
+        }
+
+        return false;
+    }
 }
 
 // ============================================================================
@@ -717,7 +895,7 @@ std::string ReferenceType::print() const {
                        m_is_boxed, print_method_info());
 }
 
-Object ReferenceType::make_step_accessor(const Object &key) {
+Object ReferenceType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем то, что специфично для ссылок
@@ -733,7 +911,13 @@ Object ReferenceType::make_step_accessor(const Object &key) {
     }
     // 2. Если это не наше, просим ответить базовый класс Type
     // Важно: мы ВОЗВРАЩАЕМ результат этого вызова
-    return Type::make_step_accessor(key);
+    return Type::get_at(key);
+}
+
+bool ReferenceType::serialize_obj(Archive &ar, Object &data) {
+    (void)ar;
+    (void)data;
+    return false;
 }
 
 // ============================================================================
@@ -841,7 +1025,7 @@ void StructureType::override_field_type(const std::string &field_name, const Typ
     }
 }
 
-Object StructureType::make_step_accessor(const Object &key) {
+Object StructureType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства структуры (динамическая проверка)
@@ -887,7 +1071,148 @@ Object StructureType::make_step_accessor(const Object &key) {
     // 2. Если это не "структурное" свойство, передаем запрос родителю.
     // ReferenceType проверит "heap-base", "pointer?", "load-size":
     // Если и он не найдет, запрос уйдет в Type за "name", "size" и т.д.
-    return ReferenceType::make_step_accessor(key);
+    return ReferenceType::get_at(key);
+}
+
+// on the input and output we have a list of key value pairs
+bool StructureType::serialize_obj(Archive &ar, Object &data) {
+    if (ar.is_loading()) {
+        // ============================================================
+        // РЕЖИМ ЧТЕНИЯ: из архива в property list
+        // ============================================================
+
+        // Читаем количество полей
+        CompactIndex count;
+        ar << count;
+
+        // Создаем пустой property list
+        data = Object::make_null();
+
+        // Читаем каждое поле
+        for (int i = 0; i < count.value; i++) {
+            // Читаем имя поля
+            CompactIndex name_len;
+            ar << name_len;
+
+            std::string field_name;
+            field_name.resize(name_len.value);
+            ar.serialize(&field_name[0], name_len.value);
+
+            // Ищем описание поля в структуре
+            const Field *field_desc = nullptr;
+            for (const auto &f : fields()) {
+                if (f.name() == field_name) {
+                    field_desc = &f;
+                    break;
+                }
+            }
+
+            if (!field_desc) {
+                throw std::runtime_error("StructureType: unknown field '" + field_name +
+                                         "' in type " + get_name());
+            }
+
+            // Получаем тип поля
+            Type *field_type = TypeSystem::instance().lookup_type(field_desc->type().base_type());
+            if (!field_type) {
+                throw std::runtime_error("StructureType: unknown field type " +
+                                         field_desc->type().base_type());
+            }
+
+            // Читаем значение поля
+            Object field_value;
+            field_type->serialize_obj(ar, field_value);
+
+            // Добавляем в property list в формате (:field-name value)
+            // Используем make_keyword для создания :field-name
+            data = Object::make_pair(
+                Object::make_pair(Object::make_keyword(field_name), // :field-name
+                                  Object::make_pair(field_value, Object::make_null())),
+                data);
+        }
+
+        return true; // данные изменились
+
+    } else {
+        // ============================================================
+        // РЕЖИМ ЗАПИСИ: из property list в архив
+        // ============================================================
+
+        // Сначала нужно убедиться, что data - это property list
+        if (!data.is_pair() && !data.is_null()) {
+            throw std::runtime_error("StructureType: expected property list");
+        }
+
+        // Считаем количество полей в property list
+        int    count = 0;
+        Object current = data;
+        while (current.is_pair()) {
+            count++;
+            current = current.as_pair()->cdr;
+        }
+
+        // Пишем количество
+        CompactIndex total(count / 2); // делим на 2, т.к. каждая пара :key value
+        ar << total;
+
+        // Проходим по property list
+        current = data;
+        while (current.is_pair()) {
+            Object entry = current.as_pair()->car;
+
+            // Проверяем формат (:key value)
+            if (!entry.is_pair() || !entry.as_pair()->car.is_keyword()) {
+                throw std::runtime_error("StructureType: expected (:key value) pair");
+            }
+
+            // Получаем имя поля (без :)
+            std::string field_name = entry.as_pair()->car.to_std_string();
+            if (field_name[0] == ':') {
+                field_name = field_name.substr(1);
+            }
+
+            // Получаем значение
+            Object field_value = entry.as_pair()->cdr;
+            if (!field_value.is_pair()) {
+                throw std::runtime_error("StructureType: expected value after key");
+            }
+            field_value = field_value.as_pair()->car;
+
+            // Ищем описание поля
+            const Field *field_desc = nullptr;
+            for (const auto &f : fields()) {
+                if (f.name() == field_name) {
+                    field_desc = &f;
+                    break;
+                }
+            }
+
+            if (!field_desc) {
+                throw std::runtime_error("StructureType: unknown field '" + field_name +
+                                         "' in type " + get_name());
+            }
+
+            // Получаем тип поля
+            Type *field_type = TypeSystem::instance().lookup_type(field_desc->type().base_type());
+            if (!field_type) {
+                throw std::runtime_error("StructureType: unknown field type " +
+                                         field_desc->type().base_type());
+            }
+
+            // Пишем имя поля
+            CompactIndex name_len(field_name.length());
+            ar << name_len;
+            ar.serialize(const_cast<char *>(field_name.data()), field_name.length());
+
+            // Пишем значение поля
+            field_type->serialize_obj(ar, field_value);
+
+            // Переходим к следующей паре
+            current = current.as_pair()->cdr;
+        }
+
+        return false; // данные не изменились
+    }
 }
 
 // ============================================================================
@@ -933,7 +1258,7 @@ std::string BasicType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object BasicType::make_step_accessor(const Object &key) {
+Object BasicType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свойства, специфичные для BasicType
@@ -945,7 +1270,54 @@ Object BasicType::make_step_accessor(const Object &key) {
     // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
     // BasicType -> StructureType -> ReferenceType -> Type
     // ОБЯЗАТЕЛЬНО используем return, чтобы результат прошел обратно к пользователю.
-    return StructureType::make_step_accessor(key);
+    return StructureType::get_at(key);
+}
+
+/*!
+ * Serialize basic type
+ */
+bool BasicType::serialize_obj(Archive &ar, Object &data) {
+    if (ar.is_loading()) {
+        // ============================================================
+        // РЕЖИМ ЧТЕНИЯ: создаем объект по type_name из архива
+        // ============================================================
+
+        // Читаем type_name как CompactCrc32
+        CompactCrc32 type_crc;
+        ar << type_crc;
+
+        // Ищем тип по CRC
+        Type *type = TypeSystem::instance().lookup_type_by_crc(type_crc.value);
+        if (!type) {
+            throw std::runtime_error("BasicType: unknown type CRC " +
+                                     std::to_string(type_crc.value));
+        }
+
+        // Создаем экземпляр этого типа
+        Object structure_data;
+        if (!StructureType::serialize_obj(ar, structure_data)) {
+            return false;
+        }
+
+        // Сериализуем сам объект через его тип
+        Object::make_pair(Object::make_keyword("_type_"),
+                          Object::make_pair(Object::make_symbol(type->get_name()), structure_data));
+
+        return true;
+    } else {
+        // ============================================================
+        // РЕЖИМ ЗАПИСИ: сохраняем type_name и делегируем StructureType
+        // ============================================================
+
+        // Пишем CRC типа
+        uint32_t     type_crc = util::compute_crc32(get_name());
+        CompactCrc32 crc(type_crc);
+        ar << crc;
+
+        // Делегируем сериализацию самому типу
+        // (для структур это будет StructureType::serialize_obj)
+        return StructureType::serialize_obj(ar, data);
+    }
 }
 
 // ============================================================================
@@ -968,7 +1340,7 @@ std::string BitField::print() const {
 bool BitField::operator!=(const BitField &other) const {
     return !(*this == other);
 }
-Object BitField::make_step_accessor(const Object &key) {
+Object BitField::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Прямые свойства BitField
@@ -1041,7 +1413,7 @@ std::string BitFieldType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object BitFieldType::make_step_accessor(const Object &key) {
+Object BitFieldType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфику BitFieldType
@@ -1065,9 +1437,145 @@ Object BitFieldType::make_step_accessor(const Object &key) {
     // 3. Пробрасываем запрос ВВЕРХ: ValueType -> Type
     // Теперь цепочка полная: (-> bitfield-type 'size) придет сюда,
     // поймет что это не fields-count, и уйдет в ValueType.
-    return ValueType::make_step_accessor(key);
+    return ValueType::get_at(key);
 }
 
+bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
+    if (ar.is_loading()) {
+        // ============================================================
+        // РЕЖИМ ЧТЕНИЯ: из архива в Object
+        // ============================================================
+
+        uint64_t raw_value = 0;
+
+        // Читаем raw значение
+        switch (get_load_size()) {
+        case 1: {
+            uint8_t v;
+            ar << v;
+            raw_value = v;
+            break;
+        }
+        case 2: {
+            uint16_t v;
+            ar << v;
+            raw_value = v;
+            break;
+        }
+        case 4: {
+            uint32_t v;
+            ar << v;
+            raw_value = v;
+            break;
+        }
+        case 8: {
+            uint64_t v;
+            ar << v;
+            raw_value = v;
+            break;
+        }
+        default:
+            throw std::runtime_error("BitFieldType: unsupported size " +
+                                     std::to_string(get_load_size()));
+        }
+
+        // Преобразуем в список установленных флагов
+        std::vector<Object> flags;
+        for (const auto &field : m_fields) {
+            uint64_t mask = ((1ULL << field.size()) - 1) << field.offset();
+            if ((raw_value & mask) != 0) {
+                flags.push_back(Object::make_symbol(field.name()));
+            }
+        }
+
+        if (flags.empty()) {
+            // Если нет флагов - возвращаем 0
+            data = Object::make_integer(0);
+        } else if (flags.size() == 1) {
+            // Если один флаг - возвращаем символ
+            data = flags[0];
+        } else {
+            // Если несколько - возвращаем список
+            data = Object::make_list(flags);
+        }
+
+        return true;
+
+    } else {
+        // ============================================================
+        // РЕЖИМ ЗАПИСИ: из Object в архив
+        // ============================================================
+        uint64_t value_to_write = 0;
+
+        if (data.is_integer()) {
+            value_to_write = data.as_integer();
+
+        } else if (data.is_symbol() || data.is_string()) { // ДОБАВИТЬ строки
+            std::string name = data.to_std_string();
+            bool        found = false;
+            for (const auto &field : m_fields) {
+                if (field.name() == name) {
+                    uint64_t mask = ((1ULL << field.size()) - 1) << field.offset();
+                    value_to_write = mask; // для одного флага - присваивание
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw std::runtime_error("BitFieldType: unknown flag '" + name + "'");
+            }
+
+        } else if (data.is_pair() || data.is_list()) {
+            Object current = data;
+            while (current.is_pair()) {
+                Object item = current.as_pair()->car;
+                if (item.is_symbol() || item.is_string()) { // ДОБАВИТЬ строки
+                    std::string name = item.to_std_string();
+                    for (const auto &field : m_fields) {
+                        if (field.name() == name) {
+                            uint64_t mask = ((1ULL << field.size()) - 1) << field.offset();
+                            value_to_write |= mask; // для списка - OR
+                            break;
+                        }
+                    }
+                }
+                current = current.as_pair()->cdr;
+            }
+
+        } else {
+            throw std::runtime_error("BitFieldType: expected integer, symbol, string, or list");
+        }
+
+        // Записываем raw значение
+        switch (get_load_size()) {
+        case 1: {
+            uint8_t v = value_to_write;
+            ar << v;
+            break;
+        }
+        case 2: {
+            uint16_t v = value_to_write;
+            ar << v;
+            break;
+        }
+        case 4: {
+            uint32_t v = value_to_write;
+            ar << v;
+            break;
+        }
+        case 8: {
+            uint64_t v = value_to_write;
+            ar << v;
+            break;
+        }
+        default:
+            throw std::runtime_error("BitFieldType: unsupported size " +
+                                     std::to_string(get_load_size()));
+        }
+
+        return false;
+    }
+}
 // ============================================================================
 // EnumType Implementation
 // ============================================================================
@@ -1111,7 +1619,7 @@ std::string EnumType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object EnumType::make_step_accessor(const Object &key) {
+Object EnumType::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства EnumType
@@ -1129,7 +1637,64 @@ Object EnumType::make_step_accessor(const Object &key) {
 
     // 3. Если это не мета-свойство и не элемент энума, идем вверх:
     // EnumType -> ValueType -> Type
-    return ValueType::make_step_accessor(key);
+    return ValueType::get_at(key);
+}
+
+/*!
+ * Get name for value
+ */
+std::string EnumType::get_name_for_value(int64_t value) const {
+    for (const auto &[name, val] : m_entries) {
+        if (val == value) {
+            return name;
+        }
+    }
+    return "";
+}
+
+bool EnumType::serialize_obj(Archive &ar, Object &data) {
+    if (ar.is_loading()) {
+        // Читаем сырое значение через ValueType
+        Object raw_value;
+        ValueType::serialize_obj(ar, raw_value); // читает CompactCrc32 + число
+
+        if (!raw_value.is_number()) {
+            throw std::runtime_error("EnumType: expected number from archive");
+        }
+
+        int64_t num = raw_value.as_integer();
+
+        // Преобразуем число в символ если есть имя
+        std::string name = get_name_for_value(num);
+        if (!name.empty()) {
+            data = Object::make_symbol(name);
+        } else {
+            data = raw_value; // оставляем числом
+        }
+        return true;
+
+    } else {
+        // Преобразуем символ в число если нужно
+        int64_t value_to_write;
+
+        if (data.is_symbol()) {
+            std::string name = data.to_std_string();
+            auto        it = m_entries.find(name);
+            if (it != m_entries.end()) {
+                value_to_write = it->second;
+            } else {
+                throw std::runtime_error("EnumType: unknown enumerator " + name);
+            }
+        } else if (data.is_number()) {
+            value_to_write = data.as_integer();
+        } else {
+            throw std::runtime_error("EnumType: expected symbol or number");
+        }
+
+        // Пишем через ValueType
+        Object num_obj = Object::make_integer(value_to_write);
+        return ValueType::serialize_obj(ar, num_obj); // пишет CompactCrc32 + число
+    }
 }
 
 // ============================================================================

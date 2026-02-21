@@ -19,7 +19,7 @@ class TypePointer : public Pointer {
     TypePointer(void *ptr, Type *type, std::shared_ptr<HeapObject> owner);
     Object                      get() override;
     void                        set(const Object &val) override;
-    Object                      make_step_accessor(const Object &key) override;
+    Object                      get_at(const Object &key) override;
     void                       *resolve_addr() const override;
     std::string                 print() const override;
     Object                      inspect() const override;

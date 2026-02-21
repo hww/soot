@@ -215,9 +215,9 @@ class Object {
     static void set_symbol_table(SymbolTable *table) {
         s_table = table;
     }
-    static inline SymbolTable *get_symbol_table();
-    static inline SymbolTable &symbol_table();
-    static InternedSymbolPtr   intern(const char *name);
+    static SymbolTable      *get_symbol_table();
+    static SymbolTable      &symbol_table();
+    static InternedSymbolPtr intern(const char *name);
 
     // адресация к объекту -> key
     Object step(const Object &key) const;
@@ -305,6 +305,7 @@ class Object {
         return type == ObjectType::PAIR;
     }
     bool is_dotted_syntax();
+
     bool is_pointer() const {
         return type == ObjectType::POINTER;
     }
@@ -321,6 +322,7 @@ class Object {
         }
         return std::dynamic_pointer_cast<T>(heap_obj) != nullptr;
     }
+
     bool is_array() const {
         return type == ObjectType::ARRAY;
     }
@@ -386,11 +388,10 @@ class Object {
      * * @param false_symbol A reference to the pre-interned symbol used for 'false' (e.g., "#f").
      * @return true if the object is truthy, false if it is an empty list or matches false_symbol.
      */
-    bool truthy(InternedSymbolPtr false_symbol) const {
-        // Ложь — это если объект является пустым списком ИЛИ символом #f
-        if (is_null())
-            return false;
-        return !(is_symbol() && as_symbol().name_ptr == false_symbol.name_ptr);
+    bool truthy() const;
+
+    bool is_true() const {
+        return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f");
     }
 
     // Value access with type checking
@@ -714,9 +715,9 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
         return false;
     }
 
-    virtual Object   make_step_accessor(const Object &key);
-    virtual Object   get_at(const Object &key);
-    virtual void     set_at(const Object &key, const Object &val);
+    virtual Object get_at(const Object &key);
+    virtual void   set_at(const Object &key, const Object &val);
+
     virtual uint32_t as_crc32() {
         return 0;
     };
@@ -736,7 +737,9 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
 
     virtual bool is_class_name(const Object &name) const = 0;
 
-    virtual void serialize(Archive &ar) {}
+    virtual void serialize(Archive &ar) {
+        (void)ar;
+    }
 };
 
 class NativeObject : public HeapObject {
@@ -752,6 +755,13 @@ class NativeObject : public HeapObject {
     }
     bool is_class_name(const Object &name) const override {
         return name == NativeObject::type_name_obj();
+    }
+
+    virtual Object get_at(const Object &key) override {}
+    virtual void   set_at(const Object &key, const Object &val) override {}
+
+    void serialize(Archive &ar) override {
+        (void)ar;
     }
 };
 
@@ -777,7 +787,7 @@ class PairObject : public HeapObject {
         return count;
     }
 
-    Object make_step_accessor(const Object &key) override {
+    Object get_at(const Object &key) override {
         if (key.is_integer()) {
             int index = key.as_integer();
             if (index < 0)
@@ -907,26 +917,6 @@ class ArrayObject : public HeapObject {
 
     Object inspect() const override;
 
-    Object make_step_accessor(const Object &key) override {
-        if (key.is_integer()) {
-            int index = key.as_integer();
-
-            // Защита от выхода за границы
-            if (index >= 0 && index < static_cast<int>(data.size())) {
-                return data[index];
-            }
-            return Object::make_none();
-        }
-
-        // Можно добавить свойство 'length' для массива
-        if (key.is_symbol() && key.to_std_string() == "length") {
-            return Object::make_integer(data.size());
-        }
-
-        return Object::make_none();
-    }
-    // has methods get_at and set_at?
-
     bool is_table() const override {
         return true;
     }
@@ -1051,21 +1041,15 @@ class HashTableObject : public HeapObject {
         return it->second;
     }
 
-    Object make_step_accessor(const Object &key) override {
-        if (key.is_symbol() || key.is_string()) {
-            auto skey = key.to_std_string();
-            return data[skey];
-        }
-        return Object::make_none();
-    }
     // has methods get_at and set_at?
     bool is_table() const override {
         return true;
     }
 
     Object get_at(const Object &key) override {
-        if (key.is_string()) {
-            return data[key.to_std_string()];
+        if (key.is_symbol() || key.is_string()) {
+            auto skey = key.to_std_string();
+            return data[skey];
         }
         return Object::make_none();
     }
@@ -1520,7 +1504,9 @@ class WriterObject : public HeapObject {
     ~WriterObject() override = default;
 
     // read-char: извлекаем символ через твой ts->read()
-    void write_char(const char c) {}
+    void write_char(const char c) {
+        (void)c;
+    }
 
     // Проверка на конец файла
     std::string print() const override;
@@ -1642,7 +1628,6 @@ class Pointer : public HeapObject {
         return m_type;
     };
 
-    Object         make_step_accessor(const Object &key) override;
     Object         get_at(const Object &key) override;
     void           set_at(const Object &key, const Object &val) override;
     virtual Object get();

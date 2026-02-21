@@ -1,7 +1,8 @@
 
 #pragma once
 
-#include "common/CommonTypes.hpp"
+#include "common/sooti/Object.hpp"
+#include "common/sooti/Printer.hpp"
 
 namespace script {
 
@@ -11,12 +12,15 @@ namespace script {
  * Archive class. Used for loading, saving, and garbage collecting
  * in a byte order neutral way.
  */
-class Archive {
+class Archive : public NativeObject {
   public:
     // Archive interface.
     Archive()
         : m_version(0), m_is_loading(false), m_is_saving(false), m_is_persistent(false),
           m_is_error(false) {}
+    Archive(bool is_loading, bool is_saving, bool presistant)
+        : m_version(0), m_is_loading(is_loading), m_is_saving(is_saving),
+          m_is_persistent(presistant), m_is_error(false) {}
     virtual ~Archive();
 
     virtual void serialize(void *v, int length);
@@ -63,6 +67,25 @@ class Archive {
     }
     bool is_error() {
         return m_is_error;
+    }
+
+    std::string print() const override;
+    Object      inspect() const override;
+
+    std::string full_class_name() const override {
+        return "Archive";
+    }
+
+    std::string class_name() const override {
+        return "archive";
+    }
+
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == Archive::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     // Friend archivers.
@@ -130,8 +153,15 @@ class Archive {
  */
 class CompactIndex {
   public:
-    uint32_t        value;
+    int             value;
     friend Archive &operator<<(Archive &ar, CompactIndex &i);
+
+    operator uint32_t() const {
+        return static_cast<uint32_t>(value);
+    }
+    operator int() const {
+        return static_cast<int>(value);
+    }
 };
 
 class CompactPointer {
@@ -140,10 +170,17 @@ class CompactPointer {
     friend Archive &operator<<(Archive &ar, CompactPointer &i);
 };
 
-class Crc32Value {
+class CompactCrc32 {
   public:
     uint32_t        value;
-    friend Archive &operator<<(Archive &ar, Crc32Value &i);
+    friend Archive &operator<<(Archive &ar, CompactCrc32 &i);
+
+    operator uint32_t() const {
+        return value;
+    }
+    operator int() const {
+        return static_cast<int>(value);
+    }
 };
 
 /*!

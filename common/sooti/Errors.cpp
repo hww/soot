@@ -1,4 +1,4 @@
-#pragma once
+
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"

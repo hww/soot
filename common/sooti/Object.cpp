@@ -80,6 +80,24 @@ SymbolTable &Object::symbol_table() {
     return *get_symbol_table();
 }
 
+/**
+ * @brief Evaluates the truthiness of an object in accordance with Common Lisp semantics.
+ * * This method implements the core logical branching rule: an object is considered
+ * "false" (NIL) if it is either an empty list or the specific '#f' symbol.
+ * All other objects (including zero, empty strings, etc.) evaluate to "true".
+ * * Optimization: Uses direct pointer comparison for the false symbol,
+ * leveraging the fact that symbols are interned.
+ * * @param false_symbol A reference to the pre-interned symbol used for 'false' (e.g., "#f").
+ * @return true if the object is truthy, false if it is an empty list or matches false_symbol.
+ */
+bool Object::truthy() const {
+    // Ложь — это если объект является пустым списком ИЛИ символом #f
+    if (is_null())
+        return false;
+    return !(is_symbol() &&
+             as_symbol().name_ptr == Object::symbol_table().core.sym_false.as_symbol().name_ptr);
+}
+
 SymbolTable::SymbolTable() {
     m_power_of_two_size = 1; // 2 ^ 1 = 2
     m_entries.resize(2);
@@ -314,7 +332,7 @@ void Object::throw_type_error(const std::string &expected) const {
 Object Object::step(const Object &key) const {
     // Для всего, что живет в куче (HeapObject, Cell, Buffer, Array, String)
     if (this->heap_obj) {
-        return this->heap_obj->make_step_accessor(key);
+        return this->heap_obj->get_at(key);
     }
 
     throw std::runtime_error(
@@ -348,22 +366,15 @@ void Object::for_each_in_list(const Object &list, const std::function<void(const
 
 // 1. Для оператора (-> base key)
 // По умолчанию объект не дает в себя "зайти".
-Object HeapObject::make_step_accessor(const Object &key) {
+Object HeapObject::get_at(const Object &key) {
     (void)key;
     // Ошибку "Object is not navigable" должен бросать сам ИНТЕРПРЕТАТОР,
     // если после всех попыток он получил undefined.
     return Object::make_none();
 }
-// В HeapObject.cpp
-Object HeapObject::get_at(const Object &key) {
-    Object target = this->make_step_accessor(key);
-    if (target.is_pointer())
-        return target.as_pointer()->get();
-    return Object::make_none();
-}
 
 void HeapObject::set_at(const Object &key, const Object &value) {
-    Object target = this->make_step_accessor(key);
+    Object target = this->get_at(key);
     if (target.is_pointer())
         target.as_pointer()->set(value);
 }
@@ -1000,7 +1011,7 @@ ArgumentSpec ArgumentSpec::create(const std::vector<std::string>      &required,
 }
 
 // ============================================================================
-// Memory Cell
+// Class Pointer
 // ============================================================================
 
 // Вспомогательная функция для определения размера типа на лету (только примитивы)
@@ -1031,23 +1042,6 @@ std::string Pointer::print() const {
     char buf[64];
     snprintf(buf, sizeof(buf), "#<pointer %s @ 0x%p>", m_type.c_str(), m_ptr);
     return std::string(buf);
-}
-
-Object Pointer::make_step_accessor(const Object &key) {
-    if (key.is_integer()) {
-        size_t element_size = get_primitive_size(m_type);
-        if (element_size == 0) {
-            // Если тип сложный (структура), шаг должен вычисляться в TypeSystem,
-            // но на этом уровне мы просто двигаем указатель как по байтам.
-            element_size = 1;
-        }
-
-        uint8_t *new_addr = (uint8_t *)m_ptr + (key.as_integer() * element_size);
-        // Возвращаем новый указатель с тем же типом, но смещенным адресом
-        return Object::make_pointer(new_addr, m_type);
-    }
-
-    throw std::runtime_error("Pointer step accessor requires an integer offset");
 }
 
 Object Pointer::get() {
@@ -1149,9 +1143,26 @@ void Pointer::set(const Object &val) {
     throw std::runtime_error("Unsupported memory write for type: " + m_type);
 }
 
+Object Pointer::get_at(const Object &key) {
+    if (key.is_integer()) {
+        size_t element_size = get_primitive_size(m_type);
+        if (element_size == 0) {
+            // Если тип сложный (структура), шаг должен вычисляться в TypeSystem,
+            // но на этом уровне мы просто двигаем указатель как по байтам.
+            element_size = 1;
+        }
+
+        uint8_t *new_addr = (uint8_t *)m_ptr + (key.as_integer() * element_size);
+        // Возвращаем новый указатель с тем же типом, но смещенным адресом
+        return Object::make_pointer(new_addr, m_type);
+    }
+
+    throw std::runtime_error("Pointer step accessor requires an integer offset");
+}
+
 void Pointer::set_at(const Object &key, const Object &value) {
     // 1. Создаем временный указатель на нужный оффсет/поле
-    Object target = this->make_step_accessor(key);
+    Object target = this->get_at(key);
 
     // 2. Если шаг успешен, пишем значение по новому адресу
     if (target.is_pointer()) {
@@ -1160,20 +1171,6 @@ void Pointer::set_at(const Object &key, const Object &value) {
         throw std::runtime_error("Pointer::set_at: failed to resolve address for key " +
                                  key.print());
     }
-}
-Object Pointer::get_at(const Object &key) {
-    // 1. Создаем временный указатель (аксессор) на поле или элемент массива
-    // Это вычисляет новый адрес (m_ptr + offset) и определяет тип поля
-    Object target = this->make_step_accessor(key);
-
-    // 2. Проверяем, что шаг прошел успешно и мы получили объект-указатель
-    if (target.is_pointer()) {
-        // Разыменовываем (читаем значение по вычисленному адресу)
-        return target.as_pointer()->get();
-    }
-
-    // Если шаг невозможен (нет такого поля/индекса), возвращаем undefined
-    return Object::make_none();
 }
 
 // ============================================================================

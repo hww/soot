@@ -1,6 +1,7 @@
 #include "StaticBuffer.hpp"
 #include "common/sooti/Interpreter.hpp"
 #include "common/sooti/Object.hpp"
+#include "common/sooti/Printer.hpp"
 #include "common/sooti/static_buffer/TypePointer.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "sooti/static_buffer/StaticBuffer.hpp"
@@ -53,7 +54,7 @@ size_t StaticSymbolTable::write_to_buffer(StaticBuffer *dest, size_t offset) {
 /*!
  * Основной step accessor
  */
-Object StaticBuffer::make_step_accessor(const Object &key) {
+Object StaticBuffer::get_at(const Object &key) {
     // 1. Системные свойства
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
@@ -71,7 +72,7 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
             return Object::make_integer(get_end_addr());
         if (name == ":filled-size")
             return Object::make_integer(get_end_addr() - get_start_addr());
-        // Внутри StaticBuffer::make_step_accessor
+        // Внутри StaticBuffer::get_at
         if (name == ":label-names") {
             std::vector<Object> names;
             // Предполагаем, что у тебя есть m_labels или аналогичная структура
@@ -136,36 +137,37 @@ Object StaticBuffer::make_step_accessor(const Object &key) {
 /*!
  * Get value with the key
  */
-Object StaticBuffer::get_at(const Object &key) {
-    // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
-    if (key.is_integer()) {
-        Type *byte_t = TypeSystem::instance().lookup_type("uint8");
-        if (!byte_t)
-            throw std::runtime_error("TypeSystem: uint8 not found");
-
-        size_t offset = static_cast<size_t>(key.as_integer());
-
-        if (offset >= size())
-            return Object::make_none();
-
-        uint8_t *next_ptr = this->data() + offset;
-
-        // ИСПРАВЛЕНИЕ: Только 3 аргумента (ptr, type, owner)
-        auto b_cell = std::make_shared<TypePointer>(next_ptr,          // Физический адрес
-                                                    byte_t,            // Тип (uint8)
-                                                    shared_from_this() // Владелец
-        );
-
-        return Object::make_heap_obj(b_cell, ObjectType::POINTER);
-    }
-    if (key.is_symbol() || key.is_string()) {
-        std::string name = key.to_std_string();
-        Object      label_obj = get_label_obj(name);
-        if (label_obj.is_not_null())
-            return label_obj;
-    }
-    return Object::make_none();
-}
+// Object StaticBuffer::get_at(const Object &key) {
+//
+//     // 3. Низкоуровневый доступ по оффсету (например: (buffer 10))
+//     if (key.is_integer()) {
+//         Type *byte_t = TypeSystem::instance().lookup_type("uint8");
+//         if (!byte_t)
+//             throw std::runtime_error("TypeSystem: uint8 not found");
+//
+//         size_t offset = static_cast<size_t>(key.as_integer());
+//
+//         if (offset >= size())
+//             return Object::make_none();
+//
+//         uint8_t *next_ptr = this->data() + offset;
+//
+//         // ИСПРАВЛЕНИЕ: Только 3 аргумента (ptr, type, owner)
+//         auto b_cell = std::make_shared<TypePointer>(next_ptr,          // Физический адрес
+//                                                     byte_t,            // Тип (uint8)
+//                                                     shared_from_this() // Владелец
+//         );
+//
+//         return Object::make_heap_obj(b_cell, ObjectType::POINTER);
+//     }
+//     if (key.is_symbol() || key.is_string()) {
+//         std::string name = key.to_std_string();
+//         Object      label_obj = get_label_obj(name);
+//         if (label_obj.is_not_null())
+//             return label_obj;
+//     }
+//     return Object::make_none();
+// }
 
 /*!
  * Set value at the key

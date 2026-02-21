@@ -4,7 +4,7 @@
 
 namespace script {
 
-Object Register::make_step_accessor(const Object &key) {
+Object Register::get_at(const Object &key) {
 
     if (type_name.is_none()) {
         throw std::runtime_error("Register expects non empt type field");
@@ -30,7 +30,7 @@ Object Register::make_step_accessor(const Object &key) {
             return this->type_name;
 
         if (name == ":type")
-            return TypeSystem::instance().make_step_accessor(type_name);
+            return TypeSystem::instance().get_at(type_name);
 
         Type *type_ptr = TypeSystem::instance().lookup_type(type_name.to_std_string());
 

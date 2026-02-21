@@ -1,8 +1,8 @@
 // MemoryArchive.hpp
 #pragma once
 
-#include "Archive.hpp"
 #include "MemoryRegion.hpp"
+#include "common/sooti/Archive.hpp"
 #include <stack>
 
 namespace script {
@@ -15,22 +15,22 @@ namespace script {
  */
 class MemoryArchive : public Archive {
   private:
-    std::shared_ptr<MemoryRegion>           m_region;
-    size_t                                  m_position;
-    std::stack<std::shared_ptr<HeapObject>> m_object_stack;
+    std::shared_ptr<MemoryRegion> m_region;
+    size_t                        m_position;
 
   public:
+    const int VERSION = 1;
     /**
      * @param region регион памяти
      * @param loading true - чтение, false - запись
      * @param version версия формата (по умолчанию 0)
      */
-    MemoryArchive(std::shared_ptr<MemoryRegion> region, bool loading, int version = 0)
+    MemoryArchive(std::shared_ptr<MemoryRegion> region, bool loading, bool saving, int persistant)
         : m_region(region), m_position(0) {
-        m_version = version;
+        m_version = VERSION;
         m_is_loading = loading;
-        m_is_saving = !loading;
-        m_is_persistent = true; // архивируем в постоянное хранилище
+        m_is_saving = saving;
+        m_is_persistent = persistant; // архивируем в постоянное хранилище
         m_is_error = false;
 
         // Определяем порядок байт хоста
@@ -41,14 +41,45 @@ class MemoryArchive : public Archive {
         is_big_endian = (test.c[0] == 1);
     }
 
-    static MemoryArchive for_writing(std::shared_ptr<MemoryRegion> region, int version = 0) {
-        MemoryArchive ar(region, false, version);
+    static MemoryArchive for_writing(std::shared_ptr<MemoryRegion> region,
+                                     bool                          persistant = false) {
+        MemoryArchive ar(region, false, true, persistant);
         return ar;
     }
 
-    static MemoryArchive for_reading(std::shared_ptr<MemoryRegion> region, int version = 0) {
-        MemoryArchive ar(region, true, version);
+    static MemoryArchive for_reading(std::shared_ptr<MemoryRegion> region,
+                                     bool                          persistant = false) {
+        MemoryArchive ar(region, true, false, persistant);
         return ar;
+    }
+
+    Object get_at(const Object &key) override;
+
+    void set_at(const Object &key, const Object &value) override;
+
+    std::string class_name() const override {
+        return "memory-archive";
+    }
+
+    std::string full_class_name() const override {
+        return "MemoryArchive";
+    }
+
+    Object type_name_obj() const override {
+        return Object::make_symbol(class_name());
+    }
+
+    bool is_class_name(const Object &name) const override {
+        return name == MemoryArchive::type_name_obj() || Archive::is_class_name(name);
+    }
+
+    std::string print() const override {
+        return fmt::format("#<memory-archive>");
+    }
+
+    Object inspect() const override {
+        return pretty_print::build_list(pretty_print::build_list(
+            Object::make_symbol(":type"), Object::make_string(class_name())));
     }
 
     // ------------------------------------------------------------

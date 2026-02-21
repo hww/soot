@@ -1,4 +1,4 @@
-#include "Archive.hpp"
+#include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/util/Crc32.hpp"
@@ -9,7 +9,7 @@
 
 namespace script {
 
-class MemorySymbolTable : public HeapObject {
+class MemorySymbolTable : public NativeObject {
   private:
     struct SymbolEntry {
         std::string name;
@@ -42,14 +42,42 @@ class MemorySymbolTable : public HeapObject {
         }
     };
 
+  public:
+    /**
+     * Поиск символа по имени
+     * @param name имя символа
+     * @return индекс символа или std::nullopt если не найден
+     */
+    std::optional<size_t> find_by_name(const std::string &name) const {
+        uint32_t crc = util::compute_crc32(name);
+        return find_by_crc32(crc);
+    }
+
+    /**
+     * Проверка существования символа по имени
+     */
+    bool has_symbol(const std::string &name) const {
+        return find_by_name(name).has_value();
+    }
+
+    /**
+     * Проверка существования символа по CRC
+     */
+    bool has_crc32(uint32_t crc) const {
+        return find_by_crc32(crc).has_value();
+    }
+
     std::vector<SymbolEntry>             m_symbols;
     std::string                          m_string_pool;
     std::unordered_map<uint32_t, size_t> m_crc_to_index;
 
   public:
     // ============================================================
-    // HeapObject implementation
+    // MativeObject implementation
     // ============================================================
+
+    Object get_at(const Object &key) override;
+    void   set_at(const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "memory-symbol-table";
@@ -64,7 +92,7 @@ class MemorySymbolTable : public HeapObject {
     }
 
     bool is_class_name(const Object &name) const override {
-        return name == type_name_obj() || HeapObject::is_class_name(name);
+        return name == MemorySymbolTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     std::string print() const override {
@@ -84,7 +112,7 @@ class MemorySymbolTable : public HeapObject {
     // ============================================================
 
     void serialize(Archive &ar) override {
-        Crc32Value magic{0x53594D54}; // "SYMT"
+        CompactCrc32 magic{0x53594D54}; // "SYMT"
         ar << magic;
 
         if (ar.is_loading()) {
@@ -194,7 +222,7 @@ inline Archive &operator<<(Archive &ar, const std::shared_ptr<MemorySymbolTable>
     if (ptr) {
         ptr->serialize(ar);
     } else {
-        Crc32Value null_magic{0};
+        CompactCrc32 null_magic{0};
         ar << null_magic;
     }
     return ar;

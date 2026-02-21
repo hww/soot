@@ -10,7 +10,7 @@ add_library(libsoticore
     common/sooti/PrinterEnv.cpp
     common/sooti/PrettyPrinter.cpp
     common/sooti/Errors.cpp
-
+    common/sooti/Archive.cpp
 )
 # 3. Высокоуровневый интерпретатор и мост к типам
 add_library(libsoti
@@ -22,12 +22,12 @@ add_library(libsoti
     common/sooti/static_buffer/StaticBufferReader.cpp
     common/sooti/static_buffer/StaticBufferWriter.cpp
     common/sooti/static_buffer/StaticBufferWriter.cpp
-    common/sooti/archive/Archive.cpp
     common/sooti/archive/MemoryArchive.cpp
     common/sooti/archive/RelocationTable.cpp
     common/sooti/archive/MemorySymbolTable.cpp
     common/sooti/archive/MemoryRegion.cpp
     common/sooti/archive/MemoryBuffer.cpp
+    common/sooti/archive/LabelTable.cpp
 )
 
 target_link_libraries(libsoticore PRIVATE fmt::fmt libsootutils)

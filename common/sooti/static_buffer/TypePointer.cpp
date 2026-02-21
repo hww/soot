@@ -94,7 +94,7 @@ void TypePointer::set(const Object &val) {
         StaticBufferWriter::write_value_at_ptr(ptr, type, val);
     }
 }
-Object TypePointer::make_step_accessor(const Object &key) {
+Object TypePointer::get_at(const Object &key) {
     if (!m_ptr || m_type.empty())
         return Object::make_none();
 

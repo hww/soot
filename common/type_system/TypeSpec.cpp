@@ -301,7 +301,7 @@ void TypeSpec::delete_tag(const std::string &tag_name) {
 // Alias
 // ============================================================================
 
-Object TypeSpec::make_step_accessor(const Object &key) {
+Object TypeSpec::get_at(const Object &key) {
 
     auto name = key.to_std_string();
     // 1. Имя базового типа (например, "pointer")
@@ -350,11 +350,11 @@ Object TypeSpec::make_step_accessor(const Object &key) {
     }
 
     if (name == ":type") {
-        return TypeSystem::instance().make_step_accessor(Object::make_string(base_type()));
+        return TypeSystem::instance().get_at(Object::make_string(base_type()));
     }
 
     // Если ключ — символ (например, 'base-type), используем стандартную карту HeapObject
-    Object meta = HeapObject::make_step_accessor(key);
+    Object meta = HeapObject::get_at(key);
 
     if (!meta.is_none())
         return meta;
@@ -447,7 +447,7 @@ Object TypeSpec::to_sexpr_type_objects() const {
 
     // Создаем объект, представляющий тип (может быть отдельный класс Type)
     // Предполагаем, что есть функция или конструктор make_type()
-    auto type = TypeSystem::instance().make_step_accessor(Object::make_string(m_type));
+    auto type = TypeSystem::instance().get_at(Object::make_string(m_type));
     builder.add(type);
 
     // Рекурсивно добавляем аргументы
@@ -470,7 +470,7 @@ void TypeSpec::append_to_sexpr(ListBuilder &builder, int mode) const {
         builder.add_symbol(m_type);
         break;
     case 2: // Type objects
-        auto type = TypeSystem::instance().make_step_accessor(Object::make_string(m_type));
+        auto type = TypeSystem::instance().get_at(Object::make_string(m_type));
         builder.add(type);
         break;
     }

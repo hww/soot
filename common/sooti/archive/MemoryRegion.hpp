@@ -1,7 +1,7 @@
 // MemoryRegion.hpp
 #pragma once
 
-#include "Archive.hpp"
+#include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
 #include <cstdint>
@@ -100,6 +100,13 @@ class MemoryRegion : public NativeObject {
         }
     }
 
+    // ============================================================
+    // NativeObject implementation
+    // ============================================================
+
+    Object get_at(const Object &key) override;
+    void   set_at(const Object &key, const Object &value) override;
+
     // Object interface
     std::string class_name() const override {
         return "memory-region";
@@ -134,11 +141,69 @@ class MemoryRegion : public NativeObject {
             ptr->serialize(ar);
         } else {
             // Сериализуем nullptr как специальный маркер
-            Crc32Value null_magic{0x00000000};
+            CompactCrc32 null_magic{0x00000000};
             ar << null_magic;
         }
         return ar;
     }
+
+    /*!
+     * Dump buffer to string
+     */
+    std::string hex_dump(size_t start_offset, size_t bytes_to_dump, bool show_ascii = true,
+                         size_t bytes_per_line = 16, int origin = 0) const {
+        if (bytes_to_dump == 0) {
+            bytes_to_dump = m_data.size() - start_offset;
+        }
+
+        if (start_offset >= m_data.size()) {
+            return fmt::format("Offset {} exceeds buffer size {}", start_offset, m_data.size());
+        }
+
+        size_t end_offset = std::min(start_offset + bytes_to_dump, m_data.size());
+
+        std::string result = "";
+        result += fmt::format("Buffer: ({} bytes, origin: {:#x}):\n", m_data.size(), origin);
+
+        for (size_t offset = start_offset; offset < end_offset; offset += bytes_per_line) {
+            size_t line_end = std::min(offset + bytes_per_line, end_offset);
+
+            // Адрес
+            result += fmt::format("{:08x}: ", offset + origin);
+
+            // Hex байты
+            for (size_t i = offset; i < line_end; i++) {
+                result += fmt::format("{:02x} ", m_data[i]);
+            }
+
+            // Заполнение для выравнивания
+            for (size_t i = line_end; i < offset + bytes_per_line; i++) {
+                result += "   ";
+            }
+
+            // ASCII представление (опционально)
+            if (show_ascii) {
+                result += " |";
+                for (size_t i = offset; i < line_end; i++) {
+                    uint8_t byte = m_data[i];
+                    if (byte >= 32 && byte < 127) {
+                        result += static_cast<char>(byte);
+                    } else {
+                        result += '.';
+                    }
+                }
+                result += '|';
+            }
+            result += '\n';
+        }
+
+        return result;
+    }
+
+    bool export_intel_hex_file(const std::string &path, size_t start_offset, size_t end_offset,
+                               bool append) const;
+
+  private:
 };
 
 } // namespace script

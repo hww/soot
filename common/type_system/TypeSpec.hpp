@@ -127,7 +127,7 @@ class TypeSpec : public NativeObject {
         return m_tags;
     }
 
-    Object make_step_accessor(const Object &key) override;
+    Object get_at(const Object &key) override;
 
   private:
     std::string                            m_type;

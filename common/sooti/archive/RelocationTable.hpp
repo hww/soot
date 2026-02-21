@@ -2,7 +2,7 @@
 // RelocationTable.hpp
 #pragma once
 
-#include "Archive.hpp"
+#include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
 #include "fmt/format.h"
@@ -11,7 +11,7 @@
 
 namespace script {
 
-class RelocationTable : public HeapObject {
+class RelocationTable : public NativeObject {
   public:
     enum class RelocType : uint8_t {
         ABS_ADDR = 0,   // Абсолютный адрес
@@ -59,6 +59,9 @@ class RelocationTable : public HeapObject {
     // HeapObject implementation
     // ============================================================
 
+    Object get_at(const Object &key) override;
+    void   set_at(const Object &key, const Object &value) override;
+
     std::string class_name() const override {
         return "relocation-table";
     }
@@ -72,7 +75,7 @@ class RelocationTable : public HeapObject {
     }
 
     bool is_class_name(const Object &name) const override {
-        return name == type_name_obj() || HeapObject::is_class_name(name);
+        return name == RelocationTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     std::string print() const override {
@@ -92,7 +95,7 @@ class RelocationTable : public HeapObject {
     // ============================================================
 
     void serialize(Archive &ar) override {
-        Crc32Value magic{0x52454C4F}; // "RELO"
+        CompactCrc32 magic{0x52454C4F}; // "RELO"
         ar << magic;
 
         if (ar.is_loading()) {
