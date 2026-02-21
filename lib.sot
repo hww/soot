@@ -760,8 +760,14 @@
 (define original-type-of type-of)
 
 ;; -----------------------------------------------------------------------------
-;; RLET
+;; Serialization
 ;; -----------------------------------------------------------------------------
+
+(defmacro with-archive (ar buffer direction &rest body)
+  `(let ((,ar (make-memory-archive ,buffer :write ,(eq direction :write))))
+     (unwind-protect
+         (progn ,@body)
+       (archive-close! ,ar))))
 
 
 ;; =============================================================================

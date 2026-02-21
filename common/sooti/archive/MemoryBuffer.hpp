@@ -36,7 +36,12 @@ class MemoryBuffer : public NativeObject {
 
   public:
     MemoryBuffer() {}
-    MemoryBuffer(std::shared_ptr<MemoryRegion> region) : m_region(region) {}
+    MemoryBuffer(std::shared_ptr<MemoryRegion> region) : m_region(region) {
+
+        m_symbols = std::make_shared<MemorySymbolTable>();
+        m_relocs = std::make_shared<RelocationTable>();
+        m_labels = std::make_shared<LabelTable>();
+    }
     ~MemoryBuffer() {}
     // Только геттеры и сеттеры компонентов
     void set_symbols(std::shared_ptr<MemorySymbolTable> s) {

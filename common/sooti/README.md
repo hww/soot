@@ -22,6 +22,7 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 - [Macro System](#macro-system)
 - [Other Functions](#other-functions)
 - [Other Documentation](#other-documentation)
+- [Serialization](#serialization)
 
 ---
 
@@ -1577,3 +1578,516 @@ struct Register {
 5. **Dynamic Methods Judiciously**: Use `set-method` for hardware-specific optimizations
 
 This system enables writing high-performance, hardware-aware code while maintaining the safety and expressiveness of a high-level language.
+
+# Serialization
+
+## Table of Contents
+
+1. [Memory Region](#memory-region)
+2. [Memory Buffer](#memory-buffer)
+3. [Archive System](#archive-system)
+4. [Labels](#labels)
+5. [Symbols](#symbols)
+6. [Relocations](#relocations)
+7. [Serialization](#serialization)
+8. [Complete Examples](#complete-examples)
+
+---
+
+## Memory Region
+
+A `memory-region` is a raw chunk of memory with a base address. It contains only bytes - no metadata, no labels, no types.
+
+### Constructor
+
+```lisp
+(make-memory-region size [:base address])
+```
+
+**Parameters:**
+
+- `size` - Size in bytes (integer)
+- `:base` - Base address (optional, default 0)
+
+**Returns:** New memory region object
+
+**Example:**
+
+```lisp
+(define rom (make-memory-region 32768 :base #x8000))
+(define ram (make-memory-region 4096))  ; base = 0
+```
+
+### Basic Operations
+
+```lisp
+;; Read/write individual bytes
+(memory-region-read-byte region offset)     -> integer
+(memory-region-write-byte! region offset value)
+
+;; Get region properties
+(region :size)        -> integer
+(region :base)        -> integer
+(region :type)        -> "memory-region"
+(region :start-addr)  -> base address
+(region :end-addr)    -> base + size
+
+;; Inspect region
+(inspect region)      -> plist of properties
+(print region)        -> "#<memory-region 8000-ffff size=32768>"
+```
+
+### Hex Export
+
+```lisp
+(memory-region-export-hex region path 
+                         [:start offset] 
+                         [:end offset] 
+                         [:append?])
+
+;; Examples:
+(memory-region-export-hex rom "output.hex")
+(memory-region-export-hex rom "output.hex" :start #x100 :end #x1FF)
+(memory-region-export-hex rom "output.hex" :append #t)
+```
+
+### Hex Dump
+
+```lisp
+(memory-region-dump region [:start offset] [:size bytes] [:ascii?] [:width])
+
+;; Example:
+(print (memory-region-dump rom :start #x100 :size 64 :ascii? #t :width 16))
+```
+
+---
+
+## Memory Buffer
+
+A `memory-buffer` combines a memory region with optional metadata tables (labels, symbols, relocations).
+
+### Constructor
+
+```lisp
+(make-memory-buffer [:region region] | [:size size [:base address]])
+
+;; Examples:
+(define buf (make-memory-buffer :size 65536 :base #x8000))
+(define buf2 (make-memory-buffer :region existing-region))
+```
+
+### Component Access
+
+```lisp
+;; Get components
+(buf :region)   -> memory-region
+(buf :labels)   -> label-table (or null)
+(buf :symbols)  -> symbol-table (or null)
+(buf :relocs)   -> relocation-table (or null)
+
+;; Set components
+(set! (buf :labels) label-table)
+(set! (buf :symbols) symbol-table)
+(set! (buf :relocs) relocation-table)
+```
+
+### Direct Label Access (via buffer)
+
+```lisp
+;; Shortcut to labels table
+(buf "label-name")     -> offset or null
+(set! (buf "label-name") offset)
+(set! (buf "label-name") '(:address offset :align 2))
+```
+
+---
+
+## Archive System
+
+### Creating Archives
+
+```lisp
+;; Memory archive (most common)
+(make-memory-archive buffer [:write bool] [:version int])
+
+;; Examples:
+(define ar (make-memory-archive buf :write #t))    ; write mode
+(define ar (make-memory-archive buf :write #f))    ; read mode
+(define ar (make-memory-archive buf :write #t :version 2))
+```
+
+### Archive Operations
+
+```lisp
+;; Position management
+(archive-tell ar)           -> current position
+(archive-seek! ar position)  ; seek to position
+(archive-at-end? ar)        -> boolean
+
+;; Control
+(archive-close! ar)         ; close archive (flushes if needed)
+(archive-flush! ar)         ; flush to underlying storage
+(archive-error? ar)         ; check for errors
+```
+
+### Convenience Macro
+
+```lisp
+(defmacro with-archive ((ar buffer mode) &body body)
+  `(let ((,ar (make-memory-archive ,buffer :write ,(eq mode :write))))
+     (unwind-protect
+         (progn ,@body)
+       (archive-close! ,ar))))
+
+;; Usage:
+(with-archive (ar buf :write)
+  (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3)))
+```
+
+---
+
+## Labels
+
+Labels associate names with memory offsets.
+
+### Direct Label Table Operations
+
+```lisp
+;; Get label table from buffer
+(define labels (buf :labels))
+
+;; Add/update label
+(label-add! labels "start" 0)
+(label-add! labels "handler" '(:address #x100 :align 2))
+
+;; Query labels
+(label-get labels "start")      -> offset or null
+(label-has? labels "start")     -> boolean
+(label-list labels)             -> list of label names
+(label-table labels)            -> hash table of name->offset
+
+;; Remove
+(label-remove! labels "old-label")
+
+;; Properties
+(labels :size)   -> number of labels
+(labels :type)   -> "label-table"
+(inspect labels)  -> plist with :count
+```
+
+### Buffer-Level Label Operations
+
+```lisp
+;; Set label (via buffer)
+(memory-buffer-label-set! buf "start" 0)
+(memory-buffer-label-set! buf "handler" '(:address #x100))
+
+;; Get label
+(memory-buffer-label-ref buf "start")  -> offset or null
+```
+
+---
+
+## Symbols
+
+Symbols are used for linking and cross-referencing.
+
+### Direct Symbol Table Operations
+
+```lisp
+;; Get symbol table
+(define symbols (buf :symbols))
+
+;; Add symbol
+(symbol-add! symbols "irq_handler")  -> index
+
+;; Query symbols
+(symbol-find symbols "irq_handler")  -> info plist or null
+(symbol-find symbols index)          -> info plist or null
+(symbol-list symbols)                -> list of symbol names
+
+;; Symbol info format:
+;; ((:name . "irq_handler") (:crc32 . 12345678) (:index . 0))
+```
+
+### Buffer-Level Symbol Operations
+
+```lisp
+;; Add symbol
+(memory-buffer-symbol-set! buf "irq_handler")  -> index
+
+;; Get symbol info
+(memory-buffer-symbol-ref buf "irq_handler")  -> plist or null
+(memory-buffer-symbol-ref buf 0)               -> plist or null
+```
+
+---
+
+## Relocations
+
+Relocations specify how to fix up addresses at link time.
+
+### Direct Relocation Table Operations
+
+```lisp
+;; Get relocation table
+(define relocs (buf :relocs))
+
+;; Add relocation
+(reloc-add! relocs offset type target)
+
+;; Types:
+;; :abs   - absolute address
+;; :rel   - relative address (for jumps/calls)
+;; :crc   - CRC of symbol name
+;; :table - symbol table reference
+
+;; Examples:
+(reloc-add! relocs #x10 :abs "irq_handler")
+(reloc-add! relocs #x20 :rel "start")
+
+;; Query relocations
+(reloc-list relocs)                    -> list of all relocations
+(reloc-list relocs :index 0)           -> single relocation
+
+;; Relocation info format:
+;; ((:offset . 16) (:type . :abs) (:target . "irq_handler"))
+
+;; Clear all relocations
+(reloc-clear! relocs)
+```
+
+### Buffer-Level Relocation Operations
+
+```lisp
+;; Add relocation
+(memory-buffer-reloc-set! buf #x10 :abs "irq_handler")
+(memory-buffer-reloc-set! buf #x20 :rel "start")
+
+;; Query relocations
+(memory-buffer-reloc-ref buf)           -> list of all
+(memory-buffer-reloc-ref buf :index 0)  -> single relocation
+```
+
+### Linking
+
+```lisp
+;; Apply all relocations (resolve addresses)
+(buffer-link! buf)
+
+;; This updates the memory region with actual addresses
+;; using the label table to resolve targets
+```
+
+---
+
+## Serialization
+
+The unified serialization interface.
+
+### Basic Serialization
+
+```lisp
+;; Write mode
+(archive-serialize archive type :value object)  -> bytes written
+
+;; Read mode
+(archive-serialize archive type)                -> object
+
+;; Examples:
+(with-archive (ar buf :write)
+  (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
+  (archive-serialize ar 'point :value '(:x 10 :y 20)))
+
+(with-archive (ar buf :read)
+  (define v (archive-serialize ar 'vec3))    ; -> (:_type_ vec3 :x 1 :y 2 :z 3)
+  (define p (archive-serialize ar 'point)))  ; -> (:_type_ point :x 10 :y 20)
+```
+
+### Serialization Format
+
+The serialization format preserves type information:
+
+```lisp
+;; Writing automatically adds type tag
+(archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
+;; In archive: (:_type_ vec3 :x 1 :y 2 :z 3)
+
+;; Reading reconstructs the same structure
+(archive-serialize ar 'vec3)  ; -> (:_type_ vec3 :x 1 :y 2 :z 3)
+```
+
+### Supported Types
+
+- **Value types**: integers, floats, booleans
+- **Enum types**: symbols <-> integers
+- **Bitfield types**: symbols/lists <-> bitmasks
+- **Structure types**: property lists
+- **Basic types**: strings, symbols
+- **Pointers**: offsets (as integers)
+
+---
+
+## Complete Examples
+
+### Example 1: Creating and Using a Buffer
+
+```lisp
+;; Create a buffer
+(define buf (make-memory-buffer :size 65536 :base #x8000))
+
+;; Add labels
+(memory-buffer-label-set! buf "start" 0)
+(memory-buffer-label-set! buf "data" #x100)
+(memory-buffer-label-set! buf "handler" '(:address #x200 :align 2))
+
+;; Add symbols
+(memory-buffer-symbol-set! buf "irq_handler")
+(memory-buffer-symbol-set! buf "main")
+
+;; Add relocations
+(memory-buffer-reloc-set! buf #x10 :abs "irq_handler")
+(memory-buffer-reloc-set! buf #x20 :rel "start")
+
+;; Write some data
+(memory-region-write-byte! (buf :region) #x100 #xAA)
+(memory-region-write-byte! (buf :region) #x101 #xBB)
+
+;; Link everything
+(buffer-link! buf)
+
+;; Export to hex
+(memory-region-export-hex (buf :region) "output.hex")
+```
+
+### Example 2: Serializing Objects
+
+```lisp
+;; Define types
+(deftypespec point (x int) (y int))
+(deftypespec line (start point) (end point))
+
+;; Create objects
+(define p1 '(:x 10 :y 20))
+(define p2 '(:x 30 :y 40))
+(define line '(:start ,p1 :end ,p2))
+
+;; Serialize to buffer
+(define buf (make-memory-buffer :size 1024))
+(with-archive (ar buf :write)
+  (archive-serialize ar 'point :value p1)
+  (archive-serialize ar 'point :value p2)
+  (archive-serialize ar 'line :value line)
+  (archive-tell ar))  ; total bytes written
+
+;; Read back
+(with-archive (ar buf :read)
+  (define p1-read (archive-serialize ar 'point))  ; -> (:_type_ point :x 10 :y 20)
+  (define p2-read (archive-serialize ar 'point))  ; -> (:_type_ point :x 30 :y 40)
+  (define line-read (archive-serialize ar 'line))) ; -> (:_type_ line :start ...)
+```
+
+### Example 3: Working with Labels and Symbols
+
+```lisp
+;; Create buffer
+(define buf (make-memory-buffer :size 32768 :base #x8000))
+
+;; Add labels (for assembler)
+(memory-buffer-label-set! buf "code_start" 0)
+(memory-buffer-label-set! buf "irq_vector" #x38)
+(memory-buffer-label-set! buf "data_area" #x1000)
+
+;; Add symbols (for linker)
+(for-each (lambda (sym)
+           (memory-buffer-symbol-set! buf sym))
+         '("printf" "malloc" "free"))
+
+;; Query labels
+(memory-buffer-label-ref buf "code_start")    ; -> 0
+(memory-buffer-label-ref buf "nonexistent")   ; -> null
+
+;; Query symbols
+(memory-buffer-symbol-ref buf "printf")       ; -> info plist
+(memory-buffer-symbol-ref buf 0)              ; -> info by index
+
+;; Get all symbols
+(symbol-list (buf :symbols))  ; -> ("printf" "malloc" "free")
+```
+
+### Example 4: Relocations and Linking
+
+```lisp
+;; Create buffer with code
+(define code (make-memory-buffer :size 4096 :base #x8000))
+
+;; Add label for target
+(memory-buffer-label-set! code "target_routine" #x100)
+
+;; Generate code with relocations
+;; Assume we're generating a jump instruction:
+;; JP target_routine (3 bytes: 0xC3 + 16-bit address)
+
+;; Write opcode
+(memory-region-write-byte! (code :region) 0 #xC3)
+
+;; Add relocation for the address word
+(memory-buffer-reloc-set! code 1 :abs "target_routine")
+
+;; Later, after all labels are defined:
+(buffer-link! code)
+
+;; Now the address is resolved
+(memory-region-read-byte (code :region) 1)  ; low byte of #x100
+(memory-region-read-byte (code :region) 2)  ; high byte
+```
+
+### Example 5: Complete Assembly Pipeline
+
+```lisp
+;; 1. Create buffer for code
+(define code (make-memory-buffer :size 16384 :base #x8000))
+
+;; 2. Assemble (simplified)
+(assemble-code code '(
+  (org #x8000)
+  (label start)
+  (ld a #xAA)
+  (ld (hl) a)
+  (jp handler)
+  (label handler)
+  (ret)
+))
+
+;; 3. Add external references
+(memory-buffer-symbol-set! code "external_printf")
+
+;; 4. Add relocations
+(memory-buffer-reloc-set! code #x10 :abs "external_printf")
+
+;; 5. Link
+(buffer-link! code)
+
+;; 6. Export
+(memory-region-export-hex (code :region) "program.hex")
+
+;; 7. Inspect result
+(inspect code)
+(print (memory-region-dump (code :region) :start 0 :size 64))
+```
+
+---
+
+## Summary
+
+| Category          | Constructor           | Key Operations                                   |
+| ----------------- | --------------------- | ------------------------------------------------ |
+| **Memory Region** | `make-memory-region`  | `read-byte`, `write-byte!`, `export-hex`, `dump` |
+| **Memory Buffer** | `make-memory-buffer`  | Component access via keywords                    |
+| **Archive**       | `make-memory-archive` | `tell`, `seek!`, `at-end?`, `close!`             |
+| **Labels**        | via buffer            | `label-set!`, `label-ref`, `label-list`          |
+| **Symbols**       | via buffer            | `symbol-set!`, `symbol-ref`, `symbol-list`       |
+| **Relocations**   | via buffer            | `reloc-set!`, `reloc-ref`, `link!`               |
+| **Serialization** | `archive-serialize`   | Universal read/write                             |
+
+This API provides a clean, consistent interface for all memory management and serialization needs!

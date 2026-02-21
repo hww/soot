@@ -2,6 +2,7 @@
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
+#include "common/sooti/archive/RelocationTable.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/util/SimpleProfiler.hpp"
 #include "fmt/color.h"
@@ -669,30 +670,45 @@ class Interpreter {
     void recursive_write(const Object &form, Object cell_obj, Object value);
 
     // Archiving and buffering
-    Object eval_make_archive(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_memory_archive(const Object &form, Arguments &args,
+    Object      eval_make_memory_archive(const Object &form, Arguments &args,
+                                         const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_make_memory_region(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_make_memory_buffer(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_region_export_hex(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_region_dump(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_reloc_set(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_reloc_list(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_symbol_set(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_symbol_ref(const Object &form, Arguments &args,
+                                              const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_label_set(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_memory_buffer_label_ref(const Object &form, Arguments &args,
+                                             const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_archive_serialize(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_archive_tell(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_archive_seek(const Object &form, Arguments &args,
+                                  const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_archive_at_end(const Object &form, Arguments &args,
                                     const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_memory_region(const Object &form, Arguments &args,
+    Object      eval_archive_close(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_make_memory_buffer(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_region_export_hex(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_region_dump(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_reloc_set(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_symbol_set(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_symbol_ref(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_label_set(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_memory_buffer_label_ref(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_region_read_byte(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env);
+    Object      eval_region_write_byte(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env);
+    std::string relocation_type_to_string(RelocationTable::RelocType type);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

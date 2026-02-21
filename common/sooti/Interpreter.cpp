@@ -338,20 +338,31 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
         {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
 
-        // Archive
-        {"make-archive", &Interpreter::eval_make_archive, nullptr},
-        {"make-memory-archive", &Interpreter::eval_make_memory_archive, nullptr},
-        {"make-memory-region", &Interpreter::eval_make_memory_region, nullptr},
-        {"make-memory-buffer", &Interpreter::eval_make_memory_buffer, nullptr},
-        {"memory-region-export-hex", &Interpreter::eval_memory_region_export_hex, nullptr},
-        {"memory-region-dump", &Interpreter::eval_memory_region_dump, nullptr},
+        // Archive фтв игааук
+        {"make-memory-archive", &Interpreter::eval_make_memory_archive, &args_with_varkeys},
+        {"make-memory-region", &Interpreter::eval_make_memory_region, &args_with_varkeys},
+        {"make-memory-buffer", &Interpreter::eval_make_memory_buffer, &args_with_varkeys},
+        {"memory-region-export-hex", &Interpreter::eval_memory_region_export_hex,
+         &args_with_varkeys},
+        {"memory-region-dump", &Interpreter::eval_memory_region_dump, &args_with_varkeys},
 
         {"memory-buffer-label-ref", &Interpreter::eval_memory_buffer_label_ref, nullptr},
         {"memory-buffer-label-set!", &Interpreter::eval_memory_buffer_label_set, nullptr},
-        {"memory-buffer-symbol-ref", &Interpreter::eval_memory_buffer_symbol_ref, nullptr},
+        {"memory-buffer-symbol-ref", &Interpreter::eval_memory_buffer_symbol_ref,
+         &args_with_varkeys},
         {"memory-buffer-symbol-set!", &Interpreter::eval_memory_buffer_symbol_set, nullptr},
-        {"memory-buffer-reloc-ref", &Interpreter::eval_memory_buffer_reloc_ref, nullptr},
+        {"memory-buffer-reloc-ref", &Interpreter::eval_memory_buffer_reloc_ref, &args_with_varkeys},
         {"memory-buffer-reloc-set!", &Interpreter::eval_memory_buffer_reloc_set, nullptr},
+        {"memory-buffer-reloc-list", &Interpreter::eval_memory_buffer_reloc_list, nullptr},
+
+        {"archive-serialize", &Interpreter::eval_archive_serialize, nullptr},
+
+        {"archive-tell", &Interpreter::eval_archive_tell, nullptr},
+        {"archive-seek!", &Interpreter::eval_archive_seek, nullptr},
+        {"archive-at-end?", &Interpreter::eval_archive_at_end, nullptr},
+        {"archive-close!", &Interpreter::eval_archive_close, nullptr},
+        {"memory-region-read-byte", &Interpreter::eval_region_read_byte, nullptr},
+        {"memory-region-write-byte!", &Interpreter::eval_region_write_byte, nullptr},
 
     });
 
@@ -7397,31 +7408,6 @@ Object Interpreter::eval_static_new(const Object &form, Arguments &args,
 // ============================================================
 
 /*!
- * Create archive object
- */
-Object Interpreter::eval_make_archive(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {},
-                 {{"reading", {true, {ObjectType::SYMBOL}}},
-                  {"writing", {true, {ObjectType::SYMBOL}}},
-                  {"persistant", {false, {ObjectType::SYMBOL}}}});
-
-    bool reading = false;
-    bool writing = false;
-    bool persistant = false;
-
-    if (args.has_named("reading"))
-        reading = is_true(args.named["reading"]);
-    if (args.has_named("writing"))
-        writing = is_true(args.named["writing"]);
-    if (args.has_named("persistant"))
-        persistant = is_true(args.named["persistant"]);
-    auto archive = std::make_shared<Archive>(reading, writing, persistant);
-    return Object::make_heap_obj(archive, ObjectType::NATIVE_OBJECT);
-}
-
-/*!
  * Create memory archive object
  */
 Object Interpreter::eval_make_memory_archive(const Object &form, Arguments &args,
@@ -7459,26 +7445,25 @@ Object Interpreter::eval_make_memory_archive(const Object &form, Arguments &args
 Object Interpreter::eval_make_memory_region(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}},
-                 {{"size", {true, {ObjectType::INT}}}, {"origin", {false, {ObjectType::INT}}}});
+    vararg_check(form, args, {{ObjectType::INT}}, {{"base", {false, {ObjectType::INT}}}});
 
-    uint region_size = 0;
-    uint region_offset = 0;
+    uint region_size = args.unnamed[0].as_integer();
+    uint region_base = 0;
 
-    if (args.has_named("size"))
-        region_size = is_true(args.named["size"]);
-    if (args.has_named("origin"))
-        region_offset = is_true(args.named["origin"]);
+    if (args.has_named("base"))
+        region_base = is_true(args.named["base"]);
 
-    auto memory_region = std::make_shared<MemoryRegion>(region_size, region_offset);
+    auto memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
     return Object::make_heap_obj(memory_region, ObjectType::NATIVE_OBJECT);
 }
 
+/*!
+ * Ожидаем: (memory-region-export-hex region "path/to/file.hex" [:start N] [:end M] [:append?])
+ */
 Object Interpreter::eval_memory_region_export_hex(const Object &form, Arguments &args,
                                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
 
-    // Ожидаем: (memory-region-export-hex region "path/to/file.hex" [:start N] [:end M] [:append?])
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT}, // memory-region
                   {ObjectType::STRING}},       // path
@@ -7524,12 +7509,12 @@ Object Interpreter::eval_make_memory_buffer(const Object &form, Arguments &args,
                                             const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {},
-                 {{"region", {true, {ObjectType::NATIVE_OBJECT}}},
-                  {"size", {true, {ObjectType::INT}}},
-                  {"origin", {false, {ObjectType::INT}}}});
+                 {{"region", {false, {ObjectType::NATIVE_OBJECT}}},
+                  {"size", {false, {ObjectType::INT}}},
+                  {"base", {false, {ObjectType::INT}}}});
 
     uint                          region_size = 0;
-    uint                          region_offset = 0;
+    uint                          region_base = 0;
     std::shared_ptr<MemoryRegion> memory_region;
     if (args.has_named("region")) {
         auto region_obj = args.named["region"];
@@ -7542,15 +7527,18 @@ Object Interpreter::eval_make_memory_buffer(const Object &form, Arguments &args,
 
         if (args.has_named("size"))
             region_size = is_true(args.named["size"]);
-        if (args.has_named("origin"))
-            region_offset = is_true(args.named["origin"]);
+        if (args.has_named("base"))
+            region_base = is_true(args.named["base"]);
 
-        memory_region = std::make_shared<MemoryRegion>(region_size, region_offset);
+        if (region_size == 0)
+            throw_eval_error(form, "make memory buffer required a :region or :size");
+        memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
     }
 
     auto memory_buffer = std::make_shared<MemoryBuffer>(memory_region);
     return Object::make_heap_obj(memory_buffer, ObjectType::NATIVE_OBJECT);
 }
+
 /*!
  * @brief Визуализация содержимого памяти (Hex Dump).
  * Генерирует форматированную строку, представляющую сырые байты буфера
@@ -7577,10 +7565,13 @@ Object Interpreter::eval_memory_region_dump(const Object &form, Arguments &args,
     return Object::make_string(dump_string);
 }
 
+/*!
+ * (buffer-label-set! buffer name offset)
+ */
 Object Interpreter::eval_memory_buffer_label_set(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // (buffer-label-set! buffer name offset)
+
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT},              // memory-buffer
                   {ObjectType::STRING, ObjectType::SYMBOL}, // name
@@ -7599,10 +7590,13 @@ Object Interpreter::eval_memory_buffer_label_set(const Object &form, Arguments &
     return Object::make_boolean(true);
 }
 
+/*!
+ * (buffer-label-ref buffer name) -> offset или null
+ */
 Object Interpreter::eval_memory_buffer_label_ref(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // (buffer-label-ref buffer name) -> offset или null
+
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT},               // memory-buffer
                   {ObjectType::STRING, ObjectType::SYMBOL}}, // name
@@ -7622,6 +7616,9 @@ Object Interpreter::eval_memory_buffer_label_ref(const Object &form, Arguments &
     return Object::make_null(); // null если нет метки
 }
 
+/*!
+ * Write relocation (buffer-symbol-set! buffer name) или (buffer-symbol-set! buffer name true)
+ */
 Object Interpreter::eval_memory_buffer_symbol_set(const Object &form, Arguments &args,
                                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -7642,15 +7639,19 @@ Object Interpreter::eval_memory_buffer_symbol_set(const Object &form, Arguments 
     return Object::make_integer(index);
 }
 
+/*!
+ * Read symbol
+ * (buffer-symbol-ref buffer name) -> info или null
+ * (buffer-symbol-ref buffer index) -> info или null
+ */
 Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments &args,
                                                   const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // (buffer-symbol-ref buffer name) -> info или null
-    // (buffer-symbol-ref buffer index) -> info или null
+
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT},                                // memory-buffer
                   {ObjectType::STRING, ObjectType::SYMBOL, ObjectType::INT}}, // name or index
-                 {});
+                 {{"crc32", {false, {ObjectType::SYMBOL}}}});
 
     auto buffer = args.unnamed[0].as_heap_obj<MemoryBuffer>();
     if (!buffer) {
@@ -7672,27 +7673,52 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
                                          Object::make_integer(*idx)));
         }
     } else if (args.unnamed[1].is_integer()) {
-        // Поиск по индексу
-        size_t index = args.unnamed[1].as_integer();
-        if (index < buffer->symbols()->size()) {
-            return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword("name"),
-                                         Object::make_string(buffer->symbols()->get_name(index))),
-                pretty_print::build_list(Object::make_keyword("crc32"),
-                                         Object::make_integer(buffer->symbols()->get_crc32(index))),
-                pretty_print::build_list(Object::make_keyword("index"),
-                                         Object::make_integer(index)));
+        // Поиск по индексу или CRC32
+        size_t value = args.unnamed[1].as_integer();
+
+        // Режим CRC32 если указан ключ :crc32
+        if (args.has_named("crc32") && is_true(args.named["crc32"])) {
+            // Поиск по CRC32
+            auto idx = buffer->symbols()->find_by_crc32(value);
+            if (idx) {
+                return pretty_print::build_list(
+                    pretty_print::build_list(
+                        Object::make_keyword("name"),
+                        Object::make_string(buffer->symbols()->get_name(*idx))),
+                    pretty_print::build_list(
+                        Object::make_keyword("crc32"),
+                        Object::make_integer(buffer->symbols()->get_crc32(*idx))),
+                    pretty_print::build_list(Object::make_keyword("index"),
+                                             Object::make_integer(*idx)));
+            }
+        } else {
+            // Обычный поиск по индексу
+            if (value < buffer->symbols()->size()) {
+                return pretty_print::build_list(
+                    pretty_print::build_list(
+                        Object::make_keyword("name"),
+                        Object::make_string(buffer->symbols()->get_name(value))),
+                    pretty_print::build_list(
+                        Object::make_keyword("crc32"),
+                        Object::make_integer(buffer->symbols()->get_crc32(value))),
+                    pretty_print::build_list(Object::make_keyword("index"),
+                                             Object::make_integer(value)));
+            }
         }
     }
 
     return Object::make_null();
 }
 
+/*!
+ * Write relocation
+ * (buffer-reloc-set! buffer offset type target)
+ * type может быть :abs, :rel, :crc, :table
+ */
 Object Interpreter::eval_memory_buffer_reloc_set(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // (buffer-reloc-set! buffer offset type target)
-    // type может быть :abs, :rel, :crc, :table
+
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT},               // memory-buffer
                   {ObjectType::INT},                         // offset
@@ -7727,57 +7753,106 @@ Object Interpreter::eval_memory_buffer_reloc_set(const Object &form, Arguments &
     return Object::make_boolean(true);
 }
 
+/*!
+ * Read relocation (buffer-reloc-ref buffer [index]) -> список всех релокаций или одна по индексу
+ */
 Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-    // (buffer-reloc-ref buffer [index]) -> список всех релокаций или одна по индексу
     vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, // memory-buffer
-                 {{"index", {false, {ObjectType::INT}}}});
+                 {{"index", {false, {ObjectType::INT}}},
+                  {"target", {false, {ObjectType::STRING, ObjectType::SYMBOL}}}});
 
     auto buffer = args.unnamed[0].as_heap_obj<MemoryBuffer>();
     if (!buffer) {
         throw_eval_error(form, "First argument must be memory-buffer");
     }
 
-    // Если указан индекс - возвращаем одну релокацию
+    const auto &relocs = buffer->relocs()->get();
+
+    // ============================================================
+    // Режим 1: Поиск по индексу
+    // ============================================================
     if (args.has_named("index")) {
-        size_t      index = args.named["index"].as_integer();
-        const auto &relocs = buffer->relocs()->get();
+        size_t index = args.named["index"].as_integer();
 
-        if (index < relocs.size()) {
-            const auto &reloc = relocs[index];
-
-            // Преобразуем тип в символ
-            std::string type_str;
-            switch (reloc.type) {
-            case RelocationTable::RelocType::ABS_ADDR:
-                type_str = ":abs";
-                break;
-            case RelocationTable::RelocType::RELATIVE:
-                type_str = ":rel";
-                break;
-            case RelocationTable::RelocType::SYMBOL_CRC:
-                type_str = ":crc";
-                break;
-            case RelocationTable::RelocType::SYMBOL_TABLE_REF:
-                type_str = ":table";
-                break;
-            default:
-                type_str = ":unknown";
-            }
-
-            return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword("offset"),
-                                         Object::make_integer(reloc.offset)),
-                pretty_print::build_list(Object::make_keyword("type"),
-                                         Object::make_symbol(type_str)),
-                pretty_print::build_list(Object::make_keyword("target"),
-                                         Object::make_string(reloc.target_name)));
+        if (index >= relocs.size()) {
+            return Object::make_null();
         }
-        return Object::make_null();
+
+        const auto &reloc = relocs[index];
+        std::string type_str = relocation_type_to_string(reloc.type);
+
+        return pretty_print::build_list(
+            pretty_print::build_list(Object::make_keyword("offset"),
+                                     Object::make_integer(reloc.offset)),
+            pretty_print::build_list(Object::make_keyword("type"), Object::make_symbol(type_str)),
+            pretty_print::build_list(Object::make_keyword("target"),
+                                     Object::make_string(reloc.target_name)));
     }
 
-    // Иначе возвращаем список всех релокаций
+    // ============================================================
+    // Режим 2: Поиск по target
+    // ============================================================
+    if (args.has_named("target")) {
+        std::string         target_name = args.named["target"].to_std_string();
+        std::vector<Object> found;
+
+        for (const auto &reloc : relocs) {
+            if (reloc.target_name == target_name) {
+                std::string type_str = relocation_type_to_string(reloc.type);
+
+                found.push_back(pretty_print::build_list(
+                    pretty_print::build_list(Object::make_keyword("offset"),
+                                             Object::make_integer(reloc.offset)),
+                    pretty_print::build_list(Object::make_keyword("type"),
+                                             Object::make_symbol(type_str)),
+                    pretty_print::build_list(Object::make_keyword("target"),
+                                             Object::make_string(reloc.target_name))));
+            }
+        }
+
+        if (found.empty()) {
+            return Object::make_null();
+        } else if (found.size() == 1) {
+            return found[0];
+        } else {
+            return Object::make_list(found);
+        }
+    }
+
+    // ============================================================
+    // Режим 3: Без опций - возвращаем количество
+    // ============================================================
+    return Object::make_integer(relocs.size());
+}
+
+// Вспомогательная функция
+std::string Interpreter::relocation_type_to_string(RelocationTable::RelocType type) {
+    switch (type) {
+    case RelocationTable::RelocType::ABS_ADDR:
+        return ":abs";
+    case RelocationTable::RelocType::RELATIVE:
+        return ":rel";
+    case RelocationTable::RelocType::SYMBOL_CRC:
+        return ":crc";
+    case RelocationTable::RelocType::SYMBOL_TABLE_REF:
+        return ":table";
+    default:
+        return ":unknown";
+    }
+}
+
+Object Interpreter::eval_memory_buffer_reloc_list(const Object &form, Arguments &args,
+                                                  const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {}); // memory-buffer
+
+    auto buffer = args.unnamed[0].as_heap_obj<MemoryBuffer>();
+    if (!buffer) {
+        throw_eval_error(form, "First argument must be memory-buffer");
+    }
+
     std::vector<Object> reloc_list;
     for (const auto &reloc : buffer->relocs()->get()) {
         std::string type_str;
@@ -7808,4 +7883,206 @@ Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &
 
     return Object::make_list(reloc_list);
 }
+/*!
+ * Два режима:
+ * 1. Чтение:  (archive-serialize archive type) -> object
+ * 2. Запись:  (archive-serialize archive type value) -> offset
+ *
+ * ;; Создаем буфер и архив
+ * (define buffer (make-memory-buffer :size 65536 :origin 0))
+ *
+ * ;; ======
+ * ;; ЗАПИСЬ
+ * ;; ======
+ *
+ * ;; Вариант 1: явное создание архива
+ * (define ar (make-memory-archive buffer :write #t))
+ * (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
+ * (archive-close! ar)
+ *
+ * ;; Вариант 2: с макросом (удобнее)
+ * (with-archive (ar buffer :write)
+ *   (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
+ *   (archive-serialize ar 'point :value '(:x 10 :y 20)))
+ *
+ * ;; ======
+ * ;; ЧТЕНИЕ
+ * ;; ======
+ *
+ * (with-archive (ar buffer :read)
+ *   (define v1 (archive-serialize ar 'vec3))    ; -> (:_type_ vec3 :x 1 :y 2 :z 3)
+ *   (define p1 (archive-serialize ar 'point)))  ; -> (:_type_ point :x 10 :y 20)
+ *
+ * ;; Проверяем
+ * (print v1)  ; (:_type_ vec3 :x 1 :y 2 :z 3)
+ * (print p1)  ; (:_type_ point :x 10 :y 20)
+ */
+Object Interpreter::eval_archive_serialize(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+
+    vararg_check(form, args,
+                 {{ObjectType::NATIVE_OBJECT}, // archive
+                  {ObjectType::SYMBOL}},       // type
+                 {{"value", {false, {}}}});    // опциональное значение для записи
+
+    // Получаем архив
+    auto archive = args.unnamed[0].as_heap_obj<MemoryArchive>();
+    if (!archive) {
+        throw_eval_error(form, "First argument must be archive");
+    }
+
+    // Получаем тип
+    std::string type_name = args.unnamed[1].to_std_string();
+    Type       *type = TypeSystem::instance().lookup_type(type_name);
+    if (!type) {
+        throw_eval_error(form, "Unknown type: " + type_name);
+    }
+
+    // Режим записи: передан :value
+    if (args.has_named("value")) {
+        Object value = args.named["value"];
+
+        // Запоминаем текущую позицию
+        size_t start_pos = archive->tell();
+
+        // Сериализуем значение
+        type->serialize_obj(*archive, value);
+
+        // Возвращаем смещение (сколько байт записано)
+        size_t end_pos = archive->tell();
+        return Object::make_integer(end_pos - start_pos);
+    }
+
+    // Режим чтения: нет :value
+    else {
+        // Создаем пустой объект
+        Object result;
+
+        // Читаем из архива
+        type->serialize_obj(*archive, result);
+
+        // Возвращаем прочитанный объект
+        return result;
+    }
+}
+
+/*!
+ * Get position of archive
+ */
+Object Interpreter::eval_archive_tell(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
+
+    auto archive = args.unnamed[0].as_heap_obj<MemoryArchive>();
+    if (!archive) {
+        throw_eval_error(form, "Argument must be archive");
+    }
+
+    return Object::make_integer(archive->tell());
+}
+
+/*!
+ * Change position of archive
+ */
+Object Interpreter::eval_archive_seek(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::INT}}, {});
+
+    auto archive = args.unnamed[0].as_heap_obj<MemoryArchive>();
+    if (!archive) {
+        throw_eval_error(form, "First argument must be archive");
+    }
+
+    size_t pos = args.unnamed[1].as_integer();
+    archive->seek(pos);
+
+    return Object::make_none();
+}
+
+/*!
+ * Check if archive at the end
+ */
+Object Interpreter::eval_archive_at_end(const Object &form, Arguments &args,
+                                        const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
+
+    auto archive = args.unnamed[0].as_heap_obj<MemoryArchive>();
+    if (!archive) {
+        throw_eval_error(form, "Argument must be archive");
+    }
+
+    return Object::make_boolean(archive->at_end());
+}
+
+/*!
+ * Close archive
+ */
+Object Interpreter::eval_archive_close(const Object &form, Arguments &args,
+                                       const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
+
+    auto archive = args.unnamed[0].as_heap_obj<MemoryArchive>();
+    if (!archive) {
+        throw_eval_error(form, "Argument must be archive");
+    }
+
+    archive->close();
+    return Object::make_none();
+}
+
+/*!
+ * Direct read to region
+ */
+Object Interpreter::eval_region_read_byte(const Object &form, Arguments &args,
+                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::INT}}, {});
+
+    auto region = args.unnamed[0].as_native_obj<MemoryRegion>();
+    if (!region) {
+        throw_eval_error(form, "First argument must be memory-region");
+    }
+
+    size_t offset = args.unnamed[1].as_integer();
+    if (offset >= region->size()) {
+        throw_eval_error(form, "Offset out of bounds");
+    }
+
+    uint8_t value = region->data()[offset];
+    return Object::make_integer(value);
+}
+
+/*!
+ * Direct wtite to region
+ */
+Object Interpreter::eval_region_write_byte(const Object &form, Arguments &args,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
+    vararg_check(form, args,
+                 {{ObjectType::NATIVE_OBJECT}, // region
+                  {ObjectType::INT},           // offset
+                  {ObjectType::INT}},          // value
+                 {});
+
+    auto region = args.unnamed[0].as_native_obj<MemoryRegion>();
+    if (!region) {
+        throw_eval_error(form, "First argument must be memory-region");
+    }
+
+    size_t offset = args.unnamed[1].as_integer();
+    if (offset >= region->size()) {
+        throw_eval_error(form, "Offset out of bounds");
+    }
+
+    uint8_t value = args.unnamed[2].as_integer() & 0xFF;
+    region->data()[offset] = value;
+
+    return Object::make_none();
+}
+
 } // namespace script

@@ -1,0 +1,46 @@
+﻿(init-types 'z80)
+
+(fmt #t "Test Memory Buffer...\n" :color 'yellow)
+
+(define region (make-memory-region 32768 :base #x8000))
+(print region) 
+
+;; Get region properties
+(fmt #t "size {}\n" (-> region :size)  )     
+(fmt #t "base {}\n" (-> region :base)  )     
+(fmt #t "type {}\n" (-> region :type)  )     
+(fmt #t "start-addr {}\n" (-> region :start-addr) )
+(fmt #t "end-addr {}\n" (-> region :end-addr) )  
+
+
+(memory-region-write-byte! region #x10 #x55) 
+(fmt #t "read byte {:02x}\n" (memory-region-read-byte region #x10))
+
+(define buf1 (make-memory-buffer :size 65536 :base #x8000))
+(define buf2 (make-memory-buffer :region region))
+
+
+(fmt #t "region  {}\n" (-> buf1 :region)  )    
+(fmt #t "labels  {}\n" (-> buf1 :labels)  )    
+(fmt #t "symbols {}\n" (-> buf1 :symbols)  )    
+(fmt #t "relocs  {}\n" (-> buf1 :relocs)  )    
+
+;; Check labels
+(memory-buffer-label-set! buf1 'foo #x1234)    
+(fmt #t "memory-buffer-label-ref foo={:04x}\n" (memory-buffer-label-ref buf1 'foo))    
+
+;; Check relocs
+(memory-buffer-reloc-set! buf1 #x10 :abs "irq_handler")
+(memory-buffer-reloc-set! buf1 #x20 :rel "start")
+(fmt #t "memory-buffer-reloc-ref irq_handler={:}\n" (memory-buffer-reloc-ref buf1 :target 'irq_handler))   
+(fmt #t "memory-buffer-reloc-ref start={:}\n" (memory-buffer-reloc-ref buf1 :target 'start))   
+(fmt #t "memory-buffer-reloc-list \n{}\n" (memory-buffer-reloc-list buf1))
+
+;; Check symbols
+(memory-buffer-symbol-set! buf1 "external_printf")
+(fmt #t "memory-buffer-symbol-ref {}\n" (memory-buffer-symbol-ref buf1 "external_printf"))
+(fmt #t "memory-buffer-symbol-ref {}\n" (memory-buffer-symbol-ref buf1 0))
+(fmt #t "memory-buffer-symbol-ref {}\n" (memory-buffer-symbol-ref buf1 3642884131 :crc32 #t))
+
+(print (memory-region-dump region))
+(memory-region-export-hex region "test-memory-buffer.sot.hex" :start #x000 :end #x1FF)
