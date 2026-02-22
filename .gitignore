@@ -11,3 +11,4 @@
 *.TEMP
 /build
 /.cache
+profiler_dump.json
