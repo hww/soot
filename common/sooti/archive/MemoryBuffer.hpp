@@ -68,7 +68,7 @@ class MemoryBuffer : public NativeObject {
     }
 
     void serialize(Archive &ar) override {
-        if (ar.is_loading()) {
+        if (ar.is_reading()) {
             m_region = std::make_shared<MemoryRegion>();
             m_symbols = std::make_shared<MemorySymbolTable>();
             m_relocs = std::make_shared<RelocationTable>();

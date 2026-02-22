@@ -68,7 +68,7 @@ class MemoryRegion : public NativeObject {
     // ============================================================
 
     void serialize(Archive &ar) override {
-        if (ar.is_loading()) {
+        if (ar.is_reading()) {
             // Чтение
             CompactIndex ver;
             ar << ver; // версия формата

@@ -16,10 +16,10 @@ class Archive : public NativeObject {
   public:
     // Archive interface.
     Archive()
-        : m_version(0), m_is_loading(false), m_is_saving(false), m_is_persistent(false),
+        : m_version(0), m_is_reading(false), m_is_writing(false), m_is_persistent(false),
           m_is_error(false) {}
     Archive(bool is_loading, bool is_saving, bool presistant)
-        : m_version(0), m_is_loading(is_loading), m_is_saving(is_saving),
+        : m_version(0), m_is_reading(is_loading), m_is_writing(is_saving),
           m_is_persistent(presistant), m_is_error(false) {}
     virtual ~Archive();
 
@@ -56,11 +56,11 @@ class Archive : public NativeObject {
     int version() {
         return m_version;
     }
-    bool is_loading() {
-        return m_is_loading;
+    bool is_reading() {
+        return m_is_reading;
     }
-    bool is_saving() {
-        return m_is_saving;
+    bool is_writing() {
+        return m_is_writing;
     }
     bool is_persistent() {
         return m_is_persistent;
@@ -141,8 +141,8 @@ class Archive : public NativeObject {
   protected:
     // Status variables.
     int  m_version;
-    bool m_is_loading;
-    bool m_is_saving;
+    bool m_is_reading;
+    bool m_is_writing;
     bool m_is_persistent;
     bool m_is_error;
     bool is_big_endian;

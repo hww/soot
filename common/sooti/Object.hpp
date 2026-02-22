@@ -211,6 +211,10 @@ class Object {
     virtual Object type_name_obj() const;
     virtual bool   is_class_name(const Object &name) const;
 
+    virtual void serialize(Archive &ar) {
+        (void)ar;
+    }
+
     // Тот самый делегат который сообщает о текущей таблицк
     static void set_symbol_table(SymbolTable *table) {
         s_table = table;
@@ -823,6 +827,88 @@ class PairObject : public HeapObject {
     }
     bool is_class_name(const Object &name) const override {
         return name == PairObject::type_name_obj();
+    }
+
+    /*!
+     * Вспомогательная функция для поиска в property list
+     */
+    static Object plist_get(const Object &plist, const std::string &name,
+                            bool remove_key_preffix = false) {
+        Object current = plist;
+
+        // Property list имеет вид: (:key1 value1 :key2 value2 ...)
+        while (current.is_pair()) {
+            Object key = current.as_pair()->car;
+            Object rest = current.as_pair()->cdr;
+
+            // Проверяем, что это ключ и есть следующее значение
+            if (key.is_keyword() && rest.is_pair()) {
+                std::string key_str = key.to_std_string();
+                if (remove_key_preffix) {
+                    // Убираем ':' для сравнения
+                    if (!key_str.empty() && key_str[0] == ':') {
+                        key_str = key_str.substr(1);
+                    }
+                }
+
+                if (key_str == name) {
+                    // Значение - это car от rest
+                    return rest.as_pair()->car;
+                }
+            }
+
+            // Переходим к следующей паре ключ-значение
+            if (rest.is_pair()) {
+                current = rest.as_pair()->cdr;
+            } else {
+                break;
+            }
+        }
+
+        return Object::make_null();
+    }
+
+    /*!
+     * Get value from association list by key
+     * @param alist The association list (property list)
+     * @param key The key to search for (string or keyword)
+     * @return The value associated with the key, or null if not found
+     */
+    inline Object alist_get(const Object &alist, const std::string &key) {
+        Object current = alist;
+
+        while (current.is_pair()) {
+            Object entry = current.as_pair()->car;
+
+            // Entry should be a pair (key . value)
+            if (entry.is_pair()) {
+                Object entry_key = entry.as_pair()->car;
+                Object entry_val = entry.as_pair()->cdr;
+
+                // Check if key matches
+                if (entry_key.is_keyword() || entry_key.is_symbol() || entry_key.is_string()) {
+                    std::string key_str = entry_key.to_std_string();
+
+                    // Remove leading ':' if present for comparison
+                    if (!key_str.empty() && key_str[0] == ':') {
+                        key_str = key_str.substr(1);
+                    }
+
+                    if (key_str == key) {
+                        // Value is stored as (value . nil) or just value?
+                        if (entry_val.is_pair()) {
+                            return entry_val.as_pair()->car;
+                        } else {
+                            return entry_val;
+                        }
+                    }
+                }
+            }
+
+            current = current.as_pair()->cdr;
+        }
+
+        return Object::make_null();
     }
 };
 

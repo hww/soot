@@ -51,17 +51,18 @@ bool Archive::get_error() {
 }
 
 std::string Archive::print() const {
-    return m_is_loading ? "#<archive loading>" : (m_is_saving ? "#<archive saving>" : "#<archive>");
+    return m_is_reading ? "#<archive reading>"
+                        : (m_is_writing ? "#<archive writing>" : "#<archive>");
 }
 
 Object Archive::inspect() const {
     return pretty_print::build_list(
         pretty_print::build_list(Object::make_symbol(":type"), Object::make_string(class_name())),
         pretty_print::build_list(Object::make_symbol(":version"), Object::make_integer(m_version)),
-        pretty_print::build_list(Object::make_symbol(":is-loading"),
-                                 Object::make_boolean(m_is_loading)),
-        pretty_print::build_list(Object::make_symbol(":is-saving"),
-                                 Object::make_boolean(m_is_saving)),
+        pretty_print::build_list(Object::make_symbol(":is-reading"),
+                                 Object::make_boolean(m_is_reading)),
+        pretty_print::build_list(Object::make_symbol(":is-writing"),
+                                 Object::make_boolean(m_is_writing)),
         pretty_print::build_list(Object::make_symbol(":is-error"),
                                  Object::make_boolean(m_is_error)),
         pretty_print::build_list(Object::make_symbol(":is-big-endian"),
@@ -73,7 +74,7 @@ Object Archive::inspect() const {
 // ============================================================
 
 Archive &operator<<(Archive &ar, CompactCrc32 &c) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         switch (TypeConfig::crc_value_size) {
         case 1: {
             uint8_t v;
@@ -125,7 +126,7 @@ Archive &operator<<(Archive &ar, CompactCrc32 &c) {
 // ============================================================
 
 Archive &operator<<(Archive &ar, CompactPointer &c) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         switch (TypeConfig::pointer_size) {
         case 2: {
             uint16_t v;
@@ -171,7 +172,7 @@ Archive &operator<<(Archive &ar, CompactPointer &c) {
 // ============================================================
 
 Archive &operator<<(Archive &Ar, CompactIndex &I) {
-    if (Ar.is_loading()) {
+    if (Ar.is_reading()) {
         int           val;
         unsigned char b;
         bool          neg = false;

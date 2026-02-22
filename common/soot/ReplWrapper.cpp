@@ -80,8 +80,12 @@ void ReplWrapper::run_interactive() {
             continue;
         }
 
+        // Добавляем в историю ДО выполнения, чтобы даже команды с ошибками сохранялись
+        if (!code.empty() && code != "\n" && code != "\r\n") {
+            add_to_history(code);
+        }
+
         execute_line(code);
-        add_to_history(code);
 
         if (should_exit_) {
             break;
@@ -92,6 +96,9 @@ void ReplWrapper::run_interactive() {
 }
 
 void ReplWrapper::execute_line(const std::string &line) {
+    // Специальные команды тоже должны сохраняться в истории,
+    // но мы не хотим выполнять их как Lisp код
+
     if (line == "(help)" || line == "help") {
         print_help();
         return;
@@ -106,7 +113,7 @@ void ReplWrapper::execute_line(const std::string &line) {
     }
     if (line == "(quit)" || line == "quit" || line == "exit") {
         should_exit_ = true; // Устанавливаем флаг выхода
-        return;              // НЕ выполняем как Lisp код!
+        return;
     }
     if (line == "(history)" || line == "history") {
         show_history();
@@ -311,18 +318,57 @@ std::string ReplWrapper::extract_prefix(const std::string &command) {
 // ============================================================
 
 void ReplWrapper::load_history() {
-    fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
-    fs::create_directories(cache_path); // Автоматическое создание папки
-    repl_.history_load((cache_path / "history").string());
+    try {
+        fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
+        fs::create_directories(cache_path); // Автоматическое создание папки
+
+        std::string history_file = (cache_path / "history").string();
+
+        // Проверяем, существует ли файл истории
+        if (fs::exists(history_file)) {
+            repl_.history_load(history_file);
+            lg::debug("Loaded {} history entries from {}", repl_.history_size(), history_file);
+        } else {
+            lg::debug("No history file found at {}, starting fresh", history_file);
+        }
+    } catch (const std::exception &e) {
+        lg::warn("Failed to load history: {}", e.what());
+    }
 }
 
 void ReplWrapper::save_history() {
-    fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
-    repl_.history_save((fs::path(cache_path) / "history").string());
+    try {
+        fs::path cache_path = file_util::get_path(file_util::PathType::CACHE);
+        fs::create_directories(cache_path);
+
+        std::string history_file = (cache_path / "history").string();
+        repl_.history_save(history_file);
+
+        lg::debug("Saved {} history entries to {}", repl_.history_size(), history_file);
+    } catch (const std::exception &e) {
+        lg::warn("Failed to save history: {}", e.what());
+    }
 }
 
 void ReplWrapper::add_to_history(const std::string &line) {
+    // Не добавляем пустые строки или строки только с пробелами
+    if (line.empty() || line.find_first_not_of(" \t\n\r") == std::string::npos) {
+        return;
+    }
+
+    // Не добавляем дубликаты последней команды
+    if (repl_.history_size() > 0) {
+        auto scan = repl_.history_scan();
+        if (scan.next()) {
+            auto last_entry = scan.get();
+            if (last_entry.text() == line) {
+                return; // Пропускаем дубликат
+            }
+        }
+    }
+
     repl_.history_add(line);
+    lg::debug("Added to history: {}", line);
 }
 
 void ReplWrapper::show_history() {
@@ -333,7 +379,7 @@ void ReplWrapper::show_history() {
         return;
     }
 
-    fmt::print("Command history (last {} commands):\n", history_size);
+    fmt::print("Command history ({} commands):\n", history_size);
 
     // Используем HistoryScan для доступа к истории
     auto scan = repl_.history_scan();
@@ -341,10 +387,34 @@ void ReplWrapper::show_history() {
 
     while (scan.next()) {
         auto entry = scan.get();
-        fmt::print("  {:3}: {}\n", index++, entry.text());
+        // Показываем только непустые команды
+        std::string text = entry.text();
+        if (!text.empty() && text.find_first_not_of(" \t\n\r") != std::string::npos) {
+            fmt::print("  {:3}: {}\n", index++, text);
+        }
+    }
+
+    // Если после фильтрации ничего не осталось
+    if (index == 1) {
+        fmt::print("  (no visible commands)\n");
     }
 }
 
+void ReplWrapper::debug_history() {
+    fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold, "\n=== History Debug ===\n");
+    fmt::print("History size: {}\n", repl_.history_size());
+    fmt::print("History file: {}\n",
+               (file_util::get_path(file_util::PathType::CACHE) / "history").string());
+
+    fmt::print(fg(fmt::color::cyan), "\nRaw history entries:\n");
+    auto scan = repl_.history_scan();
+    int  index = 0;
+
+    while (scan.next()) {
+        auto entry = scan.get();
+        fmt::print("  [{}] '{}' (length: {})\n", index++, entry.text(), entry.text().length());
+    }
+}
 // ============================================================
 // Starting
 // ============================================================

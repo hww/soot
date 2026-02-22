@@ -467,8 +467,6 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_read_text_file(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_export_intel_hex(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_crc32(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
     // Прочие
@@ -634,40 +632,15 @@ class Interpreter {
     Object eval_method_of(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
 
-    Object eval_make_buffer_pointer(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env);
     Object eval_mem_get(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
     Object eval_mem_set(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
 
-    Object eval_make_static_buffer(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_write(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_static_writer_write(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_label_set(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_label_get(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_dump(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_read(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_reloc(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_buffer_link(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_static_new(const Object &form, Arguments &args,
-                           const std::shared_ptr<EnvironmentObject> &env);
-
     Object eval_getf(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_assoc(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
-
-    void recursive_write(const Object &form, Object cell_obj, Object value);
 
     // Archiving and buffering
     Object      eval_make_memory_archive(const Object &form, Arguments &args,

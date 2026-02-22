@@ -4,7 +4,6 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Printer.hpp"
-#include "common/sooti/static_buffer/Export.hpp"
 #include <iostream>
 
 #include "common/type_system/Defenum.hpp"
@@ -260,7 +259,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"write-binary-file", &Interpreter::eval_write_binary_file, nullptr},
         {"read-text-file", &Interpreter::eval_read_text_file, nullptr},
         {"write-text-file", &Interpreter::eval_write_text_file, nullptr},
-        {"export-hex", &Interpreter::eval_export_intel_hex, nullptr},
 
         // Reader
         {"set-macro-character", &Interpreter::eval_set_macro_character, nullptr},
@@ -326,19 +324,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"the", &Interpreter::eval_the, nullptr},
         {"the-as", &Interpreter::eval_the_as, nullptr},
 
-        // Static Buffer
-        {"static-new", &Interpreter::eval_static_new, &args_with_varkeys},
-        {"make-buffer", &Interpreter::eval_make_static_buffer, nullptr},
-        {"make-buffer-pointer", &Interpreter::eval_make_buffer_pointer, nullptr},
-        {"buffer-dump", &Interpreter::eval_buffer_dump, nullptr},
-        {"buffer-write", &Interpreter::eval_buffer_write, &args_with_varkeys},
-        {"buffer-read", &Interpreter::eval_buffer_read, &args_with_varkeys},
-        {"buffer-label-set!", &Interpreter::eval_buffer_label_set, &args_with_varkeys},
-        {"buffer-label-get", &Interpreter::eval_buffer_label_get, &args_with_varkeys},
-        {"buffer-write-reloc", &Interpreter::eval_buffer_reloc, nullptr},
-        {"buffer-link", &Interpreter::eval_buffer_link, nullptr},
-
-        // Archive фтв игааук
+        // Archive
         {"make-memory-archive", &Interpreter::eval_make_memory_archive, &args_with_varkeys},
         {"make-memory-region", &Interpreter::eval_make_memory_region, &args_with_varkeys},
         {"make-memory-buffer", &Interpreter::eval_make_memory_buffer, &args_with_varkeys},
@@ -346,8 +332,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
          &args_with_varkeys},
         {"memory-region-dump", &Interpreter::eval_memory_region_dump, &args_with_varkeys},
 
-        {"memory-buffer-label-ref", &Interpreter::eval_memory_buffer_label_ref, nullptr},
-        {"memory-buffer-label-set!", &Interpreter::eval_memory_buffer_label_set, nullptr},
+        {"memory-buffer-label-ref", &Interpreter::eval_memory_buffer_label_ref, &args_with_varkeys},
+        {"memory-buffer-label-set!", &Interpreter::eval_memory_buffer_label_set,
+         &args_with_varkeys},
         {"memory-buffer-symbol-ref", &Interpreter::eval_memory_buffer_symbol_ref,
          &args_with_varkeys},
         {"memory-buffer-symbol-set!", &Interpreter::eval_memory_buffer_symbol_set, nullptr},
@@ -355,7 +342,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"memory-buffer-reloc-set!", &Interpreter::eval_memory_buffer_reloc_set, nullptr},
         {"memory-buffer-reloc-list", &Interpreter::eval_memory_buffer_reloc_list, nullptr},
 
-        {"archive-serialize", &Interpreter::eval_archive_serialize, nullptr},
+        {"archive-serialize", &Interpreter::eval_archive_serialize, &args_with_varkeys},
 
         {"archive-tell", &Interpreter::eval_archive_tell, nullptr},
         {"archive-seek!", &Interpreter::eval_archive_seek, nullptr},
@@ -6270,82 +6257,6 @@ Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &arg
 }
 
 // ============================================================
-// HexFile Format
-// ============================================================
-
-// Вспомогательная функция для расчета контрольной суммы и форматирования строки
-std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type, const uint8_t *data) {
-    uint8_t     checksum = length + (addr >> 8) + (addr & 0xFF) + type;
-    std::string hex_data;
-    for (int i = 0; i < length; ++i) {
-        checksum += data[i];
-        hex_data += fmt::format("{:02X}", data[i]);
-    }
-    checksum = static_cast<uint8_t>((~checksum) + 1);
-    return fmt::format(":{:02X}{:04X}{:02X}{}{:02X}\n", length, addr, type, hex_data, checksum);
-}
-
-Object Interpreter::eval_export_intel_hex(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Ожидаем: (export-hex "path/to/file.hex" buffer_or_list)
-    vararg_check(form, args, {{ObjectType::STRING}, {ObjectType::NATIVE_OBJECT, ObjectType::PAIR}},
-                 {});
-
-    std::string path = args.unnamed[0].to_std_string();
-    Object      source = args.unnamed[1];
-    std::string full_content;
-
-    auto process_buffer = [&](const std::shared_ptr<StaticBuffer> &buf) {
-        uint8_t *raw_data = buf->data();
-        uint32_t base_origin = buf->origin();
-        uint32_t start_off = buf->get_start_addr(); // Смещение относительно origin
-        uint32_t end_off = buf->get_end_addr();     // Смещение относительно origin
-
-        // Если в буфер ничего не писали, start_off будет 0xFFFFFFFF
-        if (start_off > end_off)
-            return;
-
-        // Итерируемся от start_off до end_off
-        for (size_t i = start_off; i <= end_off; i += 16) {
-            // Вычисляем размер текущего чанка (не более 16 байт и не заходя за end_off)
-            uint8_t chunk = static_cast<uint8_t>(std::min((size_t)16, (size_t)(end_off - i + 1)));
-
-            // Реальный адрес в Intel HEX: origin + смещение внутри буфера
-            uint16_t hex_addr = static_cast<uint16_t>(base_origin + i);
-
-            // Записываем кусок данных из raw_data, начиная с индекса i
-            full_content += format_hex_record(chunk, hex_addr, 0x00, &raw_data[i]);
-        }
-    };
-    auto buffer = source.as_native_obj<StaticBuffer>(false);
-    if (buffer.get()) {
-        process_buffer(buffer);
-    } else if (source.is_pair()) {
-        // Если это список буферов (наш гибридный лэйаут)
-        auto current = source;
-        if (current.is_pair()) {
-            auto pair = current.as_pair();
-            auto buf = pair->car.as_native_obj<StaticBuffer>();
-            if (!buf)
-                throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-            process_buffer(buf);
-            current = pair->cdr;
-        }
-    } else {
-        throw_type_mismatch(form, args, 0, {"static-buffer", "pair"}, args.unnamed[0].class_name());
-    }
-
-    // Финальный маркер конца файла
-    full_content += ":00000001FF";
-    auto project_path = file_util::get_path(file_util::PathType::PROJECT);
-    if (path[0] != '/' && path[0] != '\\')
-        path = project_path.string() + "/" + path;
-    file_util::write_text(path, full_content);
-    return Object::make_boolean(true);
-}
-
-// ============================================================
 // Declaration
 // ============================================================
 
@@ -6828,582 +6739,6 @@ Object Interpreter::eval_types_match_p(const Object &form, Arguments &args,
 }
 
 // ============================================================
-// Статический буфер в памяти
-// ============================================================
-
-/*!
- * @brief Создание статического буфера памяти (Холст).
- * * * Роль: Выделяет блок "сырой" памяти фиксированного размера, который
- * имитирует адресное пространство целевой платформы (например, RAM Z80).
- * * * Параметры:
- * 1. name (String) — имя буфера для логов и отладки.
- * 2. size (Integer) — физический размер в байтах.
- * 3. origin (Integer) — базовый адрес (VMA). Если origin = 0x100,
- * то запись в начало буфера будет трактоваться как запись по адресу 0x100.
- * * * Lisp Logic:
- * (make-static-buffer "main-ram" 1024 #x0000)
- * * * @return Object (HeapObject типа STATIC_BUFFER).
- */
-Object Interpreter::eval_make_static_buffer(const Object &form, Arguments &args,
-                                            const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args,
-                 {{ObjectType::STRING}, // тип
-                  {ObjectType::INT},    // размер
-                  {ObjectType::INT}},   // origin
-                 {});
-
-    std::string type_name = args.unnamed[0].as_string()->data;
-    int         size = args.unnamed[1].as_integer();
-    uint32_t origin = static_cast<uint32_t>(args.unnamed[2].as_integer()); // исправлено имя и тип
-    auto     buffer = std::make_shared<StaticBuffer>(type_name, size, origin);
-    return Object::make_heap_obj(buffer, ObjectType::NATIVE_OBJECT);
-}
-
-/*!
- * @brief Фабрика ячеек памяти (Типизированный указатель).
- * * * Роль: Создает объект TypePointer, который связывает конкретный адрес в памяти с типом.
- * Поддерживает два режима работы:
- * 1. Через Writer: (static-cell writer 'type)
- * - Автоматически выделяет место в текущей позиции врайтера.
- * - Сдвигает курсор врайтера с учетом выравнивания (alignment).
- * 2. Через Buffer: (static-cell buffer offset 'type)
- * - Создает "окно" по фиксированному смещению без изменения состояния буфера.
- * * * Lisp Logic:
- * (define cell (static-cell wr 'test-vector)) ; Аллокация и создание ссылки
- * (define cell (static-cell buf #x10 'int8))  ; Прямой доступ по адресу
- * * * @return Object (TypePointer).
- */
-Object Interpreter::eval_make_buffer_pointer(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {ObjectType::INT}, {ObjectType::SYMBOL}}, {});
-
-    auto        buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
-    size_t      offset = static_cast<size_t>(args.unnamed[1].as_integer());
-    std::string type_name = args.unnamed[2].as_symbol();
-
-    Type *type = TypeSystem::instance().lookup_type(type_name);
-    void *ptr = buffer->data() + offset;
-    auto  cell = std::make_shared<TypePointer>(ptr, type, buffer);
-    return Object::make_heap_obj(cell, ObjectType::POINTER);
-}
-
-/*!
- * (buffer-add-label buffer-or-writer name :address addr :segment seg :meta meta)
- */
-Object Interpreter::eval_buffer_label_set(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // 1. Проверка аргументов
-    vararg_check(form, args,
-                 {{ObjectType::NATIVE_OBJECT}, {ObjectType::STRING, ObjectType::SYMBOL}},
-                 {
-                     {"address", {false, {ObjectType::INT}}},
-                     {"segment", {false, {ObjectType::STRING, ObjectType::SYMBOL}}},
-                     {"meta", {false, {}}} // Любой тип
-                 });
-
-    auto first_arg = args.unnamed.at(0);
-    // Унифицируем имя: 'foo или "foo" -> "foo"
-    auto label_name = args.unnamed.at(1).to_std_string();
-
-    // 2. Определяем целевой буфер и базовый офсет
-    size_t offset = 0;
-    auto   buffer = first_arg.as_native_obj<StaticBuffer>();
-
-    if (buffer.get()) {
-
-        // Для прямого обращения к буферу адрес обязателен, если метка новая
-        if (!args.has_named("address") && !buffer->has_label(label_name)) {
-            throw_eval_error(form, "Direct buffer labeling requires :address for new labels");
-        }
-        if (args.has_named("address")) {
-            offset = static_cast<size_t>(args.get_named("address").as_integer());
-        }
-    } else {
-        throw_eval_error(form, "First argument must be writer or buffer, got " + first_arg.print());
-    }
-
-    // 3. Логика Upsert (Update or Insert)
-    Object label_obj = buffer->get_label_obj(label_name);
-
-    if (!label_obj.is_null()) {
-        // ОБНОВЛЕНИЕ существующего HeapObject
-        auto label = label_obj.as_heap_obj<BufferLabel>();
-
-        // Обновляем адрес, только если он был явно передан или мы пишем через writer
-        if (args.has_named("address")) {
-            label->addr = offset;
-        }
-
-        if (args.has_named("segment"))
-            label->segment = args.get_named("segment");
-        if (args.has_named("meta"))
-            label->meta = args.get_named("meta");
-
-        return label_obj;
-    } else {
-        // СОЗДАНИЕ нового HeapObject
-        Object segment =
-            args.has_named("segment") ? args.get_named("segment") : Object::make_string("main");
-        Object meta = args.has_named("meta") ? args.get_named("meta") : get_null();
-
-        buffer->add_label(label_name, offset, segment, meta);
-        return buffer->get_label_obj(label_name);
-    }
-}
-
-/*!
- * This function gets the buffer label object by name. It takes two arguments:
- * the buffer writer or buffer, and the name of the label.
- *
- * If the label does not exist, the function returns null.
- */
-Object Interpreter::eval_buffer_label_get(const Object &form, Arguments &args,
-                                          const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    // Принимаем 2 позиционных аргумента: буфер и имя
-    vararg_check(form, args, {{}, {ObjectType::STRING, ObjectType::SYMBOL}}, {});
-
-    auto first_arg = args.unnamed.at(0);
-    auto label_name = args.unnamed.at(1).to_std_string();
-
-    auto buffer = first_arg.as_native_obj<StaticBuffer>();
-
-    if (!buffer.get()) {
-        throw_eval_error(form, "Expected writer or buffer as first argument");
-    }
-
-    // Возвращаем объект из мапы (там уже лежит Object, инкапсулирующий Label*)
-    Object label_obj = buffer->get_label_obj(label_name);
-
-    // Если не нашли — возвращаем null, чтобы Lisp мог проверить (if (buffer-label-get ...))
-    return label_obj;
-}
-
-/*!
- * @brief Визуализация содержимого памяти (Hex Dump).
- * Генерирует форматированную строку, представляющую сырые байты буфера
- * в человекочитаемом виде (шестнадцатеричный код + ASCII).
- */
-Object Interpreter::eval_buffer_dump(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}},
-                 {{"address", {false, {ObjectType::INT}}},
-                  {"size", {false, {ObjectType::INT}}},
-                  {"ascii", {false, {ObjectType::SYMBOL}}},
-                  {"width", {false, {ObjectType::INT}}}});
-    auto buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
-    if (!buffer.get())
-        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-    auto address = args.has_named("address") ? args.named["address"].as_integer() : 0;
-    auto size = args.has_named("size") ? args.named["size"].as_integer() : 256;
-    auto ascii = args.has_named("ascii") ? is_true(args.named["ascii"]) : true;
-    int  width = args.has_named("width") ? args.named["width"].as_integer() : 16;
-    auto str = buffer->hex_dump(address, size, ascii, width);
-    return Object::make_string(str);
-}
-
-/*!
- * @brief Высокоуровневая команда записи в статическую память.
- * Роль: Универсальный интерфейс для записи данных (чисел, строк, структур)
- * в буфер или через врайтер. Автоматически управляет типами и смещениями.
- * Режимы работы:
- * 1. Через Writer (Stream mode): (write-to wr val :type 'type)
- * - Автоматически выделяет место (allocate).
- * - Позволяет записывать "теги" (маркеры), просто вызывая запись констант по очереди.
- * 2. Через Buffer (Random access): (write-to buf val :type 'type :address offset)
- * - Записывает данные строго по указанному адресу.
- * Особенности:
- * - Использует временную или постоянную TypePointer для выполнения физической записи.
- * - Возвращает смещение (offset), по которому были записаны данные, что удобно
- * для построения таблиц перекрестных ссылок.
- * Lisp Logic:
- * (write-to-buffer wr #xAA :type 'int)       ; Запись тега-маркера
- * (write-to-buffer wr 10 :type 'test-enum)   ; Запись значения по типу
- * @return Object (Integer — итоговый offset записи).
- */
-Object Interpreter::eval_buffer_write(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}, {}},
-                 {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {false, {ObjectType::INT}}}});
-
-    Object buf_obj = args.unnamed[0];
-    Object val_obj = args.unnamed[1];
-
-    // Get the type
-    std::string type_name_obj = args.named["type"].to_std_string();
-    auto       *type = TypeSystem::instance().lookup_type(type_name_obj);
-    if (!type) {
-        throw_eval_error(form, "Unknown type: " + type_name_obj);
-        return get_null();
-    }
-
-    // fmt::print("{}\n", pretty_print::to_string(value, 80).c_str());
-    try {
-        Object                       cell_obj;
-        std::shared_ptr<TypePointer> cell_ptr;
-        size_t                       write_offset = 0;
-
-        // 1. Подготовка ячейки (Слайса)
-        {
-            if (!args.named.count("address")) {
-                throw_eval_error(form, "Keyword :address required for buffer write");
-                return get_null();
-            }
-
-            auto buffer_ptr = buf_obj.as_native_obj<StaticBuffer>();
-            write_offset = static_cast<size_t>(args.named["address"].as_integer());
-
-            void *physical_ptr = buffer_ptr->data() + write_offset;
-
-            // ОБНОВЛЕНО: Используем новый конструктор с 3 аргументами
-            cell_ptr = std::make_shared<TypePointer>(physical_ptr, type, buffer_ptr);
-        }
-        // 1. Извлекаем исходный буфер (src)
-        if (val_obj.is_native_obj()) {
-
-            auto src_buf = val_obj.as_native_obj<StaticBuffer>();
-            if (!src_buf) {
-                throw_eval_error(
-                    form, "Source pointer owner is not a StaticBuffer. Blitting impossible.");
-            }
-            // 2. Извлекаем владельца и кастим его к StaticBuffer
-            auto owner_heap = cell_ptr->get_owner();
-            auto dest_buf = std::dynamic_pointer_cast<StaticBuffer>(owner_heap);
-
-            if (!dest_buf) {
-                throw_eval_error(
-                    form, "Target pointer owner is not a StaticBuffer. Blitting impossible.");
-            }
-
-            // 3. Вычисляем смещение (теперь метод есть)
-            size_t offset = cell_ptr->get_offset_in_buffer();
-
-            // 4. Пишем буфер в буфер
-            dest_buf->write_buffer(offset, src_buf.get());
-
-            return Object::make_integer(write_offset); // Возвращаем смещение записи
-        }
-
-        // 2. САМА ЗАПИСЬ (Магия пакетов)
-        if (val_obj.is_pair()) {
-            Object current_item = val_obj;
-            size_t internal_index = 0;
-
-            // Итерируемся по списку (пакету данных)
-            while (current_item.is_pair()) {
-                Object entry = current_item.as_pair()->car;
-
-                if (auto *struct_type = dynamic_cast<StructureType *>(type)) {
-                    // --- МЫ ВНУТРИ СТРУКТУРЫ ---
-                    if (entry.is_dotted_syntax()) {
-                        // ВЕТКА А: Все ок, пишем в поле по имени
-                        Object field_name = entry.as_pair()->car;
-                        Object field_val = entry.as_pair()->cdr;
-                        Object sub_ptr = cell_ptr->get_at(field_name);
-                        recursive_write(form, sub_ptr, field_val);
-                    } else if (entry.is_pair() && !entry.as_pair()->cdr.is_null()) {
-                        // ВЕТКА А: Все ок, пишем в поле по имени
-                        Object field_name = entry.as_pair()->car;
-                        Object field_val = entry.as_pair()->cdr.as_pair()->car;
-                        Object sub_ptr = cell_ptr->get_at(field_name);
-                        recursive_write(form, sub_ptr, field_val);
-                    } else {
-                        // ОШИБКА: Мы в структуре, но нам подсунули атом или обычный список без
-                        // ключа
-                        throw_eval_error(
-                            form,
-                            fmt::format("Structure '{}' expects field-value "
-                                        "pairs (field . val), or list (field value) but got: {}",
-                                        struct_type->get_name(), entry.print()));
-                    }
-                } else if (auto *value_type = dynamic_cast<ValueType *>(type)) {
-                    // --- МЫ ВНУТРИ МАССИВА ПРИМИТИВОВ ---
-                    if (entry.is_pair()) {
-                        // ОШИБКА: Зачем нам имя поля, если мы пишем просто массив чисел?
-                        throw_eval_error(form, fmt::format("Type '{}' is a primitive, it doesn't "
-                                                           "expect pairs, got a pairs list: {}",
-                                                           value_type->get_name(), entry.print()));
-                    } else {
-                        // ВЕТКА Б: Все ок, пишем как элемент массива
-                        Object sub_ptr = cell_ptr->get_at(Object::make_integer(internal_index));
-                        recursive_write(form, sub_ptr, entry);
-                        internal_index++;
-                    }
-                }
-
-                // Переходим к следующему элементу входного списка
-                current_item = current_item.as_pair()->cdr;
-            }
-        } else if (!val_obj.is_null()) {
-            // Если пришло одиночное значение — пишем как раньше
-            cell_ptr->set(val_obj);
-        } else {
-            // Если пришло NULL, то не пишем ничего
-            return Object::make_integer(write_offset);
-        }
-
-        return Object::make_integer(write_offset);
-    } catch (const std::runtime_error &e) {
-        throw_eval_error(form, fmt::format("Static write failed: {}", e.what()));
-    }
-    return get_null();
-}
-
-/*!
- * @brief Recursive write to a cell (alist or array)
- *
- * This function takes a cell object and a value to write to that cell.
- * If the value is an alist, it recursively writes the elements of the alist
- * to the corresponding corresponding cell. If the value is an array, it writes the elements
- * of the array to the cell.
- *
- * @param cell_obj The cell to write to.
- * @param value The value to write to the cell. Can be an alist or an array.
- */
-void Interpreter::recursive_write(const Object &form, Object cell_obj, Object value) {
-    auto cell_ptr = cell_obj.as_heap_obj<TypePointer>();
-    auto type = cell_ptr->get_type();
-
-    // --- СЦЕНАРИЙ 1: СТРУКТУРА ---
-    if (auto *struct_type = dynamic_cast<StructureType *>(type)) {
-        // Если пришла одиночная переменная для структуры (редко, но бывает)
-        if (!value.is_pair()) {
-            cell_ptr->set(value);
-            return;
-        }
-
-        Object current = value;
-        while (current.is_pair()) {
-            Object entry = current.as_pair()->car;
-            if (entry.is_pair()) {
-                // Строго требуем dotted syntax (field . value) для структур
-                if (!entry.is_dotted_syntax()) {
-                    throw_eval_error(form, "Structure field must use dotted syntax, got: " +
-                                               entry.print());
-                }
-
-                std::string f_name = entry.as_pair()->car.to_std_string();
-                Object      f_val = entry.as_pair()->cdr;
-
-                Field f;
-                if (struct_type->lookup_field(f_name, &f)) {
-                    Object field_cell = cell_ptr->get_at(entry.as_pair()->car);
-
-                    // Если поле — массив в описании структуры
-                    if (f.is_array() && f_val.is_pair()) {
-                        int    idx = 0;
-                        Object curr_item = f_val;
-                        while (curr_item.is_pair() && idx < f.array_size()) {
-                            Object elem_cell = field_cell.as_heap_obj<TypePointer>()->get_at(
-                                Object::make_integer(idx));
-
-                            recursive_write(form, elem_cell, curr_item.as_pair()->car);
-                            curr_item = curr_item.as_pair()->cdr;
-                            idx++;
-                        }
-                    } else {
-                        // Обычное поле (примитив или вложенная структура)
-                        recursive_write(form, field_cell, f_val);
-                    }
-                }
-            }
-            current = current.as_pair()->cdr;
-        }
-        return;
-    }
-
-    // --- СЦЕНАРИЙ 2: ЗНАЧЕНИЕ (ValueType, Enum, BitField) ---
-    if (auto *value_type = dynamic_cast<ValueType *>(type)) {
-        (void)value_type;
-        if (value.is_pair()) {
-            int    idx = 0;
-            Object curr = value;
-            while (curr.is_pair()) {
-                Object val_item = curr.as_pair()->car;
-
-                // СТРОГАЯ ПРОВЕРКА:
-                // В массиве примитивов не должно быть вложенных списков/пар
-                if (val_item.is_pair()) {
-                    throw_eval_error(form, fmt::format("Type '{}' is a primitive. Cannot write "
-                                                       "nested list {} as an element.",
-                                                       type->get_name(), val_item.print()));
-                }
-
-                Object elem_cell = cell_ptr->get_at(Object::make_integer(idx));
-                elem_cell.as_heap_obj<TypePointer>()->set(val_item);
-
-                curr = curr.as_pair()->cdr;
-                idx++;
-            }
-        } else {
-            cell_ptr->set(value);
-        }
-        return;
-    }
-
-    // --- СЦЕНАРИЙ 3: ДЕФОЛТ (на случай Pointer или других типов) ---
-    if (!value.is_pair()) {
-        cell_ptr->set(value);
-    }
-}
-
-/*!
- * Read data from the buffer
- */
-Object Interpreter::eval_buffer_read(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{}},
-                 {{"type", {true, {ObjectType::SYMBOL}}}, {"address", {true, {ObjectType::INT}}}});
-
-    auto        buffer = args.unnamed[0].as_native_obj<StaticBuffer>();
-    std::string type_name = args.named["type"].to_std_string();
-    size_t      offset = static_cast<size_t>(args.named["address"].as_integer());
-
-    // 2. Ищем определение типа
-    Type *type = TypeSystem::instance().lookup_type(type_name);
-    if (!type)
-        throw std::runtime_error("Unknown type: " + type_name);
-
-    // 3. Вычисляем физический адрес (БАЗА + СМЕЩЕНИЕ)
-    void *physical_ptr = buffer->data() + offset;
-
-    // 4. Создаем ячейку-указатель
-    // Оффсет (offset) больше не передаем, он вычислится в set() через (ptr - data)
-    auto cell = std::make_shared<TypePointer>(physical_ptr, type,
-                                              buffer // Владелец удерживает буфер в памяти
-    );
-
-    // 5. Возвращаем результат разыменования
-    // - Если тип "value" (int, float, enum) -> вернет Object с числом/символом.
-    // - Если тип "structure" -> вернет Object(TypePointer), позволяя цепочку (-> ...).
-    return cell->get();
-}
-
-/*
- * Process for relocating all symbols in the buffer
- */
-Object Interpreter::eval_buffer_link(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}}, {});
-
-    auto buf = args.unnamed[0].as_native_obj<StaticBuffer>();
-    if (!buf.get())
-        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-
-    buf->link_internal();
-    return Object::make_none();
-}
-
-/*!
- * (define buf (make-static-buffer "ROM" 1024))
- *
- * ;; Записываем код, который прыгает на обработчик, которого еще нет
- * (buffer-write-u8 buf 0 #xC3) ;; Код инструкции JP
- * (buffer-write-reloc buf 1 "irq_handler") ;; Релокация на 1-й байт (адрес для JP)
- *
- * ;; ... где-то позже или в другом файле ...
- * (buffer-add-label buf "irq_handler" #x0100)
- */
-Object Interpreter::eval_buffer_reloc(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}, {ObjectType::INT}, {ObjectType::STRING}},
-                 {});
-
-    auto        buf = args.unnamed[0].as_native_obj<StaticBuffer>();
-    size_t      offset = args.unnamed[1].as_integer();
-    std::string target = args.unnamed[2].to_std_string();
-    if (!buf)
-        throw_type_mismatch(form, args, 0, {"static-buffer"}, args.unnamed[0].class_name());
-    // По умолчанию считаем ABS_ADDR 16-бит (Z80 style),
-    // но можно расширить аргументами
-    buf->write_reloc(offset, target, RelocType::ABS_ADDR);
-
-    return Object::make_none();
-}
-
-// ============================================================
-// Работа с буфером более элегантная
-// ============================================================
-/*!
- * ;; Лисп создает буфер в памяти хоста
- * (define my-pos (static-new vector :x 10 :y 20))
- *
- * (zasm
- *   ;; Ассемблер при генерации кода вытащит данные из my-pos
- *   (ld ix my-pos)
- *   (ld a [+ ix (offset-of vector y)])
- * )
- */
-Object Interpreter::eval_static_new(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-
-    if (args.unnamed.empty()) {
-        throw_eval_error(form, "static-new: expected at least type name");
-        return get_null();
-    }
-
-    Type *type;
-    // 1. Извлекаем имя типа (например, vector)
-    if (args.unnamed[0].is_native_obj<Type>()) {
-        type = args.unnamed[0].as_heap_obj<Type>().get();
-    } else {
-        throw_eval_error(form, "static-new: expected type, got " + args.unnamed[0].print());
-    }
-
-    auto origin = 0x0000;
-    auto buffer_name = "static-new-" + type->get_name();
-
-    // 2. Создаем StaticBuffer нужного размера
-    size_t size = type->get_size_in_memory();
-    auto   buffer = std::make_shared<StaticBuffer>(buffer_name, size, origin);
-
-    // 3. Создаем "корневой" указатель на начало буфера
-    // TypePointer связывает физическую память буфера с метаданными типа
-    auto root_cell = std::make_shared<TypePointer>(buffer->data(), type, buffer);
-
-    // 4. Если переданы дополнительные аргументы (alist или список значений)
-    // мы используем твою готовую recursive_write
-    if (args.unnamed.size() > 1) {
-        // Мы берем все аргументы после имени типа как "пакет данных"
-        // (static-new vector ((x . 10) (y . 20)))
-        Object data_package = args.unnamed[1];
-
-        try {
-            recursive_write(form, Object::make_heap_obj(root_cell), data_package);
-        } catch (const std::exception &e) {
-            throw_eval_error(form, fmt::format("static-new initialization failed: {}", e.what()));
-        }
-    }
-    // Поддержка именованных аргументов (если синтаксис :x 10)
-    else if (!args.named.empty()) {
-        // Превращаем named args в alist для recursive_write
-        // Это позволит писать (static-new vector :x 10 :y 20)
-        Object alist = get_null();
-        for (auto it = args.named.rbegin(); it != args.named.rend(); ++it) {
-            Object key = Object::make_symbol(it->first);
-            Object val = it->second;
-            alist = Object::make_pair(Object::make_pair(key, val), alist);
-        }
-        recursive_write(form, Object::make_heap_obj(root_cell), alist);
-    }
-
-    // 5. Возвращаем созданный буфер
-    // В зависимости от твоей архитектуры, ты можешь возвращать либо сам Buffer,
-    // либо Pointer на него. Для ассемблера лучше возвращать Buffer.
-    return Object::make_heap_obj(buffer, ObjectType::NATIVE_OBJECT);
-}
-
-// ============================================================
 // Archiving and buffering
 // ============================================================
 
@@ -7414,8 +6749,8 @@ Object Interpreter::eval_make_memory_archive(const Object &form, Arguments &args
                                              const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
     vararg_check(form, args, {{ObjectType::NATIVE_OBJECT}},
-                 {{"reading", {true, {ObjectType::SYMBOL}}},
-                  {"writing", {true, {ObjectType::SYMBOL}}},
+                 {{"reading", {false, {ObjectType::SYMBOL}}},
+                  {"writing", {false, {ObjectType::SYMBOL}}},
                   {"persistant", {false, {ObjectType::SYMBOL}}}});
 
     bool reading = false;
@@ -7526,9 +6861,9 @@ Object Interpreter::eval_make_memory_buffer(const Object &form, Arguments &args,
     } else {
 
         if (args.has_named("size"))
-            region_size = is_true(args.named["size"]);
+            region_size = args.named["size"].as_integer();
         if (args.has_named("base"))
-            region_base = is_true(args.named["base"]);
+            region_base = args.named["base"].as_integer();
 
         if (region_size == 0)
             throw_eval_error(form, "make memory buffer required a :region or :size");
@@ -7566,27 +6901,50 @@ Object Interpreter::eval_memory_region_dump(const Object &form, Arguments &args,
 }
 
 /*!
- * (buffer-label-set! buffer name offset)
+ * (buffer-label-set! buffer name :offset offset :segment segment :info info)
  */
 Object Interpreter::eval_memory_buffer_label_set(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
 
-    vararg_check(form, args,
-                 {{ObjectType::NATIVE_OBJECT},              // memory-buffer
-                  {ObjectType::STRING, ObjectType::SYMBOL}, // name
-                  {ObjectType::INT}},                       // offset
-                 {});
+    // Формат: (memory-buffer-label-set! buffer name
+    //           [:address offset] [:segment seg] [:info metadata])
+    vararg_check(
+        form, args,
+        {{ObjectType::NATIVE_OBJECT},               // memory-buffer
+         {ObjectType::STRING, ObjectType::SYMBOL}}, // name
+        {{"offset", {false, {ObjectType::INT}}},
+         {"segment", {false, {ObjectType::STRING, ObjectType::SYMBOL, ObjectType::STRING}}},
+         {"info", {false, {}}}}); // любой тип
 
-    auto buffer = args.unnamed[0].as_heap_obj<MemoryBuffer>();
+    auto buffer_obj = args.unnamed[0];
+    auto buffer = buffer_obj.as_heap_obj<MemoryBuffer>();
     if (!buffer) {
-        throw_eval_error(form, "First argument must be memory-buffer");
+        throw_eval_error(form,
+                         "First argument must be memory-buffer, got " + buffer_obj.class_name());
     }
 
     std::string name = args.unnamed[1].to_std_string();
-    size_t      offset = args.unnamed[2].as_integer();
 
-    buffer->labels()->add(name, offset);
+    // Получаем значения из keyword аргументов
+    size_t offset = 0;
+    if (args.has_named("offset")) {
+        offset = args.named["offset"].as_integer();
+    }
+
+    Object segment = Object::make_null();
+    if (args.has_named("segment")) {
+        segment = args.named["segment"];
+    }
+
+    Object info = Object::make_null();
+    if (args.has_named("info")) {
+        info = args.named["info"];
+    }
+
+    // Добавляем метку
+    buffer->labels()->add_label(name, offset, segment, info);
+
     return Object::make_boolean(true);
 }
 
@@ -7596,11 +6954,10 @@ Object Interpreter::eval_memory_buffer_label_set(const Object &form, Arguments &
 Object Interpreter::eval_memory_buffer_label_ref(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
-
     vararg_check(form, args,
                  {{ObjectType::NATIVE_OBJECT},               // memory-buffer
                   {ObjectType::STRING, ObjectType::SYMBOL}}, // name
-                 {});
+                 {{"offset-only", {false, {ObjectType::SYMBOL}}}});
 
     auto buffer = args.unnamed[0].as_heap_obj<MemoryBuffer>();
     if (!buffer) {
@@ -7609,11 +6966,14 @@ Object Interpreter::eval_memory_buffer_label_ref(const Object &form, Arguments &
 
     std::string name = args.unnamed[1].to_std_string();
 
-    auto offset = buffer->labels()->get(name);
-    if (offset) {
-        return Object::make_integer(*offset);
+    // Если нужен только адрес (для обратной совместимости)
+    if (args.has_named("offset-only") && is_true(args.named["offset-only"])) {
+        auto addr = buffer->labels()->get_offset(name);
+        return addr ? Object::make_integer(*addr) : Object::make_null();
     }
-    return Object::make_null(); // null если нет метки
+
+    // Иначе возвращаем объект MemoryLabel
+    return buffer->labels()->get_label_object(name);
 }
 
 /*!
@@ -8050,7 +7410,8 @@ Object Interpreter::eval_region_read_byte(const Object &form, Arguments &args,
 
     size_t offset = args.unnamed[1].as_integer();
     if (offset >= region->size()) {
-        throw_eval_error(form, "Offset out of bounds");
+        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset, 0,
+                                           region->size()));
     }
 
     uint8_t value = region->data()[offset];
@@ -8076,7 +7437,8 @@ Object Interpreter::eval_region_write_byte(const Object &form, Arguments &args,
 
     size_t offset = args.unnamed[1].as_integer();
     if (offset >= region->size()) {
-        throw_eval_error(form, "Offset out of bounds");
+        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset, 0,
+                                           region->size()));
     }
 
     uint8_t value = args.unnamed[2].as_integer() & 0xFF;

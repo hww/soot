@@ -28,8 +28,8 @@ class MemoryArchive : public Archive {
     MemoryArchive(std::shared_ptr<MemoryRegion> region, bool loading, bool saving, int persistant)
         : m_region(region), m_position(0) {
         m_version = VERSION;
-        m_is_loading = loading;
-        m_is_saving = saving;
+        m_is_reading = loading;
+        m_is_writing = saving;
         m_is_persistent = persistant; // архивируем в постоянное хранилище
         m_is_error = false;
 
@@ -98,7 +98,7 @@ class MemoryArchive : public Archive {
 
         uint8_t *dest = m_region->data() + m_position;
 
-        if (m_is_loading) {
+        if (m_is_reading) {
             // Чтение из памяти
             memcpy(v, dest, length);
         } else {

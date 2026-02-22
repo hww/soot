@@ -11,5 +11,5 @@
 ;(load "common/xiff/soot/asm-test.sot")
 ;(load "test-player.sot")
 ;(load "common/xiff/soot/tests/test-all.sot")
-;(load "common/xiff/soot/zasm/test.sot")
-(load "common/xiff/soot/tests/test-memory-buffer.sot")
+(load "common/xiff/soot/zasm/test.sot")
+;(load "common/xiff/soot/tests/test-memory-buffer.sot")

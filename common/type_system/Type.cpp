@@ -713,7 +713,7 @@ Object ValueType::get_at(const Object &key) {
 bool ValueType::serialize_obj(Archive &ar, Object &data) {
     std::string type_name = get_name();
 
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         // ============================================================
         // РЕЖИМ ЧТЕНИЯ: из архива в Object
         // ============================================================
@@ -837,11 +837,15 @@ bool ValueType::serialize_obj(Archive &ar, Object &data) {
 
         } else {
             // Числовые типы
-            if (!data.is_number()) {
-                throw std::runtime_error("ValueType '" + type_name + "': expected number");
+            int64_t value = 0;
+            if (data.is_number()) {
+                value = data.as_integer();
+            } else if (data.is_null()) {
+                // default 0 will be
+            } else if (!data.is_number()) {
+                throw std::runtime_error("ValueType '" + type_name + "': expected number, got " +
+                                         data.print());
             }
-
-            int64_t value = data.as_integer();
 
             switch (get_load_size()) {
             case 1: {
@@ -1073,50 +1077,22 @@ Object StructureType::get_at(const Object &key) {
     // Если и он не найдет, запрос уйдет в Type за "name", "size" и т.д.
     return ReferenceType::get_at(key);
 }
-
-// on the input and output we have a list of key value pairs
 bool StructureType::serialize_obj(Archive &ar, Object &data) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         // ============================================================
-        // РЕЖИМ ЧТЕНИЯ: из архива в property list
+        // РЕЖИМ ЧТЕНИЯ: читаем данные в том порядке, как определены поля
         // ============================================================
-
-        // Читаем количество полей
-        CompactIndex count;
-        ar << count;
 
         // Создаем пустой property list
         data = Object::make_null();
 
-        // Читаем каждое поле
-        for (int i = 0; i < count.value; i++) {
-            // Читаем имя поля
-            CompactIndex name_len;
-            ar << name_len;
-
-            std::string field_name;
-            field_name.resize(name_len.value);
-            ar.serialize(&field_name[0], name_len.value);
-
-            // Ищем описание поля в структуре
-            const Field *field_desc = nullptr;
-            for (const auto &f : fields()) {
-                if (f.name() == field_name) {
-                    field_desc = &f;
-                    break;
-                }
-            }
-
-            if (!field_desc) {
-                throw std::runtime_error("StructureType: unknown field '" + field_name +
-                                         "' in type " + get_name());
-            }
-
+        // Читаем поля в порядке их определения в структуре
+        for (const auto &field : fields()) {
             // Получаем тип поля
-            Type *field_type = TypeSystem::instance().lookup_type(field_desc->type().base_type());
+            Type *field_type = TypeSystem::instance().lookup_type(field.type().base_type());
             if (!field_type) {
                 throw std::runtime_error("StructureType: unknown field type " +
-                                         field_desc->type().base_type());
+                                         field.type().base_type() + " in " + get_name());
             }
 
             // Читаем значение поля
@@ -1124,94 +1100,46 @@ bool StructureType::serialize_obj(Archive &ar, Object &data) {
             field_type->serialize_obj(ar, field_value);
 
             // Добавляем в property list в формате (:field-name value)
-            // Используем make_keyword для создания :field-name
             data = Object::make_pair(
-                Object::make_pair(Object::make_keyword(field_name), // :field-name
+                Object::make_pair(Object::make_keyword(field.name()),
                                   Object::make_pair(field_value, Object::make_null())),
                 data);
         }
 
-        return true; // данные изменились
+        return true;
 
     } else {
         // ============================================================
-        // РЕЖИМ ЗАПИСИ: из property list в архив
+        // РЕЖИМ ЗАПИСИ: пишем данные в том порядке, как определены поля
         // ============================================================
 
-        // Сначала нужно убедиться, что data - это property list
         if (!data.is_pair() && !data.is_null()) {
             throw std::runtime_error("StructureType: expected property list");
         }
 
-        // Считаем количество полей в property list
-        int    count = 0;
-        Object current = data;
-        while (current.is_pair()) {
-            count++;
-            current = current.as_pair()->cdr;
-        }
-
-        // Пишем количество
-        CompactIndex total(count / 2); // делим на 2, т.к. каждая пара :key value
-        ar << total;
-
-        // Проходим по property list
-        current = data;
-        while (current.is_pair()) {
-            Object entry = current.as_pair()->car;
-
-            // Проверяем формат (:key value)
-            if (!entry.is_pair() || !entry.as_pair()->car.is_keyword()) {
-                throw std::runtime_error("StructureType: expected (:key value) pair");
-            }
-
-            // Получаем имя поля (без :)
-            std::string field_name = entry.as_pair()->car.to_std_string();
-            if (field_name[0] == ':') {
-                field_name = field_name.substr(1);
-            }
-
-            // Получаем значение
-            Object field_value = entry.as_pair()->cdr;
-            if (!field_value.is_pair()) {
-                throw std::runtime_error("StructureType: expected value after key");
-            }
-            field_value = field_value.as_pair()->car;
-
-            // Ищем описание поля
-            const Field *field_desc = nullptr;
-            for (const auto &f : fields()) {
-                if (f.name() == field_name) {
-                    field_desc = &f;
-                    break;
-                }
-            }
-
-            if (!field_desc) {
-                throw std::runtime_error("StructureType: unknown field '" + field_name +
-                                         "' in type " + get_name());
-            }
+        // Для каждого поля структуры
+        for (const auto &field : fields()) {
+            // Ищем значение поля в property list
+            Object field_value = PairObject::plist_get(data, field.name(), true);
 
             // Получаем тип поля
-            Type *field_type = TypeSystem::instance().lookup_type(field_desc->type().base_type());
+            Type *field_type = TypeSystem::instance().lookup_type(field.type().base_type());
             if (!field_type) {
                 throw std::runtime_error("StructureType: unknown field type " +
-                                         field_desc->type().base_type());
+                                         field.type().base_type() + " in " + get_name());
             }
 
-            // Пишем имя поля
-            CompactIndex name_len(field_name.length());
-            ar << name_len;
-            ar.serialize(const_cast<char *>(field_name.data()), field_name.length());
+            // Если поле не найдено в property list, передаем null
+            // (тип поля сам решит, что с этим делать)
+            if (field_value.is_null()) {
+                field_value = Object::make_null();
+            }
 
             // Пишем значение поля
             field_type->serialize_obj(ar, field_value);
-
-            // Переходим к следующей паре
-            current = current.as_pair()->cdr;
         }
 
-        return false; // данные не изменились
+        return false;
     }
 }
 
@@ -1277,7 +1205,7 @@ Object BasicType::get_at(const Object &key) {
  * Serialize basic type
  */
 bool BasicType::serialize_obj(Archive &ar, Object &data) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         // ============================================================
         // РЕЖИМ ЧТЕНИЯ: создаем объект по type_name из архива
         // ============================================================
@@ -1441,7 +1369,7 @@ Object BitFieldType::get_at(const Object &key) {
 }
 
 bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         // ============================================================
         // РЕЖИМ ЧТЕНИЯ: из архива в Object
         // ============================================================
@@ -1653,7 +1581,7 @@ std::string EnumType::get_name_for_value(int64_t value) const {
 }
 
 bool EnumType::serialize_obj(Archive &ar, Object &data) {
-    if (ar.is_loading()) {
+    if (ar.is_reading()) {
         // Читаем сырое значение через ValueType
         Object raw_value;
         ValueType::serialize_obj(ar, raw_value); // читает CompactCrc32 + число

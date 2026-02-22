@@ -26,7 +26,7 @@ class RelocationTable : public NativeObject {
         std::string target_name;
 
         void serialize(Archive &ar) {
-            if (ar.is_loading()) {
+            if (ar.is_reading()) {
                 CompactIndex off;
                 ar << off;
                 offset = off.value;
@@ -98,7 +98,7 @@ class RelocationTable : public NativeObject {
         CompactCrc32 magic{0x52454C4F}; // "RELO"
         ar << magic;
 
-        if (ar.is_loading()) {
+        if (ar.is_reading()) {
             CompactIndex count;
             ar << count;
 

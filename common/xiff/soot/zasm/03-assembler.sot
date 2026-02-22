@@ -2,6 +2,15 @@
 ;;; Core Assembly
 ;;; =====================================================================
 
+
+(defun memory-buffer-read-byte (buffer offset) 
+  (let ((region (-> buffer :region)))
+    (memory-region-read-byte region offset)))
+
+(defun memory-buffer-write-byte! (buffer offset value) 
+  (let ((region (-> buffer :region)))
+    (memory-region-write-byte! region offset value)))
+    
 (defun emit (data &key (listing "") (prefix "    ")) 
   "Принимает байт или список байтов. Если передан :listing, сохраняет строку в листинг."
   (check-args #t
@@ -17,7 +26,7 @@
       (for-each bytes (lambda (b)
         (let ((current-ilc (segment-ilc seg)))
           (when (eq? *current-pass* 2)
-            (buffer-write (segment-buffer seg) b :type 'uint8 :address current-ilc))
+            (memory-buffer-write-byte! (segment-buffer seg) current-ilc b))
           (segment-ilc! seg (+ current-ilc 1)))))
 
       ;; Если второй проход и есть текст — пишем в листинг

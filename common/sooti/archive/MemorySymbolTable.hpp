@@ -22,7 +22,7 @@ class MemorySymbolTable : public NativeObject {
         ~SymbolEntry() = default;
 
         void serialize(Archive &ar) {
-            if (ar.is_loading()) {
+            if (ar.is_reading()) {
                 CompactIndex name_len;
                 ar << name_len;
 
@@ -115,7 +115,7 @@ class MemorySymbolTable : public NativeObject {
         CompactCrc32 magic{0x53594D54}; // "SYMT"
         ar << magic;
 
-        if (ar.is_loading()) {
+        if (ar.is_reading()) {
             CompactIndex count;
             ar << count;
 

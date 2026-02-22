@@ -7,6 +7,7 @@ add_library(libtypesys
     common/type_system/Deftype.cpp
     common/type_system/State.cpp
     common/type_system/Register.cpp
+
 )
 
 # Линкуем fmt если нужно

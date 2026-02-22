@@ -10,7 +10,7 @@
   (listing '()))
 
 (defun new-segment (&key name module)
-  (let ((seg-buffer (make-buffer (fmt #f "{}:{}" (module-name module) name) 65536 0)))
+  (let ((seg-buffer (make-memory-buffer :size 65536 :base 0)))
     (make-segment :name name 
                   :buffer seg-buffer 
                   :module module)))
@@ -19,7 +19,9 @@
   "Возвращает адрес метки в данном сегменте или null, если не найдена."
   (let* ((buf (segment-buffer seg)))
          ;; Используем динамическое обращение к слоту буфера
-         (-> buf (identity label))))
+         ;(-> buf (identity label))
+         (memory-buffer-label-ref buf label)
+         ))
 
 (defun segment-label-addr-get (seg label)
   "Возвращает адрес метки в данном сегменте или null, если не найдена."
@@ -36,7 +38,7 @@
          (ilc (segment-ilc seg))
          (target-addr (if (not (null? address)) address ilc)))
     
-    (buffer-label-set! buf clean-name :address target-addr)
+    (memory-buffer-label-set! buf clean-name :offset target-addr)
       ;(fmt #t "  [Segment:{}] Label '{}' set to {}\n" (segment-name seg) clean-name target-addr)
          ))
 
@@ -48,7 +50,7 @@
     
     ;; Читаем записанные байты для дампа
     (dotimes (i len)
-      (let ((byte (buffer-read (segment-buffer seg) :type 'uint8 :address (+ start-addr i))))
+      (let ((byte (memory-buffer-read-byte (segment-buffer seg) (+ start-addr i))))
         (set! hex-str (fmt #f "{} {:02X}" hex-str byte))))
 
     ;; Форматируем: Адрес | HEX | Мнемоника
@@ -122,7 +124,7 @@
     (label symbol?))
   (let ((lab (module-label-get label)))
     (cond
-      ((not (null? lab)) (-> lab :address))
+      ((not (null? lab)) (-> lab :offset))
       ((eq? *current-pass* 1) 0) ;; Заглушка для первого прохода
       (else (asm-error (fmt #f "Label not found: `{}`" label))))))
       
