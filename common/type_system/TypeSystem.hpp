@@ -213,6 +213,7 @@ class TypeSystem : public NativeObject {
 
     Type *lookup_type(const TypeSpec &ts) const;
     Type *lookup_type(const std::string &name) const;
+
     Type *lookup_type_by_crc(uint32_t crc) const {
         auto it = m_types_by_crc.find(crc);
         return it != m_types_by_crc.end() ? it->second : nullptr;
@@ -358,7 +359,8 @@ class TypeSystem : public NativeObject {
     void verify_type_sizes_z80();
 
     void clear() {
-        m_types_by_crc.clear(), m_types.clear();
+        m_types_by_crc.clear();
+        m_types.clear();
         m_forward_declared_types.clear();
         m_forward_declared_method_counts.clear();
         m_old_types.clear();

@@ -3,6 +3,7 @@
 #include "common/soot/Config.hpp"
 #include "common/soot/KeyBinds.hpp"
 #include "common/sooti/Interpreter.hpp"
+
 #include "common/sooti/PrinterEnv.hpp"
 #include "common/sooti/Reader.hpp"
 #include "nrepl/ReplClient.hpp"
@@ -69,6 +70,7 @@ class ReplWrapper {
     bool run_server_impl(std::string host, int port);
     bool run_client_impl(std::string host, int port);
     void stop_network_server();
+
     void handle_network_message(const std::string &message, int client_socket);
 
     void init_settings();

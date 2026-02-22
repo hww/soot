@@ -118,9 +118,8 @@
       
        ;; Экспорт в окружение Липа
        (define ,name impl :env *global-env*)
-       (function-name! ,name ',name)
-       )))
-
+       (function-name! ,name ',name))))
+       
 (defmacro call-proc (name &rest args)
   "Пример: (call-proc copy-string :dest buffer :src msg)"
   `(begin

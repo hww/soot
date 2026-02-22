@@ -219,6 +219,7 @@ class Object {
     static void set_symbol_table(SymbolTable *table) {
         s_table = table;
     }
+
     static SymbolTable      *get_symbol_table();
     static SymbolTable      &symbol_table();
     static InternedSymbolPtr intern(const char *name);
@@ -256,6 +257,7 @@ class Object {
     static Object make_hash_table(Object type_name, int size = 16);
     static Object make_reader(TextStream *textStream);
     static Object make_writer(TextStream *textStream);
+
     static Object make_pointer(std::shared_ptr<Pointer> pointer);
     static Object make_pointer(void *raw_ptr, std::string type);
     static Object make_heap_obj(std::shared_ptr<HeapObject> heap_object);
@@ -357,9 +359,11 @@ class Object {
     bool is_reader() const {
         return type == ObjectType::READER;
     }
+
     bool is_writer() const {
         return type == ObjectType::WRITER;
     }
+
     bool is_primitive() const {
         return type == ObjectType::PRIMITIVE;
     }
@@ -740,7 +744,6 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual Object type_name_obj() const = 0;
 
     virtual bool is_class_name(const Object &name) const = 0;
-
     virtual void serialize(Archive &ar) {
         (void)ar;
     }

@@ -6,6 +6,7 @@
   "Используем псевдонимы из твоего C++ акцессора."
   (let ((m (~> label-obj :info))
         (addr (~> label-obj :offset)))
+
     (list 
       :address (string->symbol (fmt #f "#x{:04X}" addr))
       :name    label-name
@@ -34,7 +35,6 @@
         (let ((buffer (segment-buffer seg)))
           ;; labels-ht - это та самая хеш-таблица из C++ (BufferLabel::data)
           (let ((labels-ht (~> buffer :labels :table))) 
-
                 (hash-table-for-each labels-ht
                   (lambda (lbl-name lbl-obj)
                     ;; Передаем ОБА аргумента: объект и имя
@@ -83,7 +83,6 @@
   (for-each buffers-list
     (lambda (buf)
       (memory-buffer-export-hex buf path #t))))
-
 
 (defun save-module-practical (mod-name layout-specs)
   (let ((mod (get-module mod-name)))

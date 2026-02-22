@@ -1,5 +1,7 @@
 #include "common/sooti/Interpreter.hpp"
+
 #include "archive/MemoryBuffer.hpp"
+
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
@@ -639,6 +641,7 @@ void Interpreter::throw_named_type_mismatch(const Object &form, const std::strin
         form, fmt::format("Type error for named argument ':{}': expected [{}], but got {} {}", name,
                           expected_str, object_type_to_string(got.type), got.print()));
 }
+
 void Interpreter::throw_named_type_mismatch(const Object &form, const std::string &name,
                                             std::initializer_list<const char *> expected,
                                             std::string                         got) {
@@ -1077,6 +1080,7 @@ Object Interpreter::eval_symbol(const Object &sym, const std::shared_ptr<Environ
     }
     return result;
 }
+
 Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<EnvironmentObject> &env) {
     const auto   &pair = obj.as_pair();
     const Object &head = pair->car;
@@ -7358,7 +7362,6 @@ Object Interpreter::eval_archive_seek(const Object &form, Arguments &args,
 
     size_t pos = args.unnamed[1].as_integer();
     archive->seek(pos);
-
     return Object::make_none();
 }
 
@@ -7443,8 +7446,6 @@ Object Interpreter::eval_region_write_byte(const Object &form, Arguments &args,
 
     uint8_t value = args.unnamed[2].as_integer() & 0xFF;
     region->data()[offset] = value;
-
     return Object::make_none();
 }
-
 } // namespace script

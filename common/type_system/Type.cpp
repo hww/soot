@@ -2,7 +2,6 @@
 #include "TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
 #include "common/sooti/Printer.hpp"
-
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
 #include <algorithm>
@@ -1268,6 +1267,7 @@ std::string BitField::print() const {
 bool BitField::operator!=(const BitField &other) const {
     return !(*this == other);
 }
+
 Object BitField::get_at(const Object &key) {
     std::string name = key.to_std_string();
 
@@ -1504,6 +1504,7 @@ bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
         return false;
     }
 }
+
 // ============================================================================
 // EnumType Implementation
 // ============================================================================

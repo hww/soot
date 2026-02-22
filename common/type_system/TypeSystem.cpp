@@ -65,7 +65,6 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 uint32_t crc = util::compute_crc32(type->get_name());
                 m_types_by_crc[crc] = type.get();
                 m_types[name] = std::move(type);
-
             } else {
                 throw_typesystem_error("Inconsistent type definition. Type {} was originally:\n{}\n"
                                        "and is redefined as:\n{}\nDiff:\n{}",
@@ -2143,6 +2142,7 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 Object TypeSystem::get_at(const Object &key) {
     // 1. Сначала свойства (мета-данные системы типов)
     Object base_attempt = HeapObject::get_at(key);
+
     if (!base_attempt.is_none())
         return base_attempt;
 

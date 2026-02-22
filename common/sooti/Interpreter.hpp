@@ -467,6 +467,7 @@ class Interpreter {
                                 const std::shared_ptr<EnvironmentObject> &env);
     Object eval_read_text_file(const Object &form, Arguments &args,
                                const std::shared_ptr<EnvironmentObject> &env);
+
     Object eval_crc32(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
     // Прочие
