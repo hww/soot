@@ -82,7 +82,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"declare", &Interpreter::eval_declare_special, nullptr},
 
         // Define new constrant
-        {"define-constant", &Interpreter::eval_define_constant, nullptr},
+        {"defconstant", &Interpreter::eval_define_constant, nullptr},
         // Parse type object
         {"deftype", &Interpreter::eval_deftype_special, nullptr},
         {"defenum", &Interpreter::eval_defenum_special, nullptr},
@@ -1341,22 +1341,23 @@ Object Interpreter::eval_define_special(const Object &form, const Object &rest,
  */
 Object Interpreter::eval_define_constant(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
-    auto args = rest.to_vector();
-    auto sym = args[0].as_symbol();
-    auto value = args[1]; // В SOOT это может быть результат eval
+    auto args = get_args(form, rest, ArgumentSpec(true, true));
+    vararg_check(form, args, {{ObjectType::SYMBOL}, {}}, {{"env", {false, {}}}});
+    auto name = args.unnamed[0].as_symbol();
 
     // Проверка: нельзя объявлять константу, если уже есть переменная с таким именем
-    if (m_symbol_types.lookup(sym)) {
+    if (m_symbol_types.lookup(name))
         throw_eval_error(form, "Cannot define constant: symbol already has a type definition");
-    }
+
+    Object value = eval_with_rewind(args.unnamed[1], env);
 
     // Определяем тип константы автоматически
     // Например, если это число < 256, тип может быть uint8 и т.д.
     TypeSpec ts = deduct_type_for_constant_helper(value);
 
-    m_global_constants.set(sym, value);
+    m_global_constants.set(name, value);
     // Оборачиваем TypeSpec в shared_ptr для таблицы типов
-    m_symbol_types.set(sym, std::make_shared<TypeSpec>(ts));
+    m_symbol_types.set(name, std::make_shared<TypeSpec>(ts));
 
     return get_none();
 }

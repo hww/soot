@@ -459,7 +459,7 @@
 ;;;     (.ld bc #x400)
 ;;;     (.ld a #x20)
 ;;;     (.fill bc a))
-(defmacro defsegment (name &key (segment 'default) (scope 'public) (align 1) &rest body)
+(defmacro defsegment (name &key (segment 'code) (scope 'public) (align 1) &rest body)
   (let ((label-name (if (symbol? name) 
                         name 
                         (intern (fmt #f "code::{}" name)))))

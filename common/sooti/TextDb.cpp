@@ -143,6 +143,8 @@ std::string TextDb::get_info_for(const std::shared_ptr<SourceText> &frag, int of
         result += "\n";
 
     // 1. Вычисляем реальный отступ внутри строки
+    // OROGONAL CODE
+    // int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
     int offset_in_line = offset - frag->get_offset_of_line(line_idx);
     if (offset_in_line < 0)
         offset_in_line = 0;
@@ -159,7 +161,10 @@ std::string TextDb::get_info_for(const std::shared_ptr<SourceText> &frag, int of
 std::optional<ShortInfo> TextDb::get_short_info_for(const std::shared_ptr<SourceText> &frag,
                                                     int offset) const {
     int line_idx = frag->get_line_idx(offset);
-    int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
+    // ORIGINAL CODE
+    // int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 1) - 1;
+    // because each line starts with valud character we change it to
+    int offset_in_line = std::max(offset - frag->get_offset_of_line(line_idx), 0);
 
     ShortInfo info;
     info.filename = frag->get_description();
@@ -197,7 +202,10 @@ std::optional<ShortInfo> TextDb::try_get_short_info(const std::shared_ptr<HeapOb
 
         int line_length = offset_of_next_line - offset_of_line;
 
-        int start_offset_in_line = it->second.offset - offset_of_line - 1;
+        // ORIGIBAL CODE
+        // int start_offset_in_line = it->second.offset - offset_of_line - 1;
+        // because each line starts with valid character
+        int start_offset_in_line = it->second.offset - offset_of_line;
         result.pos_in_line = std::max(start_offset_in_line, 0);
         result.line_text = std::string(frag->get_text() + offset_of_line + 1, line_length - 1);
         return result;

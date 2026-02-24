@@ -45,6 +45,11 @@ class SourceText {
         return m_text.size();
     }
 
+    bool has_bom() {
+        return (m_text.size() >= 3) && (uint8_t)m_text[0] == 0xEF && (uint8_t)m_text[1] == 0xBB &&
+               (uint8_t)m_text[2] == 0xBF;
+    }
+
   protected:
     // Сканирует m_text и заполняет таблицу смещений строк m_offset_by_line
     void build_offsets();

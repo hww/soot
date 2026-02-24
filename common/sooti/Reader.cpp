@@ -343,11 +343,6 @@ Token Reader::get_next_token(TextStream &stream) {
     t.source_offset = stream.seek;
     t.source_text = stream.text;
 
-    // Если файл с BOM и seek не сброшен, можно скорректировать:
-    if (stream.has_bom && stream.seek >= 3) {
-        t.source_offset -= 3; // коррекция
-    }
-
     char first = stream.read();
     t.text.push_back(first);
 
@@ -401,8 +396,10 @@ Token Reader::get_next_token(TextStream &stream) {
             t.text.push_back(stream.read());
         }
     }
-    // fmt::print("DEBUG: get_next_token token line: {} offset: {} text: ```{}```\n", t.source_line,
-    //            t.source_offset, t.text);
+    // fmt::print(
+    //     "DEBUG: get_next_token token token: {} line: {} offset: {} text: ```{}```\n", t.text,
+    //     t.source_line, t.source_offset,
+    //     std::string(t.source_text->get_text()).substr(t.source_offset, t.source_offset + 24));
     return t;
 }
 
@@ -576,12 +573,11 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
                          EvalCallback eval_callback) {
     ts.seek_past_whitespace_and_comments();
 
-    std::vector<Object> pairs; // храним уже созданные пары
+    std::vector<Object> pairs;
     int                 start_offset = ts.seek;
-
-    bool got_dot = false;
-    bool got_thing_after_dot = false;
-    bool got_terminator = false;
+    bool                got_dot = false;
+    bool                got_thing_after_dot = false;
+    bool                got_terminator = false;
 
     while (ts.text_remains()) {
         ts.seek_past_whitespace_and_comments();
@@ -591,15 +587,11 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
         if (tok.text.empty())
             break;
 
-        // 1. Проверка терминатора
         if (tok.text == terminator) {
             got_terminator = true;
             break;
         }
-        fmt::print("DEBUG: get_next_token token line: {} offset: {} text: ```{}```\n",
-                   tok.source_line, tok.source_offset, tok.text);
 
-        // 2. Обработка точки
         if (tok.text == ".") {
             if (got_dot)
                 throw_reader_error(ts, "Multiple dots in list", -1);
@@ -609,44 +601,61 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
             continue;
         }
 
-        // 3. Сохраняем информацию о токене ДО отката
-        auto token_text = tok.text;
+        // Сохраняем информацию о токене
         auto source_text = tok.source_text;
         auto source_offset = tok.source_offset;
 
-        // 4. ЧТЕНИЕ ОБЪЕКТА (с откатом)
-        ts.seek = last_seek; // откатываемся для read_single_form
-        Object current_obj = read_single_form(ts, eval_callback);
+        // ВАЖНО: проверяем, не является ли токен началом списка
+        if (tok.text == "(" || tok.text == "[") {
+            // Не откатываемся для списков!
+            std::string nested_term = (tok.text == "(") ? ")" : "]";
+            Object      current_obj = read_list(ts, true, nested_term, eval_callback);
 
-        // 5. СОЗДАНИЕ НОВОЙ ПАРЫ
-        if (got_dot) {
-            if (got_thing_after_dot)
-                throw_reader_error(ts, "Only one object allowed after dot", -1);
+            // СОЗДАНИЕ НОВОЙ ПАРЫ
+            if (got_dot) {
+                if (got_thing_after_dot)
+                    throw_reader_error(ts, "Only one object allowed after dot", -1);
 
-            // Пришиваем хвост к последней паре
-            if (!pairs.empty()) {
-                auto last_pair = pairs.back().as_pair();
-                last_pair->cdr = current_obj;
+                if (!pairs.empty()) {
+                    auto last_pair = pairs.back().as_pair();
+                    last_pair->cdr = current_obj;
+                }
+                got_thing_after_dot = true;
+            } else {
+                Object new_pair = Object::make_pair(current_obj, Object::make_null());
+                m_db.link(new_pair, source_text, source_offset);
+
+                if (!pairs.empty()) {
+                    auto last_pair = pairs.back().as_pair();
+                    last_pair->cdr = new_pair;
+                }
+                pairs.push_back(new_pair);
             }
-            got_thing_after_dot = true;
         } else {
-            // Создаем новую пару (car = current_obj, cdr = null)
-            Object new_pair = Object::make_pair(current_obj, Object::make_null());
+            // Для обычных токенов - откатываемся и используем read_single_form
+            ts.seek = last_seek;
+            Object current_obj = read_single_form(ts, eval_callback);
 
-            // Линкуем эту пару с исходным кодом, используя СОХРАНЕННУЮ информацию о токене
-            fmt::print("DEBUG: read_list `1` token: {} offset: {} line: {} text: ```{}```",
-                       token_text, source_offset, source_text->get_line_idx(source_offset),
-                       source_text->get_line_containing_offset(source_offset));
-            m_db.link(new_pair, source_text, source_offset);
+            // СОЗДАНИЕ НОВОЙ ПАРЫ
+            if (got_dot) {
+                if (got_thing_after_dot)
+                    throw_reader_error(ts, "Only one object allowed after dot", -1);
 
-            // Связываем с предыдущей парой, если есть
-            if (!pairs.empty()) {
-                auto last_pair = pairs.back().as_pair();
-                last_pair->cdr = new_pair;
+                if (!pairs.empty()) {
+                    auto last_pair = pairs.back().as_pair();
+                    last_pair->cdr = current_obj;
+                }
+                got_thing_after_dot = true;
+            } else {
+                Object new_pair = Object::make_pair(current_obj, Object::make_null());
+                m_db.link(new_pair, source_text, source_offset);
+
+                if (!pairs.empty()) {
+                    auto last_pair = pairs.back().as_pair();
+                    last_pair->cdr = new_pair;
+                }
+                pairs.push_back(new_pair);
             }
-
-            // Сохраняем пару
-            pairs.push_back(new_pair);
         }
 
         ts.seek_past_whitespace_and_comments();

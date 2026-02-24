@@ -1,0 +1,107 @@
+﻿; ==============================================================================
+; CRTC GRAPHICS MODES DATA (ALESTE LX)
+; Format: db NumberOfRegisters, (db Register, db Value) * N
+; ==============================================================================
+
+(in-segment  'data)
+
+(defdata crtc_mode_tables 
+    (zasm 
+        (.dw 'mode_cpc_mode2)       ; 0
+        (.dw 'mode_cpc_mode1)       ; 1
+        (.dw 'mode_cpc_mode0)       ; 2
+        (.dw 'mode_16k1b)           ; 3
+        (.dw 'mode_16k2b)           ; 4
+        (.dw 'mode_16k4b)           ; 5
+        (.dw 'mode_32k2b)           ; 6
+        (.dw 'mode_32k4b)           ; 7
+        (.dw 'mode_32k8b)           ; 8
+        (.dw 'mode_64k4b)           ; 9
+        (.dw 'mode_64k8b)           ; 10
+
+        ; --- CPC Modes ---
+
+        (.label mode_cpc_mode2)
+            (.db 15) ; регистров
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00000000 #x14 #b00000000 #x15 #b00000000)
+
+        (.label mode_cpc_mode1)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00000001 #x14 #b00000000 #x15 #b00000000)
+
+        (.label mode_cpc_mode0)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00000010 #x14 #b00000000 #x15 #b00000000)
+
+        ; --- 16 KB LX Modes ---
+
+        (.label mode_16k1b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010000 #x14 #b00000001 #x15 #b00000000)
+
+        (.label mode_16k2b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010001 #x14 #b00000001 #x15 #b00000000)
+
+        (.label mode_16k4b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010010 #x14 #b00000001 #x15 #b00000000)
+
+        ; --- 32 KB LX Modes ---
+
+        (.label mode_32k2b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010001 #x14 #b00000011 #x15 #b00000001)
+
+        (.label mode_32k4b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010010 #x14 #b00000011 #x15 #b00000001)
+
+        (.label mode_32k8b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010011 #x14 #b00000011 #x15 #b00000001)
+
+        ; --- 64 KB LX Modes ---
+
+        (.label mode_64k4b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010010 #x14 #b00000111 #x15 #b00000010)
+
+        (.label mode_64k8b)
+            (.db 15)
+            (.db #x00 63 #x01 40 #x02 46 #x03 142 #x04 38)
+            (.db #x05 0  #x06 25 #x07 30 #x08 0   #x09 7)
+            (.db #x0C 0  #x0D 0)
+            (.db #x12 #b00010011 #x14 #b00000111 #x15 #b00000010)
+  ) ;; endof zasm
+) ;; endof defdata

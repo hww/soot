@@ -1,307 +1,127 @@
-﻿
+﻿;;; =====================================================================
+;;; 1. КОНСТАНТЫ LAYOUT
+;;; =====================================================================
+
+;;; =====================================================================
+;;; Стандартные сегменты
+;;; =====================================================================
+
+;; Сегмент для исполняемого кода
+(defconstant SEGMENT-CODE 'code)
+
+;; Сегмент для инициализированных данных
+(defconstant SEGMENT-DATA 'data)
+
+;; Сегмент для неинициализированных данных (BSS)
+(defconstant SEGMENT-BSS 'bss)
+
+;; Сегмент для констант (только чтение)
+(defconstant SEGMENT-CONST 'const)
+
+;; Сегмент для векторов прерываний
+(defconstant SEGMENT-VECTORS 'vectors)
+
+;; Сегмент для стека
+(defconstant SEGMENT-STACK 'stack)
+
+
+(defconstant VECTORS_BASE   #x0000)
+(defconstant VECTORS_SIZE   256)
+
+(defconstant BOOT_BASE      #x0100)
+(defconstant BOOT_SIZE      256)
+
+(defconstant CODE_BASE      #x0200)
+(defconstant STACK_TOP      #x7FFF)  ; Вершина стека
+(defconstant STACK_SIZE     256)
+(defconstant CODE_SIZE      (- STACK_TOP CODE_BASE STACK_SIZE))
+
+(defconstant FONT_BASE      #x8000)
+(defconstant FONT_SIZE      2048)
+
+(defconstant DATA_BASE      #x8800)
+(defconstant DATA_SIZE      8192)
+
+(defconstant VTABLES_BASE   (+ DATA_BASE DATA_SIZE))  ; #xA800
+(defconstant VTABLES_SIZE   8192)
+
+(defconstant GLOBALS_BASE   (+ VTABLES_BASE VTABLES_SIZE))  ; #xC800
+(defconstant GLOBALS_SIZE   2048)
+
+;;; =====================================================================
+;;; 2. ИНИЦИАЛИЗАЦИЯ СЕГМЕНТОВ
+;;; =====================================================================
+(defun init-project-layout ()
+  "Инициализирует все сегменты проекта"
+  (new-segment :name 'vectors  :module *current-module* 
+               :size VECTORS_SIZE :base VECTORS_BASE)
+  (new-segment :name 'boot     :module *current-module* 
+               :size BOOT_SIZE :base BOOT_BASE)
+  (new-segment :name 'code     :module *current-module* 
+               :size CODE_SIZE :base CODE_BASE)
+  (new-segment :name 'stack    :module *current-module* 
+               :size STACK_SIZE :base (- STACK_TOP STACK_SIZE))
+  (new-segment :name 'font     :module *current-module* 
+               :size FONT_SIZE :base FONT_BASE)
+  (new-segment :name 'data     :module *current-module* 
+               :size DATA_SIZE :base DATA_BASE)
+  (new-segment :name 'vtables  :module *current-module* 
+               :size VTABLES_SIZE :base VTABLES_BASE)
+  (new-segment :name 'globals  :module *current-module* 
+               :size GLOBALS_SIZE :base GLOBALS_BASE))
+
+;;; =====================================================================
+;;; 5. ЗАГРУЗКА ИСХОДНИКОВ
+;;; =====================================================================
 (load "common/xiff/soot/zasm/zasm.sot")
 
-(load "common/xiff/soot/xialeste/memory-map.sot")
+;;; =====================================================================
+;;; 3. ОПРЕДЕЛЕНИЕ МОДУЛЯ
+;;; =====================================================================
+(defmodule xifw
+  "Основной модуль прошивки")
 
-(in-segment  'code)
+;;; =====================================================================
+;;; 4. LAYOUT ВЫХОДНЫХ ФАЙЛОВ (что куда сохранять)
+;;; =====================================================================
+(define *xifw-output-layout* 
+  '(
+    ;; Несколько сегментов могут идти в один файл
+    ("firmware.hex" code)      ;; код
+    ("firmware.hex" font)      ;; шрифты (добавляются в тот же hex)
+    ("vectors.hex"  vectors)   ;; векторы в отдельный файл (опционально)
+    ("boot.hex"     boot)      ;; загрузчик отдельно
+    ("data.hex"     data)      ;; данные отдельно
+    ("vtables.hex"  vtables)   ;; vtable отдельно
+   ))
 
-(deftype vec3s8 (structure)
-  ((x int8) 
-   (y int8) 
-   (z int8))
- (:methods
-      (new (int16 int16) _type_)
-      (len () int16)))
+;;; =====================================================================
+;;; 5. ЗАГРУЗКА ИСХОДНИКОВ
+;;; =====================================================================
 
-(deftype vec3 (structure)
-  ((x int16) 
-   (y int16) 
-   (z int16))
- (:methods
-      (new (int16 int16) _type_)
-      (set (_type_ int16 int16 int16) none)
-      (clear (_type_) none)
-      (len (_type_) int16)))
+(load "common/xiff/soot/zasm/zasm.sot")
 
-(deftype mat3 (structure)
-  ((r1 vec3 :inline)   
-   (r2 vec3 :inline)   
-   (r3 vec3 :inline))) 
+;;; =====================================================================
+;;; FW Code
+;;; =====================================================================
 
-(defenum eflag
-  :type uint8
-  :bitfield #t
-  (bit0 0)
-  (bit1 1)
-  (bit2 2)
-  (bit3 3))
+;; Настраиваем layout ДО загрузки остальных файлов
+(with-module xifw
+  (init-project-layout))
 
-(segment-reset *current-segment*)
+;; Загружаем остальные файлы (они будут использовать настроенные сегменты)
+(load "common/xiff/soot/xialeste/font_win1252.sot")
+(load "common/xiff/soot/xialeste/crtc-modes.sot")
 
-;;; ===================================================================== 
-;;; Methods
-;;; ===================================================================== 
+;;; =====================================================================
+;;; 6. КОМПИЛЯЦИЯ
+;;; =====================================================================
+(assemble-module 'xifw)
+(dump-listing 'xifw)
 
-;; Пример для твоего синтаксиса (как в sprite-aux-list)
-(defmethod new vec3 ((x int16) (y int16))
-  (declare (once) (asm-func _type_))
-  ;(fmt #t "DECLARATIONS vec3::new {}" (declarations))
-  ;; 2. Инициализируем VTable объекта (первые 2 байта)
-  (.ld hl 'vec3::vtable)
-  (.ld (+ix 0) l)
-  (.ld (+ix 1) h)
-  ;
-  ;;; 3. Обнуляем поля или ставим дефолты
-  (.ld (+ix 2) 0) ;; x
-  (.ld (+ix 4) 0) ;; y
-  (.ret))
-
-(defmethod clear ((self vec3))
-  (declare (once) (asm-func none))
-  ;(fmt #t "DECLARATIONS vec3::clear {}" (declarations))
-  (rlet ((self vec3 :reg ix))
-    (zasm 
-      (.ld (-> self x) 0)
-      (.ld (-> self y) 0)
-      (.ld (-> self z) 0)
-      (.ret))))
-
-(defmethod len ((this vec3 ix))
-  (declare (once) (asm-func int16))
-  ;(fmt #t "DECLARATIONS vec3::len {}" (declarations))
-  ;; Первый rlet (информационный) уже добавлен макросом скрыто.
-  ;; Теперь программист добавляет свой (машинный) rlet:
-  (rlet ((ret  int16 :reg a)) 
-    (zasm
-      (.push de)
-      (.ld hl (-> this x))
-      (.ld de (-> this y))
-      (.add hl de)
-      (.ld de (-> this z))
-      (.add hl de)
-      (.ret))))
-
-(defmethod set ((this vec3 ix) (x int16 hl) (y int16 de) (z int16 bc))
-  (declare (once) (asm-func none))
-  ;(fmt #t "DECLARATIONS vec3::len {}" (declarations))
-  ;; Первый rlet (информационный) уже добавлен макросом скрыто.
-  ;; Теперь программист добавляет свой (машинный) rlet:
-
-    (zasm
-      (.ld (-> this x) hl)
-      (.ld (-> this y) de)
-      (.ld (-> this z) bc)
-      (.ret)))
-
-;;; ===================================================================== 
-;;; V-Table
-;;; ===================================================================== 
-
-(defproc test-vtable ()
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG test-vtable...\n")
-  (.vtable vec3))
-
-(defproc test-vtable-proxy ()
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG test-vtable-proxy...\n")
-  (.vtable-proxy vec3 'vec3-active ))
-
-(defproc test-vtable-proxy-switch ()
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG test-vtable-proxy-switch...\n")
-  (.switch-vtable vec3 'vec3-active ))
-
-
-;;; ===================================================================== 
-;;; Type Descriptor
-;;; ===================================================================== 
-
-(defproc test-type-descriptor ()
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG test-type-descriptor...\n")
-  (.type-descriptor object)    ;; Родитель 0, проблем нет
-  (.type-descriptor structure) ;; Родитель object, метка уже есть
-  (.type-descriptor basic)     ;; Родитель structure, метка уже есть
-  (.type-descriptor type)      ;; Родитель basic, метка уже есть
-  (.type-descriptor vec3)
-  )
-
-;;; ===================================================================== 
-;;; Structure
-;;; ===================================================================== 
-
-(defproc test-structure ()
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG test-structure...\n")
-  (.static-new foo vec3
-    :x 100
-    :y 50
-    :z 16
-    ))
-
-(defproc process-vector ((v pointer hl))
-  (declare (once) (asm-func none))
-  (fmt #t "DEBUG process-vector...\n")
-  (.ld ix hl)
-  (.ld ix v)
-  (.ld a (+ix (-> vec3 y))) ;; Автоматически вычисляет смещение поля :y
-  (.ld a (->ix vec3 y))  ;; Сгенерирует LD A, (IX+2)
-  (.ld a (+ix 4))  ;; Сгенерирует LD A, (IX+2)
-  (.ret))
-
-
-;;; ===================================================================== 
-;;; Method Call
-;;; ===================================================================== 
-
-(defproc test-call-method ()
-  (declare (once) (asm-func none))
-  (dcall vec3::len vec3 int16)
-  (.ret))
-
-(defproc test-new-call-method ()
-  (declare (once) (asm-func none))
-  (dcall vec3::new int16 int16 _type_) ; addrss of instance in ix
-
-  (.ld hl #x100)
-  (.ld de #x101)
-  (.ld bc #x102)
-  (dcall vec3::set vec3 int16 int16 int16 none)
-  (.ret))
-
-(defproc test-call-method-adv ()
-  (declare (once) (asm-func none))
-  (rlet ((len int16 hl))
-    (zasm
-    ;; 1. Загружаем адрес метода
-    (.ld ix #x8000)
-
-    ;; 2. Готовим адрес (регистры еще свободны)
-    (obj-method->iy ix vec3::len) 
-    
-    ;; 3. Вызываем
-    ;; scall проверит, что в HL реально int16, а возврат — none
-    (ycall vec3::len vec3 len)
-    ;; вызоа напрямую в v-table
-    (dcall vec3-active::new int16 int16 _type_)
-    ;; вызов метода не в таблице
-    (dcall test-call-method-adv none)
-  )))
-
-;;; ===================================================================== 
-;;; Other Tests
-;;; ===================================================================== 
-
-(define ADDR_BASE #x4000)
-
-(defproc test-expression ()
-  (declare (once) (asm-func none))
-  (zasm 
-    (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
-    (.ret)))
-
-(defproc test-jump-optimization ()
-  (declare (once) (asm-func none))
-  (zasm
-    (.label start)
-    (.jump #x8000)
-    (.jump 'start)
-    (.jump 'exit)
-    (.label exit)      
-    (.ret)))
-
-(defproc test-data ()
-  (declare (once) (asm-func none))
-  (zasm      
-    (.label msg_hello)
-    (.db "Hello, Z80!" 0)     ;; Строка с нуль-терминатором
-    
-    (.label data_table)
-    (.dw #x1234 (+ (address-of 'start) 5))  ;; Таблица адресов
-    
-    (.label buffer)
-    (.ds 8 #xFF)))            ;; Буфер на 32 байта, забитый $FF
-      
-(defproc test-address ()     
-  (declare (once) (asm-func none))
-  (zasm
-    (.label main)
-    (.ld a #x41)           ;; Загружаем код символа 'A'
-    (.call 'print_char)    ;; Вызываем процедуру
-    (.jump 'main)          ;; Бесконечный цикл
-
-    (.align 16)            ;; Отделяем данные/процедуры границей в 16 байт
-    
-    (.label print_char)
-    ;; Представим, что здесь вывод в порт
-    (.rst #x10)            ;; Системный вызов (напр. в Sinclair ROM)
-    (.ret)))      
-
-(defproc test-string-copy ()      
-  (declare (once) (asm-func none))  
-  (zasm
-    (.label strcpy)
-    (.ld a (@ hl))      ;; Опкод 7E (LD A, (HL))
-    (.or a)             ;; Опкод B7 (OR A)
-    (.ret 'z)           ;; Опкод C8 (RET Z)
-    
-    (.ld (@ de) a)      ;; ТЕПЕРЬ Ок: Опкод 12 (LD (DE), A)
-    (.inc hl)           ;; Опкод 23
-    (.inc de)           ;; Опкод 13
-    (.jr 'strcpy)))      ;; Опкод 18 F7 (прыжок назад)
-
-
-;;; ===================================================================== 
-;;; 
-;;; ===================================================================== 
-
-(defproc test-copy-string ((dest string :reg de) 
-                           (src string :reg hl))
-  (declare (once) (asm-func none))
-  ;; Вход: DE = dest, HL = src
-  (.label 'loop)
-  (.ld a (@ hl))      ;; Читаем символ из источника
-  (.ld (@ de) a)      ;; Пишем в приемник
-  (.or a)             ;; Проверяем на 0 (конец строки)
-  (.ret 'z)           ;; Если 0 — выходим (строка уже закрыта нулем)
-  
-  (.inc hl)           ;; Следующий в источнике
-  (.inc de)           ;; Следующий в приемнике
-  (.jr 'loop))        ;; Повторяем
-
-(defproc test-indirect (dest src)
-  ;; Вход: DE = dest, HL = src
-  (declare (once) (asm-func none))
-  (.label loop)
-  (.ld a (@ hl))      ;; Читаем символ из источника
-  (.ld (@ de) a)      ;; Пишем в приемник
-  (.or a)             ;; Проверяем на 0 (конец строки)
-  (.ret 'z)           ;; Если 0 — выходим (строка уже закрыта нулем)
-  
-  (.inc hl)           ;; Следующий в источнике
-  (.inc de)           ;; Следующий в приемнике
-  (.jr 'loop))        ;; Повторяем
-
-
-(in-segment  'data)
-(defsegment init-screen 
-  (fmt #t "DEBUG Curreent segment {}\n" *current-segment*)
-  (.ld hl #xC000)
-  (.ld bc #x400)
-  (.ld a #x20)
-  (.db 1 2 3))
-
-(assemble-module 'default)
-(dump-listing 'default)
-
-
-;; 2. Определяем структуру проекта (Layout)
-(define *my-project-layout* '(("firmware.hex" "code")
-                              ("vectors.hex"  "interrupts")))
-
-;; 3. После того как весь код откомпилирован (pass-2 завершен):
-(save-module-practical 'default *my-project-layout*)
-(export-symbols-to-emu "firmware.emu.sym" 'default)
-
-(save-module-passport "firmware.sot" 'default)
+;;; =====================================================================
+;;; 7. СОХРАНЕНИЕ РЕЗУЛЬТАТОВ
+;;; =====================================================================
+(save-module-practical 'xifw *xifw-output-layout*)
+(export-symbols-to-emu "xifw.emu.sym" 'xifw)
+(save-module-passport "xifw.sot" 'xifw)

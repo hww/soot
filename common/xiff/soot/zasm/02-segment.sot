@@ -154,7 +154,8 @@
 (defvar *current-pass* 1 "Глобальный флаг прохода")  
 
 (defun get-pass-signature () 
-  (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
+
+  (fmt #f "{}::{}::pass-{}" *current-module* *current-segment-name* *current-pass*))
 
 (defmacro pass-case (p1 p2)
   "Exectute body only if defined pass"
@@ -195,13 +196,21 @@
 ;;; Module Macros
 ;;; =====================================================================
 
-(defmacro defmodule (name)
+(defun init-module-segments (module-name)
+  "Создает стандартные сегменты для модуля"
+  (with-module module-name
+    (for-each '(code data bss const vectors stack) 
+      (lambda (seg)
+        (module-segment-get module-name seg)))))
+
+(defmacro defmodule (name &rest body)
   "Декларирует новый модуль и регистрирует его в глобальном реестре."
   `(let ((mod (gethash ',name *modules* null)))
      (unless mod
        (set! mod (make-module :name ',name 
                               :segments (make-hash-table)))
-       (sethash ',name *modules* mod))
+       (sethash ',name *modules* mod)
+       (init-module-segments ',name))
       ;(fmt #t "DEBUG: defmodule {}\n" ',name)
      mod))
 
@@ -224,18 +233,21 @@
 
 ;;; Исправленный with-segment
 (defmacro with-segment (seg-name &rest body)
-  "Переключает запись в указанный сегмент (например, 'code или 'data)."
-  (check-args #t
-    (seg-name symbol?))
-  `(begin
-    (fmt #t "With segment '{}'\n" ',(unquote-sym seg-name))
-    (set-current-segment! (module-segment-get *current-module* ',seg-name))
-    ,@body))
+  "Переключает запись в указанный сегмент."
+  (let ((seg-sym (unquote-sym seg-name)))
+    (check-args #t
+      (seg-sym symbol?))
+    `(begin
+       ;; Не выводим для каждого переключения, только для отладки
+       ;; (fmt #t "With segment '{}'\n" ',seg-sym)
+       (set-current-segment! (module-segment-get *current-module* ',seg-sym))
+       ,@body)))
 
-(defmacro in-segment (seg-name) 
-  "Переключает запись в указанный сегмент (например, 'code или 'data)."
+(defun in-segment (seg-name) 
+  "Переключает запись в указанный сегмент."
   (check-args #t
     (seg-name symbol?))
-  `(begin
-    (fmt #t "With segment '{}'\n" ',(unquote-sym seg-name))
-    (set-current-segment! (module-segment-get *current-module* ',seg-name))))
+  ;; Проверяем, что сегмент существует или создаем
+  (unless (member seg-name '(code data bss const vectors stack))
+    (fmt #t "Warning: Using non-standard segment: {}\n" seg-name))
+  (set-current-segment! (module-segment-get *current-module* seg-name)))

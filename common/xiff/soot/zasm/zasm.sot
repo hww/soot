@@ -1,5 +1,11 @@
 ﻿(init-types 'z80)
 
+
+
+;;; =====================================================================
+;;; Загружаем компилятор
+;;; =====================================================================
+
 ;;; zasm.sot - Master include file
 (load "common/xiff/soot/zasm/01-core.sot")
 (load "common/xiff/soot/zasm/02-segment.sot") 
@@ -8,7 +14,5 @@
 (load "common/xiff/soot/zasm/05-files.sot")
 (load "common/xiff/soot/zasm/06-lib.sot")
 
-(defmodule default)
-(with-segment 'code (print "with-segment ok"))
 
 (fmt #t "ZASM Library loaded successfully.\n")

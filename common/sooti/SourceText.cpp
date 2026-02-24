@@ -2,13 +2,20 @@
 
 namespace script {
 
+/*!
+ * Initialize with the given string
+ */
 SourceText::SourceText(std::string text) : m_text(std::move(text)) {
     build_offsets();
 }
 
+/*!
+ * Update line break data. Should be called any time the text is updated.
+ * N.B. Each line start with first visible character
+ */
 void SourceText::build_offsets() {
     m_offset_by_line.clear();
-    m_offset_by_line.push_back(0);
+    m_offset_by_line.push_back(has_bom() ? 3 : 0);
 
     for (size_t i = 0; i < m_text.size(); i++) {
         if (m_text[i] == '\n') {
@@ -28,24 +35,34 @@ std::string SourceText::get_line_containing_offset(int offset) {
                          std::max(0, range.second - range.first - start_offset));
 }
 
+/*!
+ * Get the index of the line containing the character at position "offset".
+ * O(n_lines) crappy implementation.
+ * Error if not found.
+ * N.B. The line number starts from 0
+ */
 int SourceText::get_line_idx(int offset) {
-    // Проверка на выход за границы текста
-    if (offset < 0 || offset >= (int)m_text.size()) {
-        throw std::runtime_error("Offset out of bounds: " + std::to_string(offset));
+    if (m_offset_by_line.size() > 0) {
+        if (m_offset_by_line[0] > offset)
+            // the offset inside the BOM
+            return 0;
+
+        for (uint32_t line = 0; line < m_offset_by_line.size() - 1; line++) {
+            if (offset >= m_offset_by_line[line] && offset <= m_offset_by_line[line + 1]) {
+                return line;
+            }
+        }
     }
-
-    // Ищем первый элемент, который БОЛЬШЕ нашего offset
-    auto it = std::upper_bound(m_offset_by_line.begin(), m_offset_by_line.end(), offset);
-
-    // Индекс строки — это позиция найденного элемента минус 1
-    // (Потому что upper_bound нашел начало СЛЕДУЮЩЕЙ строки)
-    return std::distance(m_offset_by_line.begin(), it) - 1;
+    throw std::runtime_error("Unable to get line index for character at position " +
+                             std::to_string(offset));
 }
 
 int SourceText::get_offset_of_line(int line_idx) {
     return m_offset_by_line.at(line_idx);
 }
-
+/*!
+ * Gets the [start, end) character offset of the line containing the given offset.
+ */
 std::pair<int, int> SourceText::get_containing_line(int offset) {
     for (size_t line = 0; line < m_offset_by_line.size() - 1; line++) {
         if (offset >= m_offset_by_line[line] && offset < m_offset_by_line[line + 1]) {
