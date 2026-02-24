@@ -5,7 +5,7 @@
 
 (in-segment  'data)
 
-(defdata crtc_mode_tables 
+(defsegment crtc_mode_tables 
     (zasm 
         (.dw 'mode_cpc_mode2)       ; 0
         (.dw 'mode_cpc_mode1)       ; 1

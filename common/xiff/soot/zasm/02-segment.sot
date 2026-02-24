@@ -172,6 +172,9 @@
   "Get active segment name"
   *current-segment-name*)
 
+(defun ilc ()
+  (segment-ilc *current-segment*))
+
 ;;; =====================================================================
 ;;; Functions Queue
 ;;; =====================================================================
@@ -187,7 +190,7 @@
 (defvar *current-method* null)
 
 (defun add-function (type name label fun segment)
-  (push! (make-method :func fun :name name :label label :segment segment) *methods-to-assemble*))
+  (push! (make-method :func fun :name name :label label :segment (unquote-sym segment)) *methods-to-assemble*))
 
 (defun get-function (type name)
     (eval (string->symbol (fmt #f "{}::{}" type name))))
@@ -250,4 +253,4 @@
   ;; Проверяем, что сегмент существует или создаем
   (unless (member seg-name '(code data bss const vectors stack))
     (fmt #t "Warning: Using non-standard segment: {}\n" seg-name))
-  (set-current-segment! (module-segment-get *current-module* seg-name)))
+  (set-current-segment! (module-segment-get *current-module* (unquote-sym seg-name))))

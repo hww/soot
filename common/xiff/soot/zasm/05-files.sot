@@ -4,7 +4,7 @@
 ;;; Symbols program map
 ;;; =====================================================================
 
-(defun get-label-info-v2 (label-obj label-name)
+(defun get-label-info-v2 (label-obj label-name segment-name)
   "Используем псевдонимы из твоего C++ акцессора."
   (let ((m (~> label-obj :info))
         (addr (~> label-obj :offset)))
@@ -12,6 +12,7 @@
     (list 
       :address (string->symbol (fmt #f "#x{:04X}" addr))
       :name    label-name
+      :segment segment-name
       ;; Пока вынимаем scope из метаданных, раз в BufferLabel нет прямого поля
       :scope   (if (list? m) (find-in-meta m :scope :private) :private)
       :meta    m)))
@@ -40,7 +41,7 @@
                 (hash-table-for-each labels-ht
                   (lambda (lbl-name lbl-obj)
                     ;; Передаем ОБА аргумента: объект и имя
-                    (let ((info (get-label-info-v2 lbl-obj lbl-name)))
+                    (let ((info (get-label-info-v2 lbl-obj lbl-name name)))
                       (set! all-symbols (cons info all-symbols)))))))))
     
     (let ((output (list :module (module-name mod-obj) :symbols all-symbols)))
@@ -109,5 +110,5 @@
               (fmt #t "Error: No data found to save for file {}\n" filename)))))
     
     ;; Паспорт всё равно сохраняем, он нам нужен для отладки
-    (save-module-passport (fmt #f "{}.passport" mod-name) mod-name)))
+    (save-module-passport (fmt #f "{}.sot" mod-name) mod-name)))
 

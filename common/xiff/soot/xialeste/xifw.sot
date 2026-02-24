@@ -24,6 +24,9 @@
 ;; Сегмент для стека
 (defconstant SEGMENT-STACK 'stack)
 
+;;; =====================================================================
+;;; Firmware Memory Map constants
+;;; =====================================================================
 
 (defconstant VECTORS_BASE   #x0000)
 (defconstant VECTORS_SIZE   256)
@@ -51,6 +54,7 @@
 ;;; =====================================================================
 ;;; 2. ИНИЦИАЛИЗАЦИЯ СЕГМЕНТОВ
 ;;; =====================================================================
+
 (defun init-project-layout ()
   "Инициализирует все сегменты проекта"
   (new-segment :name 'vectors  :module *current-module* 
@@ -87,12 +91,12 @@
 (define *xifw-output-layout* 
   '(
     ;; Несколько сегментов могут идти в один файл
-    ("firmware.hex" code)      ;; код
-    ("firmware.hex" font)      ;; шрифты (добавляются в тот же hex)
-    ("vectors.hex"  vectors)   ;; векторы в отдельный файл (опционально)
-    ("boot.hex"     boot)      ;; загрузчик отдельно
-    ("data.hex"     data)      ;; данные отдельно
-    ("vtables.hex"  vtables)   ;; vtable отдельно
+    ("xifw.hex" code)      ;; код
+    ("xifw.hex" font)      ;; шрифты (добавляются в тот же hex)
+    ("xifw.hex" vectors)   ;; векторы в отдельный файл (опционально)
+    ("xifw.hex" boot)      ;; загрузчик отдельно
+    ("xifw.hex" data)      ;; данные отдельно
+    ("xifw.hex" vtables)   ;; vtable отдельно
    ))
 
 ;;; =====================================================================
@@ -110,8 +114,11 @@
   (init-project-layout))
 
 ;; Загружаем остальные файлы (они будут использовать настроенные сегменты)
-(load "common/xiff/soot/xialeste/font_win1252.sot")
+(load "common/xiff/soot/xialeste/boot.sot")
+(load "common/xiff/soot/xialeste/vectors.sot")
+(load "common/xiff/soot/xialeste/main.sot")
 (load "common/xiff/soot/xialeste/crtc-modes.sot")
+(load "common/xiff/soot/xialeste/font_win1252.sot")
 
 ;;; =====================================================================
 ;;; 6. КОМПИЛЯЦИЯ
@@ -123,5 +130,4 @@
 ;;; 7. СОХРАНЕНИЕ РЕЗУЛЬТАТОВ
 ;;; =====================================================================
 (save-module-practical 'xifw *xifw-output-layout*)
-(export-symbols-to-emu "xifw.emu.sym" 'xifw)
-(save-module-passport "xifw.sot" 'xifw)
+(export-symbols-to-emu "xifw.sym" 'xifw)

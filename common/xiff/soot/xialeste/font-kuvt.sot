@@ -4,7 +4,7 @@
 
 (in-segment  'font)
 
-(defdata font_data 
+(defsegment font_data 
   (zasm 
     (.db #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x3C #x42 #xA5 #x81 #xA5 #x99 #x42 #x3C)
     (.db #x3C #x7E #xDB #xFF #xFF #xDB #x66 #x3C #x6C #xFE #xFE #xFE #x7C #x38 #x10 #x00)

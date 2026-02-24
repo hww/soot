@@ -632,14 +632,14 @@
 ;;; =====================================================================
 
 ;; OUT (port), A
-(register-handler '.out "(number)-8-reg"
+(register-handler '.out "number-8-reg"
   (lambda (port reg)
     (if (eq? reg 'a)
         (emit (list #xD3 port) :listing (fmt #f "OUT (${:02X}h), A" port))
         (asm-error "Only OUT (n), A is supported in simple mode"))))
 
 ;; IN A, (port)
-(register-handler '.in "8-reg-(number)"
+(register-handler '.in "8-reg-number"
   (lambda (reg port)
     (if (eq? reg 'a)
         (emit (list #xDB port) :listing (fmt #f "IN A, (${:02X}h)" port))

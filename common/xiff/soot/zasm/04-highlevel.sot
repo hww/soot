@@ -459,11 +459,13 @@
 ;;;     (.ld bc #x400)
 ;;;     (.ld a #x20)
 ;;;     (.fill bc a))
-(defmacro defsegment (name &key (segment 'code) (scope 'public) (align 1) &rest body)
-  (let ((label-name (if (symbol? name) 
+(defmacro defsegment (name &key (segment #f) (scope 'public) (align 1) &rest body)
+  (let ((segment (if segment segment (current-segment-name) ))
+    
+        (label-name (if (symbol? name) 
                         name 
                         (intern (fmt #f "code::{}" name)))))
-    
+      (fmt #t "??????????????????????? {} " segment)
     `(let ((impl (lambda ()
                    (with-segment ,segment
                      (emit-space (fmt #f "code block {}" ',label-name))
@@ -471,7 +473,7 @@
                      (zasm ,@body)))))
        
        ;; Регистрация
-       (add-function 'global ',label-name ',label-name impl (current-segment-name))
+       (add-function 'global ',label-name ',label-name impl ',segment)
        
        ;; Экспорт в окружение
        (define ,label-name impl :env *global-env*)
