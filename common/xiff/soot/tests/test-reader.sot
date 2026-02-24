@@ -1,0 +1,18 @@
+﻿(fmt #t "TESTS READER...\n" :color 'yellow)
+
+(defun print-cons-cells (expr)
+  (cond
+    ;; Если это пара (cons)
+    ((pair? expr)
+     ;; Печатаем source-info текущей cons-ячейки
+     (fmt #t "Cons token: {} cell: {}\n" (car expr) (source-info expr))
+     ;; Рекурсивно обходим car и cdr
+     (print-cons-cells (car expr))
+     (print-cons-cells (cdr expr)))
+    ;; Для не-пар просто ничего не делаем
+    (else #f)))
+
+
+;; Использование:
+(load "common/xiff/soot/tests/test-reader-data.sot")
+(print-cons-cells lst)

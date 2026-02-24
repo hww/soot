@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "Object.hpp"
-#include "SourceInfo.hpp"
+#include "SourceText.hpp"
 #include "common/util/FileUtil.hpp"
 
 namespace script {

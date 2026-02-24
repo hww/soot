@@ -1,4 +1,6 @@
-﻿;;; =====================================================================
+﻿;;; 02-segment.sot xiff meta-assembler segment and module class
+
+;;; =====================================================================
 ;;; Class Segment
 ;;; =====================================================================
 
@@ -9,8 +11,8 @@
   (ilc     0)     ;; Position of PC
   (listing '()))
 
-(defun new-segment (&key name module)
-  (let ((seg-buffer (make-memory-buffer :size 65536 :base 0)))
+(defun new-segment (&key name module (size 65536) (base 0))
+  (let ((seg-buffer (make-memory-buffer :size size :base base)))
     (make-segment :name name 
                   :buffer seg-buffer 
                   :module module)))
@@ -147,16 +149,27 @@
 
 (defvar *current-module* 'default "Имя текущего активного модуля.")
 (defvar *current-segment* null "Текущий объект-сегмент для записи.")
+(defvar *current-segment-name* null "Текущий объект-сегмент для записи.")
 (defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
 (defvar *current-pass* 1 "Глобальный флаг прохода")  
-(defvar *source-context* null "Контекст ассемблера")
 
-(defun get-pass-signature () (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
+(defun get-pass-signature () 
+  (fmt #f "{}::{}::pass-{}" *current-module* (segment-name *current-segment*) *current-pass*))
 
 (defmacro pass-case (p1 p2)
+  "Exectute body only if defined pass"
   `(if (eq? *current-pass* 1)
        ,p1
        ,p2))
+
+(defun set-current-segment! (seg)
+  "Activate segment"
+  (set! *current-segment* seg)
+  (set! *current-segment-name* (hash-table-ref seg :name)))
+
+(defun current-segment-name () 
+  "Get active segment name"
+  *current-segment-name*)
 
 ;;; =====================================================================
 ;;; Functions Queue
@@ -166,13 +179,14 @@
   "Регистрируем фкнецию или метод в базе методов для многопроходной компиляции" 
   (label null)  ;; Полное имя метки (для JMP/CALL)
   (func  null)  ;; Лямбда с кодом (внутри которой zasm)
-  (name  null)) ;; Короткое имя для логов/ошибок
+  (name  null) ;; Короткое имя для логов/ошибок
+  (segment null))
 
 (defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
 (defvar *current-method* null)
 
-(defun add-function (type name label fun)
-  (push! (make-method :func fun :name name :label label) *methods-to-assemble*))
+(defun add-function (type name label fun segment)
+  (push! (make-method :func fun :name name :label label :segment segment) *methods-to-assemble*))
 
 (defun get-function (type name)
     (eval (string->symbol (fmt #f "{}::{}" type name))))
@@ -211,8 +225,17 @@
 ;;; Исправленный with-segment
 (defmacro with-segment (seg-name &rest body)
   "Переключает запись в указанный сегмент (например, 'code или 'data)."
+  (check-args #t
+    (seg-name symbol?))
   `(begin
-    (fmt #t "With segment {}" ',seg-name)
-    (set! *current-segment* (module-segment-get *current-module* ',seg-name))
+    (fmt #t "With segment '{}'\n" ',(unquote-sym seg-name))
+    (set-current-segment! (module-segment-get *current-module* ',seg-name))
     ,@body))
 
+(defmacro in-segment (seg-name) 
+  "Переключает запись в указанный сегмент (например, 'code или 'data)."
+  (check-args #t
+    (seg-name symbol?))
+  `(begin
+    (fmt #t "With segment '{}'\n" ',(unquote-sym seg-name))
+    (set-current-segment! (module-segment-get *current-module* ',seg-name))))

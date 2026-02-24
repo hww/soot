@@ -71,7 +71,6 @@ class FilePortObject;
 class SymbolTable;
 class StringObject;
 class ArrayObject;
-class TextStream;
 class ReaderObject;
 class WriterObject;
 class Reader;
@@ -81,6 +80,7 @@ class Pointer;
 class NativeObject;
 class Archive;
 
+struct TextStream;
 struct ArgumentSpec;
 
 // InternedSymbolPtr как в OpenGOAL

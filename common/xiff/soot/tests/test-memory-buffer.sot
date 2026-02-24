@@ -34,6 +34,25 @@
   (bit2 2)
   (bit3 3))
 
+
+(defenum color-type :type uint8
+  (red   0) 
+  (green 1)
+  (blue  2))
+
+(defenum permissions :bitfield #t :type uint8
+  (read  1)
+  (write 2)
+  (exec  4))
+
+(deftype vec2 (basic)
+  ((x   int8)  ;; дефолт 5
+   (y   int8)) ;; дефолт 10
+  (:methods
+      (new (int8 int8) object)
+      (len () int8)))
+
+
 ;;; ============================================================================
 ;;; Region
 ;;; ============================================================================
@@ -71,7 +90,7 @@
 ;;; Check labels
 ;;; ============================================================================
 
-(memory-buffer-label-set! buf1 'foo #x1234)    
+(memory-buffer-label-set! buf1 'foo :offset #x1234)    
 (fmt #t "memory-buffer-label-ref foo={}\n" (memory-buffer-label-ref buf1 'foo))    
 
 ;;; ============================================================================

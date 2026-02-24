@@ -1,0 +1,43 @@
+﻿;;; 06-lib.sot xiff meta-assembler z80 library
+
+(in-segment 'code)
+
+;;; ===================================================================== 
+;;; System Methods
+;;; ===================================================================== 
+
+(defproc panic_unimplemented ()
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG panic_unimplemented...\n"))
+
+;;; ===================================================================== 
+;;; Type System Methods
+;;; ===================================================================== 
+
+(defmethod new object ((a symbol) (b type) (c int))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new object..\n")
+  )
+
+(defmethod delete ((this object))
+  (declare (once) (asm-func none))
+  (fmt #t "DEBUG object delete..\n"))
+
+(defmethod print ((this object))
+  (declare (once) (asm-func _type_))
+  (fmt #t "DEBUG object print..\n"))
+
+(defmethod new structure ()
+  (rlet ((a symbol) (b type))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))
+
+(defmethod new basic ()
+  (rlet ((a symbol) (b type))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))
+
+(defmethod new type ()
+  (rlet ((a symbol) (b type) (c int))
+    (declare (once) (asm-func _type_))
+    (fmt #t "DEBUG new structure..\n")))

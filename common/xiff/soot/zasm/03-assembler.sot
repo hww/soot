@@ -1,4 +1,6 @@
-﻿;;; =====================================================================
+﻿;;; 03-assembler.sot xiff meta-assembler the main z80 assembler code
+
+;;; =====================================================================
 ;;; Core Assembly
 ;;; =====================================================================
 
@@ -768,6 +770,7 @@
         (fmt #t "--- PASS {} ---\n" pass)
         
         (for-each methods (lambda (m)
+          (in-segment (method-segment m))
           ;; Ставим метку метода (например, "method-vec3::len")
           (segment-label-set! *current-segment* (method-label m))
           

@@ -1,7 +1,6 @@
 #include "Reader.hpp"
 #include "Interpreter.hpp"
 #include "ListBuilder.hpp"
-#include "Printer.hpp"
 #include "common/util/FileUtil.hpp" // твой file_hub
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -100,20 +99,23 @@ void TextStream::seek_past_whitespace_and_comments() {
  * If it's not, you can choose to throw or not.
  * If UTF-8 encoding is not detected, the stream is not advanced.
  */
-void TextStream::read_utf8_encoding(bool throw_on_error) {
+bool TextStream::read_utf8_encoding(bool throw_on_error) {
     if (text_remains(2)) {
         if ((uint8_t)peek(0) == 0xEF && (uint8_t)peek(1) == 0xBB && (uint8_t)peek(2) == 0xBF) {
             read();
             read();
             read();
-            return;
+            has_bom = true;
+            return true;
         }
     }
+    has_bom = false;
 
     if (throw_on_error) {
         throw std::runtime_error(
-            fmt::format("UTF-8 encoding not detected in {}", text->get_description()));
+            fmt::format("UTF-8 BOM encoding not detected in {}", text->get_description()));
     }
+    return false;
 }
 
 // ==================== Reader ====================
@@ -243,20 +245,12 @@ Object Reader::read_from_file(const std::vector<std::string> &file_path, bool ch
  */
 Object Reader::internal_read(std::shared_ptr<SourceText> text, bool check_encoding,
                              bool add_top_level, EvalCallback eval_callback) {
-    if (check_encoding &&
-        (text->get_size() < 3 || (uint8_t)text->get_text()[0] != 0xEF ||
-         (uint8_t)text->get_text()[1] != 0xBB || (uint8_t)text->get_text()[2] != 0xBF)) {
-        throw std::runtime_error(
-            fmt::format("Text file {} has invalid encoding", text->get_description()));
-    }
-
     // first create stream
     TextStream ts(text);
 
-    if (check_encoding) {
-        // discard the UTF-8 encoding bytes
-        ts.read_utf8_encoding(true);
-    }
+    // discard the UTF-8 encoding bytes
+    ts.read_utf8_encoding(check_encoding);
+
     // clean up first whitespace
     ts.seek_past_whitespace_and_comments();
 
@@ -266,7 +260,6 @@ Object Reader::internal_read(std::shared_ptr<SourceText> text, bool check_encodi
     Object      eval_result = empty_list;
 
     try {
-
         while (true) {
             ts.seek_past_whitespace_and_comments();
             if (!ts.text_remains())
@@ -350,6 +343,11 @@ Token Reader::get_next_token(TextStream &stream) {
     t.source_offset = stream.seek;
     t.source_text = stream.text;
 
+    // Если файл с BOM и seek не сброшен, можно скорректировать:
+    if (stream.has_bom && stream.seek >= 3) {
+        t.source_offset -= 3; // коррекция
+    }
+
     char first = stream.read();
     t.text.push_back(first);
 
@@ -403,7 +401,8 @@ Token Reader::get_next_token(TextStream &stream) {
             t.text.push_back(stream.read());
         }
     }
-
+    // fmt::print("DEBUG: get_next_token token line: {} offset: {} text: ```{}```\n", t.source_line,
+    //            t.source_offset, t.text);
     return t;
 }
 
@@ -576,8 +575,9 @@ bool Reader::try_token_as_symbol(const Token &tok, Object &obj) {
 Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string terminator,
                          EvalCallback eval_callback) {
     ts.seek_past_whitespace_and_comments();
-    ListBuilder list_builder;
-    int         start_offset = ts.seek;
+
+    std::vector<Object> pairs; // храним уже созданные пары
+    int                 start_offset = ts.seek;
 
     bool got_dot = false;
     bool got_thing_after_dot = false;
@@ -596,43 +596,57 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
             got_terminator = true;
             break;
         }
+        fmt::print("DEBUG: get_next_token token line: {} offset: {} text: ```{}```\n",
+                   tok.source_line, tok.source_offset, tok.text);
 
         // 2. Обработка точки
         if (tok.text == ".") {
             if (got_dot)
                 throw_reader_error(ts, "Multiple dots in list", -1);
-            if (list_builder.size == 0)
+            if (pairs.empty())
                 throw_reader_error(ts, "List cannot start with dot", -1);
             got_dot = true;
             continue;
         }
 
-        // 3. ЧТЕНИЕ ОБЪЕКТА
-        // Откатываемся, чтобы read_single_form прочитала токен сама (с учетом макросов)
-        ts.seek = last_seek;
+        // 3. Сохраняем информацию о токене ДО отката
+        auto token_text = tok.text;
+        auto source_text = tok.source_text;
+        auto source_offset = tok.source_offset;
+
+        // 4. ЧТЕНИЕ ОБЪЕКТА (с откатом)
+        ts.seek = last_seek; // откатываемся для read_single_form
         Object current_obj = read_single_form(ts, eval_callback);
 
-        // 4. ВСТАВКА В СПИСОК
+        // 5. СОЗДАНИЕ НОВОЙ ПАРЫ
         if (got_dot) {
             if (got_thing_after_dot)
                 throw_reader_error(ts, "Only one object allowed after dot", -1);
 
-            // Ручное "пришивание" хвоста к CDR последней созданной Pair
-            if (list_builder.tail) {
-                list_builder.tail->cdr = current_obj;
+            // Пришиваем хвост к последней паре
+            if (!pairs.empty()) {
+                auto last_pair = pairs.back().as_pair();
+                last_pair->cdr = current_obj;
             }
             got_thing_after_dot = true;
         } else {
-            // Обычный push_back
-            list_builder.push_back(current_obj);
+            // Создаем новую пару (car = current_obj, cdr = null)
+            Object new_pair = Object::make_pair(current_obj, Object::make_null());
 
-            // Линковка текущей ячейки Pair для БД
-            if (list_builder.tail) {
-                Object p;
-                p.type = ObjectType::PAIR;
-                p.heap_obj = list_builder.tail;
-                m_db.link(p, ts.text, last_seek);
+            // Линкуем эту пару с исходным кодом, используя СОХРАНЕННУЮ информацию о токене
+            fmt::print("DEBUG: read_list `1` token: {} offset: {} line: {} text: ```{}```",
+                       token_text, source_offset, source_text->get_line_idx(source_offset),
+                       source_text->get_line_containing_offset(source_offset));
+            m_db.link(new_pair, source_text, source_offset);
+
+            // Связываем с предыдущей парой, если есть
+            if (!pairs.empty()) {
+                auto last_pair = pairs.back().as_pair();
+                last_pair->cdr = new_pair;
             }
+
+            // Сохраняем пару
+            pairs.push_back(new_pair);
         }
 
         ts.seek_past_whitespace_and_comments();
@@ -643,13 +657,17 @@ Object Reader::read_list(TextStream &ts, bool expect_close_paren, std::string te
         throw_reader_error(ts, "Unclosed list: expected '" + terminator + "'", 0);
     }
 
-    list_builder.build();
+    // Возвращаем голову списка (первую пару или null)
+    if (pairs.empty()) {
+        return Object::make_null();
+    }
 
-    // Линкуем весь список целиком
-    m_db.link(list_builder.head, ts.text, start_offset);
+    // Линкуем весь список (опционально)
+    m_db.link(pairs.front(), ts.text, start_offset);
 
-    return list_builder.head;
+    return pairs.front();
 }
+
 /*!
  * Read a string and escape. Start on the first char after the first double quote.
  * Supported escapes are \n, \t, \\ and work like they do in C.

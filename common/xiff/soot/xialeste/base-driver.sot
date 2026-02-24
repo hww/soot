@@ -1,6 +1,10 @@
 ﻿
 (load "common/xiff/soot/zasm/zasm.sot")
 
+(load "common/xiff/soot/xialeste/memory-map.sot")
+
+(in-segment  'code)
+
 (deftype vec3s8 (structure)
   ((x int8) 
    (y int8) 
@@ -222,8 +226,6 @@
 (defproc test-address ()     
   (declare (once) (asm-func none))
   (zasm
-    (.org #x8000)          ;; Начинаем с адреса 32768
-    
     (.label main)
     (.ld a #x41)           ;; Загружаем код символа 'A'
     (.call 'print_char)    ;; Вызываем процедуру
@@ -282,7 +284,13 @@
   (.jr 'loop))        ;; Повторяем
 
 
-
+(in-segment  'data)
+(defsegment init-screen 
+  (fmt #t "DEBUG Curreent segment {}\n" *current-segment*)
+  (.ld hl #xC000)
+  (.ld bc #x400)
+  (.ld a #x20)
+  (.db 1 2 3))
 
 (assemble-module 'default)
 (dump-listing 'default)

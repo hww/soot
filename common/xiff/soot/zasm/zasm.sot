@@ -6,6 +6,7 @@
 (load "common/xiff/soot/zasm/03-assembler.sot")
 (load "common/xiff/soot/zasm/04-highlevel.sot")
 (load "common/xiff/soot/zasm/05-files.sot")
+(load "common/xiff/soot/zasm/06-lib.sot")
 
 (defmodule default)
 (with-segment 'code (print "with-segment ok"))

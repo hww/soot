@@ -3,6 +3,7 @@
 # 1. Ядро: только базовые типы данных Лиспа
 add_library(libsoticore
     common/sooti/Object.cpp
+    common/sooti/SourceText.cpp
     common/sooti/Reader.cpp
     common/sooti/Printer.cpp
     common/sooti/TextDb.cpp

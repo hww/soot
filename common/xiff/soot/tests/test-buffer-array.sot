@@ -3,13 +3,21 @@
 (fmt #t "Test Buffer Array...\n" :color 'yellow)
 
 ;; 2. Создаем буфер и записываем туда данные вручную (для теста)
-(let* ((buf (make-buffer "array-test" 100 0)))
+(define buf (make-memory-region #x100 0))
+
+(define wr-ar (make-memory-archive region :writing #t))
+(archive-seek! wr-ar #x20)
+
+(define rd-ar (make-memory-archive region :reading #t))
+(archive-seek! wr-ar #x20)
+
+
   
   ;; Запишем что-нибудь по адресу, где должен быть массив (например, с отступом 2-4 байта)
   ;; В структуре типа 'basic' первые 4 байта обычно заняты типом, 
   ;; но в static-writer всё зависит от твоих смещений.
   
-  (buffer-write buf 
+  (memory-region-serialize  wr-ar  
                '(10 20 30 40 50 60 70 80 90 100) 
                 :address 0
                 :type 'int8)

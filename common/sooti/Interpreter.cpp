@@ -851,7 +851,7 @@ void Interpreter::render_complex_error(EvalException &e) {
 
         fmt::print("in {}", obj_str);
         if (info && info->line_idx_to_display > 0) {
-            fmt::print(" at {}:{:d}", info->filename, info->line_idx_to_display);
+            fmt::print(" at {}:{:d}", info->filename, info->line_idx_to_display + 1);
         }
         fmt::print("\n");
     }
@@ -877,7 +877,7 @@ void Interpreter::print_form_info(const Object                             &form
 
             if (frame_info_opt && frame_info_opt->line_idx_to_display > 0) {
                 fmt::print("  [{:02d}] {} at {}:{:d}\n", depth, frame_repr,
-                           frame_info_opt->filename, frame_info_opt->line_idx_to_display);
+                           frame_info_opt->filename, frame_info_opt->line_idx_to_display + 1);
             } else {
                 fmt::print("  [{:02d}] {}\n", depth, frame_repr);
             }
@@ -990,7 +990,8 @@ void Interpreter::print_stack_frame(EvalException &e, const Object &obj) {
 
     if (info_opt && info_opt->line_idx_to_display > 0) {
         fmt::print(dim_color, "  [{:02d}] in {} ", e.stack_counter, obj_str);
-        fmt::print(dim_color, "at {}:{:d}\n", info_opt->filename, info_opt->line_idx_to_display);
+        fmt::print(dim_color, "at {}:{:d}\n", info_opt->filename,
+                   info_opt->line_idx_to_display + 1);
     } else {
         fmt::print(dim_color, "  [{:02d}] in {}\n", e.stack_counter, obj_str);
     }

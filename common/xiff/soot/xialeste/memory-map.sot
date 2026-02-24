@@ -1,0 +1,10 @@
+﻿; ==============================================================================
+; MEMORY LAYOUT
+; ==============================================================================
+
+(new-segment :name 'bool    :module *current-module* :size 8192 :base 0)
+(new-segment :name 'data    :module *current-module* :size 2048 :base #xC000)
+(new-segment :name 'font    :module *current-module* :size 2048 :base #xD000)
+(new-segment :name 'code    :module *current-module* :size 8192 :base #xD000)
+(new-segment :name 'vtables :module *current-module* :size 8192 :base #xE000)
+(new-segment :name 'globals :module *current-module* :size 2048 :base #xF000)
