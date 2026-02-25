@@ -3,9 +3,9 @@
 ; Format: db NumberOfRegisters, (db Register, db Value) * N
 ; ==============================================================================
 
-(in-segment  'data)
+(with-segment  data
 
-(defsegment crtc_mode_tables 
+(defblock crtc_mode_tables 
     (zasm 
         (.dw 'mode_cpc_mode2)       ; 0
         (.dw 'mode_cpc_mode1)       ; 1
@@ -105,3 +105,5 @@
             (.db #x12 #b00010011 #x14 #b00000111 #x15 #b00000010)
   ) ;; endof zasm
 ) ;; endof defdata
+
+) ;; end of segment

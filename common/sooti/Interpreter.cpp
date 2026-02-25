@@ -403,7 +403,7 @@ void Interpreter::add_builtin_form(std::string name, BuiltinFormMethod method,
 }
 
 /*!
- * Iterate through elements of a goos list and apply the given function. Throw compiler error if the
+ * Iterate through elements of a soot list and apply the given function. Throw compiler error if the
  * list is invalid.
  */
 void Interpreter::for_each_in_list(const Object                              &list,
@@ -583,11 +583,11 @@ void Interpreter::throw_arity_mismatch(const Object &form, const Arguments &args
                                        uint expected_max, size_t got) {
     if (expected_min == expected_max) {
         throw_eval_error(form,
-                         fmt::format("Arity mismatch: expected {} arguments, but got {} in: {}",
+                         fmt::format("arity mismatch: expected {} arguments, but got {} in: {}",
                                      expected_min, got, args.print_full()));
     } else {
         throw_eval_error(form,
-                         fmt::format("Arity mismatch: expected {}-{} arguments, but got {} in: {}",
+                         fmt::format("arity mismatch: expected {}-{} arguments, but got {} in: {}",
                                      expected_min, expected_max, got, args.print_full()));
     }
 }
@@ -599,7 +599,7 @@ void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args,
         expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
     }
     throw_eval_error(
-        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
+        form, fmt::format("type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
                           index, expected_str, object_type_to_string(got), args.print_full()));
 }
 
@@ -616,7 +616,7 @@ void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args,
     }
 
     throw_eval_error(
-        form, fmt::format("Type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
+        form, fmt::format("type error at argument [{}]: expected one of [{}], but got [{}] in: {}",
                           index, expected_str, got, args.print_full()));
 }
 
@@ -629,7 +629,7 @@ void Interpreter::throw_missing_named_arg(const Object &form, const Arguments &a
 void Interpreter::throw_unexpected_named_arg(const Object &form, const Arguments &args,
                                              const std::string &name) {
     throw_eval_error(
-        form, fmt::format("Unexpected named argument ':{}' in: {}", name, args.print_full()));
+        form, fmt::format("unexpected named argument ':{}' in: {}", name, args.print_full()));
 }
 
 void Interpreter::throw_named_type_mismatch(const Object &form, const std::string &name,
@@ -640,7 +640,7 @@ void Interpreter::throw_named_type_mismatch(const Object &form, const std::strin
         expected_str += object_type_to_string(expected[i]) + (i < expected.size() - 1 ? ", " : "");
     }
     throw_eval_error(
-        form, fmt::format("Type error for named argument ':{}': expected [{}], but got {} {}", name,
+        form, fmt::format("type error for named argument ':{}': expected [{}], but got {} {}", name,
                           expected_str, object_type_to_string(got.type), got.print()));
 }
 
@@ -656,7 +656,7 @@ void Interpreter::throw_named_type_mismatch(const Object &form, const std::strin
         first = false;
     }
     throw_eval_error(form,
-                     fmt::format("Type error for named argument ':{}': expected [{}], but got {}",
+                     fmt::format("type error for named argument ':{}': expected [{}], but got {}",
                                  name, expected_str, got));
 }
 
@@ -665,7 +665,7 @@ void Interpreter::throw_named_type_mismatch(const Object &form, const std::strin
  */
 void Interpreter::expect_env(const Object &form, const Object &o) {
     if (!o.is_env()) {
-        throw_eval_error(form, "Object " + o.print() + " is a " + object_type_to_string(o.type) +
+        throw_eval_error(form, "object " + o.print() + " is a " + object_type_to_string(o.type) +
                                    " but was expected to be an environment");
     }
 }
@@ -695,7 +695,7 @@ Object Interpreter::eval_string(const std::string &expression, const std::string
                 // evt.token.print(), last_result.print());
                 break;
             default:
-                throw std::runtime_error("Undexpeted");
+                throw std::runtime_error("undexpeted");
                 break;
             }
 
@@ -729,7 +729,7 @@ Object Interpreter::eval_file_internal(const std::vector<std::string> &file_path
                 // evt.token.print(), last_result.print());
                 break;
             default:
-                throw std::runtime_error("Undexpeted");
+                throw std::runtime_error("undexpeted");
                 break;
             }
 
@@ -4135,12 +4135,19 @@ Object Interpreter::eval_hash_table_ref(const Object &form, Arguments &args,
     }
     auto ht = args.unnamed[0].as_hash_table();
     auto key = args.unnamed.at(1).to_std_string();
-
-    auto it = ht->data.find(key);
-    if (it != ht->data.end()) {
-        return it->second;
+    try {
+        auto it = ht->data.find(key);
+        if (it != ht->data.end()) {
+            return it->second;
+        }
+    } catch (std::exception &e) {
+        throw_eval_error(form, e.what());
     }
 
+    catch (...) {
+        // Другие ошибки (не C++ исключения) тоже не ловятся!
+        throw_eval_error(form, "Unknown error in hash table operation");
+    }
     // Ключ не найден:
     // Если передан 3-й аргумент — возвращаем его
     if (args.unnamed.size() == 3) {
@@ -4868,10 +4875,26 @@ Object Interpreter::eval_string_for_each(const Object &form, Arguments &args,
 
     const std::string &str = args.unnamed[0].as_string()->data;
     Object             lambda = args.unnamed[1];
-
+    const auto        &lam_data = lambda.as_function();
+    int                count = 0;
+    int                lambda_args_count = lam_data->args.unnamed.size();
     for (unsigned char c : str) {
-        // Передаем код символа как Integer
-        call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))}, env);
+
+        switch (lambda_args_count) {
+        case 1:
+            // Передаем код символа как Integer
+            call_lambda_internal(form, lambda, {Object::make_integer(static_cast<int>(c))}, env);
+            break;
+        case 2:
+            // Передаем код символа как Integer
+            call_lambda_internal(
+                form, lambda,
+                {Object::make_integer(count++), Object::make_integer(static_cast<int>(c))}, env);
+            break;
+
+        default:
+            throw_eval_error(form, "eval-string-for-each: expected lambda with 1 or 2 arguments");
+        }
     }
     return get_null();
 }
@@ -4887,14 +4910,27 @@ Object Interpreter::eval_array_for_each(const Object &form, Arguments &args,
 
     const auto &vec = args.unnamed[0].as_array()->data;
     Object      lambda = args.unnamed[1];
-
+    const auto &lam_data = lambda.as_function();
+    int         count = 0;
+    int         lambda_args_count = lam_data->args.unnamed.size();
     for (const auto &item : vec) {
-        // Вызываем лямбду для каждого элемента вектора
-        call_lambda_internal(form, lambda, {item}, env);
-    }
+        switch (lambda_args_count) {
+        case 1:
+            // Вызываем лямбду для каждого элемента вектора
+            call_lambda_internal(form, lambda, {item}, env);
+            break;
+        case 2:
+            // Вызываем лямбду для каждого элемента вектора
+            call_lambda_internal(form, lambda, {Object::make_integer(count++), item}, env);
+            break;
 
+        default:
+            throw_eval_error(form, "eval-array-for-each: expected lambda with 1 or 2 arguments");
+        }
+    }
     return get_null();
 }
+
 /*!
  * @brief Специальная форма для обхода хеш-таблицы с лямбдой.
  * @param form Специальная форма "for-each".
@@ -4911,9 +4947,9 @@ Object Interpreter::eval_hash_table_for_each(const Object &form, Arguments &args
     auto       &table = args.unnamed[0].as_hash_table()->data;
     Object      lambda = args.unnamed[1];
     const auto &lam_data = lambda.as_function();
-
+    int         lambda_args_count = lam_data->args.unnamed.size();
     for (auto const &[key, val] : table) {
-        if (lam_data->args.unnamed.size() == 1) {
+        if (lambda_args_count == 1) {
             // Если лямбда ждет 1 аргумент, упаковываем в пару (entry)
             call_lambda_internal(form, lambda, {Object::make_pair(Object::make_string(key), val)},
                                  env);
@@ -4933,12 +4969,26 @@ Object Interpreter::eval_list_for_each(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{ObjectType::PAIR}, {ObjectType::FUNCTION}}, {});
 
-    Object current = args.unnamed[0];
-    Object lambda = args.unnamed[1];
-
+    Object      current = args.unnamed[0];
+    Object      lambda = args.unnamed[1];
+    const auto &lam_data = lambda.as_function();
+    int         idx = 0;
+    int         lambda_args_count = lam_data->args.unnamed.size();
     while (current.is_pair()) {
-        // Вызываем твой надежный call_lambda_internal
-        call_lambda_internal(form, lambda, {current.as_pair()->car}, env);
+        switch (lambda_args_count) {
+        case 1:
+            // Вызываем твой надежный call_lambda_internal
+            call_lambda_internal(form, lambda, {current.as_pair()->car}, env);
+            break;
+        case 2:
+            // Вызываем твой надежный call_lambda_internal с индексом и значением
+            call_lambda_internal(form, lambda,
+                                 {Object::make_integer(idx++), current.as_pair()->car}, env);
+            break;
+
+        default:
+            throw_eval_error(form, "eval-list-for-each: expected lambda with 1 or 2 arguments");
+        }
         // print_form_info(form);
         current = current.as_pair()->cdr;
     }
@@ -6883,7 +6933,7 @@ Object Interpreter::eval_memory_region_export_hex(const Object &form, Arguments 
     }
 
     // 4. Экспортируем
-    bool result = region->export_intel_hex_file(path, start, end, append);
+    bool result = region->export_intel_hex_file(path, start, end, 0, append);
 
     return Object::make_boolean(result);
 }
@@ -7165,7 +7215,8 @@ Object Interpreter::eval_memory_buffer_reloc_set(const Object &form, Arguments &
 }
 
 /*!
- * Read relocation (buffer-reloc-ref buffer [index]) -> список всех релокаций или одна по индексу
+ * Read relocation (buffer-reloc-ref buffer [index]) -> список всех релокаций или одна по
+ * индексу
  */
 Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
                                                  const std::shared_ptr<EnvironmentObject> &env) {
@@ -7459,12 +7510,13 @@ Object Interpreter::eval_region_read_byte(const Object &form, Arguments &args,
     }
 
     size_t offset = args.unnamed[1].as_integer();
-    if (offset >= region->size()) {
-        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset, 0,
-                                           region->size()));
+    size_t index = offset - region->base();
+    if (index < 0 || index >= region->size()) {
+        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset,
+                                           region->base(), region->base() + region->size()));
     }
 
-    uint8_t value = region->data()[offset];
+    uint8_t value = region->data()[index];
     return Object::make_integer(value);
 }
 
@@ -7486,13 +7538,14 @@ Object Interpreter::eval_region_write_byte(const Object &form, Arguments &args,
     }
 
     size_t offset = args.unnamed[1].as_integer();
-    if (offset >= region->size()) {
-        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset, 0,
-                                           region->size()));
+    size_t index = offset - region->base();
+    if (index < 0 || index >= region->size()) {
+        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset,
+                                           region->base(), region->base() + region->size()));
     }
 
     uint8_t value = args.unnamed[2].as_integer() & 0xFF;
-    region->data()[offset] = value;
+    region->data()[index] = value;
     return Object::make_none();
 }
 } // namespace script

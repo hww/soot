@@ -29,7 +29,7 @@
   (check-type path string?)
   (check-type mod symbol?)
   (let* ((all-symbols '())
-         (mod-obj (get-module mod))
+         (mod-obj (find-module mod))
          (segments (module-segments mod-obj)))
     
     ;; name - ключ (строка), seg - объект сегмента
@@ -55,7 +55,7 @@
 ;; Функция для эмуляторов (в плоском формате)
 (defun export-symbols-to-emu (path mod-name)
   "Генерирует .sym файл, принимая имя модуля (символ)."
-  (let* ((mod (get-module mod-name)) ;; Получаем реальный объект модуля
+  (let* ((mod (find-module mod-name)) ;; Получаем реальный объект модуля
          (lines '()))
     (for-each (module-segments mod) ;; Теперь тут объект, и итератор сработает
       (lambda (seg-name seg)
@@ -78,17 +78,20 @@
 ;;; Binary
 ;;; =====================================================================
 
-(defun memory-buffer-export-hex (buffer path do-append)
+(defun export-buffer-to-hex (buffer path do-append)
   (let ((region (-> buffer :region)))
+    (fmt #t "HEX saved file {} with base: {:04x} and size: {:04x} \n" path (-> region :base) (-> region :size))
+    (print (memory-region-dump region))
     (memory-region-export-hex region path :append do-append)))
 
-(defun export-hex (path buffers-list) 
-  (for-each buffers-list
-    (lambda (buf)
-      (memory-buffer-export-hex buf path #t))))
+(defun export-buffers-to-hex (path buffers-list) 
+    (for-each buffers-list
+      (lambda (idx buffer)
+        (fmt #t "FIle idx {}\n" idx)
+        (export-buffer-to-hex buffer path (neq? idx 0)))))
 
 (defun save-module-practical (mod-name layout-specs)
-  (let ((mod (get-module mod-name)))
+  (let ((mod (find-module mod-name)))
     (for-each layout-specs
       (lambda (spec)
         (let ((filename (car spec))
@@ -104,9 +107,7 @@
                     (fmt #t "Warning: Segment '{}' not found in module, skipping...\n" s-name)))))
           
           (if (not (null? buffers-to-save))
-              (begin
-                (export-hex filename (reverse buffers-to-save))
-                (fmt #t "HEX saved: {} with segments {}\n" filename seg-names))
+              (export-buffers-to-hex filename (reverse buffers-to-save))
               (fmt #t "Error: No data found to save for file {}\n" filename)))))
     
     ;; Паспорт всё равно сохраняем, он нам нужен для отладки

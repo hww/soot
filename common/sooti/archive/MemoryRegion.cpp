@@ -23,7 +23,7 @@ Object MemoryRegion::get_at(const Object &key) {
 
     // Доступ по смещению - возвращаем байт как число
     if (key.is_integer()) {
-        size_t offset = key.as_integer();
+        size_t offset = key.as_integer() - base();
         if (offset >= size()) {
             return Object::make_none();
         }
@@ -36,7 +36,7 @@ Object MemoryRegion::get_at(const Object &key) {
 void MemoryRegion::set_at(const Object &key, const Object &value) {
     // Доступ по смещению
     if (key.is_integer()) {
-        size_t offset = key.as_integer();
+        size_t offset = key.as_integer() - base();
         if (offset >= m_data.size()) {
             throw std::runtime_error("MemoryRegion::set_at: offset out of bounds");
         }
@@ -63,7 +63,9 @@ void MemoryRegion::set_at(const Object &key, const Object &value) {
 
     throw std::runtime_error(fmt::format("MemoryRegion::set_at: invalid key {}", key.print()));
 }
-// Вспомогательная функция для расчета контрольной суммы и форматирования строки
+/*!
+ * Вспомогательная функция для расчета контрольной суммы и форматирования строки
+ */
 static std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type,
                                      const uint8_t *data) {
     uint8_t     checksum = length + (addr >> 8) + (addr & 0xFF) + type;
@@ -78,8 +80,22 @@ static std::string format_hex_record(uint8_t length, uint16_t addr, uint8_t type
     return fmt::format(":{:02X}{:04X}{:02X}{}{:02X}\n", length, addr, type, hex_data, checksum);
 }
 
+/*!
+ * Save all region
+ */
+bool MemoryRegion::export_intel_hex_file(const std::string &path, bool append) {
+    return export_intel_hex_file(path, 0, size() - 1, base(), append);
+}
+
+/*!
+ * Save region between start and end offsets
+ */
 bool MemoryRegion::export_intel_hex_file(const std::string &path, size_t start_offset,
-                                         size_t end_offset, bool append) const {
+                                         size_t end_offset, size_t newbase, bool append) const {
+
+    if (newbase == 0)
+        newbase = base();
+
     // Проверка границ
     if (start_offset >= m_data.size()) {
         throw std::runtime_error("MemoryRegion::save_to_hex_file: start offset out of bounds");
@@ -100,7 +116,7 @@ bool MemoryRegion::export_intel_hex_file(const std::string &path, size_t start_o
         uint8_t chunk = static_cast<uint8_t>(std::min((size_t)16, actual_end - i + 1));
 
         // Адрес в Intel HEX: origin + смещение
-        uint16_t hex_addr = static_cast<uint16_t>(m_base_address + i);
+        uint16_t hex_addr = static_cast<uint16_t>(newbase + i);
 
         // Форматируем запись
         full_content += format_hex_record(chunk, hex_addr, 0x00, &m_data[i]);

@@ -2,9 +2,9 @@
 ;;; boot.sot - Загрузчик (#x0100-#x01FF)
 ;;; =====================================================================
 
-(in-segment 'boot)
+(with-segment boot
 
-(defsegment boot
+(defblock boot
   (zasm
     (.org #x0100)
     (.label 'start)
@@ -32,3 +32,4 @@
     (.halt)
     (.jp 'halt_loop)
   ))
+) ;; end of segment

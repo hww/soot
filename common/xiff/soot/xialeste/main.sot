@@ -2,7 +2,12 @@
 ;;; main.sot - Код приложения
 ;;; =====================================================================
 
-(defsegment main
+(with-segment main
+ (defblock main
   (zasm
+    (.label 'main)
     (.nop)
     (.halt)))
+    
+) ;; end of segment
+    

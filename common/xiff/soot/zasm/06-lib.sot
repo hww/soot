@@ -1,6 +1,6 @@
 ﻿;;; 06-lib.sot xiff meta-assembler z80 library
 
-(in-segment 'code)
+(with-segment code
 
 ;;; ===================================================================== 
 ;;; System Methods
@@ -41,3 +41,5 @@
   (rlet ((a symbol) (b type) (c int))
     (declare (once) (asm-func _type_))
     (fmt #t "DEBUG new structure..\n")))
+
+)

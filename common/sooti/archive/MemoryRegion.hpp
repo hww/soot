@@ -22,11 +22,11 @@ namespace script {
 class MemoryRegion : public NativeObject {
   private:
     std::vector<uint8_t> m_data;
-    uint32_t             m_base_address; // виртуальный базовый адрес (origin)
+    uint32_t             m_base; // виртуальный базовый адрес (origin)
 
   public:
-    MemoryRegion() : m_data(0, 0), m_base_address(0) {}
-    MemoryRegion(size_t size, uint32_t base = 0) : m_data(size, 0), m_base_address(base) {}
+    MemoryRegion() : m_data(0, 0), m_base(0) {}
+    MemoryRegion(size_t size, uint32_t base = 0) : m_data(size, 0), m_base(base) {}
 
     // Доступ к данным (как было)
     uint8_t *data() {
@@ -39,7 +39,7 @@ class MemoryRegion : public NativeObject {
         return m_data.size();
     }
     uint32_t base() const {
-        return m_base_address;
+        return m_base;
     }
 
     // Проверка границ (как было)
@@ -47,20 +47,20 @@ class MemoryRegion : public NativeObject {
         return offset < m_data.size();
     }
     bool contains_address(uint32_t addr) const {
-        return addr >= m_base_address && addr < m_base_address + m_data.size();
+        return addr >= m_base && addr < m_base + m_data.size();
     }
 
     // Преобразование адрес <-> смещение (как было)
     size_t address_to_offset(uint32_t addr) const {
         if (!contains_address(addr))
             return (size_t)-1;
-        return addr - m_base_address;
+        return addr - m_base;
     }
 
     uint32_t offset_to_address(size_t offset) const {
         if (!contains(offset))
             return 0;
-        return m_base_address + offset;
+        return m_base + offset;
     }
 
     // ============================================================
@@ -79,7 +79,7 @@ class MemoryRegion : public NativeObject {
             uint32_t base;
             ar << base; // базовый адрес
 
-            m_base_address = base;
+            m_base = base;
             m_data.resize(sz.value);
 
             // Читаем сами данные
@@ -93,7 +93,7 @@ class MemoryRegion : public NativeObject {
             CompactIndex size(m_data.size());
             ar << size; // размер данных
 
-            ar << m_base_address; // базовый адрес
+            ar << m_base; // базовый адрес
 
             // Пишем сами данные
             ar.serialize(m_data.data(), m_data.size());
@@ -116,16 +116,15 @@ class MemoryRegion : public NativeObject {
     }
 
     std::string print() const override {
-        return fmt::format("#<memory-region {:04x}-{:04x} size={}>", m_base_address,
-                           m_base_address + m_data.size(), m_data.size());
+        return fmt::format("#<memory-region {:04x}-{:04x} size={}>", m_base, m_base + m_data.size(),
+                           m_data.size());
     }
 
     Object inspect() const override {
         return pretty_print::build_list(
             pretty_print::build_list(Object::make_symbol(":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":base"),
-                                     Object::make_integer(m_base_address)),
+            pretty_print::build_list(Object::make_symbol(":base"), Object::make_integer(m_base)),
             pretty_print::build_list(Object::make_symbol(":size"),
                                      Object::make_integer(m_data.size())));
     }
@@ -151,7 +150,7 @@ class MemoryRegion : public NativeObject {
      * Dump buffer to string
      */
     std::string hex_dump(size_t start_offset, size_t bytes_to_dump, bool show_ascii = true,
-                         size_t bytes_per_line = 16, int origin = 0) const {
+                         size_t bytes_per_line = 16) const {
         if (bytes_to_dump == 0) {
             bytes_to_dump = m_data.size() - start_offset;
         }
@@ -163,13 +162,13 @@ class MemoryRegion : public NativeObject {
         size_t end_offset = std::min(start_offset + bytes_to_dump, m_data.size());
 
         std::string result = "";
-        result += fmt::format("Buffer: ({} bytes, origin: {:#x}):\n", m_data.size(), origin);
+        result += fmt::format("Buffer: ({} bytes, origin: {:#x}):\n", m_data.size(), m_base);
 
         for (size_t offset = start_offset; offset < end_offset; offset += bytes_per_line) {
             size_t line_end = std::min(offset + bytes_per_line, end_offset);
 
             // Адрес
-            result += fmt::format("{:08x}: ", offset + origin);
+            result += fmt::format("{:08x}: ", offset + m_base);
 
             // Hex байты
             for (size_t i = offset; i < line_end; i++) {
@@ -199,9 +198,9 @@ class MemoryRegion : public NativeObject {
 
         return result;
     }
-
+    bool export_intel_hex_file(const std::string &path, bool append);
     bool export_intel_hex_file(const std::string &path, size_t start_offset, size_t end_offset,
-                               bool append) const;
+                               size_t base, bool append) const;
 
   private:
 };

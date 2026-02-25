@@ -2,9 +2,9 @@
 ; drivers/font_win1252.asm - Сконвертированный шрифт
 ; ==============================================================================
 
-(in-segment  'font)
+(with-segment  font
 
-(defsegment font_data 
+(defblock font_data 
   (zasm 
     (.db #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x20 #x20 #x20 #x20 #x00 #x00 #x20 #x00)
     (.db #x50 #x50 #x50 #x00 #x00 #x00 #x00 #x00 #x50 #x50 #xF8 #x50 #xF8 #x50 #x50 #x00)
@@ -121,3 +121,5 @@
   ) ;; end of zasm
 ) ;; end of segment
 ; Всего байт: 1792
+
+) ;; end of segment

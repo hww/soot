@@ -222,6 +222,7 @@
 
     (else (error (fmt #f "Unknown operand type {}" arg)))))
 
+
 ;;; =====================================================================
 ;;; Errors and Logs
 ;;; =====================================================================
@@ -231,6 +232,9 @@
     (if info
         (fmt #f "at {}:{}" (getf info :file) (getf info :line))
         "at unknown:0")))
+
+
+(defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
 
 (defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
 

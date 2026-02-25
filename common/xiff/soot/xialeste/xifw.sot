@@ -51,66 +51,63 @@
 (defconstant GLOBALS_BASE   (+ VTABLES_BASE VTABLES_SIZE))  ; #xC800
 (defconstant GLOBALS_SIZE   2048)
 
-
-
 ;;; =====================================================================
 ;;; 5. ЗАГРУЗКА ИСХОДНИКОВ
 ;;; =====================================================================
+
 (load "common/xiff/soot/zasm/zasm.sot")
 
 ;;; =====================================================================
 ;;; 3. ОПРЕДЕЛЕНИЕ МОДУЛЯ
 ;;; =====================================================================
+
 (defmodule xifw
-  "Основной модуль прошивки")
+  "Основной модуль прошивки"
 
 ;;; =====================================================================
 ;;; 2. ИНИЦИАЛИЗАЦИЯ СЕГМЕНТОВ
 ;;; =====================================================================
 
-(new-segment :name 'vectors  :module *current-module* 
+(new-segment :name 'vectors  :module (current-module) 
              :size VECTORS_SIZE :base VECTORS_BASE)
-(new-segment :name 'boot     :module *current-module* 
+(new-segment :name 'boot     :module (current-module) 
              :size BOOT_SIZE :base BOOT_BASE)
-(new-segment :name 'code     :module *current-module* 
+(new-segment :name 'code     :module (current-module) 
              :size CODE_SIZE :base CODE_BASE)
-(new-segment :name 'stack    :module *current-module* 
+(new-segment :name 'stack    :module (current-module) 
              :size STACK_SIZE :base (- STACK_TOP STACK_SIZE))
-(new-segment :name 'font     :module *current-module* 
+(new-segment :name 'font     :module (current-module) 
              :size FONT_SIZE :base FONT_BASE)
-(new-segment :name 'data     :module *current-module* 
+(new-segment :name 'data     :module (current-module) 
              :size DATA_SIZE :base DATA_BASE)
-(new-segment :name 'vtables  :module *current-module* 
+(new-segment :name 'vtables  :module (current-module) 
              :size VTABLES_SIZE :base VTABLES_BASE)
-(new-segment :name 'globals  :module *current-module* 
+(new-segment :name 'globals  :module (current-module) 
              :size GLOBALS_SIZE :base GLOBALS_BASE)
 
-(module-dump-segment-info *current-module*)
-
+(module-dump-segment-info (current-module))
 
 ;;; =====================================================================
 ;;; 4. LAYOUT ВЫХОДНЫХ ФАЙЛОВ (что куда сохранять)
 ;;; =====================================================================
+
 (define *xifw-output-layout* 
   '(
     ;; Несколько сегментов могут идти в один файл
-    ("xifw.hex" code)      ;; код
-    ("xifw.hex" font)      ;; шрифты (добавляются в тот же hex)
-    ("xifw.hex" vectors)   ;; векторы в отдельный файл (опционально)
-    ("xifw.hex" boot)      ;; загрузчик отдельно
-    ("xifw.hex" data)      ;; данные отдельно
-    ("xifw.hex" vtables)   ;; vtable отдельно
+    ("xifw.hex" code      ;; код
+                font      ;; шрифты (добавляются в тот же hex)
+                vectors   ;; векторы в отдельный файл (опционально)
+                boot      ;; загрузчик отдельно
+                data      ;; данные отдельно
+                vtables)   ;; vtable отдельно
    ))
-
-;;; =====================================================================
-;;; 5. ЗАГРУЗКА ИСХОДНИКОВ
-;;; =====================================================================
-
-(load "common/xiff/soot/zasm/zasm.sot")
 
 ;;; =====================================================================
 ;;; FW Code
 ;;; =====================================================================
+
+;; Загружаем библиотеку базового класса
+(load "common/xiff/soot/zasm/06-lib.sot")
 
 ;; Загружаем остальные файлы (они будут использовать настроенные сегменты)
 (load "common/xiff/soot/xialeste/boot.sot")
@@ -130,3 +127,5 @@
 ;;; =====================================================================
 (save-module-practical 'xifw *xifw-output-layout*)
 (export-symbols-to-emu "xifw.sym" 'xifw)
+
+)

@@ -19,8 +19,9 @@
     (data (or number? list?))
     (listing (or string? null?))
     (prefix string?))
-  (let ((seg *current-segment*)
+  (let ((seg (current-segment))
         (bytes (if (list? data) data (list data))))
+    ;(fmt #t "DEBUG emit in segment {}\n" (current-segment-name))
     (unless seg
       (throw-error "emit: *current-segment* is null."))
     
@@ -83,7 +84,7 @@
 
 (defun label (name &key (address null) (scope 'private))
   "Динамическая регистрация метки"
-  (let* ((seg *current-segment*)
+  (let* ((seg (current-segment))
           (addr (if (null? address) (segment-ilc seg) address)))
      ;; Снова ставим кавычку перед name, чтобы (.label start) работало
      (segment-label-set! seg name :address addr :scope scope)
@@ -750,11 +751,8 @@
 ;;; =====================================================================   
 
 (defun assemble-module (name)
-  ;; 1. Устанавливаем текущий модуль (name тут - это 'default)
-  (set! *current-module* name)
-  
   ;; 2. Гарантируем, что модуль существует
-  (let ((mod (gethash name *modules*)))
+  (let ((mod (find-module name)))
     (unless mod
       (set! mod (make-module :name name :segments (make-hash-table)))
       (sethash name mod *modules*))
@@ -770,18 +768,20 @@
         (fmt #t "--- PASS {} ---\n" pass)
         
         (for-each methods (lambda (m)
-          (in-segment (method-segment m))
-          ;; Ставим метку метода (например, "method-vec3::len")
-          (segment-label-set! *current-segment* (method-label m))
-          
-          ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
-          ;; Оборачиваем весь блок в ловушку
-          (with-error-handler 
-            (lambda (msg err-form trace)
-              ;; Добавляем "этаж" контекста
-              (list *source-context* "ZASM Expansion error")) 
-            (set! *current-method* m)
-            ((method-func m)))))))
+          (let ((seg-name (method-segment m)))
+            (assert (not (eq? seg-name 'seg-name)))
+              (set-current-segment! seg-name) 
+              ;; Ставим метку метода (например, "method-vec3::len")
+              (segment-label-set! (current-segment) (method-label m))
+              
+              ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
+              ;; Оборачиваем весь блок в ловушку
+              (with-error-handler 
+                (lambda (msg err-form trace)
+                  ;; Добавляем "этаж" контекста
+                  (list *source-context* "ZASM Expansion error")) 
+                (set! *current-method* m)
+                ((method-func m))))))))
       (fmt #t "Assembly of module '{}' finished.\n" name))))
 
 
