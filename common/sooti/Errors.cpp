@@ -53,9 +53,8 @@ std::string EvalException::full_report(Reader &reader) const {
             out += fmt::format("{}: ", frame.message);
 
         // Печатаем базовую строку кадра (как в твоем логе)
-        if (info && info->line_idx_to_display >= 0) {
-            out +=
-                fmt::format("{}at {}:{}{}", dim, info->filename, info->line_idx_to_display, reset);
+        if (info && info->line_number >= 0) {
+            out += fmt::format("{}at {}:{}{}", dim, info->filename, info->line_number, reset);
         } else {
             std::string s = frame.form.print();
             if (s.length() > 40)

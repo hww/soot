@@ -1369,6 +1369,10 @@ class EnvironmentObject : public HeapObject {
         return vars.lookup(ptr);
     }
 
+    void set(InternedSymbolPtr ptr, const Object &obj) {
+        vars.set(ptr, obj);
+    }
+
     static Object make_new() {
         Object obj;
         obj.type = ObjectType::ENVIRONMENT;

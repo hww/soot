@@ -64,6 +64,13 @@
   (for-each (reverse (segment-listing seg)) (lambda (line)
     (fmt #t "{}\n" line))))
 
+(defun segment-dump-info (seg)
+  (let* ((buffer (segment-buffer seg))
+         (region (-> buffer :region)))
+    (fmt #t "\nSegment: {}\n" (segment-name seg))
+    (fmt #t "\n  Buffer Size: {}\n" (-> region :size))
+    (fmt #t "\n  Buffer Base: {}\n" (-> region :base))))
+
 (defun segment-reset (seg)
     (segment-ilc! seg 0)
     (segment-listing! seg '()))
@@ -136,6 +143,14 @@
     (if (not (null? segs))
         (for-each segs (lambda (name seg)
           (segment-dump-listing seg)))
+        (fmt #t "  (No segments found in module)\n"))))
+
+(defun module-dump-segment-info (mod)
+  (fmt #t "\n--- Module: {} ---\n" (module-name mod)) ;; Исправлено seg -> mod
+  (let ((segs (module-segments mod)))
+    (if (not (null? segs))
+        (for-each segs (lambda (name seg)
+          (segment-dump-info seg)))
         (fmt #t "  (No segments found in module)\n"))))
 
 ;;; =====================================================================
@@ -213,9 +228,9 @@
        (set! mod (make-module :name ',name 
                               :segments (make-hash-table)))
        (sethash ',name *modules* mod)
-       (init-module-segments ',name))
-      ;(fmt #t "DEBUG: defmodule {}\n" ',name)
-     mod))
+       (set! *current-module* mod)
+      (fmt #t "Deffine module {}\n" ',name)
+     mod)))
 
 (defun get-module (name)
   (begin 

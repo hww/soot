@@ -168,8 +168,8 @@ std::optional<ShortInfo> TextDb::get_short_info_for(const std::shared_ptr<Source
 
     ShortInfo info;
     info.filename = frag->get_description();
-    info.line_idx_to_display = line_idx;
-    info.pos_in_line = offset_in_line;
+    info.line_number = line_idx + 1;
+    info.col_number = offset_in_line + 1;
     info.line_text = frag->get_line_containing_offset(offset);
     return std::make_optional(info);
 }
@@ -178,36 +178,37 @@ std::optional<ShortInfo> TextDb::try_get_short_info(const std::shared_ptr<HeapOb
     auto it = m_map.find(o);
     if (it != m_map.end()) {
         auto       &frag = it->second.frag;
-        std::string name = frag->get_description();
+        std::string filename = frag->get_description();
 
         // Shorten path
         size_t start = 0;
-        for (size_t i = 0; i < name.size(); i++) {
-            if (name[i] == '/' || name[i] == '\\') {
+        for (size_t i = 0; i < filename.size(); i++) {
+            if (filename[i] == '/' || filename[i] == '\\') {
                 start = i + 1;
             }
         }
-        if (start < name.size()) {
-            name = name.substr(start);
+        if (start < filename.size()) {
+            filename = filename.substr(start);
         }
 
         ShortInfo result;
-        result.filename = name;
-
+        result.filename = filename;
+        // the line index from 0 to N
         int line_idx = frag->get_line_idx(it->second.offset);
-        result.line_idx_to_display = line_idx + 1;
 
-        int offset_of_line = frag->get_offset_of_line(line_idx);
+        // the offset in line from 0 to N
+        int offset_of_this_line = frag->get_offset_of_line(line_idx);
         int offset_of_next_line = frag->get_offset_of_line(line_idx + 1);
-
-        int line_length = offset_of_next_line - offset_of_line;
+        // the line length includes a new line character \n
+        int line_length = offset_of_next_line - offset_of_this_line;
 
         // ORIGIBAL CODE
         // int start_offset_in_line = it->second.offset - offset_of_line - 1;
         // because each line starts with valid character
-        int start_offset_in_line = it->second.offset - offset_of_line;
-        result.pos_in_line = std::max(start_offset_in_line, 0);
-        result.line_text = std::string(frag->get_text() + offset_of_line + 1, line_length - 1);
+        int start_offset_in_line = it->second.offset - offset_of_this_line;
+        result.line_number = line_idx + 1;
+        result.col_number = std::max(start_offset_in_line, 0) + 1;
+        result.line_text = std::string(frag->get_text() + offset_of_this_line, line_length - 1);
         return result;
     }
     return {};

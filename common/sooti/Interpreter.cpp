@@ -91,6 +91,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"->", &Interpreter::eval_deref_special, nullptr},
         // Exception handling
         {"with-error-handler", &Interpreter::eval_with_error_handler_special, nullptr},
+        {"eval-args", &Interpreter::eval_eval_args_special, nullptr},
     });
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
@@ -248,6 +249,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
 
         // Evaluation and parsing
         {"eval", &Interpreter::eval_eval, nullptr},
+
         {"read-str", &Interpreter::eval_read_str, nullptr},
         {"parse-str", &Interpreter::eval_parse_str, nullptr},
         {"read-file", &Interpreter::eval_read_file, nullptr},
@@ -842,6 +844,7 @@ void Interpreter::render_complex_error(EvalException &e) {
 
     int depth = 0;
     for (const auto &frame : e.trace) {
+        // Will get index of line and column
         auto        info = m_reader.get_db().get_short_info_for(frame.form);
         std::string obj_str = truncate_obj(frame.form.print(), 60);
 
@@ -850,8 +853,8 @@ void Interpreter::render_complex_error(EvalException &e) {
             fmt::print("{} ", frame.message);
 
         fmt::print("in {}", obj_str);
-        if (info && info->line_idx_to_display > 0) {
-            fmt::print(" at {}:{:d}", info->filename, info->line_idx_to_display + 1);
+        if (info && info->line_number > 0) {
+            fmt::print(" at {}:{:d}", info->filename, info->line_number);
         }
         fmt::print("\n");
     }
@@ -875,9 +878,9 @@ void Interpreter::print_form_info(const Object                             &form
             auto        frame_info_opt = m_reader.get_db().get_short_info_for(current_frame->ctx);
             std::string frame_repr = truncate_obj(current_frame->ctx.print(), 60);
 
-            if (frame_info_opt && frame_info_opt->line_idx_to_display > 0) {
+            if (frame_info_opt && frame_info_opt->line_number > 0) {
                 fmt::print("  [{:02d}] {} at {}:{:d}\n", depth, frame_repr,
-                           frame_info_opt->filename, frame_info_opt->line_idx_to_display + 1);
+                           frame_info_opt->filename, frame_info_opt->line_number);
             } else {
                 fmt::print("  [{:02d}] {}\n", depth, frame_repr);
             }
@@ -988,10 +991,9 @@ void Interpreter::print_stack_frame(EvalException &e, const Object &obj) {
     // Цвет для мета-информации (путь к файлу)
     auto dim_color = fg(fmt::color::dim_gray);
 
-    if (info_opt && info_opt->line_idx_to_display > 0) {
+    if (info_opt && info_opt->line_number > 0) {
         fmt::print(dim_color, "  [{:02d}] in {} ", e.stack_counter, obj_str);
-        fmt::print(dim_color, "at {}:{:d}\n", info_opt->filename,
-                   info_opt->line_idx_to_display + 1);
+        fmt::print(dim_color, "at {}:{:d}\n", info_opt->filename, info_opt->line_number);
     } else {
         fmt::print(dim_color, "  [{:02d}] in {}\n", e.stack_counter, obj_str);
     }
@@ -4645,6 +4647,49 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
     return Object::make_null();
 }
 
+/*!
+ * Special method of computing arguments for macro
+ *
+ * (defmacro sum (&key (x *value-a*) (y *value-b*))
+ *    (eval-args x y)
+ * )
+ */
+Object Interpreter::eval_eval_args_special(const Object &form, const Object &rest,
+                                           const std::shared_ptr<EnvironmentObject> &env) {
+    // Минимум 1 аргумент должен быть
+    if (rest.is_null()) {
+        throw_eval_error(form, "eval-args: at least one argument required");
+    }
+
+    auto item = rest;
+    while (!item.is_null()) {
+        if (!item.is_pair())
+            throw_eval_error(form, "eval-args: invalid arguments list");
+
+        auto arg_sym = item.as_pair()->car;
+
+        // Аргумент должен быть символом (именем переменной)
+        if (!arg_sym.is_symbol()) {
+            throw_eval_error(form, "eval-args: argument must be a symbol");
+        }
+
+        // Получаем текущее значение символа из окружения
+        Object *value = env->find(arg_sym.as_symbol());
+        if (value) {
+            // Вычисляем это значение
+            Object result = eval_with_rewind(*value, env);
+            // Сохраняем результат обратно в ту же переменную
+            env->set(arg_sym.as_symbol(), result);
+        } else {
+            throw_eval_error(form, "eval-args: unknown argument " + arg_sym.to_std_string());
+        }
+
+        item = item.as_pair()->cdr;
+    }
+
+    return Object::make_null();
+}
+
 Object Interpreter::eval_set_car(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -5132,8 +5177,8 @@ Object Interpreter::eval_source_info(const Object &form, Arguments &args,
 
     return pretty_print::build_list({
         intern(":file"), Object::make_string(result->filename), intern(":line"),
-        Object::make_integer(result->line_idx_to_display), intern(":column"),
-        Object::make_integer(result->pos_in_line), intern(":text"),
+        Object::make_integer(result->line_number), intern(":column"),
+        Object::make_integer(result->col_number), intern(":text"),
         Object::make_string(result->line_text) // Полезно для вывода "стрелочки" ^
     });
 }

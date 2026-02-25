@@ -475,6 +475,8 @@ class Interpreter {
                        const std::shared_ptr<EnvironmentObject> &env);
     Object eval_eval(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_eval_args_special(const Object &form, const Object &rest,
+                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_car(const Object &form, Arguments &args,
                         const std::shared_ptr<EnvironmentObject> &env);
     Object eval_set_cdr(const Object &form, Arguments &args,
