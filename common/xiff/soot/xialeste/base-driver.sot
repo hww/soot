@@ -1,0 +1,86 @@
+﻿
+; ==============================================================================
+; Base Driver 
+; ==============================================================================
+
+;;; FLags of all drivers
+(defenum drvflags
+  :type uint8
+  :bitfield #t
+  (api-has-irq_bit       0)       ; Использует прерывания
+  (api-static-bit        1)       ; Статическое устройство (встроенное)
+  (api-uses-dma_bit      2)       ; Использует DMA
+  (api-banked-bit        3)       ; Работает с банковой памятью
+  (api-power-save-bit    4)       ; Поддерживает энергосбережение
+  (api-hotplug-bit       5)       ; Поддерживает горячее подключение
+  (api-needs-context-bit 6)       ; Требует контекст (для MMU)
+  (api-thread-safe-bit   7))      ; Потокобезопасный
+
+;;; Standard driver command supported by all drivers
+(defenum drv-command
+  :type uint8
+  (cmd-reset             #x00)    ; Сброс устройства
+  (cmd-status            #x01)    ; Получить статус
+  (cmd-suspend           #x02)    ; Приостановить работу
+  (cmd-resume            #x03)    ; Возобновить работу
+  (cmd-get-capabilities  #x04)    ; Получить возможности
+  (cmd-set-power         #x05))   ; Установить режим питания
+
+;;; Driver information
+(deftype driver-info (structure)
+  (
+    (version_major int8) 
+    (verion_minor int8)
+    (flags drvflags)         
+    (name uint8 8)
+  )
+  (:methods)
+)
+
+;;; Basic driver
+(deftype driver (structure)
+  ()
+ (:methods
+    (new () _type_)
+    ;; Возвращает флаг обранужено или нет устройство
+    (detect (_type_) bool)
+    ;; Возвращает флаг успех или нет
+    (install (_type_) bool)
+    ;; Возвращает флаг успех или нет
+    (uninstall (_type_) bool)
+    ;; Return the information about driver
+    (get-info (_type_) (pointer driver-info))
+    ;; универсальная команда
+    (command (_type_ uint8 int16 int16) int16)      
+    ))
+
+(with-segment code
+
+;; Пример для твоего синтаксиса (как в sprite-aux-list)
+(defmethod new driver ()
+  (declare (once) (asm-func _type_))
+  (.ret))
+(defmethod detect ((this driver))
+  (declare (once) (asm-func bool))
+  (.ret))
+(defmethod install ((this driver))
+  (declare (once) (asm-func bool))
+  (.ret))
+(defmethod uninstall ((this driver))
+  (declare (once) (asm-func bool))
+  (.ret))
+(defmethod get-info ((this driver))
+  (declare (once) (asm-func (pointer driver-info)))
+  (.ret))
+(defmethod command ((this driver) (cmd uint8) (arg1 int16) (arg2 int16))
+  (declare (once) (asm-func int16))
+  (.ret))
+
+
+;; Make descriptor
+(defproc make-driver-descriptors ()
+  (declare (once) (asm-func none))
+  (.type-descriptor driver)   
+  )
+
+) ;; end of segment

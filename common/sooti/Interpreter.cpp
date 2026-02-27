@@ -6551,8 +6551,9 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
             }
 
             auto ret_type_expr = args.as_pair()->car;
-            if (!(ret_type_expr.is_symbol() || ret_type_expr.is_string())) {
-                throw_eval_error(ret_type_expr, "Return type must be a symbol or string.");
+            if (!(ret_type_expr.is_symbol() || ret_type_expr.is_string() ||
+                  ret_type_expr.is_pair())) {
+                throw_eval_error(ret_type_expr, "Return type must be a symbol, string or pair.");
             }
 
             // Нам нужно rlet окружение, чтобы собрать типы аргументов
@@ -6562,9 +6563,9 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
                     first, "Option 'asm-func' requires an 'rlet' scope to determine arguments.");
             }
 
-            auto type_name = ret_type_expr.to_std_string();
             // Строим сигнатуру функции на основе текущих регистровых алиасов
-            settings.typespec = TypeSystem::instance().build_typespec_from_env(rlet_env, type_name);
+            settings.typespec =
+                TypeSystem::instance().build_typespec_from_env(rlet_env, ret_type_expr);
         } else if (name == "print-asm") {
             if (!args.is_null())
                 throw_eval_error(first, "Option 'print-asm' expects no arguments.");
@@ -7512,8 +7513,9 @@ Object Interpreter::eval_region_read_byte(const Object &form, Arguments &args,
     size_t offset = args.unnamed[1].as_integer();
     size_t index = offset - region->base();
     if (index < 0 || index >= region->size()) {
-        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset,
-                                           region->base(), region->base() + region->size()));
+        throw_eval_error(form,
+                         fmt::format("Offset {:08x} out of bounds of full size {:08x}-{:08x}",
+                                     offset, region->base(), region->base() + region->size()));
     }
 
     uint8_t value = region->data()[index];
@@ -7540,8 +7542,9 @@ Object Interpreter::eval_region_write_byte(const Object &form, Arguments &args,
     size_t offset = args.unnamed[1].as_integer();
     size_t index = offset - region->base();
     if (index < 0 || index >= region->size()) {
-        throw_eval_error(form, fmt::format("Offset {} out of bounds of full size {}-{}", offset,
-                                           region->base(), region->base() + region->size()));
+        throw_eval_error(form,
+                         fmt::format("Offset {:08x} out of bounds of full size {:08x}-{:08x}",
+                                     offset, region->base(), region->base() + region->size()));
     }
 
     uint8_t value = args.unnamed[2].as_integer() & 0xFF;

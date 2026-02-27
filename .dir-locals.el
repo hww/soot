@@ -1,0 +1,6 @@
+((nil . ((cmake-ide-project-dir . "~/projects/h2w/soot")
+         (cmake-ide-build-dir . "~/projects/h2w/soot/build")
+         (cmake-ide-cmake-opts . "-DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPORTABLE=1 -DCMAKE_CXX_COMPILER='/usr/bin/clang++'")
+         (projectile-project-name . "soot")
+         (projectile-project-run-cmd . "./run.sh")
+         (projectile-project-test-cmd . "./test.sh"))))

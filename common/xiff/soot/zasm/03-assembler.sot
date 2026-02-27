@@ -757,19 +757,17 @@
       (set! mod (make-module :name name :segments (make-hash-table)))
       (sethash name mod *modules*))
     
-    ;; 3. Работаем с сегментом 'code'
-    (set! *current-segment* (module-segment-get name 'code))
-    
     (let ((methods (reverse *methods-to-assemble*)))
       (for-each '(1 2) (lambda (pass)
         (set! *current-pass* pass)
-        (segment-reset *current-segment*)
-        
         (fmt #t "--- PASS {} ---\n" pass)
+
+        (module-reset mod)       
         
         (for-each methods (lambda (m)
           (let ((seg-name (method-segment m)))
             (assert (not (eq? seg-name 'seg-name)))
+
               (set-current-segment! seg-name) 
               ;; Ставим метку метода (например, "method-vec3::len")
               (segment-label-set! (current-segment) (method-label m))

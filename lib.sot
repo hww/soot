@@ -245,15 +245,15 @@
 
 (defun for-each (container proc)
   (cond
-    ;; 1. Первым делом проверяем на пустоту. 
-    ;; Если список пуст, мы просто выходим, не вызывая C++ итератор.
-    ((null? container)   null)
-    ;; 2. Только если список НЕ пустой и это список, вызываем C++
-    ((list? container)   (list-for-each container proc))
-    ((array? container) (array-for-each container proc))
-    ((string? container) (string-for-each container proc))
-    ((hash-table? container) (hash-table-for-each container proc))
-    (#t (error (fmt #f "for-each: unsupported container type {}" container)))))
+   ;; 1. Первым делом проверяем на пустоту.
+   ;; Если список пуст, мы просто выходим, не вызывая C++ итератор.
+   ((null? container)   null)
+   ;; 2. Только если список НЕ пустой и это список, вызываем C++
+   ((list? container)   (list-for-each container proc))
+   ((array? container) (array-for-each container proc))
+   ((string? container) (string-for-each container proc))
+   ((hash-table? container) (hash-table-for-each container proc))
+   (#t (error (fmt #f "for-each: unsupported container type {}" container)))))
 
 ;; @doc (dotimes (var count [result]) &rest body)
 ;; Цикл от 0 до count-1.
@@ -268,35 +268,35 @@
 ;; Итерация по элементам списка.
 (defmacro dolist (bindings &rest body)
   `(let ((,(car bindings) ,(cadr bindings)))
-      (while (not (null? ,(car bindings)))
-        ,@body
-        (set! ,(car bindings) (cdr ,(car bindings))))))
+     (while (not (null? ,(car bindings)))
+            ,@body
+            (set! ,(car bindings) (cdr ,(car bindings))))))
 
 ;; ===========================================================================
 ;; Итераторы в стиле MAP
 ;; ===========================================================================
 
 (defun map (fun x)
-    "Стандартный map: Трансформирует список, применяя функцию к каждому элементу.
+  "Стандартный map: Трансформирует список, применяя функцию к каждому элементу.
      Возвращает новый список той же длины с результатами вычислений.
      (map (lambda (x) (* x x)) '(1 2 3)) => (1 4 9)"
-    (if (null? x)
-        '()
-        (cons (fun (car x))
-              (map fun (cdr x)))))
+  (if (null? x)
+      '()
+      (cons (fun (car x))
+            (map fun (cdr x)))))
 
 
 (defun map2 (fun1 fun2 lst1 lst2)
-    "Специализированный map2: Параллельный обход двух списков с разными функциями.
+  "Специализированный map2: Параллельный обход двух списков с разными функциями.
      Полезен для задач сборки данных, где нужно одновременно обработать два потока.
      Важно: Проверяет списки на равенство длин и завершается, если один из них пуст."
-    (if (or (null? lst1)
-            (null? lst2)
-            (not (= (length lst1) (length lst2))))
-        '()
-        (cons (fun1 (car lst1))
-              (cons (fun2 (car lst2))
-                    (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
+  (if (or (null? lst1)
+          (null? lst2)
+          (not (= (length lst1) (length lst2))))
+      '()
+      (cons (fun1 (car lst1))
+            (cons (fun2 (car lst2))
+                  (map2 fun1 fun2 (cdr lst1) (cdr lst2))))))
 
 (defun flat-map (proc lis)
   "Применяет функцию proc к каждому элементу списка lis и объединяет 
@@ -347,6 +347,7 @@
             (mapcar3 func (cdr lst1) (cdr lst2) (cdr lst3)))))
 
 (defun any (pred lst)
+  "Проверяет что список содержит любой не null элемент"
   (cond ((null? lst) #f)
         ((pred (car lst)) #t)
         (else (any pred (cdr lst)))))

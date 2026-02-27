@@ -2468,7 +2468,7 @@ script::Object TypeSystem::inspect() const {
 // ============================================================================
 
 Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
-                                           const std::string &ret_type_name) {
+                                           const Object                             &ret_type) {
     auto entries = env->vars.get_all_entries();
 
     // 1. Сначала считаем, сколько у нас РЕАЛЬНЫХ аргументов
@@ -2498,7 +2498,7 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
 
     // 3. Собираем список для (function ...)
     // Начинаем с возвращаемого типа
-    Object args_list = Object::make_pair(Object::make_symbol(ret_type_name), Object::make_null());
+    Object args_list = Object::make_pair(ret_type, Object::make_null());
 
     // Добавляем аргументы в обратном порядке (для cons)
     for (int i = max_idx; i >= 0; --i) {

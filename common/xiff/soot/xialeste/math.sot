@@ -1,0 +1,22 @@
+﻿
+
+(deftype vector2b (structure)
+  ((data int8 2 :offset-assert 0)
+   (x    int8   :offset        0)
+   (y    int8   :offset        1)
+   (clr  int16  :offset        0)
+   )
+  :method-count-assert 9
+  :size-assert         #x2
+  :flag-assert         #x900000002
+  )
+
+(deftype vector2 (structure)
+  ((data int16 2 :offset-assert 0)
+   (x    int16   :offset        0)
+   (y    int16   :offset        2)
+   )
+  :method-count-assert 9
+  :size-assert         #x4
+  :flag-assert         #x900000004
+  )

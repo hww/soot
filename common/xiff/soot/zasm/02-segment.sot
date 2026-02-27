@@ -30,8 +30,9 @@
     seg))
 
 (defun segment-reset (seg)
-    "Сбросить сегмент"
+    "Сбросить сегмент"   
     (segment-ilc! seg (segment-base seg))
+    (fmt #t "DEBUG segment-reset {} {:04x}\n" (segment-name seg) (segment-ilc seg))
     (segment-listing! seg '()))
 
 ;;; ---------------------------------------------------------------------
@@ -122,6 +123,15 @@
       (sethash clean-seg-name seg segs))
     
     seg))
+
+(defun module-reset (mod)
+  "Reset all segments"
+  (fmt #t "\n--- Module: {} reset ---\n" (module-name mod)) 
+  (let ((segs (module-segments mod)))
+    (if (not (null? segs))
+        (for-each segs (lambda (name seg)
+          (segment-reset seg)))
+        (fmt #t "  (No segments found in module)\n"))))
 
 ;;; ---------------------------------------------------------------------
 ;;; Module Lables
@@ -249,7 +259,9 @@
     ((symbol? seg)
      (let ((found (module-segment-get (current-module-name) seg)))
        (if found
-           (set! *current-segment* found)
+           (begin
+            (set! *current-segment* found)
+            (fmt #t "DEBUG set-current-segment! {} {:04x}\n" seg (segment-ilc found)))
            (error (fmt #f "Segment '{}' not found in module" seg)))))
     ((segment? seg)
      (set! *current-segment* seg))

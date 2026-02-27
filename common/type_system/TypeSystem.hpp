@@ -466,7 +466,7 @@ class TypeSystem : public NativeObject {
     // ========================================================================
   public:
     Object build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
-                                   const std::string                        &ret_type_name);
+                                   const Object                             &ret_type_name);
 
   private:
     // ========================================================================

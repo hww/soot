@@ -110,11 +110,13 @@
 (load "common/xiff/soot/zasm/06-lib.sot")
 
 ;; Загружаем остальные файлы (они будут использовать настроенные сегменты)
+(load "common/xiff/soot/xialeste/base-driver.sot")
 (load "common/xiff/soot/xialeste/boot.sot")
 (load "common/xiff/soot/xialeste/vectors.sot")
 (load "common/xiff/soot/xialeste/main.sot")
 (load "common/xiff/soot/xialeste/crtc-modes.sot")
 (load "common/xiff/soot/xialeste/font_win1252.sot")
+(load "common/xiff/soot/xialeste/vbuf-driver.sot")
 
 ;;; =====================================================================
 ;;; 6. КОМПИЛЯЦИЯ
