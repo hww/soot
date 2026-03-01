@@ -1,0 +1,55 @@
+﻿
+; ==============================================================================
+; Base VBUF Driver 
+; ==============================================================================
+
+;;; Standard driver command supported by all drivers
+(defenum vbuf-command
+  :type uint8
+  (cmd-reset             #x10)) 
+
+(with-segment  code
+
+;;; Basic driver
+(deftype vbuf (driver)
+  (   
+    ;; main information 
+    (width  uint16)     ;; pixels width
+    (height uint16)     ;; pixels height
+    (bpp uint8)         ;; bits per pixel
+    (bpl uint8)         ;; how many bytes in line
+    (size uint16)       ;; bytes on screen
+    ;; colors
+    (bg-color uint8)    ;; background color
+    (fg-color uint8)    ;; foreground color
+    ;; base addres
+    (vbuf-base uint16)  ;; base address for the video memory
+    (font-base uint16)  ;; base address for the font
+    ;; blitter
+    (src-pos vector2b)
+    (dst-pos vector2b)
+    (src-ptr uint16)
+    (dst-ptr uint16)
+  )
+  (:methods
+    (new () _type_)
+    (set-char-addr (_type_ int8 int8) none)
+    ))
+
+(defmethod new vbuf ()
+  ;; The dummy constructor
+  (declare (once) (asm-func _type_))
+  (.ret))
+
+(defmethod set-char-addr ((this vbuf) (x int8) (y int8))
+  (declare (once) (asm-func none))
+  (.ret))
+
+  (defblock vbuf-block 
+    (zasm
+      ;; дескриптор типа
+      (.type-descriptor vbuf)   
+    ) ;; end of zasm
+  ) ;; end of block
+) ;; end of segment
+

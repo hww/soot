@@ -223,7 +223,7 @@
   (let ((v-name (intern (fmt #f "{}::vtable" (-> type-obj :name)))))
     ;; Базовая метка таблицы
     (emit-space (fmt #f "vtable {}" v-name))
-    (label v-name :scope 'public)
+    (module-label-set! v-name :scope 'public)
   
     (emit-vtable-slots type-obj 
       (lambda (method-full-name index method)
@@ -233,8 +233,8 @@
                     (intern (fmt #f "{}::empty_{}" v-name index)))))
           
           ;; Ставим метку слота
-          (label label-name)
-          (let ((type-spec (~> method :type-spec))) 
+          (module-label-set! label-name)
+            (let ((type-spec (~> method :type-spec))) 
             (declare-external label-name type-spec)
             )
           (if method-full-name
@@ -247,12 +247,12 @@
                   ;; СЛУЧАЙ Б: Метод объявлен в типе, но кода нет (Label not found)
                   (begin
                     (asm-warning (fmt #f "Method implementation not found: {}. Plugging with panic." method-full-name))
-                    (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+                    (let ((panic-addr (module-label-addr-get 'panic-unimplemented)))
                       (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
                             :listing (fmt #f "MISSING: JP panic ({})" method-full-name))))))
             
             ;; СЛУЧАЙ В: Слот вообще пустой (даже в интерфейсе)
-            (let ((panic-addr (module-label-addr-get 'panic_unimplemented)))
+            (let ((panic-addr (module-label-addr-get 'panic-unimplemented)))
               (emit (list #xC3 (lower-byte panic-addr) (higher-byte panic-addr))
                     :listing "EMPTY SLOT: JP panic"))))))))
 
@@ -316,7 +316,7 @@
          (label-sym (intern label-base)))
 
     ;; 1. Сначала ставим метку! Чтобы она уже была в таблице символов
-    (label label-sym :scope 'public)
+    (module-label-set! label-sym :scope 'public)
     
     ;; 2. Поле +0: указатель на тип 'type'
     (if (eq? t-name "type")
@@ -337,7 +337,7 @@
 
     (.vtable type-obj)
     
-    (label (intern (fmt #f "type::{}::name" t-name)))
+    (module-label-set! (intern (fmt #f "type::{}::name" t-name)))
     (emit-string t-name)))  
 
 ;;; =====================================================================
@@ -371,7 +371,7 @@
 
 
 (defmacro ycall (target &rest args)
-  (let* ((lab-exit (local 'exit))
+  (let* ((lab-exit (name->local 'exit))
          (func (if (symbol? target) (eval target) target))
          (target-sig (cond
                        ((function? func) (function-type func))

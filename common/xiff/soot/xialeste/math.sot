@@ -6,9 +6,6 @@
    (y    int8   :offset        1)
    (clr  int16  :offset        0)
    )
-  :method-count-assert 9
-  :size-assert         #x2
-  :flag-assert         #x900000002
   )
 
 (deftype vector2 (structure)
@@ -16,7 +13,5 @@
    (x    int16   :offset        0)
    (y    int16   :offset        2)
    )
-  :method-count-assert 9
-  :size-assert         #x4
-  :flag-assert         #x900000004
+
   )

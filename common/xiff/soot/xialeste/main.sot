@@ -5,7 +5,6 @@
 (with-segment main
  (defblock main
   (zasm
-    (.label 'main)
     (.nop)
     (.halt)))
     

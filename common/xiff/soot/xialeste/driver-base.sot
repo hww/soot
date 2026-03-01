@@ -26,20 +26,13 @@
   (cmd-get-capabilities  #x04)    ; Получить возможности
   (cmd-set-power         #x05))   ; Установить режим питания
 
-;;; Driver information
-(deftype driver-info (structure)
-  (
-    (version_major int8) 
-    (verion_minor int8)
-    (flags drvflags)         
-    (name uint8 8)
-  )
-  (:methods)
-)
-
 ;;; Basic driver
 (deftype driver (structure)
-  ()
+  (
+    (version-major int8) 
+    (verion-minor int8)
+    (flags drvflags)     
+  )
  (:methods
     (new () _type_)
     ;; Возвращает флаг обранужено или нет устройство
@@ -48,8 +41,6 @@
     (install (_type_) bool)
     ;; Возвращает флаг успех или нет
     (uninstall (_type_) bool)
-    ;; Return the information about driver
-    (get-info (_type_) (pointer driver-info))
     ;; универсальная команда
     (command (_type_ uint8 int16 int16) int16)      
     ))
@@ -68,9 +59,6 @@
   (.ret))
 (defmethod uninstall ((this driver))
   (declare (once) (asm-func bool))
-  (.ret))
-(defmethod get-info ((this driver))
-  (declare (once) (asm-func (pointer driver-info)))
   (.ret))
 (defmethod command ((this driver) (cmd uint8) (arg1 int16) (arg2 int16))
   (declare (once) (asm-func int16))

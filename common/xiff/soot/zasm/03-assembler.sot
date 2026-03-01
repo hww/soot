@@ -28,12 +28,12 @@
     (let ((start-addr (segment-ilc seg)))
       (for-each bytes (lambda (b)
         (let ((current-ilc (segment-ilc seg)))
-          (when (eq? *current-pass* 2)
+          (when-pass2
             (memory-buffer-write-byte! (segment-buffer seg) current-ilc b))
           (segment-ilc! seg (+ current-ilc 1)))))
 
       ;; Если второй проход и есть текст — пишем в листинг
-      (when (and (eq? *current-pass* 2))
+      (when (and (is-pass2?))
         (record-listing-line start-addr (fmt #f "{}{}" prefix listing))))))
 
 ;; Запись одного байта (8 бит)
@@ -77,29 +77,6 @@
   ;; Если у тебя есть примитив native-ref?, используй его.
   ;; Иначе проверяем через системный запрос типа.
     (eq? 'reg-alias (car (inspect obj))))
-
-;;; =====================================================================
-;;; Labels
-;;; =====================================================================
-
-(defun label (name &key (address null) (scope 'private))
-  "Динамическая регистрация метки"
-  (let* ((seg (current-segment))
-          (addr (if (null? address) (segment-ilc seg) address)))
-     ;; Снова ставим кавычку перед name, чтобы (.label start) работало
-     (segment-label-set! seg name :address addr :scope scope)
-     (emit '() :listing (fmt #f "[{}]" (unquote-sym name)) :prefix "")))
-
-(defmacro .label (name &key (address null) (scope 'private))
-  "Статическая регистрация метки"
-  `(label ',name :address ,address :scope ,scope))
-
-(defun local (name) 
-  (string->symbol (fmt #f "loc-{}-{}" (method-label *current-method*) name)))
-
-(defun address-of (label)
-  "Функция для использования внутри Lisp-выражений в zasm"
-  (module-label-addr-get label))
 
 ;;; =====================================================================
 ;;; Instruction Handlers
@@ -503,7 +480,7 @@
        (emit #xE9 :listing "JP (HL)"))
 
       ;; Случай 2: Обычный переход по метке/адресу
-      ((eq? *current-pass* 1)
+      ((is-pass1?)
        (emit '(#xC3 #x00 #x00) :listing (fmt #f "JP ${:04X} (placeholder)" 0))) ;; Печатаем 0 вместо символа
       
       (else
@@ -770,7 +747,7 @@
 
               (set-current-segment! seg-name) 
               ;; Ставим метку метода (например, "method-vec3::len")
-              (segment-label-set! (current-segment) (method-label m))
+              ;(module-label-set! (method-label m))
               
               ;; Вызываем тело (лямбду), которая сама сделает rlet и zasm
               ;; Оборачиваем весь блок в ловушку

@@ -108,15 +108,17 @@
 
 ;; Загружаем библиотеку базового класса
 (load "common/xiff/soot/zasm/06-lib.sot")
+(load "common/xiff/soot/xialeste/math.sot")
 
 ;; Загружаем остальные файлы (они будут использовать настроенные сегменты)
-(load "common/xiff/soot/xialeste/base-driver.sot")
+(load "common/xiff/soot/xialeste/driver-base.sot")
 (load "common/xiff/soot/xialeste/boot.sot")
 (load "common/xiff/soot/xialeste/vectors.sot")
 (load "common/xiff/soot/xialeste/main.sot")
 (load "common/xiff/soot/xialeste/crtc-modes.sot")
 (load "common/xiff/soot/xialeste/font_win1252.sot")
-(load "common/xiff/soot/xialeste/vbuf-driver.sot")
+(load "common/xiff/soot/xialeste/driver-vbuf.sot")
+(load "common/xiff/soot/xialeste/driver-vbuf-16k1b.sot")
 
 ;;; =====================================================================
 ;;; 6. КОМПИЛЯЦИЯ

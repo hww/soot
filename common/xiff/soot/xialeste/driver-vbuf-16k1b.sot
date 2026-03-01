@@ -1,0 +1,41 @@
+﻿
+; ==============================================================================
+; 16k1b Driver 
+; ==============================================================================
+
+(with-segment  code
+
+;;; Basic driver
+(deftype vbuf-16k1b (vbuf)
+ ()
+ (:methods
+    (new () _type_)
+    ))
+
+(defmethod new vbuf-16k1b ()
+  (declare (once) (asm-func _type_))
+  (.ret))
+
+;defmethod set-char-addr ((this vbuf-16k1b) (x int8) (y int8))
+; (declare (once) (asm-func none))
+; (.ret))
+
+  (defblock vbuf-16k1b-block
+    (zasm
+
+      (.static-new vbuf-16k1b vbuf-16k1b
+          :version-major 1
+          :version-minor 0
+          :width 640
+          :height 200
+          :bpp 1
+          :bpl 80
+          :size 16000
+          )
+
+      ;; дескриптор типа
+      (.type-descriptor vbuf-16k1b)   
+
+    ) ;; end of zasm
+  ) ;; end of block
+) ;; end of segment

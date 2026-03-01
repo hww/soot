@@ -6,9 +6,9 @@
 ;;; System Methods
 ;;; ===================================================================== 
 
-(defproc panic_unimplemented ()
+(defproc panic-unimplemented ()
   (declare (once) (asm-func none))
-  (fmt #t "DEBUG panic_unimplemented...\n"))
+  (fmt #t "DEBUG panic-unimplemented...\n"))
 
 ;;; ===================================================================== 
 ;;; Type System Methods
