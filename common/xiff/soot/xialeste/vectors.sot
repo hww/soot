@@ -5,7 +5,6 @@
 (with-segment vectors
 
 (defblock vectors
-  (zasm
     ;; RST 00h (#x0000) - Сброс
     (.org #x0000)
     (.di)
@@ -46,7 +45,7 @@
     (.retn)
     ;; Остаток векторов до #x0100
     ;(.ds (- #x0100 (ilc)))
-  ))
+  )
 ) ;; end of segment
 ;;; =====================================================================
 ;;; Обработчики прерываний (можно в отдельном файле)
@@ -55,7 +54,6 @@
 (with-segment code
 
 (defcode interrupt_handlers
-  (zasm
     (.label 'rst_05_handler)
     ;; обработчик RST 05h
     (.ret)
@@ -84,5 +82,5 @@
     ;; обработчик RST 30h (например, вывод символа)
     (.ret) 
 
-  ))
+  )
 );; end of segment

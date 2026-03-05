@@ -4,9 +4,8 @@
 
 (with-segment main
  (defblock main
-  (zasm
     (.nop)
-    (.halt)))
+    (.halt))
     
 ) ;; end of segment
     

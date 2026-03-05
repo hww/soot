@@ -5,7 +5,6 @@
 (in-segment  'font)
 
 (defblock font_data 
-  (zasm 
     (.db #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x3C #x42 #xA5 #x81 #xA5 #x99 #x42 #x3C)
     (.db #x3C #x7E #xDB #xFF #xFF #xDB #x66 #x3C #x6C #xFE #xFE #xFE #x7C #x38 #x10 #x00)
     (.db #x10 #x38 #x7C #xFE #x7C #x38 #x10 #x00 #x10 #x38 #x54 #xFE #x54 #x10 #x38 #x00)
@@ -134,7 +133,6 @@
     (.db #xF0 #x08 #x08 #x30 #x08 #x08 #xF0 #x00 #xA8 #xA8 #xA8 #xA8 #xA8 #xA8 #xF8 #x00)
     (.db #x70 #x88 #x08 #x78 #x08 #x88 #x70 #x00 #xA8 #xA8 #xA8 #xA8 #xA8 #xF8 #x08 #x00)
     (.db #x88 #x88 #x88 #x88 #x78 #x08 #x08 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00)
- ) ;; end of zasm
  ) ;; end of segment
 
 ; Всего байт: 2048

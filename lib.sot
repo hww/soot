@@ -462,7 +462,15 @@
     ((null? lst) null)
     ((pred (car lst)) (car lst))
     (else (find-if pred (cdr lst)))))
-    
+
+(defun remove (item lst)
+  "Удаляет все элементы равные item из списка lst"
+  (filter (lambda (x) (not (eq? x item))) lst))
+
+(defun remove-if (pred lst)
+  "Удаляет все элементы, для которых предикат pred возвращает истину"
+  (filter (lambda (x) (not (pred x))) lst))
+  
 ;; ---------------------------------------------------------------------------
 ;; Поиск
 ;; ---------------------------------------------------------------------------

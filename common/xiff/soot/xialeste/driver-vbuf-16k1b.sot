@@ -21,7 +21,6 @@
 ; (.ret))
 
   (defblock vbuf-16k1b-block
-    (zasm
 
       (.static-new vbuf-16k1b vbuf-16k1b
           :version-major 1
@@ -36,6 +35,5 @@
       ;; дескриптор типа
       (.type-descriptor vbuf-16k1b)   
 
-    ) ;; end of zasm
   ) ;; end of block
 ) ;; end of segment

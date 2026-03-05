@@ -5,7 +5,6 @@
 (with-segment boot
 
 (defblock boot
-  (zasm
     (.org #x0100)
     (.label 'start)
     
@@ -31,5 +30,5 @@
     (.di)
     (.halt)
     (.jp 'halt_loop)
-  ))
+  )
 ) ;; end of segment

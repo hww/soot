@@ -56,11 +56,10 @@
   (declare (once) (asm-func none))
   ;(fmt #t "DECLARATIONS vec3::clear {}" (declarations))
   (rlet ((self vec3 :reg ix))
-    (zasm 
       (.ld (-> self x) 0)
       (.ld (-> self y) 0)
       (.ld (-> self z) 0)
-      (.ret))))
+      (.ret)))
 
 (defmethod len ((this vec3 ix))
   (declare (once) (asm-func int16))
@@ -68,14 +67,13 @@
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
   (rlet ((ret  int16 :reg a)) 
-    (zasm
       (.push de)
       (.ld hl (-> this x))
       (.ld de (-> this y))
       (.add hl de)
       (.ld de (-> this z))
       (.add hl de)
-      (.ret))))
+      (.ret)))
 
 (defmethod set ((this vec3 ix) (x int16 hl) (y int16 de) (z int16 bc))
   (declare (once) (asm-func none))
@@ -83,11 +81,10 @@
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
 
-    (zasm
       (.ld (-> this x) hl)
       (.ld (-> this y) de)
       (.ld (-> this z) bc)
-      (.ret)))
+      (.ret))
 
 ;;; ===================================================================== 
 ;;; V-Table
@@ -169,7 +166,6 @@
 (defproc test-call-method-adv ()
   (declare (once) (asm-func none))
   (rlet ((len int16 hl))
-    (zasm
     ;; 1. Загружаем адрес метода
     (.ld ix #x8000)
 
@@ -183,7 +179,7 @@
     (dcall vec3-active::new int16 int16 _type_)
     ;; вызов метода не в таблице
     (dcall test-call-method-adv none)
-  )))
+  ))
 
 ;;; ===================================================================== 
 ;;; Other Tests
@@ -193,23 +189,20 @@
 
 (defproc test-expression ()
   (declare (once) (asm-func none))
-  (zasm 
     (.ld hl (+ ADDR_BASE #x100))    ;; Вычислит $4100
-    (.ret)))
+    (.ret))
 
 (defproc test-jump-optimization ()
   (declare (once) (asm-func none))
-  (zasm
     (.label start)
     (.jump #x8000)
     (.jump 'start)
     (.jump 'exit)
     (.label exit)      
-    (.ret)))
+    (.ret))
 
 (defproc test-data ()
-  (declare (once) (asm-func none))
-  (zasm      
+  (declare (once) (asm-func none))   
     (.label msg_hello)
     (.db "Hello, Z80!" 0)     ;; Строка с нуль-терминатором
     
@@ -217,11 +210,10 @@
     (.dw #x1234 (+ (address-of 'start) 5))  ;; Таблица адресов
     
     (.label buffer)
-    (.ds 8 #xFF)))            ;; Буфер на 32 байта, забитый $FF
+    (.ds 8 #xFF))            ;; Буфер на 32 байта, забитый $FF
       
 (defproc test-address ()     
   (declare (once) (asm-func none))
-  (zasm
     (.org #x8000)          ;; Начинаем с адреса 32768
     
     (.label main)
@@ -234,11 +226,10 @@
     (.label print_char)
     ;; Представим, что здесь вывод в порт
     (.rst #x10)            ;; Системный вызов (напр. в Sinclair ROM)
-    (.ret)))      
+    (.ret))      
 
 (defproc test-string-copy ()      
   (declare (once) (asm-func none))  
-  (zasm
     (.label strcpy)
     (.ld a (@ hl))      ;; Опкод 7E (LD A, (HL))
     (.or a)             ;; Опкод B7 (OR A)
@@ -247,7 +238,7 @@
     (.ld (@ de) a)      ;; ТЕПЕРЬ Ок: Опкод 12 (LD (DE), A)
     (.inc hl)           ;; Опкод 23
     (.inc de)           ;; Опкод 13
-    (.jr 'strcpy)))      ;; Опкод 18 F7 (прыжок назад)
+    (.jr 'strcpy))      ;; Опкод 18 F7 (прыжок назад)
 
 
 ;;; ===================================================================== 

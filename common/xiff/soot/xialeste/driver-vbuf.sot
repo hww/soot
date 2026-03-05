@@ -46,10 +46,8 @@
   (.ret))
 
   (defblock vbuf-block 
-    (zasm
       ;; дескриптор типа
       (.type-descriptor vbuf)   
-    ) ;; end of zasm
   ) ;; end of block
 ) ;; end of segment
 

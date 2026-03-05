@@ -23,53 +23,45 @@
        (asm-error (fmt #f "Scalar emit failed: type {} has size {}" name size))))))
 
 (defmacro .static-new (instance-name type-name &rest args)
-  (let* ((type-obj (~> type-name))
-         (data-map (make-hash-table))
+  (check-args #t (instance-name symbol?) (type-name symbol?))
+  (let* ((type-obj (~> type-name)) ;; Это наш NativeObject класса Type
          (ops '()))
-    
-    ;; 1. Собираем аргументы из args (там лежат :x 100 :y 50 ...)
-    ;; Используем while, так как он надежнее всего работает с парными списками
-    (let* ((plist args))
-      (while (not (null? plist))
-        (let* ((k (car plist))
-               (v (if (not (null? (cdr plist))) (cadr plist) 0)))
-          ;; Ключ k (например, :x) превращаем в строку "x"
-          ;; Важно: если k это :x, symbol->string вернет ":x" или "x" 
-          ;; в зависимости от реализации, поэтому очистим от двоеточия если надо
-          (hash-table-set! data-map (symbol->string k) v)
-          (set! plist (cddr plist)))))
 
-    ;; 2. Базовая метка структуры (теперь точно есть)
     (push! `(.label ,instance-name) ops)
-    (emit-space (fmt #f "static-new {}" ',instance-name))
+    (emit-space (fmt #f "static-new {} ({})" instance-name type-name))
 
-    ;; 3. Проход по всем полям через C++ итератор
-    (type-for-each-field type-obj
-      (lambda (idx offset field)
-        (let* ((f-name (-> field :name))
-               (f-tspec (-> field :type-spec))
-               (f-base (-> f-tspec :base-type))
-               ;; Ищем значение в мапе. Пробуем f-name, ":f-name" и т.д.
-               (val (or (hash-table-ref data-map f-name #f)
-                        (hash-table-ref data-map (string-append ":" f-name) 0)))
+    (cond
+      ;; СЛУЧАЙ А: Структура (проверяем через иерархию классов в C++)
+      ((type? 'structure-type type-obj)
+       (let ((data-map (make-hash-table))
+             (plist args))
+         (while (not (null? plist))
+           (let ((k (car plist))
+                 (v (if (not (null? (cdr plist))) (cadr plist) 0)))
+             (hash-table-set! data-map (symbol->string k) v)
+             (set! plist (cddr plist))))
+
+         (type-for-each-field type-obj
+           (lambda (idx offset field)
+             (let* ((f-name (-> field :name))
+                    (f-type-name (-> field :type-spec :base-type))
+                    (f-type-obj (~> (string->symbol f-type-name)))
+                    (val (or (hash-table-ref data-map f-name #f)
+                             (hash-table-ref data-map (string-append ":" f-name) 0)))
+                    (f-label (string->symbol (fmt #f "{}::{}" instance-name f-name))))
                
-               ;; Генерируем метку доступа instance::field
-               (f-label (string->symbol (fmt #f "{}::{}" instance-name f-name))))
-          
-          ;; Метка для каждого байта поля
-          (push! `(.label ,f-label) ops)
+               (push! `(.label ,f-label) ops)
+               (push! (.emit-type-data f-type-obj val) ops))))))
 
-          ;; 4. Генерация данных
-          (push! 
-            (cond
-              ((or (eq? f-base "pointer") 
-                   (member f-base '("int16" "uint16" "word" "int" "uint")))
-               `(.dw ,val))
-              (else `(.db ,val)))
-            ops))))
+      ;; СЛУЧАЙ Б: Скаляр (int8, uint16, pointer и т.д.)
+      (#t
+       (let ((val (if (null? args) 0 (car args))))
+         ;; Передаем сам объект типа
+         (push! (.emit-type-data type-obj val) ops))))
 
     `(begin ,@(reverse ops))))
-    
+
+
 ;;; =====================================================================
 ;;; Validations of arguments
 ;;; =====================================================================
@@ -106,36 +98,25 @@
 ;;; Procedures
 ;;; =====================================================================
 
-
-
 (defmacro defproc (name args &rest body)
-  (fmt #t "DEBUG: Expanding .defproc for {}\n" name)
   (let* ((label-name name)
-         ;; Собираем аргументы для rlet: (имя тип регистр) -> (имя тип :reg регистр)
-         (reg-args (filter (lambda (x) (and (list? x) (= (length x) 3))) args))
-         (rlet-args (map (lambda (x) `(,(car x) ,(cadr x) :reg ,(caddr x))) reg-args))
-         ;; Для системы типов SOOT (C++ уровень)
-         (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args)))
+         (decl (assoc 'declare body))
+         (clean-body (if decl (remove decl body) body))
+         ;; Трансформируем аргументы прямо здесь:
+         (rlet-bindings (map (lambda (arg) 
+                               (list (car arg) (cadr arg) :reg (caddr arg))) 
+                             (filter (lambda (x) (and (list? x) (= (length x) 3))) args))))
     
     `(let ((impl (lambda ()
-                   (fmt #t "DEBUG: Execute pass .defproc for {}\n" ',name)
-                   ;; Системная декларация для SOOT
-                   (declare-extern ,label-name (function ,arg-types none))
-                   ;; Настройка псевдонимов регистров
-                   (rlet asm-regs ,rlet-args
-                     (zasm 
-                       (emit-space (fmt #f "function {}" ',label-name))
-                       (.label ,label-name :scope 'public)
-                       ,@body
-                       (.ret)
-                       (define-function ',name (current-function 'function)))))))
+                   (rlet asm-regs ,rlet-bindings
+                     ,@(if decl (list decl) '())
+                     (.label ,label-name :scope 'public)
+                     (assemble-lines ',clean-body)
+                     (.ret)))))
        
-       ;; РЕГИСТРАЦИЯ: чтобы ассемблер прошел по этой функции
-       (add-function 'global ',label-name ',label-name impl (current-segment-name))       
-      
-       ;; Экспорт в окружение Липа
-       (define ,name impl :env *global-env*)
-       (function-name! ,name ',name))))
+       (add-function 'global ',label-name ',label-name impl (current-segment-name))
+       (define ,label-name impl)
+       (function-name! ,label-name ',label-name))))
        
 (defmacro call-proc (name &rest args)
   "Пример: (call-proc copy-string :dest buffer :src msg)"
@@ -370,7 +351,7 @@
   (let* ((parts (string-split (symbol->string method-sym) "::")) ;; (vec3 len)
          (m-id (method-id-of (car parts) (cadr parts)))
          (offset (* 3 m-id))) ;; Смещение в VTable (3 байта на JMP)
-`(zasm
+    `(begin
        (.push hl)       ; Сохраняем HL (аргумент)
        (.push bc)       ; Сохраняем BC (может быть аргументом)
        
@@ -415,7 +396,7 @@
                   target-sig call-sig)))
     
     ;; Генерация кода
-    `(zasm
+    `(begin
        ;; Адрес метода уже на стеке (от obj-method-address-push)
        ;; Кладем адрес возврата
        (.ld iy ',lab-exit)  ;; убрали quote - это метка, а не символ
@@ -459,13 +440,38 @@
     (cond
       ;; Метка VTable (TypeSpec, но не функция)
       ((and (type-spec? func) (not (type? 'function func)))
-       `(zasm (.call ,(module-label-addr-get target))))
+       `(.call ,(module-label-addr-get target)))
       
       ;; Настоящая функция
       ((function? func)
-       `(zasm (.call ,(module-label-addr-get target))))
+       `(.call ,(module-label-addr-get target)))
       
       (else (error "Unexpected")))))
+
+;;; =====================================================================
+;;; Compile lines of code
+;;; =====================================================================
+
+(defun assemble-lines (lines)
+  (for-each lines (lambda (line)
+    (when (and line (not (null? line)))
+      (with-error-handler 
+        (lambda (msg err-form trace)
+          (fmt #t "\n[!] ASM ERROR in line: {}\n    Message: {}\n" line msg)
+          #t)
+        
+        (cond 
+          ;; СЛУЧАЙ А: Это мета-инструкция (declare ...)
+          ;; Мы НЕ шлем её в eval как список, а вызываем напрямую,
+          ;; чтобы она сработала в текущем динамическом контексте.
+          ((and (pair? line) (eq? (car line) 'declare))
+           (apply declare (cdr line))) ; Используем apply, чтобы зайти в функцию
+
+          ;; СЛУЧАЙ Б: Это обычный список (инструкция)
+          ((pair? line) (eval line))
+
+          ;; СЛУЧАЙ В: Метка или данные
+          (else line)))))))
 
 ;;; =====================================================================
 ;;; defcode - регистрация произвольного кода для компиляции
@@ -481,29 +487,16 @@
 ;;;     (.ld bc #x400)
 ;;;     (.ld a #x20)
 ;;;     (.fill bc a))
-(defmacro defblock (name &key (segment #f) (scope 'public) (align 1) &rest body)
-  (let ((seg-sym (if segment 
-                     segment  ; уже символ
-                     (current-segment-name)))  ; тоже символ
-    
-        (label-name (if (symbol? name) 
-						;; use name because it is defined
-                        name 
-						;; make a generic name
-                        (intern (fmt #f "block::{}" (gensym))))))
+(defmacro defblock (name &key (segment #f) (scope 'public) &rest body)
+  (let ((label-name (or name (gensym "block"))))
     `(let ((impl (lambda ()
-                   (fmt #t "DEBUG: Execute pass .defblock for '{}' body {}\n" ',name ,body)
-                   (with-segment ,seg-sym  ; ← seg-sym уже символ, не надо unquote-sym
-					 (with-asm-context ',@body
-                       (emit-space (fmt #f "code block {}" ',label-name))
-                       (.label ,label-name :scope ',scope)
-                       (zasm ,@body))))))
+                   ;; Мы передаем квотированный body прямо в функцию
+                   ;; Интерпретатор просто подставит этот список сюда
+                   (.label ',label-name :scope ',scope)
+                   (assemble-lines ',body))))
        
-       ;; Регистрация
-       (add-function 'global ',label-name ',label-name impl ',seg-sym)
-       
-       ;; Экспорт в окружение
-       (define ,label-name impl :env *global-env*)
+       (add-function 'global ',label-name ',label-name impl ',segment)
+       (define ,label-name impl)
        (function-name! ,label-name ',label-name))))
 
 (defmacro defcode (name &key (segment code) (scope 'public) (align 1) &rest body) 

@@ -358,6 +358,7 @@
 
 (defmacro with-module (name &rest body)
   "Временно переключается на указанный модуль"
+  (fmt #t "DEBUG expand with-module {}\n" name)
   `(let ((old-module *current-module*)
          (old-segment *current-segment*))
      (set-current-module! ',name)
@@ -369,7 +370,7 @@
 (defmacro with-segment (seg-name &rest body)
   "Временно переключается на указанный сегмент"
     (assert (not (eq? seg-name 'seg-name)))
-  (fmt #t "DEBUG {}\n" seg-name)
+  (fmt #t "DEBUG expand with-segment {}\n" seg-name)
   `(let ((old-segment *current-segment*))
      (set-current-segment! ',seg-name)  ; ← всегда кавычим
      ,@body
