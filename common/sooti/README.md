@@ -1479,7 +1479,7 @@ Assign or replace method implementations at runtime.
   (z float))
 
 ;; Default method implementation
-(defmethod length ((v vector3))
+(.defmethod length ((v vector3))
   (sqrt (+ (expt (-> v 'x) 2)
            (expt (-> v 'y) 2)
            (expt (-> v 'z) 2))))
@@ -1556,7 +1556,7 @@ struct Register {
 
 ```scheme
 ;; Generic implementation
-(defmethod read-sensor ((dev device))
+(.defmethod read-sensor ((dev device))
   (sleep 0.01)
   (io-read (-> dev 'port)))
 

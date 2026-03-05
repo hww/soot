@@ -8,10 +8,10 @@
 5. [Управление адресами](#управление-адресами)
 6. [Модули и сегменты](#модули-и-сегменты)
 7. [Регистровые псевдонимы (rlet)](#регистровые-псевдонимы-rlet)
-8. [Процедуры (defproc)](#процедуры-defproc)
-9. [Методы и ООП (defmethod)](#методы-и-ооп-defmethod)
+8. [Процедуры (.defproc)](#процедуры-.defproc)
+9. [Методы и ООП (.defmethod)](#методы-и-ооп-.defmethod)
 10. [Виртуальные таблицы](#виртуальные-таблицы-vtable)
-11. [Вызов методов (dcall/ycall)](#вызов-методов-dcallycall)
+11. [Вызов методов (.dcall/ycall)](#вызов-методов-dcallycall)
 12. [Структуры и данные](#структуры-и-данные-static-new)
 13. [Директивы высокого уровня](#директивы-высокого-уровня)
 14. [Сохранение результатов](#сохранение-результатов)
@@ -298,7 +298,7 @@
 `rlet` позволяет связать логические переменные с физическими регистрами:
 
 ```lisp
-(defproc process-vector ()
+(.defproc process-vector ()
   (rlet ((x int16 hl)        ; переменная x в регистре HL
          (y int16 de)         ; y в DE
          (z int16 bc)         ; z в BC
@@ -315,11 +315,11 @@
 
 ---
 
-## Процедуры (defproc)
+## Процедуры (.defproc)
 
 ```lisp
 ;; Простая процедура без аргументов
-(defproc delay ()
+(.defproc delay ()
   (declare (once) (asm-func none))
   (zasm
     (.label loop)
@@ -330,7 +330,7 @@
     (.ret)))
 
 ;; Процедура с регистровыми аргументами
-(defproc copy-string ((dest string :reg de) 
+(.defproc copy-string ((dest string :reg de) 
                        (src string :reg hl))
   (declare (once) (asm-func none))
   (zasm
@@ -344,7 +344,7 @@
     (.jr 'loop)))
 
 ;; Процедура, возвращающая значение
-(defproc sum ((a int16 hl) (b int16 de) (c int16 bc))
+(.defproc sum ((a int16 hl) (b int16 de) (c int16 bc))
   (declare (once) (asm-func int16))  ; возвращает int16
   (rlet ((result int16 hl))
     (zasm
@@ -355,7 +355,7 @@
 
 ---
 
-## Методы и ООП (defmethod)
+## Методы и ООП (.defmethod)
 
 ### Определение типа
 
@@ -373,7 +373,7 @@
 ### Метод экземпляра (instance method)
 
 ```lisp
-(defmethod len ((self vec3 ix))  ; self в регистре IX
+(.defmethod len ((self vec3 ix))  ; self в регистре IX
   (declare (once) (asm-func int16))
   (rlet ((result int16 hl))
     (zasm
@@ -388,7 +388,7 @@
 ### Метод-конструктор (static method)
 
 ```lisp
-(defmethod new vec3 ((x int16 hl) (y int16 de) (z int16 bc))
+(.defmethod new vec3 ((x int16 hl) (y int16 de) (z int16 bc))
   (declare (once) (asm-func _type_))
   (rlet ((this pointer ix))
     (zasm
@@ -405,7 +405,7 @@
 ### Метод с побочными эффектами
 
 ```lisp
-(defmethod clear ((self vec3 ix))
+(.defmethod clear ((self vec3 ix))
   (declare (once) (asm-func none))
   (zasm
     (.ld (-> self x) 0)
@@ -421,7 +421,7 @@
 ### Генерация VTable
 
 ```lisp
-(defproc setup-vtables ()
+(.defproc setup-vtables ()
   (declare (once) (asm-func none))
   (zasm
     ;; Генерируем VTable для типа vec3
@@ -439,14 +439,14 @@ vec3::vtable:
 ### Прокси-таблица (для драйверов/плагинов)
 
 ```lisp
-(defproc setup-proxy ()
+(.defproc setup-proxy ()
   (declare (once) (asm-func none))
   (zasm
     ;; Создаём прокси-таблицу в RAM
     (.vtable-proxy vec3 'vec3-active)))
     
 ;; Переключение драйвера
-(defproc switch-to-vec3 ()
+(.defproc switch-to-vec3 ()
   (declare (once) (asm-func none))
   (zasm
     (.switch-vtable vec3 'vec3-active)))
@@ -454,29 +454,29 @@ vec3::vtable:
 
 ---
 
-## Вызов методов (dcall/ycall)
+## Вызов методов (.dcall/ycall)
 
-### Прямой вызов (dcall)
+### Прямой вызов (.dcall)
 
 ```lisp
-(defproc test-direct-call ()
+(.defproc test-direct-call ()
   (declare (once) (asm-func none))
   (zasm
     ;; Вызов статического метода
-    (dcall vec3::new int16 int16 int16 _type_)
+    (.dcall vec3::new int16 int16 int16 _type_)
     
     ;; Вызов метода экземпляра
     (.ld ix #x8000)              ; объект в IX
-    (dcall vec3::len int16)))
+    (.dcall vec3::len int16)))
     
     ;; Вызов процедуры
-    (dcall delay none)))
+    (.dcall delay none)))
 ```
 
-### Вызов через VTable (ycall)
+### Вызов через VTable (.ycall)
 
 ```lisp
-(defproc test-virtual-call ()
+(.defproc test-virtual-call ()
   (declare (once) (asm-func none))
   (rlet ((len int16 hl))
     (zasm
@@ -484,16 +484,16 @@ vec3::vtable:
       (.ld ix #x8000)
       
       ;; Загружаем адрес метода из VTable
-      (obj-method->iy ix vec3::len)
+      (.obj-method->iy ix vec3::len)
       
       ;; Вызываем через IY
-      (ycall vec3::len vec3 len))))
+      (.ycall vec3::len vec3 len))))
 ```
 
 ### Получение адреса метода
 
 ```lisp
-(obj-method->iy ix vec3::len)  ; IY = адрес метода len для объекта в IX
+(.obj-method->iy ix vec3::len)  ; IY = адрес метода len для объекта в IX
 ```
 
 ---
@@ -507,7 +507,7 @@ vec3::vtable:
    (y int16)))
 
 ;; Статическое создание экземпляра
-(defproc create-data ()
+(.defproc create-data ()
   (declare (once) (asm-func none))
   (zasm
     (.static-new p1 point
@@ -604,7 +604,7 @@ p1::y:  DW 200
     (len () int16)))
 
 ;; Реализация метода
-(defmethod len ((self vec3 ix))
+(.defmethod len ((self vec3 ix))
   (declare (once) (asm-func int16))
   (zasm
     (.ld hl (-> self x))
@@ -615,7 +615,7 @@ p1::y:  DW 200
     (.ret)))
 
 ;; Процедура инициализации
-(defproc init ()
+(.defproc init ()
   (declare (once) (asm-func none))
   (zasm
     (.org #x8000)
@@ -626,10 +626,10 @@ p1::y:  DW 200
     (.ld hl 10)        ; x = 10
     (.ld de 20)        ; y = 20
     (.ld bc 30)        ; z = 30
-    (dcall vec3::new int16 int16 int16 _type_)
+    (.dcall vec3::new int16 int16 int16 _type_)
     
     ;; Вычисляем длину
-    (dcall vec3::len int16)
+    (.dcall vec3::len int16)
     
     ;; Бесконечный цикл
     (.label loop)

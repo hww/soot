@@ -431,9 +431,9 @@ Object Type::get_at(const Object &key) {
         return Object::make_string(this->class_name());
     if (name == ":parent")
         return Object::make_string(this->get_parent());
-    if (name == ":size")
+    if (name == ":size" || name == ":size-in-memory")
         return Object::make_integer(this->get_size_in_memory());
-    if (name == ":alignment")
+    if (name == ":alignment" || name == ":in-memory-alignment")
         return Object::make_integer(this->get_in_memory_alignment());
     if (name == ":boxed?")
         return Object::make_boolean(this->is_boxed());
@@ -441,6 +441,9 @@ Object Type::get_at(const Object &key) {
         return Object::make_integer(this->get_num_methods());
     if (name == ":has-methods")
         return Object::make_boolean(this->get_num_methods() > 0);
+    if (name == ":is-reference")
+        return Object::make_boolean(false);
+
     // -----------------------------------
     if (name == ":methods") {
         ListBuilder lb;
@@ -520,7 +523,7 @@ Object Type::get_at(const Object &key) {
             return Object::make_heap_obj(method_ptr);
         }
     }
-    return Object::make_none();
+    throw std::runtime_error(fmt::format("Type.get_at called with unknown key {}", name));
 }
 
 // ============================================================================
@@ -912,6 +915,8 @@ Object ReferenceType::get_at(const Object &key) {
         // Допустим, у нас есть маппинг энума в строку
         return Object::make_string(reg_kind_to_string(this->get_preferred_reg_class()));
     }
+    if (name == ":is-reference")
+        return Object::make_boolean(true);
     // 2. Если это не наше, просим ответить базовый класс Type
     // Важно: мы ВОЗВРАЩАЕМ результат этого вызова
     return Type::get_at(key);
@@ -1191,8 +1196,6 @@ Object BasicType::get_at(const Object &key) {
     // 1. Сначала проверяем свойства, специфичные для BasicType
     if (name == ":final?")
         return Object::make_boolean(this->final());
-    if (name == ":class-name")
-        return Object::make_string(this->class_name());
 
     // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
     // BasicType -> StructureType -> ReferenceType -> Type
