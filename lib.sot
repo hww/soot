@@ -497,7 +497,11 @@
     ((symbol? place)
      `(set! ,place (cons ,val ,place)))
 
-    ;; 2. Место — это вызов функции (например, (struct-ref s :op))
+    ;; 2. Если пришло (quote символ), достаем символ и работаем с ним
+    ((and (list? place) (eq? (car place) 'quote))
+     `(set! ,(cadr place) (cons ,val ,(cadr place))))
+
+    ;; 3. Место — это вызов функции (например, обращение к полю структуры)
     ((list? place)
      (let ((getter (car place))
            (args (cdr place))
@@ -505,9 +509,9 @@
        (if setter
            ;; Если нашли сеттер (struct-set!), генерируем вызов
            `(,setter ,@args (cons ,val ,place))
-           (error "No setter registered for: " getter))))
+           (error (fmt #f "No setter registered for: {} in form {}" getter place)))))
 
-    (#t (error "Unsupported place for push!: " place))))
+    (#t (error (fmt #f "Unsupported place for push!: {}" place)))))
 
 
 ;; @doc (pop! lst)

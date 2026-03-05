@@ -380,3 +380,11 @@
     (set-current-segment! seg-name)
     (thunk)
     (set! *current-segment* old-segment)))
+
+(defun in-module (name) 
+  "Set module as the side effect"
+  (set-current-module! name))
+
+(defun in-segment (name) 
+  "Set module as the side effect"
+  (set-current-segment! name))

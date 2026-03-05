@@ -704,10 +704,10 @@
   (let ((result '()))
     (for-each body (lambda (form)
       (push! `(begin
-                (set! *source-context* ',form)
+                (with-asm-context ',form
                 (if (list? ',form)
                     ,form 
-                    (asm-error (fmt #f "Expected expression, got {}" ',form))))
+                    (asm-error (fmt #f "Expected expression, got {}" ',form)))))
              result)))
 
        `(begin ,@(reverse result))))
@@ -754,7 +754,7 @@
               (with-error-handler 
                 (lambda (msg err-form trace)
                   ;; Добавляем "этаж" контекста
-                  (list *source-context* "ZASM Expansion error")) 
+                  (list (source-context) "ZASM Expansion error")) 
                 (set! *current-method* m)
                 ((method-func m))))))))
       (fmt #t "Assembly of module '{}' finished.\n" name))))

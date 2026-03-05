@@ -4,6 +4,24 @@
 ;;; Structures
 ;;; =====================================================================
 
+(defun .emit-type-data (type-obj value)
+  "Генерирует .db/.dw на основе свойств объекта Type"
+  (let* ((name (-> type-obj :name))
+         (size (-> type-obj :size-in-memory))
+         (is-ref (-> type-obj :is-reference)))
+    (cond
+      ;; Если это ссылка (указатель) — всегда 16 бит на Z80
+      (is-ref `(.dw ,value))
+      
+      ;; Ориентируемся на размер, который вернуло ядро C++
+      ((= size 1) `(.db ,value))
+      ((= size 2) `(.dw ,value))
+      
+      ;; Если размер больше (например, fixed-point или массив), 
+      ;; но мы в скалярном режиме — это странно, выдаем ошибку
+      (else 
+       (asm-error (fmt #f "Scalar emit failed: type {} has size {}" name size))))))
+
 (defmacro .static-new (instance-name type-name &rest args)
   (let* ((type-obj (~> type-name))
          (data-map (make-hash-table))
@@ -91,6 +109,7 @@
 
 
 (defmacro defproc (name args &rest body)
+  (fmt #t "DEBUG: Expanding .defproc for {}\n" name)
   (let* ((label-name name)
          ;; Собираем аргументы для rlet: (имя тип регистр) -> (имя тип :reg регистр)
          (reg-args (filter (lambda (x) (and (list? x) (= (length x) 3))) args))
@@ -99,6 +118,7 @@
          (arg-types (map (lambda (x) (if (list? x) (cadr x) 'object)) args)))
     
     `(let ((impl (lambda ()
+                   (fmt #t "DEBUG: Execute pass .defproc for {}\n" ',name)
                    ;; Системная декларация для SOOT
                    (declare-extern ,label-name (function ,arg-types none))
                    ;; Настройка псевдонимов регистров
@@ -131,11 +151,13 @@
 ;;; =====================================================================
 
 (defmacro defmethod-instance (name args &rest body)
+  (fmt #t "DEBUG: Expanding .defmethod for {}\n" name)
   (let* ((this-spec (car args))      ;; (self :vec3)
          (this-type (cadr this-spec))
          (label-sym (intern (fmt #f "{}::{}" this-type name)))
          )
     `(let ((impl (lambda ()
+                   (fmt #t "DEBUG: Executing pass .defmethod for {}\n" ',name)
                    (rlet asm-regs ,args;((,(car this-spec) ,this-type :reg ix))
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
@@ -465,13 +487,17 @@
                      (current-segment-name)))  ; тоже символ
     
         (label-name (if (symbol? name) 
+						;; use name because it is defined
                         name 
-                        (intern (fmt #f "block::{}" name)))))
+						;; make a generic name
+                        (intern (fmt #f "block::{}" (gensym))))))
     `(let ((impl (lambda ()
+                   (fmt #t "DEBUG: Execute pass .defblock for '{}' body {}\n" ',name ,body)
                    (with-segment ,seg-sym  ; ← seg-sym уже символ, не надо unquote-sym
-                     (emit-space (fmt #f "code block {}" ',label-name))
-                     (.label ,label-name :scope ',scope)
-                     (zasm ,@body)))))
+					 (with-asm-context ',@body
+                       (emit-space (fmt #f "code block {}" ',label-name))
+                       (.label ,label-name :scope ',scope)
+                       (zasm ,@body))))))
        
        ;; Регистрация
        (add-function 'global ',label-name ',label-name impl ',seg-sym)
@@ -485,3 +511,26 @@
 
 (defmacro defdata (name &key (segment data) (scope 'public) (align 1) &rest body) 
   `(defblock ,name :segment ,segment :scope ,scope :align ,align ,@body))
+
+
+
+;;; ===================================================================== 
+;;; Structure instance better way
+;;; =====================================================================
+
+(defmacro .defvar (name type-name &key (scope 'public) &rest args)
+  "Создает мутабельную структуру в сегменте DATA.
+   Пример: (.defvar my-pos vector2 :x 10 :y 20)"
+  (check-args #t (name symbol?))
+  (check-args #t (type-name symbol?))
+  ;; Извлекаем :scope если он есть, иначе 'public
+  `(.defblock :segment data :scope ,scope
+     (.static-new ,name ,type-name ,@args)))
+
+(defmacro .defconst (name type-name &key (scope 'public) &rest args)
+  "Создает неизменяемую структуру в сегменте RODATA.
+   Пример: (.defconst vbuf-cfg vbuf :width 640)"
+  (check-args #t (name symbol?))
+  (check-args #t (type-name symbol?))
+  `(.defblock :segment rodata :scope ,scope
+     (.static-new ,name ,type-name ,@args)))

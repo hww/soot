@@ -227,16 +227,29 @@
 ;;; Errors and Logs
 ;;; =====================================================================
 
+(defvar *asm-context-stack* '()  "Метаданные исходного кода для обработки ошибок.")
+
+(defmacro with-asm-context (info &rest body)
+  "Максимально надежная версия без использования push!"
+  `(begin
+     (set! *asm-context-stack* (cons ,info *asm-context-stack*))
+     (let ((res (begin ,@body)))
+       (set! *asm-context-stack* (cdr *asm-context-stack*))
+       res)))
+
+(defun source-context ()
+  "Get top context"
+  (if (null? *asm-context-stack*) 
+    null  ;; "no context!"  
+    (car *asm-context-stack*)))
+
 (defun asm-source-info ()
-  (let ((info (source-info *source-context*)))
+  (let ((info (source-info (source-context))))
     (if info
         (fmt #f "at {}:{}" (getf info :file) (getf info :line))
         "at unknown:0")))
 
-
-(defvar *source-context* null "Метаданные исходного кода для обработки ошибок.")
-
-(defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx *source-context*))
+(defun asm-error (message) (error (fmt #f "{} {}" ( get-pass-signature ) message) :ctx (source-context)))
 
 (defun asm-warning (message) (print (fmt #f "{} {} {}" ( get-pass-signature ) (asm-source-info) message)))
 
@@ -247,7 +260,7 @@
 (defmacro check-type (var predicate)
   `(when (not (,predicate ,var))
     (error (fmt #f "Variable `{}` failed type check `{}` because value: `{}` of type {}" 
-      ',var ',predicate ,var (type-of ,var) *source-context*))))
+      ',var ',predicate ,var (type-of ,var) (source-context)))))
 
 ;;; =====================================================================
 ;;; Contracts
