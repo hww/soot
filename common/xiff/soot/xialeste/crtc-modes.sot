@@ -5,7 +5,7 @@
 
 (with-segment  data
 
-(defblock crtc_mode_tables 
+(defblock crtc-mode-tables 
         (.dw 'mode_cpc_mode2)       ; 0
         (.dw 'mode_cpc_mode1)       ; 1
         (.dw 'mode_cpc_mode0)       ; 2

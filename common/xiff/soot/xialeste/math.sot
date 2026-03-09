@@ -1,17 +1,25 @@
 ﻿
-
+;; For a character coordinates
 (deftype vector2b (structure)
   ((data int8 2 :offset-assert 0)
    (x    int8   :offset        0)
    (y    int8   :offset        1)
    (clr  int16  :offset        0)
-   )
-  )
+   ))
 
+;; For a pixel coordiables 
 (deftype vector2 (structure)
   ((data int16 2 :offset-assert 0)
    (x    int16   :offset        0)
    (y    int16   :offset        2)
-   )
+   ))
 
-  )
+;; -----------------------------------------
+;; Has the address and pixel mask 
+;; The mask has 1,2,4 or 8 bits equal 1.
+;; This tecniques can't swap bits it is just
+;; -----------------------------------------
+(deftype pixel-ref (structure)
+  ((address uint16) ;; Address of the byte
+   (mask uint8)     ;; Bits of the pixel
+  ))
