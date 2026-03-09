@@ -71,4 +71,31 @@
   (.type-descriptor driver)   
   )
 
+; ==============================================================================
+; Driver memory management
+; ==============================================================================
+
+(defvar *memory-hash* uint8)
+
+(deftype memorymap (structure)
+  ((hash uint8)   ;; hash value
+   (slots uint8)  ;; slot retgister state
+   (map uint8 4)) ;; mapper state
+   (:methods
+    (ensure (_type_) none)))
+#|
+
+
+(.defmethod new driver ()
+  (declare (once) (asm-func _type_))
+  (.ret))
+
+(with-segment code
+  ;; Make descriptor
+  (.defproc make-memorymap-descriptors ()
+    (declare (once) (asm-func none))
+    (.type-descriptor driver)   
+    )
+)
+|#
 ) ;; end of segment
