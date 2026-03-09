@@ -49,25 +49,25 @@
 
 ;; Пример для твоего синтаксиса (как в sprite-aux-list)
 (defmethod new driver ()
-  (declare (once) (asm-func _type_))
+  (declare (asm-func _type_))
   (.ret))
 (defmethod detect ((this driver))
-  (declare (once) (asm-func bool))
+  (declare (asm-func bool))
   (.ret))
 (defmethod install ((this driver))
-  (declare (once) (asm-func bool))
+  (declare (asm-func bool))
   (.ret))
 (defmethod uninstall ((this driver))
-  (declare (once) (asm-func bool))
+  (declare (asm-func bool))
   (.ret))
 (defmethod command ((this driver) (cmd uint8) (arg1 int16) (arg2 int16))
-  (declare (once) (asm-func int16))
+  (declare (asm-func int16))
   (.ret))
 
 
 ;; Make descriptor
 (defproc make-driver-descriptors ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (.type-descriptor driver)   
   )
 

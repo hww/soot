@@ -248,6 +248,12 @@ class Interpreter {
                             const std::shared_ptr<EnvironmentObject> &env);
     Object eval_env(const Object &form, Arguments &args,
                     const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_env_name_get(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_env_name_set(const Object &form, Arguments &args,
+                             const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_current_env(const Object &form, Arguments &args,
+                            const std::shared_ptr<EnvironmentObject> &env);
     Object eval_defined_p(const Object &form, Arguments &args,
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lookup(const Object &form, Arguments &args,
@@ -596,6 +602,8 @@ class Interpreter {
                                   const std::shared_ptr<EnvironmentObject> &env);
     Object eval_function_type_set(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env);
+    Object eval_function_type_make(const Object &form, Arguments &args,
+                                   const std::shared_ptr<EnvironmentObject> &env);
     Object eval_function_name_get(const Object &form, Arguments &args,
                                   const std::shared_ptr<EnvironmentObject> &env);
     Object eval_function_name_set(const Object &form, Arguments &args,

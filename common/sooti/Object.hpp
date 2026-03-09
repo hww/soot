@@ -1453,14 +1453,15 @@ class EnvironmentObject : public HeapObject {
 };
 
 struct DeclareSettings {
-    bool   is_set = false; // has the user set these with a (declare)?
-    bool   once = false;
+    bool   is_set = false;            // has the user set these with a (declare)?
     bool   inline_by_default = false; // if a function, inline when possible?
     bool   save_code = true;          // if a function, should we save the code?
     bool   allow_inline = false;      // should we allow the user to use this an inline function
     bool   print_asm = false;         // should we print out the asm for this function?
     bool   allow_saved_regs = false;
-    Object typespec; // Type spec of this function
+    Object name;
+    Object return_type; // The return type only
+    Object typespec;    // Type spec of this function
 };
 
 class FunctionObject : public HeapObject {

@@ -323,13 +323,14 @@
   (label null)  ;; Полное имя метки (для JMP/CALL)
   (func  null)  ;; Лямбда с кодом (внутри которой zasm)
   (name  null) ;; Короткое имя для логов/ошибок
-  (segment null))
+  (segment null)
+  (ctx null))
 
 (defvar *methods-to-assemble* '() "Список всех методов, ожидающих компиляции")
 (defvar *current-method* null)
 
-(defun add-function (type name label fun segment)
-  (push! (make-method :func fun :name name :label label :segment (unquote-sym segment)) *methods-to-assemble*))
+(defun add-function (type name label fun segment ctx)
+  (push! (make-method :func fun :name name :label label :segment (unquote-sym segment) :ctx ctx) *methods-to-assemble*))
 
 (defun get-function (type name)
     (eval (string->symbol (fmt #f "{}::{}" type name))))

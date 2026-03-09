@@ -38,11 +38,11 @@
 
 (defmethod new vbuf ()
   ;; The dummy constructor
-  (declare (once) (asm-func _type_))
+  (declare (asm-func _type_))
   (.ret))
 
 (defmethod set-char-addr ((this vbuf) (x int8) (y int8))
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (.ret))
 
   (defblock vbuf-block 

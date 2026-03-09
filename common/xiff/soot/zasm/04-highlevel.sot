@@ -109,12 +109,15 @@
     
     `(let ((impl (lambda ()
                    (rlet asm-regs ,rlet-bindings
+                     (declare (this) (asm-func none))
                      ,@(if decl (list decl) '())
                      (.label ,label-name :scope 'public)
-                     (assemble-lines ',clean-body)
-                     (.ret)))))
+                     (assemble-lines ',clean-body (current-env))
+                     (.ret)
+                     (function-type-make)
+                     (fmt #t "DEBUG defproc {}\n" (function-type (current-function 'function)))))))
        
-       (add-function 'global ',label-name ',label-name impl (current-segment-name))
+       (add-function 'global ',label-name ',label-name impl (current-segment-name) ',body)
        (define ,label-name impl)
        (function-name! ,label-name ',label-name))))
        
@@ -140,16 +143,19 @@
     `(let ((impl (lambda ()
                    (fmt #t "DEBUG: Executing pass .defmethod for {}\n" ',name)
                    (rlet asm-regs ,args;((,(car this-spec) ,this-type :reg ix))
+                     (declare (this) (asm-func none))
                      (emit-space (fmt #f "instance-method {}" ',label-sym))
                      (.label ,label-sym :scope 'public)
-                     (zasm ,@body)
+                     (assemble-lines ',body (current-env))
                      (.ret)
+                     (function-type-make)
+                     (fmt #t "DEBUG defmethod-instance {}\n" (function-type (current-function 'function)))
                      (define-method ',this-type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
         (define ,label-sym impl :env *global-env*)
         (function-name! ,label-sym ',label-sym)
         ;; Сохраняем в реестр вместо немедленной регистрации
-        (add-function ',this-type ',name ',label-sym impl (current-segment-name))
+        (add-function ',this-type ',name ',label-sym impl (current-segment-name) ',body)
         )))
 
 (defmacro defmethod-static (name type args &rest body)
@@ -158,20 +164,22 @@
         (rlet-bindings (filter (lambda (x) (list? x)) args))
         )
     `(let ((impl (lambda () 
-                   ;; Убрали ` перед rlet! Теперь это код, а не данные.
+                   (fmt #t "DEBUG: Executing pass .defmethod for {}\n" ',name)
                    (rlet asm-regs ,args ;,rlet-bindings  
-                      (zasm 
+                      (declare (this) (asm-func none))
                       (emit-space (fmt #f "static-method {}" ',label-sym))
                       (.label ,label-sym :scope 'public)
                       ;; Тут важно: если body содержит макросы (типа zasm), 
                       ;; они должны раскрыться здесь.
-                      ,@body
+                      (assemble-lines ',body (current-env))
                       (.ret)
-                      (define-method ',type  ',name (current-function 'function)))))))
+                      (function-type-make)
+                      (fmt #t "DEBUG defmethod-static {}\n" (function-type (current-function 'function)))
+                      (define-method ',type  ',name (current-function 'function))))))
         ;; Экспорт в окружение Липа
         (define ,label-sym impl :env *global-env*)  
         (function-name! ,label-sym ',label-sym) 
-        (add-function ',type ',name ',label-sym impl (current-segment-name))
+        (add-function ',type ',name ',label-sym impl (current-segment-name) ',body)
         )))
 
 (defmacro defmethod (name type-or-args &rest body)
@@ -452,26 +460,16 @@
 ;;; Compile lines of code
 ;;; =====================================================================
 
-(defun assemble-lines (lines)
+(defun assemble-lines (lines env)
+  "Компилирует код и печатает ошибку"
   (for-each lines (lambda (line)
     (when (and line (not (null? line)))
       (with-error-handler 
         (lambda (msg err-form trace)
-          (fmt #t "\n[!] ASM ERROR in line: {}\n    Message: {}\n" line msg)
+          ;; Добавляем "этаж" контекста
+          (list line (fmt #f "ASM ERROR in line")) 
           #t)
-        
-        (cond 
-          ;; СЛУЧАЙ А: Это мета-инструкция (declare ...)
-          ;; Мы НЕ шлем её в eval как список, а вызываем напрямую,
-          ;; чтобы она сработала в текущем динамическом контексте.
-          ((and (pair? line) (eq? (car line) 'declare))
-           (apply declare (cdr line))) ; Используем apply, чтобы зайти в функцию
-
-          ;; СЛУЧАЙ Б: Это обычный список (инструкция)
-          ((pair? line) (eval line))
-
-          ;; СЛУЧАЙ В: Метка или данные
-          (else line)))))))
+        (eval line :env env))))))
 
 ;;; =====================================================================
 ;;; defcode - регистрация произвольного кода для компиляции
@@ -493,11 +491,11 @@
                    ;; Мы передаем квотированный body прямо в функцию
                    ;; Интерпретатор просто подставит этот список сюда
                    (.label ',label-name :scope ',scope)
-                   (assemble-lines ',body))))
+                   (assemble-lines ',body (current-env)))))
        
-       (add-function 'global ',label-name ',label-name impl ',segment)
-       (define ,label-name impl)
-       (function-name! ,label-name ',label-name))))
+        (add-function 'global ',label-name ',label-name impl ',(or segment (current-segment-name)) ',body)
+        (define ,label-name impl)
+        (function-name! ,label-name ',label-name))))
 
 (defmacro defcode (name &key (segment code) (scope 'public) (align 1) &rest body) 
   `(defblock ,name :segment ,segment :scope ,scope :align ,align ,@body))

@@ -7,7 +7,7 @@
 ;;; ===================================================================== 
 
 (defproc panic-unimplemented ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (fmt #t "DEBUG panic-unimplemented...\n"))
 
 ;;; ===================================================================== 
@@ -40,39 +40,36 @@
 ;;; конструктора
 ;;; 
 (defmethod new object ((a symbol) (b type) (c int))
-    (declare (once) (asm-func _type_))
+    (declare (asm-func _type_))
     (fmt #t "DEBUG new object..\n")
   )
 
 (defmethod delete ((this object))
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (fmt #t "DEBUG object delete..\n"))
 
 (defmethod print ((this object))
-  (declare (once) (asm-func _type_))
+  (declare (asm-func _type_))
   (fmt #t "DEBUG object print..\n"))
 
-(defmethod new structure ()
-  (rlet ((a symbol) (b type))
-    (declare (once) (asm-func _type_))
-    (fmt #t "DEBUG new structure..\n")))
+(defmethod new structure ((a symbol) (b type))
+  (declare (asm-func _type_))
+  (fmt #t "DEBUG new structure..\n"))
 
-(defmethod new basic ()
-  (rlet ((a symbol) (b type))
-    (declare (once) (asm-func _type_))
-    (fmt #t "DEBUG new structure..\n")))
+(defmethod new basic ((a symbol) (b type))
+  (declare (asm-func _type_))
+  (fmt #t "DEBUG new structure..\n"))
 
-(defmethod new type ()
-  (rlet ((a symbol) (b type) (c int))
-    (declare (once) (asm-func _type_))
-    (fmt #t "DEBUG new structure..\n")))
+(defmethod new type ((a symbol) (b type) (c int))
+  (declare (asm-func _type_))
+  (fmt #t "DEBUG new structure..\n"))
 
 )
 
 (with-segment code
 
 (defproc make-base-descriptors ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (fmt #t "DEBUG make-base-descriptors...\n")
   (.type-descriptor object)    ;; Родитель 0, проблем нет
   (.type-descriptor structure) ;; Родитель object, метка уже есть

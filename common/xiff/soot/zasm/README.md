@@ -320,7 +320,7 @@
 ```lisp
 ;; Простая процедура без аргументов
 (.defproc delay ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.label loop)
     (.dec bc)
@@ -332,7 +332,7 @@
 ;; Процедура с регистровыми аргументами
 (.defproc copy-string ((dest string :reg de) 
                        (src string :reg hl))
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.label loop)
     (.ld a (@ hl))
@@ -345,7 +345,7 @@
 
 ;; Процедура, возвращающая значение
 (.defproc sum ((a int16 hl) (b int16 de) (c int16 bc))
-  (declare (once) (asm-func int16))  ; возвращает int16
+  (declare (asm-func int16))  ; возвращает int16
   (rlet ((result int16 hl))
     (zasm
       (.add hl de)
@@ -374,7 +374,7 @@
 
 ```lisp
 (.defmethod len ((self vec3 ix))  ; self в регистре IX
-  (declare (once) (asm-func int16))
+  (declare (asm-func int16))
   (rlet ((result int16 hl))
     (zasm
       (.ld hl (-> self x))       ; HL = self.x
@@ -389,7 +389,7 @@
 
 ```lisp
 (.defmethod new vec3 ((x int16 hl) (y int16 de) (z int16 bc))
-  (declare (once) (asm-func _type_))
+  (declare (asm-func _type_))
   (rlet ((this pointer ix))
     (zasm
       ;; Адрес нового объекта предположительно в IX
@@ -406,7 +406,7 @@
 
 ```lisp
 (.defmethod clear ((self vec3 ix))
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.ld (-> self x) 0)
     (.ld (-> self y) 0)
@@ -422,7 +422,7 @@
 
 ```lisp
 (.defproc setup-vtables ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     ;; Генерируем VTable для типа vec3
     (.vtable vec3)))
@@ -440,14 +440,14 @@ vec3::vtable:
 
 ```lisp
 (.defproc setup-proxy ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     ;; Создаём прокси-таблицу в RAM
     (.vtable-proxy vec3 'vec3-active)))
     
 ;; Переключение драйвера
 (.defproc switch-to-vec3 ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.switch-vtable vec3 'vec3-active)))
 ```
@@ -460,7 +460,7 @@ vec3::vtable:
 
 ```lisp
 (.defproc test-direct-call ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     ;; Вызов статического метода
     (.dcall vec3::new int16 int16 int16 _type_)
@@ -477,7 +477,7 @@ vec3::vtable:
 
 ```lisp
 (.defproc test-virtual-call ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (rlet ((len int16 hl))
     (zasm
       ;; Объект в IX
@@ -508,7 +508,7 @@ vec3::vtable:
 
 ;; Статическое создание экземпляра
 (.defproc create-data ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.static-new p1 point
       :x 100
@@ -605,7 +605,7 @@ p1::y:  DW 200
 
 ;; Реализация метода
 (.defmethod len ((self vec3 ix))
-  (declare (once) (asm-func int16))
+  (declare (asm-func int16))
   (zasm
     (.ld hl (-> self x))
     (.ld de (-> self y))
@@ -616,7 +616,7 @@ p1::y:  DW 200
 
 ;; Процедура инициализации
 (.defproc init ()
-  (declare (once) (asm-func none))
+  (declare (asm-func none))
   (zasm
     (.org #x8000)
     (.label start)

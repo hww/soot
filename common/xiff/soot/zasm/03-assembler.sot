@@ -753,9 +753,12 @@
               (with-error-handler 
                 (lambda (msg err-form trace)
                   ;; Добавляем "этаж" контекста
-                  (list (source-context) "ZASM Expansion error")) 
+                  (list (method-ctx m) (fmt #f "`{}` module `{}` segment `{}`" (method-label m) name seg-name ))) 
+                ;; Compile the method
                 (set! *current-method* m)
-                ((method-func m))))))))
+                ((method-func m)))
+                
+              )))))
       (fmt #t "Assembly of module '{}' finished.\n" name))))
 
 

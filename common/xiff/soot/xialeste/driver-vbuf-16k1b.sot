@@ -13,11 +13,11 @@
     ))
 
 (defmethod new vbuf-16k1b ()
-  (declare (once) (asm-func _type_))
+  (declare (asm-func _type_))
   (.ret))
 
 ;defmethod set-char-addr ((this vbuf-16k1b) (x int8) (y int8))
-; (declare (once) (asm-func none))
+; (declare (asm-func none))
 ; (.ret))
 
   (defblock vbuf-16k1b-block

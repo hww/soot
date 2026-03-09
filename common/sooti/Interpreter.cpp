@@ -108,6 +108,9 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"lookup-type", &Interpreter::eval_lookup_type, nullptr},
         {"current-function", &Interpreter::eval_current_function, nullptr},
         {"gensym", &Interpreter::eval_gensym, nullptr},
+        {"env-name", &Interpreter::eval_env_name_get, nullptr},
+        {"env-name!", &Interpreter::eval_env_name_set, nullptr},
+        {"current-env", &Interpreter::eval_current_env, nullptr},
 
         // Сравнение
         {"eq?", &Interpreter::eval_equals, nullptr}, // было eval_eq
@@ -248,7 +251,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"type-for-each-method", &Interpreter::eval_type_for_each_method, nullptr},
 
         // Evaluation and parsing
-        {"eval", &Interpreter::eval_eval, nullptr},
+        {"eval", &Interpreter::eval_eval, &args_with_varkeys},
 
         {"read-str", &Interpreter::eval_read_str, nullptr},
         {"parse-str", &Interpreter::eval_parse_str, nullptr},
@@ -307,6 +310,7 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         // Type system
         {"declarations", &Interpreter::eval_declarations, &args_with_varkeys},
         {"define-function", &Interpreter::eval_define_function, &args_with_varkeys},
+        {"function-type-make", &Interpreter::eval_function_type_make, &args_with_varkeys},
         {"function-type", &Interpreter::eval_function_type_get, &args_with_varkeys},
         {"function-type!", &Interpreter::eval_function_type_set, &args_with_varkeys},
         {"function-name", &Interpreter::eval_function_name_get, &args_with_varkeys},
@@ -1176,6 +1180,35 @@ Object Interpreter::eval_env(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args, {}, {});
     return Object::make_heap_obj(env, ObjectType::ENVIRONMENT); // Твой #f / NIL
+}
+
+/*!
+ * Get name of environment
+ */
+Object Interpreter::eval_env_name_get(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {}, {});
+    return Object::make_symbol(env->name); // Твой #f / NIL
+}
+
+/*!
+ * Mark environment with name
+ */
+Object Interpreter::eval_env_name_set(const Object &form, Arguments &args,
+                                      const std::shared_ptr<EnvironmentObject> &env) {
+    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
+    env->name = args.unnamed[0].to_std_string();
+    return get_none();
+}
+
+/*!
+ * Mark environment with name
+ */
+Object Interpreter::eval_current_env(const Object &form, Arguments &args,
+                                     const std::shared_ptr<EnvironmentObject> &env) {
+    (void)form;
+    (void)args;
+    return Object::make_heap_obj(env, ObjectType::ENVIRONMENT);
 }
 
 /*!
@@ -4617,6 +4650,15 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
         throw_eval_error(form, "eval: at least one argument required");
     }
 
+    std::shared_ptr<EnvironmentObject> in_env;
+
+    if (args.has_named("env")) {
+        if (!args.named["env"].is_env())
+            throw_eval_error(form, "eval: the &key eval except only environmet");
+        in_env = args.named["env"].as_env_ptr();
+    } else {
+        in_env = env;
+    }
     Object first = args.unnamed.at(0);
 
     // СЛУЧАЙ 1: Классический (eval '(+ 1 2))
@@ -4624,7 +4666,7 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
         // Мы просто вычисляем то, что нам дали.
         // Важно: если 'first' это уже LAMBDA, наш исправленный eval
         // (с case ObjectType::LAMBDA: return obj) просто вернет её.
-        return eval_with_rewind(first, env);
+        return eval_with_rewind(first, in_env);
     }
 
     // СЛУЧАЙ 2: Расширенный (eval lambda arg1 arg2 ...)
@@ -4639,14 +4681,14 @@ Object Interpreter::eval_eval(const Object &form, Arguments &args,
     if (first.is_function()) {
         // Используем твой call_lambda_internal.
         // Он создаст окружение, привяжет аргументы и выполнит тело.
-        return call_lambda_internal(form, first, call_args, env);
+        return call_lambda_internal(form, first, call_args, in_env);
     } else if (first.is_primitive()) {
         // Если это встроенная функция (например, +), нам нужно
         // подготовить структуру Arguments и вызвать её метод.
         auto      builtin = first.as_heap_obj<BuiltinFunctionObject>();
         Arguments b_args;
         b_args.unnamed = call_args;
-        return ((*this).*(builtin->method))(form, b_args, env);
+        return ((*this).*(builtin->method))(form, b_args, in_env);
     }
 
     throw_eval_error(form, "eval: first argument must be a code form or callable when multiple "
@@ -6495,23 +6537,30 @@ Object Interpreter::eval_declare_external(const Object &form, Arguments &args,
  */
 Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
                                          const std::shared_ptr<EnvironmentObject> &env) {
+    // auto fe_asm = env->get_asm_function_env();
+    // auto fe_func = env->get_function_env();
+    // fmt::print("DEBUG ENTRY: env:{:p} | found_asm:{:p} | found_func:{:p}\n", (void *)env.get(),
+    //            (void *)(fe_asm ? fe_asm.get() : nullptr),
+    //            (void *)(fe_func ? fe_func.get() : nullptr));
+
     // 1. Поиск функционального окружения
-    auto fe = env->get_function_env();
+    // По умолчанию ищем asm окружение которое уже существует
+    auto fe = env->get_asm_function_env();
+
+    // Если не нашли берем ближайше
+    if (!fe)
+        fe = env->get_function_env();
+
+    // Если не нашли неудача
     if (!fe || fe->owner_function.is_none()) {
         throw_eval_error(form, "Cannot use 'declare' outside of a function body.");
     }
 
+    // В болтшинство случаем декларируем это окружение но если нет аргумента (this)
     auto  func = fe->owner_function.as_function();
-    auto &settings = func->declarations;
-
-    // Запрещаем двойной declare (как в GOAL)
-    if (settings.is_set) {
-        if (settings.once)
-            return m_obj_none;
-        throw_eval_error(form, "Function cannot have multiple 'declare' forms.");
-    }
-    settings.is_set = true;
-
+    auto *settings = &func->declarations;
+    int   index = 0;
+    fmt::print("DEBUG declare {:p} {}\n", (void *)fe.get(), settings->return_type.print());
     // 2. Итерация по списку спецификаций: ( (option1) (option2 ...) )
     for_each_in_list(rest, [&](const Object &o) {
         if (!o.is_pair()) {
@@ -6527,20 +6576,29 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
         }
 
         std::string name = first.to_std_string();
-        if (name == "once") {
-            settings.once = true;
+        if (name == "this") {
+            // Необходимо сменить окружене нужно работать с ближайшим
+            if (index > 0)
+                throw_eval_error(o, "The option 'this' must be first in the list.");
+            if (!args.is_null())
+                throw_eval_error(first, "Option 'this' expects no arguments.");
+            fe = env->get_function_env();
+            func = fe->owner_function.as_function();
+            settings = &func->declarations;
+            // fmt::print("DEBUG declare {:p} {}\n", (void *)fe.get(),
+            // settings->return_type.print());
         } else if (name == "inline") {
             if (!args.is_null())
                 throw_eval_error(first, "Option 'inline' expects no arguments.");
-            settings.allow_inline = true;
-            settings.inline_by_default = true;
-            settings.save_code = true;
+            settings->allow_inline = true;
+            settings->inline_by_default = true;
+            settings->save_code = true;
         } else if (name == "allow-inline") {
             if (!args.is_null())
                 throw_eval_error(first, "Option 'allow-inline' expects no arguments.");
-            settings.allow_inline = true;
-            settings.inline_by_default = false;
-            settings.save_code = true;
+            settings->allow_inline = true;
+            settings->inline_by_default = false;
+            settings->save_code = true;
         } else if (name == "asm-func") {
             fe->is_asm_function = true;
 
@@ -6555,30 +6613,28 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
                   ret_type_expr.is_pair())) {
                 throw_eval_error(ret_type_expr, "Return type must be a symbol, string or pair.");
             }
+            // проверим тип возврата
+            TypeSpec ts = parse_typespec(&TypeSystem::instance(), ret_type_expr);
 
-            // Нам нужно rlet окружение, чтобы собрать типы аргументов
-            auto rlet_env = env->get_reg_let_env();
-            if (!rlet_env) {
-                throw_eval_error(
-                    first, "Option 'asm-func' requires an 'rlet' scope to determine arguments.");
-            }
-
-            // Строим сигнатуру функции на основе текущих регистровых алиасов
-            settings.typespec =
-                TypeSystem::instance().build_typespec_from_env(rlet_env, ret_type_expr);
+            settings->return_type = ret_type_expr;
+            // fmt::print("DEBUG declare {:p} {}\n", (void *)fe.get(),
+            // settings->return_type.print());
         } else if (name == "print-asm") {
             if (!args.is_null())
                 throw_eval_error(first, "Option 'print-asm' expects no arguments.");
-            settings.print_asm = true;
+            settings->print_asm = true;
         } else if (name == "allow-saved-regs") {
             if (!args.is_null())
                 throw_eval_error(first, "Option 'allow-saved-regs' expects no arguments.");
-            settings.allow_saved_regs = true;
+            settings->allow_saved_regs = true;
         } else {
             throw_eval_error(first, "Unrecognized declare option: {}.", name);
             return;
         }
+        index++;
     });
+
+    settings->is_set = true;
 
     return get_none();
 }
@@ -6678,6 +6734,53 @@ Object Interpreter::eval_define_function(const Object &form, Arguments &args,
     m_global_environment.as_env()->vars.set(sym, implementation);
 
     return sym_obj; // Обычно возвращают имя функции
+}
+
+/*!
+ * Make type spec for function
+ */
+Object Interpreter::eval_function_type_make(const Object &form, Arguments &args,
+                                            const std::shared_ptr<EnvironmentObject> &env) {
+    (void)args;
+
+    // 1. Поиск функционального окружения.
+    // Сначала ищем специализированное ASM-окружение, затем любое функциональное.
+    auto fe = env->get_asm_function_env();
+    if (!fe) {
+        fe = env->get_function_env();
+    }
+
+    // Проверка на существование и валидность владельца
+    if (!fe || fe->owner_function.is_none() || !fe->owner_function.is_function()) {
+        throw_eval_error(form, "function-type-make: cannot find a valid function environment.");
+    }
+
+    // Извлекаем объект функции и его настройки
+    auto  func_ptr = fe->owner_function.as_heap_obj<FunctionObject>();
+    auto &settings = func_ptr->declarations;
+
+    // fmt::print("DEBUG function type {:p} {}\n", (void *)fe.get(), settings.return_type.print());
+
+    // Проверяем, что (declare (asm-func ...)) был вызван ранее и установил return_type
+    if (settings.return_type.is_none()) {
+        throw_eval_error(form,
+                         "function-type-make: requires a return type (did you use 'declare'?)");
+    }
+
+    // 2. Поиск rlet окружения
+    // Это сердце сигнатуры — здесь лежат алиасы регистров и их типы
+    auto rlet_env = env->get_reg_let_env();
+    if (!rlet_env) {
+        throw_eval_error(
+            form, "function-type-make: requires an active 'rlet' scope to resolve arguments.");
+    }
+
+    // 3. Сборка финального TypeSpec
+    // build_typespec_from_env соберет (function <return_type> (<arg1-type> <arg2-type> ...))
+    settings.typespec =
+        TypeSystem::instance().build_typespec_from_env(rlet_env, settings.return_type);
+
+    return settings.typespec;
 }
 
 /*!
