@@ -1344,7 +1344,7 @@ class EnvironmentObject : public HeapObject {
     std::shared_ptr<EnvironmentObject> parent_env;
     EnvironmentMap                     vars;
     bool                               is_function;
-    bool                               is_asm_function;
+    bool                               is_declared_func;
     bool                               is_reg_let;
     bool                               is_global;
     Object                             ctx;
@@ -1353,7 +1353,7 @@ class EnvironmentObject : public HeapObject {
 
     EnvironmentObject() = default;
     EnvironmentObject(std::shared_ptr<EnvironmentObject> parent)
-        : parent_env(std::move(parent)), is_function(false), is_asm_function(false),
+        : parent_env(std::move(parent)), is_function(false), is_declared_func(false),
           is_reg_let(false), is_global(false), ctx() {}
     ~EnvironmentObject() override = default;
 
@@ -1443,8 +1443,8 @@ class EnvironmentObject : public HeapObject {
         return find_env_up(env_name, &EnvironmentObject::is_function);
     }
 
-    std::shared_ptr<EnvironmentObject> get_asm_function_env(const std::string &env_name = "") {
-        return find_env_up(env_name, &EnvironmentObject::is_asm_function);
+    std::shared_ptr<EnvironmentObject> get_declared_function_env(const std::string &env_name = "") {
+        return find_env_up(env_name, &EnvironmentObject::is_declared_func);
     }
 
     std::shared_ptr<EnvironmentObject> get_reg_let_env(const std::string &env_name = "") {

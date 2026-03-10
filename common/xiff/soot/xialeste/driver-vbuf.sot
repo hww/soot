@@ -25,15 +25,23 @@
     ;; base addres
     (vbuf-base uint16)  ;; base address for the video memory
     (font-base uint16)  ;; base address for the font
-    ;; blitter
-    (src-pos vector2b)
-    (dst-pos vector2b)
-    (src-ptr uint16)
-    (dst-ptr uint16)
+    ;; blitter source position
+    (src-pos vector2)
+    (src-addr-lo uint16)
+    (src-addr-hi uint16)
+    (src-ptr pixel-ref)
+    ;; blitter destination position
+    (dst-pos vector2)
+    (dst-addr-lo uint16)
+    (dst-addr-hi uint16)
+    (dst-ptr pixel-ref)
   )
   (:methods
     (new () _type_)
-    (set-char-addr (_type_ int8 int8) none)
+    (set-char-x (_type_ int8) none)
+    (set-char-y (_type_ int8) none)
+    (set-pixel-x (_type_ int16) none)
+    (set-pixel-y (_type_ int8) none)
     ))
 
 (defmethod new vbuf ()
@@ -41,11 +49,24 @@
   (declare (asm-func _type_))
   (.ret))
 
-(defmethod set-char-addr ((this vbuf) (x int8) (y int8))
+(defmethod set-char-x ((this vbuf) (x int8))
   (declare (asm-func none))
   (.ret))
 
-  (defblock vbuf-block 
+(defmethod set-char-y ((this vbuf) (y int8))
+  (declare (asm-func none))
+  (.ret))
+
+
+(defmethod set-pixel-x ((this vbuf) (x int16))
+  (declare (asm-func none))
+  (.ret))
+
+(defmethod set-pixel-y ((this vbuf) (y int8))
+  (declare (asm-func none))
+  (.ret))
+
+(defblock vbuf-block 
       ;; дескриптор типа
       (.type-descriptor vbuf)   
   ) ;; end of block

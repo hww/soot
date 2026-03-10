@@ -1327,7 +1327,7 @@ Object Interpreter::eval_current_function(const Object &form, Arguments &args,
         }
     } else if (desc == "asm") {
         // Find any function
-        func_env = env->get_asm_function_env();
+        func_env = env->get_declared_function_env();
         if (!func_env.get()) {
             throw_eval_error(form, "Environment does not have any asm-function");
         }
@@ -6545,7 +6545,7 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
 
     // 1. Поиск функционального окружения
     // По умолчанию ищем asm окружение которое уже существует
-    auto fe = env->get_asm_function_env();
+    auto fe = env->get_declared_function_env();
 
     // Если не нашли берем ближайше
     if (!fe)
@@ -6600,7 +6600,7 @@ Object Interpreter::eval_declare_special(const Object &form, const Object &rest,
             settings->inline_by_default = false;
             settings->save_code = true;
         } else if (name == "asm-func") {
-            fe->is_asm_function = true;
+            fe->is_declared_func = true;
 
             // Ожидаем (asm-func return_type)
             if (!args.is_pair() || !args.as_pair()->cdr.is_null()) {
@@ -6745,7 +6745,7 @@ Object Interpreter::eval_function_type_make(const Object &form, Arguments &args,
 
     // 1. Поиск функционального окружения.
     // Сначала ищем специализированное ASM-окружение, затем любое функциональное.
-    auto fe = env->get_asm_function_env();
+    auto fe = env->get_declared_function_env();
     if (!fe) {
         fe = env->get_function_env();
     }

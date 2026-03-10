@@ -80,7 +80,6 @@
   ;(fmt #t "DECLARATIONS vec3::len {}" (declarations))
   ;; Первый rlet (информационный) уже добавлен макросом скрыто.
   ;; Теперь программист добавляет свой (машинный) rlet:
-
       (.ld (-> this x) hl)
       (.ld (-> this y) de)
       (.ld (-> this z) bc)
