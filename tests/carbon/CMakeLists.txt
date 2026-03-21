@@ -21,6 +21,7 @@ add_executable(carbon_test
     tests/carbon/TestNativeFunctions.cpp
     tests/carbon/TestVirtualMachine.cpp
     tests/carbon/TestPtr.cpp
+    tests/carbon/RelocationTest.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest

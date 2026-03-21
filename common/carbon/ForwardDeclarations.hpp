@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 namespace runtime {
+
     // Forward declarations
     namespace lib {
         class Variant;
@@ -36,7 +37,7 @@ namespace runtime {
         class Engine;
         class Connection;
         class Connectable;
-        class StateDefinition;
+        struct StateDefinition;
         class DeadPool;
         class EntityActor;
     }

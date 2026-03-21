@@ -39,6 +39,41 @@ private:
     }
 };
 
+TEST_F(StringIdTest, AllStandardTypes) {
+    // Массив предопределённых типов и их CRC32
+    struct TypeInfo {
+        const char* name;
+        uint32_t expected_crc;
+    };
+    
+    std::vector<TypeInfo> types = {
+        {"vector", 0x012f77fe},
+        {"string", 0x0b3952e7},
+        {"float", 0x0f182ec3},
+        {"angle", 0x13812cd6},
+        {"state", 0x2e6743e3},
+        {"direction", 0x7194cbe7},
+        {"color", 0x71e73c6c},
+        {"boolean", 0x8b4e76ff},
+        {"vec4", 0x93bd2e95},
+        {"script-lambda", 0x9ed499e1},
+        {"function", 0xab3eb31f},
+        {"int32", 0xC7CB275C}
+    };
+    
+    for (const auto& type : types) {
+        StringId sid = string_id::register_string(type.name);
+        EXPECT_EQ(sid, type.expected_crc) 
+            << "Failed for type: " << type.name 
+            << " expected: " << std::hex << type.expected_crc 
+            << " got: " << std::hex << sid;
+        
+        // Проверяем обратное преобразование
+        EXPECT_EQ(string_id::to_string(sid), type.name);
+    }
+}
+
+
 TEST_F(StringIdTest, BasicOperations) {
     StringId sid1 = SID("hello");
     StringId sid2 = SID("hello");

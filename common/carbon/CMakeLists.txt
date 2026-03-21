@@ -33,4 +33,25 @@ add_library(libcarbon
     common/carbon/kernel/StateDefinition.cpp
     common/carbon/kernel/Scheduler.cpp
 )
+# Исполняемый файл для тестирования VM
+add_executable(carbon common/carbon/Main.cpp)
 
+target_link_libraries(carbon PRIVATE 
+    libsoti 
+    libsoticore 
+    libtypesys
+    libsootutils 
+    fmt 
+    libcarbon
+    pthread
+)
+
+if(WIN32)
+    target_link_libraries(carbon PRIVATE ws2_32)
+endif()
+
+set_target_properties(carbon PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

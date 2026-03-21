@@ -1,78 +1,100 @@
-﻿// test_sootc.cpp
-#include "common/carbon/modules/ModuleManager.hpp"
-#include "common/carbon/kernel/Kernel.hpp"
-#include "common/carbon/kernel/ProcessRunner.hpp"
+﻿// common/sootc/Main.cpp
+#include "Compiler/FunctionCompiler.hpp"
+#include "IR/IR_Value.hpp"
+#include "IR/IR_Node.hpp"
+#include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
+#include "common/carbon/files/DciFile.hpp"  // ДОБАВИТЬ
+#include <fstream>
 
-using namespace runtime::modules;
-using namespace runtime::kernel;
-using namespace runtime::vm;
+using namespace sootc;
 
 int main() {
-    lg::info("=== Testing SOOTC compiled module ===");
+    lg::info("=== SOOT Compiler Test ===");
     
-    // 1. Инициализируем модульную систему
-    ModuleRegistry& registry = ModuleRegistry::instance();
-    registry.add_search_path("."); // Ищем модули в текущей папке
+    TypeSystem& ts = TypeSystem::instance();
+    ts.add_builtin_types();
     
-    // 2. Сканируем и загружаем модуль add
-    registry.scan_and_index(true);
-    
-    auto module = registry.find_module(SID("math/add"));
-    if (!module) {
-        lg::error("Module 'math/add' not found");
+    Type* function_type = ts.lookup_type_no_throw("function");
+    if (!function_type) {
+        lg::error("Type 'function' not found");
         return 1;
     }
     
-    lg::info("Module loaded: {}", module->to_string());
-    
-    // 3. Загружаем бинарные данные модуля
-    ModuleManager& mm = ModuleManager::instance();
-    auto loaded_module = mm.load_module(SID("math/add"));
-    if (!loaded_module) {
-        lg::error("Failed to load module");
+    Type* int_type = ts.lookup_type_no_throw("int");
+    if (!int_type) {
+        lg::error("Type 'int' not found");
         return 1;
     }
     
-    // 4. Инициализируем ядро
-    Kernel& kernel = Kernel::instance();
-    if (!kernel.initialize()) {
-        lg::error("Failed to initialize kernel");
+    // Создаем компилятор
+    FunctionCompiler compiler(ts, function_type);
+    
+    // Создаем регистры
+    IR_Reg* a = compiler.create_local_reg(int_type);
+    IR_Reg* b = compiler.create_local_reg(int_type);
+    IR_Reg* result = compiler.create_local_reg(int_type);
+    
+    // result = a + b
+    compiler.add_node(std::make_unique<IR_Binary>(
+        IR_Binary::Op::ADD, result, a, b));
+    
+    // return result
+    compiler.add_node(std::make_unique<IR_Return>(result));
+    
+    // Выводим IR
+    lg::info("IR:");
+    lg::info("{}", compiler.to_string());
+    
+    // Компилируем в байткод
+    std::vector<u8> bytecode = compiler.compile();
+    
+    lg::info("Bytecode size: {} bytes", bytecode.size());
+    
+    if (!bytecode.empty()) {
+        std::string hex;
+        for (size_t i = 0; i < std::min(bytecode.size(), size_t(64)); i++) {
+            hex += fmt::format("{:02x} ", bytecode[i]);
+        }
+        lg::info("First bytes: {}", hex);
+    }
+    
+    // ============================================================
+    // СОХРАНЯЕМ В ФАЙЛЫ
+    // ============================================================
+    
+    std::string module_name = "add";
+    std::string logical_path = "math/" + module_name;
+    
+    // 1. Сохраняем .bin файл
+    std::string bin_filename = module_name + ".bin";
+    std::ofstream bin_file(bin_filename, std::ios::binary);
+    if (bin_file.is_open()) {
+        bin_file.write(reinterpret_cast<const char*>(bytecode.data()), bytecode.size());
+        bin_file.close();
+        lg::info("Saved bytecode to: {}", bin_filename);
+        lg::info("  Size: {} bytes", bytecode.size());
+    } else {
+        lg::error("Failed to create .bin file: {}", bin_filename);
         return 1;
     }
     
-    // 5. Создаем процесс с self pointer (согласно нашему базису)
-
-    Process* process = ProcessRunner::spawn(
-        SID("test_process"),
-        kernel.root(),
-        loaded_module->resolve_code(SID("add")),
-        nullptr  // stack_top
-    );
+    // 2. Сохраняем .dci файл
+    runtime::files::DciFile dci;
+    dci.logical_path = logical_path;
+    dci.module_name = module_name;
+    dci.binary_size = static_cast<u32>(bytecode.size());
+    dci.exports.push_back(SID("add"));
     
-    if (!process) {
-        lg::error("Failed to create process");
+    std::string dci_filename = module_name + ".dci";
+    if (dci.save(dci_filename)) {
+        lg::info("Saved DCI to: {}", dci_filename);
+    } else {
+        lg::error("Failed to create .dci file: {}", dci_filename);
         return 1;
     }
     
-    // Устанавливаем self pointer
-    process->self = nullptr;
-    
-    lg::info("Process created: {}", process->to_string());
-    
-    // 6. Выполняем функцию
-    VirtualMachine& vm = kernel.virtual_machine();
-    
-    // Создаем аргументы
-    std::vector<Variant> args = {Variant(5), Variant(3)};
-    
-    // Выполняем
-    Variant result = vm.execute_bytecode(loaded_module.get(), SID("add"));
-    
-    lg::info("Result: 5 + 3 = {}", result.to_string());
-    
-    // 7. Очистка
-    kernel.shutdown();
+    lg::info("=== Compilation complete ===");
     
     return 0;
 }

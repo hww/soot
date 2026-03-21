@@ -44,7 +44,7 @@ namespace runtime::files {
     bool save(const std::string& filename) const {
         std::ofstream file(filename);
         if (!file) return false;
-        
+        fmt::print("DciFile save {}\n", filename);
         // UTF-8 BOM
         file << "\xEF\xBB\xBF";
         file << to_string();
