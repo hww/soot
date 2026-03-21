@@ -1,9 +1,8 @@
 ﻿#pragma once
 
 #include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include <cstdint>
 #include <format>
 #include <unordered_map>
 
@@ -165,7 +164,7 @@ namespace runtime::vm {
             struct {
                 u8 : 8;        // padding for opcode
                 u8 a_imm;      // Destination register for immediate
-                i16 imm16;     // 16-bit immediate value
+                s16 imm16;     // 16-bit immediate value
             };
 
             struct {
@@ -213,7 +212,7 @@ namespace runtime::vm {
         }
 
         // For signed immediate operations: op a, imm16
-        static Instruction create_imm(Opcode op, u8 a, i16 imm) {
+        static Instruction create_imm(Opcode op, u8 a, s16 imm) {
             Instruction instr;
             instr.a_imm = a;
             instr.imm16 = imm;

@@ -97,6 +97,8 @@ namespace runtime::kernel {
         // Current Execution Context
         // ============================================================================
 
+        Process* root() const { return root_; }
+
         /**
          * @brief Получить текущий выполняющийся процесс
          * @return Указатель на процесс или nullptr если нет текущего

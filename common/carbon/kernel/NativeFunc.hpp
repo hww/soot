@@ -26,10 +26,10 @@ namespace runtime::kernel {
 
         StringId actual_type = arg.get_type();
 
-        if constexpr (std::is_same_v<T, i32>) {
+        if constexpr (std::is_same_v<T, s32>) {
             if (actual_type == type::_int_) return arg.get_int32();
             if (actual_type == type::string_id) return arg.get_int32();
-            if (actual_type == type::_float_) return static_cast<i32>(arg.get_float());
+            if (actual_type == type::_float_) return static_cast<s32>(arg.get_float());
         }
         else if constexpr (std::is_same_v<T, vm_int>) {
             if (actual_type == type::_int_) return arg.get_int();

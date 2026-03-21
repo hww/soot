@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <ostream>
 #include "common/util/Crc32.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 
 namespace runtime::lib {
 

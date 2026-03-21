@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
 namespace runtime::kernel {

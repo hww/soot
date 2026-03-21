@@ -1,5 +1,5 @@
 #include "Register.hpp"
-#include "ListBuilder.hpp"
+#include "common/sooti/ListBuilder.hpp"
 #include "TypeSystem.hpp"
 
 namespace script {

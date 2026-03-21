@@ -6,7 +6,7 @@
  */
 
 #include "Config.hpp"
-#include "Object.hpp"
+#include "common/sooti/Object.hpp"
 #include "common/sooti/Archive.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <cstdint>

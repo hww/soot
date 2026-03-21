@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Object.hpp"
+#include "common/sooti/Object.hpp"
 #include "common/util/FileUtil.hpp"
 
 namespace script {

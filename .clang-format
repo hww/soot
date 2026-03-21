@@ -3,16 +3,71 @@ IndentWidth: 4
 ColumnLimit: 100
 AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Attach
-# Выравнивает многострочные комментарии по левому краю
-AlignConsecutiveMacros: true
-# Пытается уместить комментарий в лимит строки (например, 100 символов)
-# и переносит его, если он слишком длинный
+
+# КЛЮЧЕВОЕ: Добавляем отступы внутри namespace
+NamespaceIndentation: All
+
+# Сохраняем отступы для public/private/protected
+AccessModifierOffset: -4
+
+# Не убираем комментарии и сохраняем их отступы
 ReflowComments: true
-# Добавляет пробел после // (делает //Comment -> // Comment)
 CommentPragmas: '^ IWYU pragma:'
-# int a;       // foo
-# int32 abcd;  // bar
 AlignTrailingComments: true
-# int   a;
-# int32 abcd; 
-AlignConsecutiveDeclarations: true
+
+# Выравнивание объявлений - более мягкое, чтобы не ломало структуру
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
+  AlignCompound: false
+
+AlignConsecutiveAssignments:
+  Enabled: false
+
+AlignConsecutiveMacros: true
+
+# Для структур и классов
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+
+# Не переносить return type на новую строку
+BreakAfterReturnType: None
+
+# Не выравнивать тернарные операторы
+AlignAfterOpenBracket: Align
+AlignOperands: true
+
+# Для лучшего форматирования шаблонов
+PenaltyExcessCharacter: 100
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# Сохраняем пустые строки
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 2
+
+# НОВЫЕ НАСТРОЙКИ ДЛЯ CASE:
+AllowShortCaseLabelsOnASingleLine: true
+
+# КЛЮЧЕВОЕ - переопределяем BreakBeforeBraces на Custom
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false   # ЭТО САМОЕ ВАЖНОЕ!
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterStruct: false
+  AfterClass: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+# Остальные однострочные настройки
+AllowShortBlocksOnASingleLine: Always
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Always
+AllowShortLoopsOnASingleLine: true

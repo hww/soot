@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
@@ -138,7 +138,7 @@ namespace runtime::vm {
         vm_int get_static_int(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             // Data is stored as Variants, so we need to extract s32
-            return *((i32*)(data_ptr + offset));
+            return *((s32*)(data_ptr + offset));
         }
 
         vm_float get_static_float(u32 offset) const {

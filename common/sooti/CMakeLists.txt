@@ -1,5 +1,5 @@
-﻿
-# Создаем нашу библиотеку БЕЗ replxx файлов
+﻿# common/sooti/CMakeLists.txt
+
 # 1. Ядро: только базовые типы данных Лиспа
 add_library(libsoticore
     common/sooti/Object.cpp
@@ -13,7 +13,18 @@ add_library(libsoticore
     common/sooti/Errors.cpp
     common/sooti/Archive.cpp
 )
-# 3. Высокоуровневый интерпретатор и мост к типам
+
+target_include_directories(libsoticore PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/common/util
+)
+
+target_link_libraries(libsoticore PRIVATE 
+    fmt::fmt 
+    libsootutils
+)
+
+# 2. Архивные модули
 add_library(libsoti
     common/sooti/Interpreter.cpp
     common/sooti/archive/MemoryArchive.cpp
@@ -24,20 +35,27 @@ add_library(libsoti
     common/sooti/archive/LabelTable.cpp
 )
 
-target_link_libraries(libsoticore PRIVATE fmt::fmt libsootutils)
+target_include_directories(libsoti PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/common/util
+)
 
-# Линкуем исполняемый файл
+target_link_libraries(libsoti PRIVATE 
+    libsoticore
+    fmt::fmt 
+    libsootutils
+)
+
+# 3. Исполняемый файл
 add_executable(sooti common/sooti/SOOTiMain.cpp)
-target_link_libraries(sooti PRIVATE libsoti libtypesys libsoticore fmt::fmt  libsootutils)
+target_link_libraries(sooti PRIVATE libsoti libtypesys fmt::fmt libsootutils)
 
-set_target_properties(sooti PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(sooti PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-
-# Installation (optional)
+# Установка
 install(TARGETS sooti
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib

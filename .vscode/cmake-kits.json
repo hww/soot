@@ -1,0 +1,11 @@
+[
+    {
+        "name": "Clang WSL",
+        "compilers": {
+            "C": "/usr/bin/clang",
+            "CXX": "/usr/bin/clang++"
+        },
+        "toolchainFile": "",
+        "isTrusted": true
+    }
+]

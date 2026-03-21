@@ -1,5 +1,5 @@
 ﻿#include "common/carbon/kernel/NativeFunc.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/util/Log.hpp"
 #include <iostream>
 
@@ -97,7 +97,7 @@ namespace runtime::kernel {
             return Variant(argv[0].to_float() / divisor);
         }
         else {
-            i32 divisor = argv[1].to_int();
+            s32 divisor = argv[1].to_int();
             if (divisor == 0) {
                 lg::warn("Division by zero in native function");
                 return Variant(0);

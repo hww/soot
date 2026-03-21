@@ -1,5 +1,6 @@
 #include "Archive.hpp"
 #include "type_system/Config.hpp"
+#include "common/CommonTypes.hpp"
 #include <stdexcept>
 
 namespace script {
@@ -20,16 +21,16 @@ void Archive::serialize(void *v, int length) {
 //     return *this;
 // }
 int Archive::tell() {
-    return INDEX_NONE;
+    return INVALID_INDEX;
 }
 
 int Archive::total_size() {
-    return INDEX_NONE;
+    return INVALID_INDEX;
 }
 
 bool Archive::at_end() {
     int pos = tell();
-    return pos != INDEX_NONE && pos >= total_size();
+    return pos != INVALID_INDEX && pos >= total_size();
 }
 
 void Archive::seek(int in_pos) {

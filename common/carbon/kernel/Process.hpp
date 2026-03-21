@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
 #include "common/carbon/kernel/StateDefinition.hpp"

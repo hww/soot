@@ -301,6 +301,10 @@ void TypeSpec::delete_tag(const std::string &tag_name) {
 // Alias
 // ============================================================================
 
+Type *TypeSpec::get() const {
+    return TypeSystem::instance().lookup_type(base_type());
+}
+
 Object TypeSpec::get_at(const Object &key) {
 
     auto name = key.to_std_string();

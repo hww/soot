@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iostream>
 
-bool Config::load_from_file(const std::string& filename) {
+bool Config::load_from_file(const std::string &filename) {
     std::ifstream file(filename);
     if (!file) {
         fmt::print("Config file not found, using defaults\n");
@@ -16,9 +16,10 @@ bool Config::load_from_file(const std::string& filename) {
     return true;
 }
 
-bool Config::save_to_file(const std::string& filename) {
+bool Config::save_to_file(const std::string &filename) {
     std::ofstream file(filename);
-    if (!file) return false;
+    if (!file)
+        return false;
 
     // TODO: JSON сериализация
     fmt::print("Saving config to {}\n", filename);

@@ -91,6 +91,7 @@ add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 # Include subdirectories
 include(common/sooti/CMakeLists.txt)
 include(common/soot/CMakeLists.txt)
+include(common/sootc/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
 #include(common/carbonc/CMakeLists.txt)

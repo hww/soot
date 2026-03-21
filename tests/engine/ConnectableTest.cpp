@@ -4,7 +4,7 @@
 using namespace runtime::kernel;
 using namespace runtime::lib;
 
-using namespace vm;
+using namespace runtime::vm;
 
     class ConnectableTest : public ::testing::Test
     {

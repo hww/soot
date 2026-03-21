@@ -2,7 +2,7 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 #include <unordered_map>

@@ -75,12 +75,12 @@ TEST_F(NativeFunctionsTest, SC_ARGSafeAccess) {
     u32 argc = 3;
 
     // Корректный доступ к существующим аргументам
-    EXPECT_EQ(SC_ARG(0, i32, -1), 100);
+    EXPECT_EQ(SC_ARG(0, s32, -1), 100);
     EXPECT_FLOAT_EQ(SC_ARG(1, float, -1.0f), 3.14f);
     EXPECT_EQ(SC_ARG(2, StringId, SID("default")), SID("test_string"));
 
     // Безопасный доступ к несуществующим аргументам
-    EXPECT_EQ(SC_ARG(5, i32, 999), 999);
+    EXPECT_EQ(SC_ARG(5, s32, 999), 999);
     EXPECT_FLOAT_EQ(SC_ARG(10, float, 2.71f), 2.71f);
     EXPECT_EQ(SC_ARG(15, StringId, SID("fallback")), SID("fallback"));
 }
@@ -321,7 +321,7 @@ TEST_F(NativeFunctionsTest, PerformanceTest) {
 
 Variant sid_test_function(u32 argc, const Variant* argv) {
     StringId name = SC_ARG(0, StringId, SID("default"));
-    i32 count = SC_ARG(1, i32, 1);
+    s32 count = SC_ARG(1, s32, 1);
 
     // Простая логика для теста
     return Variant(count * 10);

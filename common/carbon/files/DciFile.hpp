@@ -3,7 +3,7 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/sooti/Reader.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include <filesystem>
 
 using namespace runtime::lib;

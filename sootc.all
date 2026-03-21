@@ -1,0 +1,401 @@
+// src/sootc/Compiler/FunctionCompiler.cpp
+#include "common/sootc/Compiler/FunctionCompiler.hpp"
+#include "files/BinaryFileBuilder.hpp"
+
+namespace sootc {
+
+FunctionCompiler::FunctionCompiler(TypeSystem &ts, Type *function_type)
+    : ts_(ts), function_type_(function_type) {}
+
+IR_Reg *FunctionCompiler::create_local_reg(Type *type) {
+    auto    reg = std::make_unique<IR_Reg>(type, next_reg_++, false);
+    IR_Reg *ptr = reg.get();
+    regs_.push_back(std::move(reg));
+    return ptr;
+}
+
+IR_Reg *FunctionCompiler::get_self_reg() {
+    return new IR_Reg(ts_.lookup_type("object"), IR_Reg::REG_SELF, true);
+}
+
+void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
+    nodes_.push_back(std::move(node));
+}
+
+std::vector<u8> FunctionCompiler::compile() {
+    // Используем существующий BinaryFileBuilder
+    runtime::files::BinaryFileBuilder builder;
+
+    // Временный буфер для байткода
+    std::vector<Instruction>    instructions;
+    std::vector<u8>             data;
+    std::vector<SourceLocation> debug_info;
+
+    // Генерируем код из IR узлов
+    // TODO: пройти по nodes_ и сгенерировать инструкции
+
+    // Добавляем функцию в билдер
+    builder.add_function(SID(function_type_->get_name()), // имя функции
+                         instructions,                    // код
+                         data,                            // данные
+                         debug_info                       // отладочная информация
+    );
+
+    // Строим бинарник
+    return builder.build();
+}
+
+std::string FunctionCompiler::to_string() const {
+    std::string result = "FunctionCompiler {\n";
+    for (const auto &node : nodes_) {
+        result += "  " + node->to_string() + "\n";
+    }
+    result += "}";
+    return result;
+}
+
+} // namespace sootc#pragma once
+
+#include "common/sootc/IR/IR_Node.hpp"
+#include "common/sootc/IR/IR_Value.hpp"
+#include "common/type_system/TypeSystem.hpp"
+#include <memory>
+#include <vector>
+
+namespace sootc {
+
+class FunctionCompiler {
+  public:
+    FunctionCompiler(TypeSystem &ts, Type *function_type);
+
+    // Создание регистров
+    IR_Reg *create_local_reg(Type *type);
+    IR_Reg *get_self_reg();
+
+    // Добавление узлов
+    void add_node(std::unique_ptr<IR_Node> node);
+
+    // Генерация байткода
+    std::vector<u8> compile();
+
+    // Отладка
+    std::string to_string() const;
+
+  private:
+    TypeSystem &ts_;
+    Type       *function_type_;
+
+    std::vector<std::unique_ptr<IR_Value>> values_;
+    std::vector<std::unique_ptr<IR_Reg>>   regs_;
+    std::vector<std::unique_ptr<IR_Node>>  nodes_;
+    u32                                    next_reg_ = 0;
+};
+
+} // namespace sootc
+#pragma once
+
+#include "common/carbon/files/BinaryFile.hpp"
+#include "common/carbon/vm/Instructions.hpp"
+#include "common/sootc/IR/IR_Value.hpp"
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+namespace sootc {
+
+// Forward declaration
+class ByteCodeBuilder;
+
+// Базовый класс IR узла
+class IR_Node {
+  public:
+    virtual ~IR_Node() = default;
+    virtual std::string             to_string() const = 0;
+    virtual void                    generate(ByteCodeBuilder                           &builder,
+                                             const std::unordered_map<IR_Value *, u32> &reg_map) = 0;
+    virtual std::vector<IR_Value *> get_used_values() const {
+        return {};
+    }
+};
+
+// Перемещение
+class IR_Move : public IR_Node {
+  public:
+    IR_Move(IR_Reg *dest, IR_Value *src);
+    std::string             to_string() const override;
+    void                    generate(ByteCodeBuilder                           &builder,
+                                     const std::unordered_map<IR_Value *, u32> &reg_map) override;
+    std::vector<IR_Value *> get_used_values() const override;
+
+  private:
+    IR_Reg   *dest_;
+    IR_Value *src_;
+};
+
+// Загрузка константы
+class IR_LoadConst : public IR_Node {
+  public:
+    IR_LoadConst(IR_Reg *dest, IR_Const *value);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Reg   *dest_;
+    IR_Const *value_;
+};
+
+// Загрузка поля
+class IR_LoadField : public IR_Node {
+  public:
+    IR_LoadField(IR_Reg *dest, IR_Field *field);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Reg   *dest_;
+    IR_Field *field_;
+};
+
+// Сохранение в поле
+class IR_StoreField : public IR_Node {
+  public:
+    IR_StoreField(IR_Field *field, IR_Value *value);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Field *field_;
+    IR_Value *value_;
+};
+
+// Вызов функции/метода
+class IR_Call : public IR_Node {
+  public:
+    IR_Call(IR_Reg *result, IR_Value *function, IR_Value *this_ptr, std::vector<IR_Value *> args);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Reg                 *result_;
+    IR_Value               *function_;
+    IR_Value               *this_ptr_;
+    std::vector<IR_Value *> args_;
+};
+
+// Арифметическая операция
+class IR_Binary : public IR_Node {
+  public:
+    enum class Op { ADD, SUB, MUL, DIV, MOD, AND, OR, XOR };
+    IR_Binary(Op op, IR_Reg *dest, IR_Value *left, IR_Value *right);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    Op        op_;
+    IR_Reg   *dest_;
+    IR_Value *left_;
+    IR_Value *right_;
+};
+
+// Сравнение
+class IR_Compare : public IR_Node {
+  public:
+    enum class Cond { EQ, NE, LT, LE, GT, GE };
+    IR_Compare(Cond cond, IR_Reg *dest, IR_Value *left, IR_Value *right);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    Cond      cond_;
+    IR_Reg   *dest_;
+    IR_Value *left_;
+    IR_Value *right_;
+};
+
+// Условный переход
+class IR_BranchIf : public IR_Node {
+  public:
+    IR_BranchIf(IR_Value *cond, int true_label, int false_label = -1);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Value *cond_;
+    int       true_label_;
+    int       false_label_;
+};
+
+// Безусловный переход
+class IR_Branch : public IR_Node {
+  public:
+    explicit IR_Branch(int label);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    int label_;
+};
+
+// Метка
+class IR_Label : public IR_Node {
+  public:
+    explicit IR_Label(int label);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    int label_;
+};
+
+// Возврат
+class IR_Return : public IR_Node {
+  public:
+    explicit IR_Return(IR_Value *value = nullptr);
+    std::string to_string() const override;
+    void        generate(ByteCodeBuilder                           &builder,
+                         const std::unordered_map<IR_Value *, u32> &reg_map) override;
+
+  private:
+    IR_Value *value_;
+};
+
+// Вспомогательный класс для сборки байткода
+class ByteCodeBuilder {
+  public:
+    void add_instruction(Opcode op, u8 a = 0, u8 b = 0, u16 c = 0) {
+        instructions_.push_back(Instruction::create_abc(op, a, b, static_cast<u8>(c)));
+    }
+
+    void add_label(int label) {
+        labels_[label] = instructions_.size();
+    }
+
+    void add_branch_label(int label) {
+        branch_labels_.push_back({label, instructions_.size()});
+        add_instruction(Opcode::NOOP); // placeholder
+    }
+
+    void resolve_labels() {
+        for (auto &[label, pos] : branch_labels_) {
+            u32 target = labels_[label];
+            instructions_[pos].k = static_cast<u16>(target);
+        }
+    }
+
+    std::vector<Instruction> get_instructions() {
+        resolve_labels();
+        return instructions_;
+    }
+
+  private:
+    std::vector<Instruction>         instructions_;
+    std::unordered_map<int, u32>     labels_;
+    std::vector<std::pair<int, u32>> branch_labels_;
+};
+} // namespace sootc
+#pragma once
+
+#include "common/type_system/Type.hpp"
+#include <string>
+
+namespace sootc {
+
+class IR_Value {
+  public:
+    explicit IR_Value(Type *type) : type_(type) {}
+    virtual ~IR_Value() = default;
+    virtual std::string to_string() const = 0;
+    virtual bool        is_reg() const {
+        return false;
+    }
+    virtual bool is_const() const {
+        return false;
+    }
+    virtual bool is_field() const {
+        return false;
+    }
+    Type *get_type() const {
+        return type_;
+    }
+
+  protected:
+    Type *type_;
+};
+
+class IR_Reg : public IR_Value {
+  public:
+    IR_Reg(Type *type, u32 index, bool is_arg = false);
+    std::string to_string() const override;
+    bool        is_reg() const override {
+        return true;
+    }
+    u32 get_index() const {
+        return index_;
+    }
+    bool is_argument() const {
+        return is_arg_;
+    }
+    static constexpr u32 REG_SELF = 24;
+    static constexpr u32 REG_RETURN = 0;
+
+  private:
+    u32  index_;
+    bool is_arg_;
+};
+
+class IR_Const : public IR_Value {
+  public:
+    IR_Const(Type *type, s64 val);
+    IR_Const(Type *type, float val);
+    std::string to_string() const override;
+    bool        is_const() const override {
+        return true;
+    }
+    bool is_float() const {
+        return is_float_;
+    }
+    s64 get_int() const {
+        return int_val_;
+    }
+    float get_float() const {
+        return float_val_;
+    }
+
+  private:
+    s64   int_val_ = 0;
+    float float_val_ = 0.0f;
+    bool  is_float_ = false;
+};
+
+class IR_Field : public IR_Value {
+  public:
+    IR_Field(IR_Value *base, const Field &field);
+    std::string to_string() const override;
+    bool        is_field() const override {
+        return true;
+    }
+    IR_Value *get_base() const {
+        return base_;
+    }
+    const Field &get_field() const {
+        return field_;
+    }
+    int get_offset() const {
+        return field_.offset();
+    }
+
+  private:
+    IR_Value *base_;
+    Field     field_;
+};
+
+} // namespace sootc

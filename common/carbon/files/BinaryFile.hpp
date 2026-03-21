@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/lib/Ptr.hpp"  
 #include "common/carbon/vm/Instructions.hpp"

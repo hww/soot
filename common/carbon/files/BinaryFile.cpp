@@ -1,6 +1,6 @@
 ﻿#include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/modules/Module.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include <sstream>
 #include <iomanip>
 

@@ -3,10 +3,9 @@
 
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
+#include "common/CommonTypes.hpp"
 
 namespace script {
-
-#define INDEX_NONE -1
 
 /*!
  * Archive class. Used for loading, saving, and garbage collecting

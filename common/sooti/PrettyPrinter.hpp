@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <cstdint>
 
-#include "Object.hpp"
+#include "common/sooti/Object.hpp"
 #include "Reader.hpp"
 
 namespace script::pretty_print {

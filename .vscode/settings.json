@@ -1,52 +1,55 @@
 {
-    // 0. Самая Главная настройка: запрещаем меню открываться клавиатурой
-    "window.titleBarStyle": "custom",
-    "window.customMenuBarAltFocus": false,
-    "window.enableMenuBarMnemonics": false,
-    "window.menuBarVisibility": "visible",
-    // 1. Главная настройка: заставляем IntelliSense брать пути из CMake
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    // 2. Исправляем C_Cpp_Runner, чтобы он не индексировал лишнего
-    "C_Cpp_Runner.includeSearch": [
-        "${workspaceFolder}/common/**",
-        "${workspaceFolder}/third_party/**"
-    ],
-    "C_Cpp_Runner.excludeSearch": [
-        "**/build/**",
-        "**/.*/**",
-        "**/.vscode/**",
-        "**/.git/**"
-    ],
-    // 3. Настройки индексации (IntelliSense)
-    "C_Cpp.intelliSenseEngine": "default",
-    // Запрещаем сканировать папку build для поиска исходников (чтобы не дублировать символы)
-    "C_Cpp.files.exclude": {
-        "**/build/**": true
-    },
-    // 4. Настройки CMake Tools для корректной сборки
-    "cmake.buildDirectory": "${workspaceFolder}/build",
-    "cmake.configureSettings": {
-        "BUILD_TESTS": "ON",
-        "FMT_TEST": "OFF"
-    },
-    // Отключаем встроенный проводник тестов CMake, чтобы не было дублей
-    "cmake.testing.enabled": false,
-    // Оставляем управление за TestMate
-    "testMate.cpp.test.executables": "build/bin/*test*",
-    "testMate.cpp.test.onConfigurationChange": "reload",
-    // Это заставит CMake пересобирать зависимости при изменении исходников
-    "cmake.buildBeforeRun": true,
-    "cmake.autoSelectActiveFolder": true,
-    "cmake.generator": "Unix Makefiles",
+    // Отключаем C++ IntelliSense
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    // Настройки clangd
+    "clangd.path": "/usr/bin/clangd",
     "clangd.arguments": [
-        "--clang-tidy",
         "--background-index",
+        "--clang-tidy",
+        "--compile-commands-dir=${workspaceFolder}/build",
+        "--completion-style=detailed",
         "--header-insertion=iwyu",
-        "--completion-style=detailed"
+        "--log=verbose",
+        "--pretty",
+        // Добавляем для лучшей работы в WSL
+        "--query-driver=/usr/bin/clang++,/usr/bin/g++",
+        "--malloc-trim"
     ],
-    "editor.formatOnSave": true, // Форматировать при каждом сохранении (Ctrl+S)
-    "editor.formatOnPaste": true, // Форматировать вставленный кусок кода
+    "clangd.fallbackFlags": [
+        "-std=c++17"
+    ],
+    "editor.inlayHints.enabled": "on",
+    "clangd.restartAfterCrash": true,
+    // Форматирование
+    "editor.formatOnSave": false,
     "[cpp]": {
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
-    }
+    },
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    // CMake настройки
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureArgs": [
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++"
+    ],
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    // КЛЮЧЕВЫЕ НАСТРОЙКИ для WSL:
+    "files.encoding": "utf8",
+    "files.eol": "\n",
+    "files.watcherExclude": {
+        "**/build/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true
+    },
+    // Для отладки
+    "cmake.debugConfig": {
+        "cwd": "${workspaceFolder}"
+    },
+    // Исправление путей для ошибок
+    "problems.decorations.enabled": true,
+    "problems.autoReveal": true
 }

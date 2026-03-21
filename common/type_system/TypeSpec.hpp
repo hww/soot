@@ -19,6 +19,9 @@ class Object;
 
 using namespace script;
 
+// Forward declaration
+class Type;
+
 // ============================================================================
 // Type Tag
 // ============================================================================
@@ -128,6 +131,7 @@ class TypeSpec : public NativeObject {
     }
 
     Object get_at(const Object &key) override;
+    Type  *get() const;
 
   private:
     std::string                            m_type;

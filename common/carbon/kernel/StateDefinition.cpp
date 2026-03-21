@@ -1,6 +1,6 @@
 ﻿#include "common/carbon/kernel/StateDefinition.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include <algorithm>
 #include <vector>
 

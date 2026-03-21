@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/lib/ScriptObject.hpp"
 
@@ -12,7 +12,7 @@ namespace runtime::lib {
     typedef s64 vm_int;
     typedef f64 vm_float;
 #else
-    typedef i32 vm_int;
+    typedef s32 vm_int;
     typedef f64 vm_float;
 #endif
     /**
@@ -98,12 +98,12 @@ namespace runtime::lib {
         const StringId integer      = SID("integer");   // number::integer
         const StringId sinteger     = SID("sinteger");  // integer::sinteger
         const StringId i64          = SID("i64");       // integer::sinteger::s64
-        const StringId i32          = SID("i32");       // integer::sinteger::s32
+        const StringId i32          = SID("s32");       // integer::sinteger::s32
         const StringId i16          = SID("i16");       // integer::sinteger::s16
         const StringId i8           = SID("i8");        // integer::sinteger::s8
         const StringId uinteger     = SID("uinteger");  // integer::uinteger
         const StringId u64          = SID("u64");       // integer::uinteger::i64
-        const StringId u32          = SID("u32");       // integer::uinteger::i32
+        const StringId u32          = SID("u32");       // integer::uinteger::s32
         const StringId u16          = SID("u16");       // integer::uinteger::i16
         const StringId u8           = SID("u8");        // integer::uinteger::i8
         const StringId f32          = SID("float");     // number::float
@@ -167,7 +167,7 @@ namespace runtime::lib {
 
         Variant(StringId sid)
             : type_(type::string_id)
-            , int_value(static_cast<i32>(sid))
+            , int_value(static_cast<s32>(sid))
         {
         }
 
@@ -300,7 +300,7 @@ namespace runtime::lib {
             int_value = value;
         }
 
-        void set_int32(i32 value) {
+        void set_int32(s32 value) {
             type_ = type::u32;
             int_value = value;
         }
@@ -332,7 +332,7 @@ namespace runtime::lib {
 
         void set_sid(StringId sid) {
             type_ = type::string_id;
-            int_value = static_cast<i32>(sid);
+            int_value = static_cast<s32>(sid);
         }
 
         void set_string(const std::string& str) {
@@ -385,7 +385,7 @@ namespace runtime::lib {
             return int_value;
         }
 
-        i32 get_int32() const {
+        s32 get_int32() const {
             if (type_ != type::_int_) {
                 throw TypeError("get_int()", type::_int_, type_);
             }
@@ -446,9 +446,9 @@ namespace runtime::lib {
 
         vm_int to_int() const {
             if (type_ == type::_int_) return int_value;
-            if (type_ == type::_float_) return static_cast<i32>(float_value);
+            if (type_ == type::_float_) return static_cast<s32>(float_value);
             if (type_ == type::boolean) return int_value;
-            if (type_ == type::string_id) return static_cast<i32>(int_value);
+            if (type_ == type::string_id) return static_cast<s32>(int_value);
             throw TypeError("to_int() cannot convert from", type_);
         }
 

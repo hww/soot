@@ -1,9 +1,10 @@
 ﻿#pragma once
 
 #include <cassert>
-#include "common/carbon/lib/Types.hpp"
+#include "common/CommonTypes.hpp"
 
-using namespace runtime;
+
+
 
 namespace runtime::lib
 {
@@ -73,7 +74,7 @@ namespace runtime::lib
          * @param diff Количество элементов для смещения
          * @return Новый указатель, смещенный на diff элементов
          */
-        Ptr operator+(i64 diff) const {
+        Ptr operator+(s64 diff) const {
             return Ptr(offset + diff * sizeof(T));
         }
 
@@ -82,7 +83,7 @@ namespace runtime::lib
          * @param diff Количество элементов для обратного смещения
          * @return Новый указатель, смещенный на -diff элементов
          */
-        Ptr operator-(i64 diff) const {
+        Ptr operator-(s64 diff) const {
             return Ptr(offset - diff * sizeof(T));
         }
 
@@ -91,7 +92,7 @@ namespace runtime::lib
          * @param other Другой указатель того же типа
          * @return Количество элементов между указателями
          */
-        i64 operator-(const Ptr<T>& other) const {
+        s64 operator-(const Ptr<T>& other) const {
             return (offset - other.offset) / sizeof(T);
         }
 
