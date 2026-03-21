@@ -294,4 +294,17 @@ namespace runtime::files {
     void BinaryFileBuilder::debug_full_inspect(const std::vector<u8>& binary) const {
         lg::info("{}", inspect_build_result(binary));
     }
+
+    // common/carbon/files/BinaryFileBuilder.cpp - добавить:
+    bool BinaryFileBuilder::save_module(StringId module_name, const std::string& logical_path,
+                                        const std::filesystem::path& base_path) {
+        std::vector<u8> binary = build();
+        
+        // Создаём модуль
+        auto module = std::make_shared<Module>(module_name, base_path / (lib::to_string(module_name) + ".bin"), std::move(binary));
+        module->dci_imports = {};  // пока пусто
+        module->dci_exports = {module_name};
+        
+        return module->save_to_files(base_path);
+    }
 } // namespace vm

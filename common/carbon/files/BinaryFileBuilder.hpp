@@ -64,6 +64,8 @@ namespace runtime::files {
         void debug_dump_binary(const std::vector<u8>& binary) const;
         void debug_full_inspect(const std::vector<u8>& binary) const;
 
+        bool save_module(StringId module_name, const std::string& logical_path, 
+                     const std::filesystem::path& base_path = ".");
     private:
         void ensure_capacity(std::vector<u8>& buffer, size_t required_size) {
             if (required_size > buffer.size()) {

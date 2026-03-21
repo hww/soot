@@ -58,6 +58,7 @@ namespace runtime::modules {
         bool load_file();
         void build_export_table();
         void set_file(std::vector<u8> binary_mem);
+        bool save_to_files(const std::filesystem::path& base_path = ".") const;
 
         bool is_valid_metadata() const { return name != 0 && !file_path.empty(); }
         bool is_linked() const { return load_state >= LoadState::LINKED; }

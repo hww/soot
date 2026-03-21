@@ -1,5 +1,6 @@
 ﻿#include "common/carbon/modules/Module.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
+#include "common/carbon/files/DciFile.hpp"
 #include "common/util/Log.hpp"
 
 using namespace runtime::files;
@@ -157,6 +158,27 @@ namespace runtime::modules {
         }
 
         return result;
+    }
+
+    // common/carbon/modules/Module.cpp - добавить:
+    bool Module::save_to_files(const std::filesystem::path& base_path) const {
+        // Сохраняем .bin
+        std::filesystem::path bin_path = base_path / (lib::to_string(name) + ".bin");
+        std::ofstream bin_file(bin_path, std::ios::binary);
+        if (!bin_file) return false;
+        bin_file.write(reinterpret_cast<const char*>(binary_mem.data()), binary_mem.size());
+        bin_file.close();
+        
+        // Сохраняем .dci
+        DciFile dci;
+        dci.logical_path = lib::to_string(name);
+        dci.module_name = lib::to_string(name);
+        dci.binary_size = binary_mem.size();
+        dci.imports = dci_imports;
+        dci.exports = dci_exports;
+        
+        std::filesystem::path dci_path = base_path / (lib::to_string(name) + ".dci");
+        return dci.save(dci_path.string());
     }
 
 } // namespace vm
