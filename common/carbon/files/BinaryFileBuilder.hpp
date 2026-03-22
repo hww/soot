@@ -28,9 +28,12 @@ namespace runtime::files {
  /** Binary file builder - простой последовательный конструктор */
     class BinaryFileBuilder {
     private:
+        std::string name;
+
         struct DefinitionData {
             StringId name;
             StringId type;
+            SymbolFlags flags;
             std::vector<u8> data;  // Для простых данных
             std::vector<Instruction> code;  // Для функций
             std::vector<SourceLocation> debug_info;  // Для функций
@@ -39,23 +42,24 @@ namespace runtime::files {
         std::vector<DefinitionData> definitions_;
 
     public:
-        BinaryFileBuilder() = default;
+        BinaryFileBuilder(std::string name) { this->name = name; string_id::register_string(name); }
 
         /** Добавить функцию */
         void add_function(StringId name, const std::vector<Instruction>& code,
             const std::vector<u8>& data = {},
-            const std::vector<SourceLocation>& debug_info = {}) {
-            definitions_.push_back(DefinitionData{ name, SID("function"), data, code, debug_info });
+            const std::vector<SourceLocation>& debug_info = {},
+            SymbolFlags flags = SymbolFlags::Export) {
+            definitions_.push_back(DefinitionData{ name, SID("function"), flags, data, code, debug_info });
         }
 
         /** Добавить простую дефиницию */
-        void add_definition(StringId name, StringId type, const std::vector<u8>& data) {
-            definitions_.push_back(DefinitionData{ name, type, data, {}, {} });
+        void add_definition(StringId name, StringId type, const std::vector<u8>& data, SymbolFlags flags = SymbolFlags::Export) {
+            definitions_.push_back(DefinitionData{ name, type, flags, data, {}, {} });
         }
 
         /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
         std::vector<u8> build();
-        std::shared_ptr<Module> build_module(StringId module_name);
+        std::shared_ptr<Module> build_module();
 
         std::string inspect_input() const;
         std::string inspect_memory_dump(const std::vector<u8>& binary) const;
@@ -64,8 +68,7 @@ namespace runtime::files {
         void debug_dump_binary(const std::vector<u8>& binary) const;
         void debug_full_inspect(const std::vector<u8>& binary) const;
 
-        bool save_module(StringId module_name, const std::string& logical_path, 
-                     const std::filesystem::path& base_path = ".");
+
     private:
         void ensure_capacity(std::vector<u8>& buffer, size_t required_size) {
             if (required_size > buffer.size()) {

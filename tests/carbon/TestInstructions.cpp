@@ -1,5 +1,5 @@
 ﻿#include "gtest/gtest.h"
-#include "carbon/Export.hpp"
+#include "common/carbon/Export.hpp"
 
 using namespace runtime::vm;
 using namespace runtime::lib;

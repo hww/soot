@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
         {
-      "name": "Debug SOOT-C",
+      "name": "Soot-C",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/sootc",
@@ -23,7 +23,7 @@
       "stopAtEntry": false,  // Остановиться при входе в main
     },
     {
-      "name": "Debug SOOT",
+      "name": "Soot",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
@@ -44,7 +44,7 @@
       "stopAtEntry": false,  // Остановиться при входе в main
     },
     {
-      "name": "Debug SOOT Server",
+      "name": "Soot Server",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
@@ -65,7 +65,7 @@
       "stopAtEntry": false,  // Остановиться при входе в main
     },
     {
-      "name": "Debug SOOT Client",
+      "name": "Soot Client",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
@@ -86,7 +86,7 @@
       "stopAtEntry": false,  // Остановиться при входе в main
     },    
     {
-      "name": "Debug SOOT (HOME)",
+      "name": "Soot (HOME)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
@@ -131,7 +131,32 @@
       ],
       "preLaunchTask": "Build Tests",
     },
-      {
+    {
+      "name": "Carbon",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/carbon", // Проверьте имя бинарника из CMake!
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "LD_LIBRARY_PATH",
+          "value": "${workspaceFolder}/build/lib:${env:LD_LIBRARY_PATH}"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+    },    
+    {
       "name": "Carbon Test",
       "type": "cppdbg",
       "request": "launch",

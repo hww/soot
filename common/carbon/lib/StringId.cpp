@@ -115,7 +115,9 @@ namespace runtime::lib {
             if (it != g_string_table.end()) {
                 return it->second.c_str();
             }
-            return "<unknown>";
+            thread_local static char buffer[32];
+            snprintf(buffer, sizeof(buffer), "<unknown:0x%08X>", id);
+            return buffer;
         }
 
         bool is_table_loaded() {

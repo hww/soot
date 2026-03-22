@@ -37,7 +37,8 @@ namespace runtime::modules {
         if (!is_binary_loaded()) return;
         for (u32 i = 0; i < binary_file->definitions_count; i++) {
             auto def = binary_file->get_definition(i);
-            add_export(def->name, def);
+            if (def->has_flag(SymbolFlags::Export))
+                add_export(def->name, def);
         }
     }
     Module::~Module() {
@@ -166,9 +167,16 @@ namespace runtime::modules {
         std::filesystem::path bin_path = base_path / (lib::to_string(name) + ".bin");
         std::ofstream bin_file(bin_path, std::ios::binary);
         if (!bin_file) return false;
+
+        // make pointers relative to files
+        binary_file->relocate_pointers(false);
+
         bin_file.write(reinterpret_cast<const char*>(binary_mem.data()), binary_mem.size());
         bin_file.close();
         
+		// restore pointers relative to memory
+        binary_file->relocate_pointers(true);
+		
         // Сохраняем .dci
         DciFile dci;
         dci.logical_path = lib::to_string(name);

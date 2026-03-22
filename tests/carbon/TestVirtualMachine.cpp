@@ -40,7 +40,7 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
 
     // Простая функция: return 42
     std::vector<Instruction> code;
@@ -50,7 +50,7 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     builder.add_function(SID("simple_answer"), code);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
-    auto module = builder.build_module(SID("test"));
+    auto module = builder.build_module();
     auto bytecode = module->resolve_code(SID("simple_answer"));
     EXPECT_NE(bytecode, nullptr);
     Variant result = vm.execute_bytecode(bytecode);
@@ -63,7 +63,7 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
 
     // Функция: (5 + 3) * 2
     std::vector<Instruction> code;
@@ -76,7 +76,7 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
 
     builder.add_function(SID("calculate"), code);
 
-    auto    module = builder.build_module(SID("test"));
+    auto    module = builder.build_module();
     auto    bytecode = module->resolve_code(SID("calculate"));
     Variant result = vm.execute_bytecode(bytecode);
 
@@ -87,7 +87,7 @@ TEST_F(VirtualMachineTest, FunctionCall) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
 
     // Упрощенный тест - создаем одну функцию без сложных вызовов
     std::vector<Instruction> main_code = {
@@ -100,7 +100,7 @@ TEST_F(VirtualMachineTest, FunctionCall) {
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
 
-    auto module = builder.build_module(SID("test"));
+    auto module = builder.build_module();
     auto bytecode = module->resolve_code(SID("main"));
 
     Variant result = vm.execute_bytecode(bytecode);
@@ -124,7 +124,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     REGISTER_NATIVE_FUNCTION(SID("test_add"), test_func);
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
 
     // Упрощенная функция которая просто возвращает значение
     std::vector<Instruction> code;
@@ -133,7 +133,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
 
     builder.add_function(SID("test_native_call"), code);
 
-    auto module = builder.build_module(SID("test"));
+    auto module = builder.build_module();
     auto bytecode = module->resolve_code(SID("test_native_call"));
 
     // Проверяем что нативная функция работает отдельно
@@ -150,7 +150,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     VirtualMachine vm;
 
     // ИСПРАВЛЕНИЕ: BinaryFileBuilder без параметров
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
 
     // Упрощенная функция с условным переходом
     std::vector<Instruction> code;
@@ -160,7 +160,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
 
     builder.add_function(SID("conditional"), code);
 
-    auto module = builder.build_module(SID("test"));
+    auto module = builder.build_module();
     auto bytecode = module->resolve_code(SID("conditional"));
 
     Variant result = vm.execute_bytecode(bytecode);
@@ -184,20 +184,20 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     VirtualMachine vm;
 
     // Загружаем несколько бинарников
-    BinaryFileBuilder        binary1;
+    BinaryFileBuilder        binary1("module1");
     std::vector<Instruction> code1;
     code1.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 100));
     code1.push_back(Instruction::create_a(Opcode::RETURN, 1));
     binary1.add_function(SID("func1"), code1);
 
-    BinaryFileBuilder        binary2;
+    BinaryFileBuilder        binary2("module2");
     std::vector<Instruction> code2;
     code2.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 200));
     code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
     binary2.add_function(SID("func2"), code2);
 
-    auto module1 = binary1.build_module(SID("test1"));
-    auto module2 = binary2.build_module(SID("test2"));
+    auto module1 = binary1.build_module();
+    auto module2 = binary2.build_module();
 
     auto bytecode1 = module1->resolve_code(SID("func1"));
     auto bytecode2 = module2->resolve_code(SID("func2"));

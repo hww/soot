@@ -4,9 +4,11 @@
 #include "common/util/Log.hpp"
 #include "common/util/Assert.hpp"
 #include <fstream>
+#include "common/util/FileUtil.hpp"
 
 using namespace runtime::lib;
 using namespace runtime::files;
+using namespace file_util;
 
 namespace runtime::modules {
 
@@ -255,5 +257,14 @@ namespace runtime::modules {
         auto it = reference_counts_.find(module_name);
         return it != reference_counts_.end() ? it->second : 0;
     }
+    
+    static std::string extract_last_part(const std::string& path) {
+        size_t last_slash = path.find_last_of('/');
+        if (last_slash != std::string::npos) {
+            return path.substr(last_slash + 1);
+        }
+        return path;
+    }
+
 
 } // namespace vm

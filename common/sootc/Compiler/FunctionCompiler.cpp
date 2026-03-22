@@ -4,8 +4,8 @@
 
 namespace sootc {
 
-FunctionCompiler::FunctionCompiler(TypeSystem &ts, Type *function_type)
-    : ts_(ts), function_type_(function_type) {}
+FunctionCompiler::FunctionCompiler(TypeSystem &ts, Type *function_type, const std::string& func_name)
+    : ts_(ts), function_type_(function_type), function_name_(func_name) {}
 
 IR_Reg *FunctionCompiler::create_local_reg(Type *type) {
     auto    reg = std::make_unique<IR_Reg>(type, next_reg_++, false);
@@ -23,7 +23,7 @@ void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
 }
 
 std::vector<u8> FunctionCompiler::compile() {
-    runtime::files::BinaryFileBuilder builder;
+    runtime::files::BinaryFileBuilder builder("module1");
 
     ByteCodeBuilder                     bc_builder;
     std::unordered_map<IR_Value *, u32> reg_map;
@@ -42,7 +42,7 @@ std::vector<u8> FunctionCompiler::compile() {
     std::vector<Instruction> instructions = bc_builder.get_instructions();
 
     // Создаем функцию в билдере
-    builder.add_function(SID(function_type_->get_name().c_str()), instructions,
+    builder.add_function(SID(function_name_.c_str()), instructions,
                          {}, // data - пока пусто
                          {}  // debug_info - пока пусто
     );

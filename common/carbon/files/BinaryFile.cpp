@@ -1,8 +1,9 @@
 ﻿#include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "common/CommonTypes.hpp"
+#include "fmt/base.h"
 #include <sstream>
-#include <iomanip>
+
 
 namespace runtime::files {
 
@@ -29,14 +30,34 @@ namespace runtime::files {
     // Definition Implementation
     // =============================================================================
 
+    inline bool has_flag(SymbolFlags flags, SymbolFlags flag) {
+        return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
+    }
+
+    std::string get_symbol_flags_string(SymbolFlags flags) {
+        if (flags == SymbolFlags::None) return "none";
+        
+        std::string result;
+        if (has_flag(flags, SymbolFlags::Local)) result += "local";
+        if (has_flag(flags, SymbolFlags::Import)) {
+            if (!result.empty()) result += "|";
+            result += "import";
+        }
+        if (has_flag(flags, SymbolFlags::Export)) {
+            if (!result.empty()) result += "|";
+            result += "export";
+        }
+        return result;
+    }
+
     std::string Definition::to_string() const {
-        return std::format("Definition('{}', '{}', :ptr {:x})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset);
+        return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset, get_symbol_flags_string(flags));
     }
 
     std::string Definition::inspect() const {
-        return std::format("(definition {} ({}) :ptr {:x})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset);
+        return std::format("(definition {} :type {} :ptr {:x} :flags {})",
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset, get_symbol_flags_string(flags));
     }
 
     // =============================================================================
@@ -183,43 +204,58 @@ namespace runtime::files {
         }
         return nullptr;
     }
+    
+    // =============================================================================
+    // Relocation
+    // =============================================================================
 
-    void BinaryFile::relocate_pointers() {
-        // Вычисляем старый базовый адрес пула
-        auto delta = reinterpret_cast<u8*>(this) - reinterpret_cast<u8*>(base_offset);
-
-        lg::info("relocating file by offset: {}", delta);
-
-        if (delta == 0) return;
-
-        // Обновляем base_offset для нового положения
-        generation++;
-
-        // Релоцируем указатели в заголовке
-        definitions.offset += delta;
-
-        // Релоцируем указатели в определениях
-        for (u32 i = 0; i < definitions_count; i++) {
-            Definition* def = get_definition(i);
-            def->data_ptr.offset += delta;
-
-            // ЕСЛИ определение - функция, релоцируем и её внутренние указатели
-            if (def->type == type::function) {
-                Descriptor* desc = def->data_ptr.cast<Descriptor>().c();
-                if (desc) {
-                    desc->relocate_pointers(delta);
-                }
-            }
+    // Вместо старого relocate_pointers
+    void BinaryFile::relocate_pointers(bool to_memory) {
+        u8* base = reinterpret_cast<u8*>(this);
+        
+        ptrdiff_t delta;
+        if (to_memory) {
+            delta = reinterpret_cast<ptrdiff_t>(base) - reinterpret_cast<ptrdiff_t>(base_offset);
+        } else {
+            delta = -reinterpret_cast<ptrdiff_t>(base_offset);
         }
-        base_offset = this;
+        apply_delta_to_pointers(delta);
+        
+        if (to_memory) {
+            base_offset = this;
+        } else {
+            base_offset = 0;
+        }
     }
 
+    void BinaryFile::apply_delta_to_pointers(ptrdiff_t delta) {
+        // Применяем к definitions
+        fmt::print("apply_delta_to_pointers :base {} :delta {} :newbase {}\n", 
+            (void*)definitions.ptr, 
+            delta, 
+            (void*)((uint8_t*)definitions.ptr + delta)
+        );
+        definitions.ptr = reinterpret_cast<Definition*>(reinterpret_cast<u8*>(definitions.ptr) + delta);
+        
+        // Применяем ко всем определениям
+        for (u32 i = 0; i < definitions_count; i++) {
+            Definition* def = get_definition(i);
+            def->data_ptr.ptr = reinterpret_cast<u8*>(def->data_ptr.ptr) + delta;
+            
+            if (def->type == type::function) {
+                ByteCode* bc = reinterpret_cast<ByteCode*>(def->data_ptr.ptr);
+                bc->code_ptr.ptr = reinterpret_cast<Instruction*>(reinterpret_cast<u8*>(bc->code_ptr.ptr) + delta);
+                bc->data_ptr.ptr = reinterpret_cast<u8*>(bc->data_ptr.ptr) + delta;
+                bc->debug_ptr.ptr = reinterpret_cast<SourceLocation*>(reinterpret_cast<u8*>(bc->debug_ptr.ptr) + delta);
+            }
+        }
+    }
+
+    // common/carbon/files/BinaryFile.cpp
     void BinaryFile::set_owner(Module* owner) {
-        // Устанавливаем owner_module для файла
         owner_module = owner;
-        // Setup all pointers
-        relocate_pointers();
-        // Устанавливаем owner_module для всех ByteCode
+        relocate_pointers(true);
+        
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->type == SID("function")) {
@@ -230,6 +266,10 @@ namespace runtime::files {
             }
         }
     }
+
+    // =============================================================================
+    // Inspecting
+    // =============================================================================
 
     std::string BinaryFile::to_string() const {
         return std::format("BinaryFile<gen:{}, size:{}/{}, defs:{}>",

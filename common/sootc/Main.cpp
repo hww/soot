@@ -28,7 +28,7 @@ int main() {
     }
     
     // Создаем компилятор
-    FunctionCompiler compiler(ts, function_type);
+    FunctionCompiler compiler(ts, function_type, "add");
     
     // Создаем регистры
     IR_Reg* a = compiler.create_local_reg(int_type);

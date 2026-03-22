@@ -10,7 +10,7 @@ namespace sootc {
 
 class FunctionCompiler {
   public:
-    FunctionCompiler(TypeSystem &ts, Type *function_type);
+    FunctionCompiler(TypeSystem &ts, Type *function_type, const std::string& func_name);
 
     // Создание регистров
     IR_Reg *create_local_reg(Type *type);
@@ -28,6 +28,7 @@ class FunctionCompiler {
   private:
     TypeSystem &ts_;
     Type       *function_type_;
+    std::string function_name_;
 
     std::vector<std::unique_ptr<IR_Value>> values_;
     std::vector<std::unique_ptr<IR_Reg>>   regs_;

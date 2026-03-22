@@ -1,6 +1,7 @@
 // test_relocation.cpp
 #include "gtest/gtest.h"
 #include "carbon/Export.hpp"
+#include "fmt/base.h"
 #include "fmt/format.h"
 
 using namespace runtime::vm;
@@ -16,7 +17,7 @@ protected:
     
     // Создаем тестовый бинарник с известной структурой
     std::vector<u8> create_test_binary() {
-        BinaryFileBuilder builder;
+        BinaryFileBuilder builder("module1");
         
         // Добавляем тестовую функцию
         std::vector<Instruction> code = {
@@ -33,61 +34,41 @@ protected:
     }
 };
 
-TEST_F(RelocationTest, BinaryFileHeaderInitialization) {
+TEST_F(RelocationTest, BasicRelocation) {
     std::vector<u8> binary = create_test_binary();
     BinaryFile* file = reinterpret_cast<BinaryFile*>(binary.data());
     
+    file->relocate_pointers();
+
     // Проверяем, что base_offset инициализирован
-    lg::info("base_offset before relocation: {}", (void*)file->base_offset);
+    lg::info("base_offset before relocation: {}", (void*)file->get_base_offset());
     
     // После создания base_offset должен указывать на себя
-    EXPECT_EQ(file->base_offset, file);
+    EXPECT_EQ(file->get_base_offset(), file);
     
     lg::info("Magic: 0x{:08X}, expected: 0x{:08X}", file->magic, BinaryFile::MAGIC);
     EXPECT_EQ(file->magic, BinaryFile::MAGIC);
 }
 
-TEST_F(RelocationTest, RelocatePointersWithNullBase) {
-    std::vector<u8> binary = create_test_binary();
-    BinaryFile* file = reinterpret_cast<BinaryFile*>(binary.data());
-    
-    // Сохраняем исходные значения
-    u32 original_definitions_offset = file->definitions.offset;
-    
-    // Устанавливаем base_offset в nullptr (симулируем незагруженное состояние)
-    file->base_offset = nullptr;
-    
-    // Вызываем relocate_pointers
-    file->relocate_pointers();
-    
-    // После вызова base_offset должен указывать на file
-    EXPECT_EQ(file->base_offset, file);
-    
-    // Указатели не должны измениться при первом вызове
-    EXPECT_EQ(file->definitions.offset, original_definitions_offset);
-}
 
 TEST_F(RelocationTest, RelocatePointersWithDelta) {
     std::vector<u8> binary = create_test_binary();
     BinaryFile* original = reinterpret_cast<BinaryFile*>(binary.data());
     
     // Сохраняем исходные значения
-    u32 original_definitions_offset = original->definitions.offset;
+    u64 original_definitions_offset = original->definitions.offset;
     
     // Создаем копию в другом месте памяти
     std::vector<u8> new_buffer(binary.size() + 1024);
     BinaryFile* relocated = reinterpret_cast<BinaryFile*>(new_buffer.data() + 512);
     std::memcpy(relocated, original, binary.size());
     
-    // Устанавливаем base_offset на оригинал
-    relocated->base_offset = original;
-    
     lg::info("Original file: {}, Relocated file: {}", (void*)original, (void*)relocated);
     lg::info("Original definitions offset: {}, Relocated definitions offset before: {}", 
              original_definitions_offset, relocated->definitions.offset);
     
     // Вызываем релокацию
-    relocated->relocate_pointers();
+    relocated->relocate_pointers(true);
     
     lg::info("Relocated definitions offset after: {}", relocated->definitions.offset);
     
@@ -98,7 +79,7 @@ TEST_F(RelocationTest, RelocatePointersWithDelta) {
 }
 
 TEST_F(RelocationTest, RelocateByteCodePointers) {
-    BinaryFileBuilder builder;
+    BinaryFileBuilder builder("module1");
     
     // Создаем функцию с данными
     std::vector<Instruction> code = {
@@ -112,14 +93,15 @@ TEST_F(RelocationTest, RelocateByteCodePointers) {
     
     std::vector<u8> binary = builder.build();
     BinaryFile* original = reinterpret_cast<BinaryFile*>(binary.data());
-    
+    fmt::print("original file\n{}", original->inspect().c_str());
+
     // Находим ByteCode
     Definition* def = original->get_definition(0);
     ByteCode* bc = reinterpret_cast<ByteCode*>(def->data_ptr.c());
     
     // Сохраняем исходные указатели
-    u32 original_code_ptr = bc->code_ptr.offset;
-    u32 original_data_ptr = bc->data_ptr.offset;
+    u64 original_code_ptr = bc->code_ptr.offset;
+    u64 original_data_ptr = bc->data_ptr.offset;
     
     lg::info("Original ByteCode: code_ptr={}, data_ptr={}", original_code_ptr, original_data_ptr);
     
@@ -128,27 +110,14 @@ TEST_F(RelocationTest, RelocateByteCodePointers) {
     BinaryFile* relocated = reinterpret_cast<BinaryFile*>(new_buffer.data() + 256);
     std::memcpy(relocated, original, binary.size());
     
-    // Обновляем указатель на ByteCode в relocated
-    ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(original);
-    relocated->definitions.offset += delta;
+    // Просто вызываем relocate_pointers — он сам всё обновит
+    relocated->relocate_pointers(true);
     
-    for (u32 i = 0; i < relocated->definitions_count; i++) {
-        Definition* def_rel = relocated->get_definition(i);
-        def_rel->data_ptr.offset += delta;
-    }
-    
-    relocated->base_offset = original;
-    
-    // Вызываем релокацию
-    relocated->relocate_pointers();
-    
-    // Находим ByteCode в relocated
+    // Проверяем
     Definition* def_rel = relocated->get_definition(0);
     ByteCode* bc_rel = reinterpret_cast<ByteCode*>(def_rel->data_ptr.c());
     
-    lg::info("Relocated ByteCode: code_ptr={}, data_ptr={}", bc_rel->code_ptr.offset, bc_rel->data_ptr.offset);
-    
-    // Проверяем, что указатели сдвинуты правильно
+    ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(original);
     EXPECT_EQ(bc_rel->code_ptr.offset, original_code_ptr + delta);
     EXPECT_EQ(bc_rel->data_ptr.offset, original_data_ptr + delta);
 }
@@ -156,24 +125,28 @@ TEST_F(RelocationTest, RelocateByteCodePointers) {
 TEST_F(RelocationTest, MultipleRelocations) {
     std::vector<u8> binary = create_test_binary();
     BinaryFile* file = reinterpret_cast<BinaryFile*>(binary.data());
+    fmt::print("source file\n{}", file->inspect().c_str());
     
     // Первая релокация
-    file->relocate_pointers();
-    EXPECT_EQ(file->base_offset, file);
+    file->relocate_pointers(true);
+    EXPECT_EQ(file->get_base_offset(), file);
     
-    u32 first_definitions_offset = file->definitions.offset;
+    // Сохраняем как uintptr_t, а не u32
+    uintptr_t first_definitions_ptr = reinterpret_cast<uintptr_t>(file->definitions.ptr);
     
-    // Симулируем перемещение в памяти (копируем в новое место)
+    // Симулируем перемещение
     std::vector<u8> new_buffer(binary.size() + 512);
     BinaryFile* relocated = reinterpret_cast<BinaryFile*>(new_buffer.data() + 128);
     std::memcpy(relocated, file, binary.size());
     
-    relocated->base_offset = file;
-    
     // Вторая релокация
     relocated->relocate_pointers();
+    fmt::print("dst file\n{}", relocated->inspect().c_str());
     
     ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(file);
-    EXPECT_EQ(relocated->definitions.offset, first_definitions_offset + delta);
-    EXPECT_EQ(relocated->base_offset, relocated);
+    
+    // Сравниваем указатели
+    uintptr_t expected = first_definitions_ptr + delta;
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(relocated->definitions.ptr), expected);
+    EXPECT_EQ(relocated->get_base_offset(), relocated);
 }

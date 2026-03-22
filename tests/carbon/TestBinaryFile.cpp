@@ -24,8 +24,8 @@ protected:
     // Вспомогательная функция для создания валидного BinaryFile в пуле
     std::shared_ptr<Module>  create_test_module(const std::string& name, u32 definitions_count = 0) {
         // Используем BinaryFileBuilder для создания модуля
-        BinaryFileBuilder builder;
-        auto module_name_id = string_id::register_string(name);
+        BinaryFileBuilder builder(name);
+
         // Добавляем определения если нужно
         for (u32 i = 0; i < definitions_count; i++) {
             std::string def_name = "def_" + std::to_string(i);
@@ -47,7 +47,7 @@ protected:
         builder.debug_print_input();
         builder.debug_full_inspect(builder.build());
         // Строим и загружаем модуль в пул
-        auto module = builder.build_module(module_name_id);
+        auto module = builder.build_module();
         fmt::print("Module {}", module->inspect());
 
         fmt::print("Strings {}", string_id::inspect());

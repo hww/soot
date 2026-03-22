@@ -1,6 +1,8 @@
 ﻿#include "common/carbon/files/BinaryFileBuilder.hpp"
 #include "common/carbon/modules/Module.hpp"
+#include "files/BinaryFile.hpp"
 #include "fmt/format.h"
+#include "lib/StringId.hpp"
 
 using namespace runtime::lib;
 using namespace runtime::modules;
@@ -8,16 +10,13 @@ using namespace runtime::modules;
 namespace runtime::files {
 
     /** Построить и загрузить модуль в пул */
-    std::shared_ptr<Module> BinaryFileBuilder::build_module(StringId module_name) {
+    std::shared_ptr<Module> BinaryFileBuilder::build_module() {
         std::vector<u8> data = build();
-
-        // Создаем модуль
-        auto module = std::make_shared<Module>(
-            module_name,
-            std::filesystem::path("generated.bin"),
-            std::move(data) // убрал std::move
-        );
-
+        BinaryFile::make_for_memory(data);
+        
+        auto module = std::make_shared<Module>();
+        module->name = SID(name.c_str());
+        module->set_file(std::move(data));
         return module;
     }
 
@@ -25,15 +24,16 @@ namespace runtime::files {
     std::vector<u8> BinaryFileBuilder::build() {
         // 1. Создаем буфер начального размера (64KB)
         std::vector<u8> buffer(65536);
-        u32 current_pos = 0;
 
         // 2. Заголовок файла
         BinaryFile* header = reinterpret_cast<BinaryFile*>(buffer.data());
         new (header) BinaryFile();
-        header->base_offset = 0;
+        header->base_offset = 0;  //<< чтобы релокация работала необходимо записать 0 в offset
+        header->magic = BinaryFile::MAGIC;
+        header->generation = BinaryFile::CURRENT_GENERATION;
 
+        u32 current_pos = 0;
         current_pos += sizeof(BinaryFile);
-
         // 3. Таблица дефиниций
         Definition* defs_table = reinterpret_cast<Definition*>(buffer.data() + current_pos);
         u32 defs_count = static_cast<u32>(definitions_.size());
@@ -43,7 +43,7 @@ namespace runtime::files {
 
         for (u32 i = 0; i < defs_count; i++) {
             const auto& def_data = definitions_[i];
-            lg::info("Definition[{}]: name='{}'({}), type='{}'({})",
+            lg::info("Definition[{}] :name='{}'({}) :type '{}'({})",
                 i,
                 lib::to_string(def_data.name), def_data.name,
                 lib::to_string(def_data.type), def_data.type);
@@ -52,12 +52,13 @@ namespace runtime::files {
             new (&defs_table[i]) Definition{
                 def_data.name,      // StringId name
                 def_data.type,      // StringId type  
+                def_data.flags,
                 Ptr<u8>()           // Временный нулевой указатель
             };
 
             // Проверим что записалось
-            lg::info("  Written: name={}, type={}, data_ptr={}",
-                defs_table[i].name, defs_table[i].type, defs_table[i].data_ptr.offset);
+            lg::info("  Written :name {} :type {} :data-ptr {}",
+                string_id::to_string(defs_table[i].name), string_id::to_string(defs_table[i].type), defs_table[i].data_ptr.offset);
         }
 
         current_pos += defs_count * sizeof(Definition);
@@ -140,6 +141,9 @@ namespace runtime::files {
         // 6. Обрезаем буфер до реального размера
         buffer.resize(current_pos);
 
+        // Теперь буфер готов, можно делать make_for_memory
+        BinaryFile::make_for_memory(buffer);
+        
         return buffer;
     }
 
@@ -295,16 +299,4 @@ namespace runtime::files {
         lg::info("{}", inspect_build_result(binary));
     }
 
-    // common/carbon/files/BinaryFileBuilder.cpp - добавить:
-    bool BinaryFileBuilder::save_module(StringId module_name, const std::string& logical_path,
-                                        const std::filesystem::path& base_path) {
-        std::vector<u8> binary = build();
-        
-        // Создаём модуль
-        auto module = std::make_shared<Module>(module_name, base_path / (lib::to_string(module_name) + ".bin"), std::move(binary));
-        module->dci_imports = {};  // пока пусто
-        module->dci_exports = {module_name};
-        
-        return module->save_to_files(base_path);
-    }
 } // namespace vm

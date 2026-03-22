@@ -3,6 +3,7 @@
 #include "common/carbon/kernel/ProcessRunner.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/util/Log.hpp"
+#include "fmt/color.h"
 
 using namespace runtime::modules;
 using namespace runtime::kernel;
@@ -38,7 +39,11 @@ int main() {
         lg::error("Failed to load module");
         return 1;
     }
-    
+    if (loaded_module->binary_file==nullptr)
+        fmt::print("module does not have binary file\n");
+    else
+        fmt::print("Loaded file\n{}", loaded_module->binary_file->inspect());
+
     // 5. Находим функцию add
     ByteCode* add_code = loaded_module->resolve_code(SID("add"));
     if (!add_code) {

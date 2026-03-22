@@ -70,6 +70,15 @@ namespace runtime::files {
         std::string to_string() const;
     };
 
+    enum class SymbolFlags {
+        None = 0,
+        Local = 1 << 0,    // определен в этом модуле
+        Import = 1 << 1,   // получен из другого модуля
+        Export = 1 << 2    // доступен другим модулям
+    };
+    
+    ENUM_FLAG_OPERATORS(SymbolFlags);
+
     /**
      * @brief Definition of a named entity in the bytecode file
      *
@@ -81,6 +90,8 @@ namespace runtime::files {
         StringId name;
         /** Type identifier (function, data, constant, etc.) */
         StringId type;
+        /** Flags for the definition */
+        SymbolFlags flags;
         /** Pointer to the actual data or code for this definition */
         Ptr<u8> data_ptr;
 
@@ -95,6 +106,16 @@ namespace runtime::files {
          * @return Detailed formatted string for debugging
          */
         std::string inspect() const;
+
+        inline bool has_flag(SymbolFlags flag) const {
+            return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
+        }
+        inline void set_flag(SymbolFlags flag) {
+            flags |= flag;
+        }
+        inline void clear_flag(SymbolFlags flag) {
+            flags &= flag;
+        }
     };
 
     /**
@@ -212,7 +233,6 @@ namespace runtime::files {
         /** Number of definitions in the table */
         u32 definitions_count;
 
-        // Reserved for alignment
         /** Base offset for relative pointers */
         BinaryFile* base_offset;
 
@@ -228,6 +248,9 @@ namespace runtime::files {
         static constexpr u32 CURRENT_GENERATION = 1;
 
         BinaryFile();
+
+
+        BinaryFile* get_base_offset() { return  base_offset;}
 
         /**
          * @brief Validate the file format
@@ -270,7 +293,7 @@ namespace runtime::files {
          * This method is called after loading the file into memory
          * to convert file offsets to valid memory pointers.
          */
-        void relocate_pointers();
+        void relocate_pointers(bool to_memory = true);
 
         /**
           * @bried Set the owner module
@@ -300,6 +323,96 @@ namespace runtime::files {
          * associated data for debugging and development.
          */
         std::string inspect() const;
+
+        // ========================================================================
+        // Static Factories
+        // ========================================================================
+
+        /**
+        * @brief Создать BinaryFile из памяти (для выполнения)
+        * @param data Данные бинарника (обычно из файла)
+        * @return Указатель на готовый к выполнению BinaryFile или nullptr
+        * 
+        * Конвертирует смещения в реальные указатели.
+        * После этого файл можно использовать для выполнения.
+        */
+        static BinaryFile* make_for_memory(std::vector<u8>& data) {
+            BinaryFile* file = reinterpret_cast<BinaryFile*>(data.data());
+            
+            // сбрасываем указатель
+            file->owner_module = nullptr;
+            // перемещаем файл
+            file->relocate_pointers(true);
+            // проверяем валидность
+            if (!file->is_valid()) {
+                lg::error("Invalid binary file");
+                return nullptr;
+            }
+            
+            return file;
+        }
+        
+        /**
+        * @brief Подготовить BinaryFile для записи в файл
+        * @return true если успешно
+        * 
+        * Конвертирует реальные указатели в смещения.
+        * После этого файл можно сохранять.
+        */
+        bool make_for_file() {
+            relocate_pointers(false);
+            return true;
+        }
+        
+        /**
+        * @brief Загрузить BinaryFile из файла
+        * @param filename Имя файла
+        * @param out_data Выходной буфер с данными
+        * @return BinaryFile* Готовый к выполнению файл или nullptr
+        */
+        static BinaryFile* load_from_file(const std::string& filename, std::vector<u8>& out_data) {
+            std::ifstream file(filename, std::ios::binary);
+            if (!file) {
+                lg::error("Cannot open file: {}", filename);
+                return nullptr;
+            }
+            
+            file.seekg(0, std::ios::end);
+            size_t size = file.tellg();
+            file.seekg(0, std::ios::beg);
+            
+            out_data.resize(size);
+            file.read(reinterpret_cast<char*>(out_data.data()), size);
+            file.close();
+            
+            return make_for_memory(out_data);
+        }
+        
+        /**
+        * @brief Сохранить BinaryFile в файл
+        * @param filename Имя файла
+        * @return true если успешно
+        */
+        bool save_to_file(const std::string& filename) {
+            make_for_file();
+            
+            std::ofstream file(filename, std::ios::binary);
+            if (!file) {
+                lg::error("Cannot create file: {}", filename);
+                relocate_pointers(false);
+                return false;
+            }
+            
+            file.write(reinterpret_cast<const char*>(this), file_size);
+            file.close();
+            
+                relocate_pointers(true);
+            return true;
+        }
+
+        private:
+
+        void apply_delta_to_pointers(ptrdiff_t delta);     
     };
 
 } // namespace runtime::files

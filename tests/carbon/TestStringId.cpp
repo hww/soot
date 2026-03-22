@@ -121,7 +121,7 @@ TEST_F(StringIdTest, UnknownStringId) {
     EXPECT_TRUE(result.find("DEADBEEF") != std::string::npos);
 
     // C-string версия
-    EXPECT_STREQ(string_id::to_cstring(unknown), "<unknown>");
+    EXPECT_TRUE(std::string(string_id::to_cstring(unknown)).find("unknown") != std::string::npos);
 }
 
 TEST_F(StringIdTest, STLCompatibility) {
