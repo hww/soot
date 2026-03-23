@@ -47,14 +47,14 @@ int main() {
     lg::info("{}", compiler.to_string());
     
     // Компилируем в байткод
-    std::vector<u8> bytecode = compiler.compile();
+    std::vector<u8> FunctionDesc = compiler.compile();
     
-    lg::info("Bytecode size: {} bytes", bytecode.size());
+    lg::info("FunctionDesc size: {} bytes", FunctionDesc.size());
     
-    if (!bytecode.empty()) {
+    if (!FunctionDesc.empty()) {
         std::string hex;
-        for (size_t i = 0; i < std::min(bytecode.size(), size_t(64)); i++) {
-            hex += fmt::format("{:02x} ", bytecode[i]);
+        for (size_t i = 0; i < std::min(FunctionDesc.size(), size_t(64)); i++) {
+            hex += fmt::format("{:02x} ", FunctionDesc[i]);
         }
         lg::info("First bytes: {}", hex);
     }
@@ -70,10 +70,10 @@ int main() {
     std::string bin_filename = module_name + ".bin";
     std::ofstream bin_file(bin_filename, std::ios::binary);
     if (bin_file.is_open()) {
-        bin_file.write(reinterpret_cast<const char*>(bytecode.data()), bytecode.size());
+        bin_file.write(reinterpret_cast<const char*>(FunctionDesc.data()), FunctionDesc.size());
         bin_file.close();
-        lg::info("Saved bytecode to: {}", bin_filename);
-        lg::info("  Size: {} bytes", bytecode.size());
+        lg::info("Saved FunctionDesc to: {}", bin_filename);
+        lg::info("  Size: {} bytes", FunctionDesc.size());
     } else {
         lg::error("Failed to create .bin file: {}", bin_filename);
         return 1;
@@ -83,7 +83,7 @@ int main() {
     runtime::files::DciFile dci;
     dci.logical_path = logical_path;
     dci.module_name = module_name;
-    dci.binary_size = static_cast<u32>(bytecode.size());
+    dci.binary_size = static_cast<u32>(FunctionDesc.size());
     dci.exports.push_back(SID("add"));
     
     std::string dci_filename = module_name + ".dci";

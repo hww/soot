@@ -764,8 +764,8 @@ class NativeObject : public HeapObject {
         return name == NativeObject::type_name_obj();
     }
 
-    virtual Object get_at(const Object &key) override {}
-    virtual void   set_at(const Object &key, const Object &val) override {}
+    virtual Object get_at(const Object &key) override { (void)key; return Object::make_none(); }
+    virtual void   set_at(const Object &key, const Object &val) override { (void)key;(void)val; }
 
     void serialize(Archive &ar) override {
         (void)ar;

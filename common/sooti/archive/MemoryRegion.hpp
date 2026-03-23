@@ -83,7 +83,7 @@ class MemoryRegion : public NativeObject {
             m_data.resize(sz.value);
 
             // Читаем сами данные
-            ar.serialize(m_data.data(), sz.value);
+            ar.serialize_obj(m_data.data(), sz.value);
 
         } else {
             // Запись
@@ -96,7 +96,7 @@ class MemoryRegion : public NativeObject {
             ar << m_base; // базовый адрес
 
             // Пишем сами данные
-            ar.serialize(m_data.data(), m_data.size());
+            ar.serialize_obj(m_data.data(), m_data.size());
         }
     }
 

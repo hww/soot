@@ -9,8 +9,9 @@ namespace runtime {
     }
 
     namespace files {
+        struct Descriptor;
         struct BinaryFile;
-        struct ByteCode;
+        struct FunctionDesc;
         struct Definition;
         struct SourceLocation;
         class BinaryFilePool;

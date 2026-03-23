@@ -3,9 +3,6 @@
 #include <cassert>
 #include "common/CommonTypes.hpp"
 
-
-
-
 namespace runtime::lib
 {
     /**
@@ -114,7 +111,7 @@ namespace runtime::lib
          * @brief Получение сырого указателя C++
          * @return Указатель типа T* или nullptr если смещение равно 0
          */
-        T* c() const {
+        T* get() const {
             return ptr;
         }
 

@@ -28,7 +28,7 @@ class MemorySymbolTable : public NativeObject {
 
                 // Читаем имя
                 name.resize(name_len.value);            // неявное преобразование
-                ar.serialize(&name[0], name_len.value); // CompactIndex в int
+                ar.serialize_obj(&name[0], name_len.value); // CompactIndex в int
 
                 // Вычисляем CRC заново
                 crc32 = util::compute_crc32(name);
@@ -37,7 +37,7 @@ class MemorySymbolTable : public NativeObject {
                 // При сохранении пишем имя
                 CompactIndex name_len(name.length());
                 ar << name_len;
-                ar.serialize(&name[0], name.length());
+                ar.serialize_obj(&name[0], name.length());
             }
         }
     };

@@ -86,7 +86,7 @@ class MemoryArchive : public Archive {
     // Archive interface
     // ------------------------------------------------------------
 
-    void serialize(void *v, int length) override {
+    void serialize_obj(void *v, int length) override {
         if (!v || length <= 0)
             return;
 
@@ -121,7 +121,7 @@ class MemoryArchive : public Archive {
         return m_position >= m_region->size();
     }
 
-    void seek(int pos) override {
+    void seek(size_t pos) override {
         if (pos < 0 || pos > m_region->size()) {
             m_is_error = true;
             throw std::runtime_error("MemoryArchive: seek out of bounds");

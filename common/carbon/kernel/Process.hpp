@@ -124,14 +124,14 @@ namespace runtime::kernel {
 
         /// Trans-обработчик - выполняется ПЕРЕД основным кодом каждый кадр
         /// Используется для подготовки данных, проверки условий
-        ByteCode* trans_hook = nullptr;
+        FunctionDesc* trans_hook = nullptr;
 
         /// Post-обработчик - выполняется ПОСЛЕ основного кода каждый кадр  
         /// Используется для очистки, финализации, пост-обработки
-        ByteCode* post_hook = nullptr;
+        FunctionDesc* post_hook = nullptr;
 
         /// Event-обработчик - обрабатывает события, отправленные процессу
-        ByteCode* event_hook = nullptr;
+        FunctionDesc* event_hook = nullptr;
 
         // ============================================================================
         // Entity & Game World Integration

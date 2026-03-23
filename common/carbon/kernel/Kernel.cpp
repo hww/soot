@@ -85,7 +85,7 @@ namespace runtime::kernel {
         return true;
     }
 
-    bool Kernel::run_process_function(Process* process, ByteCode* entry_point) {
+    bool Kernel::run_process_function(Process* process, FunctionDesc* entry_point) {
         if (!initialized_ || !process || !entry_point) {
             lg::error("Cannot run process function - invalid parameters");
             return false;
@@ -100,7 +100,7 @@ namespace runtime::kernel {
             set_current_context(process, ThreadType::MAIN);
 
             // Выполняем функцию через виртуальную машину
-            virtual_machine_.execute_bytecode(entry_point);
+            virtual_machine_.execute_FunctionDesc(entry_point);
 
             lg::debug("Executed function in process '{}'", process->get_name_string());
 

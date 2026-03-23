@@ -22,8 +22,8 @@ int main() {
     auto enemy_fsm = std::make_unique<StateMachine>(enemy_process);
     
     // Добавление состояний с байткодом
-    ByteCode* patrol_code = vm.find_function("patrol-behavior");
-    ByteCode* chase_code = vm.find_function("chase-behavior");
+    FunctionDesc* patrol_code = vm.find_function("patrol-behavior");
+    FunctionDesc* chase_code = vm.find_function("chase-behavior");
     
     if (patrol_code && chase_code) {
         auto patrol_state = std::make_unique<StateDefinition>("patrol", patrol_code);

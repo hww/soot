@@ -77,7 +77,7 @@ namespace runtime::modules {
         Definition* resolve_symbol(StringId name);
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
-        ByteCode* resolve_code(StringId name);
+        FunctionDesc* resolve_code(StringId name);
 
         std::string to_string() const;
 

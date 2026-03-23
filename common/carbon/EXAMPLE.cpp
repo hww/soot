@@ -23,7 +23,7 @@ namespace example {
         void* stack_top = process_stack + sizeof(process_stack);
 
         // Получаем байткод функции (в реальной системе из модуля)
-        ByteCode* main_function = /* получаем из модуля */ nullptr;
+        FunctionDesc* main_function = /* получаем из модуля */ nullptr;
 
         // Создаем и запускаем процесс одной функцией
         auto* player_process = kernel::ProcessRunner::spawn(
@@ -71,7 +71,7 @@ namespace example {
             stack_top);
 
         // Этап 3: Запускаем функцию (опционально)
-        ByteCode* ai_function = /* получаем из модуля */ nullptr;
+        FunctionDesc* ai_function = /* получаем из модуля */ nullptr;
         kernel::ProcessRunner::run(enemy_process, ai_function);
 
         kernel::kernel().shutdown();

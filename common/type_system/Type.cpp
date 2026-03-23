@@ -733,7 +733,7 @@ bool ValueType::serialize_obj(Archive &ar, Object &data) {
 
             std::string str;
             str.resize(len.value);
-            ar.serialize(&str[0], len.value);
+            ar.serialize_obj(&str[0], len.value);
 
             if (type_name == "symbol") {
                 data = Object::make_symbol(str);
@@ -829,7 +829,7 @@ bool ValueType::serialize_obj(Archive &ar, Object &data) {
 
             CompactIndex len(str.length());
             ar << len;
-            ar.serialize(&str[0], str.length());
+            ar.serialize_obj(&str[0], str.length());
 
         } else if (type_name == "bool") {
             // Булево значение

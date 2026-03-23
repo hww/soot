@@ -13,7 +13,7 @@ Input modes (mutually exclusive):
 Output control:
   --tokens [filename]     Print tokens to screen or file
   --ast [filename]        Print AST to screen or file  
-  --bytecode [filename]   Print bytecode to screen or file
+  --FunctionDesc [filename]   Print FunctionDesc to screen or file
   --string-info           Print string database info
 
 Execution mode:
@@ -39,9 +39,9 @@ Execution mode:
 # Отладочная информация
 ./scheme --tokens program.scm            # Токены на экран
 ./scheme --ast program.scm               # AST на экран  
-./scheme --bytecode program.scm          # Байткод на экран
-./scheme --ast ast.txt --bytecode bc.txt # В файлы
+./scheme --FunctionDesc program.scm          # Байткод на экран
+./scheme --ast ast.txt --FunctionDesc bc.txt # В файлы
 
 # Комбинации
 ./scheme --tokens --ast -e "(define x 42)" # Токены + AST выражения
-./scheme --compile --bytecode file.scm    # Компиляция + показ байткода
+./scheme --compile --FunctionDesc file.scm    # Компиляция + показ байткода

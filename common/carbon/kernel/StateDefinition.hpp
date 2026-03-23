@@ -30,29 +30,29 @@ namespace runtime::kernel
 
         /// Байткод для входа в состояние (соответствует enter в GOAL)
         /// Выполняется при переходе в это состояние
-        ByteCode* enter_bytecode = nullptr;
+        FunctionDesc* enter_FunctionDesc = nullptr;
 
         /// Байткод для обработки перехода между состояниями (соответствует trans в GOAL)
         /// Обрабатывает условия перехода до выполнения основного кода состояния
-        ByteCode* trans_bytecode = nullptr;
+        FunctionDesc* trans_FunctionDesc = nullptr;
 
         /// Основной код состояния (соответствует code в GOAL)
         /// Выполняется при каждом обновлении, может быть прерван suspend()
-        ByteCode* update_bytecode = nullptr;
+        FunctionDesc* update_FunctionDesc = nullptr;
 
         /// Байткод для пост-обработки состояния (соответствует post в GOAL)
         /// Выполняется после основного кода, используется для очистки, проверок, пост-обработки
-        ByteCode* post_bytecode = nullptr;
+        FunctionDesc* post_FunctionDesc = nullptr;
 
         /// Байткод для выхода из состояния (соответствует exit в GOAL)
         /// Выполняется при выходе из состояния, используется для освобождения ресурсов
-        ByteCode* exit_bytecode = nullptr;
+        FunctionDesc* exit_FunctionDesc = nullptr;
 
         // ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
 
         /// Таблица обработчиков событий (event_type -> handler)
-        /// В GOAL соответствует event_bytecode, но здесь организована в виде таблицы
-        std::unordered_map<StringId, ByteCode*> event_handlers;
+        /// В GOAL соответствует event_FunctionDesc, но здесь организована в виде таблицы
+        std::unordered_map<StringId, FunctionDesc*> event_handlers;
 
         // ===== МЕТАДАННЫЕ ДЛЯ УПРАВЛЕНИЯ НАСЛЕДОВАНИЕМ И ПОВЕДЕНИЕМ =====
 
@@ -106,7 +106,7 @@ namespace runtime::kernel
         /// Основной конструктор
         /// @param state_name - идентификатор состояния
         /// @param update_code - основной код состояния (может быть nullptr)
-        StateDefinition(StringId state_name, ByteCode* update_code = nullptr);
+        StateDefinition(StringId state_name, FunctionDesc* update_code = nullptr);
 
         /// Запрет копирования (указатели на байткод не должны копироваться)
         StateDefinition(const StateDefinition&) = delete;
@@ -119,19 +119,19 @@ namespace runtime::kernel
         // ===== МЕТОДЫ ПРОВЕРКИ НАЛИЧИЯ ОБРАБОТЧИКОВ =====
 
         /// Проверяет наличие обработчика входа в состояние
-        bool has_enter() const { return enter_bytecode != nullptr; }
+        bool has_enter() const { return enter_FunctionDesc != nullptr; }
 
         /// Проверяет наличие обработчика выхода из состояния
-        bool has_exit() const { return exit_bytecode != nullptr; }
+        bool has_exit() const { return exit_FunctionDesc != nullptr; }
 
         /// Проверяет наличие основного кода обновления
-        bool has_update() const { return update_bytecode != nullptr; }
+        bool has_update() const { return update_FunctionDesc != nullptr; }
 
         /// Проверяет наличие Trans-обработчика (переход между состояниями)
-        bool has_trans() const { return trans_bytecode != nullptr; }
+        bool has_trans() const { return trans_FunctionDesc != nullptr; }
 
         /// Проверяет наличие Post-обработчика (пост-обработка состояния)
-        bool has_post() const { return post_bytecode != nullptr; }
+        bool has_post() const { return post_FunctionDesc != nullptr; }
 
         /// Проверяет наличие обработчика для конкретного типа события
         /// @param event_type - тип события
@@ -145,7 +145,7 @@ namespace runtime::kernel
         /// Добавляет обработчик события
         /// @param event_type - тип события
         /// @param handler - байткод обработчика
-        void add_event_handler(StringId event_type, ByteCode* handler);
+        void add_event_handler(StringId event_type, FunctionDesc* handler);
 
         /// Удаляет обработчик события
         /// @param event_type - тип события для удаления
@@ -154,7 +154,7 @@ namespace runtime::kernel
         /// Получает обработчик события
         /// @param event_type - тип события
         /// @return указатель на байткод или nullptr если не найден
-        ByteCode* get_event_handler(StringId event_type) const;
+        FunctionDesc* get_event_handler(StringId event_type) const;
 
         // ===== МЕТОДЫ ДЛЯ РАБОТЫ С НАСЛЕДОВАНИЕМ =====
 

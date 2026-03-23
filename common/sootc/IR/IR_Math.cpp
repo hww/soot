@@ -25,7 +25,7 @@ std::string IR_Binary::to_string() const {
                        left_->to_string(), right_->to_string());
 }
 
-void IR_Binary::generate(ByteCodeBuilder& builder,
+void IR_Binary::generate(FunctionDescBuilder& builder,
                          const std::unordered_map<IR_Value*, u32>& reg_map) {
     u32 dest_reg = reg_map.at(dest_);
     u32 left_reg = reg_map.at(left_);
@@ -68,7 +68,7 @@ std::string IR_Compare::to_string() const {
                        left_->to_string(), right_->to_string());
 }
 
-void IR_Compare::generate(ByteCodeBuilder& builder,
+void IR_Compare::generate(FunctionDescBuilder& builder,
                           const std::unordered_map<IR_Value*, u32>& reg_map) {
     u32 dest_reg = reg_map.at(dest_);
     u32 left_reg = reg_map.at(left_);

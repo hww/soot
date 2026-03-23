@@ -1,6 +1,7 @@
 ﻿#include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
+#include "common/carbon/files/FunctionDesc.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "common/util/Log.hpp"
 
@@ -20,22 +21,22 @@ namespace runtime::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == type::i64)
-					return *((s64*)resolved->data_ptr.c());
+					return *((s64*)resolved->data.get());
 				if (resolved->type == type::i32)
-					return *((s32*)resolved->data_ptr.c());
+					return *((s32*)resolved->data.get());
 				if (resolved->type == type::i16)
-					return *((s16*)resolved->data_ptr.c());
+					return *((s16*)resolved->data.get());
 				if (resolved->type == type::i8)
-					return *((s8*)resolved->data_ptr.c());
+					return *((s8*)resolved->data.get());
 
 				if (resolved->type == type::u64)
-					return *((u64*)resolved->data_ptr.c());
+					return *((u64*)resolved->data.get());
 				if (resolved->type == type::u32)
-					return *((u32*)resolved->data_ptr.c());
+					return *((u32*)resolved->data.get());
 				if (resolved->type == type::u16)
-					return *((u16*)resolved->data_ptr.c());
+					return *((u16*)resolved->data.get());
 				if (resolved->type == type::u8)
-					return *((u8*)resolved->data_ptr.c());
+					return *((u8*)resolved->data.get());
 
 				throw new VmTypeError("resolve_integer", resolved->type);
 			}
@@ -52,22 +53,22 @@ namespace runtime::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == type::i64)
-					return *((s64*)resolved->data_ptr.c());
+					return *((s64*)resolved->data.get());
 				if (resolved->type == type::i32)
-					return *((s32*)resolved->data_ptr.c());
+					return *((s32*)resolved->data.get());
 				if (resolved->type == type::i16)
-					return *((s16*)resolved->data_ptr.c());
+					return *((s16*)resolved->data.get());
 				if (resolved->type == type::i8)
-					return *((s8*)resolved->data_ptr.c());
+					return *((s8*)resolved->data.get());
 
 				if (resolved->type == type::u64)
-					return *((u64*)resolved->data_ptr.c());
+					return *((u64*)resolved->data.get());
 				if (resolved->type == type::u32)
-					return *((u32*)resolved->data_ptr.c());
+					return *((u32*)resolved->data.get());
 				if (resolved->type == type::u16)
-					return *((u16*)resolved->data_ptr.c());
+					return *((u16*)resolved->data.get());
 				if (resolved->type == type::u8)
-					return *((u8*)resolved->data_ptr.c());
+					return *((u8*)resolved->data.get());
 
 				throw new VmTypeError("resolve_float", resolved->type);
 			}
@@ -83,7 +84,7 @@ namespace runtime::vm {
 		if (module) {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
-				return resolved->data_ptr.c();
+				return resolved->data.get();
 			}
 			else {
 				throw new VmResolvingError("resolve_pointer", name);
@@ -96,12 +97,12 @@ namespace runtime::vm {
 	// ------------------------------------------------------------------------
 
 	// Исполнение функции в модуле
-	Variant VirtualMachine::execute_bytecode(Module* module, StringId function)
+	Variant VirtualMachine::execute_FunctionDesc(Module* module, StringId function)
 	{
-		ByteCode* code = module->resolve_code(function);
+		FunctionDesc* code = module->resolve_code(function);
 
 		if (code) {
-			return execute_bytecode(code);
+			return execute_FunctionDesc(code);
 		}
 		else {
 			lg::warn("VM: No main code found for process {}", module->name, function);
@@ -111,15 +112,15 @@ namespace runtime::vm {
 	}
 
 	// Исполнение кода 
-	Variant VirtualMachine::execute_bytecode(ByteCode* bytecode) {
-		if (!bytecode) {
-			lg::error("Cannot execute null bytecode");
+	Variant VirtualMachine::execute_FunctionDesc(FunctionDesc* FunctionDesc) {
+		if (!FunctionDesc) {
+			lg::error("Cannot execute null FunctionDesc");
 			return Variant();
 		}
 
 		StackFrame* current_frame = create_stack_frame(
-			bytecode->get_code_ptr(),
-			bytecode->get_data_ptr(),
+			FunctionDesc->get_code_ptr(),
+			FunctionDesc->get_data_ptr(),
 			nullptr
 		);
 		return execute(current_frame);
@@ -175,7 +176,7 @@ namespace runtime::vm {
 					break;
 				}
 
-				ByteCode* target_code = reinterpret_cast<ByteCode*>(func_var.get_ptr());
+				FunctionDesc* target_code = reinterpret_cast<FunctionDesc*>(func_var.get_ptr());
 				StackFrame* new_frame = create_stack_frame(
 					target_code->get_code_ptr(),
 					target_code->get_data_ptr(),

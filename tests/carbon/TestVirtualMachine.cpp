@@ -47,13 +47,13 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 42)); // r1 = 42
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));                   // return r1
 
-    builder.add_function(SID("simple_answer"), code);
+    builder.add_function("simple_answer", code);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
     auto module = builder.build_module();
-    auto bytecode = module->resolve_code(SID("simple_answer"));
-    EXPECT_NE(bytecode, nullptr);
-    Variant result = vm.execute_bytecode(bytecode);
+    auto FunctionDesc = module->resolve_code(SID("simple_answer"));
+    EXPECT_NE(FunctionDesc, nullptr);
+    Variant result = vm.execute_FunctionDesc(FunctionDesc);
 
     EXPECT_FALSE(result.is_null());
     EXPECT_EQ(result.to_int(), 42);
@@ -74,11 +74,11 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     code.push_back(Instruction::create_abc(Opcode::MUL_INT, 5, 3, 4));         // r5 = r3 * r4
     code.push_back(Instruction::create_a(Opcode::RETURN, 5));                  // return r5
 
-    builder.add_function(SID("calculate"), code);
+    builder.add_function("calculate", code);
 
     auto    module = builder.build_module();
-    auto    bytecode = module->resolve_code(SID("calculate"));
-    Variant result = vm.execute_bytecode(bytecode);
+    auto    FunctionDesc = module->resolve_code(SID("calculate"));
+    Variant result = vm.execute_FunctionDesc(FunctionDesc);
 
     EXPECT_EQ(result.to_int(), 16); // (5 + 3) * 2 = 16
 }
@@ -96,14 +96,14 @@ TEST_F(VirtualMachineTest, FunctionCall) {
         Instruction::create_a(Opcode::RETURN, 1)};
 
     // Добавляем функцию в билдер
-    builder.add_function(SID("main"), main_code);
+    builder.add_function("main", main_code);
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
 
     auto module = builder.build_module();
-    auto bytecode = module->resolve_code(SID("main"));
+    auto FunctionDesc = module->resolve_code(SID("main"));
 
-    Variant result = vm.execute_bytecode(bytecode);
+    Variant result = vm.execute_FunctionDesc(FunctionDesc);
 
     // Проверяем что функция выполнилась и вернула значение
     EXPECT_TRUE(result.is_int());
@@ -131,10 +131,10 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 30));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    builder.add_function(SID("test_native_call"), code);
+    builder.add_function("test_native_call", code);
 
     auto module = builder.build_module();
-    auto bytecode = module->resolve_code(SID("test_native_call"));
+    auto FunctionDesc = module->resolve_code(SID("test_native_call"));
 
     // Проверяем что нативная функция работает отдельно
     Variant args[2] = {Variant(10), Variant(20)};
@@ -142,7 +142,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     EXPECT_EQ(native_result.to_int(), 30);
 
     // И проверяем что наша простая функция тоже работает
-    Variant vm_result = vm.execute_bytecode(bytecode);
+    Variant vm_result = vm.execute_FunctionDesc(FunctionDesc);
     EXPECT_EQ(vm_result.to_int(), 30);
 }
 
@@ -158,12 +158,12 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 10));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    builder.add_function(SID("conditional"), code);
+    builder.add_function("conditional", code);
 
     auto module = builder.build_module();
-    auto bytecode = module->resolve_code(SID("conditional"));
+    auto FunctionDesc = module->resolve_code(SID("conditional"));
 
-    Variant result = vm.execute_bytecode(bytecode);
+    Variant result = vm.execute_FunctionDesc(FunctionDesc);
     EXPECT_EQ(result.to_int(), 10);
 }
 
@@ -188,22 +188,22 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     std::vector<Instruction> code1;
     code1.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 100));
     code1.push_back(Instruction::create_a(Opcode::RETURN, 1));
-    binary1.add_function(SID("func1"), code1);
+    binary1.add_function("func1", code1);
 
     BinaryFileBuilder        binary2("module2");
     std::vector<Instruction> code2;
     code2.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 200));
     code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
-    binary2.add_function(SID("func2"), code2);
+    binary2.add_function("func2", code2);
 
     auto module1 = binary1.build_module();
     auto module2 = binary2.build_module();
 
-    auto bytecode1 = module1->resolve_code(SID("func1"));
-    auto bytecode2 = module2->resolve_code(SID("func2"));
+    auto FunctionDesc1 = module1->resolve_code(SID("func1"));
+    auto FunctionDesc2 = module2->resolve_code(SID("func2"));
 
-    Variant result1 = vm.execute_bytecode(bytecode1);
-    Variant result2 = vm.execute_bytecode(bytecode2);
+    Variant result1 = vm.execute_FunctionDesc(FunctionDesc1);
+    Variant result2 = vm.execute_FunctionDesc(FunctionDesc2);
     // Должны находить функции из обоих бинарников
     EXPECT_EQ(result1.to_int(), 100);
     EXPECT_EQ(result2.to_int(), 200);

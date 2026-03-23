@@ -71,9 +71,9 @@ TEST(StackFrame, ArgumentCopying) {
 TEST(StackFrame, FrameManagement) {
     Instruction dummy_code[10];
 
-    ByteCode byteCode;
-    StackFrame* parent = create_stack_frame(&byteCode, nullptr);
-    StackFrame* child = push_stack_frame(&byteCode, parent);
+    FunctionDesc FunctionDesc;
+    StackFrame* parent = create_stack_frame(&FunctionDesc, nullptr);
+    StackFrame* child = push_stack_frame(&FunctionDesc, parent);
 
     EXPECT_EQ(child->parent_ptr, parent);
 

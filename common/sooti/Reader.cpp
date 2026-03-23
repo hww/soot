@@ -120,7 +120,7 @@ bool TextStream::read_utf8_encoding(bool throw_on_error) {
 
 // ==================== Reader ====================
 
-Reader::Reader(Interpreter *interpeter) : m_interpreter(interpeter) {
+Reader::Reader() {
     // add default macros
     add_reader_macro("'", "quote");
     add_reader_macro("`", "quasiquote");

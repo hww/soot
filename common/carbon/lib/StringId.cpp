@@ -15,6 +15,10 @@ namespace runtime::lib {
 
     namespace string_id {
 
+        
+        std::unordered_map<StringId, std::string> get_string_table() { return  g_string_table; }
+
+
         void load_table(const std::string& filename) {
             std::ifstream file(filename);
             if (!file) {

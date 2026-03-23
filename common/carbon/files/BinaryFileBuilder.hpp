@@ -2,21 +2,15 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
-#include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/modules/Module.hpp"
-#include "common/util/Assert.hpp"
-#include "common/util/Log.hpp"
+#include "lib/StringId.hpp"
 #include <vector>
-#include <format>
 #include <algorithm>
 #include <memory>
-#include <stdexcept>
-#include <fstream>
 #include <cassert>
-#include <functional>
 #include <string>
 
 using namespace runtime::lib;
@@ -31,8 +25,8 @@ namespace runtime::files {
         std::string name;
 
         struct DefinitionData {
-            StringId name;
-            StringId type;
+            std::string name;
+            std::string type;
             SymbolFlags flags;
             std::vector<u8> data;  // Для простых данных
             std::vector<Instruction> code;  // Для функций
@@ -42,18 +36,24 @@ namespace runtime::files {
         std::vector<DefinitionData> definitions_;
 
     public:
-        BinaryFileBuilder(std::string name) { this->name = name; string_id::register_string(name); }
+        BinaryFileBuilder(std::string name) { 
+            string_id::initialize();
+            this->name = name; string_id::register_string(name); 
+        }
 
         /** Добавить функцию */
-        void add_function(StringId name, const std::vector<Instruction>& code,
+        void add_function(std::string name, 
+            const std::vector<Instruction>& code,
             const std::vector<u8>& data = {},
             const std::vector<SourceLocation>& debug_info = {},
             SymbolFlags flags = SymbolFlags::Export) {
-            definitions_.push_back(DefinitionData{ name, SID("function"), flags, data, code, debug_info });
+            auto funcid = string_id::register_string("function");
+
+            definitions_.push_back(DefinitionData{ name, string_id::to_string(funcid), flags, data, code, debug_info });
         }
 
         /** Добавить простую дефиницию */
-        void add_definition(StringId name, StringId type, const std::vector<u8>& data, SymbolFlags flags = SymbolFlags::Export) {
+        void add_definition(std::string name, std::string type, const std::vector<u8>& data, SymbolFlags flags = SymbolFlags::Export) {
             definitions_.push_back(DefinitionData{ name, type, flags, data, {}, {} });
         }
 

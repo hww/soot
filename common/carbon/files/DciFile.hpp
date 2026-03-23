@@ -64,6 +64,11 @@ namespace runtime::files {
             result += " " + lib::to_string(exp);
         }
         result += ")\n";
+        result += "  (strings";
+        for (auto exp : string_id::get_string_table()) {
+            result += " " + exp.second;
+        }
+        result += ")\n";
         result += ")\n";
         return result;
     }
@@ -177,6 +182,17 @@ namespace runtime::files {
                     }
                     // Экспорты - это имена функций внутри модуля
                     result.exports.push_back(string_id::register_string(export_name_obj.as_symbol().c_str()));
+                    list = list.as_pair()->cdr;
+                }
+            }
+            else if (keyword == string_id::register_string("strings")) {
+                while (list.is_pair()) {
+                    auto export_name_obj = list.as_pair()->car;
+                    if (!export_name_obj.is_symbol()) {
+                        throw std::runtime_error("Expected symbol in export list");
+                    }
+                    // Экспорты - это имена функций внутри модуля
+                    string_id::register_string(export_name_obj.as_symbol().c_str());
                     list = list.as_pair()->cdr;
                 }
             }

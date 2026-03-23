@@ -45,7 +45,7 @@ int main() {
         fmt::print("Loaded file\n{}", loaded_module->binary_file->inspect());
 
     // 5. Находим функцию add
-    ByteCode* add_code = loaded_module->resolve_code(SID("add"));
+    FunctionDesc* add_code = loaded_module->resolve_code(SID("add"));
     if (!add_code) {
         lg::error("Function 'add' not found");
         return 1;

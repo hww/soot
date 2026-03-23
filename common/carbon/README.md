@@ -124,7 +124,7 @@ struct FDefinition {
 ### Организация байткода
 
 ```cpp
-struct FByteCode {
+struct FFunctionDesc {
     u32 desc_size;    // полный размер (заголовок + код + данные)
     u32 file_offs;    // смещение от начала файла
     u32 code_offs;    // смещение кода
@@ -241,7 +241,7 @@ struct FDebugInfo {
 ### Создание фрейма
 
 ```cpp
-FStackFrame* PushStackFrame(FByteCode* pCode, FStackFrame* pParent) {
+FStackFrame* PushStackFrame(FFunctionDesc* pCode, FStackFrame* pParent) {
     auto* pFrame = new FStackFrame();
     pFrame->parent_ptr = pParent;
     pFrame->code_ptr = pCode->get_code_ptr();
@@ -477,7 +477,7 @@ struct FVariant {
 };
 ```
 
-1. **Разделение данных и кода** в `FByteCode`
+1. **Разделение данных и кода** в `FFunctionDesc`
 
 2. **Система определений** для глобального доступа
 
@@ -779,8 +779,8 @@ int main() {
     auto enemy_fsm = std::make_unique<StateMachine>(enemy_process);
     
     // Добавление состояний с байткодом
-    ByteCode* patrol_code = vm.find_function("patrol-behavior");
-    ByteCode* chase_code = vm.find_function("chase-behavior");
+    FunctionDesc* patrol_code = vm.find_function("patrol-behavior");
+    FunctionDesc* chase_code = vm.find_function("chase-behavior");
     
     if (patrol_code && chase_code) {
         auto patrol_state = std::make_unique<StateDefinition>("patrol", patrol_code);

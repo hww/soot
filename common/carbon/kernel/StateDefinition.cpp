@@ -7,8 +7,8 @@
 namespace runtime::kernel
 {
 
-    StateDefinition::StateDefinition(StringId state_name, ByteCode* update_code)
-        : name(state_name), update_bytecode(update_code) {
+    StateDefinition::StateDefinition(StringId state_name, FunctionDesc* update_code)
+        : name(state_name), update_FunctionDesc(update_code) {
     }
 
     bool StateDefinition::has_event(StringId event_type) const {
@@ -19,7 +19,7 @@ namespace runtime::kernel
         return !event_handlers.empty();
     }
 
-    void StateDefinition::add_event_handler(StringId event_type, ByteCode* handler) {
+    void StateDefinition::add_event_handler(StringId event_type, FunctionDesc* handler) {
         event_handlers[event_type] = handler;
     }
 
@@ -27,7 +27,7 @@ namespace runtime::kernel
         event_handlers.erase(event_type);
     }
 
-    ByteCode* StateDefinition::get_event_handler(StringId event_type) const {
+    FunctionDesc* StateDefinition::get_event_handler(StringId event_type) const {
         auto it = event_handlers.find(event_type);
         return it != event_handlers.end() ? it->second : nullptr;
     }

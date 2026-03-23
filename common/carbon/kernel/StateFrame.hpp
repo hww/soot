@@ -11,12 +11,12 @@ namespace runtime::kernel {
     class StateFrame : public ProtectFrame {
     private:
         // Специфичные для состояния обработчики
-        ByteCode* enter_bytecode = nullptr;    // При входе в состояние
-        ByteCode* trans_bytecode = nullptr;    // Перед каждым обновлением  
-        ByteCode* update_bytecode = nullptr;   // Основной код состояния
-        ByteCode* post_bytecode = nullptr;     // После каждого обновления
-        ByteCode* event_bytecode = nullptr;    // Обработчик событий
-        ByteCode* exit_bytecode = nullptr;     // Обработчик событий
+        FunctionDesc* enter_FunctionDesc = nullptr;    // При входе в состояние
+        FunctionDesc* trans_FunctionDesc = nullptr;    // Перед каждым обновлением  
+        FunctionDesc* update_FunctionDesc = nullptr;   // Основной код состояния
+        FunctionDesc* post_FunctionDesc = nullptr;     // После каждого обновления
+        FunctionDesc* event_FunctionDesc = nullptr;    // Обработчик событий
+        FunctionDesc* exit_FunctionDesc = nullptr;     // Обработчик событий
 
         // Мета-информация
         StateDefinition* state_def = nullptr;  // Определение состояния
@@ -60,12 +60,12 @@ namespace runtime::kernel {
         StateDefinition* get_state_definition() const { return state_def; }
         Process* get_owner_process() const { return owner_process; }
 
-        bool has_enter() const { return enter_bytecode != nullptr; }
-        bool has_trans() const { return trans_bytecode != nullptr; }
-        bool has_update() const { return update_bytecode != nullptr; }
-        bool has_post() const { return post_bytecode != nullptr; }
-        bool has_event() const { return event_bytecode != nullptr; }
-        bool has_exit() const { return exit_bytecode != nullptr; }
+        bool has_enter() const { return enter_FunctionDesc != nullptr; }
+        bool has_trans() const { return trans_FunctionDesc != nullptr; }
+        bool has_update() const { return update_FunctionDesc != nullptr; }
+        bool has_post() const { return post_FunctionDesc != nullptr; }
+        bool has_event() const { return event_FunctionDesc != nullptr; }
+        bool has_exit() const { return exit_FunctionDesc != nullptr; }
 
         // ============================================================================
         // Отладочная информация

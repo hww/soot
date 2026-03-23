@@ -1,6 +1,9 @@
 ﻿#include "common/carbon/files/BinaryFileBuilder.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "files/BinaryFile.hpp"
+#include "files/FunctionDesc.hpp"
+#include "files/TypeDesc.hpp"
+#include "files/StateDesc.hpp"
 #include "fmt/format.h"
 #include "lib/StringId.hpp"
 
@@ -45,20 +48,20 @@ namespace runtime::files {
             const auto& def_data = definitions_[i];
             lg::info("Definition[{}] :name='{}'({}) :type '{}'({})",
                 i,
-                lib::to_string(def_data.name), def_data.name,
-                lib::to_string(def_data.type), def_data.type);
+                def_data.name, def_data.name,
+                def_data.type, def_data.type);
 
             // ЯВНАЯ инициализация каждого определения
             new (&defs_table[i]) Definition{
-                def_data.name,      // StringId name
-                def_data.type,      // StringId type  
+                string_id::register_string(def_data.name),      // StringId name
+                string_id::register_string(def_data.type),      // StringId type  
                 def_data.flags,
                 Ptr<u8>()           // Временный нулевой указатель
             };
 
             // Проверим что записалось
             lg::info("  Written :name {} :type {} :data-ptr {}",
-                string_id::to_string(defs_table[i].name), string_id::to_string(defs_table[i].type), defs_table[i].data_ptr.offset);
+                string_id::to_string(defs_table[i].name), string_id::to_string(defs_table[i].type), defs_table[i].data.offset);
         }
 
         current_pos += defs_count * sizeof(Definition);
@@ -72,13 +75,13 @@ namespace runtime::files {
             ensure_capacity(buffer, current_pos + 1024);
 
             // Обновляем указатель в таблице дефиниций
-            defs_table[i].data_ptr = Ptr<u8>(current_pos);
+            defs_table[i].data = Ptr<u8>(current_pos);
             lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
-            if (def.type == SID("function")) {
-                // Записываем ByteCode структуру
-                ByteCode* bc = reinterpret_cast<ByteCode*>(buffer.data() + current_pos);
-                new (bc) ByteCode();  // Явная инициализация
-                current_pos += sizeof(ByteCode);
+            if (def.type == "function") {
+                // Записываем FunctionDesc структуру
+                FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(buffer.data() + current_pos);
+                new (bc) FunctionDesc();  // Явная инициализация
+                current_pos += sizeof(FunctionDesc);
 
                 // Код
                 if (!def.code.empty()) {
@@ -156,10 +159,10 @@ namespace runtime::files {
         for (size_t i = 0; i < definitions_.size(); i++) {
             const auto& def = definitions_[i];
             result += fmt::format("  [{}] {} ({}): ", i,
-                lib::to_string(def.name),
-                lib::to_string(def.type));
+                def.name,
+                def.type);
 
-            if (def.type == SID("function")) {
+            if (def.type =="function") {
                 result += fmt::format("code:{} instructions, data:{} bytes, debug:{} entries\n",
                     def.code.size(), def.data.size(), def.debug_info.size());
 

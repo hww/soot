@@ -10,7 +10,7 @@ std::string IR_Move::to_string() const {
     return "mov " + dest_->to_string() + ", " + src_->to_string();
 }
 
-void IR_Move::generate(ByteCodeBuilder                           &builder,
+void IR_Move::generate(FunctionDescBuilder                           &builder,
                        const std::unordered_map<IR_Value *, u32> &reg_map) {
     u32 dest_reg = reg_map.at(dest_);
     u32 src_reg = reg_map.at(src_);
@@ -31,7 +31,7 @@ std::string IR_Return::to_string() const {
     return "ret";
 }
 
-void IR_Return::generate(ByteCodeBuilder                           &builder,
+void IR_Return::generate(FunctionDescBuilder                           &builder,
                          const std::unordered_map<IR_Value *, u32> &reg_map) {
     if (value_) {
         u32 val_reg = reg_map.at(value_);
@@ -54,7 +54,7 @@ std::string IR_LoadConst::to_string() const {
     return fmt::format("load {}, {}", dest_->to_string(), value_->to_string());
 }
 
-void IR_LoadConst::generate(ByteCodeBuilder& builder,
+void IR_LoadConst::generate(FunctionDescBuilder& builder,
                             const std::unordered_map<IR_Value*, u32>& reg_map) {
     u32 dest_reg = reg_map.at(dest_);
     

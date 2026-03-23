@@ -1,19 +1,15 @@
 ﻿#pragma once
-#include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
-#include "common/carbon/lib/Variant.hpp"
+#include "common/carbon/ForwardDeclarations.hpp"
+#include "common/carbon/files/Base.hpp"  
+#include "common/carbon/files/FunctionDesc.hpp"  
+#include "common/carbon/files/TypeDesc.hpp"
+#include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/lib/Ptr.hpp"  
-#include "common/carbon/vm/Instructions.hpp"
-#include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
 #include <vector>
-#include <format>
-#include <algorithm>
-#include <memory>
-#include <stdexcept>
 #include <fstream>
 #include <cassert>
-#include <functional>
 
 using namespace runtime::lib;
 using namespace runtime::vm;
@@ -21,66 +17,9 @@ using namespace runtime::modules;
 
 namespace runtime::files {
 
-    /**
-     * @brief Aligns size to 4-byte boundary
-     * @param n Original size to align
-     * @return Size aligned to 4 bytes
-     *
-     * This is critical for proper memory alignment in the bytecode format
-     * as many architectures require 4-byte aligned memory access for
-     * optimal performance and correctness.
-     */
-    constexpr u32 align_size(u32 n) {
-        return (n + 3) & ~3;
-    }
-
-    /* Errors */
-    /**
-     * @brief Exception class for bytecode loading and validation errors
-     *
-     * Thrown when bytecode format is invalid, corrupted, or incompatible
-     * with the current runtime version.
-     */
-    class ByteCodeError : public std::exception {
-    public:
-        explicit ByteCodeError(const std::string& msg);
-        const char* what() const noexcept override;
-    private:
-        std::string message;
-    };
 
     /**
-     * @brief Source code location information for debugging
-     *
-     * Maps bytecode instructions back to original source code locations.
-     * This enables meaningful stack traces and debugging information.
-     */
-    struct SourceLocation {
-        /** Character offset in the original source file */
-        u32 offset;
-        /** Line number in the original source file (1-based) */
-        u32 line;
-        /** File identifier where this code originated */
-        StringId file;
-
-        /**
-         * @brief Convert to human-readable string representation
-         * @return Formatted string with location details
-         */
-        std::string to_string() const;
-    };
-
-    enum class SymbolFlags {
-        None = 0,
-        Local = 1 << 0,    // определен в этом модуле
-        Import = 1 << 1,   // получен из другого модуля
-        Export = 1 << 2    // доступен другим модулям
-    };
-    
-    ENUM_FLAG_OPERATORS(SymbolFlags);
-
-    /**
-     * @brief Definition of a named entity in the bytecode file
+     * @brief Definition of a named entity in the FunctionDesc file
      *
      * Definitions can represent functions, global variables, constants,
      * or other named entities that are exported/imported between modules.
@@ -93,7 +32,7 @@ namespace runtime::files {
         /** Flags for the definition */
         SymbolFlags flags;
         /** Pointer to the actual data or code for this definition */
-        Ptr<u8> data_ptr;
+        Ptr<u8> data;
 
         /**
          * @brief Convert to simple string representation
@@ -118,94 +57,32 @@ namespace runtime::files {
         }
     };
 
-    /**
-     * @brief Base class for entities that can be relocated in memory
-     *
-     * Used during module loading and dynamic linking to adjust pointers
-     * when code is moved in memory.
-     */
-    struct Descriptor {
-        /** Size of this descriptor in bytes */
-        u32 desc_size;
-
+    struct MethodHeader {
+        StringId name;
+        StringId type;
+        Ptr<FunctionDesc> data;
+        MethodFlags flags;
         /**
-         * @brief Adjust all internal pointers by a delta value
-         * @param delta The amount to add to all pointers
-         *
-         * This is essential for position-independent code and dynamic
-         * loading where the base address may change.
+         * @brief Convert to simple string representation
+         * @return Basic string representation
          */
-        virtual void relocate_pointers(intptr_t delta) = 0;
-
-        virtual ~Descriptor() = default;
-    };
-
-    /**
-     * @brief Complete bytecode representation with code, data, and debug info
-     *
-     * This is the core structure representing executable code in the VM.
-     * It contains the actual bytecode instructions, constant data, and
-     * debugging information mapping back to source code.
-     */
-    struct ByteCode : public Descriptor {
-        /** Number of instructions in the code section */
-        u32 code_count;
-        /** Size of constant data in bytes */
-        u32 data_size;
-        /** Number of debug information entries */
-        u32 debug_count;
-        /** Pointer to the instruction stream */
-        Ptr<Instruction> code_ptr;
-        /** Pointer to constant data section */
-        Ptr<u8> data_ptr;
-        /** Pointer to debug information array */
-        Ptr<SourceLocation> debug_ptr;
-        /** Module that owns this bytecode (set during linking) */
-        Module* owner_module;
-
-        ByteCode();
-
-        /**
-         * @brief Get pointer to the code section
-         * @return Pointer to instructions or nullptr if no code
-         */
-        Instruction* get_code_ptr() const;
-
-        /**
-         * @brief Get pointer to the data section
-         * @return Pointer to constant data or nullptr if no data
-         */
-        u8* get_data_ptr() const;
-
-        /**
-         * @brief Get pointer to debug information
-         * @return Pointer to debug info or nullptr if no debug data
-         */
-        SourceLocation* get_debug_info() const;
-
-        /**
-         * @brief Find source location for a specific instruction
-         * @param instruction_ip The instruction pointer/offset to lookup
-         * @return Source location info or empty location if not found
-         *
-         * This enables mapping runtime errors back to source code
-         * locations for better debugging experience.
-         */
-        SourceLocation find_source_location(u32 instruction_ip) const;
-
-        /**
-         * @brief Check if debug information is available
-         * @return true if debug information is present
-         */
-        bool has_debug_info() const;
-
-        void relocate_pointers(intptr_t delta) override;
+        std::string to_string() const;
 
         /**
          * @brief Create detailed inspection string
-         * @return Formatted string with complete bytecode information
+         * @return Detailed formatted string for debugging
          */
         std::string inspect() const;
+
+        inline bool has_flag(MethodFlags flag) const {
+            return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
+        }
+        inline void set_flag(MethodFlags flag) {
+            flags |= flag;
+        }
+        inline void clear_flag(MethodFlags flag) {
+            flags &= flag;
+        }
     };
 
     /**
@@ -226,16 +103,12 @@ namespace runtime::files {
         u32 file_size;
         /** Actually used size (may be less than file_size due to padding) */
         u32 used_size;
-
-        // Definitions table
         /** Pointer to the definitions array */
         Ptr<Definition> definitions;
         /** Number of definitions in the table */
         u32 definitions_count;
-
         /** Base offset for relative pointers */
         BinaryFile* base_offset;
-
         /** The owner module */
         Module* owner_module;
 
@@ -277,14 +150,14 @@ namespace runtime::files {
         Definition* find_definition_by_name(StringId name) const;
 
         /**
-         * @brief Find bytecode by definition name
+         * @brief Find FunctionDesc by definition name
          * @param name StringId of the function to find
-         * @return Pointer to ByteCode or nullptr if not found or not a function
+         * @return Pointer to FunctionDesc or nullptr if not found or not a function
          *
          * Specifically looks for function definitions and returns their
-         * associated bytecode. Returns nullptr for non-function definitions.
+         * associated FunctionDesc. Returns nullptr for non-function definitions.
          */
-        ByteCode* find_bytecode_by_name(StringId name) const;
+        FunctionDesc* find_FunctionDesc_by_name(StringId name) const;
 
         /**
          * @brief Adjust all pointers in the file for new base address

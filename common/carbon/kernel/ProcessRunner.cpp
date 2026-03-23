@@ -10,7 +10,7 @@ namespace runtime::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn(StringId name, Process* parent,
-        ByteCode* entry_point, void* stack_top) {
+        FunctionDesc* entry_point, void* stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn process - Kernel not initialized");
             return nullptr;
@@ -89,7 +89,7 @@ namespace runtime::kernel {
         return success;
     }
 
-    bool ProcessRunner::run(Process* process, ByteCode* entry_point) {
+    bool ProcessRunner::run(Process* process, FunctionDesc* entry_point) {
         if (!process || !entry_point) {
             lg::error("Cannot run process - invalid parameters");
             return false;
@@ -141,8 +141,8 @@ namespace runtime::kernel {
         }
 
         // Находим функцию
-        auto bytecode = module->resolve_code(function_name);
-        if (!bytecode) {
+        auto FunctionDesc = module->resolve_code(function_name);
+        if (!FunctionDesc) {
             lg::error("Function '{}' not found in module '{}'",
                 lib::to_string(function_name), lib::to_string(module_name));
             return nullptr;
@@ -156,7 +156,7 @@ namespace runtime::kernel {
         lg::debug("Spawning process for {}.{}",
             lib::to_string(module_name), lib::to_string(function_name));
 
-        return spawn(process_name, parent, bytecode, stack_top);
+        return spawn(process_name, parent, FunctionDesc, stack_top);
     }
 
     u32 ProcessRunner::kill_by_name(StringId name) {

@@ -21,6 +21,7 @@ std::string read_file(const std::string& filename) {
 }
 
 int main(int argc, char* argv[]) {
+    (void)argv;
     try {
         Interpreter interpreter;
         

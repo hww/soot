@@ -10,7 +10,7 @@ namespace script {
 // ============================================================
 
 Archive::~Archive() {}
-void Archive::serialize(void *v, int length) {
+void Archive::serialize_obj(void *v, int length) {
     (void)v;
     (void)length;
 }
@@ -33,7 +33,7 @@ bool Archive::at_end() {
     return pos != INVALID_INDEX && pos >= total_size();
 }
 
-void Archive::seek(int in_pos) {
+void Archive::seek(size_t in_pos) {
     (void)in_pos;
 }
 

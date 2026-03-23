@@ -11,8 +11,11 @@ add_library(libcarbon
     common/carbon/lib/StringId.cpp
     common/carbon/lib/Ptr.cpp
     ## Files
-    common/carbon/files/BinaryFile.cpp
-    
+    common/carbon/files/Base.cpp
+    common/carbon/files/StateDesc.cpp
+    common/carbon/files/TypeDesc.cpp
+    common/carbon/files/FunctionDesc.cpp
+    common/carbon/files/BinaryFile.cpp   
     common/carbon/files/BinaryFileBuilder.cpp
     ## Modules
     common/carbon/modules/Module.cpp

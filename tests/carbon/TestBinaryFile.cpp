@@ -29,7 +29,7 @@ protected:
         // Добавляем определения если нужно
         for (u32 i = 0; i < definitions_count; i++) {
             std::string def_name = "def_" + std::to_string(i);
-            auto def_name_id = string_id::register_string(def_name);
+
 
             // Создаем простую функцию с минимальным кодом
             std::vector<Instruction> code = {
@@ -38,7 +38,7 @@ protected:
             };
 
             builder.add_function(
-                def_name_id,
+                def_name,
                 code,
                 {}, // пустые данные
                 {}  // пустая отладочная информация
@@ -56,8 +56,8 @@ protected:
     }
 };
 
-TEST_F(BinaryFileTest, ByteCodeBasicStructure) {
-    EXPECT_GE(sizeof(ByteCode), 16U);
+TEST_F(BinaryFileTest, FunctionDescBasicStructure) {
+    EXPECT_GE(sizeof(FunctionDesc), 16U);
 }
 
 TEST_F(BinaryFileTest, BinaryFileValidation) {
@@ -161,29 +161,29 @@ TEST_F(BinaryFileTest, InvalidBinaryFile) {
     EXPECT_FALSE(wrong_size_file.is_valid());
 }
 
-TEST_F(BinaryFileTest, FindByteCodeByName) {
+TEST_F(BinaryFileTest, FindFunctionDescByName) {
     auto module = create_test_module("find_test", 2);
     ASSERT_NE(module, nullptr);
 
-    // Добавляем ByteCode определение
+    // Добавляем FunctionDesc определение
     Definition* def1 = module->binary_file->get_definition(1);
 
-    // Создаем ByteCode для второго определения
-    ByteCode* bytecode1 = reinterpret_cast<ByteCode*>(def1->data_ptr.c());
+    // Создаем FunctionDesc для второго определения
+    FunctionDesc* FunctionDesc1 = reinterpret_cast<FunctionDesc*>(def1->data.get());
      
-    // Инициализируем ByteCode
-    bytecode1->code_count = 10;
-    bytecode1->data_size = 100;
-    bytecode1->debug_count = 5;
+    // Инициализируем FunctionDesc
+    FunctionDesc1->code_count = 10;
+    FunctionDesc1->data_size = 100;
+    FunctionDesc1->debug_count = 5;
 
     // Ищем по имени
-    ByteCode* found = module->binary_file->find_bytecode_by_name(SID("def_1"));
+    FunctionDesc* found = module->binary_file->find_FunctionDesc_by_name(SID("def_1"));
     EXPECT_NE(found, nullptr);
     EXPECT_EQ(found->code_count, 10);
     EXPECT_EQ(found->data_size, 100);
     EXPECT_EQ(found->debug_count, 5);
 
     // Ищем несуществующее
-    ByteCode* not_found = module->binary_file->find_bytecode_by_name(SID("nonexistent"));
+    FunctionDesc* not_found = module->binary_file->find_FunctionDesc_by_name(SID("nonexistent"));
     EXPECT_EQ(not_found, nullptr);
 }

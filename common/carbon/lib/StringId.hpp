@@ -1,15 +1,15 @@
 ﻿#pragma once
 
-#include <string>
-#include <cstdint>
-#include <ostream>
-#include "common/util/Crc32.hpp"
 #include "common/CommonTypes.hpp"
+#include "common/util/Crc32.hpp"
+#include <unordered_map>
+#include <string>
+#include <ostream>
 
 namespace runtime::lib {
 
 
-    typedef uint32_t StringId;
+    typedef u32 StringId;
 
     namespace string_id {
         
@@ -73,6 +73,7 @@ namespace runtime::lib {
          */
         void clear_table();
 
+        std::unordered_map<StringId, std::string> get_string_table();
         /**
          * Check the table
          */

@@ -7,10 +7,9 @@
 #include "common/carbon/files/BinaryFile.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
-#include <vector>
-#include <format>
 #include <iostream>
 #include <ostream>
+#include <functional>
 
 using namespace runtime::lib;
 using namespace runtime::files;
@@ -35,8 +34,8 @@ namespace runtime::vm {
         // ------------------------------------------------------------------------
         StringId name;                      // Имя фрейма (для отладки и throw)
         FrameType frame_type;               // Тип фрейма
-        ByteCode* byte_code = nullptr;
-        Instruction* code_ptr = nullptr;    // Pointer to bytecode instructions
+        FunctionDesc* byte_code = nullptr;
+        Instruction* code_ptr = nullptr;    // Pointer to FunctionDesc instructions
         u8* data_ptr = nullptr;             // Pointer to static data
         StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
         u32 pc = 0;                         // Program counter
@@ -57,7 +56,7 @@ namespace runtime::vm {
         }
 
 
-        StackFrame(ByteCode* bytecode, StackFrame* parent = nullptr,
+        StackFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr,
             FrameType frame_type = FrameType::GENERIC, StringId name = SID("null"));
 
         virtual ~StackFrame(){}
@@ -126,9 +125,9 @@ namespace runtime::vm {
 
         u32 get_code_size() const {
             if (!code_ptr) return 0;
-            // This would need to be stored in the frame or bytecode header
+            // This would need to be stored in the frame or FunctionDesc header
             // For now, we'll assume a large enough buffer
-            return 1024; // Temporary - should come from ByteCode
+            return 1024; // Temporary - should come from FunctionDesc
         }
 
         // ------------------------------------------------------------------------
@@ -207,8 +206,8 @@ namespace runtime::vm {
     // Stack Frame Management Functions
     // ============================================================================
 
-    inline StackFrame* create_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
-        return new StackFrame(bytecode, parent);
+    inline StackFrame* create_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
+        return new StackFrame(FunctionDesc, parent);
     }
 
     inline void destroy_stack_frame(StackFrame* frame) {
@@ -217,8 +216,8 @@ namespace runtime::vm {
         }
     }
 
-    inline StackFrame* push_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
-        return create_stack_frame(bytecode, parent);
+    inline StackFrame* push_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
+        return create_stack_frame(FunctionDesc, parent);
     }
 
     inline StackFrame* pop_stack_frame(StackFrame* frame) {
@@ -245,8 +244,8 @@ namespace runtime::vm {
     class CatchFrame : public StackFrame {
     public:
 
-        CatchFrame(ByteCode* bytecode, StackFrame* parent = nullptr, StringId tag_name = SID("null"))
-            : StackFrame(bytecode, parent, FrameType::CATCH, tag_name) {
+        CatchFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, StringId tag_name = SID("null"))
+            : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
         }
 
         void exit() override {
@@ -278,8 +277,8 @@ namespace runtime::vm {
         /// Данные для очистки (опционально)
         void* user_data = nullptr;
 
-        ProtectFrame(ByteCode* bytecode, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
-            : StackFrame(bytecode, parent, FrameType::PROTECT, SID("protected"))
+        ProtectFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
+            : StackFrame(FunctionDesc, parent, FrameType::PROTECT, SID("protected"))
             , cleanup_function(std::move(cleanup)) {
         }
 

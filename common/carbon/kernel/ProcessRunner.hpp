@@ -24,7 +24,7 @@ namespace runtime::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn(StringId name, Process* parent,
-            ByteCode* entry_point, void* stack_top);
+            FunctionDesc* entry_point, void* stack_top);
 
         /// Создать процесс с состоянием одной функцией
         /// @param name Имя процесса
@@ -55,7 +55,7 @@ namespace runtime::kernel {
         /// @param process Процесс для выполнения
         /// @param entry_point Байткод функции для запуска
         /// @return true если запуск успешен
-        static bool run(Process* process, ByteCode* entry_point);
+        static bool run(Process* process, FunctionDesc* entry_point);
 
         // ============================================================================
         // Pool-based Creation (для оптимизации)

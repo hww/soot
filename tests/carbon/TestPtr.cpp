@@ -41,7 +41,7 @@ TEST_F(PtrTest, NullPointer) {
     Ptr<TestStruct> null_ptr;
     EXPECT_TRUE(null_ptr.is_null());
     EXPECT_FALSE(static_cast<bool>(null_ptr));
-    EXPECT_EQ(null_ptr.c(), nullptr);
+    EXPECT_EQ(null_ptr.get(), nullptr);
 }
 
 TEST_F(PtrTest, MakePtrFunction) {
@@ -76,7 +76,7 @@ TEST_F(PtrTest, TypeCasting) {
     Ptr<TestStruct> struct_ptr(&test_data);
 
     Ptr<u8> byte_ptr = struct_ptr.cast<u8>();
-    EXPECT_EQ(byte_ptr.c(), reinterpret_cast<u8*>(&test_data));
+    EXPECT_EQ(byte_ptr.get(), reinterpret_cast<u8*>(&test_data));
 
     Ptr<TestStruct> back_ptr = byte_ptr.cast<TestStruct>();
     EXPECT_EQ(back_ptr->value, 42);

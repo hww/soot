@@ -22,13 +22,13 @@ class Archive : public NativeObject {
           m_is_persistent(presistant), m_is_error(false) {}
     virtual ~Archive();
 
-    virtual void serialize(void *v, int length);
+    virtual void serialize_obj(void *v, int length);
     // virtual Archive &operator<<(FName &Name);
     // virtual Archive &operator<<(SFieldObject *&Object);
     virtual int  tell();
     virtual int  total_size();
     virtual bool at_end();
-    virtual void seek(int inPos);
+    virtual void seek(size_t inPos);
     virtual void precache(int hintCount);
     virtual void flush();
     virtual bool close();
@@ -42,10 +42,10 @@ class Archive : public NativeObject {
         if (is_big_endian && m_is_persistent) {
             //	Transferring between memory and file, so flip the byte order.
             for (int i = length - 1; i >= 0; i--)
-                serialize((uint8_t *)v + i, 1);
+                serialize_obj((uint8_t *)v + i, 1);
         } else {
             //	Transferring around within memory, so keep the byte order.
-            serialize(v, length);
+            serialize_obj(v, length);
         }
 #endif
         return *this;
@@ -89,19 +89,19 @@ class Archive : public NativeObject {
 
     // Friend archivers.
     friend Archive &operator<<(Archive &ar, bool &b) {
-        ar.serialize(&b, 1);
+        ar.serialize_obj(&b, 1);
         return ar;
     }
     friend Archive &operator<<(Archive &ar, char &c) {
-        ar.serialize(&c, 1);
+        ar.serialize_obj(&c, 1);
         return ar;
     }
     friend Archive &operator<<(Archive &ar, uint8_t &b) {
-        ar.serialize(&b, 1);
+        ar.serialize_obj(&b, 1);
         return ar;
     }
     friend Archive &operator<<(Archive &ar, signed char &b) {
-        ar.serialize(&b, 1);
+        ar.serialize_obj(&b, 1);
         return ar;
     }
     friend Archive &operator<<(Archive &ar, uint16_t &w) {

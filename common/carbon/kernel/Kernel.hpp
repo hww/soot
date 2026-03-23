@@ -254,7 +254,7 @@ namespace runtime::kernel {
          * @note Автоматически управляет контекстом выполнения
          * @note Безопасен для вложенных вызовов
          */
-        bool run_process_function(Process* process, ByteCode* entry_point);
+        bool run_process_function(Process* process, FunctionDesc* entry_point);
 
         // ============================================================================
         // Frame Execution

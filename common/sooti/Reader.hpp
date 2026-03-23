@@ -86,7 +86,7 @@ class Reader {
     };
 
   public:
-    Reader(Interpreter *interpeter = NULL);
+    Reader();
 
     // ТОЧНО как у них:
     Object read_single_form(TextStream &ts, EvalCallback eval_callback = nullptr);
@@ -139,7 +139,6 @@ class Reader {
     TextDb                                       m_db;      // как у них - db, не m_db
     bool                                         m_valid_symbols_chars[256];
     std::unordered_map<std::string, ReaderMacro> m_reader_macros;
-    Interpreter                                 *m_interpreter;
 };
 
 } // namespace script

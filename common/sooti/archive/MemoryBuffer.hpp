@@ -83,7 +83,7 @@ class MemoryBuffer : public NativeObject {
 
     std::string hex_dump(size_t start_offset, size_t bytes_to_dump, bool show_ascii = true,
                          size_t bytes_per_line = 16) const {
-        m_region->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
+        return m_region->hex_dump(start_offset, bytes_to_dump, show_ascii, bytes_per_line);
     }
     // ============================================================
     // MativeObject implementation

@@ -1,30 +1,15 @@
 ﻿#include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "common/CommonTypes.hpp"
+#include "files/FunctionDesc.hpp"
 #include "fmt/base.h"
+#include "lib/Variant.hpp"
 #include <sstream>
 
+using namespace runtime::lib;
 
 namespace runtime::files {
 
-    // =============================================================================
-    // ByteCodeError Implementation
-    // =============================================================================
-
-    ByteCodeError::ByteCodeError(const std::string& msg) : message(msg) {}
-
-    const char* ByteCodeError::what() const noexcept {
-        return message.c_str();
-    }
-
-    // =============================================================================
-    // SourceLocation Implementation  
-    // =============================================================================
-
-    std::string SourceLocation::to_string() const {
-        return std::format("SourceLocation(ip:{:04x}, line:{}, file:{})",
-            offset, line, file);
-    }
 
     // =============================================================================
     // Definition Implementation
@@ -52,88 +37,12 @@ namespace runtime::files {
 
     std::string Definition::to_string() const {
         return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset, get_symbol_flags_string(flags));
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data.offset, get_symbol_flags_string(flags));
     }
 
     std::string Definition::inspect() const {
         return std::format("(definition {} :type {} :ptr {:x} :flags {})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data_ptr.offset, get_symbol_flags_string(flags));
-    }
-
-    // =============================================================================
-    // ByteCode Implementation
-    // =============================================================================
-
-    ByteCode::ByteCode() :
-        code_count(0),
-        data_size(0),
-        debug_count(0),
-        code_ptr(),
-        data_ptr(),
-        debug_ptr(),
-        owner_module(nullptr)
-    {
-    }
-
-    Instruction* ByteCode::get_code_ptr() const {
-        return code_ptr.offset != 0 ? code_ptr.c() : nullptr;
-    }
-
-    u8* ByteCode::get_data_ptr() const {
-        return data_ptr.offset != 0 ? data_ptr.c() : nullptr;
-    }
-
-    SourceLocation* ByteCode::get_debug_info() const {
-        return debug_ptr.offset != 0 ? debug_ptr.c() : nullptr;
-    }
-
-    SourceLocation ByteCode::find_source_location(u32 instruction_ip) const {
-        auto debug_info = get_debug_info();
-        if (!debug_info) {
-            return SourceLocation{ 0, 0, 0 };
-        }
-
-        // Linear search through debug info to find matching instruction offset
-        // In production this could be optimized with binary search if entries are sorted
-        for (u32 i = 0; i < debug_count; ++i) {
-            if (debug_info[i].offset == instruction_ip) {
-                return debug_info[i];
-            }
-        }
-
-        // No debug info found for this instruction
-        return SourceLocation{ 0, 0, 0 };
-    }
-
-    bool ByteCode::has_debug_info() const {
-        return debug_ptr.offset != 0;
-    }
-
-    void ByteCode::relocate_pointers(intptr_t delta) {
-        // Adjust all pointer offsets by the delta value
-        // This is used when the bytecode is moved in memory
-        if (code_ptr.offset != 0) {
-            code_ptr.offset += delta;
-        }
-        if (data_ptr.offset != 0) {
-            data_ptr.offset += delta;
-        }
-        if (debug_ptr.offset != 0) {
-            debug_ptr.offset += delta;
-        }
-    }
-
-    std::string ByteCode::inspect() const {
-        std::string code_info = code_ptr.offset != 0 ?
-            std::format("{} instructions", code_count) : "no code";
-        std::string data_info = data_ptr.offset != 0 ?
-            std::format("{} bytes", data_size) : "no data";
-        std::string debug_info = debug_ptr.offset != 0 ?
-            std::format("{} entries", debug_count) : "no debug";
-
-        return std::format("ByteCode(code: {}, data: {}, debug: {}, owner: {})",
-            code_info, data_info, debug_info,
-            owner_module ? "set" : "null");
+            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data.offset, get_symbol_flags_string(flags));
     }
 
     // =============================================================================
@@ -173,7 +82,7 @@ namespace runtime::files {
 
         // Calculate pointer to the definition at the given index
         Ptr<Definition> result_ptr = definitions + idx;
-        Definition* result = result_ptr.c();
+        Definition* result = result_ptr.get();
         return result;
     }
 
@@ -189,13 +98,13 @@ namespace runtime::files {
         return nullptr;
     }
 
-    ByteCode* BinaryFile::find_bytecode_by_name(StringId name) const {
+    FunctionDesc* BinaryFile::find_FunctionDesc_by_name(StringId name) const {
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->name == name) {
-                // Only return bytecode for function definitions
+                // Only return FunctionDesc for function definitions
                 if (def->type == type::function) {
-                    return def->data_ptr.cast<ByteCode>().c();
+                    return def->data.cast<FunctionDesc>().get();
                 }
                 else {
                     return nullptr;
@@ -240,10 +149,10 @@ namespace runtime::files {
         // Применяем ко всем определениям
         for (u32 i = 0; i < definitions_count; i++) {
             Definition* def = get_definition(i);
-            def->data_ptr.ptr = reinterpret_cast<u8*>(def->data_ptr.ptr) + delta;
+            def->data.ptr = reinterpret_cast<u8*>(def->data.ptr) + delta;
             
             if (def->type == type::function) {
-                ByteCode* bc = reinterpret_cast<ByteCode*>(def->data_ptr.ptr);
+                FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(def->data.ptr);
                 bc->code_ptr.ptr = reinterpret_cast<Instruction*>(reinterpret_cast<u8*>(bc->code_ptr.ptr) + delta);
                 bc->data_ptr.ptr = reinterpret_cast<u8*>(bc->data_ptr.ptr) + delta;
                 bc->debug_ptr.ptr = reinterpret_cast<SourceLocation*>(reinterpret_cast<u8*>(bc->debug_ptr.ptr) + delta);
@@ -259,9 +168,9 @@ namespace runtime::files {
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->type == SID("function")) {
-                ByteCode* bytecode = def->data_ptr.cast<ByteCode>().c();
-                if (bytecode) {
-                    bytecode->owner_module = owner_module;
+                FunctionDesc* functionDesc = def->data.cast<FunctionDesc>().get();
+                if (functionDesc) {
+                    functionDesc->owner_module = owner_module;
                 }
             }
         }
@@ -304,7 +213,7 @@ namespace runtime::files {
 
             // Add detailed information for function definitions
             if (def->type == type::function) {
-                ByteCode* bc = def->data_ptr.cast<ByteCode>().c();
+                FunctionDesc* bc = def->data.cast<FunctionDesc>().get();
                 if (bc) {
                     result << std::format("         -> {}\n", bc->inspect());
 

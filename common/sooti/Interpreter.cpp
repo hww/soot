@@ -6,6 +6,7 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/PrettyPrinter.hpp"
 #include "common/sooti/Printer.hpp"
+#include <cstddef>
 #include <iostream>
 
 #include "common/type_system/Defenum.hpp"
@@ -36,7 +37,7 @@
 namespace script {
 
 Interpreter::Interpreter(const std::string &username, bool load_libs)
-    : m_setter_map(), m_reader(this), m_symbol_table() {
+    : m_setter_map(), m_reader(), m_symbol_table() {
     script::Object::set_symbol_table(&m_symbol_table);
 
     // Инициализируем boolean объекты как символы
@@ -750,6 +751,7 @@ Object Interpreter::eval_form(const Object &obj, const std::shared_ptr<Environme
 Object Interpreter::call_lambda_internal(const Object &form, const Object &lambda,
                                          const std::vector<Object>                &args,
                                          const std::shared_ptr<EnvironmentObject> &env) {
+    (void)env;
     if (!lambda.is_function()) {
         throw std::runtime_error("call_lambda: object is not a lambda");
     }
@@ -6356,7 +6358,7 @@ Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &arg
     // либо согласно их ID в vtable.
 
     auto max_id = root_type->methods_max_id();
-    for (int i = 0; i <= max_id; ++i) {
+    for (size_t i = 0; i <= max_id; ++i) {
         MethodInfo method;
         bool       found_method = false;
         Type      *current_type = root_type.get();

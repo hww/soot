@@ -97,7 +97,7 @@ struct MemoryLabel : public NativeObject {
             CompactIndex name_len;
             ar << name_len;
             name.resize(name_len.value);
-            ar.serialize(&name[0], name_len);
+            ar.serialize_obj(&name[0], name_len);
 
             // Читаем адрес
             CompactPointer addr_cp;
@@ -118,7 +118,7 @@ struct MemoryLabel : public NativeObject {
             // Пишем имя
             CompactIndex name_len(name.length());
             ar << name_len;
-            ar.serialize(const_cast<char *>(name.data()), name.length());
+            ar.serialize_obj(const_cast<char *>(name.data()), name.length());
 
             // Пишем адрес
             CompactPointer addr_cp(offset);

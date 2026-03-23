@@ -96,8 +96,8 @@ namespace runtime::vm {
         // Main Execution Engine
         // ------------------------------------------------------------------------
 
-        Variant execute_bytecode(Module* module, StringId function);
-        Variant execute_bytecode(ByteCode* bytecode);
+        Variant execute_FunctionDesc(Module* module, StringId function);
+        Variant execute_FunctionDesc(FunctionDesc* FunctionDesc);
         Variant execute(StackFrame* stack_frame);
 
 

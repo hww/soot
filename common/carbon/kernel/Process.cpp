@@ -37,7 +37,7 @@ namespace runtime::kernel {
                 return true;
             }
 
-            static Variant execute_bytecode(ByteCode* bytecode) {
+            static Variant execute_FunctionDesc(FunctionDesc* FunctionDesc) {
                 // TODO: Реализовать выполнение байткода
                 return Variant();
             }
@@ -309,8 +309,8 @@ namespace runtime::kernel {
         }
 
         // Создаем главный поток если нужно
-        if (!main_thread && current_state && current_state->update_bytecode) {
-            // main_thread = new StackFrame(current_state->update_bytecode, nullptr, SID("main_thread"));
+        if (!main_thread && current_state && current_state->update_FunctionDesc) {
+            // main_thread = new StackFrame(current_state->update_FunctionDesc, nullptr, SID("main_thread"));
             // main_thread->frame_type = StackFrame::FrameType::GENERIC;
             // TODO: Исправить создание фрейма
         }
@@ -504,7 +504,7 @@ namespace runtime::kernel {
         update_state_hooks();
 
         // Обновляем главный поток если нужно
-        if (main_thread && new_state->update_bytecode) {
+        if (main_thread && new_state->update_FunctionDesc) {
             // TODO: Обновить байткод главного потока
         }
 
@@ -518,9 +518,9 @@ namespace runtime::kernel {
 
     void Process::update_state_hooks() {
         if (current_state) {
-            trans_hook = current_state->trans_bytecode;
-            post_hook = current_state->post_bytecode;
-            // event_hook = current_state->event_bytecode; // TODO: исправить когда будет event_bytecode
+            trans_hook = current_state->trans_FunctionDesc;
+            post_hook = current_state->post_FunctionDesc;
+            // event_hook = current_state->event_FunctionDesc; // TODO: исправить когда будет event_FunctionDesc
         }
         else {
             trans_hook = nullptr;
@@ -536,7 +536,7 @@ namespace runtime::kernel {
 
             // top_thread = trans_frame;
             // VirtualMachine::execute_frame(trans_frame, this);
-            vm::VirtualMachine::execute_bytecode(trans_hook); // Временная реализация
+            vm::VirtualMachine::execute_FunctionDesc(trans_hook); // Временная реализация
 
             top_thread = saved_top_thread;
 
@@ -551,7 +551,7 @@ namespace runtime::kernel {
 
             // top_thread = post_frame;
             // VirtualMachine::execute_frame(post_frame, this);
-            vm::VirtualMachine::execute_bytecode(post_hook); // Временная реализация
+            vm::VirtualMachine::execute_FunctionDesc(post_hook); // Временная реализация
 
             top_thread = saved_top_thread;
 

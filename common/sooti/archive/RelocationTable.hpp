@@ -38,7 +38,7 @@ class RelocationTable : public NativeObject {
                 CompactIndex name_len;
                 ar << name_len;
                 target_name.resize(name_len.value);
-                ar.serialize(&target_name[0], name_len.value);
+                ar.serialize_obj(&target_name[0], name_len.value);
             } else {
                 CompactIndex off(offset);
                 ar << off;
@@ -48,7 +48,7 @@ class RelocationTable : public NativeObject {
 
                 CompactIndex name_len(target_name.length());
                 ar << name_len;
-                ar.serialize(&target_name[0], target_name.length());
+                ar.serialize_obj(&target_name[0], target_name.length());
             }
         }
     };

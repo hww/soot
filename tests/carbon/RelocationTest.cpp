@@ -24,7 +24,7 @@ protected:
             Instruction::create_a(Opcode::RETURN, 0)
         };
         
-        builder.add_function(SID("test_func"), code, {}, {});
+        builder.add_function("test_func", code, {}, {});
         
         // Получаем бинарник
         std::vector<u8> binary = builder.build();
@@ -78,7 +78,7 @@ TEST_F(RelocationTest, RelocatePointersWithDelta) {
     EXPECT_EQ(relocated->base_offset, relocated);
 }
 
-TEST_F(RelocationTest, RelocateByteCodePointers) {
+TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     BinaryFileBuilder builder("module1");
     
     // Создаем функцию с данными
@@ -89,21 +89,21 @@ TEST_F(RelocationTest, RelocateByteCodePointers) {
     
     std::vector<u8> data = {0x01, 0x02, 0x03, 0x04};
     
-    builder.add_function(SID("test_func"), code, data, {});
+    builder.add_function("test_func", code, data, {});
     
     std::vector<u8> binary = builder.build();
     BinaryFile* original = reinterpret_cast<BinaryFile*>(binary.data());
     fmt::print("original file\n{}", original->inspect().c_str());
 
-    // Находим ByteCode
+    // Находим FunctionDesc
     Definition* def = original->get_definition(0);
-    ByteCode* bc = reinterpret_cast<ByteCode*>(def->data_ptr.c());
+    FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(def->data.get());
     
     // Сохраняем исходные указатели
     u64 original_code_ptr = bc->code_ptr.offset;
     u64 original_data_ptr = bc->data_ptr.offset;
     
-    lg::info("Original ByteCode: code_ptr={}, data_ptr={}", original_code_ptr, original_data_ptr);
+    lg::info("Original FunctionDesc: code_ptr={}, data_ptr={}", original_code_ptr, original_data_ptr);
     
     // Копируем в другое место
     std::vector<u8> new_buffer(binary.size() + 1024);
@@ -115,7 +115,7 @@ TEST_F(RelocationTest, RelocateByteCodePointers) {
     
     // Проверяем
     Definition* def_rel = relocated->get_definition(0);
-    ByteCode* bc_rel = reinterpret_cast<ByteCode*>(def_rel->data_ptr.c());
+    FunctionDesc* bc_rel = reinterpret_cast<FunctionDesc*>(def_rel->data.get());
     
     ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(original);
     EXPECT_EQ(bc_rel->code_ptr.offset, original_code_ptr + delta);

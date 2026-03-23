@@ -74,10 +74,10 @@ namespace runtime::files {
             defs_table[i].data_ptr = Ptr<u8>(current_pos);
             lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
             if (def.type == SID("function")) {
-                // Записываем ByteCode структуру
-                ByteCode* bc = reinterpret_cast<ByteCode*>(buffer.data() + current_pos);
-                new (bc) ByteCode();  // Явная инициализация
-                current_pos += sizeof(ByteCode);
+                // Записываем FunctionDesc структуру
+                FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(buffer.data() + current_pos);
+                new (bc) FunctionDesc();  // Явная инициализация
+                current_pos += sizeof(FunctionDesc);
 
                 // Код
                 if (!def.code.empty()) {
@@ -386,12 +386,12 @@ namespace runtime::files {
 namespace runtime::files {
 
     // =============================================================================
-    // ByteCodeError Implementation
+    // BteCodeError Implementation
     // =============================================================================
 
-    ByteCodeError::ByteCodeError(const std::string& msg) : message(msg) {}
+    BteCodeError::BteCodeError(const std::string& msg) : message(msg) {}
 
-    const char* ByteCodeError::what() const noexcept {
+    const char* BteCodeError::what() const noexcept {
         return message.c_str();
     }
 
@@ -419,10 +419,10 @@ namespace runtime::files {
     }
 
     // =============================================================================
-    // ByteCode Implementation
+    // FunctionDesc Implementation
     // =============================================================================
 
-    ByteCode::ByteCode() :
+    FunctionDesc::FunctionDesc() :
         code_count(0),
         data_size(0),
         debug_count(0),
@@ -433,19 +433,19 @@ namespace runtime::files {
     {
     }
 
-    Instruction* ByteCode::get_code_ptr() const {
+    Instruction* FunctionDesc::get_code_ptr() const {
         return code_ptr.offset != 0 ? code_ptr.c() : nullptr;
     }
 
-    u8* ByteCode::get_data_ptr() const {
+    u8* FunctionDesc::get_data_ptr() const {
         return data_ptr.offset != 0 ? data_ptr.c() : nullptr;
     }
 
-    SourceLocation* ByteCode::get_debug_info() const {
+    SourceLocation* FunctionDesc::get_debug_info() const {
         return debug_ptr.offset != 0 ? debug_ptr.c() : nullptr;
     }
 
-    SourceLocation ByteCode::find_source_location(u32 instruction_ip) const {
+    SourceLocation FunctionDesc::find_source_location(u32 instruction_ip) const {
         auto debug_info = get_debug_info();
         if (!debug_info) {
             return SourceLocation{ 0, 0, 0 };
@@ -463,13 +463,13 @@ namespace runtime::files {
         return SourceLocation{ 0, 0, 0 };
     }
 
-    bool ByteCode::has_debug_info() const {
+    bool FunctionDesc::has_debug_info() const {
         return debug_ptr.offset != 0;
     }
 
-    void ByteCode::relocate_pointers(intptr_t delta) {
+    void FunctionDesc::relocate_pointers(intptr_t delta) {
         // Adjust all pointer offsets by the delta value
-        // This is used when the bytecode is moved in memory
+        // This is used when the FunctionDesc is moved in memory
         if (code_ptr.offset != 0) {
             code_ptr.offset += delta;
         }
@@ -481,7 +481,7 @@ namespace runtime::files {
         }
     }
 
-    std::string ByteCode::inspect() const {
+    std::string FunctionDesc::inspect() const {
         std::string code_info = code_ptr.offset != 0 ?
             std::format("{} instructions", code_count) : "no code";
         std::string data_info = data_ptr.offset != 0 ?
@@ -489,7 +489,7 @@ namespace runtime::files {
         std::string debug_info = debug_ptr.offset != 0 ?
             std::format("{} entries", debug_count) : "no debug";
 
-        return std::format("ByteCode(code: {}, data: {}, debug: {}, owner: {})",
+        return std::format("FunctionDesc(code: {}, data: {}, debug: {}, owner: {})",
             code_info, data_info, debug_info,
             owner_module ? "set" : "null");
     }
@@ -547,13 +547,13 @@ namespace runtime::files {
         return nullptr;
     }
 
-    ByteCode* BinaryFile::find_bytecode_by_name(StringId name) const {
+    FunctionDesc* BinaryFile::find_FunctionDesc_by_name(StringId name) const {
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->name == name) {
-                // Only return bytecode for function definitions
+                // Only return FunctionDesc for function definitions
                 if (def->type == type::function) {
-                    return def->data_ptr.cast<ByteCode>().c();
+                    return def->data_ptr.cast<FunctionDesc>().c();
                 }
                 else {
                     return nullptr;
@@ -598,13 +598,13 @@ namespace runtime::files {
         owner_module = owner;
         // Setup all pointers
         relocate_pointers();
-        // Устанавливаем owner_module для всех ByteCode
+        // Устанавливаем owner_module для всех FunctionDesc
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->type == SID("function")) {
-                ByteCode* bytecode = def->data_ptr.cast<ByteCode>().c();
-                if (bytecode) {
-                    bytecode->owner_module = owner_module;
+                FunctionDesc* FunctionDesc = def->data_ptr.cast<FunctionDesc>().c();
+                if (FunctionDesc) {
+                    FunctionDesc->owner_module = owner_module;
                 }
             }
         }
@@ -643,7 +643,7 @@ namespace runtime::files {
 
             // Add detailed information for function definitions
             if (def->type == type::function) {
-                ByteCode* bc = def->data_ptr.cast<ByteCode>().c();
+                FunctionDesc* bc = def->data_ptr.cast<FunctionDesc>().c();
                 if (bc) {
                     result << std::format("         -> {}\n", bc->inspect());
 
@@ -699,7 +699,7 @@ namespace runtime::files {
      * @param n Original size to align
      * @return Size aligned to 4 bytes
      *
-     * This is critical for proper memory alignment in the bytecode format
+     * This is critical for proper memory alignment in the FunctionDesc format
      * as many architectures require 4-byte aligned memory access for
      * optimal performance and correctness.
      */
@@ -709,14 +709,14 @@ namespace runtime::files {
 
     /* Errors */
     /**
-     * @brief Exception class for bytecode loading and validation errors
+     * @brief Exception class for FunctionDesc loading and validation errors
      *
-     * Thrown when bytecode format is invalid, corrupted, or incompatible
+     * Thrown when FunctionDesc format is invalid, corrupted, or incompatible
      * with the current runtime version.
      */
-    class ByteCodeError : public std::exception {
+    class BteCodeError : public std::exception {
     public:
-        explicit ByteCodeError(const std::string& msg);
+        explicit BteCodeError(const std::string& msg);
         const char* what() const noexcept override;
     private:
         std::string message;
@@ -725,7 +725,7 @@ namespace runtime::files {
     /**
      * @brief Source code location information for debugging
      *
-     * Maps bytecode instructions back to original source code locations.
+     * Maps FunctionDesc instructions back to original source code locations.
      * This enables meaningful stack traces and debugging information.
      */
     struct SourceLocation {
@@ -744,7 +744,7 @@ namespace runtime::files {
     };
 
     /**
-     * @brief Definition of a named entity in the bytecode file
+     * @brief Definition of a named entity in the FunctionDesc file
      *
      * Definitions can represent functions, global variables, constants,
      * or other named entities that are exported/imported between modules.
@@ -793,13 +793,13 @@ namespace runtime::files {
     };
 
     /**
-     * @brief Complete bytecode representation with code, data, and debug info
+     * @brief Complete FunctionDesc representation with code, data, and debug info
      *
      * This is the core structure representing executable code in the VM.
-     * It contains the actual bytecode instructions, constant data, and
+     * It contains the actual FunctionDesc instructions, constant data, and
      * debugging information mapping back to source code.
      */
-    struct ByteCode : public Descriptor {
+    struct FunctionDesc : public Descriptor {
         /** Number of instructions in the code section */
         u32 code_count;
         /** Size of constant data in bytes */
@@ -812,10 +812,10 @@ namespace runtime::files {
         Ptr<u8> data_ptr;
         /** Pointer to debug information array */
         Ptr<SourceLocation> debug_ptr;
-        /** Module that owns this bytecode (set during linking) */
+        /** Module that owns this FunctionDesc (set during linking) */
         Module* owner_module;
 
-        ByteCode();
+        FunctionDesc();
 
         /**
          * @brief Get pointer to the code section
@@ -855,7 +855,7 @@ namespace runtime::files {
 
         /**
          * @brief Create detailed inspection string
-         * @return Formatted string with complete bytecode information
+         * @return Formatted string with complete FunctionDesc information
          */
         std::string inspect() const;
     };
@@ -927,14 +927,14 @@ namespace runtime::files {
         Definition* find_definition_by_name(StringId name) const;
 
         /**
-         * @brief Find bytecode by definition name
+         * @brief Find FunctionDesc by definition name
          * @param name StringId of the function to find
-         * @return Pointer to ByteCode or nullptr if not found or not a function
+         * @return Pointer to FunctionDesc or nullptr if not found or not a function
          *
          * Specifically looks for function definitions and returns their
-         * associated bytecode. Returns nullptr for non-function definitions.
+         * associated FunctionDesc. Returns nullptr for non-function definitions.
          */
-        ByteCode* find_bytecode_by_name(StringId name) const;
+        FunctionDesc* find_FunctionDesc_by_name(StringId name) const;
 
         /**
          * @brief Adjust all pointers in the file for new base address
@@ -2063,7 +2063,7 @@ namespace runtime::kernel {
         return true;
     }
 
-    bool Kernel::run_process_function(Process* process, ByteCode* entry_point) {
+    bool Kernel::run_process_function(Process* process, FunctionDesc* entry_point) {
         if (!initialized_ || !process || !entry_point) {
             lg::error("Cannot run process function - invalid parameters");
             return false;
@@ -2078,7 +2078,7 @@ namespace runtime::kernel {
             set_current_context(process, ThreadType::MAIN);
 
             // Выполняем функцию через виртуальную машину
-            virtual_machine_.execute_bytecode(entry_point);
+            virtual_machine_.execute_FunctionDesc(entry_point);
 
             lg::debug("Executed function in process '{}'", process->get_name_string());
 
@@ -2432,7 +2432,7 @@ namespace runtime::kernel {
          * @note Автоматически управляет контекстом выполнения
          * @note Безопасен для вложенных вызовов
          */
-        bool run_process_function(Process* process, ByteCode* entry_point);
+        bool run_process_function(Process* process, FunctionDesc* entry_point);
 
         // ============================================================================
         // Frame Execution
@@ -2821,7 +2821,7 @@ namespace runtime::kernel {
                 return true;
             }
 
-            static Variant execute_bytecode(ByteCode* bytecode) {
+            static Variant execute_FunctionDesc(FunctionDesc* FunctionDesc) {
                 // TODO: Реализовать выполнение байткода
                 return Variant();
             }
@@ -3093,8 +3093,8 @@ namespace runtime::kernel {
         }
 
         // Создаем главный поток если нужно
-        if (!main_thread && current_state && current_state->update_bytecode) {
-            // main_thread = new StackFrame(current_state->update_bytecode, nullptr, SID("main_thread"));
+        if (!main_thread && current_state && current_state->update_FunctionDesc) {
+            // main_thread = new StackFrame(current_state->update_FunctionDesc, nullptr, SID("main_thread"));
             // main_thread->frame_type = StackFrame::FrameType::GENERIC;
             // TODO: Исправить создание фрейма
         }
@@ -3288,7 +3288,7 @@ namespace runtime::kernel {
         update_state_hooks();
 
         // Обновляем главный поток если нужно
-        if (main_thread && new_state->update_bytecode) {
+        if (main_thread && new_state->update_FunctionDesc) {
             // TODO: Обновить байткод главного потока
         }
 
@@ -3302,9 +3302,9 @@ namespace runtime::kernel {
 
     void Process::update_state_hooks() {
         if (current_state) {
-            trans_hook = current_state->trans_bytecode;
-            post_hook = current_state->post_bytecode;
-            // event_hook = current_state->event_bytecode; // TODO: исправить когда будет event_bytecode
+            trans_hook = current_state->trans_FunctionDesc;
+            post_hook = current_state->post_FunctionDesc;
+            // event_hook = current_state->event_FunctionDesc; // TODO: исправить когда будет event_FunctionDesc
         }
         else {
             trans_hook = nullptr;
@@ -3320,7 +3320,7 @@ namespace runtime::kernel {
 
             // top_thread = trans_frame;
             // VirtualMachine::execute_frame(trans_frame, this);
-            vm::VirtualMachine::execute_bytecode(trans_hook); // Временная реализация
+            vm::VirtualMachine::execute_FunctionDesc(trans_hook); // Временная реализация
 
             top_thread = saved_top_thread;
 
@@ -3335,7 +3335,7 @@ namespace runtime::kernel {
 
             // top_thread = post_frame;
             // VirtualMachine::execute_frame(post_frame, this);
-            vm::VirtualMachine::execute_bytecode(post_hook); // Временная реализация
+            vm::VirtualMachine::execute_FunctionDesc(post_hook); // Временная реализация
 
             top_thread = saved_top_thread;
 
@@ -3490,14 +3490,14 @@ namespace runtime::kernel {
 
         /// Trans-обработчик - выполняется ПЕРЕД основным кодом каждый кадр
         /// Используется для подготовки данных, проверки условий
-        ByteCode* trans_hook = nullptr;
+        FunctionDesc* trans_hook = nullptr;
 
         /// Post-обработчик - выполняется ПОСЛЕ основного кода каждый кадр  
         /// Используется для очистки, финализации, пост-обработки
-        ByteCode* post_hook = nullptr;
+        FunctionDesc* post_hook = nullptr;
 
         /// Event-обработчик - обрабатывает события, отправленные процессу
-        ByteCode* event_hook = nullptr;
+        FunctionDesc* event_hook = nullptr;
 
         // ============================================================================
         // Entity & Game World Integration
@@ -3709,7 +3709,7 @@ namespace runtime::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn(StringId name, Process* parent,
-        ByteCode* entry_point, void* stack_top) {
+        FunctionDesc* entry_point, void* stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn process - Kernel not initialized");
             return nullptr;
@@ -3788,7 +3788,7 @@ namespace runtime::kernel {
         return success;
     }
 
-    bool ProcessRunner::run(Process* process, ByteCode* entry_point) {
+    bool ProcessRunner::run(Process* process, FunctionDesc* entry_point) {
         if (!process || !entry_point) {
             lg::error("Cannot run process - invalid parameters");
             return false;
@@ -3840,8 +3840,8 @@ namespace runtime::kernel {
         }
 
         // Находим функцию
-        auto bytecode = module->resolve_code(function_name);
-        if (!bytecode) {
+        auto FunctionDesc = module->resolve_code(function_name);
+        if (!FunctionDesc) {
             lg::error("Function '{}' not found in module '{}'",
                 lib::to_string(function_name), lib::to_string(module_name));
             return nullptr;
@@ -3855,7 +3855,7 @@ namespace runtime::kernel {
         lg::debug("Spawning process for {}.{}",
             lib::to_string(module_name), lib::to_string(function_name));
 
-        return spawn(process_name, parent, bytecode, stack_top);
+        return spawn(process_name, parent, FunctionDesc, stack_top);
     }
 
     u32 ProcessRunner::kill_by_name(StringId name) {
@@ -3919,7 +3919,7 @@ namespace runtime::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn(StringId name, Process* parent,
-            ByteCode* entry_point, void* stack_top);
+            FunctionDesc* entry_point, void* stack_top);
 
         /// Создать процесс с состоянием одной функцией
         /// @param name Имя процесса
@@ -3950,7 +3950,7 @@ namespace runtime::kernel {
         /// @param process Процесс для выполнения
         /// @param entry_point Байткод функции для запуска
         /// @return true если запуск успешен
-        static bool run(Process* process, ByteCode* entry_point);
+        static bool run(Process* process, FunctionDesc* entry_point);
 
         // ============================================================================
         // Pool-based Creation (для оптимизации)
@@ -4021,8 +4021,8 @@ int main() {
     auto enemy_fsm = std::make_unique<StateMachine>(enemy_process);
     
     // Добавление состояний с байткодом
-    ByteCode* patrol_code = vm.find_function("patrol-behavior");
-    ByteCode* chase_code = vm.find_function("chase-behavior");
+    FunctionDesc* patrol_code = vm.find_function("patrol-behavior");
+    FunctionDesc* chase_code = vm.find_function("chase-behavior");
     
     if (patrol_code && chase_code) {
         auto patrol_state = std::make_unique<StateDefinition>("patrol", patrol_code);
@@ -4562,8 +4562,8 @@ namespace runtime::kernel {
 namespace runtime::kernel
 {
 
-    StateDefinition::StateDefinition(StringId state_name, ByteCode* update_code)
-        : name(state_name), update_bytecode(update_code) {
+    StateDefinition::StateDefinition(StringId state_name, FunctionDesc* update_code)
+        : name(state_name), update_FunctionDesc(update_code) {
     }
 
     bool StateDefinition::has_event(StringId event_type) const {
@@ -4574,7 +4574,7 @@ namespace runtime::kernel
         return !event_handlers.empty();
     }
 
-    void StateDefinition::add_event_handler(StringId event_type, ByteCode* handler) {
+    void StateDefinition::add_event_handler(StringId event_type, FunctionDesc* handler) {
         event_handlers[event_type] = handler;
     }
 
@@ -4582,7 +4582,7 @@ namespace runtime::kernel
         event_handlers.erase(event_type);
     }
 
-    ByteCode* StateDefinition::get_event_handler(StringId event_type) const {
+    FunctionDesc* StateDefinition::get_event_handler(StringId event_type) const {
         auto it = event_handlers.find(event_type);
         return it != event_handlers.end() ? it->second : nullptr;
     }
@@ -4727,29 +4727,29 @@ namespace runtime::kernel
 
         /// Байткод для входа в состояние (соответствует enter в GOAL)
         /// Выполняется при переходе в это состояние
-        ByteCode* enter_bytecode = nullptr;
+        FunctionDesc* enter_FunctionDesc = nullptr;
 
         /// Байткод для обработки перехода между состояниями (соответствует trans в GOAL)
         /// Обрабатывает условия перехода до выполнения основного кода состояния
-        ByteCode* trans_bytecode = nullptr;
+        FunctionDesc* trans_FunctionDesc = nullptr;
 
         /// Основной код состояния (соответствует code в GOAL)
         /// Выполняется при каждом обновлении, может быть прерван suspend()
-        ByteCode* update_bytecode = nullptr;
+        FunctionDesc* update_FunctionDesc = nullptr;
 
         /// Байткод для пост-обработки состояния (соответствует post в GOAL)
         /// Выполняется после основного кода, используется для очистки, проверок, пост-обработки
-        ByteCode* post_bytecode = nullptr;
+        FunctionDesc* post_FunctionDesc = nullptr;
 
         /// Байткод для выхода из состояния (соответствует exit в GOAL)
         /// Выполняется при выходе из состояния, используется для освобождения ресурсов
-        ByteCode* exit_bytecode = nullptr;
+        FunctionDesc* exit_FunctionDesc = nullptr;
 
         // ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
 
         /// Таблица обработчиков событий (event_type -> handler)
-        /// В GOAL соответствует event_bytecode, но здесь организована в виде таблицы
-        std::unordered_map<StringId, ByteCode*> event_handlers;
+        /// В GOAL соответствует event_FunctionDesc, но здесь организована в виде таблицы
+        std::unordered_map<StringId, FunctionDesc*> event_handlers;
 
         // ===== МЕТАДАННЫЕ ДЛЯ УПРАВЛЕНИЯ НАСЛЕДОВАНИЕМ И ПОВЕДЕНИЕМ =====
 
@@ -4803,7 +4803,7 @@ namespace runtime::kernel
         /// Основной конструктор
         /// @param state_name - идентификатор состояния
         /// @param update_code - основной код состояния (может быть nullptr)
-        StateDefinition(StringId state_name, ByteCode* update_code = nullptr);
+        StateDefinition(StringId state_name, FunctionDesc* update_code = nullptr);
 
         /// Запрет копирования (указатели на байткод не должны копироваться)
         StateDefinition(const StateDefinition&) = delete;
@@ -4816,19 +4816,19 @@ namespace runtime::kernel
         // ===== МЕТОДЫ ПРОВЕРКИ НАЛИЧИЯ ОБРАБОТЧИКОВ =====
 
         /// Проверяет наличие обработчика входа в состояние
-        bool has_enter() const { return enter_bytecode != nullptr; }
+        bool has_enter() const { return enter_FunctionDesc != nullptr; }
 
         /// Проверяет наличие обработчика выхода из состояния
-        bool has_exit() const { return exit_bytecode != nullptr; }
+        bool has_exit() const { return exit_FunctionDesc != nullptr; }
 
         /// Проверяет наличие основного кода обновления
-        bool has_update() const { return update_bytecode != nullptr; }
+        bool has_update() const { return update_FunctionDesc != nullptr; }
 
         /// Проверяет наличие Trans-обработчика (переход между состояниями)
-        bool has_trans() const { return trans_bytecode != nullptr; }
+        bool has_trans() const { return trans_FunctionDesc != nullptr; }
 
         /// Проверяет наличие Post-обработчика (пост-обработка состояния)
-        bool has_post() const { return post_bytecode != nullptr; }
+        bool has_post() const { return post_FunctionDesc != nullptr; }
 
         /// Проверяет наличие обработчика для конкретного типа события
         /// @param event_type - тип события
@@ -4842,7 +4842,7 @@ namespace runtime::kernel
         /// Добавляет обработчик события
         /// @param event_type - тип события
         /// @param handler - байткод обработчика
-        void add_event_handler(StringId event_type, ByteCode* handler);
+        void add_event_handler(StringId event_type, FunctionDesc* handler);
 
         /// Удаляет обработчик события
         /// @param event_type - тип события для удаления
@@ -4851,7 +4851,7 @@ namespace runtime::kernel
         /// Получает обработчик события
         /// @param event_type - тип события
         /// @return указатель на байткод или nullptr если не найден
-        ByteCode* get_event_handler(StringId event_type) const;
+        FunctionDesc* get_event_handler(StringId event_type) const;
 
         // ===== МЕТОДЫ ДЛЯ РАБОТЫ С НАСЛЕДОВАНИЕМ =====
 
@@ -4935,7 +4935,7 @@ namespace runtime::kernel {
 
     StateFrame::StateFrame(StateDefinition* definition, Process* process, StackFrame* parent)
         : ProtectFrame(
-            definition ? definition->update_bytecode : nullptr,
+            definition ? definition->update_FunctionDesc : nullptr,
             parent,
             [this]() { this->execute_exit(); }
         ),
@@ -4945,48 +4945,48 @@ namespace runtime::kernel {
         if (state_def) {
             name = state_def->name;
 
-            enter_bytecode = state_def->enter_bytecode;
-            trans_bytecode = state_def->trans_bytecode;
-            update_bytecode = state_def->update_bytecode;
-            post_bytecode = state_def->post_bytecode;
-            event_bytecode = state_def->event_bytecode;
+            enter_FunctionDesc = state_def->enter_FunctionDesc;
+            trans_FunctionDesc = state_def->trans_FunctionDesc;
+            update_FunctionDesc = state_def->update_FunctionDesc;
+            post_FunctionDesc = state_def->post_FunctionDesc;
+            event_FunctionDesc = state_def->event_FunctionDesc;
         }
     }
 
     void StateFrame::execute_enter() {
-        if (enter_bytecode && owner_process) {
-            auto enter_frame = new StackFrame(enter_bytecode, this, StackFrame::FrameType::GENERIC, SID("state_enter"));
+        if (enter_FunctionDesc && owner_process) {
+            auto enter_frame = new StackFrame(enter_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_enter"));
             // execute_frame(enter_frame, owner_process);
             delete enter_frame;
         }
     }
 
     void StateFrame::execute_trans() {
-        if (trans_bytecode && owner_process) {
-            auto trans_frame = new StackFrame(trans_bytecode, this, StackFrame::FrameType::GENERIC, SID("state_trans"));
+        if (trans_FunctionDesc && owner_process) {
+            auto trans_frame = new StackFrame(trans_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_trans"));
             // execute_frame(trans_frame, owner_process);
             delete trans_frame;
         }
     }
 
     void StateFrame::execute_update() {
-        if (update_bytecode && owner_process) {
+        if (update_FunctionDesc && owner_process) {
             pc = 0; // Сбрасываем PC для выполнения с начала
             // execute_frame(this, owner_process);
         }
     }
 
     void StateFrame::execute_post() {
-        if (post_bytecode && owner_process) {
-            auto post_frame = new StackFrame(post_bytecode, this, StackFrame::FrameType::GENERIC, SID("state_post"));
+        if (post_FunctionDesc && owner_process) {
+            auto post_frame = new StackFrame(post_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_post"));
             // execute_frame(post_frame, owner_process);
             delete post_frame;
         }
     }
 
     void StateFrame::execute_event(StringId event_type, const Variant& event_data) {
-        if (event_bytecode && owner_process) {
-            auto event_frame = new StackFrame(event_bytecode, this, StackFrame::FrameType::GENERIC, SID("state_event"));
+        if (event_FunctionDesc && owner_process) {
+            auto event_frame = new StackFrame(event_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_event"));
 
             event_frame->get_argument(0) = Variant(event_type);
             event_frame->get_argument(1) = event_data;
@@ -4998,7 +4998,7 @@ namespace runtime::kernel {
 
     void StateFrame::execute_exit() {
         if (state_def && state_def->has_exit() && owner_process) {
-            auto exit_frame = new StackFrame(state_def->exit_bytecode, this, SID("state_exit"));
+            auto exit_frame = new StackFrame(state_def->exit_FunctionDesc, this, SID("state_exit"));
             // execute_frame(exit_frame, owner_process);
             delete exit_frame;
         }
@@ -5065,12 +5065,12 @@ namespace runtime::kernel {
     class StateFrame : public ProtectFrame {
     private:
         // Специфичные для состояния обработчики
-        ByteCode* enter_bytecode = nullptr;    // При входе в состояние
-        ByteCode* trans_bytecode = nullptr;    // Перед каждым обновлением  
-        ByteCode* update_bytecode = nullptr;   // Основной код состояния
-        ByteCode* post_bytecode = nullptr;     // После каждого обновления
-        ByteCode* event_bytecode = nullptr;    // Обработчик событий
-        ByteCode* exit_bytecode = nullptr;     // Обработчик событий
+        FunctionDesc* enter_FunctionDesc = nullptr;    // При входе в состояние
+        FunctionDesc* trans_FunctionDesc = nullptr;    // Перед каждым обновлением  
+        FunctionDesc* update_FunctionDesc = nullptr;   // Основной код состояния
+        FunctionDesc* post_FunctionDesc = nullptr;     // После каждого обновления
+        FunctionDesc* event_FunctionDesc = nullptr;    // Обработчик событий
+        FunctionDesc* exit_FunctionDesc = nullptr;     // Обработчик событий
 
         // Мета-информация
         StateDefinition* state_def = nullptr;  // Определение состояния
@@ -5114,12 +5114,12 @@ namespace runtime::kernel {
         StateDefinition* get_state_definition() const { return state_def; }
         Process* get_owner_process() const { return owner_process; }
 
-        bool has_enter() const { return enter_bytecode != nullptr; }
-        bool has_trans() const { return trans_bytecode != nullptr; }
-        bool has_update() const { return update_bytecode != nullptr; }
-        bool has_post() const { return post_bytecode != nullptr; }
-        bool has_event() const { return event_bytecode != nullptr; }
-        bool has_exit() const { return exit_bytecode != nullptr; }
+        bool has_enter() const { return enter_FunctionDesc != nullptr; }
+        bool has_trans() const { return trans_FunctionDesc != nullptr; }
+        bool has_update() const { return update_FunctionDesc != nullptr; }
+        bool has_post() const { return post_FunctionDesc != nullptr; }
+        bool has_event() const { return event_FunctionDesc != nullptr; }
+        bool has_exit() const { return exit_FunctionDesc != nullptr; }
 
         // ============================================================================
         // Отладочная информация
@@ -6651,7 +6651,7 @@ namespace runtime::modules {
         // 2. Ищем в своих экспортах
         if (auto def = get_export(name)) {
             if (binary_file && binary_file->is_valid()) {
-                // НОВЫЙ API - data_ptr уже Ptr<ByteCode>
+                // НОВЫЙ API - data_ptr уже Ptr<FunctionDesc>
                 return def;
             }
         }
@@ -6671,10 +6671,10 @@ namespace runtime::modules {
         return nullptr;
     }
 
-    ByteCode* Module::resolve_code(StringId name) {
+    FunctionDesc* Module::resolve_code(StringId name) {
         auto definition = resolve_symbol(name);
         if (definition && definition->type == type::function)
-            return (ByteCode*)definition->data_ptr.c();
+            return (FunctionDesc*)definition->data_ptr.c();
         return nullptr;
     }
 
@@ -6815,7 +6815,7 @@ namespace runtime::modules {
         Definition* resolve_symbol(StringId name);
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
-        ByteCode* resolve_code(StringId name);
+        FunctionDesc* resolve_code(StringId name);
 
         std::string to_string() const;
 
@@ -7732,11 +7732,11 @@ using namespace runtime::files;
 
 namespace runtime::vm {
 
-    StackFrame::StackFrame(ByteCode* bytecode, StackFrame* parent,
+    StackFrame::StackFrame(FunctionDesc* FunctionDesc, StackFrame* parent,
         FrameType frame_type, StringId name)
-        : name(name), frame_type(frame_type), byte_code(bytecode),
-        code_ptr(bytecode ? bytecode->get_code_ptr() : nullptr),
-        data_ptr(bytecode ? bytecode->get_data_ptr() : nullptr),
+        : name(name), frame_type(frame_type), byte_code(FunctionDesc),
+        code_ptr(FunctionDesc ? FunctionDesc->get_code_ptr() : nullptr),
+        data_ptr(FunctionDesc ? FunctionDesc->get_data_ptr() : nullptr),
         parent_ptr(parent), pc(0), argc(0), ret_num(0) {
         initialize_registers();
     }
@@ -7779,8 +7779,8 @@ namespace runtime::vm {
         // ------------------------------------------------------------------------
         StringId name;                      // Имя фрейма (для отладки и throw)
         FrameType frame_type;               // Тип фрейма
-        ByteCode* byte_code = nullptr;
-        Instruction* code_ptr = nullptr;    // Pointer to bytecode instructions
+        FunctionDesc* byte_code = nullptr;
+        Instruction* code_ptr = nullptr;    // Pointer to FunctionDesc instructions
         u8* data_ptr = nullptr;             // Pointer to static data
         StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
         u32 pc = 0;                         // Program counter
@@ -7801,7 +7801,7 @@ namespace runtime::vm {
         }
 
 
-        StackFrame(ByteCode* bytecode, StackFrame* parent = nullptr,
+        StackFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr,
             FrameType frame_type = FrameType::GENERIC, StringId name = SID("null"));
 
         virtual ~StackFrame(){}
@@ -7870,9 +7870,9 @@ namespace runtime::vm {
 
         u32 get_code_size() const {
             if (!code_ptr) return 0;
-            // This would need to be stored in the frame or bytecode header
+            // This would need to be stored in the frame or FunctionDesc header
             // For now, we'll assume a large enough buffer
-            return 1024; // Temporary - should come from ByteCode
+            return 1024; // Temporary - should come from FunctionDesc
         }
 
         // ------------------------------------------------------------------------
@@ -7951,8 +7951,8 @@ namespace runtime::vm {
     // Stack Frame Management Functions
     // ============================================================================
 
-    inline StackFrame* create_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
-        return new StackFrame(bytecode, parent);
+    inline StackFrame* create_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
+        return new StackFrame(FunctionDesc, parent);
     }
 
     inline void destroy_stack_frame(StackFrame* frame) {
@@ -7961,8 +7961,8 @@ namespace runtime::vm {
         }
     }
 
-    inline StackFrame* push_stack_frame(ByteCode* bytecode, StackFrame* parent = nullptr) {
-        return create_stack_frame(bytecode, parent);
+    inline StackFrame* push_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
+        return create_stack_frame(FunctionDesc, parent);
     }
 
     inline StackFrame* pop_stack_frame(StackFrame* frame) {
@@ -7989,8 +7989,8 @@ namespace runtime::vm {
     class CatchFrame : public StackFrame {
     public:
 
-        CatchFrame(ByteCode* bytecode, StackFrame* parent = nullptr, StringId tag_name = SID("null"))
-            : StackFrame(bytecode, parent, FrameType::CATCH, tag_name) {
+        CatchFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, StringId tag_name = SID("null"))
+            : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
         }
 
         void exit() override {
@@ -8022,8 +8022,8 @@ namespace runtime::vm {
         /// Данные для очистки (опционально)
         void* user_data = nullptr;
 
-        ProtectFrame(ByteCode* bytecode, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
-            : StackFrame(bytecode, parent, FrameType::PROTECT, SID("protected"))
+        ProtectFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
+            : StackFrame(FunctionDesc, parent, FrameType::PROTECT, SID("protected"))
             , cleanup_function(std::move(cleanup)) {
         }
 
@@ -8137,12 +8137,12 @@ namespace runtime::vm {
 	// ------------------------------------------------------------------------
 
 	// Исполнение функции в модуле
-	Variant VirtualMachine::execute_bytecode(Module* module, StringId function)
+	Variant VirtualMachine::execute_FunctionDesc(Module* module, StringId function)
 	{
-		ByteCode* code = module->resolve_code(function);
+		FunctionDesc* code = module->resolve_code(function);
 
 		if (code) {
-			return execute_bytecode(code);
+			return execute_FunctionDesc(code);
 		}
 		else {
 			lg::warn("VM: No main code found for process {}", module->name, function);
@@ -8152,15 +8152,15 @@ namespace runtime::vm {
 	}
 
 	// Исполнение кода 
-	Variant VirtualMachine::execute_bytecode(ByteCode* bytecode) {
-		if (!bytecode) {
-			lg::error("Cannot execute null bytecode");
+	Variant VirtualMachine::execute_FunctionDesc(FunctionDesc* FunctionDesc) {
+		if (!FunctionDesc) {
+			lg::error("Cannot execute null FunctionDesc");
 			return Variant();
 		}
 
 		StackFrame* current_frame = create_stack_frame(
-			bytecode->get_code_ptr(),
-			bytecode->get_data_ptr(),
+			FunctionDesc->get_code_ptr(),
+			FunctionDesc->get_data_ptr(),
 			nullptr
 		);
 		return execute(current_frame);
@@ -8216,7 +8216,7 @@ namespace runtime::vm {
 					break;
 				}
 
-				ByteCode* target_code = reinterpret_cast<ByteCode*>(func_var.get_ptr());
+				FunctionDesc* target_code = reinterpret_cast<FunctionDesc*>(func_var.get_ptr());
 				StackFrame* new_frame = create_stack_frame(
 					target_code->get_code_ptr(),
 					target_code->get_data_ptr(),
@@ -8889,8 +8889,8 @@ namespace runtime::vm {
         // Main Execution Engine
         // ------------------------------------------------------------------------
 
-        Variant execute_bytecode(Module* module, StringId function);
-        Variant execute_bytecode(ByteCode* bytecode);
+        Variant execute_FunctionDesc(Module* module, StringId function);
+        Variant execute_FunctionDesc(FunctionDesc* FunctionDesc);
         Variant execute(StackFrame* stack_frame);
 
 

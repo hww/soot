@@ -53,9 +53,9 @@ SOOT provides a unified interface for the entire development lifecycle:
 | Feature                | Description                                                                          |
 |------------------------|--------------------------------------------------------------------------------------|
 | **Orchestration Core** | Lisp interpreter (`sooti`) for build automation, linking, and source preprocessing.  |
-| **Carbon VM**          | A high-performance bytecode execution engine for target platforms, managed by SOOT.  |
+| **Carbon VM**          | A high-performance FunctionDesc execution engine for target platforms, managed by SOOT.  |
 | **Interactive REPL**   | Full-featured environment (`soot`) for real-time debugging of the entire pipeline.   |
-| **Hybrid Execution**   | Supports `.sot` (Lisp source) and the upcoming `.soc` (Carbon compiled bytecode).    |
+| **Hybrid Execution**   | Supports `.sot` (Lisp source) and the upcoming `.soc` (Carbon compiled FunctionDesc).    |
 | **Embedded & Remote**  | Minimal footprint for integration with an nREPL server for remote hardware links.    |
 | **Modern Tooling**     | XDG compliance, syntax highlighting, multiline editing, and command history.         |
 | **Carbon Compiler**    | **(In Development)** Native toolchain to bridge SOOT logic with Carbon VM execution. |

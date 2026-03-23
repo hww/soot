@@ -25,7 +25,7 @@ void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
 std::vector<u8> FunctionCompiler::compile() {
     runtime::files::BinaryFileBuilder builder("module1");
 
-    ByteCodeBuilder                     bc_builder;
+    FunctionDescBuilder                     bc_builder;
     std::unordered_map<IR_Value *, u32> reg_map;
 
     // Строим карту регистров
@@ -42,7 +42,7 @@ std::vector<u8> FunctionCompiler::compile() {
     std::vector<Instruction> instructions = bc_builder.get_instructions();
 
     // Создаем функцию в билдере
-    builder.add_function(SID(function_name_.c_str()), instructions,
+    builder.add_function(function_name_, instructions,
                          {}, // data - пока пусто
                          {}  // debug_info - пока пусто
     );

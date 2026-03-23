@@ -1,7 +1,8 @@
 ﻿#include "common/carbon/modules/Module.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/files/DciFile.hpp"
-#include "common/util/Log.hpp"
+#include "lib/Variant.hpp"
+#include <fmt/format.h>
 
 using namespace runtime::files;
 
@@ -75,7 +76,7 @@ namespace runtime::modules {
         // 2. Ищем в своих экспортах
         if (auto def = get_export(name)) {
             if (binary_file && binary_file->is_valid()) {
-                // НОВЫЙ API - data_ptr уже Ptr<ByteCode>
+                // НОВЫЙ API - data_ptr уже Ptr<FunctionDesc>
                 return def;
             }
         }
@@ -95,10 +96,10 @@ namespace runtime::modules {
         return nullptr;
     }
 
-    ByteCode* Module::resolve_code(StringId name) {
+    FunctionDesc* Module::resolve_code(StringId name) {
         auto definition = resolve_symbol(name);
         if (definition && definition->type == type::function)
-            return (ByteCode*)definition->data_ptr.c();
+            return (FunctionDesc*)definition->data.get();
         return nullptr;
     }
 
@@ -113,7 +114,7 @@ namespace runtime::modules {
     }
 
     std::string Module::to_string() const {
-        return std::format("Module('{}', state:{}, exports:{}, imports:{}, gen:{})",
+        return fmt::format("Module('{}', state:{}, exports:{}, imports:{}, gen:{})",
             lib::to_string(name),
             static_cast<int>(load_state),
             export_table.size(),
@@ -122,37 +123,37 @@ namespace runtime::modules {
     }
 
     std::string Module::inspect() const {
-        std::string result = std::format("Module[{}]\n", lib::to_string(name));
-        result += std::format("  File: {}\n", file_path.string());
-        result += std::format("  Load state: {}\n", load_state_to_string(load_state));
-        result += std::format("  Generation: {}, Load order: {}\n", generation, load_order);
-        result += std::format("  DciBinary size: {} bytes\n", dci_binary_size);
+        std::string result = fmt::format("Module[{}]\n", lib::to_string(name));
+        result += fmt::format("  File: {}\n", file_path.string());
+        result += fmt::format("  Load state: {}\n", load_state_to_string(load_state));
+        result += fmt::format("  Generation: {}, Load order: {}\n", generation, load_order);
+        result += fmt::format("  DciBinary size: {} bytes\n", dci_binary_size);
 
 
         // Импорты
-        result += std::format("  Imports: {} symbols\n", dci_imports.size());
+        result += fmt::format("  Imports: {} symbols\n", dci_imports.size());
         for (size_t i = 0; i < dci_imports.size() && i < 5; i++) { // показываем первые 5
-            result += std::format("    - {}\n", lib::to_string(dci_imports[i]));
+            result += fmt::format("    - {}\n", lib::to_string(dci_imports[i]));
         }
         if (dci_imports.size() > 5) {
-            result += std::format("    ... and {} more\n", dci_imports.size() - 5);
+            result += fmt::format("    ... and {} more\n", dci_imports.size() - 5);
         }
 
         // Экспорты
-        result += std::format("  Exports: {} symbols\n", dci_exports.size());
+        result += fmt::format("  Exports: {} symbols\n", dci_exports.size());
         for (size_t i = 0; i < dci_exports.size() && i < 5; i++) {
-            result += std::format("    - {}\n", lib::to_string(dci_exports[i]));
+            result += fmt::format("    - {}\n", lib::to_string(dci_exports[i]));
         }
         if (dci_exports.size() > 5) {
-            result += std::format("    ... and {} more\n", dci_exports.size() - 5);
+            result += fmt::format("    ... and {} more\n", dci_exports.size() - 5);
         }
 
         // Таблица экспорта
-        result += std::format("  Export table: {} entries\n", export_table.size());
-        result += std::format("  Import table: {} modules\n", import_table.size());
+        result += fmt::format("  Export table: {} entries\n", export_table.size());
+        result += fmt::format("  Import table: {} modules\n", import_table.size());
 
         if (binary_file) {
-            result += std::format("  Binary: {}\n", binary_file->inspect());
+            result += fmt::format("  Binary: {}\n", binary_file->inspect());
         }
         else {
             result += "  Binary: not loaded\n";
