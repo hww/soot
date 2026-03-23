@@ -133,7 +133,8 @@
     },
     {
       "name": "Carbon",
-      "type": "cppdbg",
+      //"type": "cppdbg",
+      "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/carbon", // Проверьте имя бинарника из CMake!
       "args": [],

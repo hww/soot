@@ -5,14 +5,8 @@
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/files/BinaryFile.hpp"
-#include "common/carbon/modules/ModuleManager.hpp"
 #include "common/carbon/kernel/NativeFunc.hpp"
-#include "common/util/Assert.hpp"
-#include "common/util/Log.hpp"
-#include <unordered_map>
-#include <memory>
-#include <format>
+
 
 using namespace runtime::lib;
 using namespace runtime::files;
@@ -41,35 +35,50 @@ namespace runtime::vm {
     /* Erros */
     class VmError : public std::exception {
     public:
-        explicit VmError(const std::string& msg) : message(msg) {}
-        const char* what() const noexcept override { return message.c_str(); }
-    private:
-        std::string message;
+        explicit VmError(const std::string& msg, StackFrame* frame = nullptr) 
+            : message_(msg), frame_(frame) {
+            if (frame_) {
+                auto instruction = frame_->get_this_instruction();
+                message_ = fmt::format("{} [Frame: name={}, pc={}, argc={}, inst={}]",
+                    message_,
+                    lib::to_string(frame_->name),
+                    frame_->pc,
+                    frame_->argc,
+                    instruction.to_string());
+            }
+        }
+        
+        const char* what() const noexcept override { return message_.c_str(); }
+        
+        std::string  get_message() const {return message_;} 
+        StackFrame* get_frame() const {return frame_;} 
+        bool has_frame() const { return frame_!=nullptr;}
+
+    protected:
+        std::string message_;
+        StackFrame* frame_;
     };
 
-    class VmTypeError : public std::exception {
+    class VmTypeError : public VmError {
     public:
-        explicit VmTypeError(const std::string& msg, StringId expected, StringId actual) : 
-            message(fmt::format("{} expected type {} actual {}", 
-                msg, string_id::to_cstring(expected), string_id::to_cstring(actual))) { }
-        explicit VmTypeError(const std::string& msg, StringId actual) :
-            message(fmt::format("{} unexpected type {}",
-                msg, string_id::to_cstring(actual))) {
-        }
-        const char* what() const noexcept override { return message.c_str(); }
-    private:
-        std::string message;
+        VmTypeError(const std::string& msg, StackFrame* frame, StringId expected, StringId actual) 
+            : VmError(fmt::format("{} expected type {} actual {}", 
+                msg, 
+                string_id::to_cstring(expected), 
+                string_id::to_cstring(actual)), frame) {}
+        
+        VmTypeError(const std::string& msg, StackFrame* frame, StringId actual) 
+            : VmError(fmt::format("{} unexpected type {}", 
+                msg, 
+                string_id::to_cstring(actual)), frame) {}
     };
 
-    class VmResolvingError : public std::exception {
+    class VmResolvingError : public VmError {
     public:
-        explicit VmResolvingError(const std::string& msg, StringId name) :
-            message(fmt::format("{} can't resolve for name {}",
-                msg, string_id::to_cstring(name))) {
-        }
-        const char* what() const noexcept override { return message.c_str(); }
-    private:
-        std::string message;
+        VmResolvingError(const std::string& msg, StackFrame* frame, StringId name) 
+            : VmError(fmt::format("{} can't resolve for name {}", 
+                msg, 
+                string_id::to_cstring(name)), frame) {}
     };
 
     // ============================================================================

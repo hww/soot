@@ -31,9 +31,9 @@ int main() {
     FunctionCompiler compiler(ts, function_type, "add");
     
     // Создаем регистры
-    IR_Reg* a = compiler.create_local_reg(int_type);
-    IR_Reg* b = compiler.create_local_reg(int_type);
-    IR_Reg* result = compiler.create_local_reg(int_type);
+    IR_Reg* a = compiler.create_arg_reg(int_type, 0);   // arg0 = r24
+    IR_Reg* b = compiler.create_arg_reg(int_type, 1);   // arg1 = r25
+    IR_Reg* result = compiler.create_local_reg(int_type); // результат в r0
     
     // result = a + b
     compiler.add_node(std::make_unique<IR_Binary>(

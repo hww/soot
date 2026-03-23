@@ -57,6 +57,18 @@ namespace runtime::files {
             definitions_.push_back(DefinitionData{ name, type, flags, data, {}, {} });
         }
 
+        void add_type(std::string name, std::string parent, 
+                const std::vector<MethodHeader>& methods = {},
+                const std::vector<StateDesc>& states = {},
+                TypeFlags flags = TypeFlags::None,
+                RegClass reg_class = RegClass::GPR_64,
+                int load_size = 8,
+                int alignment = 8);
+
+        void add_state(std::string name, std::string parent,
+                const std::vector<FunctionDesc*>& handlers = {},
+                StateFlags flags = StateFlags::None);
+
         /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
         std::vector<u8> build();
         std::shared_ptr<Module> build_module();

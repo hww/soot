@@ -22,7 +22,7 @@ namespace runtime::kernel {
         pid_to_process_[process_ptr->pid] = process_ptr;
         name_to_process_[name] = process_ptr;
 
-        lg::debug("Created process '{}' with PID {}", lib::to_string(name), process->pid);
+        lg::debug("Created process '{}' with PID {}", string_id::to_string(name), process_ptr->pid);
         return process_ptr;
     }
 

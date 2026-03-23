@@ -4,11 +4,14 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include <format>
+#include <string>
 #include <unordered_map>
 
 using namespace runtime::lib;
 
 namespace runtime::vm {
+
+    class InstructionTable;
 
     // ============================================================================
     // Instruction Opcodes
@@ -266,6 +269,8 @@ namespace runtime::vm {
                     static_cast<u32>(opcode), a, b, c);
             }
         }
+
+        std::string inspect() const;
     };
 #pragma pack(pop)
 
@@ -344,12 +349,6 @@ namespace runtime::vm {
 
             // Add more instructions as needed...
         }
-
-        //void add_instruction(Opcode opcode, StringId name, u8 operand_count, bool has_immediate) {
-        //    InstructionInfo info{ opcode, name, operand_count, has_immediate };
-        //    opcode_to_info_.emplace(opcode, info);
-        //    name_to_info_.emplace(name, info);
-        //}
 
         void add_instruction(Opcode opcode, const char* name, u8 operand_count, bool has_immediate) {
             auto name_id = string_id::register_string(name);

@@ -57,7 +57,7 @@ namespace runtime::vm {
 
 
         StackFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr,
-            FrameType frame_type = FrameType::GENERIC, StringId name = SID("null"));
+            FrameType frame_type = FrameType::GENERIC, StringId name = type::none);
 
         virtual ~StackFrame(){}
 
@@ -108,6 +108,13 @@ namespace runtime::vm {
         // ------------------------------------------------------------------------
         // Instruction Execution
         // ------------------------------------------------------------------------
+
+        Instruction get_this_instruction() {
+            ASSERT_MSG(code_ptr != nullptr, "No code pointer set");
+            ASSERT_FORMAT(pc < get_code_size(), "Program counter out of bounds: {}", pc);
+
+            return code_ptr[pc];
+        }
 
         Instruction get_next_instruction() {
             ASSERT_MSG(code_ptr != nullptr, "No code pointer set");

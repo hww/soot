@@ -93,6 +93,8 @@ namespace runtime::lib {
         // 
         //     uint → uinteger(64 - bit в регистрах)
         // 
+        const StringId none         = SID("none");
+        const StringId unnamed      = SID("unnamed");
         const StringId null         = SID("null");
         const StringId number       = SID("number");    // Базовый
         const StringId integer      = SID("integer");   // number::integer

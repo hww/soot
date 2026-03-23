@@ -53,7 +53,7 @@ namespace runtime::modules {
 
         Module(StringId name, std::filesystem::path, std::vector<u8> binary_file);
 
-        ~Module();
+        virtual ~Module();
 
         bool load_file();
         void build_export_table();

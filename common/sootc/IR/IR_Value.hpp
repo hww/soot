@@ -5,6 +5,8 @@
 
 namespace sootc {
 
+static constexpr u32 ARG_REGISTERS_OFFSET = 24;
+
 class IR_Value {
   public:
     explicit IR_Value(Type *type) : type_(type) {}

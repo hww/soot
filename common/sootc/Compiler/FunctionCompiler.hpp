@@ -14,6 +14,7 @@ class FunctionCompiler {
 
     // Создание регистров
     IR_Reg *create_local_reg(Type *type);
+    IR_Reg* create_arg_reg(Type* type, u32 index);
     IR_Reg *get_self_reg();
 
     // Добавление узлов

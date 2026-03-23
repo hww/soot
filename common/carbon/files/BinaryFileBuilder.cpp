@@ -150,7 +150,69 @@ namespace runtime::files {
         return buffer;
     }
 
+    /** Добавить тип */
+    void BinaryFileBuilder::add_type(std::string name, std::string parent, 
+                const std::vector<MethodHeader>& methods,
+                const std::vector<StateDesc>& states,
+                TypeFlags flags,
+                RegClass reg_class,
+                int load_size,
+                int alignment) {
+        
+        TypeDesc type;
+        type.name = string_id::register_string(name);
+        type.parent_type_id = string_id::register_string(parent);
+        type.methods_offset = 0; // будет заполнено позже
+        type.states_offset = 0;
+        type.methods_count = methods.size();
+        type.states_count = states.size();
+        type.flags = flags;
+        type.reg_class = reg_class;
+        type.load_size = load_size;
+        type.in_memory_alignment = alignment;
+        type.inline_array_stride_alignment = alignment;
+        type.inline_array_start_alignment = alignment;
+        type.offset = 0;
+        
+        // Сериализуем методы и состояния
+        std::vector<u8> type_data;
+        // ... сериализация ...
+        
+        definitions_.push_back(DefinitionData{
+            name, 
+            "type", 
+            SymbolFlags::Export,
+            type_data, 
+            {}, 
+            {}
+        });
+    }
 
+    /** Добавить состояние */
+    void BinaryFileBuilder::add_state(std::string name, std::string parent,
+                const std::vector<FunctionDesc*>& handlers,
+                StateFlags flags) {
+        
+        StateDesc state;
+        state.name = string_id::register_string(name);
+        state.parent_state = string_id::register_string(parent);
+        state.count = handlers.size();
+        state.offset = 0;
+        state.flags = flags;
+        
+        // Сериализуем обработчики
+        std::vector<u8> state_data;
+        // ... сериализация ...
+        
+        definitions_.push_back(DefinitionData{
+            name, 
+            "state", 
+            SymbolFlags::Export,
+            state_data, 
+            {}, 
+            {}
+        });
+    }
     /** Просмотреть входные данные которые были добавлены */
     std::string BinaryFileBuilder::inspect_input() const {
         std::string result;

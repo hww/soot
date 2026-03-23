@@ -22,6 +22,7 @@ add_library(libcarbon
     common/carbon/modules/ModuleRegistry.cpp
     common/carbon/modules/ModuleManager.cpp
     ## Virtual machine
+    common/carbon/vm/Instructions.сpp
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
     ## Kernel

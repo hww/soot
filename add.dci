@@ -1,4 +1,5 @@
-﻿(math/add (136)
+﻿(math/add (144)
   (import)
-  (export <unknown:D786D62F>)
+  (export add)
+  (strings module1 string_id native float null u64 none sinteger string u16 integer i64 i32 add i16 bool u32 number i8 function u8 uinteger)
 )

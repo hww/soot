@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <string>
 #include <ostream>
+#include "fmt/format.h"
 
 namespace runtime::lib {
 
@@ -103,6 +104,7 @@ namespace runtime::lib {
         }
     } // namespace string_id
 
+    
     // ============================================================================
     // Debug Utilities  
     // ============================================================================
@@ -120,5 +122,5 @@ namespace runtime::lib {
     inline std::ostream& operator<<(std::ostream& os, StringId sid) {
         return os << to_string(sid);
     }
-
 } // namespace vm
+

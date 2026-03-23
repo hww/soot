@@ -13,7 +13,12 @@ IR_Reg *FunctionCompiler::create_local_reg(Type *type) {
     regs_.push_back(std::move(reg));
     return ptr;
 }
-
+IR_Reg* FunctionCompiler::create_arg_reg(Type* type, u32 index) {
+    auto reg = std::make_unique<IR_Reg>(type, ARG_REGISTERS_OFFSET + index, true);
+    IR_Reg* ptr = reg.get();
+    regs_.push_back(std::move(reg));
+    return ptr;
+}
 IR_Reg *FunctionCompiler::get_self_reg() {
     return new IR_Reg(ts_.lookup_type("object"), IR_Reg::REG_SELF, true);
 }
@@ -40,6 +45,12 @@ std::vector<u8> FunctionCompiler::compile() {
 
     // Получаем инструкции
     std::vector<Instruction> instructions = bc_builder.get_instructions();
+    
+    // ОТЛАДКА
+    lg::info("=== Generated {} instructions ===", instructions.size());
+    for (size_t i = 0; i < instructions.size(); i++) {
+        lg::info("  [{}] {}", i, instructions[i].to_string());
+    }
 
     // Создаем функцию в билдере
     builder.add_function(function_name_, instructions,
