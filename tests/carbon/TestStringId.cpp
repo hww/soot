@@ -6,11 +6,11 @@
 
 #include "carbon/Export.hpp"
 
-using namespace runtime::vm;
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
-using namespace runtime::kernel;
+using namespace carbon::vm;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
+using namespace carbon::kernel;
 
 class StringIdTest : public ::testing::Test {
 protected:

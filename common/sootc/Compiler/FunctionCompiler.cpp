@@ -28,7 +28,7 @@ void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
 }
 
 std::vector<u8> FunctionCompiler::compile() {
-    runtime::files::BinaryFileBuilder builder("module1");
+    carbon::files::BinaryFileBuilder builder("module1");
 
     FunctionDescBuilder                     bc_builder;
     std::unordered_map<IR_Value *, u32> reg_map;

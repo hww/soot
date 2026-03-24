@@ -12,7 +12,7 @@
 #include "common/carbon/kernel/Scheduler.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     /**
      * @class Kernel
@@ -342,4 +342,4 @@ namespace runtime::kernel {
      */
     inline ProcessMask global_mask() { return kernel().global_mask(); }
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel

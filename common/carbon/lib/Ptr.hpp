@@ -3,7 +3,7 @@
 #include <cassert>
 #include "common/CommonTypes.hpp"
 
-namespace runtime::lib
+namespace carbon::lib
 {
     /**
      * @class Ptr
@@ -162,4 +162,4 @@ namespace runtime::lib
         return Ptr<T>(offset);
     }
 
-} // namespace runtime::lib
+} // namespace carbon::lib

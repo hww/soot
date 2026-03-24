@@ -1,126 +1,119 @@
-﻿#pragma once
+﻿// StringId.hpp
+#pragma once
 
 #include "common/CommonTypes.hpp"
+#include "common/carbon/lib/StringIdManager.hpp"
+
+namespace carbon::lib {
+
+class StringId {
+public:
+    u32 value;
+
+    constexpr StringId() : value(0) {}
+    constexpr explicit StringId(u32 val) : value(val) {}
+    
+    StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
+    StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}
+
+    constexpr operator u32() const { return value; }
+    constexpr bool operator==(const StringId& other) const { return value == other.value; }
+    constexpr bool operator!=(const StringId& other) const { return value != other.value; }
+
+    std::string to_string() const { return StringIdManager::instance().get_string(value); }
+    const char* to_cstring() const { return StringIdManager::instance().get_cstring(value); }
+
+    static const StringId None;
+    static const StringId Null;
+};
+
+
+ struct StringIds {
+    inline static const StringId unknown   = StringId("unknown");
+    inline static const StringId unnamed   = StringId("unnamed");
+    inline static const StringId enter     = StringId("enter");
+    inline static const StringId exit      = StringId("exit");
+    inline static const StringId trans     = StringId("trans");
+    inline static const StringId event     = StringId("event");
+    inline static const StringId post      = StringId("post");
+    inline static const StringId code      = StringId("code");
+ };
+
+
+} // namespace carbon::lib
+
+
+/**
+ * Main macro for creating StringId from string literals
+ * Used in code, generator tool finds these calls
+ * Example: SID("player") -> CRC32 of "player"
+ */
 #include "common/util/Crc32.hpp"
-#include <unordered_map>
-#include <string>
-#include <ostream>
+
+#define SID(str) (::carbon::lib::StringId(::util::compute_crc32_constexpr(str)))
+
+
+// 3. РАСШИРЕНИЕ СТАНДАРТНОЙ БИБЛИОТЕКИ
+#include <functional> // Обязательно для std::hash
+
+namespace std {
+    template <>
+    struct hash<carbon::lib::StringId> {
+        size_t operator()(const carbon::lib::StringId& sid) const noexcept {
+            // Просто используем стандартный хеш для u32
+            return std::hash<u32>{}(sid.value);
+        }
+    };
+}
+
+// 4. РАСШИРЕНИЕ FMT
+// Make string ID supportable by formatter
 #include "fmt/format.h"
 
-namespace runtime::lib {
+template <>
+struct fmt::formatter<carbon::lib::StringId> {
+    // Парсим формат (например, {:x} для hex или {:s} для строки)
+    // По умолчанию будем выводить строку, если она есть
+    constexpr auto parse(format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
-
-    typedef u32 StringId;
-
-    namespace string_id {
+    template <typename FormatContext>
+    auto format(const carbon::lib::StringId& sid, FormatContext& ctx) const {
+        // Пытаемся получить имя из глобальной таблицы
+        const char* name = sid.to_cstring();
         
-
-        const StringId NONE = SID("none");
-
-        // ============================================================================
-        // Runtime Interface
-        // ============================================================================
-
-        /**
-         * Loads string table from file (call once at startup)
-         * Format: "HEXCRC32 string"
-         * Throws: std::runtime_error on file error
-         */
-        void load_table(const std::string& filename);
-
-        /**
-         * Saves current string table to file
-         * Format: "HEXCRC32 string" sorted by string value
-         * Throws: std::runtime_error on file error
-         */
-        void save_table(const std::string& filename);
-        /**
-         * Registers a string and returns its StringId
-         * If string already exists, returns existing ID
-         * If different string with same CRC32 exists, throws std::runtime_error
-         */
-        StringId register_string(const std::string& str);
-
-        /**
-         * Registers a C-string and returns its StringId
-         */
-        StringId register_string(const char* str);
-
-
-        /**
-         * Converts StringId back to string for debugging
-         * For unknown IDs returns formatted string with hex value
-         */
-        std::string to_string(StringId id);
-
-        /**
-         * Fast conversion to C-string (for logging)
-         * For unknown IDs returns "<unknown>"
-         */
-        const char* to_cstring(StringId id);
-
-        /**
-         * Checks if string table is loaded
-         */
-        bool is_table_loaded();
-
-        /**
-         * Gets number of strings in table
-         */
-        size_t get_string_count();
-
-        /**
-         * Clears string table (mainly for tests)
-         */
-        void clear_table();
-
-        std::unordered_map<StringId, std::string> get_string_table();
-        /**
-         * Check the table
-         */
-        std::string inspect();
-
-        static void initialize() {
-            register_string("null");
-            register_string("none");
-            register_string("number");    // Base types
-            register_string("integer");   // number::integer
-            register_string("sinteger");  // integer::sinteger
-            register_string("i64");       // integer::sinteger::s64
-            register_string("i32");       // integer::sinteger::s32
-            register_string("i16");       // integer::sinteger::s16
-            register_string("i8");        // integer::sinteger::s8
-            register_string("uinteger");  // integer::uinteger
-            register_string("u64");       // integer::uinteger::i64
-            register_string("u32");       // integer::uinteger::i32
-            register_string("u16");       // integer::uinteger::i16
-            register_string("u8");        // integer::uinteger::i8
-            register_string("float");     // number::float
-            register_string("bool");
-            register_string("string_id"); // integer::sinteger::string_id
-            register_string("native");
-            register_string("string");
-            register_string("function");
+        if (std::string(name) == "<unknown>") {
+            // Если имени нет, выводим HEX-значение для дебага
+            return fmt::format_to(ctx.out(), "ID(0x{:08X})", (u32)sid);
         }
-    } // namespace string_id
-
-    
-    // ============================================================================
-    // Debug Utilities  
-    // ============================================================================
-
-    /**
-     * Convert StringId to string (global function)
-     */
-    inline std::string to_string(StringId sid) {
-        return string_id::to_string(sid);
+        
+        // Если имя есть, выводим его
+        return fmt::format_to(ctx.out(), "{}", name);
     }
+};
 
-    /**
-     * Stream output for StringId
-     */
-    inline std::ostream& operator<<(std::ostream& os, StringId sid) {
-        return os << to_string(sid);
-    }
-} // namespace vm
+// 4. РАСШИРЕНИЕ FORMAT
+#include <format> // Для std::formatter
 
+namespace std {
+    template <>
+    struct formatter<carbon::lib::StringId> {
+        // Парсим формат
+        constexpr auto parse(format_parse_context& ctx) {
+            return ctx.begin();
+        }
+
+        // Форматируем
+        auto format(const carbon::lib::StringId& sid, format_context& ctx) const {
+            const char* name = sid.to_cstring();
+            
+            if (std::string(name) == "<unknown>") {
+                // Выводим HEX, если строка не зарегистрирована
+                return std::format_to(ctx.out(), "ID(0x{:08x})", static_cast<u32>(sid));
+            }
+            
+            return std::format_to(ctx.out(), "{}", name);
+        }
+    };
+}

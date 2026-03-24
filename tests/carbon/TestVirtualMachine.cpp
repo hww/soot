@@ -3,11 +3,11 @@
 
 #include "carbon/Export.hpp"
 
-using namespace runtime::vm;
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
-using namespace runtime::kernel;
+using namespace carbon::vm;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
+using namespace carbon::kernel;
 
 class VirtualMachineTest : public ::testing::Test {
   protected:
@@ -51,9 +51,9 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
     auto module = builder.build_module();
-    auto FunctionDesc = module->resolve_code(SID("simple_answer"));
+    auto FunctionDesc = module->resolve_function(SID("simple_answer"));
     EXPECT_NE(FunctionDesc, nullptr);
-    Variant result = vm.execute_FunctionDesc(FunctionDesc);
+    Variant result = vm.execute_function(FunctionDesc);
 
     EXPECT_FALSE(result.is_null());
     EXPECT_EQ(result.to_int(), 42);
@@ -77,8 +77,8 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     builder.add_function("calculate", code);
 
     auto    module = builder.build_module();
-    auto    FunctionDesc = module->resolve_code(SID("calculate"));
-    Variant result = vm.execute_FunctionDesc(FunctionDesc);
+    auto    FunctionDesc = module->resolve_function(SID("calculate"));
+    Variant result = vm.execute_function(FunctionDesc);
 
     EXPECT_EQ(result.to_int(), 16); // (5 + 3) * 2 = 16
 }
@@ -101,9 +101,9 @@ TEST_F(VirtualMachineTest, FunctionCall) {
     // УБИРАЕМ: builder.inspect() - этого метода нет
 
     auto module = builder.build_module();
-    auto FunctionDesc = module->resolve_code(SID("main"));
+    auto FunctionDesc = module->resolve_function(SID("main"));
 
-    Variant result = vm.execute_FunctionDesc(FunctionDesc);
+    Variant result = vm.execute_function(FunctionDesc);
 
     // Проверяем что функция выполнилась и вернула значение
     EXPECT_TRUE(result.is_int());
@@ -134,7 +134,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     builder.add_function("test_native_call", code);
 
     auto module = builder.build_module();
-    auto FunctionDesc = module->resolve_code(SID("test_native_call"));
+    auto FunctionDesc = module->resolve_function(SID("test_native_call"));
 
     // Проверяем что нативная функция работает отдельно
     Variant args[2] = {Variant(10), Variant(20)};
@@ -142,7 +142,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     EXPECT_EQ(native_result.to_int(), 30);
 
     // И проверяем что наша простая функция тоже работает
-    Variant vm_result = vm.execute_FunctionDesc(FunctionDesc);
+    Variant vm_result = vm.execute_function(FunctionDesc);
     EXPECT_EQ(vm_result.to_int(), 30);
 }
 
@@ -161,9 +161,9 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     builder.add_function("conditional", code);
 
     auto module = builder.build_module();
-    auto FunctionDesc = module->resolve_code(SID("conditional"));
+    auto FunctionDesc = module->resolve_function(SID("conditional"));
 
-    Variant result = vm.execute_FunctionDesc(FunctionDesc);
+    Variant result = vm.execute_function(FunctionDesc);
     EXPECT_EQ(result.to_int(), 10);
 }
 
@@ -199,11 +199,11 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     auto module1 = binary1.build_module();
     auto module2 = binary2.build_module();
 
-    auto FunctionDesc1 = module1->resolve_code(SID("func1"));
-    auto FunctionDesc2 = module2->resolve_code(SID("func2"));
+    auto FunctionDesc1 = module1->resolve_function(SID("func1"));
+    auto FunctionDesc2 = module2->resolve_function(SID("func2"));
 
-    Variant result1 = vm.execute_FunctionDesc(FunctionDesc1);
-    Variant result2 = vm.execute_FunctionDesc(FunctionDesc2);
+    Variant result1 = vm.execute_function(FunctionDesc1);
+    Variant result2 = vm.execute_function(FunctionDesc2);
     // Должны находить функции из обоих бинарников
     EXPECT_EQ(result1.to_int(), 100);
     EXPECT_EQ(result2.to_int(), 200);

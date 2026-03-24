@@ -2,18 +2,18 @@
 
 #include "carbon/Export.hpp"
 
-using namespace runtime::vm;
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
-using namespace runtime::kernel;
+using namespace carbon::vm;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
+using namespace carbon::kernel;
 
 TEST(Types, SafeCasting) {
     EXPECT_EQ(safe_cast_u32(1000u), 1000u);
-    // EXPECT_THROW(safe_cast_u32(UINT64_MAX), runtime::OverflowException);
+    // EXPECT_THROW(safe_cast_u32(UINT64_MAX), carbon::OverflowException);
 
     EXPECT_EQ(safe_cast_s32(1000), 1000);
-    // EXPECT_THROW(safe_cast_s32(INT64_MAX), runtime::OverflowException);
+    // EXPECT_THROW(safe_cast_s32(INT64_MAX), carbon::OverflowException);
 }
 
 TEST(Types, Vector4) {

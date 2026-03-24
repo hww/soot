@@ -3,16 +3,15 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include "common/util/Log.hpp"
 #include <memory>
 #include <unordered_map>
 #include <filesystem>
 #include <vector>
 
-using namespace runtime::lib;
-using namespace runtime::files;
+using namespace carbon::lib;
+using namespace carbon::files;
 
-namespace runtime::modules {
+namespace carbon::modules {
 
     class Module {
     public:
@@ -60,7 +59,7 @@ namespace runtime::modules {
         void set_file(std::vector<u8> binary_mem);
         bool save_to_files(const std::filesystem::path& base_path = ".") const;
 
-        bool is_valid_metadata() const { return name != 0 && !file_path.empty(); }
+        bool is_valid_metadata() const { return name.value != 0 && !file_path.empty(); }
         bool is_linked() const { return load_state >= LoadState::LINKED; }
         virtual bool is_binary_loaded() const { return load_state >= LoadState::BINARY_LOADED && binary_file != nullptr; }
 
@@ -77,11 +76,16 @@ namespace runtime::modules {
         Definition* resolve_symbol(StringId name);
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
-        FunctionDesc* resolve_code(StringId name);
+        FunctionDesc* resolve_function(StringId name);
+        MethodDesc* resolve_method(StringId type_name, StringId method_name);
+        StateDesc* resolve_state(StringId type_name, StringId state_name);
+        TypeDesc* resolve_type(StringId name);
+        TypeDesc* find_type(StringId name);
 
         std::string to_string() const;
 
         std::string inspect() const;
+
     private:
         static std::string load_state_to_string(LoadState state) {
             switch (state) {

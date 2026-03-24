@@ -1,125 +1,137 @@
-﻿#include "common/carbon/kernel/StateFrame.hpp"
-#include "common/carbon/kernel/StateDefinition.hpp"
+﻿// StateFrame.cpp
+#include "common/carbon/kernel/StateFrame.hpp"
+#include "common/carbon/vm/VirtualMachine.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
-    StateFrame::StateFrame(StateDefinition* definition, Process* process, StackFrame* parent)
-        : ProtectFrame(
-            definition ? definition->update_FunctionDesc : nullptr,
-            parent,
-            [this]() { this->execute_exit(); }
-        ),
-        state_def(definition),
-        owner_process(process)
-    {
-        if (state_def) {
-            name = state_def->name;
+// ============================================================================
+// Конструктор
+// ============================================================================
 
-            enter_FunctionDesc = state_def->enter_FunctionDesc;
-            trans_FunctionDesc = state_def->trans_FunctionDesc;
-            update_FunctionDesc = state_def->update_FunctionDesc;
-            post_FunctionDesc = state_def->post_FunctionDesc;
-            event_FunctionDesc = state_def->event_FunctionDesc;
+StateFrame::StateFrame(StateDesc* state_desc, StackFrame* parent)
+    : ProtectFrame(
+        nullptr,  // нет основного кода во фрейме
+        parent,
+        [this]() { this->exit(); }  // cleanup function для ProtectFrame
+    )
+{
+    if (state_desc) {
+        // Устанавливаем имя фрейма
+        name = state_desc->name;
+        frame_type = FrameType::STATE;
+        
+        // Копируем обработчики из StateDesc (как в GOAL)
+        enter_function_ = state_desc->get_enter_function();
+        trans_function_ = state_desc->get_trans_function();
+        code_function_ = state_desc->get_code_function();
+        post_function_ = state_desc->get_post_function();
+        exit_function_ = state_desc->get_exit_function();
+        event_handler_ = state_desc->get_event_handler();
+    }
+    
+    lg::debug("StateFrame created for state '{}'", name.to_string());
+}
+
+// ============================================================================
+// Выполнение exit-обработчика
+// ============================================================================
+
+void StateFrame::execute_exit() {
+    if (!exit_function_) {
+        return;
+    }
+    
+    lg::debug("StateFrame::execute_exit for state '{}'", name);
+    
+    // Создаём временный фрейм для exit-обработчика
+    StackFrame* exit_frame = new StackFrame(
+        exit_function_,
+        nullptr,
+        StackFrame::FrameType::GENERIC,
+        SID("state_exit")
+    );
+;
+    // Выполняем через VM
+    // TODO: Получить VM из процесса или глобального контекста
+    // VirtualMachine::instance().execute(exit_frame, owner_process_);
+    
+    delete exit_frame;
+}
+
+// ============================================================================
+// Переопределенные методы ProtectFrame
+// ============================================================================
+
+void StateFrame::exit() {
+    lg::debug("StateFrame::exit called for state '{}'", name);
+    execute_exit();
+}
+
+void StateFrame::on_throw() {
+    lg::warn("Exception in state '{}', calling exit handler", name);
+    execute_exit();
+}
+
+// ============================================================================
+// Отладочная информация
+// ============================================================================
+
+std::string StateFrame::to_string() const {
+    return fmt::format(
+        "StateFrame(state:'{}', handlers:[{}])",
+        name,
+        get_handler_hames()
+    );
+}
+
+std::string StateFrame::inspect() const {
+    return fmt::format(
+        "StateFrame(state:'{}', handlers:[enter:{}, trans:{}, update:{}, post:{}, exit:{}, events:{}], pc:{}, parent:{})",
+        name,
+        has_enter() ? "yes" : "no",
+        has_trans() ? "yes" : "no",
+        has_code() ? "yes" : "no",
+        has_post() ? "yes" : "no",
+        has_exit() ? "yes" : "no",
+        has_event(),
+        pc,
+        parent_ptr ? "yes" : "no"
+    );
+}
+
+    std::string StateFrame::get_handler_hames() const {
+        std::string result;
+        
+        if (has_enter()) result += " enter";
+        if (has_trans()) result += " trans";
+        if (has_code()) result += " code";
+        if (has_post()) result += " post";
+        if (has_exit()) result += " exit";
+        if (has_event()) result += " event";
+        return result.empty() ? "none" : result.substr(1);
+    }
+
+// ============================================================================
+// Вспомогательные функции
+// ============================================================================
+
+StateFrame* create_state_frame(StateDesc* state_desc, StackFrame* parent) {
+    return new StateFrame(state_desc, parent);
+}
+
+void destroy_state_frame(StateFrame* frame) {
+    delete frame;
+}
+
+StateFrame* find_current_state_frame(StackFrame* top_frame) {
+    StackFrame* current = top_frame;
+    while (current) {
+        if (current->frame_type == StackFrame::FrameType::STATE) {
+            return reinterpret_cast<StateFrame*>(current);
         }
+        current = current->parent_ptr;
     }
+    return nullptr;
+}
 
-    void StateFrame::execute_enter() {
-        if (enter_FunctionDesc && owner_process) {
-            auto enter_frame = new StackFrame(enter_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_enter"));
-            // execute_frame(enter_frame, owner_process);
-            delete enter_frame;
-        }
-    }
-
-    void StateFrame::execute_trans() {
-        if (trans_FunctionDesc && owner_process) {
-            auto trans_frame = new StackFrame(trans_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_trans"));
-            // execute_frame(trans_frame, owner_process);
-            delete trans_frame;
-        }
-    }
-
-    void StateFrame::execute_update() {
-        if (update_FunctionDesc && owner_process) {
-            pc = 0; // Сбрасываем PC для выполнения с начала
-            // execute_frame(this, owner_process);
-        }
-    }
-
-    void StateFrame::execute_post() {
-        if (post_FunctionDesc && owner_process) {
-            auto post_frame = new StackFrame(post_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_post"));
-            // execute_frame(post_frame, owner_process);
-            delete post_frame;
-        }
-    }
-
-    void StateFrame::execute_event(StringId event_type, const Variant& event_data) {
-        if (event_FunctionDesc && owner_process) {
-            auto event_frame = new StackFrame(event_FunctionDesc, this, StackFrame::FrameType::GENERIC, SID("state_event"));
-
-            event_frame->get_argument(0) = Variant(event_type);
-            event_frame->get_argument(1) = event_data;
-
-            // execute_frame(event_frame, owner_process);
-            delete event_frame;
-        }
-    }
-
-    void StateFrame::execute_exit() {
-        if (state_def && state_def->has_exit() && owner_process) {
-            auto exit_frame = new StackFrame(state_def->exit_FunctionDesc, this, SID("state_exit"));
-            // execute_frame(exit_frame, owner_process);
-            delete exit_frame;
-        }
-    }
-
-    std::string StateFrame::to_string() const {
-        std::string state_name = state_def ? state_def->get_name_string() : "null";
-        std::string process_name = owner_process ? owner_process->get_name_string() : "null";
-        return std::format("StateFrame('{}', process:'{}')", state_name, process_name);
-    }
-
-    void StateFrame::dump_state_info() const {
-        lg::debug("=== State Frame Info ===");
-        lg::debug("  State: {}", state_def ? state_def->get_name_string() : "null");
-        lg::debug("  Process: {}", owner_process ? owner_process->get_name_string() : "null");
-        lg::debug("  Handlers: enter:{}, trans:{}, update:{}, post:{}, event:{}, exit:{}",
-            has_enter(), has_trans(), has_update(), has_post(), has_event(), has_exit());
-        lg::debug("  PC: {}, Parent: {}", pc, parent_ptr ? "yes" : "no");
-    }
-
-    void StateFrame::exit() {
-        ProtectFrame::exit();
-    }
-
-    void StateFrame::on_throw() {
-        lg::warn("Exception in state '{}', calling exit handler",
-            state_def ? state_def->get_name_string() : "null");
-        execute_exit();
-    }
-
-    StateFrame* create_state_frame(StateDefinition* state_def, Process* process, StackFrame* parent) {
-        auto frame = new StateFrame(state_def, process, parent);
-        frame->execute_enter();
-        return frame;
-    }
-
-    void destroy_state_frame(StateFrame* frame) {
-        if (frame) {
-            delete frame;
-        }
-    }
-
-    StateFrame* find_current_state_frame(StackFrame* top_frame) {
-        StackFrame* current = top_frame;
-        while (current) {
-            if (current->frame_type == StackFrame::FrameType::STATE) {
-                return static_cast<StateFrame*>(current);
-            }
-            current = current->parent_ptr;
-        }
-        return nullptr;
-    }
-
-} // namespace runtime::kernel
+} // namespace carbon::kernel

@@ -24,7 +24,7 @@ void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
 
 std::vector<u8> FunctionCompiler::compile() {
     // Используем существующий BinaryFileBuilder
-    runtime::files::BinaryFileBuilder builder;
+    carbon::files::BinaryFileBuilder builder;
 
     // Временный буфер для байткода
     std::vector<Instruction>    instructions;

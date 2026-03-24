@@ -1,12 +1,14 @@
 ﻿#include "common/carbon/modules/Module.hpp"
 #include "common/carbon/files/BinaryFile.hpp"
+#include "common/carbon/files/TypeDesc.hpp"
+#include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/files/DciFile.hpp"
 #include "lib/Variant.hpp"
 #include <fmt/format.h>
 
-using namespace runtime::files;
+using namespace carbon::files;
 
-namespace runtime::modules {
+namespace carbon::modules {
 
 
     // СТАРЫЙ КОНСТРУКТОР - адаптируем под новый API
@@ -15,9 +17,10 @@ namespace runtime::modules {
     {
         set_file(std::move(binary_mem));
     }
+
     bool Module::load_file()
     {
-
+        return  false;
     }
 
     void Module::set_file(std::vector<u8> binary_mem) {
@@ -96,9 +99,9 @@ namespace runtime::modules {
         return nullptr;
     }
 
-    FunctionDesc* Module::resolve_code(StringId name) {
+    FunctionDesc* Module::resolve_function(StringId name) {
         auto definition = resolve_symbol(name);
-        if (definition && definition->type == type::function)
+        if (definition && definition->type == TypeIds::function)
             return (FunctionDesc*)definition->data.get();
         return nullptr;
     }
@@ -115,7 +118,7 @@ namespace runtime::modules {
 
     std::string Module::to_string() const {
         return fmt::format("Module('{}', state:{}, exports:{}, imports:{}, gen:{})",
-            lib::to_string(name),
+            name,
             static_cast<int>(load_state),
             export_table.size(),
             import_table.size(),
@@ -123,7 +126,7 @@ namespace runtime::modules {
     }
 
     std::string Module::inspect() const {
-        std::string result = fmt::format("Module[{}]\n", lib::to_string(name));
+        std::string result = fmt::format("Module[{}]\n", name);
         result += fmt::format("  File: {}\n", file_path.string());
         result += fmt::format("  Load state: {}\n", load_state_to_string(load_state));
         result += fmt::format("  Generation: {}, Load order: {}\n", generation, load_order);
@@ -133,7 +136,7 @@ namespace runtime::modules {
         // Импорты
         result += fmt::format("  Imports: {} symbols\n", dci_imports.size());
         for (size_t i = 0; i < dci_imports.size() && i < 5; i++) { // показываем первые 5
-            result += fmt::format("    - {}\n", lib::to_string(dci_imports[i]));
+            result += fmt::format("    - {}\n", dci_imports[i]);
         }
         if (dci_imports.size() > 5) {
             result += fmt::format("    ... and {} more\n", dci_imports.size() - 5);
@@ -142,7 +145,7 @@ namespace runtime::modules {
         // Экспорты
         result += fmt::format("  Exports: {} symbols\n", dci_exports.size());
         for (size_t i = 0; i < dci_exports.size() && i < 5; i++) {
-            result += fmt::format("    - {}\n", lib::to_string(dci_exports[i]));
+            result += fmt::format("    - {}\n", dci_exports[i]);
         }
         if (dci_exports.size() > 5) {
             result += fmt::format("    ... and {} more\n", dci_exports.size() - 5);
@@ -165,7 +168,7 @@ namespace runtime::modules {
     // common/carbon/modules/Module.cpp - добавить:
     bool Module::save_to_files(const std::filesystem::path& base_path) const {
         // Сохраняем .bin
-        std::filesystem::path bin_path = base_path / (lib::to_string(name) + ".bin");
+        std::filesystem::path bin_path = base_path / (name.to_string() + ".bin");
         std::ofstream bin_file(bin_path, std::ios::binary);
         if (!bin_file) return false;
 
@@ -180,14 +183,58 @@ namespace runtime::modules {
 		
         // Сохраняем .dci
         DciFile dci;
-        dci.logical_path = lib::to_string(name);
-        dci.module_name = lib::to_string(name);
+        dci.logical_path = name.to_string();
+        dci.module_name = name.to_string();
         dci.binary_size = binary_mem.size();
         dci.imports = dci_imports;
         dci.exports = dci_exports;
         
-        std::filesystem::path dci_path = base_path / (lib::to_string(name) + ".dci");
+        std::filesystem::path dci_path = base_path / name.to_string();
+        dci_path += ".dci";
         return dci.save(dci_path.string());
+    }
+
+    TypeDesc* Module::resolve_type(StringId name) {
+        auto def = resolve_symbol(name);
+        if (def && def->type == TypeIds::type) {
+            return reinterpret_cast<TypeDesc*>(def->data.get());
+        }
+        return nullptr;
+    }
+    
+    // Вспомогательные функции для работы с TypeDesc в Module
+    inline MethodDesc* Module::resolve_method(StringId type_name, StringId method_name) {
+        auto type_def = resolve_type(type_name);
+        if (!type_def) return nullptr;
+        
+        return type_def->resolve_method(method_name);
+    }
+
+    inline StateDesc* Module::resolve_state(StringId type_name, StringId state_name) {
+        auto type_def = resolve_type(type_name);
+        if (!type_def) return nullptr;
+        
+        return type_def->resolve_state(state_name);
+    }
+    
+    // Найти тип по имени с учётом иерархии
+    TypeDesc* Module::find_type(StringId name) {
+        auto type = resolve_type(name);
+        if (type) return type;
+        
+        // Ищем в импортах
+        for (auto& [import_name, imported_module] : import_table) {
+            if (auto t = imported_module->resolve_type(name)) {
+                return t;
+            }
+        }
+        
+        // Ищем в родительском модуле
+        //if (parent_module && parent_module != this) {
+        //    return parent_module->find_type(name);
+        //}
+        
+        return nullptr;
     }
 
 } // namespace vm

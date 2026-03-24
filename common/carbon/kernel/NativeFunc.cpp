@@ -1,11 +1,12 @@
 ﻿#include "common/carbon/kernel/NativeFunc.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/util/Log.hpp"
+#include "lib/StringId.hpp"
 #include <iostream>
 
 using namespace runtime;
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     // ============================================================================
     // Native Function Registry Implementation
@@ -15,14 +16,19 @@ namespace runtime::kernel {
         static NativeFunctionRegistry instance;
         return instance;
     }
-
+    
+    
     void NativeFunctionRegistry::register_function(StringId name, NativeFunction func) {
         functions_[name] = func;
-        lg::debug("Registered native function: {}", string_id::to_string(name));
+        lg::debug("Registered native function: {}", name);
     }
 
     void NativeFunctionRegistry::register_function(const std::string& name, NativeFunction func) {
-        register_function(string_id::register_string(name), func);
+        register_function(StringId(name), func);
+    }
+
+    void NativeFunctionRegistry::register_function(const char* name, NativeFunction func) {
+        register_function(StringId(name), func);
     }
 
     NativeFunction NativeFunctionRegistry::find_function(StringId name) const {
@@ -31,7 +37,7 @@ namespace runtime::kernel {
     }
 
     NativeFunction NativeFunctionRegistry::find_function(const std::string& name) const {
-        return find_function(string_id::register_string(name));
+        return find_function(StringId(name));
     }
 
     // ============================================================================

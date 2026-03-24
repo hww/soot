@@ -1,9 +1,9 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/files/Base.hpp"
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
     // =============================================================================
     // FunctionDescError Implementation
     // =============================================================================

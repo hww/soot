@@ -11,10 +11,10 @@
 #include <cstdint>
 #include <string>
 
-using namespace runtime::lib;
-using namespace runtime::modules;
+using namespace carbon::lib;
+using namespace carbon::modules;
 
-namespace runtime::files {
+namespace carbon::files {
 
     /**
      * @brief Complete FunctionDesc representation with code, data, and debug info

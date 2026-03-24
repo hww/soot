@@ -1,15 +1,15 @@
 ﻿#pragma once
 
 #include "common/carbon/ForwardDeclarations.hpp"
+#include "common/carbon/lib/StringIdManager.hpp"
 #include "common/sooti/Reader.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/CommonTypes.hpp"
-#include <filesystem>
 #include <fstream> 
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
 
     struct DciFile {
         std::string logical_path;    // "math/random" - ПОЛНЫЙ логический путь
@@ -56,16 +56,16 @@ namespace runtime::files {
         result += "(" + logical_path + " (" + std::to_string(binary_size) + ")\n";
         result += "  (import";
         for (auto imp : imports) {
-            result += " " + lib::to_string(imp);
+            result += " " + imp.to_string();
         }
         result += ")\n";
         result += "  (export";
         for (auto exp : exports) {
-            result += " " + lib::to_string(exp);
+            result += " " + exp.to_string();
         }
         result += ")\n";
         result += "  (strings";
-        for (auto exp : string_id::get_string_table()) {
+        for (auto exp : StringIdManager::instance()) {
             result += " " + exp.second;
         }
         result += ")\n";
@@ -160,39 +160,39 @@ namespace runtime::files {
                 throw std::runtime_error("Expected symbol as import/export keyword");
             }
 
-            auto keyword = string_id::register_string(keyword_obj.as_symbol().c_str());
+            auto keyword = StringId(keyword_obj.as_symbol().c_str());
             list = list.as_pair()->cdr;
 
-            if (keyword == string_id::register_string("import")) {
+            if (keyword == StringId("import")) {
                 while (list.is_pair()) {
                     auto import_name_obj = list.as_pair()->car;
                     if (!import_name_obj.is_symbol()) {
                         throw std::runtime_error("Expected symbol in import list");
                     }
                     // Импорты - это логические пути других модулей
-                    result.imports.push_back(string_id::register_string(import_name_obj.as_symbol().c_str()));
+                    result.imports.push_back(StringId(import_name_obj.as_symbol().c_str()));
                     list = list.as_pair()->cdr;
                 }
             }
-            else if (keyword == string_id::register_string("export")) {
+            else if (keyword == StringId("export")) {
                 while (list.is_pair()) {
                     auto export_name_obj = list.as_pair()->car;
                     if (!export_name_obj.is_symbol()) {
                         throw std::runtime_error("Expected symbol in export list");
                     }
                     // Экспорты - это имена функций внутри модуля
-                    result.exports.push_back(string_id::register_string(export_name_obj.as_symbol().c_str()));
+                    result.exports.push_back(StringId(export_name_obj.as_symbol().c_str()));
                     list = list.as_pair()->cdr;
                 }
             }
-            else if (keyword == string_id::register_string("strings")) {
+            else if (keyword == StringId("strings")) {
                 while (list.is_pair()) {
                     auto export_name_obj = list.as_pair()->car;
                     if (!export_name_obj.is_symbol()) {
                         throw std::runtime_error("Expected symbol in export list");
                     }
                     // Экспорты - это имена функций внутри модуля
-                    string_id::register_string(export_name_obj.as_symbol().c_str());
+                    StringId(export_name_obj.as_symbol().c_str());
                     list = list.as_pair()->cdr;
                 }
             }

@@ -2,7 +2,7 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
 	class DeadPool
 	{

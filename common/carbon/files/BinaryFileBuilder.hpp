@@ -2,21 +2,19 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
-#include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/vm/Instructions.hpp"
-#include "common/carbon/files/BinaryFile.hpp"
 #include "common/carbon/modules/Module.hpp"
-#include "lib/StringId.hpp"
+#include "files/TypeDesc.hpp"
 #include <vector>
 #include <algorithm>
 #include <memory>
 #include <cassert>
 #include <string>
 
-using namespace runtime::lib;
-using namespace runtime::modules;
+using namespace carbon::lib;
+using namespace carbon::modules;
 
-namespace runtime::files {
+namespace carbon::files {
 
     /** Binary file builder - создает модули с BinaryFile */
  /** Binary file builder - простой последовательный конструктор */
@@ -29,7 +27,7 @@ namespace runtime::files {
             std::string type;
             SymbolFlags flags;
             std::vector<u8> data;  // Для простых данных
-            std::vector<Instruction> code;  // Для функций
+            std::vector<vm::Instruction> code;  // Для функций
             std::vector<SourceLocation> debug_info;  // Для функций
         };
 
@@ -37,19 +35,17 @@ namespace runtime::files {
 
     public:
         BinaryFileBuilder(std::string name) { 
-            string_id::initialize();
-            this->name = name; string_id::register_string(name); 
+            this->name = name;
         }
 
         /** Добавить функцию */
         void add_function(std::string name, 
-            const std::vector<Instruction>& code,
+            const std::vector<vm::Instruction>& code,
             const std::vector<u8>& data = {},
             const std::vector<SourceLocation>& debug_info = {},
             SymbolFlags flags = SymbolFlags::Export) {
-            auto funcid = string_id::register_string("function");
 
-            definitions_.push_back(DefinitionData{ name, string_id::to_string(funcid), flags, data, code, debug_info });
+            definitions_.push_back(DefinitionData{ name, "function", flags, data, code, debug_info });
         }
 
         /** Добавить простую дефиницию */
@@ -58,7 +54,7 @@ namespace runtime::files {
         }
 
         void add_type(std::string name, std::string parent, 
-                const std::vector<MethodHeader>& methods = {},
+                const std::vector<MethodDesc>& methods = {},
                 const std::vector<StateDesc>& states = {},
                 TypeFlags flags = TypeFlags::None,
                 RegClass reg_class = RegClass::GPR_64,

@@ -6,11 +6,11 @@
 #include <fstream>
 #include "common/util/FileUtil.hpp"
 
-using namespace runtime::lib;
-using namespace runtime::files;
+using namespace carbon::lib;
+using namespace carbon::files;
 using namespace file_util;
 
-namespace runtime::modules {
+namespace carbon::modules {
 
     std::shared_ptr<Module> ModuleManager::load_module(StringId module_name) {
         // Проверяем уже загруженные модули
@@ -18,7 +18,7 @@ namespace runtime::modules {
         if (existing) {
             reference_counts_[module_name]++;
             lg::debug("Module '{}' already loaded, refcount: {}",
-                lib::to_string(module_name), reference_counts_[module_name]);
+                module_name, reference_counts_[module_name]);
             return existing;
         }
 
@@ -29,14 +29,14 @@ namespace runtime::modules {
         // Получаем модуль из регистра
         auto module = registry_.find_module(module_name);
         if (!module) {
-            lg::error("Module not found in registry: {}", lib::to_string(module_name));
+            lg::error("Module not found in registry: {}", module_name);
             return nullptr;
         }
 
         // Загружаем бинарные данные
         if (module->load_state == Module::LoadState::METADATA) {
             if (!load_binary_data(module)) {
-                lg::error("Failed to load binary data for module: {}", lib::to_string(module_name));
+                lg::error("Failed to load binary data for module: {}", module_name);
                 return nullptr;
             }
         }
@@ -92,13 +92,13 @@ namespace runtime::modules {
             module->set_file(std::move(memory));
 
             lg::debug("Loaded binary data for module: {} (size: {} bytes, addr: {})",
-                string_id::to_cstring(module->name), file_size, reinterpret_cast<void*>(binary_file));
+                module->name, file_size, reinterpret_cast<void*>(binary_file));
             return true;
 
         }
         catch (const std::exception& e) {
             lg::error("Exception loading binary data for '{}': {}",
-                lib::to_string(module->name), e.what());
+                module->name, e.what());
             return false;
         }
     }
@@ -117,20 +117,20 @@ namespace runtime::modules {
         }
 
         lg::debug("Built export table for '{}': {} symbols",
-            lib::to_string(module->name), module->export_table.size());
+            module->name, module->export_table.size());
     }
 
     void ModuleManager::resolve_dependencies(Module* module) {
         for (const auto& import_name : module->dci_imports) {
             if (!is_module_loaded(import_name)) {
                 lg::debug("Loading dependency: {} -> {}",
-                    lib::to_string(module->name),
-                    lib::to_string(import_name));
+                    module->name,
+                    import_name);
 
                 if (!load_module_internal(import_name)) {
                     lg::error("Failed to load dependency: {} for module: {}",
-                        lib::to_string(import_name),
-                        lib::to_string(module->name));
+                        import_name,
+                        module->name);
                 }
             }
         }
@@ -143,19 +143,19 @@ namespace runtime::modules {
             if (target_module) {
                 module->add_import(import_name, target_module);
                 lg::debug("Linked import: {} -> {} ({})",
-                    lib::to_string(module->name),
-                    lib::to_string(import_name),
-                    lib::to_string(target_module->name));
+                    module->name,
+                    import_name,
+                    target_module->name);
             }
             else {
                 lg::error("Unresolved import: {} in module {}",
-                    lib::to_string(import_name),
-                    lib::to_string(module->name));
+                    import_name,
+                    module->name);
             }
         }
 
         module->load_state = Module::LoadState::LINKED;
-        lg::debug("Successfully linked module: {}", lib::to_string(module->name));
+        lg::debug("Successfully linked module: {}", module->name);
     }
 
     std::shared_ptr<Module> ModuleManager::find_module_that_exports(StringId symbol_name) {
@@ -174,13 +174,13 @@ namespace runtime::modules {
 
         ref_it->second--;
         lg::debug("Decremented refcount for module '{}': {}",
-            lib::to_string(module_name), ref_it->second);
+            module_name, ref_it->second);
 
         if (ref_it->second == 0) {
             auto mod_it = loaded_modules_.find(module_name);
             if (mod_it != loaded_modules_.end()) {
                 // Выгружаем из BinaryFilePool
-                lg::info("Unloaded module: {}", lib::to_string(module_name));
+                lg::info("Unloaded module: {}", module_name);
             }
             loaded_modules_.erase(module_name);
             reference_counts_.erase(module_name);
@@ -190,12 +190,12 @@ namespace runtime::modules {
     void ModuleManager::hot_reload_module(StringId module_name) {
         auto it = loaded_modules_.find(module_name);
         if (it == loaded_modules_.end()) {
-            lg::error("Cannot hot reload - module not loaded: {}", lib::to_string(module_name));
+            lg::error("Cannot hot reload - module not loaded: {}", module_name);
             return;
         }
 
         auto module = it->second;
-        lg::info("Hot reloading module: {}", lib::to_string(module_name));
+        lg::info("Hot reloading module: {}", module_name);
 
         // 2. Сбрасываем состояние модуля
         module->binary_file = nullptr;
@@ -205,10 +205,10 @@ namespace runtime::modules {
         // 3. Загружаем новую версию
         if (load_binary_data(module)) {
             lg::info("Successfully hot reloaded module: {} -> generation {}",
-                lib::to_string(module_name), module->generation);
+                module_name, module->generation);
         }
         else {
-            lg::error("Failed to hot reload module: {}", lib::to_string(module_name));
+            lg::error("Failed to hot reload module: {}", module_name);
             // Восстанавливаем предыдущее состояние?
         }
     }
@@ -221,7 +221,7 @@ namespace runtime::modules {
     Definition* ModuleManager::find_export(StringId module_name, StringId export_name) {
         auto module = find_module(module_name);
         if (!module) {
-            lg::error("Module not loaded: {}", lib::to_string(module_name));
+            lg::error("Module not loaded: {}", module_name);
             return nullptr;
         }
 

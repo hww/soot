@@ -227,6 +227,7 @@ void Engine::RemoveAll()
 void Engine::RemoveByParam0(void* value)
 {
     RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        (void)engine;
         return connection->Arg0 == data;
     }, value);
 }
@@ -234,6 +235,7 @@ void Engine::RemoveByParam0(void* value)
 void Engine::RemoveByParam1(int value)
 {
     RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        (void)engine;
         return connection->Arg1 == *((int*)data);
     }, &value);
 }
@@ -241,6 +243,7 @@ void Engine::RemoveByParam1(int value)
 void Engine::RemoveByParam2(int value)
 {
     RemoveMatching([](Connection* connection, Engine* engine, void* data) {
+        (void)engine;
         return connection->Arg2 == *((int*)data);
     }, &value);
 }
@@ -254,7 +257,9 @@ const char* Engine::Inspect() const
         "  DeadList: %s\n"
         "  DeadListEnd: %s\n"
         "</Engine>",
-        Name, FrameCount, Length,
+        Name.to_cstring(), 
+        FrameCount, 
+        Length,
         AliveList.Inspect(),
         AliveListEnd.Inspect(),
         DeadList.Inspect(),

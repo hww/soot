@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace runtime {
+namespace carbon {
 
     // Forward declarations
     namespace lib {
@@ -11,12 +11,15 @@ namespace runtime {
     namespace files {
         struct Descriptor;
         struct BinaryFile;
-        struct FunctionDesc;
         struct Definition;
         struct SourceLocation;
+        struct DciFile;
+        struct FunctionDesc;
+        struct MethodDesc; 
+        struct StateDesc;
+        struct TypeDesc;
         class BinaryFilePool;
         class BinaryFileBuilder;
-        struct DciFile;
     }
 
     namespace modules {
@@ -38,8 +41,8 @@ namespace runtime {
         class Engine;
         class Connection;
         class Connectable;
-        struct StateDefinition;
         class DeadPool;
         class EntityActor;
+        struct EventMessage;
     }
 }

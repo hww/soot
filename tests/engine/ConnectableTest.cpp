@@ -1,10 +1,10 @@
 ﻿#include <gtest/gtest.h>
 #include "common/carbon/Export.hpp"
 
-using namespace runtime::kernel;
-using namespace runtime::lib;
+using namespace carbon::kernel;
+using namespace carbon::lib;
 
-using namespace runtime::vm;
+using namespace carbon::vm;
 
     class ConnectableTest : public ::testing::Test
     {

@@ -3,9 +3,9 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
 
     /**
      * @brief Aligns size to 4-byte boundary
@@ -93,7 +93,8 @@ namespace runtime::files {
     struct Descriptor {
         /** Size of this descriptor in bytes */
         u32 desc_size;
-
+        /** Name of descriptor as crc32 */
+        StringId name;
         /**
          * @brief Adjust all internal pointers by a delta value
          * @param delta The amount to add to all pointers

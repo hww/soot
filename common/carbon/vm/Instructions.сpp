@@ -1,14 +1,13 @@
 ﻿#pragma once
 
-#include "common/carbon/vm/Instruction.hpp"
+#include "common/carbon/vm/Instructions.hpp"
 
 
-
-namespace runtime::vm {
+namespace carbon::vm {
 
     std::string Instruction::inspect() const {
         auto* info = InstructionTable::instance().get_info(opcode);
-        std::string op_name = info ? lib::to_string(info->name) : "???";
+        std::string op_name = info ? info->name.to_cstring() : "???";
         
         if (has_immediate()) {
             return fmt::format("{:08X}: {:<8} r{}, #{}", 

@@ -8,7 +8,7 @@ add_library(libcarbon
     common/util/PrintFloat.cpp
     common/util/Log.cpp
     ## Local Libs
-    common/carbon/lib/StringId.cpp
+    common/carbon/lib/StringIdManager.cpp
     common/carbon/lib/Ptr.cpp
     ## Files
     common/carbon/files/Base.cpp
@@ -34,7 +34,6 @@ add_library(libcarbon
     common/carbon/kernel/Kernel.cpp
     common/carbon/kernel/Process.cpp
     common/carbon/kernel/ProcessRunner.cpp
-    common/carbon/kernel/StateDefinition.cpp
     common/carbon/kernel/Scheduler.cpp
 )
 # Исполняемый файл для тестирования VM

@@ -1,7 +1,6 @@
 #include "common/type_system/Type.hpp"
 #include "TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
-#include "common/sooti/Printer.hpp"
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
 #include <algorithm>

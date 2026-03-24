@@ -4,10 +4,10 @@
 #include <fmt/format.h>
 #include <string>
 
-using namespace runtime::lib;
-using namespace runtime::vm;
+using namespace carbon::lib;
+using namespace carbon::vm;
 
-namespace runtime::files {
+namespace carbon::files {
 
     
 FunctionDesc::FunctionDesc() 
@@ -84,4 +84,4 @@ std::string FunctionDesc::inspect() const {
     );
 }
 
-} // namespace runtime::files
+} // namespace carbon::files

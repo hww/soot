@@ -5,10 +5,10 @@
 #include <algorithm>
 #include <fmt/core.h>
 
-using namespace runtime::lib;
-using namespace runtime::files;
+using namespace carbon::lib;
+using namespace carbon::files;
 
-namespace runtime::modules {
+namespace carbon::modules {
 
     void ModuleRegistry::add_search_path(const std::filesystem::path& path) {
         if (!std::filesystem::exists(path)) {
@@ -40,7 +40,7 @@ namespace runtime::modules {
             return it->second;
         }
 
-        lg::debug("Module not found in registry: {}", lib::to_string(module_name));
+        lg::debug("Module not found in registry: {}", module_name);
         return nullptr;
     }
 
@@ -90,7 +90,7 @@ namespace runtime::modules {
                 if (module && module->is_valid_metadata()) {
                     module_cache_[module->name] = module;
                     lg::debug("Registered module: {} -> {}",
-                        lib::to_string(module->name), file_path.string());
+                        module->name, file_path.string());
                 }
             }
         }
@@ -112,7 +112,7 @@ namespace runtime::modules {
             auto module = std::make_shared<Module>();
 
             // Заполняем поля напрямую
-            module->name = string_id::register_string(dci.logical_path.c_str());
+            module->name = StringId(dci.logical_path.c_str());
             module->file_path = dci_path;
             module->dci_imports = std::move(dci.imports);
             module->dci_exports = std::move(dci.exports);

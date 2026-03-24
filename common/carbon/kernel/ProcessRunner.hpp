@@ -3,7 +3,7 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/kernel/Kernel.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     // ============================================================================
     // ProcessRunner Class - Упрощенный API для создания процессов
@@ -33,7 +33,7 @@ namespace runtime::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn_with_state(StringId name, Process* parent,
-            StateDefinition* initial_state, void* stack_top);
+            StateDesc* initial_state, void* stack_top);
 
         // ============================================================================
         // Two-stage Process Creation (как в OpenGoal)
@@ -102,4 +102,4 @@ namespace runtime::kernel {
         ProcessRunner() = delete;
     };
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel

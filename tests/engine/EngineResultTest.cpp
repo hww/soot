@@ -1,7 +1,7 @@
 ﻿#include <gtest/gtest.h>
 #include "common/carbon/kernel/EngineResult.hpp"
 
-using namespace runtime::kernel;
+using namespace carbon::kernel;
 
 
 TEST(EngineResultTest, EnumValues)

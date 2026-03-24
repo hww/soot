@@ -5,7 +5,7 @@
 #include "common/carbon/kernel/Connection.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
 namespace runtime { namespace kernel {
 

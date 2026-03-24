@@ -6,8 +6,8 @@
 #include <thread>
 #include <memory>
 
-using namespace runtime::kernel;
-using namespace runtime::lib;
+using namespace carbon::kernel;
+using namespace carbon::lib;
 
 class EngineTest : public ::testing::Test
 {

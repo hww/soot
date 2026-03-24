@@ -4,15 +4,16 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/kernel/StateDefinition.hpp"
-#include "common/carbon/kernel/Connectable.hpp"
+#include "common/carbon/files/TypeDesc.hpp"
 #include "common/carbon/kernel/Types.hpp"
-#include <memory>
+#include "kernel/EventMessage.hpp"
 #include <functional>
 #include <string>
 
 
-namespace runtime::kernel {
+using namespace carbon::files;
+
+namespace carbon::kernel {
 
     // ============================================================================
     // Process Class
@@ -27,13 +28,6 @@ namespace runtime::kernel {
         static constexpr u32 INVALID_PROCESS_ID = 0; ///< Невалидный идентификатор процесса
 
         // ============================================================================
-        // Constructors & Destructor
-        // ============================================================================
-
-        Process(StringId name);
-        ~Process();
-
-        // ============================================================================
         // Process Tree Structure
         // ============================================================================
 
@@ -45,9 +39,6 @@ namespace runtime::kernel {
 
         /// Левый ребенок в дереве (первый дочерний процесс)
         Process* child = nullptr;
-
-        /// Self-reference для стабильных указателей
-        Process* self = this;
 
         // ============================================================================
         // Identification & Basic State
@@ -64,6 +55,9 @@ namespace runtime::kernel {
 
         /// Маска процесса (флаги поведения)
         ProcessMask mask = ProcessMask::NONE;
+
+        /// Тип процесса, имеется в виду структура бинарного файла
+        TypeDesc* type = nullptr;
 
         // ============================================================================
         // Memory Management & Pool
@@ -113,10 +107,10 @@ namespace runtime::kernel {
         StackFrame* current_state_frame = nullptr;
 
         /// Текущее состояние процесса (определяет поведение)
-        StateDefinition* current_state = nullptr;
+        StateDesc* current_state = nullptr;
 
         /// Следующее состояние (для отложенных переходов)
-        StateDefinition* next_state = nullptr;
+        StateDesc* next_state = nullptr;
 
         // ============================================================================
         // State Hooks (обработчики из текущего состояния)
@@ -131,7 +125,7 @@ namespace runtime::kernel {
         FunctionDesc* post_hook = nullptr;
 
         /// Event-обработчик - обрабатывает события, отправленные процессу
-        FunctionDesc* event_hook = nullptr;
+        FunctionDesc* event_handler = nullptr;
 
         // ============================================================================
         // Entity & Game World Integration
@@ -153,28 +147,54 @@ namespace runtime::kernel {
 
         static u32 next_pid_; ///< Счетчик для генерации PID
 
+
         // ============================================================================
-        // Public Methods
+        // Constructors & Destructor
         // ============================================================================
 
+        Process();
+        ~Process();
+
+        const char* name_cstr() { return name.to_cstring(); }
+        std::string name_str() { return name.to_string(); }
+
+        // ============================================================================
         // === State Management ===
+        // ============================================================================
 
         /// Перейти в указанное состояние
         /// @param state Идентификатор состояния для перехода
         /// @return true если переход успешно запланирован
         bool go_state(StringId state);
 
-        /// Отправить событие процессу
+        /// Перейти в указанное состояние
+        /// @param state Идентификатор состояния для перехода
+        /// @return true если переход успешно запланирован
+        bool go_state(StateDesc* state);
+
+        /// Отправить событие от этого процесса процессу
+        /// @param target Получатель события
         /// @param event Тип события
         /// @param argc Количество аргументов
         /// @param argv Массив аргументов события
         /// @return true если событие было обработано
-        bool send_event(StringId event, u32 argc = 0, Variant* argv = nullptr);
+        /// TODO! Сделать стандартный varargs!
+        bool send_event(Process* target, u32 argc, StringId event,  Variant* argv = nullptr);
+
+        /// Отправить событие от этого процесса процессу
+        /// @param target Получатель события
+        /// @param event Тип события
+        /// @param argc Количество аргументов
+        /// @param argv Массив аргументов события
+        /// @return true если событие было обработано
+        bool send_event(Process* target, u32 argc, StringId event, EventMessage* argv = nullptr);
 
         /// Проверить наличие отложенного перехода между состояниями
         bool has_pending_transition() const { return next_state != nullptr; }
 
+        // ============================================================================
         // === Mask Operations ===
+        // ============================================================================
 
         /// Проверить наличие маски у процесса
         bool has_mask(ProcessMask check) const {
@@ -191,7 +211,9 @@ namespace runtime::kernel {
             mask = static_cast<ProcessMask>(static_cast<u32>(mask) & ~static_cast<u32>(remove));
         }
 
+        // ============================================================================
         // === Status Checks ===
+        // ============================================================================
 
         bool is_dead() const { return status == ProcessStatus::DEAD; }
 
@@ -209,7 +231,9 @@ namespace runtime::kernel {
             return is_runnable() && !has_mask(ProcessMask::SLEEP_CODE);
         }
 
+        // ============================================================================
         // === Stack Operations ===
+        // ============================================================================
 
         /// Добавить фрейм в стек процесса
         void push_frame(StackFrame* frame);
@@ -220,7 +244,9 @@ namespace runtime::kernel {
         /// Найти фрейм по имени в стеке процесса
         StackFrame* find_frame(StringId frame_name);
 
+        // ============================================================================
         // === Memory Management ===
+        // ============================================================================
 
         /// Выделить память из кучи процесса
         void* heap_alloc(u32 size);
@@ -234,7 +260,9 @@ namespace runtime::kernel {
         /// Получить общий размер кучи процесса
         u32 heap_size() const { return allocated_length; }
 
+        // ============================================================================
         // === Execution Control ===
+        // ============================================================================
 
         /// Выполнить один квант времени процесса
         /// @return true если процесс должен продолжать выполняться
@@ -248,9 +276,11 @@ namespace runtime::kernel {
 
         /// Активировать процесс (подготовить к выполнению)
         /// @param stack_top Указатель на верх стека для выполнения
-        void activate(void* stack_top);
+        void activate(Process* active_pool, StringId name, StackFrame* stack_top = nullptr);
 
+        // ============================================================================
         // === Connection Management ===
+        // ============================================================================
 
         /// Соединить с другим процессом
         void connect_to(Process* other, StringId connection_type);
@@ -261,7 +291,9 @@ namespace runtime::kernel {
         /// Разорвать все соединения процесса
         void disconnect_all();
 
+        // ============================================================================
         // === Tree Operations ===
+        // ============================================================================
 
         /// Добавить дочерний процесс
         void add_child(Process* child);
@@ -275,7 +307,9 @@ namespace runtime::kernel {
         /// Выполнить функцию для всех дочерних процессов
         void for_each_child(std::function<void(Process*)> func);
 
+        // ============================================================================
         // === Utility Methods ===
+        // ============================================================================
 
         std::string to_string() const;
 
@@ -299,22 +333,31 @@ namespace runtime::kernel {
         u32 generate_pid();
 
         /// Выполнить немедленный переход между состояниями
-        bool execute_immediate_transition(StateDefinition* new_state);
+        bool execute_immediate_transition(StateDesc* new_state);
 
         /// Выполнить отложенный переход между состояниями
-        bool execute_deferred_transition(StateDefinition* new_state);
+        bool execute_deferred_transition(StateDesc* new_state);
 
         /// Обновить обработчики из текущего состояния
-        void update_state_hooks();
-
-        /// Выполнить trans-обработчик
-        void execute_trans_handler();
+        void update_state_hooks(VirtualMachine& vm);
 
         /// Выполнить post-обработчик  
-        void execute_post_handler();
+        void execute_enter_handler(VirtualMachine& vm, FunctionDesc* enter_hook);
+
+        /// Выполнить trans-обработчик
+        void execute_trans_handler(VirtualMachine& vm);
+
+        /// Выполнить post-обработчик  
+        void execute_post_handler(VirtualMachine& vm);
+
+        /// Получение сообщение
+        bool execute_event(Process* sender, u32 argc, StringId event, EventMessage* message = nullptr);
 
         /// Очистить процесс (при деактивации)
         void cleanup();
+
+        /// Наличие делегатов
+        bool has_event_handler() { return event_handler != nullptr; }
     };
 
     // ============================================================================
@@ -322,7 +365,7 @@ namespace runtime::kernel {
     // ============================================================================
 
     inline std::string Process::get_name_string() const {
-        return lib::to_string(name);
+        return name.to_string();
     }
 
     inline u32 Process::heap_used() const {

@@ -8,7 +8,7 @@
 #include <new>
 #include <utility>
 
-namespace runtime::lib
+namespace carbon::lib
 {
     // =============================================================================
     // Script Object Base Structure

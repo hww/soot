@@ -3,9 +3,9 @@
 #include <vector>
 #include <fmt/format.h>
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
 
 static std::string format_type_flags(TypeFlags flags) {
     if (flags == TypeFlags::None) {
@@ -46,8 +46,8 @@ static std::string format_type_flags(TypeFlags flags) {
 
 std::string TypeDesc::to_string() const {
     return fmt::format("{} : {}", 
-                       string_id::to_string(name), 
-                       string_id::to_string(parent_type_id));
+                       name, 
+                       parent_type_id);
 }
 
 std::string TypeDesc::inspect() const {
@@ -67,8 +67,8 @@ std::string TypeDesc::inspect() const {
         "  inline_array_start_alignment: {}\n"
         "  offset: {}\n"
         "}}",
-        string_id::to_string(name),
-        string_id::to_string(parent_type_id),
+        name,
+        parent_type_id,
         methods_offset,
         states_offset,
         methods_count,

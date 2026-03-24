@@ -1,99 +1,117 @@
-﻿#pragma once
+﻿// StateFrame.hpp
+#pragma once
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
+#include "common/carbon/files/StateDesc.hpp"
+#include "common/carbon/kernel/Process.hpp"
+#include "lib/StringId.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
+
+/**
+ * @brief Фрейм для состояний процесса
+ * 
+ * Наследует от ProtectFrame для гарантированного вызова exit-обработчика
+ * при разрушении фрейма (например, при выходе из состояния через throw или return).
+ * 
+ * В GOAL StateFrame копирует все обработчики состояния, но использует только exit.
+ * Остальные обработчики (enter, trans, update, post, event) вызываются Process/StateMachine
+ * напрямую из StateDesc. Копирование сделано для быстрого доступа, но фактически не используется.
+ */
+class StateFrame : public ProtectFrame {
+public:
     /**
-     * Фрейм для состояний процесса
-     * Наследует от ProtectFrame для гарантированного вызова exit-обработчика
+     * @brief Конструктор StateFrame
+     * @param state_desc Определение состояния
+     * @param process Процесс-владелец
+     * @param parent Родительский фрейм
      */
-    class StateFrame : public ProtectFrame {
-    private:
-        // Специфичные для состояния обработчики
-        FunctionDesc* enter_FunctionDesc = nullptr;    // При входе в состояние
-        FunctionDesc* trans_FunctionDesc = nullptr;    // Перед каждым обновлением  
-        FunctionDesc* update_FunctionDesc = nullptr;   // Основной код состояния
-        FunctionDesc* post_FunctionDesc = nullptr;     // После каждого обновления
-        FunctionDesc* event_FunctionDesc = nullptr;    // Обработчик событий
-        FunctionDesc* exit_FunctionDesc = nullptr;     // Обработчик событий
+    StateFrame(StateDesc* state_desc, StackFrame* parent = nullptr);
+    
+    /**
+     * @brief Деструктор
+     */
+    ~StateFrame() override = default;
+    
+    // ============================================================================
+    // Обработчики состояния (копируются из StateDesc, но не выполняются здесь)
+    // ============================================================================
+    
+    /// Проверка наличия обработчиков
+    bool has_enter() const { return enter_function_ != nullptr; }
+    bool has_exit() const { return exit_function_ != nullptr; }
+    bool has_trans() const { return trans_function_ != nullptr; }
+    bool has_code() const { return code_function_ != nullptr; }
+    bool has_post() const { return post_function_ != nullptr; }
+    bool has_event() const { return event_handler_ != nullptr; }
+    
+    /// Доступ к обработчикам (для Process/StateMachine)
+    FunctionDesc* get_enter() const { return enter_function_; }
+    FunctionDesc* get_trans() const { return trans_function_; }
+    FunctionDesc* get_code() const { return code_function_; }
+    FunctionDesc* get_post() const { return post_function_; }
+    FunctionDesc* get_exit() const { return exit_function_; }
+    FunctionDesc* get_event() const { return event_handler_; }
+    
+    // ============================================================================
+    // Отладочная информация
+    // ============================================================================
+    
+    std::string to_string() const;
+    std::string inspect() const;
+    
+    // ============================================================================
+    // Переопределенные методы ProtectFrame
+    // ============================================================================
+    
+    /**
+     * @brief Вызывается ProtectFrame при разрушении фрейма
+     * Выполняет exit-обработчик состояния
+     */
+    void exit() override;
+    
+    /**
+     * @brief Вызывается при исключении, проходящем через этот фрейм
+     * Выполняет exit-обработчик для очистки
+     */
+    void on_throw() override;
 
-        // Мета-информация
-        StateDefinition* state_def = nullptr;  // Определение состояния
-        Process* owner_process = nullptr;      // Процесс-владелец
+private:
+    /**
+     * @brief Выполнить exit-обработчик
+     */
+    void execute_exit();
 
-    public:
-        /**
-         * Конструктор StateFrame
-         * @param state_def Определение состояния
-         * @param owner_process Процесс-владелец
-         * @param parent Родительский фрейм
-         */
-        StateFrame(StateDefinition* definition, Process* process, StackFrame* parent = nullptr);
-
-        // ============================================================================
-        // Обработчики состояния
-        // ============================================================================
-
-        /// Выполнить enter-обработчик (при входе в состояние)
-        void execute_enter();
-
-        /// Выполнить trans-обработчик (перед основным кодом)
-        void execute_trans();
-
-        /// Выполнить update-обработчик (основной код состояния)
-        void execute_update();
-
-        /// Выполнить post-обработчик (после основного кода)
-        void execute_post();
-
-        /// Выполнить event-обработчик
-        void execute_event(StringId event_type, const Variant& event_data);
-
-        /// Выполнить exit-обработчик (вызывается через ProtectFrame cleanup)
-        void execute_exit();
-
-        // ============================================================================
-        // Методы доступа
-        // ============================================================================
-
-        StateDefinition* get_state_definition() const { return state_def; }
-        Process* get_owner_process() const { return owner_process; }
-
-        bool has_enter() const { return enter_FunctionDesc != nullptr; }
-        bool has_trans() const { return trans_FunctionDesc != nullptr; }
-        bool has_update() const { return update_FunctionDesc != nullptr; }
-        bool has_post() const { return post_FunctionDesc != nullptr; }
-        bool has_event() const { return event_FunctionDesc != nullptr; }
-        bool has_exit() const { return exit_FunctionDesc != nullptr; }
-
-        // ============================================================================
-        // Отладочная информация
-        // ============================================================================
-
-        std::string to_string() const;
-
-        /// Детальная информация о состоянии
-        void dump_state_info() const;
-
-        // ============================================================================
-        // Переопределенные методы
-        // ============================================================================
-
-        void exit() override;
-        void on_throw() override;
-    };
+    /**
+     * @brief Получить отчет о хендрепах состояния
+     */
+    std::string get_handler_hames() const;
 
     // ============================================================================
-    // Функции управления StateFrame
+    // Данные
     // ============================================================================
+    
+    // Копии обработчиков из StateDesc (как в GOAL)
+    FunctionDesc* enter_function_ = nullptr;
+    FunctionDesc* trans_function_ = nullptr;
+    FunctionDesc* code_function_ = nullptr;
+    FunctionDesc* post_function_ = nullptr;
+    FunctionDesc* exit_function_ = nullptr;
+    FunctionDesc* event_handler_= nullptr;
+};
 
-    /// Создать и активировать StateFrame
-    StateFrame* create_state_frame(StateDefinition* state_def, Process* process, StackFrame* parent = nullptr);
+// ============================================================================
+// Вспомогательные функции
+// ============================================================================
 
-    /// Удалить StateFrame (автоматически вызовет exit через ProtectFrame)
-    void destroy_state_frame(StateFrame* frame);
+/// Создать StateFrame (автоматически вызовет exit при разрушении)
+StateFrame* create_state_frame(StateDesc* state_desc, Process* process, StackFrame* parent = nullptr);
 
-    /// Получить текущий StateFrame из цепочки
-    StateFrame* find_current_state_frame(StackFrame* top_frame);
-} // namespace runtime::kernel
+/// Удалить StateFrame (вызовет exit через ProtectFrame)
+void destroy_state_frame(StateFrame* frame);
+
+/// Найти текущий StateFrame в стеке
+StateFrame* find_current_state_frame(StackFrame* top_frame);
+
+} // namespace carbon::kernel

@@ -1,23 +1,24 @@
 #pragma once
 
-#include <cstdint>
-#include <string>
+#include "common/CommonTypes.hpp"
 #include "common/carbon/files/Base.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/CommonTypes.hpp"
+#include "files/BinaryFile.hpp"
+#include "files/FunctionDesc.hpp"
+#include <cstdint>
+#include <string>
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
-
+namespace carbon::files {
+/**
+ * @brief State header contains additional flags
+ */
 enum class StateFlags : uint32_t {
     None        = 0x00,
-    Initial     = 0x01,
-    Final       = 0x02,
-    History     = 0x04,
-    DeepHistory = 0x08,
-    Parallel    = 0x10,
-    Deferred    = 0x20
+    Virtual     = 0x01,
+    Override    = 0x02,
 };
 ENUM_FLAG_OPERATORS(StateFlags);
 
@@ -34,10 +35,9 @@ struct StateDesc : public Descriptor {
     static constexpr int POST_ID  = 4;
     static constexpr int EVENT_ID = 5;
     
-    StringId name;
-    StringId parent_state;  // Parent state
-    uint32_t count;       // Number of handlers
-    int64_t offset;       // Offset to methods
+    StringId parent_state;          // Parent state
+    uint32_t count;                 // Number of handlers
+    Ptr<Definition> definitions;    // Offset to Definition которыйе лежат в порядке ID
     StateFlags flags;
     
     /**
@@ -77,6 +77,57 @@ struct StateDesc : public Descriptor {
         flags = flags & (~flag);
     }
     
+    void relocate_pointers(intptr_t delta);
+
+    bool is_virtual() { return has_flag(StateFlags::Virtual);}
+    bool is_override() { return has_flag(StateFlags::Override);}
+
+    /**
+    * @brief Get definition by index
+    * @param idx Handler index (0-5)
+    * @return Pointer to FunctionDesc or nullptr if not found
+    */
+    Definition* get_definition(uint idx) const {
+        if (idx < 0 || idx >= count) {
+            return nullptr;
+        }
+        
+        // Calculate pointer to the handler table
+        Definition* handlers = reinterpret_cast<Definition*>(definitions.ptr);
+        
+        return &handlers[idx];
+    }
+
+    /**
+    * @brief Get method by index
+    * @param idx Handler index (0-5)
+    * @return Pointer to FunctionDesc or nullptr if not found
+    */
+    FunctionDesc* get_method(uint idx) const {
+        auto def = get_definition(idx);
+        if (def) {
+            // Calculate pointer to the handler table
+            return reinterpret_cast<FunctionDesc*>(def->data.ptr);
+        }
+        return nullptr;
+    }
+
+    /**
+    * @brief Get method by name
+    * @param name Handler name (e.g., "enter", "update", etc.)
+    * @return Pointer to FunctionDesc or nullptr if not found
+    */
+    FunctionDesc* resolve_method(StringId name) const {
+        // Map common handler names to IDs
+        if (name == SID("enter")) return get_method(ENTER_ID);
+        if (name == SID("exit")) return get_method(EXIT_ID);
+        if (name == SID("trans")) return get_method(TRANS_ID);
+        if (name == SID("post")) return get_method(POST_ID);
+        if (name == SID("code")) return get_method(CODE_ID);
+        if (name == SID("event")) return get_method(EVENT_ID);       
+        return nullptr;
+    }
+
     /**
      * @brief Get handler ID constant
      * @param index Handler index (0-5)
@@ -88,8 +139,12 @@ struct StateDesc : public Descriptor {
         return -1;
     }
 
-    void relocate_pointers(intptr_t delta);
-
+    FunctionDesc* get_enter_function() { return get_method(ENTER_ID); }
+    FunctionDesc* get_exit_function() { return get_method(EXIT_ID); }
+    FunctionDesc* get_trans_function() { return get_method(TRANS_ID); }
+    FunctionDesc* get_post_function() { return get_method(POST_ID); }
+    FunctionDesc* get_code_function() { return get_method(CODE_ID); }
+    FunctionDesc* get_event_handler() { return get_method(EVENT_ID); }
 };
 
 } // end of namespace

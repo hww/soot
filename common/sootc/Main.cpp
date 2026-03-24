@@ -80,7 +80,7 @@ int main() {
     }
     
     // 2. Сохраняем .dci файл
-    runtime::files::DciFile dci;
+    carbon::files::DciFile dci;
     dci.logical_path = logical_path;
     dci.module_name = module_name;
     dci.binary_size = static_cast<u32>(FunctionDesc.size());

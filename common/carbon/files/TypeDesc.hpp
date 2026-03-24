@@ -3,6 +3,8 @@
 #include "common/carbon/lib/StringId.hpp"
 #include "common/CommonTypes.hpp"
 #include "files/Base.hpp"
+#include "files/FunctionDesc.hpp"
+#include "files/StateDesc.hpp"
 #include "type_system/Config.hpp"
 #include <cstdint>
 #include <string>
@@ -10,9 +12,9 @@
 // Forward declarations
 class Symbol;
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
 
 enum class TypeFlags : uint32_t {
     None                    = 0x0000,
@@ -32,6 +34,33 @@ enum class TypeFlags : uint32_t {
 };
 ENUM_FLAG_OPERATORS(TypeFlags);
 
+struct MethodDesc {
+    StringId name;
+    StringId type;
+    Ptr<FunctionDesc> data;
+    MethodFlags flags;
+    /**
+     * @brief Convert to simple string representation
+     * @return Basic string representation
+     */
+    std::string to_string() const;
+    /**
+     * @brief Create detailed inspection string
+     * @return Detailed formatted string for debugging
+     */
+    std::string inspect() const;
+    inline bool has_flag(MethodFlags flag) const {
+        return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
+    }
+    inline void set_flag(MethodFlags flag) {
+        flags |= flag;
+    }
+    inline void clear_flag(MethodFlags flag) {
+        flags &= flag;
+    }
+};
+
+    
 /**
  * @brief Type header for type system metadata
  * 
@@ -162,6 +191,106 @@ struct TypeDesc : public Descriptor {
     }
 
     void relocate_pointers(intptr_t delta);
+
+    // ===================================================================
+    // Methods & States
+    // ===================================================================
+
+    /**
+     * @brief Resolve a method by name
+     * @param name Method name to find
+     * @return Pointer to MethodDesc or nullptr if not found
+     */
+    MethodDesc* resolve_method(StringId name) const {
+        if (methods_offset == 0 || methods_count == 0) {
+            return nullptr;
+        }
+        
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        MethodDesc* methods = reinterpret_cast<MethodDesc*>(base + methods_offset);
+        
+        for (u32 i = 0; i < methods_count; i++) {
+            if (methods[i].name == name) {
+                return &methods[i];
+            }
+        }
+        return nullptr;
+    }
+    
+    /**
+     * @brief Resolve a method by index
+     * @param index Method index (0-based)
+     * @return Pointer to MethodDesc or nullptr if index out of bounds
+     */
+    MethodDesc* get_method(u32 index) const {
+        if (methods_offset == 0 || index >= methods_count) {
+            return nullptr;
+        }
+        
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        MethodDesc* methods = reinterpret_cast<MethodDesc*>(base + methods_offset);
+        return &methods[index];
+    }
+    
+    /**
+     * @brief Resolve a state by name
+     * @param name State name to find
+     * @return Pointer to StateDesc or nullptr if not found
+     */
+    StateDesc* resolve_state(StringId name) const {
+        if (states_offset == 0 || states_count == 0) {
+            return nullptr;
+        }
+        
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        StateDesc* states = reinterpret_cast<StateDesc*>(base + states_offset);
+        
+        for (u32 i = 0; i < states_count; i++) {
+            if (states[i].name == name) {
+                return &states[i];
+            }
+        }
+        return nullptr;
+    }
+    
+    /**
+     * @brief Resolve a state by index
+     * @param index State index (0-based)
+     * @return Pointer to StateDesc or nullptr if index out of bounds
+     */
+    StateDesc* get_state(u32 index) const {
+        if (states_offset == 0 || index >= states_count) {
+            return nullptr;
+        }
+        
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        StateDesc* states = reinterpret_cast<StateDesc*>(base + states_offset);
+        return &states[index];
+    }
+    
+    /**
+     * @brief Get all methods as a span/vector
+     * @return Pointer to methods array and count
+     */
+    std::pair<MethodDesc*, u32> get_methods() const {
+        if (methods_offset == 0 || methods_count == 0) {
+            return {nullptr, 0};
+        }
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        return {reinterpret_cast<MethodDesc*>(base + methods_offset), methods_count};
+    }
+    
+    /**
+     * @brief Get all states as a span/vector
+     * @return Pointer to states array and count
+     */
+    std::pair<StateDesc*, u32> get_states() const {
+        if (states_offset == 0 || states_count == 0) {
+            return {nullptr, 0};
+        }
+        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
+        return {reinterpret_cast<StateDesc*>(base + states_offset), states_count};
+    }
 };
 
 } // end of namespace

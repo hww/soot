@@ -7,10 +7,10 @@
 #include "fmt/format.h"
 #include "lib/StringId.hpp"
 
-using namespace runtime::lib;
-using namespace runtime::modules;
+using namespace carbon::lib;
+using namespace carbon::modules;
 
-namespace runtime::files {
+namespace carbon::files {
 
     /** Построить и загрузить модуль в пул */
     std::shared_ptr<Module> BinaryFileBuilder::build_module() {
@@ -18,7 +18,7 @@ namespace runtime::files {
         BinaryFile::make_for_memory(data);
         
         auto module = std::make_shared<Module>();
-        module->name = SID(name.c_str());
+        module->name = StringId(name.c_str());
         module->set_file(std::move(data));
         return module;
     }
@@ -53,15 +53,15 @@ namespace runtime::files {
 
             // ЯВНАЯ инициализация каждого определения
             new (&defs_table[i]) Definition{
-                string_id::register_string(def_data.name),      // StringId name
-                string_id::register_string(def_data.type),      // StringId type  
+                StringId(def_data.name),      // StringId name
+                StringId(def_data.type),      // StringId type  
                 def_data.flags,
                 Ptr<u8>()           // Временный нулевой указатель
             };
 
             // Проверим что записалось
             lg::info("  Written :name {} :type {} :data-ptr {}",
-                string_id::to_string(defs_table[i].name), string_id::to_string(defs_table[i].type), defs_table[i].data.offset);
+                defs_table[i].name, defs_table[i].type, defs_table[i].data.offset);
         }
 
         current_pos += defs_count * sizeof(Definition);
@@ -152,7 +152,7 @@ namespace runtime::files {
 
     /** Добавить тип */
     void BinaryFileBuilder::add_type(std::string name, std::string parent, 
-                const std::vector<MethodHeader>& methods,
+                const std::vector<MethodDesc>& methods,
                 const std::vector<StateDesc>& states,
                 TypeFlags flags,
                 RegClass reg_class,
@@ -160,8 +160,8 @@ namespace runtime::files {
                 int alignment) {
         
         TypeDesc type;
-        type.name = string_id::register_string(name);
-        type.parent_type_id = string_id::register_string(parent);
+        type.name = StringId(name);
+        type.parent_type_id = StringId(parent);
         type.methods_offset = 0; // будет заполнено позже
         type.states_offset = 0;
         type.methods_count = methods.size();
@@ -194,10 +194,10 @@ namespace runtime::files {
                 StateFlags flags) {
         
         StateDesc state;
-        state.name = string_id::register_string(name);
-        state.parent_state = string_id::register_string(parent);
+        state.name = StringId(name);
+        state.parent_state = StringId(parent);
         state.count = handlers.size();
-        state.offset = 0;
+        state.definitions.offset = 0;
         state.flags = flags;
         
         // Сериализуем обработчики

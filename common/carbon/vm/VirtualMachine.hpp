@@ -8,12 +8,15 @@
 #include "common/carbon/kernel/NativeFunc.hpp"
 
 
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
-using namespace runtime::kernel;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
+using namespace carbon::kernel;
 
-namespace runtime::vm {
+namespace carbon::vm {
+
+    // Running modes
+    enum class RunMode { Run, Step, StepIn, StepOut };
 
     // ============================================================================
     // Forward Declarations
@@ -41,7 +44,7 @@ namespace runtime::vm {
                 auto instruction = frame_->get_this_instruction();
                 message_ = fmt::format("{} [Frame: name={}, pc={}, argc={}, inst={}]",
                     message_,
-                    lib::to_string(frame_->name),
+                    frame_->name,
                     frame_->pc,
                     frame_->argc,
                     instruction.to_string());
@@ -64,13 +67,13 @@ namespace runtime::vm {
         VmTypeError(const std::string& msg, StackFrame* frame, StringId expected, StringId actual) 
             : VmError(fmt::format("{} expected type {} actual {}", 
                 msg, 
-                string_id::to_cstring(expected), 
-                string_id::to_cstring(actual)), frame) {}
+                expected, 
+                actual), frame) {}
         
         VmTypeError(const std::string& msg, StackFrame* frame, StringId actual) 
             : VmError(fmt::format("{} unexpected type {}", 
                 msg, 
-                string_id::to_cstring(actual)), frame) {}
+                actual), frame) {}
     };
 
     class VmResolvingError : public VmError {
@@ -78,7 +81,7 @@ namespace runtime::vm {
         VmResolvingError(const std::string& msg, StackFrame* frame, StringId name) 
             : VmError(fmt::format("{} can't resolve for name {}", 
                 msg, 
-                string_id::to_cstring(name)), frame) {}
+                name), frame) {}
     };
 
     // ============================================================================
@@ -87,11 +90,37 @@ namespace runtime::vm {
 
     class VirtualMachine {
     public:
+        bool enable_debug_log;
+        bool is_suspended;
+        bool is_break;
+        bool is_error;
+        std::string break_reason;
+        StackFrame *current_frame;
+
+
         VirtualMachine() {
         }
 
         ~VirtualMachine() {
         }
+
+        // ------------------------------------------------------------------------
+        // Properties
+        // ------------------------------------------------------------------------
+
+        StackFrame* CurrentFrame() {return current_frame; }
+
+        /// <summary>There is no stack frame to execute</summary>
+        bool IsCompleted() { return current_frame == nullptr; }
+
+        void ClearFlags()
+        {
+            is_suspended = false;
+            is_break = false;
+            is_error = false;
+            break_reason = nullptr;
+            current_frame = nullptr;
+        }        
 
         // ------------------------------------------------------------------------
         // Native Function Management
@@ -105,9 +134,10 @@ namespace runtime::vm {
         // Main Execution Engine
         // ------------------------------------------------------------------------
 
-        Variant execute_FunctionDesc(Module* module, StringId function);
-        Variant execute_FunctionDesc(FunctionDesc* FunctionDesc);
-        Variant execute(StackFrame* stack_frame);
+        Variant execute_function(Module* module, StringId function, RunMode mode = RunMode::Run);
+        Variant execute_function(FunctionDesc* FunctionDesc, RunMode mode = RunMode::Run);
+        Variant execute(StackFrame* stack_frame, RunMode mode = RunMode::Run);
+        Variant execute(RunMode mode = RunMode::Run);
 
 
 

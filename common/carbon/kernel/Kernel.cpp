@@ -4,9 +4,9 @@
 #include <format>
 #include <functional> // Добавлен для std::function
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     bool Kernel::initialize() {
         if (initialized_) {
@@ -75,7 +75,7 @@ namespace runtime::kernel {
         }
 
         // Активируем процесс
-        process->activate(stack_top);
+        process->activate(parent, stack_top);
 
         // Добавляем в дерево процессов
         Process* actual_parent = parent ? parent : root_;
@@ -100,7 +100,7 @@ namespace runtime::kernel {
             set_current_context(process, ThreadType::MAIN);
 
             // Выполняем функцию через виртуальную машину
-            virtual_machine_.execute_FunctionDesc(entry_point);
+            virtual_machine_.execute_function(entry_point);
 
             lg::debug("Executed function in process '{}'", process->get_name_string());
 
@@ -200,4 +200,4 @@ namespace runtime::kernel {
             });
     }
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel

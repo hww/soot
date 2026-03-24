@@ -4,17 +4,20 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/vm/Instructions.hpp"
-#include "common/carbon/files/BinaryFile.hpp"
+#include "common/carbon/kernel/Process.hpp"
+#include "common/carbon/kernel/EventMessage.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
+#include "lib/StringId.hpp"
 #include <iostream>
 #include <ostream>
 #include <functional>
 
-using namespace runtime::lib;
-using namespace runtime::files;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::kernel;
 
-namespace runtime::vm {
+namespace carbon::vm {
 
     // ============================================================================
     // Stack Frame Structure
@@ -34,7 +37,7 @@ namespace runtime::vm {
         // ------------------------------------------------------------------------
         StringId name;                      // Имя фрейма (для отладки и throw)
         FrameType frame_type;               // Тип фрейма
-        FunctionDesc* byte_code = nullptr;
+        FunctionDesc* byte_code = nullptr;  // Pointer to FunctionDesc
         Instruction* code_ptr = nullptr;    // Pointer to FunctionDesc instructions
         u8* data_ptr = nullptr;             // Pointer to static data
         StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
@@ -56,8 +59,8 @@ namespace runtime::vm {
         }
 
 
-        StackFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr,
-            FrameType frame_type = FrameType::GENERIC, StringId name = type::none);
+        StackFrame(FunctionDesc* functionDesc, StackFrame* parent = nullptr,
+            FrameType frame_type = FrameType::GENERIC, StringId name = TypeIds::none);
 
         virtual ~StackFrame(){}
 
@@ -68,7 +71,7 @@ namespace runtime::vm {
         virtual void on_throw() {}
 
         // ------------------------------------------------------------------------
-        // Register Access (ČŃĎĐŔÂËĹÍÍŰĹ ĂĐŔÍČÖŰ)
+        // Register Access
         // ------------------------------------------------------------------------
 
         Variant& get_register(u32 index) {
@@ -104,6 +107,134 @@ namespace runtime::vm {
             u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
             return registers[reg_index];
         }
+
+        // ============================================================================
+        // Register Access Methods
+        // ============================================================================
+
+        // Установка значения в регистр по индексу
+        void set_register(u32 index, const Variant& value) {
+            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
+            registers[index] = value;
+        }
+
+        void set_register(u32 index, Variant&& value) {
+            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
+            registers[index] = std::move(value);
+        }
+
+        // Установка значения в аргумент по индексу
+        void set_argument(u32 index, const Variant& value) {
+            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
+            u32 reg_index = ARG_REGISTERS_OFFSET + index;
+            registers[reg_index] = value;
+        }
+
+        void set_argument(u32 index, Variant&& value) {
+            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
+            u32 reg_index = ARG_REGISTERS_OFFSET + index;
+            registers[reg_index] = std::move(value);
+        }
+
+        // Установка значения в локальную переменную по индексу
+        void set_local(u32 index, const Variant& value) {
+            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
+            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
+            registers[reg_index] = value;
+        }
+
+        void set_local(u32 index, Variant&& value) {
+            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
+            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
+            registers[reg_index] = std::move(value);
+        }
+
+        // ============================================================================
+        // Convenience Methods for Common Types
+        // ============================================================================
+
+        // Установка аргумента с конкретными типами
+        void set_argument_int(u32 index, s32 value) {
+            set_argument(index, Variant(value));
+        }
+
+        void set_argument_float(u32 index, f32 value) {
+            set_argument(index, Variant(value));
+        }
+
+        void set_argument_bool(u32 index, bool value) {
+            set_argument(index, Variant(value));
+        }
+
+        void set_argument_string(u32 index, const std::string& value) {
+            set_argument(index, Variant(value));
+        }
+
+        void set_argument_sid(u32 index, StringId value) {
+            set_argument(index, Variant(value));
+        }
+
+        void set_argument_ptr(u32 index, void* value, StringId type_id) {
+            set_argument(index, Variant(value, type_id));
+        }
+
+        void set_argument_process(u32 index, Process* value) {
+            set_argument(index, Variant(value, TypeIds::process));
+        }
+
+        void set_argument_event_message(u32 index, EventMessage* value) {
+            set_argument(index, Variant(value, TypeIds::event_message));
+        }
+
+        // Установка локальной переменной с конкретными типами
+        void set_local_int(u32 index, s32 value) {
+            set_local(index, Variant(value));
+        }
+
+        void set_local_float(u32 index, f32 value) {
+            set_local(index, Variant(value));
+        }
+
+        void set_local_bool(u32 index, bool value) {
+            set_local(index, Variant(value));
+        }
+
+        void set_local_string(u32 index, const std::string& value) {
+            set_local(index, Variant(value));
+        }
+
+        void set_local_sid(u32 index, StringId value) {
+            set_local(index, Variant(value));
+        }
+
+        void set_local_ptr(u32 index, void* value, StringId type_id) {
+            set_local(index, Variant(value, type_id));
+        }
+
+        // Установка регистра с конкретными типами
+        void set_register_int(u32 index, s32 value) {
+            set_register(index, Variant(value));
+        }
+
+        void set_register_float(u32 index, f32 value) {
+            set_register(index, Variant(value));
+        }
+
+        void set_register_bool(u32 index, bool value) {
+            set_register(index, Variant(value));
+        }
+
+        void set_register_string(u32 index, const std::string& value) {
+            set_register(index, Variant(value));
+        }
+
+        void set_register_sid(u32 index, StringId value) {
+            set_register(index, Variant(value));
+        }
+
+        void set_register_ptr(u32 index, void* value, StringId type_id) {
+            set_register(index, Variant(value, type_id));
+        }        
 
         // ------------------------------------------------------------------------
         // Instruction Execution
@@ -284,8 +415,8 @@ namespace runtime::vm {
         /// Данные для очистки (опционально)
         void* user_data = nullptr;
 
-        ProtectFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
-            : StackFrame(FunctionDesc, parent, FrameType::PROTECT, SID("protected"))
+        ProtectFrame(FunctionDesc* function_desc, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
+            : StackFrame(function_desc, parent, FrameType::PROTECT, SID("protected"))
             , cleanup_function(std::move(cleanup)) {
         }
 

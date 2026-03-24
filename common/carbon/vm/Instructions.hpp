@@ -7,9 +7,9 @@
 #include <string>
 #include <unordered_map>
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::vm {
+namespace carbon::vm {
 
     class InstructionTable;
 
@@ -287,8 +287,8 @@ namespace runtime::vm {
         bool has_immediate;
 
         std::string to_string() const {
-            return std::format("{} (op:{:02x}, operands:{}, imm:{})",
-                lib::to_string(name),
+            return fmt::format("{} (op:{:02x}, operands:{}, imm:{})",
+                name,
                 static_cast<u32>(opcode),
                 operand_count,
                 has_immediate);
@@ -318,7 +318,7 @@ namespace runtime::vm {
 
         StringId get_opcode_name(Opcode opcode) const {
             auto info = get_info(opcode);
-            return info ? info->name : SID("unknown");
+            return info ? info->name : StringIds::unknown;
         }
 
     private:
@@ -351,7 +351,7 @@ namespace runtime::vm {
         }
 
         void add_instruction(Opcode opcode, const char* name, u8 operand_count, bool has_immediate) {
-            auto name_id = string_id::register_string(name);
+            auto name_id = StringId(name);
             InstructionInfo info{ opcode, name_id, operand_count, has_immediate};
             opcode_to_info_.emplace(opcode, info);
             name_to_info_.emplace(name_id, info);
@@ -366,7 +366,7 @@ namespace runtime::vm {
     // ============================================================================
 
     inline std::string opcode_to_string(Opcode opcode) {
-        return lib::to_string(InstructionTable::instance().get_opcode_name(opcode));
+        return InstructionTable::instance().get_opcode_name(opcode).to_string();
     }
 
     inline std::ostream& operator<<(std::ostream& os, const Instruction& instr) {

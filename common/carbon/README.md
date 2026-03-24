@@ -783,8 +783,8 @@ int main() {
     FunctionDesc* chase_code = vm.find_function("chase-behavior");
     
     if (patrol_code && chase_code) {
-        auto patrol_state = std::make_unique<StateDefinition>("patrol", patrol_code);
-        auto chase_state = std::make_unique<StateDefinition>("chase", chase_code);
+        auto patrol_state = std::make_unique<StateDesc>("patrol", patrol_code);
+        auto chase_state = std::make_unique<StateDesc>("chase", chase_code);
         
         enemy_fsm->add_state(std::move(patrol_state));
         enemy_fsm->add_state(std::move(chase_state));

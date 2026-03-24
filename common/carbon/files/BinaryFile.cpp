@@ -6,9 +6,9 @@
 #include "lib/Variant.hpp"
 #include <sstream>
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::files {
+namespace carbon::files {
 
 
     // =============================================================================
@@ -37,12 +37,12 @@ namespace runtime::files {
 
     std::string Definition::to_string() const {
         return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data.offset, get_symbol_flags_string(flags));
+            name, type, (u64)data.offset, get_symbol_flags_string(flags));
     }
 
     std::string Definition::inspect() const {
         return std::format("(definition {} :type {} :ptr {:x} :flags {})",
-            string_id::to_cstring(name), string_id::to_cstring(type), (u64)data.offset, get_symbol_flags_string(flags));
+            name, type, (u64)data.offset, get_symbol_flags_string(flags));
     }
 
     // =============================================================================
@@ -98,12 +98,12 @@ namespace runtime::files {
         return nullptr;
     }
 
-    FunctionDesc* BinaryFile::find_FunctionDesc_by_name(StringId name) const {
+    FunctionDesc* BinaryFile::find_function_by_name(StringId name) const {
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             if (def->name == name) {
                 // Only return FunctionDesc for function definitions
-                if (def->type == type::function) {
+                if (def->type == TypeIds::function) {
                     return def->data.cast<FunctionDesc>().get();
                 }
                 else {
@@ -151,7 +151,7 @@ namespace runtime::files {
             Definition* def = get_definition(i);
             def->data.ptr = reinterpret_cast<u8*>(def->data.ptr) + delta;
             
-            if (def->type == type::function) {
+            if (def->type == TypeIds::function) {
                 FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(def->data.ptr);
                 bc->code_ptr.ptr = reinterpret_cast<Instruction*>(reinterpret_cast<u8*>(bc->code_ptr.ptr) + delta);
                 bc->data_ptr.ptr = reinterpret_cast<u8*>(bc->data_ptr.ptr) + delta;
@@ -212,7 +212,7 @@ namespace runtime::files {
             result << std::format("    [{}] {}\n", i, def->inspect());
 
             // Add detailed information for function definitions
-            if (def->type == type::function) {
+            if (def->type == TypeIds::function) {
                 FunctionDesc* bc = def->data.cast<FunctionDesc>().get();
                 if (bc) {
                     result << std::format("         -> {}\n", bc->inspect());
@@ -241,4 +241,4 @@ namespace runtime::files {
         return result.str();
     }
 
-} // namespace runtime::files
+} // namespace carbon::files

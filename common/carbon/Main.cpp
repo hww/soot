@@ -5,9 +5,9 @@
 #include "common/util/Log.hpp"
 #include "fmt/color.h"
 
-using namespace runtime::modules;
-using namespace runtime::kernel;
-using namespace runtime::vm;
+using namespace carbon::modules;
+using namespace carbon::kernel;
+using namespace carbon::vm;
 
 int main() {
     lg::info("=== Carbon VM Test ===");
@@ -25,7 +25,7 @@ int main() {
         lg::error("Module 'math/add' not found");
         lg::info("Available modules:");
         for (auto name : registry.get_available_modules()) {
-            lg::info("  - {}", runtime::lib::to_string(name));
+            lg::info("  - {}", name);
         }
         return 1;
     }
@@ -45,7 +45,7 @@ int main() {
         fmt::print("Loaded file\n{}", loaded_module->binary_file->inspect());
 
     // 5. Находим функцию add
-    FunctionDesc* add_code = loaded_module->resolve_code(SID("add"));
+    FunctionDesc* add_code = loaded_module->resolve_function(SID("add"));
     if (!add_code) {
         lg::error("Function 'add' not found");
         return 1;

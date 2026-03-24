@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace runtime::vm;
+using namespace carbon::vm;
 
 namespace sootc {
 

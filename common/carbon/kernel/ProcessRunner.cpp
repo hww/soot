@@ -3,7 +3,7 @@
 #include "common/carbon/modules/ModuleManager.hpp"
 #include "common/util/Log.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     // ============================================================================
     // One-shot Process Creation
@@ -19,28 +19,28 @@ namespace runtime::kernel {
         // Этап 1: Создаем процесс
         Process* process = kernel().create_process(name);
         if (!process) {
-            lg::error("Failed to create process '{}'", lib::to_string(name));
+            lg::error("Failed to create process '{}'", name);
             return nullptr;
         }
 
         // Этап 2: Активируем процесс
         if (!kernel().activate_process(process, parent, stack_top)) {
-            lg::error("Failed to activate process '{}'", lib::to_string(name));
+            lg::error("Failed to activate process '{}'", name);
             return nullptr;
         }
 
         // Этап 3: Запускаем функцию
         if (entry_point && !kernel().run_process_function(process, entry_point)) {
-            lg::error("Failed to run function in process '{}'", lib::to_string(name));
+            lg::error("Failed to run function in process '{}'", name);
             return nullptr;
         }
 
-        lg::debug("Spawned process '{}' with entry point", lib::to_string(name));
+        lg::debug("Spawned process '{}' with entry point", name);
         return process;
     }
 
     Process* ProcessRunner::spawn_with_state(StringId name, Process* parent,
-        StateDefinition* initial_state, void* stack_top) {
+        StateDesc* initial_state, void* stack_top) {
         if (!initial_state) {
             lg::error("Cannot spawn process with state - invalid state definition");
             return nullptr;
@@ -55,7 +55,7 @@ namespace runtime::kernel {
         // process->go_state(initial_state->name); // Если есть такой метод
 
         lg::debug("Spawned process '{}' with initial state '{}'",
-            lib::to_string(name), lib::to_string(initial_state->name));
+            name, initial_state->name);
         return process;
     }
 
@@ -71,7 +71,7 @@ namespace runtime::kernel {
 
         Process* process = kernel().create_process(name);
         if (process) {
-            lg::debug("Created process '{}' (stage 1)", lib::to_string(name));
+            lg::debug("Created process '{}' (stage 1)", name);
         }
         return process;
     }
@@ -109,7 +109,7 @@ namespace runtime::kernel {
     Process* ProcessRunner::create_from_pool(StringId name) {
         // В реальной системе здесь будет логика пула процессов
         // Пока просто создаем новый процесс
-        lg::debug("Creating process '{}' from pool", lib::to_string(name));
+        lg::debug("Creating process '{}' from pool", name);
         return create(name);
     }
 
@@ -136,15 +136,14 @@ namespace runtime::kernel {
         // Загружаем модуль
         auto module = ModuleManager::instance().load_module(module_name);
         if (!module) {
-            lg::error("Module '{}' not found", lib::to_string(module_name));
+            lg::error("Module '{}' not found", module_name);
             return nullptr;
         }
 
         // Находим функцию
-        auto FunctionDesc = module->resolve_code(function_name);
+        auto FunctionDesc = module->resolve_function(function_name);
         if (!FunctionDesc) {
-            lg::error("Function '{}' not found in module '{}'",
-                lib::to_string(function_name), lib::to_string(module_name));
+            lg::error("Function '{}' not found in module '{}'", function_name, module_name);
             return nullptr;
         }
 
@@ -153,8 +152,7 @@ namespace runtime::kernel {
         // Временно используем просто имя функции
         StringId process_name = function_name;
 
-        lg::debug("Spawning process for {}.{}",
-            lib::to_string(module_name), lib::to_string(function_name));
+        lg::debug("Spawning process for {}.{}", module_name, function_name);
 
         return spawn(process_name, parent, FunctionDesc, stack_top);
     }
@@ -182,7 +180,7 @@ namespace runtime::kernel {
         // Очищаем мертвые процессы
         // scheduler.cleanup_dead_processes(); // Если будет такой метод
 
-        lg::debug("Killed {} processes with name '{}'", count, lib::to_string(name));
+        lg::debug("Killed {} processes with name '{}'", count, name);
         return count;
     }
 
@@ -190,8 +188,8 @@ namespace runtime::kernel {
         // В этой системе "тип" может быть определен по-разному
         // Например, по префиксу имени или через дополнительные метаданные
         // Пока просто возвращаем 0
-        lg::debug("Kill by type not implemented yet for type '{}'", lib::to_string(type_name));
+        lg::debug("Kill by type not implemented yet for type '{}'", type_name);
         return 0;
     }
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel

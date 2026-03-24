@@ -3,19 +3,17 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/files/Base.hpp"  
 #include "common/carbon/files/FunctionDesc.hpp"  
-#include "common/carbon/files/TypeDesc.hpp"
-#include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/lib/Ptr.hpp"  
 #include "common/util/Log.hpp"
 #include <vector>
 #include <fstream>
 #include <cassert>
 
-using namespace runtime::lib;
-using namespace runtime::vm;
-using namespace runtime::modules;
+using namespace carbon::lib;
+using namespace carbon::vm;
+using namespace carbon::modules;
 
-namespace runtime::files {
+namespace carbon::files {
 
 
     /**
@@ -55,35 +53,17 @@ namespace runtime::files {
         inline void clear_flag(SymbolFlags flag) {
             flags &= flag;
         }
+        /**
+         * Every defition points to descriptor
+         */
+        void relocate_pointers(intptr_t delta) {
+            data.offset += delta;
+            auto desc = reinterpret_cast<Descriptor*>(data.ptr);
+            if (desc)
+                desc->relocate_pointers(delta);
+        }
     };
 
-    struct MethodHeader {
-        StringId name;
-        StringId type;
-        Ptr<FunctionDesc> data;
-        MethodFlags flags;
-        /**
-         * @brief Convert to simple string representation
-         * @return Basic string representation
-         */
-        std::string to_string() const;
-
-        /**
-         * @brief Create detailed inspection string
-         * @return Detailed formatted string for debugging
-         */
-        std::string inspect() const;
-
-        inline bool has_flag(MethodFlags flag) const {
-            return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
-        }
-        inline void set_flag(MethodFlags flag) {
-            flags |= flag;
-        }
-        inline void clear_flag(MethodFlags flag) {
-            flags &= flag;
-        }
-    };
 
     /**
      * @brief Complete binary file format for VM modules
@@ -157,7 +137,7 @@ namespace runtime::files {
          * Specifically looks for function definitions and returns their
          * associated FunctionDesc. Returns nullptr for non-function definitions.
          */
-        FunctionDesc* find_FunctionDesc_by_name(StringId name) const;
+        FunctionDesc* find_function_by_name(StringId name) const;
 
         /**
          * @brief Adjust all pointers in the file for new base address
@@ -288,4 +268,4 @@ namespace runtime::files {
         void apply_delta_to_pointers(ptrdiff_t delta);     
     };
 
-} // namespace runtime::files
+} // namespace carbon::files

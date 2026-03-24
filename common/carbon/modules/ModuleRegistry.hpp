@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <memory>
 
-namespace runtime::modules {
+namespace carbon::modules {
 
     class ModuleRegistry {
     private:

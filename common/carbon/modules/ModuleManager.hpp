@@ -6,7 +6,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace runtime::modules {
+namespace carbon::modules {
 
     class ModuleManager {
     private:

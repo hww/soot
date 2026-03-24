@@ -4,7 +4,7 @@
 #include "common/carbon/kernel/Process.hpp"
 #include "common/carbon/kernel/Engine.hpp"
 
-using namespace runtime::kernel;
+using namespace carbon::kernel;
 
 using namespace vm;
 

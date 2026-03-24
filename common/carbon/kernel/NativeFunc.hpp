@@ -4,9 +4,9 @@
 #include "common/carbon/lib/Variant.hpp"
 #include <map>
 
-using namespace runtime::lib;
+using namespace carbon::lib;
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     /**
      * @brief Safe argument access for native functions
@@ -27,34 +27,34 @@ namespace runtime::kernel {
         StringId actual_type = arg.get_type();
 
         if constexpr (std::is_same_v<T, s32>) {
-            if (actual_type == type::_int_) return arg.get_int32();
-            if (actual_type == type::string_id) return arg.get_int32();
-            if (actual_type == type::_float_) return static_cast<s32>(arg.get_float());
+            if (actual_type == TypeIds::_int_) return arg.get_int32();
+            if (actual_type == TypeIds::string_id) return arg.get_int32();
+            if (actual_type == TypeIds::_float_) return static_cast<s32>(arg.get_float());
         }
         else if constexpr (std::is_same_v<T, vm_int>) {
-            if (actual_type == type::_int_) return arg.get_int();
-            if (actual_type == type::string_id) return arg.get_int();
-            if (actual_type == type::_float_) return static_cast<vm_int>(arg.get_float());
+            if (actual_type == TypeIds::_int_) return arg.get_int();
+            if (actual_type == TypeIds::string_id) return arg.get_int();
+            if (actual_type == TypeIds::_float_) return static_cast<vm_int>(arg.get_float());
         }
         else if constexpr (std::is_same_v<T, f32>) {
-            if (actual_type == type::_float_) return arg.get_float();
-            if (actual_type == type::_int_) return static_cast<f32>(arg.get_int());
+            if (actual_type == TypeIds::_float_) return arg.get_float();
+            if (actual_type == TypeIds::_int_) return static_cast<f32>(arg.get_int());
         }
         else if constexpr (std::is_same_v<T, vm_float>) {
-            if (actual_type == type::_float_) return arg.get_float();
-            if (actual_type == type::_int_) return static_cast<vm_float>(arg.get_int());
+            if (actual_type == TypeIds::_float_) return arg.get_float();
+            if (actual_type == TypeIds::_int_) return static_cast<vm_float>(arg.get_int());
         }
         else if constexpr (std::is_same_v<T, bool>) {
-            if (actual_type == type::_int_) return arg.get_int() != 0;
-            if (actual_type == type::_float_) return arg.get_float() != 0.0f;
+            if (actual_type == TypeIds::_int_) return arg.get_int() != 0;
+            if (actual_type == TypeIds::_float_) return arg.get_float() != 0.0f;
         }
         else if constexpr (std::is_same_v<T, StringId>) {
-            if (actual_type == type::string_id) return arg.get_sid();
-            if (actual_type == type::_int_) return static_cast<StringId>(arg.get_int());
+            if (actual_type == TypeIds::string_id) return arg.get_sid();
+            if (actual_type == TypeIds::_int_) return static_cast<StringId>(arg.get_int());
         }
         else if constexpr (std::is_same_v<T, std::string>) {
-            if (actual_type == type::string_id) return arg.to_string();
-            if (actual_type == type::string) return arg.to_string();
+            if (actual_type == TypeIds::string_id) return arg.to_string();
+            if (actual_type == TypeIds::string) return arg.to_string();
         }
         else if constexpr (std::is_pointer_v<T>) {
             if (actual_type == expected_type) {
@@ -85,6 +85,7 @@ namespace runtime::kernel {
 
         void register_function(StringId name, NativeFunction func);
         void register_function(const std::string& name, NativeFunction func);
+        void register_function(const char* name, NativeFunction func);
 
         NativeFunction find_function(StringId name) const;
         NativeFunction find_function(const std::string& name) const;

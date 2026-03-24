@@ -3,7 +3,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     // ============================================================================
     // Process Status Enum
@@ -66,4 +66,4 @@ namespace runtime::kernel {
         NATIVE      // Нативная функция C++
     };
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel

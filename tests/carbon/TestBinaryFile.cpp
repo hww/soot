@@ -3,11 +3,11 @@
 #include <iostream>
 #include "fmt/format.h"
 
-using namespace runtime::vm;
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
-using namespace runtime::kernel;
+using namespace carbon::vm;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
+using namespace carbon::kernel;
 
 
 
@@ -15,7 +15,7 @@ class BinaryFileTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Инициализируем пул для тестов 1MB для тестов
-        string_id::initialize();
+
     }
 
     void TearDown() override {
@@ -90,19 +90,19 @@ TEST_F(BinaryFileTest, AddDefinition) {
     auto def0 = module->binary_file->get_definition(0);
     auto def1 = module->binary_file->get_definition(1);
 
-    // ВАЖНО: используем string_id::register_string вместо compute_crc32_constexpr
-    auto def0_name_expected = string_id::register_string("def_0");
-    auto def1_name_expected = string_id::register_string("def_1");
-    auto function_type_expected = string_id::register_string("function");
+    // ВАЖНО: используем StringId вместо compute_crc32_constexpr
+    auto def0_name_expected = StringId("def_0");
+    auto def1_name_expected = StringId("def_1");
+    auto function_type_expected = StringId("function");
 
     lg::info("=== TEST EXPECTATIONS ===");
-    lg::info("def0_name_expected: {} ({})", string_id::to_string(def0_name_expected), def0_name_expected);
-    lg::info("def1_name_expected: {} ({})", string_id::to_string(def1_name_expected), def1_name_expected);
-    lg::info("function_type_expected: {} ({})", string_id::to_string(function_type_expected), function_type_expected);
-    lg::info("def0->name: {} ({})", string_id::to_string(def0->name), def0->name);
-    lg::info("def1->name: {} ({})", string_id::to_string(def1->name), def1->name);
-    lg::info("def0->type: {} ({})", string_id::to_string(def0->type), def0->type);
-    lg::info("def1->type: {} ({})", string_id::to_string(def1->type), def1->type);
+    lg::info("def0_name_expected: {} ({})", def0_name_expected, def0_name_expected);
+    lg::info("def1_name_expected: {} ({})", def1_name_expected, def1_name_expected);
+    lg::info("function_type_expected: {} ({})", function_type_expected, function_type_expected);
+    lg::info("def0->name: {} ({})", def0->name, def0->name);
+    lg::info("def1->name: {} ({})", def1->name, def1->name);
+    lg::info("def0->type: {} ({})", def0->type, def0->type);
+    lg::info("def1->type: {} ({})", def1->type, def1->type);
 
     EXPECT_EQ(def0->name, def0_name_expected);
     EXPECT_EQ(def0->type, function_type_expected);
@@ -177,13 +177,13 @@ TEST_F(BinaryFileTest, FindFunctionDescByName) {
     FunctionDesc1->debug_count = 5;
 
     // Ищем по имени
-    FunctionDesc* found = module->binary_file->find_FunctionDesc_by_name(SID("def_1"));
+    FunctionDesc* found = module->binary_file->find_function_by_name(SID("def_1"));
     EXPECT_NE(found, nullptr);
     EXPECT_EQ(found->code_count, 10);
     EXPECT_EQ(found->data_size, 100);
     EXPECT_EQ(found->debug_count, 5);
 
     // Ищем несуществующее
-    FunctionDesc* not_found = module->binary_file->find_FunctionDesc_by_name(SID("nonexistent"));
+    FunctionDesc* not_found = module->binary_file->find_function_by_name(SID("nonexistent"));
     EXPECT_EQ(not_found, nullptr);
 }

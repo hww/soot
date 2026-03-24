@@ -74,11 +74,5 @@ constexpr uint32_t compute_crc32_constexpr(const char *str) {
     return crc;
 }
 
-/**
- * Main macro for creating StringId from string literals
- * Used in code, generator tool finds these calls
- * Example: SID("player") -> CRC32 of "player"
- */
-#define SID(str) (::util::compute_crc32_constexpr(str))
 } // namespace util
 #endif

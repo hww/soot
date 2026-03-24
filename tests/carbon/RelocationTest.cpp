@@ -4,15 +4,15 @@
 #include "fmt/base.h"
 #include "fmt/format.h"
 
-using namespace runtime::vm;
-using namespace runtime::lib;
-using namespace runtime::files;
-using namespace runtime::modules;
+using namespace carbon::vm;
+using namespace carbon::lib;
+using namespace carbon::files;
+using namespace carbon::modules;
 
 class RelocationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        string_id::initialize();
+
     }
     
     // Создаем тестовый бинарник с известной структурой

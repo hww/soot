@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <format>
 
-namespace runtime::kernel {
+namespace carbon::kernel {
 
     Scheduler::Scheduler() {
         // Создаем корневой процесс
@@ -22,7 +22,7 @@ namespace runtime::kernel {
         pid_to_process_[process_ptr->pid] = process_ptr;
         name_to_process_[name] = process_ptr;
 
-        lg::debug("Created process '{}' with PID {}", string_id::to_string(name), process_ptr->pid);
+        lg::debug("Created process '{}' with PID {}", name, process_ptr->pid);
         return process_ptr;
     }
 
@@ -240,4 +240,4 @@ namespace runtime::kernel {
             });
     }
 
-} // namespace runtime::kernel
+} // namespace carbon::kernel
