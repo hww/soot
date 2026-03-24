@@ -88,7 +88,7 @@ namespace carbon::kernel {
         void register_function(const char* name, NativeFunction func);
 
         NativeFunction find_function(StringId name) const;
-        NativeFunction find_function(const std::string& name) const;
+        NativeFunction find_function_by_name(const std::string& name) const;
         bool function_exists(StringId name) const {
             return functions_.find(name) != functions_.end();
         }

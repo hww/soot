@@ -4,7 +4,6 @@
 #include "lib/StringId.hpp"
 #include <iostream>
 
-using namespace runtime;
 
 namespace carbon::kernel {
 
@@ -31,12 +30,12 @@ namespace carbon::kernel {
         register_function(StringId(name), func);
     }
 
-    NativeFunction NativeFunctionRegistry::find_function(StringId name) const {
+    NativeFunction NativeFunctionRegistry::find_function(const StringId name) const {
         auto it = functions_.find(name);
         return it != functions_.end() ? it->second : nullptr;
     }
 
-    NativeFunction NativeFunctionRegistry::find_function(const std::string& name) const {
+    NativeFunction NativeFunctionRegistry::find_function_by_name(const std::string& name) const {
         return find_function(StringId(name));
     }
 

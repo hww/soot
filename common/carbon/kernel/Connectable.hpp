@@ -2,7 +2,7 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 
-namespace runtime { namespace kernel {
+namespace carbon::kernel {
 
     class Process;
     class Engine;
@@ -59,4 +59,4 @@ namespace runtime { namespace kernel {
         virtual const char* Inspect() const;
     };
 
-}} // namespace vm::runtime
+} // namespace vm::runtime

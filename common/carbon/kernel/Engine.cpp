@@ -4,7 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 
-namespace runtime { namespace kernel {
+namespace carbon::kernel {
 
 // Static buffer for string representations
 static char s_StringBuffer[2048];
@@ -268,4 +268,4 @@ const char* Engine::Inspect() const
     return s_StringBuffer;
 }
 
-}} // namespace vm::runtime
+} // namespace vm::runtime

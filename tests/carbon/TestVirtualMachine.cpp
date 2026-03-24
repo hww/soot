@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include "carbon/Export.hpp"
+#include "lib/StringIdManager.hpp"
 
 using namespace carbon::vm;
 using namespace carbon::lib;
@@ -14,7 +15,7 @@ class VirtualMachineTest : public ::testing::Test {
     void SetUp() override {
         // Инициализируем нативные функции перед каждым тестом
         NativeFunctionRegistry::get_instance().initialize_builtins();
-        string_id::initialize();
+        StringIdManager::instance().clear();
         VirtualMachine vm{};
     }
     void TearDown() override {}

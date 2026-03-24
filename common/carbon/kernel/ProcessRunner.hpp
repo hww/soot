@@ -2,6 +2,7 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/kernel/Kernel.hpp"
+#include "files/StateDesc.hpp"
 
 namespace carbon::kernel {
 
@@ -24,7 +25,7 @@ namespace carbon::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn(StringId name, Process* parent,
-            FunctionDesc* entry_point, void* stack_top);
+            FunctionDesc* entry_point, StackFrame* stack_top);
 
         /// Создать процесс с состоянием одной функцией
         /// @param name Имя процесса
@@ -33,7 +34,7 @@ namespace carbon::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn_with_state(StringId name, Process* parent,
-            StateDesc* initial_state, void* stack_top);
+            StateDesc* initial_state, StackFrame* stack_top);
 
         // ============================================================================
         // Two-stage Process Creation (как в OpenGoal)
@@ -49,7 +50,7 @@ namespace carbon::kernel {
         /// @param parent Родительский процесс
         /// @param stack_top Указатель на вершину стека
         /// @return true если активация успешна
-        static bool activate(Process* process, Process* parent, void* stack_top);
+        static bool activate(Process* process, Process* parent, StringId name, StackFrame* stack_top);
 
         /// Запустить функцию в процессе
         /// @param process Процесс для выполнения
@@ -81,7 +82,7 @@ namespace carbon::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на процесс или nullptr при ошибке
         static Process* spawn_module_function(StringId module_name, StringId function_name,
-            Process* parent, void* stack_top);
+            Process* parent, StackFrame* stack_top);
 
         /// Убить процесс по имени
         /// @param name Имя процесса для уничтожения

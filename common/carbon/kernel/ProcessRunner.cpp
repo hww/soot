@@ -2,6 +2,7 @@
 #include "common/carbon/kernel/Kernel.hpp"
 #include "common/carbon/modules/ModuleManager.hpp"
 #include "common/util/Log.hpp"
+#include "vm/StackFrame.hpp"
 
 namespace carbon::kernel {
 
@@ -10,7 +11,7 @@ namespace carbon::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn(StringId name, Process* parent,
-        FunctionDesc* entry_point, void* stack_top) {
+        FunctionDesc* entry_point, StackFrame* stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn process - Kernel not initialized");
             return nullptr;
@@ -24,7 +25,7 @@ namespace carbon::kernel {
         }
 
         // Этап 2: Активируем процесс
-        if (!kernel().activate_process(process, parent, stack_top)) {
+        if (!kernel().activate_process(process, parent, name, stack_top)) {
             lg::error("Failed to activate process '{}'", name);
             return nullptr;
         }
@@ -40,7 +41,7 @@ namespace carbon::kernel {
     }
 
     Process* ProcessRunner::spawn_with_state(StringId name, Process* parent,
-        StateDesc* initial_state, void* stack_top) {
+        StateDesc* initial_state, StackFrame* stack_top) {
         if (!initial_state) {
             lg::error("Cannot spawn process with state - invalid state definition");
             return nullptr;
@@ -52,7 +53,7 @@ namespace carbon::kernel {
         }
 
         // Устанавливаем начальное состояние
-        // process->go_state(initial_state->name); // Если есть такой метод
+        process->go_state(initial_state); // Если есть такой метод
 
         lg::debug("Spawned process '{}' with initial state '{}'",
             name, initial_state->name);
@@ -76,13 +77,13 @@ namespace carbon::kernel {
         return process;
     }
 
-    bool ProcessRunner::activate(Process* process, Process* parent, void* stack_top) {
+    bool ProcessRunner::activate(Process* process, Process* parent, StringId name, StackFrame* stack_top) {
         if (!process) {
             lg::error("Cannot activate process - invalid process");
             return false;
         }
 
-        bool success = kernel().activate_process(process, parent, stack_top);
+        bool success = kernel().activate_process(process, parent, name, stack_top);
         if (success) {
             lg::debug("Activated process '{}' (stage 2)", process->get_name_string());
         }
@@ -127,7 +128,7 @@ namespace carbon::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn_module_function(StringId module_name, StringId function_name,
-        Process* parent, void* stack_top) {
+        Process* parent, StackFrame* stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn module function - Kernel not initialized");
             return nullptr;
@@ -141,8 +142,8 @@ namespace carbon::kernel {
         }
 
         // Находим функцию
-        auto FunctionDesc = module->resolve_function(function_name);
-        if (!FunctionDesc) {
+        auto function = module->resolve_function(function_name);
+        if (!function) {
             lg::error("Function '{}' not found in module '{}'", function_name, module_name);
             return nullptr;
         }
@@ -154,7 +155,7 @@ namespace carbon::kernel {
 
         lg::debug("Spawning process for {}.{}", module_name, function_name);
 
-        return spawn(process_name, parent, FunctionDesc, stack_top);
+        return spawn(process_name, parent, function, stack_top);
     }
 
     u32 ProcessRunner::kill_by_name(StringId name) {

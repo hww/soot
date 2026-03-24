@@ -15,7 +15,7 @@ namespace carbon::kernel {
     }
 
     Process* Scheduler::create_process(StringId name) {
-        auto process = std::make_unique<Process>(name);
+        auto process = std::make_unique<Process>();
         Process* process_ptr = process.get();
 
         all_processes_.push_back(std::move(process));

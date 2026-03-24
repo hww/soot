@@ -1,6 +1,7 @@
 ﻿#include "common/carbon/kernel/Kernel.hpp"
 #include "common/carbon/kernel/Process.hpp"
 #include "common/util/Log.hpp"
+#include "vm/StackFrame.hpp"
 #include <format>
 #include <functional> // Добавлен для std::function
 
@@ -62,7 +63,7 @@ namespace carbon::kernel {
         return scheduler_.create_process(name);
     }
 
-    bool Kernel::activate_process(Process* process, Process* parent, void* stack_top) {
+    bool Kernel::activate_process(Process* process, Process* parent, StringId name, StackFrame* stack_top) {
         if (!initialized_ || !process) {
             lg::error("Cannot activate process - invalid parameters");
             return false;
@@ -75,7 +76,7 @@ namespace carbon::kernel {
         }
 
         // Активируем процесс
-        process->activate(parent, stack_top);
+        process->activate(parent, name, stack_top);
 
         // Добавляем в дерево процессов
         Process* actual_parent = parent ? parent : root_;

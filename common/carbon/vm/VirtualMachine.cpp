@@ -131,7 +131,7 @@ namespace carbon::vm {
 
 	Variant VirtualMachine::execute(StackFrame* stack_frame, RunMode mode) {
 		current_frame = stack_frame;
-		execute(mode);
+		return execute(mode);
 	}
 
 	// Исполнение кода связанного со стек фреймом

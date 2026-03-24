@@ -1,4 +1,5 @@
 ﻿#include "common/carbon/kernel/Process.hpp"
+#include "common/carbon/kernel/StateFrame.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
@@ -101,20 +102,23 @@ namespace carbon::kernel {
     }
 
     bool Process::go_state(StateDesc* new_state) {
+
         // Проверить что состояние валидное
         if (!new_state) {
-            lg::error("Process '{}': state '{}' not found",
-                get_name_string(), new_state);
+            lg::error("Process '{}': state not found (nullptr)",
+                get_name_string());
             return false;
         }
         
         // Проверяем возможность перехода
         if (new_state->is_virtual() && !new_state->is_override()) {
             lg::error("Process '{}': cannot activate virtual state '{}'",
-                get_name_string(), new_state->name.to_string());
+                get_name_string(), new_state != nullptr ? new_state->name.to_string() : "null");
             return false;
         }
-        
+
+        auto vm = Kernel::instance().virtual_machine();
+
         // Если уже есть текущее состояние, нужно выйти из него
         if (current_state) {
             // Exit текущего состояния (через StateFrame)
@@ -139,7 +143,7 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();  // или event_handlers, если нужно
         
         // Создаём новый StateFrame (будет вызывать exit при выходе)
-        current_state_frame = new StateFrame(new_state, this, stack_frame_top);
+        current_state_frame = new StateFrame(new_state, stack_frame_top);
         push_frame(current_state_frame);
         
         // Выполняем enter-обработчик нового состояния
@@ -155,14 +159,14 @@ namespace carbon::kernel {
             
             StackFrame* saved_top_thread = top_thread;
             top_thread = enter_frame;
-            vm::VirtualMachine::execute_frame(enter_frame);
+            vm.execute(enter_frame);
             top_thread = saved_top_thread;
             
             delete enter_frame;
         }
         
         lg::debug("Process '{}': transitioned to state '{}'",
-            get_name_string(), new_state->name.to_string());
+            get_name_string(), new_state != nullptr ? new_state->name.to_string() : "null");
         
         return true;
     }
@@ -386,7 +390,7 @@ namespace carbon::kernel {
 
             auto result = vm.execute(main_thread);
             
-            if (vm.is_suspended()) {  // Исправлено пустое условие
+            if (vm.is_suspended) {  // Исправлено пустое условие
                 status = ProcessStatus::SUSPENDED;
             }
         }
@@ -408,7 +412,7 @@ namespace carbon::kernel {
 
     void Process::activate(Process* active_pool, StringId newname, StackFrame* stack_top) {
         name = newname;
-
+        active_pool->add_child(this);
         if (!heap_base && allocated_length > 0) {
             heap_base = malloc(allocated_length);
             if (!heap_base) {
@@ -436,7 +440,7 @@ namespace carbon::kernel {
 
         // Создаем StateFrame для текущего состояния
         if (current_state && !current_state_frame) {
-            current_state_frame = new StateFrame(current_state, this, stack_frame_top);
+            current_state_frame = new StateFrame(current_state, stack_frame_top);
             push_frame(current_state_frame);
             
             // Выполняем enter-обработчик
@@ -583,7 +587,7 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();
         
         // Создаем новый фрейм состояния
-        current_state_frame = new StateFrame(new_state, this, stack_frame_top);
+        current_state_frame = new StateFrame(new_state, stack_frame_top);
         push_frame(current_state_frame);
         
         // Выполняем enter обработчик немедленно
@@ -629,7 +633,7 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();
 
         // Создаем новый StateFrame
-        current_state_frame = new StateFrame(new_state, this, stack_frame_top);
+        current_state_frame = new StateFrame(new_state, stack_frame_top);
         push_frame(current_state_frame);
 
         // Выполняем enter-обработчик нового состояния

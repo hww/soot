@@ -11,7 +11,7 @@ using namespace carbon::vm;
     protected:
         void SetUp() override
         {
-            process = new Process(SID("TestProcess"));
+            process = new Process();
             engine = new Engine(SID("TestEngine"), 10);
         }
         void TearDown() override {

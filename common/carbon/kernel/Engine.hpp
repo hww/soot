@@ -7,7 +7,7 @@
 
 using namespace carbon::lib;
 
-namespace runtime { namespace kernel {
+namespace carbon::kernel {
 
 class Process;
 
@@ -184,4 +184,4 @@ public:
     const char* Inspect() const;
 };
 
-}} // namespace vm::runtime
+} // namespace vm::runtime

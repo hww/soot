@@ -4,8 +4,6 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
 #include "common/carbon/files/StateDesc.hpp"
-#include "common/carbon/kernel/Process.hpp"
-#include "lib/StringId.hpp"
 
 namespace carbon::kernel {
 

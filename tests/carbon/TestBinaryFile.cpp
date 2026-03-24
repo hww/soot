@@ -2,6 +2,7 @@
 #include "carbon/Export.hpp"
 #include <iostream>
 #include "fmt/format.h"
+#include "lib/StringIdManager.hpp"
 
 using namespace carbon::vm;
 using namespace carbon::lib;
@@ -50,7 +51,7 @@ protected:
         auto module = builder.build_module();
         fmt::print("Module {}", module->inspect());
 
-        fmt::print("Strings {}", string_id::inspect());
+        fmt::print("Strings {}", StringIdManager::instance().inspect());
 
         return module;
     }

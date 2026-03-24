@@ -5,7 +5,7 @@
 
 #include "carbon/Export.hpp"
 
-using namespace runtime;
+using namespace carbon;
 using namespace carbon::vm;
 using namespace carbon::lib;
 using namespace carbon::files;
@@ -39,7 +39,7 @@ TEST_F(NativeFunctionsTest, RegistryBasicOperations) {
 
     registry.register_function("test_func", test_func);
 
-    NativeFunction found = registry.find_function("test_func");
+    NativeFunction found = registry.find_function(StringId("test_func"));
     EXPECT_NE(found, nullptr);
 
     // Тест вызова
@@ -50,14 +50,14 @@ TEST_F(NativeFunctionsTest, RegistryBasicOperations) {
 TEST_F(NativeFunctionsTest, BuiltinFunctionsRegistered) {
     auto& registry = NativeFunctionRegistry::get_instance();
 
-    EXPECT_NE(registry.find_function("print"), nullptr);
-    EXPECT_NE(registry.find_function("println"), nullptr);
-    EXPECT_NE(registry.find_function("add"), nullptr);
-    EXPECT_NE(registry.find_function("sub"), nullptr);
-    EXPECT_NE(registry.find_function("mul"), nullptr);
-    EXPECT_NE(registry.find_function("div"), nullptr);
-    EXPECT_NE(registry.find_function("abs"), nullptr);
-    EXPECT_NE(registry.find_function("sqrt"), nullptr);
+    EXPECT_NE(registry.find_function(StringId("print")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("println")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("add")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("sub")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("mul")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("div")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("abs")), nullptr);
+    EXPECT_NE(registry.find_function(StringId("sqrt")), nullptr);
 }
 
 // ============================================================================
@@ -90,7 +90,7 @@ TEST_F(NativeFunctionsTest, SC_ARGSafeAccess) {
 // ============================================================================
 
 TEST_F(NativeFunctionsTest, AddFunction) {
-    auto add_func = NativeFunctionRegistry::get_instance().find_function("add");
+    auto add_func = NativeFunctionRegistry::get_instance().find_function_by_name("add");
     ASSERT_NE(add_func, nullptr);
 
     // Integer addition

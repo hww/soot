@@ -3,7 +3,7 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/kernel/Connectable.hpp"
 
-namespace runtime { namespace kernel {
+namespace carbon::kernel {
 
 class Process;
 class Engine;
@@ -98,4 +98,4 @@ public:
     const char* Inspect() const override;
 };
 
-}} // namespace vm::runtime
+} // namespace vm::runtime

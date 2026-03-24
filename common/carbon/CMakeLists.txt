@@ -7,9 +7,11 @@ add_library(libcarbon
     common/util/FileUtil.cpp
     common/util/PrintFloat.cpp
     common/util/Log.cpp
+
     ## Local Libs
     common/carbon/lib/StringIdManager.cpp
     common/carbon/lib/Ptr.cpp
+
     ## Files
     common/carbon/files/Base.cpp
     common/carbon/files/StateDesc.cpp
@@ -17,17 +19,19 @@ add_library(libcarbon
     common/carbon/files/FunctionDesc.cpp
     common/carbon/files/BinaryFile.cpp   
     common/carbon/files/BinaryFileBuilder.cpp
+
     ## Modules
     common/carbon/modules/Module.cpp
     common/carbon/modules/ModuleRegistry.cpp
     common/carbon/modules/ModuleManager.cpp
+
     ## Virtual machine
     common/carbon/vm/Instructions.сpp
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
     ## Kernel
-    common/carbon/kernel/NativeFunc.cpp
-    
+    common/carbon/kernel/EventMessage.cpp   
+    common/carbon/kernel/NativeFunc.cpp   
     common/carbon/kernel/Connection.cpp
     common/carbon/kernel/Connectable.cpp
     common/carbon/kernel/Engine.cpp
@@ -35,6 +39,7 @@ add_library(libcarbon
     common/carbon/kernel/Process.cpp
     common/carbon/kernel/ProcessRunner.cpp
     common/carbon/kernel/Scheduler.cpp
+    common/carbon/kernel/StateFrame.cpp
 )
 # Исполняемый файл для тестирования VM
 add_executable(carbon common/carbon/Main.cpp)

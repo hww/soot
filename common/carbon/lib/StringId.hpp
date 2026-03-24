@@ -12,6 +12,7 @@ public:
 
     constexpr StringId() : value(0) {}
     constexpr explicit StringId(u32 val) : value(val) {}
+    constexpr explicit StringId(s32 val) : value(static_cast<u32>(val)) {}
     
     StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
     StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}

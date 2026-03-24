@@ -6,6 +6,7 @@
 #include "common/carbon/vm/StackFrame.hpp"
 #include "common/carbon/files/TypeDesc.hpp"
 #include "common/carbon/kernel/Types.hpp"
+#include "common/carbon/kernel/Connectable.hpp"
 #include "kernel/EventMessage.hpp"
 #include <functional>
 #include <string>

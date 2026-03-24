@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace runtime { namespace kernel {
+namespace carbon::kernel {
 
     // Static buffer for string representations
     static char s_StringBuffer[1024];
@@ -46,4 +46,4 @@ namespace runtime { namespace kernel {
         return ToString();
     }
 
-}} // namespace vm::runtime
+} // namespace vm::runtime
