@@ -12,6 +12,7 @@
 #include <iostream>
 #include <ostream>
 #include <functional>
+#include <memory>  
 
 using namespace carbon::lib;
 using namespace carbon::files;
@@ -23,7 +24,7 @@ namespace carbon::vm {
     // Stack Frame Structure
     // ============================================================================
 
-    struct StackFrame {
+    struct StackFrame : public std::enable_shared_from_this<StackFrame> {
         /// Тип фрейма (для определения поведения при очистке)
         enum class FrameType {
             CATCH,      // Обработка исключений
@@ -35,15 +36,15 @@ namespace carbon::vm {
         // ------------------------------------------------------------------------
         // Execution State
         // ------------------------------------------------------------------------
-        StringId name;                      // Имя фрейма (для отладки и throw)
-        FrameType frame_type;               // Тип фрейма
-        FunctionDesc* byte_code = nullptr;  // Pointer to FunctionDesc
-        Instruction* code_ptr = nullptr;    // Pointer to FunctionDesc instructions
-        u8* data_ptr = nullptr;             // Pointer to static data
-        StackFrame* parent_ptr = nullptr;   // Parent frame (for call stack)
-        u32 pc = 0;                         // Program counter
-        u32 argc = 0;                       // Number of arguments
-        u32 ret_num = 0;                    // Return register number
+        StringId name;                          // Имя фрейма (для отладки и throw)
+        FrameType frame_type;                   // Тип фрейма
+        FunctionDesc* byte_code = nullptr;      // Pointer to FunctionDesc
+        Instruction* code_ptr = nullptr;        // Pointer to FunctionDesc instructions
+        u8* data_ptr = nullptr;                 // Pointer to static data
+        std::shared_ptr<StackFrame> parent;       // Parent frame (for call stack)
+        u32 pc = 0;                             // Program counter
+        u32 argc = 0;                           // Number of arguments
+        u32 ret_num = 0;                        // Return register number
 
         // ------------------------------------------------------------------------
         // Registers
@@ -58,8 +59,8 @@ namespace carbon::vm {
             initialize_registers();
         }
 
-
-        StackFrame(FunctionDesc* functionDesc, StackFrame* parent = nullptr,
+       
+        StackFrame(FunctionDesc* functionDesc, std::shared_ptr<StackFrame> parent = nullptr,
             FrameType frame_type = FrameType::GENERIC, StringId name = TypeIds::none);
 
         virtual ~StackFrame(){}
@@ -70,6 +71,9 @@ namespace carbon::vm {
         /// Вызывается при исключении через этот фрейм
         virtual void on_throw() {}
 
+        std::shared_ptr<StackFrame> get_parent() const {
+            return parent;
+        }
         // ------------------------------------------------------------------------
         // Register Access
         // ------------------------------------------------------------------------
@@ -310,7 +314,7 @@ namespace carbon::vm {
 
         std::string to_string() const {
             return fmt::format("StackFrame(pc:{}, argc:{}, ret_reg:{}, parent:{:p})",
-                pc, argc, ret_num, (void*)parent_ptr);
+                pc, argc, ret_num, (void*)parent.get());
         }
 
         void dump_registers() const {
@@ -344,25 +348,39 @@ namespace carbon::vm {
     // Stack Frame Management Functions
     // ============================================================================
 
-    inline StackFrame* create_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
-        return new StackFrame(FunctionDesc, parent);
+    // Исправленные функции
+    inline std::shared_ptr<StackFrame> create_stack_frame(
+        FunctionDesc* FunctionDesc, 
+        std::shared_ptr<StackFrame> parent = nullptr) 
+    {
+        return std::make_shared<StackFrame>(FunctionDesc, parent);
     }
 
-    inline void destroy_stack_frame(StackFrame* frame) {
-        if (frame) {
-            delete frame;
-        }
+    // destroy_stack_frame больше не нужна - удаляем или оставляем пустой
+    inline void destroy_stack_frame(std::shared_ptr<StackFrame> frame) {
+        // Ничего не делаем - shared_ptr сам удалит
+        // Или просто удаляем эту функцию
+        (void)frame; // Подавляем warning о неиспользуемом параметре
     }
 
-    inline StackFrame* push_stack_frame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr) {
+    inline std::shared_ptr<StackFrame> push_stack_frame(
+        FunctionDesc* FunctionDesc, 
+        std::shared_ptr<StackFrame> parent = nullptr) {
+        
         return create_stack_frame(FunctionDesc, parent);
     }
 
-    inline StackFrame* pop_stack_frame(StackFrame* frame) {
+    inline std::shared_ptr<StackFrame> pop_stack_frame(
+        std::shared_ptr<StackFrame> frame) {
+        
         if (!frame) return nullptr;
-
-        StackFrame* parent = frame->parent_ptr;
-        destroy_stack_frame(frame);
+        
+        // Получаем shared_ptr родителя
+        std::shared_ptr<StackFrame> parent = frame->get_parent();
+        
+        // frame автоматически удалится, когда выйдет из области видимости
+        // Не нужно вызывать destroy
+        
         return parent;
     }
 
@@ -382,7 +400,7 @@ namespace carbon::vm {
     class CatchFrame : public StackFrame {
     public:
 
-        CatchFrame(FunctionDesc* FunctionDesc, StackFrame* parent = nullptr, StringId tag_name = SID("null"))
+        CatchFrame(FunctionDesc* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = SID("null"))
             : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
         }
 
@@ -415,7 +433,7 @@ namespace carbon::vm {
         /// Данные для очистки (опционально)
         void* user_data = nullptr;
 
-        ProtectFrame(FunctionDesc* function_desc, StackFrame* parent = nullptr, std::function<void()> cleanup = nullptr)
+        ProtectFrame(FunctionDesc* function_desc, std::shared_ptr<StackFrame> parent = nullptr, std::function<void()> cleanup = nullptr)
             : StackFrame(function_desc, parent, FrameType::PROTECT, SID("protected"))
             , cleanup_function(std::move(cleanup)) {
         }

@@ -16,7 +16,7 @@ TEST(StackFrame, Construction) {
     EXPECT_EQ(frame.pc, 0);
     EXPECT_EQ(frame.argc, 0);
     EXPECT_EQ(frame.ret_num, 0);
-    EXPECT_EQ(frame.parent_ptr, nullptr);
+    EXPECT_EQ(frame.parent, nullptr);
 }
 
 
@@ -72,12 +72,12 @@ TEST(StackFrame, FrameManagement) {
     Instruction dummy_code[10];
 
     FunctionDesc FunctionDesc;
-    StackFrame* parent = create_stack_frame(&FunctionDesc, nullptr);
-    StackFrame* child = push_stack_frame(&FunctionDesc, parent);
+    auto parent = create_stack_frame(&FunctionDesc, nullptr);
+    auto child = push_stack_frame(&FunctionDesc, parent);
 
-    EXPECT_EQ(child->parent_ptr, parent);
+    EXPECT_EQ(child->parent, parent);
 
-    StackFrame* popped = pop_stack_frame(child);
+    auto popped = pop_stack_frame(child);
     EXPECT_EQ(popped, parent);
 
     destroy_stack_frame(parent);

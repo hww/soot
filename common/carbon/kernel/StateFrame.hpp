@@ -25,7 +25,7 @@ public:
      * @param process Процесс-владелец
      * @param parent Родительский фрейм
      */
-    StateFrame(StateDesc* state_desc, StackFrame* parent = nullptr);
+    StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent = nullptr);
     
     /**
      * @brief Деструктор

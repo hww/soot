@@ -10,6 +10,7 @@
 #include "lib/Variant.hpp"
 #include "vm/StackFrame.hpp"
 #include <format>
+#include <memory>
 
 namespace carbon::kernel {
 
@@ -57,12 +58,10 @@ namespace carbon::kernel {
 
         // Очищаем потоки
         if (main_thread) {
-            delete main_thread;
             main_thread = nullptr;
         }
 
         if (top_thread && top_thread != main_thread) {
-            delete top_thread;
             top_thread = nullptr;
         }
 
@@ -143,26 +142,26 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();  // или event_handlers, если нужно
         
         // Создаём новый StateFrame (будет вызывать exit при выходе)
-        current_state_frame = new StateFrame(new_state, stack_frame_top);
+        current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
         push_frame(current_state_frame);
         
         // Выполняем enter-обработчик нового состояния
         auto enter = new_state->get_enter_function();
         if (enter) {
             // Создаём временный фрейм для enter
-            StackFrame* enter_frame = new StackFrame(
+            auto enter_frame = std::make_shared<StackFrame>(
                 enter,
                 nullptr,
                 StackFrame::FrameType::GENERIC,
                 SID("state_enter")
             );
             
-            StackFrame* saved_top_thread = top_thread;
+            auto saved_top_thread = top_thread;
             top_thread = enter_frame;
             vm.execute(enter_frame);
             top_thread = saved_top_thread;
             
-            delete enter_frame;
+            enter_frame.reset();
         }
         
         lg::debug("Process '{}': transitioned to state '{}'",
@@ -242,7 +241,7 @@ namespace carbon::kernel {
         auto saved_top_thread = top_thread;
         auto& vm = Kernel::instance().virtual_machine();
 
-        StackFrame* event_frame = new StackFrame(
+        auto event_frame = std::make_shared<StackFrame>(
             event_handler,
             nullptr,
             StackFrame::FrameType::GENERIC,
@@ -258,7 +257,7 @@ namespace carbon::kernel {
         auto result = vm.execute(event_frame);
         
         top_thread = saved_top_thread;
-        delete event_frame;
+        event_frame.reset();
 
         return result.to_bool();
     }
@@ -267,10 +266,10 @@ namespace carbon::kernel {
     // Stack Operations
     // ============================================================================
 
-    void Process::push_frame(StackFrame* frame) {
+    void Process::push_frame(std::shared_ptr<StackFrame> frame) {
         ASSERT_MSG(frame != nullptr, "Cannot push null frame");
 
-        frame->parent_ptr = stack_frame_top;
+        frame->parent = stack_frame_top;
         stack_frame_top = frame;
 
         // Если это StateFrame, обновляем current_state_frame
@@ -281,13 +280,13 @@ namespace carbon::kernel {
         lg::debug("Process '{}': pushed frame '{}'", get_name_string(), frame->name);
     }
 
-    StackFrame* Process::pop_frame() {
+    std::shared_ptr<StackFrame> Process::pop_frame() {
         if (!stack_frame_top) {
             return nullptr;
         }
 
-        StackFrame* frame = stack_frame_top;
-        stack_frame_top = frame->parent_ptr;
+        std::shared_ptr<StackFrame> frame = stack_frame_top;
+        stack_frame_top = frame->parent;
 
         // Если это StateFrame, очищаем current_state_frame
         if (frame == current_state_frame) {
@@ -299,17 +298,16 @@ namespace carbon::kernel {
 
         lg::debug("Process '{}': popped frame '{}'", get_name_string(), frame->name);
 
-        delete frame;
         return stack_frame_top;
     }
 
-    StackFrame* Process::find_frame(StringId frame_name) {
-        StackFrame* current = stack_frame_top;
+    std::shared_ptr<StackFrame> Process::find_frame(StringId frame_name) {
+        std::shared_ptr<StackFrame> current = stack_frame_top;
         while (current) {
             if (current->name == frame_name) {
                 return current;
             }
-            current = current->parent_ptr;
+            current = current->parent;
         }
         return nullptr;
     }
@@ -410,9 +408,10 @@ namespace carbon::kernel {
     // Control
     // ============================================================================
 
-    void Process::activate(Process* active_pool, StringId newname, StackFrame* stack_top) {
+    void Process::activate(Process* active_pool, StringId newname, std::shared_ptr<StackFrame> stack_top) {
         name = newname;
         active_pool->add_child(this);
+        
         if (!heap_base && allocated_length > 0) {
             heap_base = malloc(allocated_length);
             if (!heap_base) {
@@ -427,12 +426,7 @@ namespace carbon::kernel {
 
         // Создаем главный поток если нужно
         if (!main_thread && current_state && current_state->get_code_function()) {
-            main_thread = new StackFrame(
-                current_state->get_code_function(),
-                stack_top,  // Используем переданный стек
-                StackFrame::FrameType::GENERIC,
-                SID("main_thread")
-            );
+            main_thread = std::make_shared<StateFrame>(current_state, stack_top);
         }
 
         top_thread = main_thread;
@@ -440,7 +434,7 @@ namespace carbon::kernel {
 
         // Создаем StateFrame для текущего состояния
         if (current_state && !current_state_frame) {
-            current_state_frame = new StateFrame(current_state, stack_frame_top);
+            current_state_frame = std::make_shared<StateFrame>(current_state, stack_frame_top);
             push_frame(current_state_frame);
             
             // Выполняем enter-обработчик
@@ -587,7 +581,7 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();
         
         // Создаем новый фрейм состояния
-        current_state_frame = new StateFrame(new_state, stack_frame_top);
+        current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
         push_frame(current_state_frame);
         
         // Выполняем enter обработчик немедленно
@@ -611,9 +605,9 @@ namespace carbon::kernel {
         // Удаляем текущий StateFrame (вызовет exit-обработчик)
         if (current_state_frame) {
             // Ищем StateFrame в стеке
-            StackFrame* frame = stack_frame_top;
+            auto frame = stack_frame_top;
             while (frame && frame != current_state_frame) {
-                frame = frame->parent_ptr;
+                frame = frame->parent;
             }
 
             if (frame == current_state_frame) {
@@ -633,7 +627,7 @@ namespace carbon::kernel {
         event_handler = new_state->get_event_handler();
 
         // Создаем новый StateFrame
-        current_state_frame = new StateFrame(new_state, stack_frame_top);
+        current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
         push_frame(current_state_frame);
 
         // Выполняем enter-обработчик нового состояния
@@ -686,7 +680,7 @@ namespace carbon::kernel {
         if (!enter_hook) return;
         
         // Create temporary frame for post handler
-        StackFrame* enter_frame = new StackFrame(
+        auto enter_frame = std::make_shared<StackFrame>(
             enter_hook,
             nullptr,
             StackFrame::FrameType::GENERIC,
@@ -694,7 +688,7 @@ namespace carbon::kernel {
         );
         
         // Save current top thread
-        StackFrame* saved_top_thread = top_thread;
+        auto saved_top_thread = top_thread;
         top_thread = enter_frame;
         
         // Execute post handler (temporary, doesn't suspend)
@@ -704,14 +698,14 @@ namespace carbon::kernel {
         top_thread = saved_top_thread;
         
         // Clean up temporary frame
-        delete enter_frame;
+        enter_frame.reset();
     }
 
     void Process::execute_trans_handler(VirtualMachine& vm) {
         if (!trans_hook) return;
         
         // Create temporary frame for trans handler
-        StackFrame* trans_frame = new StackFrame(
+        auto trans_frame = std::make_shared<StackFrame>(
             trans_hook,
             nullptr,
             StackFrame::FrameType::GENERIC,
@@ -719,7 +713,7 @@ namespace carbon::kernel {
         );
         
         // Save current top thread
-        StackFrame* saved_top_thread = top_thread;
+        auto saved_top_thread = top_thread;
         top_thread = trans_frame;
         
         // Execute trans handler (temporary, doesn't suspend)
@@ -729,14 +723,14 @@ namespace carbon::kernel {
         top_thread = saved_top_thread;
         
         // Clean up temporary frame
-        delete trans_frame;
+        trans_frame.reset();
     }
 
     void Process::execute_post_handler(VirtualMachine& vm) {
         if (!post_hook) return;
         
         // Create temporary frame for post handler
-        StackFrame* post_frame = new StackFrame(
+        auto post_frame = std::make_shared<StackFrame>(
             post_hook,
             nullptr,
             StackFrame::FrameType::GENERIC,
@@ -744,7 +738,7 @@ namespace carbon::kernel {
         );
         
         // Save current top thread
-        StackFrame* saved_top_thread = top_thread;
+        auto saved_top_thread = top_thread;
         top_thread = post_frame;
         
         // Execute post handler (temporary, doesn't suspend)
@@ -754,7 +748,7 @@ namespace carbon::kernel {
         top_thread = saved_top_thread;
         
         // Clean up temporary frame
-        delete post_frame;
+        post_frame.reset();
     }
 
     // ============================================================================
@@ -781,8 +775,8 @@ namespace carbon::kernel {
         lg::debug("  Heap: {}/{} bytes", heap_used(), heap_size());
         lg::debug("  Stack Depth: {}", [this]() {
             u32 depth = 0;
-            StackFrame* frame = stack_frame_top;
-            while (frame) { depth++; frame = frame->parent_ptr; }
+            StackFrame* frame = stack_frame_top.get();
+            while (frame) { depth++; frame = frame->parent.get(); }
             return depth;
             }());
         lg::debug("  Children: {}", [this]() {

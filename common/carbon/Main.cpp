@@ -4,6 +4,8 @@
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/util/Log.hpp"
 #include "fmt/color.h"
+#include <cstddef>
+#include <memory>
 
 using namespace carbon::modules;
 using namespace carbon::kernel;
@@ -62,9 +64,9 @@ int main() {
     
     // 7. Создаём процесс
     Process* process = ProcessRunner::spawn(
-        SID("test_process"),
+        StringId("test_process"),
         kernel.root(),
-        add_code,
+        nullptr, // No entry point, we'll execute manually
         nullptr
     );
     
@@ -78,11 +80,11 @@ int main() {
     
     // 8. Создаём фрейм и выполняем
     VirtualMachine& vm = kernel.virtual_machine();
-    StackFrame* frame = new StackFrame(add_code, nullptr);
+    auto frame = std::make_shared<StackFrame>(add_code, nullptr);
     
     // Устанавливаем аргументы
-    frame->get_register(ARG_REGISTERS_OFFSET + 0) = Variant(5);
-    frame->get_register(ARG_REGISTERS_OFFSET + 1) = Variant(3);
+    frame->set_argument(0, Variant(5));
+    frame->set_argument( 1, Variant(3));
     frame->argc = 2;
     
     lg::info("Calling add(5, 3)...");
@@ -90,7 +92,6 @@ int main() {
     lg::info("Result: 5 + 3 = {}", result.to_string());
     
     // 9. Очистка
-    delete frame;
     kernel.shutdown();
     
     return 0;

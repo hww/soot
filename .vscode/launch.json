@@ -21,6 +21,8 @@
       ],
       "preLaunchTask": "Build All",
       "stopAtEntry": false,  // Остановиться при входе в main
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true,           
     },
     {
       "name": "Soot",
@@ -42,6 +44,8 @@
       ],
       "preLaunchTask": "Build All",
       "stopAtEntry": false,  // Остановиться при входе в main
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true           
     },
     {
       "name": "Soot Server",
@@ -156,6 +160,7 @@
         }
       ],
       "preLaunchTask": "Build All",
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis"      
     },    
     {
       "name": "Carbon Test",
@@ -181,6 +186,8 @@
         }
       ],
       "preLaunchTask": "Build Tests",
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true,           
     },
   ]
 }

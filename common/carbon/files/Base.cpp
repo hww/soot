@@ -23,5 +23,4 @@ namespace carbon::files {
             offset, line, file);
     }
 
-
 } // end of namespace

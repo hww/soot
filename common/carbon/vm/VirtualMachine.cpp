@@ -18,7 +18,7 @@ namespace carbon::vm {
 	// Internal Helpers
 	// ------------------------------------------------------------------------
 
-	vm_int VirtualMachine::resolve_integer(StackFrame* frame, StringId name) {
+	vm_int VirtualMachine::resolve_integer(std::shared_ptr<StackFrame> frame, StringId name) {
 		auto module = frame->byte_code->owner_module;
 		if (module) {
 			Definition* resolved = module->resolve_symbol(name);
@@ -50,7 +50,7 @@ namespace carbon::vm {
 		throw VmResolvingError("resolve_integer", frame, name);
 	}
 
-	vm_float VirtualMachine::resolve_float(StackFrame* frame, StringId name) {
+	vm_float VirtualMachine::resolve_float(std::shared_ptr<StackFrame> frame, StringId name) {
 		auto module = frame->byte_code->owner_module;
 		if (module) {
 			Definition* resolved = module->resolve_symbol(name);
@@ -82,7 +82,7 @@ namespace carbon::vm {
 		throw VmResolvingError("resolve_float", frame, name);
 	}
 
-	void* VirtualMachine::resolve_pointer(StackFrame* frame, StringId name) {
+	void* VirtualMachine::resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name) {
 		auto module = frame->byte_code->owner_module;
 		if (module) {
 			Definition* resolved = module->resolve_symbol(name);
@@ -95,6 +95,7 @@ namespace carbon::vm {
 		}
 		throw VmResolvingError("resolve_pointer", frame, name);
 	}
+
 	// ------------------------------------------------------------------------
 	// Process Management (НОВОЕ - согласно нашему базису)
 	// ------------------------------------------------------------------------
@@ -121,7 +122,7 @@ namespace carbon::vm {
 			return Variant();
 		}
 
-		StackFrame* current_frame = create_stack_frame(
+		auto current_frame = create_stack_frame(
 			FunctionDesc->get_code_ptr(),
 			FunctionDesc->get_data_ptr(),
 			nullptr
@@ -129,7 +130,7 @@ namespace carbon::vm {
 		return execute(current_frame, mode);
 	}
 
-	Variant VirtualMachine::execute(StackFrame* stack_frame, RunMode mode) {
+	Variant VirtualMachine::execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode) {
 		current_frame = stack_frame;
 		return execute(mode);
 	}
@@ -146,7 +147,7 @@ namespace carbon::vm {
 			Instruction instr = current_frame->get_next_instruction();
 
 			if (enable_debug_log)
-				lg::debug("PC={} : {}", current_frame->pc - 1, instr.to_string());
+				lg::debug("PC={} : {}", current_frame->pc - 1, InstructionTable::instance().disassemble(instr));
 
 			try {
 
@@ -157,19 +158,22 @@ namespace carbon::vm {
 					// ============================================================
 					case Opcode::RETURN: {
 						Variant return_value = current_frame->get_register(instr.a);
-						StackFrame* parent_frame = current_frame->parent_ptr;
-
-						if (parent_frame == nullptr) {
+						
+						// Получаем shared_ptr родителя через lock()
+						auto parent_frame = current_frame->get_parent();  // возвращает shared_ptr
+						
+						if (!parent_frame) {
 							final_result = return_value;
+							current_frame.reset();  // освобождаем текущий фрейм
 						}
 						else {
 							parent_frame->get_register(current_frame->ret_num) = return_value;
+							
+							// Перемещаем current_frame на родителя
+							current_frame = parent_frame;  // shared_ptr присваивание
+							// Старый current_frame автоматически удалится, если на него нет других ссылок
 						}
-
-						StackFrame* old_frame = current_frame;
-						current_frame = parent_frame;
-						destroy_stack_frame(old_frame);
-
+						
 						if (mode == RunMode::StepOut)
 							is_break = true;
 						break;
@@ -192,7 +196,7 @@ namespace carbon::vm {
 						}
 
 						FunctionDesc* target_code = reinterpret_cast<FunctionDesc*>(func_var.get_ptr());
-						StackFrame* new_frame = create_stack_frame(
+						auto new_frame = create_stack_frame(
 							target_code->get_code_ptr(),
 							target_code->get_data_ptr(),
 							current_frame
@@ -206,7 +210,7 @@ namespace carbon::vm {
 								current_frame->get_register(ARG_REGISTERS_OFFSET + i);
 						}
 
-						current_frame = new_frame;
+						current_frame = std::move(new_frame);
 
 						if (mode == RunMode::StepIn)
 							is_break = true;

@@ -3,6 +3,7 @@
 #include "common/carbon/modules/ModuleManager.hpp"
 #include "common/util/Log.hpp"
 #include "vm/StackFrame.hpp"
+#include <memory>
 
 namespace carbon::kernel {
 
@@ -11,7 +12,7 @@ namespace carbon::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn(StringId name, Process* parent,
-        FunctionDesc* entry_point, StackFrame* stack_top) {
+        FunctionDesc* entry_point, std::shared_ptr<StackFrame> stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn process - Kernel not initialized");
             return nullptr;
@@ -41,7 +42,7 @@ namespace carbon::kernel {
     }
 
     Process* ProcessRunner::spawn_with_state(StringId name, Process* parent,
-        StateDesc* initial_state, StackFrame* stack_top) {
+        StateDesc* initial_state, std::shared_ptr<StackFrame> stack_top) {
         if (!initial_state) {
             lg::error("Cannot spawn process with state - invalid state definition");
             return nullptr;
@@ -77,7 +78,7 @@ namespace carbon::kernel {
         return process;
     }
 
-    bool ProcessRunner::activate(Process* process, Process* parent, StringId name, StackFrame* stack_top) {
+    bool ProcessRunner::activate(Process* process, Process* parent, StringId name, std::shared_ptr<StackFrame> stack_top) {
         if (!process) {
             lg::error("Cannot activate process - invalid process");
             return false;
@@ -128,7 +129,7 @@ namespace carbon::kernel {
     // ============================================================================
 
     Process* ProcessRunner::spawn_module_function(StringId module_name, StringId function_name,
-        Process* parent, StackFrame* stack_top) {
+        Process* parent, std::shared_ptr<StackFrame> stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn module function - Kernel not initialized");
             return nullptr;

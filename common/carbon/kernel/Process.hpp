@@ -9,6 +9,7 @@
 #include "common/carbon/kernel/Connectable.hpp"
 #include "kernel/EventMessage.hpp"
 #include <functional>
+#include <memory>
 #include <string>
 
 
@@ -81,31 +82,27 @@ namespace carbon::kernel {
         u32 allocated_length = 0;
 
         // ============================================================================
-        // Execution Threads
+        // Stack Frame Management
         // ============================================================================
 
         /// Главный поток процесса - может приостанавливаться и возобновляться
         /// Содержит контекст выполнения (регистры, стек) когда процесс suspended
-        StackFrame* main_thread = nullptr;
+        std::shared_ptr<StackFrame> main_thread = nullptr;
 
         /// Текущий активный поток выполнения
         /// Может быть main_thread или временным потоком для trans/post обработчиков
-        StackFrame* top_thread = nullptr;
-
-        // ============================================================================
-        // Stack Frame Management
-        // ============================================================================
+        std::shared_ptr<StackFrame> top_thread = nullptr;
 
         /// Верхний стековый фрейм процесса
         /// Цепочка фреймов для управления временем жизни (catch/protect/state)
-        StackFrame* stack_frame_top = nullptr;
+        std::shared_ptr<StackFrame> stack_frame_top = nullptr;
 
         // ============================================================================
         // State Management
         // ============================================================================
 
         /// Текущий фрейм состояния процесса
-        StackFrame* current_state_frame = nullptr;
+        std::shared_ptr<StackFrame> current_state_frame = nullptr;
 
         /// Текущее состояние процесса (определяет поведение)
         StateDesc* current_state = nullptr;
@@ -237,13 +234,13 @@ namespace carbon::kernel {
         // ============================================================================
 
         /// Добавить фрейм в стек процесса
-        void push_frame(StackFrame* frame);
+        void push_frame(std::shared_ptr<StackFrame> frame);
 
         /// Удалить верхний фрейм из стека процесса
-        StackFrame* pop_frame();
+        std::shared_ptr<StackFrame> pop_frame();
 
         /// Найти фрейм по имени в стеке процесса
-        StackFrame* find_frame(StringId frame_name);
+        std::shared_ptr<StackFrame> find_frame(StringId frame_name);
 
         // ============================================================================
         // === Memory Management ===
@@ -277,7 +274,7 @@ namespace carbon::kernel {
 
         /// Активировать процесс (подготовить к выполнению)
         /// @param stack_top Указатель на верх стека для выполнения
-        void activate(Process* active_pool, StringId name, StackFrame* stack_top = nullptr);
+        void activate(Process* active_pool, StringId name, std::shared_ptr<StackFrame> stack_top = nullptr);
 
         // ============================================================================
         // === Connection Management ===

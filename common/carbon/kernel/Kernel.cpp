@@ -63,7 +63,7 @@ namespace carbon::kernel {
         return scheduler_.create_process(name);
     }
 
-    bool Kernel::activate_process(Process* process, Process* parent, StringId name, StackFrame* stack_top) {
+    bool Kernel::activate_process(Process* process, Process* parent, StringId name, std::shared_ptr<StackFrame> stack_top) {
         if (!initialized_ || !process) {
             lg::error("Cannot activate process - invalid parameters");
             return false;

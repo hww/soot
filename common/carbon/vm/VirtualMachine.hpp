@@ -6,6 +6,7 @@
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
 #include "common/carbon/kernel/NativeFunc.hpp"
+#include <memory>
 
 
 using namespace carbon::lib;
@@ -38,7 +39,7 @@ namespace carbon::vm {
     /* Erros */
     class VmError : public std::exception {
     public:
-        explicit VmError(const std::string& msg, StackFrame* frame = nullptr) 
+        explicit VmError(const std::string& msg, std::shared_ptr<StackFrame> frame = nullptr) 
             : message_(msg), frame_(frame) {
             if (frame_) {
                 auto instruction = frame_->get_this_instruction();
@@ -54,23 +55,23 @@ namespace carbon::vm {
         const char* what() const noexcept override { return message_.c_str(); }
         
         std::string  get_message() const {return message_;} 
-        StackFrame* get_frame() const {return frame_;} 
+        std::shared_ptr<StackFrame> get_frame() const {return frame_;} 
         bool has_frame() const { return frame_!=nullptr;}
 
     protected:
         std::string message_;
-        StackFrame* frame_;
+        std::shared_ptr<StackFrame> frame_;
     };
 
     class VmTypeError : public VmError {
     public:
-        VmTypeError(const std::string& msg, StackFrame* frame, StringId expected, StringId actual) 
+        VmTypeError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId expected, StringId actual) 
             : VmError(fmt::format("{} expected type {} actual {}", 
                 msg, 
                 expected, 
                 actual), frame) {}
         
-        VmTypeError(const std::string& msg, StackFrame* frame, StringId actual) 
+        VmTypeError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId actual) 
             : VmError(fmt::format("{} unexpected type {}", 
                 msg, 
                 actual), frame) {}
@@ -78,7 +79,7 @@ namespace carbon::vm {
 
     class VmResolvingError : public VmError {
     public:
-        VmResolvingError(const std::string& msg, StackFrame* frame, StringId name) 
+        VmResolvingError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId name) 
             : VmError(fmt::format("{} can't resolve for name {}", 
                 msg, 
                 name), frame) {}
@@ -95,10 +96,15 @@ namespace carbon::vm {
         bool is_break;
         bool is_error;
         std::string break_reason;
-        StackFrame *current_frame;
-
+        std::shared_ptr<StackFrame> current_frame;
 
         VirtualMachine() {
+            enable_debug_log = true;
+            is_suspended = false;
+            is_break = false;
+            is_error = false;
+            break_reason = "";
+            current_frame = nullptr; 
         }
 
         ~VirtualMachine() {
@@ -108,7 +114,7 @@ namespace carbon::vm {
         // Properties
         // ------------------------------------------------------------------------
 
-        StackFrame* CurrentFrame() {return current_frame; }
+         std::shared_ptr<StackFrame> CurrentFrame() {return current_frame; }
 
         /// <summary>There is no stack frame to execute</summary>
         bool IsCompleted() { return current_frame == nullptr; }
@@ -136,7 +142,7 @@ namespace carbon::vm {
 
         Variant execute_function(Module* module, StringId function, RunMode mode = RunMode::Run);
         Variant execute_function(FunctionDesc* FunctionDesc, RunMode mode = RunMode::Run);
-        Variant execute(StackFrame* stack_frame, RunMode mode = RunMode::Run);
+        Variant execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode = RunMode::Run);
         Variant execute(RunMode mode = RunMode::Run);
 
 
@@ -146,29 +152,28 @@ namespace carbon::vm {
         // Internal Helpers
         // ------------------------------------------------------------------------
 
-        vm_int resolve_integer(StackFrame* frame, StringId name);
+        vm_int resolve_integer(std::shared_ptr<StackFrame> frame, StringId name);
 
-        vm_float resolve_float(StackFrame* frame, StringId name);
+        vm_float resolve_float(std::shared_ptr<StackFrame> frame, StringId name);
 
-        void* resolve_pointer(StackFrame* frame, StringId name);
+        void* resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name);
 
 
         // ------------------------------------------------------------------------
         // Internal Helpers
         // ------------------------------------------------------------------------
 
-        StackFrame* create_root_frame() {
-            StackFrame* frame = new StackFrame();
-            frame->parent_ptr = nullptr;
+        std::shared_ptr<StackFrame> create_root_frame() {
+            auto frame = std::make_shared<StackFrame>();
             frame->pc = 0;
             frame->ret_num = 0;
             frame->argc = 0;
             return frame;
         }
 
-        StackFrame* create_stack_frame(Instruction* code_ptr, u8* data_ptr, StackFrame* parent) {
-            StackFrame* frame = new StackFrame();
-            frame->parent_ptr = parent;
+        std::shared_ptr<StackFrame> create_stack_frame(Instruction* code_ptr, u8* data_ptr, std::shared_ptr<StackFrame> parent) {
+            auto frame = std::make_shared<StackFrame>();
+            frame->parent = parent;
             frame->code_ptr = code_ptr;
             frame->data_ptr = data_ptr;
             frame->pc = 0;

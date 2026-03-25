@@ -1,5 +1,5 @@
-﻿(math/add (144)
+﻿(math/add (152)
   (import)
   (export add)
-  (strings module1 string_id native float null u64 none sinteger string u16 integer i64 i32 add i16 bool u32 number i8 function u8 uinteger)
+  (strings add process event-message number i8 code null type event u64 unnamed trans u32 bool exit integer i32 none unknown sinteger string_id i64 i16 uinteger post enter u8 function u16 string float native)
 )

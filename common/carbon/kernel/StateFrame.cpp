@@ -10,7 +10,7 @@ namespace carbon::kernel {
 // Конструктор
 // ============================================================================
 
-StateFrame::StateFrame(StateDesc* state_desc, StackFrame* parent)
+StateFrame::StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent)
     : ProtectFrame(
         nullptr,  // нет основного кода во фрейме
         parent,
@@ -97,7 +97,7 @@ std::string StateFrame::inspect() const {
         has_exit() ? "yes" : "no",
         has_event(),
         pc,
-        parent_ptr ? "yes" : "no"
+        parent ? "yes" : "no"
     );
 }
 
@@ -117,7 +117,7 @@ std::string StateFrame::inspect() const {
 // Вспомогательные функции
 // ============================================================================
 
-StateFrame* create_state_frame(StateDesc* state_desc, StackFrame* parent) {
+StateFrame* create_state_frame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent) {
     return new StateFrame(state_desc, parent);
 }
 
@@ -125,13 +125,26 @@ void destroy_state_frame(StateFrame* frame) {
     delete frame;
 }
 
-StateFrame* find_current_state_frame(StackFrame* top_frame) {
-    StackFrame* current = top_frame;
+// Функция с shared_ptr
+std::shared_ptr<StateFrame> find_current_state_frame(std::shared_ptr<StackFrame> top_frame) {
+    auto current = top_frame;
     while (current) {
         if (current->frame_type == StackFrame::FrameType::STATE) {
-            return reinterpret_cast<StateFrame*>(current);
+            return std::dynamic_pointer_cast<StateFrame>(current);
         }
-        current = current->parent_ptr;
+        current = current->parent;  
+    }
+    return nullptr;
+}
+
+// Если нужно вернуть сырой указатель (не рекомендуется)
+StateFrame* find_current_state_frame_raw(std::shared_ptr<StackFrame> top_frame) {
+    auto current = top_frame;
+    while (current) {
+        if (current->frame_type == StackFrame::FrameType::STATE) {
+            return dynamic_cast<StateFrame*>(current.get());
+        }
+        current = current->parent;
     }
     return nullptr;
 }

@@ -240,7 +240,7 @@ namespace carbon::kernel {
          *
          * @see create_process()
          */
-        bool activate_process(Process* process, Process* parent, StringId name, StackFrame* stack_top);
+        bool activate_process(Process* process, Process* parent, StringId name, std::shared_ptr<StackFrame> stack_top);
 
         /**
          * @brief Запустить функцию в процессе

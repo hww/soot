@@ -176,7 +176,6 @@ namespace carbon::vm {
                 u16 k;         // 16-bit unsigned immediate
             };
         };
-
         
         // ------------------------------------------------------------------------
         // Constructors (исправлены для устранения неоднозначности)
@@ -232,7 +231,6 @@ namespace carbon::vm {
             return instr;
         }
 
-
         // ------------------------------------------------------------------------
         // Utility Methods
         // ------------------------------------------------------------------------
@@ -271,6 +269,8 @@ namespace carbon::vm {
         }
 
         std::string inspect() const;
+
+
     };
 #pragma pack(pop)
 
@@ -321,6 +321,8 @@ namespace carbon::vm {
             return info ? info->name : StringIds::unknown;
         }
 
+        std::string disassemble(const Instruction inst) const;
+
     private:
         InstructionTable() {
             initialize_table();
@@ -357,8 +359,10 @@ namespace carbon::vm {
             name_to_info_.emplace(name_id, info);
         }
 
+
         std::unordered_map<Opcode, InstructionInfo> opcode_to_info_;
         std::unordered_map<StringId, InstructionInfo> name_to_info_;
+
     };
 
     // ============================================================================
