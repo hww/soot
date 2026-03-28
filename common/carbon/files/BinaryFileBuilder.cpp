@@ -6,6 +6,8 @@
 #include "files/StateDesc.hpp"
 #include "fmt/format.h"
 #include "lib/StringId.hpp"
+#include "util/Log.hpp"
+#include <cstddef>
 
 using namespace carbon::lib;
 using namespace carbon::modules;
@@ -14,14 +16,23 @@ namespace carbon::files {
 
     /** Построить и загрузить модуль в пул */
     std::shared_ptr<Module> BinaryFileBuilder::build_module() {
-        std::vector<u8> data = build();
-        BinaryFile::make_for_memory(data);
-        
+        // Make new module
         auto module = std::make_shared<Module>();
+        // Build file for module
+        std::vector<u8> data = build();
+        BinaryFile::make_for_memory(data,module.get());
+        // Setup module file
         module->name = StringId(name.c_str());
         module->set_file(std::move(data));
         return module;
     }
+    
+    BinaryFile*  BinaryFileBuilder::build_file() {
+        std::vector<u8> data = build();
+        BinaryFile::make_for_memory(data,nullptr);
+        return reinterpret_cast<BinaryFile*>(data.data());
+    }
+
 
     /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
     std::vector<u8> BinaryFileBuilder::build() {
@@ -56,6 +67,7 @@ namespace carbon::files {
                 StringId(def_data.name),      // StringId name
                 StringId(def_data.type),      // StringId type  
                 def_data.flags,
+                0,
                 Ptr<u8>()           // Временный нулевой указатель
             };
 
@@ -78,6 +90,7 @@ namespace carbon::files {
             defs_table[i].data = Ptr<u8>(current_pos);
             lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
             if (def.type == "function") {
+                lg::info("FunctionDesc stated at 0x{:08x}", current_pos);
                 // Записываем FunctionDesc структуру
                 FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(buffer.data() + current_pos);
                 new (bc) FunctionDesc();  // Явная инициализация
@@ -87,9 +100,9 @@ namespace carbon::files {
                 if (!def.code.empty()) {
                     u32 code_size = static_cast<u32>(def.code.size() * sizeof(Instruction));
                     ensure_capacity(buffer, current_pos + code_size);
-
                     bc->code_ptr = Ptr<Instruction>(current_pos);
                     bc->code_count = static_cast<u32>(def.code.size());
+                    lg::info("FunctionDesc :code-start-pos {:016X} :code-count {}", bc->code_ptr.offset, bc->code_count);
 
                     Instruction* code_dest = reinterpret_cast<Instruction*>(buffer.data() + current_pos);
                     std::memcpy(code_dest, def.code.data(), code_size);
@@ -145,14 +158,14 @@ namespace carbon::files {
         buffer.resize(current_pos);
 
         // Теперь буфер готов, можно делать make_for_memory
-        BinaryFile::make_for_memory(buffer);
-        
+        BinaryFile::make_for_memory(buffer, nullptr);
+       
         return buffer;
     }
 
     /** Добавить тип */
     void BinaryFileBuilder::add_type(std::string name, std::string parent, 
-                const std::vector<MethodDesc>& methods,
+                const std::vector<MethodDef>& methods,
                 const std::vector<StateDesc>& states,
                 TypeFlags flags,
                 RegClass reg_class,
@@ -162,8 +175,8 @@ namespace carbon::files {
         TypeDesc type;
         type.name = StringId(name);
         type.parent_type_id = StringId(parent);
-        type.methods_offset = 0; // будет заполнено позже
-        type.states_offset = 0;
+        type.methods_offset.offset = 0; // будет заполнено позже
+        type.states_offset.offset = 0;
         type.methods_count = methods.size();
         type.states_count = states.size();
         type.flags = flags;
@@ -196,7 +209,7 @@ namespace carbon::files {
         StateDesc state;
         state.name = StringId(name);
         state.parent_state = StringId(parent);
-        state.count = handlers.size();
+        state.defs_count = handlers.size();
         state.definitions.offset = 0;
         state.flags = flags;
         
@@ -275,7 +288,7 @@ namespace carbon::files {
         if (size >= sizeof(BinaryFile)) {
             const BinaryFile* header = reinterpret_cast<const BinaryFile*>(data);
             result += fmt::format("Header: {}\n", header->to_string());
-            result += fmt::format("Hex: {}\n", header->hex_dump());
+            result += fmt::format("Hex: {}\n", header->dump());
         }
 
         // Дамп первых 256 байт или всего файла если он меньше

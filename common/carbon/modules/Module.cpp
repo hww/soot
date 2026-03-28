@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 
 using namespace carbon::files;
+using namespace file_util;
 
 namespace carbon::modules {
 
@@ -23,6 +24,7 @@ namespace carbon::modules {
         return  false;
     }
 
+
     void Module::set_file(std::vector<u8> binary_mem) {
         this->binary_mem = std::move(binary_mem);
         if (this->binary_mem.empty()) {
@@ -31,7 +33,7 @@ namespace carbon::modules {
         }
         else {
             this->binary_file = reinterpret_cast<BinaryFile*>(this->binary_mem.data());
-            this->binary_file->set_owner(this);
+            this->binary_file->relocate_pointers(true, this);
             build_export_table();
             load_state = LoadState::BINARY_LOADED;
         }
@@ -165,22 +167,14 @@ namespace carbon::modules {
         return result;
     }
 
-    // common/carbon/modules/Module.cpp - добавить:
-    bool Module::save_to_files(const std::filesystem::path& base_path) const {
-        // Сохраняем .bin
-        std::filesystem::path bin_path = base_path / (name.to_string() + ".bin");
-        std::ofstream bin_file(bin_path, std::ios::binary);
-        if (!bin_file) return false;
+    bool Module::save_to_binary_file(const std::string& path) const { 
+          if (binary_file) 
+              return binary_file->save_file(path);
+          lg::error("save binary file with empty pointer");
+          return false;
+    };
 
-        // make pointers relative to files
-        binary_file->relocate_pointers(false);
-
-        bin_file.write(reinterpret_cast<const char*>(binary_mem.data()), binary_mem.size());
-        bin_file.close();
-        
-		// restore pointers relative to memory
-        binary_file->relocate_pointers(true);
-		
+    bool Module::save_to_dci_file(const std::string& path) const { 
         // Сохраняем .dci
         DciFile dci;
         dci.logical_path = name.to_string();
@@ -188,10 +182,33 @@ namespace carbon::modules {
         dci.binary_size = binary_mem.size();
         dci.imports = dci_imports;
         dci.exports = dci_exports;
-        
-        std::filesystem::path dci_path = base_path / name.to_string();
-        dci_path += ".dci";
-        return dci.save(dci_path.string());
+
+        return dci.save(path);
+    };
+
+    // common/carbon/modules/Module.cpp - добавить:
+    bool Module::save_to_files(const std::filesystem::path& base_path) const {
+    // Берем только имя файла из module->name (последнюю часть)
+    fs::path name_path(name.to_string());
+    std::string filename = name_path.filename().string();  // "math"
+    
+    // Формируем полный путь
+    fs::path full_path = fs::path(base_path) / filename;  // "modules/lib/math"
+    
+    // Создаем директорию
+    fs::create_directories(full_path.parent_path());
+    
+    // Сохраняем .bin
+    fs::path bin_path = full_path;
+    bin_path += ".bin";
+    if (!save_to_binary_file(bin_path.string())) {
+        return false;
+    }
+    
+    // Сохраняем .dci
+    fs::path dci_path = full_path;
+    dci_path += ".dci";
+    return save_to_dci_file(dci_path.string());
     }
 
     TypeDesc* Module::resolve_type(StringId name) {
@@ -203,11 +220,11 @@ namespace carbon::modules {
     }
     
     // Вспомогательные функции для работы с TypeDesc в Module
-    inline MethodDesc* Module::resolve_method(StringId type_name, StringId method_name) {
+    inline MethodDef* Module::resolve_method(StringId type_name, StringId method_name) {
         auto type_def = resolve_type(type_name);
         if (!type_def) return nullptr;
         
-        return type_def->resolve_method(method_name);
+        return type_def->resolve_method_def(method_name);
     }
 
     inline StateDesc* Module::resolve_state(StringId type_name, StringId state_name) {

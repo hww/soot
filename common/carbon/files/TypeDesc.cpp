@@ -1,5 +1,8 @@
 #include "common/carbon/files/TypeDesc.hpp"
+#include "files/BinaryFile.hpp"
+#include "files/Definition.hpp"
 #include "fmt/ranges.h"
+#include <cstddef>
 #include <vector>
 #include <fmt/format.h>
 
@@ -51,7 +54,7 @@ std::string TypeDesc::to_string() const {
 }
 
 std::string TypeDesc::inspect() const {
-    return fmt::format(
+    auto result = fmt::format(
         "TypeDesc {{\n"
         "  name: {}\n"
         "  parent: {}\n"
@@ -69,8 +72,8 @@ std::string TypeDesc::inspect() const {
         "}}",
         name,
         parent_type_id,
-        methods_offset,
-        states_offset,
+        methods_offset.offset,
+        states_offset.offset,
         methods_count,
         states_count,
         static_cast<uint32_t>(flags),
@@ -82,19 +85,51 @@ std::string TypeDesc::inspect() const {
         inline_array_start_alignment,
         offset
     );
+    if (methods_offset.ptr && methods_count > 0) {
+        result += "  Methods:\n";
+        for (size_t i=0; i<methods_count; i++) {
+            result += fmt::format("    [{}] {}", i, methods_offset.ptr[i].inspect());
+        }
+    }
+    if (states_offset.ptr && states_count > 0) {
+        result += "  States:\n";
+        for (size_t i=0; i<states_count; i++) {
+            result += fmt::format("    [{}] {}", i, states_offset.ptr[i].inspect());
+        }
+    }
+
+    return result;
 }
 
-void TypeDesc::relocate_pointers(intptr_t delta) {
-    // Adjust offset fields that might point to other data
-    if (methods_offset != 0) {
-        methods_offset += delta;
+void TypeDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* owner) {
+    (void)owner;
+    (void)to_memory;
+    fmt::print("[TypeDesc] relocate_pointers :to_memory {} :methods_offset 0x{:016X} :states_offset 0x{:016X}\n", 
+            to_memory, methods_offset.offset, states_offset.offset);
+    if (to_memory)
+    {
+        if (methods_offset.offset) {
+            methods_offset.offset += delta;
+            MethodDef::relocate_pointers_table(to_memory, delta, methods_offset.ptr, methods_count, owner);
+        }
+        if (states_offset.offset) {
+            states_offset.offset += delta;
+            StateDef::relocate_pointers_table(to_memory, delta, states_offset.ptr, states_count, owner);
+        }
     }
-    if (states_offset != 0) {
-        states_offset += delta;
+    else 
+    {
+        if (methods_offset.offset) {
+            MethodDef::relocate_pointers_table(to_memory, delta, methods_offset.ptr, methods_count, owner);
+            methods_offset.offset += delta;
+        }
+        if (states_offset.offset) {
+            StateDef::relocate_pointers_table(to_memory, delta, states_offset.ptr, states_count, owner);
+            states_offset.offset += delta;
+        }
     }
-    
-    // Note: TypeDesc contains offsets to methods and states arrays
-    // These need to be adjusted when the module is relocated in memory
+    fmt::print("[TypeDesc] relocate_pointers :to_memory {} :methods_offset 0x{:016X} :states_offset 0x{:016X}\n", 
+            to_memory, methods_offset.offset, states_offset.offset);
 }
 
 } // end of namespace

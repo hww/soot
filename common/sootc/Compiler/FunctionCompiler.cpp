@@ -1,6 +1,6 @@
 // src/sootc/Compiler/FunctionCompiler.cpp
 #include "common/sootc/Compiler/FunctionCompiler.hpp"
-#include "common/carbon/files/BinaryFileBuilder.hpp"
+#include "Log.hpp"
 
 namespace sootc {
 
@@ -13,14 +13,19 @@ IR_Reg *FunctionCompiler::create_local_reg(Type *type) {
     regs_.push_back(std::move(reg));
     return ptr;
 }
+
 IR_Reg* FunctionCompiler::create_arg_reg(Type* type, u32 index) {
     auto reg = std::make_unique<IR_Reg>(type, ARG_REGISTERS_OFFSET + index, true);
     IR_Reg* ptr = reg.get();
     regs_.push_back(std::move(reg));
     return ptr;
 }
+
 IR_Reg *FunctionCompiler::get_self_reg() {
-    return new IR_Reg(ts_.lookup_type("object"), IR_Reg::REG_SELF, true);
+    auto reg = std::make_unique<IR_Reg>(ts_.lookup_type("object"), IR_Reg::REG_SELF, true);
+    IR_Reg* ptr = reg.get();
+    regs_.push_back(std::move(reg));
+    return ptr;
 }
 
 void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
@@ -28,37 +33,27 @@ void FunctionCompiler::add_node(std::unique_ptr<IR_Node> node) {
 }
 
 std::vector<u8> FunctionCompiler::compile() {
-    carbon::files::BinaryFileBuilder builder("module1");
+    FunctionDescBuilder bc_builder;
+    std::unordered_map<IR_Value*, u32> reg_map;
 
-    FunctionDescBuilder                     bc_builder;
-    std::unordered_map<IR_Value *, u32> reg_map;
-
-    // Строим карту регистров
-    for (const auto &reg : regs_) {
+    for (const auto& reg : regs_) {
         reg_map[reg.get()] = reg->get_index();
     }
 
-    // Генерируем код из всех узлов
-    for (const auto &node : nodes_) {
+    for (const auto& node : nodes_) {
         node->generate(bc_builder, reg_map);
     }
 
-    // Получаем инструкции
     std::vector<Instruction> instructions = bc_builder.get_instructions();
     
-    // ОТЛАДКА
-    lg::info("=== Generated {} instructions ===", instructions.size());
-    for (size_t i = 0; i < instructions.size(); i++) {
-        lg::info("  [{}] {}", i, instructions[i].to_string());
+    // Конвертируем в байткод
+    std::vector<u8> bytecode;
+    for (const auto& instr : instructions) {
+        const u8* bytes = reinterpret_cast<const u8*>(&instr);
+        bytecode.insert(bytecode.end(), bytes, bytes + sizeof(Instruction));
     }
-
-    // Создаем функцию в билдере
-    builder.add_function(function_name_, instructions,
-                         {}, // data - пока пусто
-                         {}  // debug_info - пока пусто
-    );
-
-    return builder.build();
+    
+    return bytecode;
 }
 
 std::string FunctionCompiler::to_string() const {

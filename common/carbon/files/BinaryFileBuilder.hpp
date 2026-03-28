@@ -54,7 +54,7 @@ namespace carbon::files {
         }
 
         void add_type(std::string name, std::string parent, 
-                const std::vector<MethodDesc>& methods = {},
+                const std::vector<MethodDef>& methods = {},
                 const std::vector<StateDesc>& states = {},
                 TypeFlags flags = TypeFlags::None,
                 RegClass reg_class = RegClass::GPR_64,
@@ -68,6 +68,7 @@ namespace carbon::files {
         /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
         std::vector<u8> build();
         std::shared_ptr<Module> build_module();
+        BinaryFile* build_file();
 
         std::string inspect_input() const;
         std::string inspect_memory_dump(const std::vector<u8>& binary) const;

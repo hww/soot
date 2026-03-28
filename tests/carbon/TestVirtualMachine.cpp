@@ -24,7 +24,9 @@ class VirtualMachineTest : public ::testing::Test {
 TEST_F(VirtualMachineTest, NativeFunctionRegistration) {
     VirtualMachine vm;
 
-    auto test_func = [](u32 argc, const Variant *argv) -> Variant { return Variant(42); };
+    auto test_func = [](u32 argc, const Variant *argv) -> Variant { 
+        (void)argc;(void)argv;
+        return Variant(42); };
 
     REGISTER_NATIVE_FUNCTION(SID("test_native"), test_func);
 

@@ -1,11 +1,9 @@
 #pragma once
 #include "common/carbon/ForwardDeclarations.hpp"
-#include "common/type_system/TypeSystem.hpp"
-#include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/CommonTypes.hpp"
-#include "files/Base.hpp"
+#include "common/carbon/files/Definition.hpp"
 #include "lib/Ptr.hpp"
 
 #include <cstdint>
@@ -23,13 +21,15 @@ namespace carbon::files {
      * It contains the actual FunctionDesc instructions, constant data, and
      * debugging information mapping back to source code.
      */
-    struct FunctionDesc : public Descriptor {
+    struct FunctionDesc {
         /** Number of instructions in the code section */
         u32 code_count;
         /** Size of constant data in bytes */
         u32 data_size;
         /** Number of debug information entries */
         u32 debug_count;
+        /** For allign */
+        u32 reserved;
         /** Pointer to the instruction stream */
         Ptr<vm::Instruction> code_ptr;
         /** Pointer to constant data section */
@@ -75,13 +75,19 @@ namespace carbon::files {
          */
         bool has_debug_info() const;
 
-        void relocate_pointers(intptr_t delta) override;
+        /**
+         * @brief Relocate pointers for memory management
+         * @param to_memory Whether to relocate for memory allocation
+         * @param delta The offset to adjust pointers by
+         */
+        void relocate_pointers(bool to_memory, intptr_t delta, Module* owner);
 
         /**
          * @brief Create detailed inspection string
          * @return Formatted string with complete FunctionDesc information
          */
         std::string inspect() const;
+
     };
 
 

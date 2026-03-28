@@ -34,6 +34,7 @@ TEST_F(NativeFunctionsTest, RegistryBasicOperations) {
 
     // Тест регистрации и поиска
     auto test_func = [](u32 argc, const Variant* argv) -> Variant {
+        (void)argc; (void)argv;
         return Variant(42);
         };
 

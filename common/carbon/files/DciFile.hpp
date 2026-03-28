@@ -40,38 +40,39 @@ namespace carbon::files {
             return parse_from_object(obj);
         }
 
-            // common/carbon/files/DciFile.cpp - добавить:
-    bool save(const std::string& filename) const {
-        std::ofstream file(filename);
-        if (!file) return false;
-        fmt::print("DciFile save {}\n", filename);
-        // UTF-8 BOM
-        file << "\xEF\xBB\xBF";
-        file << to_string();
-        return true;
-    }
+        // common/carbon/files/DciFile.cpp - добавить:
+        bool save(const std::string& filename) const {
+            file_util::create_dirs_for_file(filename);
+            std::ofstream file(filename);
+            if (!file) return false;
+            fmt::print("DciFile save {}\n", filename);
+            // UTF-8 BOM
+            file << "\xEF\xBB\xBF";
+            file << to_string();
+            return true;
+        }
 
-    std::string to_string() const {
-        std::string result;
-        result += "(" + logical_path + " (" + std::to_string(binary_size) + ")\n";
-        result += "  (import";
-        for (auto imp : imports) {
-            result += " " + imp.to_string();
+        std::string to_string() const {
+            std::string result;
+            result += "(" + logical_path + " (" + std::to_string(binary_size) + ")\n";
+            result += "  (import";
+            for (auto imp : imports) {
+                result += " " + imp.to_string();
+            }
+            result += ")\n";
+            result += "  (export";
+            for (auto exp : exports) {
+                result += " " + exp.to_string();
+            }
+            result += ")\n";
+            result += "  (strings";
+            for (auto exp : StringIdManager::instance()) {
+                result += " " + exp.second;
+            }
+            result += ")\n";
+            result += ")\n";
+            return result;
         }
-        result += ")\n";
-        result += "  (export";
-        for (auto exp : exports) {
-            result += " " + exp.to_string();
-        }
-        result += ")\n";
-        result += "  (strings";
-        for (auto exp : StringIdManager::instance()) {
-            result += " " + exp.second;
-        }
-        result += ")\n";
-        result += ")\n";
-        return result;
-    }
 
     private:
         static DciFile parse_from_object(const script::Object& obj) {

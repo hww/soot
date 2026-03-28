@@ -802,3 +802,22 @@ int main() {
     
     return 0;
 } // namespace vm
+
+## Выполнение фала
+
+```bash
+# Добавляем пути поиска через -I (как в C++)
+./bin/carbon -I build/modules -I lib math/add 5 3
+
+# Явно загружаем модули
+./bin/carbon -I build/modules -l math/add -l math/sub -c '(add 5 3)'
+
+# Короткая форма
+./bin/carbon -I build/modules math/add 5 3
+
+# Без аргументов
+./bin/carbon -I build/modules math/add
+
+# С явным именем функции
+./bin/carbon -I build/modules lib/math add 5 3
+```

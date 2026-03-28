@@ -111,6 +111,7 @@ namespace carbon::modules {
             // ИСПРАВЛЕНИЕ: создаем модуль и инициализируем поля
             auto module = std::make_shared<Module>();
 
+            lg::info("scal dic '{}' ...", dci.logical_path.c_str());
             // Заполняем поля напрямую
             module->name = StringId(dci.logical_path.c_str());
             module->file_path = dci_path;

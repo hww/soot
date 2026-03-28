@@ -4,6 +4,7 @@
 add_library(libsootc
     common/sootc/Main.cpp
     common/sootc/Compiler/FunctionCompiler.cpp
+    common/sootc/Compiler/ObjectCompiler.cpp
     common/sootc/IR/IR_Move.cpp
     common/sootc/IR/IR_Value.cpp
     common/sootc/IR/IR_Math.cpp    

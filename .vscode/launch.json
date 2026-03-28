@@ -1,36 +1,13 @@
 {
   "version": "0.2.0",
   "configurations": [
-        {
-      "name": "Soot-C",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/bin/sootc",
-      "args": [],
-      "cwd": "${workspaceFolder}",
-      "environment": [],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ],
-      "preLaunchTask": "Build All",
-      "stopAtEntry": false,  // Остановиться при входе в main
-      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
-      "showDisplayString": true,           
-    },
     {
       "name": "Soot",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
       "args": [],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/build",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
@@ -43,9 +20,9 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "stopAtEntry": false,  // Остановиться при входе в main
+      "stopAtEntry": false,
       "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
-      "showDisplayString": true           
+      "showDisplayString": true
     },
     {
       "name": "Soot Server",
@@ -53,7 +30,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
       "args": ["--server", "8181"],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/build",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
@@ -66,7 +43,7 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "stopAtEntry": false,  // Остановиться при входе в main
+      "stopAtEntry": false
     },
     {
       "name": "Soot Client",
@@ -74,7 +51,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
       "args": ["--client", "8181"],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/build",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
@@ -87,15 +64,15 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "stopAtEntry": false,  // Остановиться при входе в main
-    },    
+      "stopAtEntry": false
+    },
     {
       "name": "Soot (HOME)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/soot",
       "args": [],
-      "cwd": "/home/valery",
+      "cwd": "/home/valery",  
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
@@ -108,16 +85,16 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "stopAtEntry": true,  // Остановиться при входе в main
+      "stopAtEntry": true
     },
     {
       "name": "TypeSys Test",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/bin/typesys_tests", // Проверьте имя бинарника из CMake!
+      "program": "${workspaceFolder}/build/bin/typesys_tests",
       "args": [],
       "stopAtEntry": false,
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/build",  
       "environment": [
         {
           "name": "LD_LIBRARY_PATH",
@@ -133,25 +110,25 @@
           "ignoreFailures": true
         }
       ],
-      "preLaunchTask": "Build Tests",
+      "preLaunchTask": "Build Tests"
     },
     {
-      "name": "Carbon",
-      //"type": "cppdbg",
-      "type": "lldb",
+      "name": "Debug SOOT Compiler",
+      "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/bin/carbon", // Проверьте имя бинарника из CMake!
-      "args": [],
-      "stopAtEntry": false,
-      "cwd": "${workspaceFolder}",
-      "environment": [
-        {
-          "name": "LD_LIBRARY_PATH",
-          "value": "${workspaceFolder}/build/lib:${env:LD_LIBRARY_PATH}"
-        }
+      "program": "${workspaceFolder}/build/bin/sootc",
+      "args": [
+        "--source-root",
+        "${workspaceFolder}/common/sootc/src",
+        "--target",
+        "modules",
+        "${workspaceFolder}/common/sootc/src/lib/math.sot"
       ],
+      "cwd": "${workspaceFolder}/build", 
+      "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",
@@ -160,16 +137,103 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis"      
-    },    
+      "stopAtEntry": false,
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true
+    },
+    {
+      "name": "Debug Carbon VM",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/carbon",
+      "args": [
+        "-I",
+        "modules",
+        "lib/math",
+        "add",
+        "5",
+        "3"
+      ],
+      "cwd": "${workspaceFolder}/build", 
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        //{
+        //  "description": "Enable pretty-printing for gdb",
+        //  "text": "-enable-pretty-printing",
+        //  "ignoreFailures": true
+        //}
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true
+    },
+    {
+      "name": "Debug Carbon VM with S-expr",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/carbon",
+      "args": [
+        "-I",
+        "modules",
+        "-c",
+        "(add 5 3)"
+      ],
+      "cwd": "${workspaceFolder}/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true
+    },
+    {
+      "name": "Debug Single Function",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/bin/sootc",
+      "args": [
+        "--target",
+        "modules",
+        "${workspaceFolder}/common/sootc/src/math/add.sot"
+      ],
+      "cwd": "${workspaceFolder}/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build All",
+      "stopAtEntry": false,
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true
+    },
     {
       "name": "Carbon Test",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/bin/carbon_test", // Проверьте имя бинарника из CMake!
+      "program": "${workspaceFolder}/build/bin/carbon_test",
       "args": [],
       "stopAtEntry": false,
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/build",
       "environment": [
         {
           "name": "LD_LIBRARY_PATH",
@@ -187,8 +251,7 @@
       ],
       "preLaunchTask": "Build Tests",
       "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
-      "showDisplayString": true,           
-    },
+      "showDisplayString": true
+    }
   ]
 }
-

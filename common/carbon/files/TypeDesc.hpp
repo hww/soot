@@ -2,10 +2,12 @@
 
 #include "common/carbon/lib/StringId.hpp"
 #include "common/CommonTypes.hpp"
-#include "files/Base.hpp"
+#include "common/carbon/files/Definition.hpp"
+#include "files/BinaryFile.hpp"
 #include "files/FunctionDesc.hpp"
 #include "files/StateDesc.hpp"
 #include "type_system/Config.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -34,45 +36,18 @@ enum class TypeFlags : uint32_t {
 };
 ENUM_FLAG_OPERATORS(TypeFlags);
 
-struct MethodDesc {
-    StringId name;
-    StringId type;
-    Ptr<FunctionDesc> data;
-    MethodFlags flags;
-    /**
-     * @brief Convert to simple string representation
-     * @return Basic string representation
-     */
-    std::string to_string() const;
-    /**
-     * @brief Create detailed inspection string
-     * @return Detailed formatted string for debugging
-     */
-    std::string inspect() const;
-    inline bool has_flag(MethodFlags flag) const {
-        return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
-    }
-    inline void set_flag(MethodFlags flag) {
-        flags |= flag;
-    }
-    inline void clear_flag(MethodFlags flag) {
-        flags &= flag;
-    }
-};
-
-    
 /**
  * @brief Type header for type system metadata
  * 
  * Contains metadata about a type including its methods, states, and layout.
  */
-struct TypeDesc : public Descriptor {
-    int64_t methods_offset;                      // Offset to methods
-    int64_t states_offset;                       // Offset to states
+struct TypeDesc  {
+    Ptr<MethodDef> methods_offset;               // Offset to methods
+    Ptr<StateDef> states_offset;                 // Offset to states
     uint32_t methods_count;                      // Number of methods
     uint32_t states_count;                       // Number of states
-    StringId name;                                 // Type name
-    StringId parent_type_id;                       // Parent type name
+    StringId name;                               // Type name
+    StringId parent_type_id;                     // Parent type name
     TypeFlags flags;                             // Type flags
     RegClass reg_class;                          // Preferred register class
     int load_size;                               // Size when loaded
@@ -164,7 +139,7 @@ struct TypeDesc : public Descriptor {
      * @return Detailed formatted string for debugging
      */
     std::string inspect() const;
-    
+
     /**
      * @brief Check if a specific flag is set
      * @param flag The flag to check
@@ -190,24 +165,34 @@ struct TypeDesc : public Descriptor {
         flags = flags & (~flag);
     }
 
-    void relocate_pointers(intptr_t delta);
+    void relocate_pointers(bool to_memory, intptr_t delta, Module* owner);
 
     // ===================================================================
-    // Methods & States
+    // Methods
     // ===================================================================
+    /**
+     * @brief Resolve a method by index
+     * @param index Method index (0-based)
+     * @return Pointer to MethodDesc or nullptr if index out of bounds
+     */
+    MethodDef* get_method_def(u32 index) const {
+        if (methods_offset == 0 || index >= methods_count) {
+            return nullptr;
+        }
 
+        return &methods_offset.ptr[index];
+    }
     /**
      * @brief Resolve a method by name
      * @param name Method name to find
      * @return Pointer to MethodDesc or nullptr if not found
      */
-    MethodDesc* resolve_method(StringId name) const {
+    MethodDef* resolve_method_def(StringId name) const {
         if (methods_offset == 0 || methods_count == 0) {
             return nullptr;
         }
         
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        MethodDesc* methods = reinterpret_cast<MethodDesc*>(base + methods_offset);
+        MethodDef* methods = methods_offset.ptr;
         
         for (u32 i = 0; i < methods_count; i++) {
             if (methods[i].name == name) {
@@ -216,22 +201,56 @@ struct TypeDesc : public Descriptor {
         }
         return nullptr;
     }
-    
+
     /**
      * @brief Resolve a method by index
      * @param index Method index (0-based)
      * @return Pointer to MethodDesc or nullptr if index out of bounds
      */
-    MethodDesc* get_method(u32 index) const {
-        if (methods_offset == 0 || index >= methods_count) {
-            return nullptr;
-        }
-        
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        MethodDesc* methods = reinterpret_cast<MethodDesc*>(base + methods_offset);
-        return &methods[index];
+    FunctionDesc* get_method_function(u32 index) const {
+        auto def = get_method_def(index);
+        return def != nullptr ? def->data.ptr : nullptr;
     }
     
+    /**
+     * @brief Get all methods as a span/vector
+     * @return Pointer to methods array and count
+     */
+    std::pair<MethodDef*, u32> get_methods() const {
+        if (methods_offset == 0 || methods_count == 0) {
+            return {nullptr, 0};
+        }
+        return {methods_offset.ptr, methods_count};
+    }
+    
+    // ===================================================================
+    // States
+    // ===================================================================
+
+    /**
+     * @brief Resolve a state by index
+     * @param index State index (0-based)
+     * @return Pointer to StateDesc or nullptr if index out of bounds
+     */
+    StateDef* get_state_def(u32 index) const {
+        if (states_offset == 0 || index >= states_count) {
+            return nullptr;
+        }
+        return &states_offset.ptr[index];
+    }
+        /**
+     * @brief Resolve a state by index
+     * @param index State index (0-based)
+     * @return Pointer to StateDesc or nullptr if index out of bounds
+     */
+    StateDesc* get_state(u32 index) const {
+        if (states_offset == 0 || index >= states_count) {
+            return nullptr;
+        }
+        StateDef* def = &states_offset.ptr[index];
+        return def!=nullptr ? def->get_state() : nullptr;
+    }
+
     /**
      * @brief Resolve a state by name
      * @param name State name to find
@@ -242,54 +261,25 @@ struct TypeDesc : public Descriptor {
             return nullptr;
         }
         
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        StateDesc* states = reinterpret_cast<StateDesc*>(base + states_offset);
+        StateDef* defs = states_offset.ptr;
         
         for (u32 i = 0; i < states_count; i++) {
-            if (states[i].name == name) {
-                return &states[i];
+            if (defs[i].name == name) {
+                return defs[i].get_state();
             }
         }
         return nullptr;
     }
-    
-    /**
-     * @brief Resolve a state by index
-     * @param index State index (0-based)
-     * @return Pointer to StateDesc or nullptr if index out of bounds
-     */
-    StateDesc* get_state(u32 index) const {
-        if (states_offset == 0 || index >= states_count) {
-            return nullptr;
-        }
-        
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        StateDesc* states = reinterpret_cast<StateDesc*>(base + states_offset);
-        return &states[index];
-    }
-    
-    /**
-     * @brief Get all methods as a span/vector
-     * @return Pointer to methods array and count
-     */
-    std::pair<MethodDesc*, u32> get_methods() const {
-        if (methods_offset == 0 || methods_count == 0) {
-            return {nullptr, 0};
-        }
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        return {reinterpret_cast<MethodDesc*>(base + methods_offset), methods_count};
-    }
-    
+
     /**
      * @brief Get all states as a span/vector
      * @return Pointer to states array and count
      */
-    std::pair<StateDesc*, u32> get_states() const {
+    std::pair<StateDef*, u32> get_states() const {
         if (states_offset == 0 || states_count == 0) {
             return {nullptr, 0};
         }
-        u8* base = reinterpret_cast<u8*>(const_cast<TypeDesc*>(this));
-        return {reinterpret_cast<StateDesc*>(base + states_offset), states_count};
+        return {states_offset.ptr, states_count};
     }
 };
 

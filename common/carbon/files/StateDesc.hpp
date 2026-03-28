@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/CommonTypes.hpp"
-#include "common/carbon/files/Base.hpp"
+#include "common/carbon/files/Definition.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/CommonTypes.hpp"
 #include "files/BinaryFile.hpp"
@@ -27,16 +27,16 @@ ENUM_FLAG_OPERATORS(StateFlags);
  * 
  * Contains metadata about a state including its handlers and parent state.
  */
-struct StateDesc : public Descriptor {
+struct StateDesc  {
     static constexpr int CODE_ID  = 0;
     static constexpr int ENTER_ID = 1;
     static constexpr int EXIT_ID  = 2;
     static constexpr int TRANS_ID = 3;
     static constexpr int POST_ID  = 4;
     static constexpr int EVENT_ID = 5;
-    
+    StringId name;
     StringId parent_state;          // Parent state
-    uint32_t count;                 // Number of handlers
+    uint32_t defs_count;                 // Number of handlers
     Ptr<Definition> definitions;    // Offset to Definition которыйе лежат в порядке ID
     StateFlags flags;
     
@@ -51,7 +51,7 @@ struct StateDesc : public Descriptor {
      * @return Detailed formatted string for debugging
      */
     std::string inspect() const;
-    
+
     /**
      * @brief Check if a specific flag is set
      * @param flag The flag to check
@@ -77,7 +77,7 @@ struct StateDesc : public Descriptor {
         flags = flags & (~flag);
     }
     
-    void relocate_pointers(intptr_t delta);
+    void relocate_pointers(bool to_memory, intptr_t delta, Module* owmer);
 
     bool is_virtual() { return has_flag(StateFlags::Virtual);}
     bool is_override() { return has_flag(StateFlags::Override);}
@@ -88,7 +88,7 @@ struct StateDesc : public Descriptor {
     * @return Pointer to FunctionDesc or nullptr if not found
     */
     Definition* get_definition(uint idx) const {
-        if (idx < 0 || idx >= count) {
+        if (idx < 0 || idx >= defs_count) {
             return nullptr;
         }
         

@@ -1,5 +1,7 @@
 #include "common/carbon/files/StateDesc.hpp"
+#include "common/carbon/modules/Module.hpp"
 #include "fmt/ranges.h"
+#include <cstddef>
 #include <fmt/format.h>
 #include <vector>
 #include <string>
@@ -30,7 +32,7 @@ std::string StateDesc::to_string() const {
 }
 
 std::string StateDesc::inspect() const {
-    return fmt::format(
+    auto result = fmt::format(
         "StateDesc {{\n"
         "  name: {}\n"
         "  parent_state: {}\n"
@@ -40,25 +42,37 @@ std::string StateDesc::inspect() const {
         "}}",
         name,
         parent_state,
-        count,
+        defs_count,
         definitions.offset,
         static_cast<uint32_t>(flags),
         format_flags(flags)
     );
+    if (definitions.ptr && defs_count > 0) {
+        for (size_t i=0; i<defs_count && i<=EVENT_ID; i++) {
+            result += fmt::format("    [{}] {}", i, definitions.ptr[i].inspect());
+        }
+    }
+
+    return result;
 }
 
-void StateDesc::relocate_pointers(intptr_t delta) {
-    // If offset is a pointer offset, adjust it
-    definitions.offset += delta;
-    
-    // Note: StateDesc doesn't contain any direct pointers that need relocation
-    // The offset field might be a pointer to handlers or methods
-    // Adjust it if it points to memory within the module
-    for (uint i=0;i<count; i++)
+void StateDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
+    (void)module;
+    fmt::print("[StateDesc] relocate_pointers :to_memory {} :definitions 0x{:016X}\n", to_memory, definitions.offset);        
+    if (to_memory)
     {
-        auto def = get_definition(i);
-        def->relocate_pointers(delta);
+        if (definitions.offset!=0) {
+            definitions.offset += delta;
+            Definition::relocate_pointers_table(to_memory, delta, definitions.ptr, defs_count, module);
+        }
+
+    } else {
+        if (definitions.offset!=0) {
+            Definition::relocate_pointers_table(to_memory, delta, definitions.ptr, defs_count, module);
+            definitions.offset += delta;
+        }
     }
+    fmt::print("[StateDesc] relocate_pointers :to_memory {} :definitions 0x{:016X}\n", to_memory, definitions.offset);            
 }
 
 } // end of namespace

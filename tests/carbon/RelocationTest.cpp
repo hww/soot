@@ -38,7 +38,7 @@ TEST_F(RelocationTest, BasicRelocation) {
     std::vector<u8> binary = create_test_binary();
     BinaryFile* file = reinterpret_cast<BinaryFile*>(binary.data());
     
-    file->relocate_pointers();
+    file->relocate_pointers(true, nullptr);
 
     // Проверяем, что base_offset инициализирован
     lg::info("base_offset before relocation: {}", (void*)file->get_base_offset());
@@ -68,7 +68,7 @@ TEST_F(RelocationTest, RelocatePointersWithDelta) {
              original_definitions_offset, relocated->definitions.offset);
     
     // Вызываем релокацию
-    relocated->relocate_pointers(true);
+    relocated->relocate_pointers(true, nullptr);
     
     lg::info("Relocated definitions offset after: {}", relocated->definitions.offset);
     
@@ -111,7 +111,7 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     std::memcpy(relocated, original, binary.size());
     
     // Просто вызываем relocate_pointers — он сам всё обновит
-    relocated->relocate_pointers(true);
+    relocated->relocate_pointers(true, nullptr);
     
     // Проверяем
     Definition* def_rel = relocated->get_definition(0);
@@ -128,7 +128,7 @@ TEST_F(RelocationTest, MultipleRelocations) {
     fmt::print("source file\n{}", file->inspect().c_str());
     
     // Первая релокация
-    file->relocate_pointers(true);
+    file->relocate_pointers(true, nullptr);
     EXPECT_EQ(file->get_base_offset(), file);
     
     // Сохраняем как uintptr_t, а не u32
@@ -140,7 +140,7 @@ TEST_F(RelocationTest, MultipleRelocations) {
     std::memcpy(relocated, file, binary.size());
     
     // Вторая релокация
-    relocated->relocate_pointers();
+    relocated->relocate_pointers(true, nullptr);
     fmt::print("dst file\n{}", relocated->inspect().c_str());
     
     ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(file);

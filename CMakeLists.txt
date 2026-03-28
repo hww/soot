@@ -61,7 +61,17 @@ else()
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-gdwarf-4 -g)
+# Отключаем все оптимизации
+    set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -ggdb -fno-omit-frame-pointer -fno-inline")
+    
+    # Отключаем оптимизации для конкретных целей
+    add_compile_options(-O0 -g3 -ggdb -fno-omit-frame-pointer)
+    
+    # Для GCC/Clang
+    add_compile_options(-fno-inline -fno-eliminate-unused-debug-types)
+    
+    # Включаем все отладочные символы
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g3 -ggdb")
 endif()
 
 # --- Build options -------------------------------------------

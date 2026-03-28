@@ -24,6 +24,8 @@ public:
     std::string to_string() const { return StringIdManager::instance().get_string(value); }
     const char* to_cstring() const { return StringIdManager::instance().get_cstring(value); }
 
+    const char* debug_str() const;
+
     static const StringId None;
     static const StringId Null;
 };

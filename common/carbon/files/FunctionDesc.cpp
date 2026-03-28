@@ -1,6 +1,8 @@
 #include "common/carbon/files/FunctionDesc.hpp"
-#include "common/carbon/lib/StringId.hpp"
+#include "common/carbon/modules/Module.hpp"
 #include "common/carbon/lib/Ptr.hpp"
+#include "vm/Instructions.hpp"
+#include <cstddef>
 #include <fmt/format.h>
 #include <string>
 
@@ -18,7 +20,6 @@ FunctionDesc::FunctionDesc()
     , data_ptr(nullptr)
     , debug_ptr(nullptr)
     , owner_module(nullptr) {
-    desc_size = sizeof(FunctionDesc);
 }
 
 u8* FunctionDesc::get_data_ptr() const {
@@ -33,18 +34,22 @@ bool FunctionDesc::has_debug_info() const {
     return debug_ptr != nullptr && debug_count > 0;
 }
 
-void FunctionDesc::relocate_pointers(intptr_t delta) {
-    // Adjust all pointer offsets by the delta value
-    // This is used when the FunctionDesc is moved in memory
-    if (code_ptr.offset != 0) {
+void FunctionDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
+    (void)to_memory;
+    owner_module = module;
+    fmt::print("[FunctionDesc] relocate_pointers_for_memory :code_ptr 0x{:016X} :data_ptr 0x{:016X} :debug_ptr 0x{:016X}\n", 
+        code_ptr.offset, data_ptr.offset, debug_ptr.offset);
+    if (code_ptr.offset) {
         code_ptr.offset += delta;
     }
-    if (data_ptr.offset != 0) {
+    if (data_ptr.offset) {
         data_ptr.offset += delta;
     }
-    if (debug_ptr.offset != 0) {
+    if (debug_ptr.offset) {
         debug_ptr.offset += delta;
     }
+    fmt::print("[FunctionDesc] relocate_pointers_for_memory :code_ptr 0x{:016X} :data_ptr 0x{:016X} :debug_ptr 0x{:016X}\n", 
+        code_ptr.offset, data_ptr.offset, debug_ptr.offset);
 }
 
 SourceLocation FunctionDesc::find_source_location(u32 instruction_ip) const {
@@ -64,7 +69,7 @@ SourceLocation FunctionDesc::find_source_location(u32 instruction_ip) const {
 }
 
 std::string FunctionDesc::inspect() const {
-    return fmt::format(
+    auto result = fmt::format(
         "FunctionDesc {{\n"
         "  code_count: {}\n"
         "  data_size: {}\n"
@@ -82,6 +87,15 @@ std::string FunctionDesc::inspect() const {
         fmt::ptr(debug_ptr.get()),
         fmt::ptr(owner_module)
     );
+    result += "  Code:\n";
+    if (code_ptr.ptr && code_count > 0) {
+        result += "  Code:\n";
+        for (size_t i=0; i<code_count; i++) {
+            result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(code_ptr.ptr[i]));
+        }
+    }
+    return result;
 }
+
 
 } // namespace carbon::files

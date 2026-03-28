@@ -1,0 +1,3 @@
+
+(define add (lambda (a b) (+ a b)))
+(define sub (lambda (a b) (- a b)))

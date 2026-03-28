@@ -15,7 +15,7 @@ namespace carbon {
         struct SourceLocation;
         struct DciFile;
         struct FunctionDesc;
-        struct MethodDesc; 
+        struct MethodDef; 
         struct StateDesc;
         struct TypeDesc;
         class BinaryFilePool;

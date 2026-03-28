@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  
+  <!-- StringId -->
+  <Type Name="carbon::lib::StringId">
+    <DisplayString>{value}</DisplayString>
+    <StringView>to_string()</StringView>
+    <Expand>
+      <Item Name="value">value</Item>
+      <Item Name="string">to_string(),na</Item>
+    </Expand>
+  </Type>
+  
+  <!-- Ptr<T> -->
+  <Type Name="carbon::lib::Ptr&lt;*&gt;">
+    <DisplayString Condition="offset != 0">0x{offset,x}</DisplayString>
+    <DisplayString Condition="offset == 0">null</DisplayString>
+    <Expand>
+      <Item Name="offset">offset</Item>
+      <Item Name="ptr" Condition="ptr != 0">ptr</Item>
+    </Expand>
+  </Type>
+  
+  <!-- Definition -->
+  <Type Name="carbon::files::Definition">
+    <DisplayString>{name} : {type}</DisplayString>
+    <Expand>
+      <Item Name="name">name</Item>
+      <Item Name="type">type</Item>
+      <Item Name="flags">flags</Item>
+      <Item Name="data">data</Item>
+    </Expand>
+  </Type>
+  
+  <!-- BinaryFile -->
+  <Type Name="carbon::files::BinaryFile">
+    <DisplayString>BinaryFile: {definitions_count} definitions</DisplayString>
+    <Expand>
+      <Item Name="magic">magic</Item>
+      <Item Name="generation">generation</Item>
+      <Item Name="file_size">file_size</Item>
+      <Item Name="definitions_count">definitions_count</Item>
+      <Item Name="definitions">definitions</Item>
+    </Expand>
+  </Type>
+  
+  <!-- FunctionDesc -->
+  <Type Name="carbon::files::FunctionDesc">
+    <DisplayString>Function: {code_count} instructions, {data_size} bytes data</DisplayString>
+    <Expand>
+      <Item Name="code_count">code_count</Item>
+      <Item Name="data_size">data_size</Item>
+      <Item Name="code_ptr">code_ptr</Item>
+      <Item Name="data_ptr">data_ptr</Item>
+      <Item Name="debug_ptr">debug_ptr</Item>
+    </Expand>
+  </Type>
+  
+  <!-- TypeDesc -->
+  <Type Name="carbon::files::TypeDesc">
+    <DisplayString>Type: {name}</DisplayString>
+    <Expand>
+      <Item Name="name">name</Item>
+      <Item Name="methods_count">methods_count</Item>
+      <Item Name="states_count">states_count</Item>
+      <Item Name="flags">flags</Item>
+    </Expand>
+  </Type>
+  
+  <!-- StateDesc -->
+  <Type Name="carbon::files::StateDesc">
+    <DisplayString>State: {parent_state}</DisplayString>
+    <Expand>
+      <Item Name="parent_state">parent_state</Item>
+      <Item Name="count">count</Item>
+      <Item Name="flags">flags</Item>
+    </Expand>
+  </Type>
+  
+  <!-- MethodDesc -->
+  <Type Name="carbon::files::MethodDesc">
+    <DisplayString>Method: {name}</DisplayString>
+    <Expand>
+      <Item Name="name">name</Item>
+      <Item Name="type">type</Item>
+      <Item Name="flags">flags</Item>
+      <Item Name="data">data</Item>
+    </Expand>
+  </Type>
+  
+  <!-- Module -->
+  <Type Name="carbon::modules::Module">
+    <DisplayString>Module: {name}</DisplayString>
+    <Expand>
+      <Item Name="name">name</Item>
+      <Item Name="dci_exports">dci_exports</Item>
+      <Item Name="dci_imports">dci_imports</Item>
+      <Item Name="binary_file">binary_file</Item>
+    </Expand>
+  </Type>
+  
+</AutoVisualizer>

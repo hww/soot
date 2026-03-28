@@ -3,6 +3,7 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
+#include "util/Log.hpp"
 #include <memory>
 #include <unordered_map>
 #include <filesystem>
@@ -37,7 +38,7 @@ namespace carbon::modules {
 
         // Binary data - ТЕПЕРЬ СЫРОЙ УКАЗАТЕЛЬ!
         BinaryFile* binary_file;
-        std::vector<u8> binary_mem;
+        std::vector<u8> binary_mem;        
 
         // Linking data
         std::unordered_map<StringId, Definition*> export_table;
@@ -57,7 +58,6 @@ namespace carbon::modules {
         bool load_file();
         void build_export_table();
         void set_file(std::vector<u8> binary_mem);
-        bool save_to_files(const std::filesystem::path& base_path = ".") const;
 
         bool is_valid_metadata() const { return name.value != 0 && !file_path.empty(); }
         bool is_linked() const { return load_state >= LoadState::LINKED; }
@@ -77,14 +77,17 @@ namespace carbon::modules {
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
         FunctionDesc* resolve_function(StringId name);
-        MethodDesc* resolve_method(StringId type_name, StringId method_name);
+        MethodDef* resolve_method(StringId type_name, StringId method_name);
         StateDesc* resolve_state(StringId type_name, StringId state_name);
         TypeDesc* resolve_type(StringId name);
         TypeDesc* find_type(StringId name);
 
         std::string to_string() const;
-
         std::string inspect() const;
+
+        bool save_to_binary_file(const std::string& path) const;
+        bool save_to_dci_file(const std::string& path) const;
+        bool save_to_files(const std::filesystem::path& base_path = ".") const;
 
     private:
         static std::string load_state_to_string(LoadState state) {

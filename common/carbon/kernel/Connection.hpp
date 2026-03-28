@@ -49,6 +49,8 @@ public:
      */
     Connection();
 
+    virtual ~Connection(){}
+    
     /**
      * Gets the function delegate stored in Arg0.
      */
