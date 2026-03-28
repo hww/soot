@@ -2,7 +2,9 @@
 #include "gtest/gtest.h"
 
 #include "carbon/Export.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include "lib/StringIdManager.hpp"
+#include "lib/Variant.hpp"
 
 using namespace carbon::vm;
 using namespace carbon::lib;
@@ -50,7 +52,9 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 42)); // r1 = 42
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));                   // return r1
 
-    builder.add_function("simple_answer", code);
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function(code);
+    builder.add_definition("simple_answer", "function", rbuffer);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
     auto module = builder.build_module();
@@ -77,7 +81,9 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     code.push_back(Instruction::create_abc(Opcode::MUL_INT, 5, 3, 4));         // r5 = r3 * r4
     code.push_back(Instruction::create_a(Opcode::RETURN, 5));                  // return r5
 
-    builder.add_function("calculate", code);
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function(code);
+    builder.add_definition("calculate", "function", rbuffer);
 
     auto    module = builder.build_module();
     auto    FunctionDesc = module->resolve_function(SID("calculate"));
@@ -99,7 +105,9 @@ TEST_F(VirtualMachineTest, FunctionCall) {
         Instruction::create_a(Opcode::RETURN, 1)};
 
     // Добавляем функцию в билдер
-    builder.add_function("main", main_code);
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function(main_code);
+    builder.add_definition("main", "function", rbuffer);
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
 
@@ -134,7 +142,9 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 30));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    builder.add_function("test_native_call", code);
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function(code);
+    builder.add_definition("test_native_call", "function", rbuffer);
 
     auto module = builder.build_module();
     auto FunctionDesc = module->resolve_function(SID("test_native_call"));
@@ -161,7 +171,10 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 10));
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
-    builder.add_function("conditional", code);
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function( code);
+    builder.add_definition("conditional", "function", rbuffer);
+
 
     auto module = builder.build_module();
     auto FunctionDesc = module->resolve_function(SID("conditional"));
@@ -188,16 +201,25 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
 
     // Загружаем несколько бинарников
     BinaryFileBuilder        binary1("module1");
+
     std::vector<Instruction> code1;
     code1.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 100));
     code1.push_back(Instruction::create_a(Opcode::RETURN, 1));
-    binary1.add_function("func1", code1);
+
+    RelocatableBuffer rbuffer1;
+    rbuffer1.add_function(code1);
+    binary1.add_definition("func1", "function", rbuffer1);    
+
 
     BinaryFileBuilder        binary2("module2");
+
     std::vector<Instruction> code2;
     code2.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 200));
     code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
-    binary2.add_function("func2", code2);
+
+    RelocatableBuffer rbuffer2;
+    rbuffer2.add_function(code2);
+    binary2.add_definition("func2", "function", rbuffer2); 
 
     auto module1 = binary1.build_module();
     auto module2 = binary2.build_module();

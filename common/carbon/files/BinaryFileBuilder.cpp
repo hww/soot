@@ -36,196 +36,80 @@ namespace carbon::files {
 
     /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
     std::vector<u8> BinaryFileBuilder::build() {
-        // 1. Создаем буфер начального размера (64KB)
         std::vector<u8> buffer(65536);
-
-        // 2. Заголовок файла
+        
+        // Заголовок
         BinaryFile* header = reinterpret_cast<BinaryFile*>(buffer.data());
         new (header) BinaryFile();
-        header->base_offset = 0;  //<< чтобы релокация работала необходимо записать 0 в offset
+        header->base_offset = 0;
         header->magic = BinaryFile::MAGIC;
         header->generation = BinaryFile::CURRENT_GENERATION;
-
-        u32 current_pos = 0;
-        current_pos += sizeof(BinaryFile);
-        // 3. Таблица дефиниций
+        
+        u32 current_pos = sizeof(BinaryFile);
+        
+        // Таблица дефиниций
         Definition* defs_table = reinterpret_cast<Definition*>(buffer.data() + current_pos);
-        u32 defs_count = static_cast<u32>(definitions_.size());
-
-        lg::info("=== BUILD DEBUG ===");
-        lg::info("Building {} definitions", defs_count);
-
-        for (u32 i = 0; i < defs_count; i++) {
-            const auto& def_data = definitions_[i];
-            lg::info("Definition[{}] :name='{}'({}) :type '{}'({})",
-                i,
-                def_data.name, def_data.name,
-                def_data.type, def_data.type);
-
-            // ЯВНАЯ инициализация каждого определения
-            new (&defs_table[i]) Definition{
-                StringId(def_data.name),      // StringId name
-                StringId(def_data.type),      // StringId type  
-                def_data.flags,
-                0,
-                Ptr<u8>()           // Временный нулевой указатель
-            };
-
-            // Проверим что записалось
-            lg::info("  Written :name {} :type {} :data-ptr {}",
-                defs_table[i].name, defs_table[i].type, defs_table[i].data.offset);
-        }
-
+        u32 defs_count = definitions_.size();
         current_pos += defs_count * sizeof(Definition);
         current_pos = align_size(current_pos);
-
-        // 4. Записываем данные дефиниций и обновляем указатели
+        
+        // Сохраняем позиции для каждого определения
+        std::vector<u32> def_offsets(defs_count);
+        
         for (u32 i = 0; i < defs_count; i++) {
             const auto& def = definitions_[i];
-
-            // Проверяем, не вышли ли за пределы буфера
-            ensure_capacity(buffer, current_pos + 1024);
-
-            // Обновляем указатель в таблице дефиниций
-            defs_table[i].data = Ptr<u8>(current_pos);
-            lg::info("Updated defs_table[{}].data_ptr = {}", i, current_pos);
-            if (def.type == "function") {
-                lg::info("FunctionDesc stated at 0x{:08x}", current_pos);
-                // Записываем FunctionDesc структуру
-                FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(buffer.data() + current_pos);
-                new (bc) FunctionDesc();  // Явная инициализация
-                current_pos += sizeof(FunctionDesc);
-
-                // Код
-                if (!def.code.empty()) {
-                    u32 code_size = static_cast<u32>(def.code.size() * sizeof(Instruction));
-                    ensure_capacity(buffer, current_pos + code_size);
-                    bc->code_ptr = Ptr<Instruction>(current_pos);
-                    bc->code_count = static_cast<u32>(def.code.size());
-                    lg::info("FunctionDesc :code-start-pos {:016X} :code-count {}", bc->code_ptr.offset, bc->code_count);
-
-                    Instruction* code_dest = reinterpret_cast<Instruction*>(buffer.data() + current_pos);
-                    std::memcpy(code_dest, def.code.data(), code_size);
-                    current_pos += code_size;
-                    current_pos = align_size(current_pos);
-                }
-
-                // Данные
-                if (!def.data.empty()) {
-                    ensure_capacity(buffer, current_pos + def.data.size());
-
-                    bc->data_ptr = Ptr<u8>(current_pos);
-                    bc->data_size = static_cast<u32>(def.data.size());
-
-                    u8* data_dest = buffer.data() + current_pos;
-                    std::memcpy(data_dest, def.data.data(), def.data.size());
-                    current_pos += def.data.size();
-                    current_pos = align_size(current_pos);
-                }
-
-                // Отладочная информация
-                if (!def.debug_info.empty()) {
-                    u32 debug_size = static_cast<u32>(def.debug_info.size() * sizeof(SourceLocation));
-                    ensure_capacity(buffer, current_pos + debug_size);
-
-                    bc->debug_ptr = Ptr<SourceLocation>(current_pos);
-                    bc->debug_count = static_cast<u32>(def.debug_info.size());
-
-                    SourceLocation* debug_dest = reinterpret_cast<SourceLocation*>(buffer.data() + current_pos);
-                    std::memcpy(debug_dest, def.debug_info.data(), debug_size);
-                    current_pos += debug_size;
-                    current_pos = align_size(current_pos);
-                }
-            }
-            else {
-                // Простая дефиниция - просто копируем данные
-                ensure_capacity(buffer, current_pos + def.data.size());
-
-                u8* data_dest = buffer.data() + current_pos;
-                std::memcpy(data_dest, def.data.data(), def.data.size());
-                current_pos += def.data.size();
-                current_pos = align_size(current_pos);
+            
+            // Инициализируем Definition в таблице
+            new (&defs_table[i]) Definition{
+                StringId(def.name),
+                StringId(def.type),
+                def.flags,
+                0,
+                Ptr<u8>()
+            };
+            
+            // Запоминаем позицию, куда будем копировать данные
+            def_offsets[i] = current_pos;
+            current_pos += def.data.bytes().size();
+            current_pos = align_size(current_pos);
+        }
+        
+        // Расширяем буфер
+        ensure_capacity(buffer, current_pos);
+        buffer.resize(current_pos);
+        
+        // Копируем данные и обновляем указатели
+        for (u32 i = 0; i < defs_count; i++) {
+            const auto& def = definitions_[i];
+            u8* dest = buffer.data() + def_offsets[i];
+            
+            // Копируем буфер
+            std::memcpy(dest, def.data.bytes().data(), def.data.bytes().size());
+            
+            // Обновляем указатель в таблице
+            defs_table[i].data = Ptr<u8>(def_offsets[i]);
+            
+            // Релокация: обновляем все помеченные указатели внутри этого буфера
+            for (u32 reloc_offset : def.data.relocatable_offsets()) {
+                u64* ptr = reinterpret_cast<u64*>(dest + reloc_offset);
+                *ptr += def_offsets[i];
             }
         }
-
-        // 5. Обновляем заголовок
+        
+        // Обновляем заголовок
         header->file_size = current_pos;
         header->used_size = current_pos;
         header->definitions_count = defs_count;
         header->definitions = Ptr<Definition>(sizeof(BinaryFile));
-
-        // 6. Обрезаем буфер до реального размера
+        
         buffer.resize(current_pos);
-
-        // Теперь буфер готов, можно делать make_for_memory
+        
+        // Релокация всего файла
         BinaryFile::make_for_memory(buffer, nullptr);
-       
+        
         return buffer;
     }
 
-    /** Добавить тип */
-    void BinaryFileBuilder::add_type(std::string name, std::string parent, 
-                const std::vector<MethodDef>& methods,
-                const std::vector<StateDesc>& states,
-                TypeFlags flags,
-                RegClass reg_class,
-                int load_size,
-                int alignment) {
-        
-        TypeDesc type;
-        type.name = StringId(name);
-        type.parent_type_id = StringId(parent);
-        type.methods_offset.offset = 0; // будет заполнено позже
-        type.states_offset.offset = 0;
-        type.methods_count = methods.size();
-        type.states_count = states.size();
-        type.flags = flags;
-        type.reg_class = reg_class;
-        type.load_size = load_size;
-        type.in_memory_alignment = alignment;
-        type.inline_array_stride_alignment = alignment;
-        type.inline_array_start_alignment = alignment;
-        type.offset = 0;
-        
-        // Сериализуем методы и состояния
-        std::vector<u8> type_data;
-        // ... сериализация ...
-        
-        definitions_.push_back(DefinitionData{
-            name, 
-            "type", 
-            SymbolFlags::Export,
-            type_data, 
-            {}, 
-            {}
-        });
-    }
-
-    /** Добавить состояние */
-    void BinaryFileBuilder::add_state(std::string name, std::string parent,
-                const std::vector<FunctionDesc*>& handlers,
-                StateFlags flags) {
-        
-        StateDesc state;
-        state.name = StringId(name);
-        state.parent_state = StringId(parent);
-        state.defs_count = handlers.size();
-        state.definitions.offset = 0;
-        state.flags = flags;
-        
-        // Сериализуем обработчики
-        std::vector<u8> state_data;
-        // ... сериализация ...
-        
-        definitions_.push_back(DefinitionData{
-            name, 
-            "state", 
-            SymbolFlags::Export,
-            state_data, 
-            {}, 
-            {}
-        });
-    }
     /** Просмотреть входные данные которые были добавлены */
     std::string BinaryFileBuilder::inspect_input() const {
         std::string result;
@@ -237,38 +121,11 @@ namespace carbon::files {
                 def.name,
                 def.type);
 
-            if (def.type =="function") {
-                result += fmt::format("code:{} instructions, data:{} bytes, debug:{} entries\n",
-                    def.code.size(), def.data.size(), def.debug_info.size());
-
-                // Показать первые несколько инструкций
-                if (!def.code.empty()) {
-                    result += "      instructions: ";
-                    for (size_t j = 0; j < std::min(def.code.size(), size_t(3)); j++) {
-                        result += fmt::format("{} ", def.code[j].to_string());
-                    }
-                    if (def.code.size() > 3) {
-                        result += fmt::format("... ({} total)", def.code.size());
-                    }
-                    result += "\n";
-                }
-            }
-            else {
                 result += fmt::format("data:{} bytes", def.data.size());
 
-                // Показать начало данных для простых типов
-                if (!def.data.empty()) {
-                    result += " [";
-                    for (size_t j = 0; j < std::min(def.data.size(), size_t(8)); j++) {
-                        result += fmt::format("{:02x}", def.data[j]);
-                    }
-                    if (def.data.size() > 8) {
-                        result += "...";
-                    }
-                    result += "]";
-                }
-                result += "\n";
-            }
+            // Показать начало данных для простых типов
+            result += def.data.inspect();
+            result += "\n";
         }
 
         return result;

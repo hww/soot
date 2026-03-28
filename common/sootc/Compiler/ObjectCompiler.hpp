@@ -11,10 +11,10 @@ public:
     ObjectCompiler(TypeSystem& ts);
     
     // Компилируем один S-выражение в функцию
-    std::vector<u8> compile_function(const script::Object& form, const std::string& func_name);
+    RelocatableBuffer  compile_function(const script::Object& form, const std::string& func_name);
     
     // Компилируем файл (список форм)
-    std::vector<u8> compile_file(const script::Object& forms, const std::string& module_name);
+    RelocatableBuffer  compile_file(const script::Object& forms, const std::string& module_name);
     
 private:
     TypeSystem& ts_;

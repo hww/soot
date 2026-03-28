@@ -3,6 +3,7 @@
 #include "common/sootc/Compiler/ObjectCompiler.hpp"
 #include "common/util/Log.hpp"
 #include "common/carbon/files/BinaryFileBuilder.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include <fstream>
 #include <iostream>
@@ -233,13 +234,12 @@ int main(int argc, char* argv[]) {
                 lg::info("Compiling function: {}", func_name);
                 
                 ObjectCompiler compiler(ts);
-                auto bytecode = compiler.compile_function(form, func_name);
+                auto buffer = compiler.compile_function(form, func_name);
                 
-                if (!bytecode.empty()) {
-                    std::vector<Instruction> instructions = bytecode_to_instructions(bytecode);
-                    builder.add_function(func_name, instructions);
+                if (!buffer.is_empty()) {
+                    builder.add_definition(func_name, "function", std::move(buffer), SymbolFlags::Export);
                     exported_functions.push_back(func_name);
-                    lg::info("  Added function with {} instructions", instructions.size());
+                    lg::info("  Added function with {} instructions", buffer.size());
                 }
             }
             

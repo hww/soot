@@ -1,8 +1,10 @@
 // test_relocation.cpp
 #include "gtest/gtest.h"
 #include "carbon/Export.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include "fmt/base.h"
 #include "fmt/format.h"
+#include "lib/Variant.hpp"
 
 using namespace carbon::vm;
 using namespace carbon::lib;
@@ -24,7 +26,9 @@ protected:
             Instruction::create_a(Opcode::RETURN, 0)
         };
         
-        builder.add_function("test_func", code, {}, {});
+        RelocatableBuffer rbuffer;
+        rbuffer.add_function(code, {}, {});
+        builder.add_definition("test_func", "function", rbuffer);
         
         // Получаем бинарник
         std::vector<u8> binary = builder.build();
@@ -88,8 +92,9 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     };
     
     std::vector<u8> data = {0x01, 0x02, 0x03, 0x04};
-    
-    builder.add_function("test_func", code, data, {});
+    RelocatableBuffer rbuffer;
+    rbuffer.add_function(code, data, {});
+    builder.add_definition("test_func", "function", rbuffer);
     
     std::vector<u8> binary = builder.build();
     BinaryFile* original = reinterpret_cast<BinaryFile*>(binary.data());

@@ -78,7 +78,7 @@ std::string FunctionDesc::inspect() const {
         "  data_ptr: {}\n"
         "  debug_ptr: {}\n"
         "  owner_module: {}\n"
-        "}}",
+        "  }}\n",
         code_count,
         data_size,
         debug_count,
@@ -89,7 +89,6 @@ std::string FunctionDesc::inspect() const {
     );
     result += "  Code:\n";
     if (code_ptr.ptr && code_count > 0) {
-        result += "  Code:\n";
         for (size_t i=0; i<code_count; i++) {
             result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(code_ptr.ptr[i]));
         }

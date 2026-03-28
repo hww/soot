@@ -67,7 +67,7 @@ namespace carbon::files {
     }
 
     std::string Definition::inspect() const {
-        auto result = std::format("(definition {} :type {} :ptr {:x} :flags {})",
+        auto result = std::format("(definition `{}` :type `{}` :ptr {:x} :flags {})\n",
             name, type, (u64)data.offset, get_symbol_flags_string(flags));
 
         if (data.ptr) {

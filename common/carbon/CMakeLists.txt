@@ -13,6 +13,7 @@ add_library(libcarbon
     common/carbon/lib/Ptr.cpp
 
     ## Files
+    common/carbon/files/RelocatableBuffer.cpp
     common/carbon/files/Definition.cpp
     common/carbon/files/StateDesc.cpp
     common/carbon/files/TypeDesc.cpp

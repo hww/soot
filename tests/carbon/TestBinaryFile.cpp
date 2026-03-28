@@ -1,6 +1,7 @@
 ﻿#include "gtest/gtest.h"
 #include "carbon/Export.hpp"
 #include <iostream>
+#include "files/RelocatableBuffer.hpp"
 #include "fmt/format.h"
 #include "lib/StringIdManager.hpp"
 
@@ -37,13 +38,13 @@ protected:
                 Instruction::create_a(Opcode::RETURN,0),
                 Instruction::create_a(Opcode::RETURN,0)
             };
-
-            builder.add_function(
-                def_name,
+            RelocatableBuffer rbuffer;
+            rbuffer.add_function(
                 code,
                 {}, // пустые данные
                 {}  // пустая отладочная информация
             );
+            builder.add_definition(def_name, "function", rbuffer);
         }
         builder.debug_print_input();
         builder.debug_full_inspect(builder.build());

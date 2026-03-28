@@ -145,33 +145,21 @@ namespace carbon::files {
         // Inspect each definition
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
-            result << std::format("    [{}] {}\n", i, def->inspect());
+            result << std::format("Definition[{}] {}\n", i, def->inspect());
 
             // Add detailed information for function definitions
             if (def->type == TypeIds::function) {
                 FunctionDesc* bc = def->data.cast<FunctionDesc>().get();
-                if (bc) {
-                    result << std::format("         -> {}\n", bc->inspect());
-
-                    // Show code section details if available
-                    if (bc->code_count > 0) {
-                        result << std::format("            Code: {} instructions at 0x{:x}\n",
-                            bc->code_count, bc->code_ptr.offset);
-                    }
-
-                    // Show data section details if available  
-                    if (bc->data_size > 0) {
-                        result << std::format("            Data: {} bytes at 0x{:x}\n",
-                            bc->data_size, bc->data_ptr.offset);
-                    }
-
-                    // Show debug information if available
-                    if (bc->has_debug_info()) {
-                        result << std::format("            Debug: {} entries at 0x{:x}\n",
-                            bc->debug_count, bc->debug_ptr.offset);
-                    }
-                }
+                result << fmt::format("  {}\n", bc->inspect());
             }
+            else if (def->type == TypeIds::type) {
+                TypeDesc* bc = def->data.cast<TypeDesc>().get();
+                result << fmt::format("  {}\n", bc->inspect());
+            }
+            else if (def->type == TypeIds::state) {
+                StateDesc* bc = def->data.cast<StateDesc>().get();
+                result << fmt::format("  {}\n", bc->inspect());
+            }            
         }
 
         return result.str();

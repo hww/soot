@@ -1,13 +1,14 @@
 #include "common/sootc/Compiler/ObjectCompiler.hpp"
 #include "common/sootc/IR/IR_Node.hpp"
 #include "common/util/Log.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include <vector>
 
 namespace sootc {
 
 ObjectCompiler::ObjectCompiler(TypeSystem& ts) : ts_(ts) {}
 
-std::vector<u8> ObjectCompiler::compile_function(const Object& form, const std::string& func_name) {
+RelocatableBuffer  ObjectCompiler::compile_function(const Object& form, const std::string& func_name) {
     // Ожидаем: (lambda (args) body)
     if (!form.is_pair()) {
         lg::error("Expected lambda form, got: {}", form.print());
@@ -268,7 +269,7 @@ IR_Reg* ObjectCompiler::create_temp_reg(Type* type, FunctionCompiler& compiler) 
     return compiler.create_local_reg(type);
 }
 
-std::vector<u8> ObjectCompiler::compile_file(const script::Object& forms, const std::string& module_name) {
+RelocatableBuffer ObjectCompiler::compile_file(const script::Object& forms, const std::string& module_name) {
     // Ожидаем список форм (top-level)
     if (!forms.is_pair() && !forms.is_null()) {
         lg::error("Expected list of forms");

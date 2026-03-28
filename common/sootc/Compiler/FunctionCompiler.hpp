@@ -4,8 +4,11 @@
 #include "common/sootc/IR/IR_Node.hpp"
 #include "common/sootc/IR/IR_Value.hpp"
 #include "common/carbon/vm/Instructions.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp"
 #include <memory>
 #include <vector>
+
+using namespace carbon::files;
 
 namespace sootc {
 
@@ -22,7 +25,7 @@ class FunctionCompiler {
     void add_node(std::unique_ptr<IR_Node> node);
 
     // Генерация байткода - возвращает инструкции, а не байты
-    std::vector<u8> compile();
+    RelocatableBuffer compile();
 
     // Отладка
     std::string to_string() const;
