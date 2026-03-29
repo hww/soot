@@ -109,6 +109,19 @@ IR_Reg* ObjectCompiler::compile_form(const script::Object& form, FunctionCompile
             else if (op == "begin") {
                 return compile_begin(form, compiler);
             }
+            else if (op == "define-type") {
+                
+            }
+            else if (op == "define-state") {
+
+            }
+            else if (op == "define-method") {
+
+            }
+            else if (op == "define") {
+
+   
+            }            
             else {
                 // Обычный вызов функции
                 return compile_call(form, compiler);

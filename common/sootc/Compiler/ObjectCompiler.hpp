@@ -34,6 +34,7 @@ private:
     // Компиляция примитивных операций
     IR_Reg* compile_binary_op(const script::Object& form, FunctionCompiler& compiler, IR_Binary::Op op);
     
+    
     // Таблица символов для локальных переменных
     std::unordered_map<std::string, IR_Reg*> local_vars_;
     
