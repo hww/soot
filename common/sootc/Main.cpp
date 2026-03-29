@@ -1,6 +1,6 @@
 ﻿#include "common/sooti/Reader.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sootc/Compiler/ObjectCompiler.hpp"
+#include "common/sootc/Compiler/Compiler.hpp"
 #include "common/util/Log.hpp"
 #include "common/carbon/files/BinaryFileBuilder.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
@@ -47,7 +47,7 @@ void print_usage(const char* program_name) {
     std::cerr << "\nNote: One .sot file produces one .bin and one .dci\n";
 }
 
-std::string extract_function_name(const Object& form) {
+std::string extract_name(const Object& form) {
     if (!form.is_pair()) return "";
     
     auto first = form.as_pair()->car;
@@ -63,27 +63,6 @@ std::string extract_function_name(const Object& form) {
     if (!name_form.is_symbol()) return "";
     
     return name_form.as_symbol().c_str();
-}
-
-// Преобразует байткод в вектор инструкций
-// Временная функция - нужно будет реализовать правильно
-std::vector<Instruction> bytecode_to_instructions(const std::vector<u8>& bytecode) {
-    std::vector<Instruction> instructions;
-    
-    // Проверяем размер байткода
-    if (bytecode.size() % sizeof(Instruction) != 0) {
-        lg::warn("Bytecode size {} is not a multiple of instruction size", bytecode.size());
-    }
-    
-    // Преобразуем байты в инструкции
-    size_t num_instructions = bytecode.size() / sizeof(Instruction);
-    for (size_t i = 0; i < num_instructions; i++) {
-        Instruction instr;
-        memcpy(&instr, &bytecode[i * sizeof(Instruction)], sizeof(Instruction));
-        instructions.push_back(instr);
-    }
-    
-    return instructions;
 }
 
 int main(int argc, char* argv[]) {
@@ -220,39 +199,45 @@ int main(int argc, char* argv[]) {
         TypeSystem& ts = TypeSystem::instance();
         ts.add_builtin_types();
         
+        // Создаем компилятор и глобальное окружение
+        Compiler compiler(ts);
+        GlobalEnv global_env;
+        
         // Создаем билдер ОДИН РАЗ
         BinaryFileBuilder builder(module_name);
-        std::vector<std::string> exported_functions;
+        std::vector<std::string> exported_names;
         
-        // Собираем все функции
+        // Компилируем каждую форму
         Object current = forms;
         while (current.is_pair()) {
             auto form = current.as_pair()->car;
-            std::string func_name = extract_function_name(form);
+            std::string name = extract_name(form);
             
-            if (!func_name.empty()) {
-                lg::info("Compiling function: {}", func_name);
+            if (!name.empty()) {
+                lg::info("Compiling: {}", name);
                 
-                ObjectCompiler compiler(ts);
-                auto buffer = compiler.compile_function(form, func_name);
+                // Компилируем форму
+                RelocatableBuffer buffer = compiler.compile(form, &global_env);
                 
-                if (!buffer.is_empty()) {
-                    builder.add_definition(func_name, "function", std::move(buffer), SymbolFlags::Export);
-                    exported_functions.push_back(func_name);
-                    lg::info("  Added function with {} instructions", buffer.size());
+                if (buffer.size() > 0) {
+                    // Определяем тип по форме
+                    std::string type = "function"; // пока только функции
+                    builder.add_definition(name, type, std::move(buffer), SymbolFlags::Export);
+                    exported_names.push_back(name);
+                    lg::info("  Added definition: {} ({} bytes)", name, buffer.size());
                 }
             }
             
             current = current.as_pair()->cdr;
         }
         
-        if (exported_functions.empty()) {
-            lg::error("No functions compiled");
+        if (exported_names.empty()) {
+            lg::error("No definitions compiled");
             return 1;
         }
         
         // ОДИН РАЗ строим модуль
-        lg::info("Building module with {} functions", exported_functions.size());
+        lg::info("Building module with {} definitions", exported_names.size());
         auto module = builder.build_module();
         
         if (!module) {
@@ -261,7 +246,7 @@ int main(int argc, char* argv[]) {
         }
         
         // Обновляем экспорты
-        for (const auto& name : exported_functions) {
+        for (const auto& name : exported_names) {
             module->dci_exports.push_back(StringId(name.c_str()));
         }
         
@@ -275,7 +260,7 @@ int main(int argc, char* argv[]) {
         
         lg::info("=== Compilation complete ===");
         lg::info("Module: {}", module_name);
-        lg::info("Exported {} functions", exported_functions.size());
+        lg::info("Exported {} definitions", exported_names.size());
         lg::info("Saved .bin and .dci to: {}", output_dir.string());
         
     } catch (const std::exception& e) {
@@ -284,5 +269,4 @@ int main(int argc, char* argv[]) {
     }
     
     return 0;
-    
 }

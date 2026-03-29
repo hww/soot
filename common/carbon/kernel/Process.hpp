@@ -14,6 +14,7 @@
 
 
 using namespace carbon::files;
+using namespace carbon::vm;
 
 namespace carbon::kernel {
 

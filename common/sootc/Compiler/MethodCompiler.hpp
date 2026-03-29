@@ -16,7 +16,7 @@ public:
     
     // Компилирует определение метода
     // Пример: (define-method add type ((a int) (b int)) (+ a b))
-    RelocatableBuffer compile_method(const script::Object& form, const std::string& method_name);
+    RelocatableBuffer compile_method(const script::Object& form);
     
 private:
     TypeSystem& ts_;

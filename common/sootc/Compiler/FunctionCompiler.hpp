@@ -1,44 +1,50 @@
+// FunctionCompiler.hpp
 #pragma once
 
 #include "common/type_system/TypeSystem.hpp"
-#include "common/sootc/IR/IR_Node.hpp"
-#include "common/sootc/IR/IR_Value.hpp"
-#include "common/carbon/vm/Instructions.hpp"
+#include "common/sooti/Object.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
-#include <memory>
+#include "common/carbon/vm/Instructions.hpp"
+#include "Env.hpp"
 #include <vector>
+#include <string>
+#include <unordered_map>
 
 using namespace carbon::files;
+using namespace carbon::vm;
 
 namespace sootc {
 
 class FunctionCompiler {
-  public:
-    FunctionCompiler(TypeSystem &ts, Type *function_type, const std::string& func_name);
-
-    // Создание регистров
-    IR_Reg *create_local_reg(Type *type);
-    IR_Reg* create_arg_reg(Type* type, u32 index);
-    IR_Reg *get_self_reg();
-
-    // Добавление узлов
-    void add_node(std::unique_ptr<IR_Node> node);
-
-    // Генерация байткода - возвращает инструкции, а не байты
-    RelocatableBuffer compile();
-
-    // Отладка
-    std::string to_string() const;
-
-  private:
-    TypeSystem &ts_;
-    Type       *function_type_;
-    std::string function_name_;
-
-    std::vector<std::unique_ptr<IR_Value>> values_;
-    std::vector<std::unique_ptr<IR_Reg>>   regs_;
-    std::vector<std::unique_ptr<IR_Node>>  nodes_;
-    u32                                    next_reg_ = 0;
+public:
+    FunctionCompiler(TypeSystem& ts);
+    
+    // Компиляция lambda формы в RelocatableBuffer
+    RelocatableBuffer compile(const script::Object& form, const std::string& func_name, Env* env);
+    
+private:
+    TypeSystem& ts_;
+    
+    // Состояние компиляции текущей функции
+    std::vector<Instruction> instructions_;
+    int next_reg_ = 0;
+    
+    // Вспомогательные методы
+    int alloc_reg();
+    int lookup_reg(const std::string& name, Env* env);
+    void emit(Instruction instr);
+    void emit_load_imm(int reg, int64_t value);
+    void emit_binary_op(Opcode op, int dest, int left, int right);
+    void emit_return(int reg);
+    
+    // Компиляция формы в регистр
+    int compile_form(const script::Object& form, Env* env);
+    int compile_number(const script::Object& form, Env* env);
+    int compile_symbol(const script::Object& form, Env* env);
+    int compile_binary_op(const script::Object& form, Env* env, const std::string& op);
+    
+    // Сборка результата
+    RelocatableBuffer build_buffer();
 };
 
 } // namespace sootc

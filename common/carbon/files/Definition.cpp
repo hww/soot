@@ -7,6 +7,7 @@
 #include "util/Log.hpp"
 
 using namespace carbon::lib;
+using namespace carbon::modules;
 
 namespace carbon::files {
     // =============================================================================

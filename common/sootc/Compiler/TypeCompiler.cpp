@@ -1,68 +1,60 @@
-// common/sootc/Compiler/TypeCompiler.cpp
+// TypeCompiler.cpp
 #include "TypeCompiler.hpp"
-#include "common/carbon/files/TypeDesc.hpp"
-#include "common/carbon/files/Definition.hpp"
-#include "common/carbon/files/StateDesc.hpp"
-#include "common/carbon/files/FunctionDesc.hpp"
-#include "type_system/Deftype.hpp"
-#include "type_system/TypeSystem.hpp"
+#include "common/type_system/Deftype.hpp"
+#include "common/carbon/lib/Ptr.hpp"
+#include "common/util/Log.hpp"
 
 namespace sootc {
 
 TypeCompiler::TypeCompiler(TypeSystem& ts) : ts_(ts) {}
 
-RelocatableBuffer TypeCompiler::compile_type(const script::Object& form, EnvironmentMap* constances) {
-
-    auto& ts = TypeSystem::instance();
-    auto resut = parse_deftype(form, &ts, constances);
-    /**
-     * The resukt is 
-     *   struct DeftypeResult {
-     *   TypeSpec  type;
-     *   Type     *type_info = nullptr;
-     *   TypeFlags flags;
-     *   bool      create_runtime_type = true;
-     * };
-     */
-
-    if (resut.flags.)
-    // Парсим форму типа
-    // (define-type MyClass (parent Object) 
-    //   (methods ...)
-    //   (states ...)
-    //   (flags ...))
+RelocatableBuffer TypeCompiler::compile(const script::Object& form, Env* env) {
+    // Парсим deftype
+    DeftypeResult result = parse_deftype(form, &ts_, nullptr);
     
-    RelocatableBuffer buffer;
+    // Получаем информацию о типе
+    StructureType* struct_type = dynamic_cast<StructureType*>(result.type_info);
+    if (!struct_type) {
+        lg::error("Only structure types are supported for serialization");
+        return {};
+    }
     
     // Создаем TypeDesc
     TypeDesc type_desc;
-    type_desc.name = StringId(type_name);
-    type_desc.parent_type_id = StringId("object"); // по умолчанию
-    type_desc.methods_count = 0;
-    type_desc.states_count = 0;
-    type_desc.flags = TypeFlags::None;
-    type_desc.reg_class = RegClass::GPR_64;
-    type_desc.load_size = 8;
-    type_desc.in_memory_alignment = 8;
-    type_desc.inline_array_stride_alignment = 8;
-    type_desc.inline_array_start_alignment = 8;
-    type_desc.offset = 0;
+    type_desc.name = StringId(struct_type->get_name());
+    type_desc.parent_type_id = StringId(struct_type->get_parent());
+    type_desc.methods_count = struct_type->get_num_methods();
+    type_desc.states_count = struct_type->get_states_declared_for_type().size();
+    type_desc.flags = result.flags.flag;
+    type_desc.load_size = struct_type->get_load_size();
+    type_desc.in_memory_alignment = struct_type->get_in_memory_alignment();
+    type_desc.inline_array_stride_alignment = struct_type->get_inline_array_stride_alignment();
+    type_desc.inline_array_start_alignment = struct_type->get_inline_array_start_alignment();
+    type_desc.offset = struct_type->get_offset();
     
-    // Парсим parent
-    // ... 
-    
-    // Компилируем методы
+    // Собираем методы
     std::vector<MethodDef> methods;
-    // std::vector<MethodDef> methods = compile_methods(methods_form);
+    for (const auto& method : struct_type->get_methods_defined_for_type()) {
+        MethodDef method_def;
+        method_def.name = StringId(method.name);
+        method_def.type = StringId("function");
+        method_def.flags = method.no_virtual ? MethodFlags::None : MethodFlags::Virtual;
+        method_def.data = nullptr;
+        methods.push_back(method_def);
+    }
     
-    // Компилируем состояния
+    // Собираем состояния
     std::vector<StateDef> states;
-    // std::vector<StateDef> states = compile_states(states_form);
+    for (const auto& [state_name, state_type] : struct_type->get_states_declared_for_type()) {
+        StateDef state_def;
+        state_def.name = StringId(state_name);
+        state_def.type = StringId("state");
+        state_def.flags = SymbolFlags::Export;
+        state_def.data = nullptr;
+        states.push_back(state_def);
+    }
     
-    type_desc.methods_count = methods.size();
-    type_desc.states_count = states.size();
-    
-    // Собираем буфер
+    // Строим буфер
     return build_type_buffer(type_desc, methods, states);
 }
 
@@ -75,7 +67,7 @@ RelocatableBuffer TypeCompiler::build_type_buffer(const TypeDesc& type_desc,
     u32 type_start = buffer.size();
     buffer.add_bytes(&type_desc, sizeof(TypeDesc));
     
-    // Отмечаем методы и состояния как relocatable
+    // Отмечаем pointers как relocatable
     u32 methods_ptr_offset = type_start + offsetof(TypeDesc, methods_offset);
     u32 states_ptr_offset = type_start + offsetof(TypeDesc, states_offset);
     
@@ -86,7 +78,7 @@ RelocatableBuffer TypeCompiler::build_type_buffer(const TypeDesc& type_desc,
         buffer.add_relocatable_offset(states_ptr_offset);
     }
     
-    // Записываем массив методов (MethodDef)
+    // Записываем массив методов
     u32 methods_start = 0;
     if (!methods.empty()) {
         methods_start = buffer.size();
@@ -98,7 +90,7 @@ RelocatableBuffer TypeCompiler::build_type_buffer(const TypeDesc& type_desc,
         methods_ptr->offset = methods_start;
     }
     
-    // Записываем массив состояний (StateDef)
+    // Записываем массив состояний
     u32 states_start = 0;
     if (!states.empty()) {
         states_start = buffer.size();
