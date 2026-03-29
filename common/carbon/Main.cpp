@@ -250,7 +250,7 @@ int main(int argc, char* argv[]) {
         lg::error("Module '{}' has no binary data", module_name);
         return 1;
     }
-    lg::info("dump\n{}", loaded_module->inspect());
+    lg::info("{}", loaded_module->inspect());
     // Находим функцию через API модуля
     FunctionDesc* function_code = loaded_module->resolve_function(SID(function_name.c_str()));
     if (!function_code) {

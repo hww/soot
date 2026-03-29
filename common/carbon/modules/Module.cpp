@@ -158,7 +158,7 @@ namespace carbon::modules {
         result += fmt::format("  Import table: {} modules\n", import_table.size());
 
         if (binary_file) {
-            result += fmt::format("  Binary: {}\n", binary_file->inspect());
+            result += fmt::format("  Binary: {}", binary_file->inspect());
         }
         else {
             result += "  Binary: not loaded\n";

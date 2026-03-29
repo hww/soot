@@ -146,20 +146,6 @@ namespace carbon::files {
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
             result << std::format("Definition[{}] {}\n", i, def->inspect());
-
-            // Add detailed information for function definitions
-            if (def->type == TypeIds::function) {
-                FunctionDesc* bc = def->data.cast<FunctionDesc>().get();
-                result << fmt::format("  {}\n", bc->inspect());
-            }
-            else if (def->type == TypeIds::type) {
-                TypeDesc* bc = def->data.cast<TypeDesc>().get();
-                result << fmt::format("  {}\n", bc->inspect());
-            }
-            else if (def->type == TypeIds::state) {
-                StateDesc* bc = def->data.cast<StateDesc>().get();
-                result << fmt::format("  {}\n", bc->inspect());
-            }            
         }
 
         return result.str();

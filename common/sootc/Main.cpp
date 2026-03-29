@@ -47,24 +47,6 @@ void print_usage(const char* program_name) {
     std::cerr << "\nNote: One .sot file produces one .bin and one .dci\n";
 }
 
-std::string extract_name(const Object& form) {
-    if (!form.is_pair()) return "";
-    
-    auto first = form.as_pair()->car;
-    if (!first.is_symbol()) return "";
-    
-    std::string op = first.as_symbol().c_str();
-    if (op != "define") return "";
-    
-    auto args = form.as_pair()->cdr;
-    if (!args.is_pair()) return "";
-    
-    auto name_form = args.as_pair()->car;
-    if (!name_form.is_symbol()) return "";
-    
-    return name_form.as_symbol().c_str();
-}
-
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         print_usage(argv[0]);
@@ -199,55 +181,16 @@ int main(int argc, char* argv[]) {
         TypeSystem& ts = TypeSystem::instance();
         ts.add_builtin_types();
         
-        // Создаем компилятор и глобальное окружение
-        Compiler compiler(ts);
+        // Создаем компилятор
+        Compiler compiler(ts, module_name);
         GlobalEnv global_env;
         
-        // Создаем билдер ОДИН РАЗ
-        BinaryFileBuilder builder(module_name);
-        std::vector<std::string> exported_names;
+        // Компилируем весь файл - компилятор сам разберет формы и вернет список определений
+        auto module = compiler.compile_module(forms, &global_env);
         
-        // Компилируем каждую форму
-        Object current = forms;
-        while (current.is_pair()) {
-            auto form = current.as_pair()->car;
-            std::string name = extract_name(form);
-            
-            if (!name.empty()) {
-                lg::info("Compiling: {}", name);
-                
-                // Компилируем форму
-                RelocatableBuffer buffer = compiler.compile(form, &global_env);
-                
-                if (buffer.size() > 0) {
-                    // Определяем тип по форме
-                    std::string type = "function"; // пока только функции
-                    builder.add_definition(name, type, std::move(buffer), SymbolFlags::Export);
-                    exported_names.push_back(name);
-                    lg::info("  Added definition: {} ({} bytes)", name, buffer.size());
-                }
-            }
-            
-            current = current.as_pair()->cdr;
-        }
-        
-        if (exported_names.empty()) {
-            lg::error("No definitions compiled");
-            return 1;
-        }
-        
-        // ОДИН РАЗ строим модуль
-        lg::info("Building module with {} definitions", exported_names.size());
-        auto module = builder.build_module();
-        
-        if (!module) {
+        if (module.get() == nullptr) {
             lg::error("Failed to build module");
             return 1;
-        }
-        
-        // Обновляем экспорты
-        for (const auto& name : exported_names) {
-            module->dci_exports.push_back(StringId(name.c_str()));
         }
         
         lg::info("Module dump:\n{}", module->inspect());
@@ -260,7 +203,6 @@ int main(int argc, char* argv[]) {
         
         lg::info("=== Compilation complete ===");
         lg::info("Module: {}", module_name);
-        lg::info("Exported {} definitions", exported_names.size());
         lg::info("Saved .bin and .dci to: {}", output_dir.string());
         
     } catch (const std::exception& e) {

@@ -6,6 +6,7 @@
 #include "common/carbon/files/RelocatableBuffer.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "Env.hpp"
+#include "files/BinaryFileBuilder.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
 #include <functional>
 #include <unordered_map>
@@ -20,8 +21,10 @@ namespace sootc {
 
 class Compiler {
 public:
-    Compiler(TypeSystem& ts);
+    Compiler(TypeSystem& ts, std::string module_name);
     
+    std::shared_ptr<Module> compile_module(const script::Object& form, Env* env);
+
     // Главный метод компиляции
     RelocatableBuffer compile(const script::Object& form, Env* env);
     
@@ -50,8 +53,13 @@ public:
     // Сборка результата
     RelocatableBuffer build_result();
     
+    void add_definition(const std::string& name, const std::string& type, RelocatableBuffer&& buffer) {
+        builder_.add_definition(name, type, std::move(buffer), SymbolFlags::Export);
+    }
+
 private:
     TypeSystem& ts_;
+    BinaryFileBuilder builder_;
     TypeCompiler type_compiler_;
 
     // Таблица диспетчеризации (как g_goal_forms)

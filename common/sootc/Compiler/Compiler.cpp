@@ -3,13 +3,18 @@
 #include "common/carbon/files/FunctionDesc.hpp"
 #include "common/carbon/lib/Ptr.hpp"
 #include "common/util/Log.hpp"
+#include "files/BinaryFileBuilder.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
+#include "type_system/Type.hpp"
 #include <fmt/format.h>
 
 namespace sootc {
 
-Compiler::Compiler(TypeSystem& ts) : ts_(ts), type_compiler_(ts) {
+Compiler::Compiler(TypeSystem& ts, std::string module_name) 
+    : ts_(ts), 
+      builder_(module_name),           // ← инициализация builder_
+      type_compiler_(ts, builder_) {   // ← передаем builder_ в type_compiler_
     setup_forms();
 }
 
@@ -27,6 +32,21 @@ void Compiler::setup_forms() {
         {"/", &Compiler::compile_div},
         {"deftype", &Compiler::compile_deftype},
     };
+}
+
+
+std::shared_ptr<Module>  Compiler::compile_module(const script::Object& forms, Env* env) {
+    
+    auto current = forms;
+    while (current.is_pair()) {
+        auto form = current.as_pair()->car;
+        
+        // Компилируем форму
+        RelocatableBuffer buffer = compile(form, env);
+    
+        current = current.as_pair()->cdr;
+    }
+    return builder_.build_module();
 }
 
 RelocatableBuffer Compiler::compile(const script::Object& form, Env* env) {
@@ -83,7 +103,14 @@ RelocatableBuffer Compiler::compile_define(const script::Object& form, const scr
     std::string func_name = name_form.as_symbol().c_str();
     
     // Компилируем lambda
-    return compile(value_form, env);
+    auto result = compile(value_form, env);
+
+    if (result.size() > 0) {
+        // Добавляем дефиницию в билдер
+        builder_.add_definition(func_name, "function", std::move(result), SymbolFlags::Export);
+    }
+
+    return result;
 }
 
 RelocatableBuffer Compiler::compile_lambda(const script::Object& form, const script::Object& rest, Env* env) {
@@ -229,7 +256,7 @@ RelocatableBuffer Compiler::compile_call(const script::Object& form, Env* env) {
 
 RelocatableBuffer Compiler::compile_deftype(const Object& form, const Object& rest, Env* env) {
     (void)rest;
-    return type_compiler_.compile(form, env);
+    return type_compiler_.compile(form, form.as_pair()->cdr, env);
 }
 
 

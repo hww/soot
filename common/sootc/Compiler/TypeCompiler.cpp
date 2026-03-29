@@ -3,14 +3,16 @@
 #include "common/type_system/Deftype.hpp"
 #include "common/carbon/lib/Ptr.hpp"
 #include "common/util/Log.hpp"
+#include "files/BinaryFileBuilder.hpp"
 
 namespace sootc {
 
-TypeCompiler::TypeCompiler(TypeSystem& ts) : ts_(ts) {}
+TypeCompiler::TypeCompiler(TypeSystem& ts, BinaryFileBuilder& compiler) : ts_(ts), builder_(compiler) {}
 
-RelocatableBuffer TypeCompiler::compile(const script::Object& form, Env* env) {
+RelocatableBuffer TypeCompiler::compile(const script::Object& form, const script::Object& rest, Env* env) {
+    (void)form;
     // Парсим deftype
-    DeftypeResult result = parse_deftype(form, &ts_, nullptr);
+    DeftypeResult result = parse_deftype(rest, &ts_, nullptr);
     
     // Получаем информацию о типе
     StructureType* struct_type = dynamic_cast<StructureType*>(result.type_info);
@@ -55,7 +57,15 @@ RelocatableBuffer TypeCompiler::compile(const script::Object& form, Env* env) {
     }
     
     // Строим буфер
-    return build_type_buffer(type_desc, methods, states);
+    auto buffer  = build_type_buffer(type_desc, methods, states);
+
+    if (buffer.size() > 0) {
+        // Добавляем дефиницию в билдер через компилятор
+        std::string type_name = struct_type->get_name();
+        builder_.add_definition(type_name, "type", std::move(buffer));
+    }
+
+    return buffer;
 }
 
 RelocatableBuffer TypeCompiler::build_type_buffer(const TypeDesc& type_desc,
