@@ -77,10 +77,14 @@ namespace carbon::files {
                     result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();    
                 else if (type == TypeIds::type)
                     result += (reinterpret_cast<TypeDesc*>(data.ptr))->inspect();    
+                else if (type == TypeIds::new_method)
+                    result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();  
+                else if (type == TypeIds::method)
+                    result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();  
                 else if (type == TypeIds::state)
                     result += (reinterpret_cast<StateDesc*>(data.ptr))->inspect();  
                 else
-                    lg::error("unexpected definition type {}\n", type);
+                    lg::error("Definition::inspect unexpected definition type {}\n", type);
             }            
         }
         return result;
@@ -96,6 +100,10 @@ namespace carbon::files {
 
         if (data.offset) {
             if (type == TypeIds::function)
+                (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+            else if (type == TypeIds::method)
+                (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+            else if (type == TypeIds::new_method)
                 (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
             else if (type == TypeIds::type)
                 (reinterpret_cast<TypeDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    

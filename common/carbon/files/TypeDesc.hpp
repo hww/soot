@@ -21,24 +21,16 @@ struct StateDef;
  * Pure data structure - no logic, only serialization fields
  */
 struct TypeDesc {
-    // === Identification ===
+  // === Identification ===
     StringId name;                    // Type name
     StringId parent_type_id;          // Parent type name
     
-    // === Type flags (from TypeSystem::TypeFlags.flag) ===
+    // === Type flags ===
     uint64_t flags;                   // Raw 64-bit flags value
-
-    // === Size and layout ===
-    int size_in_memory;               // Total size in memory
-    int load_size;                    // Size when loaded into register
-    bool load_signed;                 // Whether load is signed
-    int offset;                       // Offset within parent type
-    int in_memory_alignment;          // Required alignment in memory
-    int inline_array_stride_alignment; // Stride alignment for inline arrays
-    int inline_array_start_alignment;  // Start alignment for inline arrays
     
-    // === Register allocation ===
-    RegClass preferred_reg_class;     // Preferred register class
+    // === Runtime layout ===
+    int size_in_memory;               // Total size in memory
+    int heap_base;                    // Heap base offset (for process types)
     
     // === Methods ===
     Ptr<MethodDef> methods_offset;    // Pointer to methods array
@@ -47,12 +39,6 @@ struct TypeDesc {
     // === States ===
     Ptr<StateDef> states_offset;      // Pointer to states array
     uint32_t states_count;            // Number of states
-    
-    // === Runtime metadata ===
-    bool is_boxed;                    // Whether type is boxed
-    int heap_base;                    // Heap base offset
-    bool generate_inspect;            // Whether to generate inspect method
-    bool allow_in_runtime;            // Whether type can be used at runtime
     
     // === Serialization methods ===
     std::string to_string() const;

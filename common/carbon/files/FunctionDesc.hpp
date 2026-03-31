@@ -1,9 +1,8 @@
 #pragma once
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/vm/Instructions.hpp"
 #include "common/CommonTypes.hpp"
+#include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/files/Definition.hpp"
+#include "common/carbon/vm/Instructions.hpp"
 #include "lib/Ptr.hpp"
 
 #include <cstdint>
@@ -11,6 +10,7 @@
 
 using namespace carbon::lib;
 using namespace carbon::modules;
+using namespace carbon::vm;
 
 namespace carbon::files {
 
@@ -31,7 +31,7 @@ namespace carbon::files {
         /** For allign */
         u32 reserved;
         /** Pointer to the instruction stream */
-        Ptr<vm::Instruction> code_ptr;
+        Ptr<Instruction> code_ptr;
         /** Pointer to constant data section */
         Ptr<u8> data_ptr;
         /** Pointer to debug information array */
@@ -45,7 +45,7 @@ namespace carbon::files {
          * @brief Get pointer to the code section
          * @return Pointer to instructions or nullptr if no code
          */
-        vm::Instruction* get_code_ptr() const { return code_ptr.get(); }
+        Instruction* get_code_ptr() const { return code_ptr.get(); }
 
         /**
          * @brief Get pointer to the data section

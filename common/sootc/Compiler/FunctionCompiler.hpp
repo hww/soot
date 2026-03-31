@@ -1,50 +1,31 @@
-// FunctionCompiler.hpp
 #pragma once
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
-#include "common/carbon/vm/Instructions.hpp"
-#include "Env.hpp"
-#include <vector>
-#include <string>
-#include <unordered_map>
-
-using namespace carbon::files;
-using namespace carbon::vm;
+#include "sootc/Compiler/Env.hpp"
+#include "sootc/IR/IR_Value.hpp"
 
 namespace sootc {
 
+class Compiler;
+
 class FunctionCompiler {
 public:
-    FunctionCompiler(TypeSystem& ts);
-    
-    // Компиляция lambda формы в RelocatableBuffer
-    RelocatableBuffer compile(const script::Object& form, const std::string& func_name, Env* env);
-    
+    FunctionCompiler(TypeSystem& ts, Compiler* compiler);
+
+    // Возвращаем IR_Value*, чтобы совпадало с Compiler::compile
+    IR_Value* declare(const script::Object& form, 
+                     const script::Object& rest, 
+                     Env* env);
+
+    void compile_body(IR_FunctionValue* f_val);
+
+    carbon::files::RelocatableBuffer build(FunctionEnv* fe);
+
 private:
     TypeSystem& ts_;
-    
-    // Состояние компиляции текущей функции
-    std::vector<Instruction> instructions_;
-    int next_reg_ = 0;
-    
-    // Вспомогательные методы
-    int alloc_reg();
-    int lookup_reg(const std::string& name, Env* env);
-    void emit(Instruction instr);
-    void emit_load_imm(int reg, int64_t value);
-    void emit_binary_op(Opcode op, int dest, int left, int right);
-    void emit_return(int reg);
-    
-    // Компиляция формы в регистр
-    int compile_form(const script::Object& form, Env* env);
-    int compile_number(const script::Object& form, Env* env);
-    int compile_symbol(const script::Object& form, Env* env);
-    int compile_binary_op(const script::Object& form, Env* env, const std::string& op);
-    
-    // Сборка результата
-    RelocatableBuffer build_buffer();
+    Compiler* compiler_;
 };
 
 } // namespace sootc

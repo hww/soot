@@ -9,6 +9,7 @@
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Archive.hpp"
 #include "common/type_system/TypeSpec.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -404,17 +405,21 @@ class Type : public NativeObject {
         return m_new_method_info_defined;
     }
 
-    // State system
-    void add_state(const std::string &name, const TypeSpec &type);
-
     const std::vector<MethodInfo> &get_methods_defined_for_type() const {
         return m_methods;
     }
+
+    size_t methods_max_id() const;
+
+    // State system
+    void add_state(const std::string &name, const TypeSpec &type);
+
     const std::map<std::string, TypeSpec> &get_states_declared_for_type() const {
         return m_states;
     }
 
-    size_t methods_max_id() const;
+    size_t states_count() const { return m_states.size(); }
+
 
     // NativeObjects
     void set_runtime_type(std::string name) {
@@ -424,6 +429,7 @@ class Type : public NativeObject {
         return m_name;
     }
     std::string get_runtime_name() const;
+    
     std::string get_parent() const {
         return m_parent;
     }
@@ -449,26 +455,34 @@ class Type : public NativeObject {
     }
 
     // Metadata
+    DefinitionMetadata& get_metadata() { return m_metadata;}
+
+    // State metadata
+    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>> &
+    get_state_definition_meta() {
+        return m_state_definition_meta;
+    }
+    DefinitionMetadata& get_metadata(const std::string& state_name, const std::string& handler_name) {
+        return m_state_definition_meta[state_name][handler_name];
+    }
 
     // Virtual state metadata
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>> &
     get_virtual_state_definition_meta() {
         return m_virtual_state_definition_meta;
     }
-
-    std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>> &
-    get_state_definition_meta() {
-        return m_state_definition_meta;
+    DefinitionMetadata& get_virtual_metadata(const std::string& state_name, const std::string& handler_name) {
+        return m_virtual_state_definition_meta[state_name][handler_name];
     }
 
+    // Metadata
+    DefinitionMetadata m_metadata;
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
         m_virtual_state_definition_meta = {};
     std::unordered_map<std::string, std::unordered_map<std::string, DefinitionMetadata>>
         m_state_definition_meta = {};
 
-    // Metadata
-    DefinitionMetadata m_metadata;
-
+    // Serialization
     virtual bool serialize_obj(Archive &ar, Object &data) = 0;
 
   protected:

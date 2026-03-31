@@ -1,115 +1,96 @@
-// TypeCompiler.cpp
-#include "TypeCompiler.hpp"
+#include "sootc/Compiler/TypeCompiler.hpp"
+#include "sootc/Compiler/Compiler.hpp"
+#include "sootc/Compiler/Env.hpp"
+#include "sootc/IR/IR_Value.hpp"
 #include "common/type_system/Deftype.hpp"
-#include "common/carbon/lib/Ptr.hpp"
 #include "common/util/Log.hpp"
-#include "files/BinaryFileBuilder.hpp"
 
 namespace sootc {
 
-TypeCompiler::TypeCompiler(TypeSystem& ts, BinaryFileBuilder& compiler) : ts_(ts), builder_(compiler) {}
+using namespace ::carbon::files;
 
-RelocatableBuffer TypeCompiler::compile(const script::Object& form, const script::Object& rest, Env* env) {
+TypeCompiler::TypeCompiler(TypeSystem& ts, Compiler* compiler) 
+    : ts_(ts), compiler_(compiler) {}
+
+IR_Value* TypeCompiler::declare(const script::Object& form, const script::Object& rest, Env* env) {
     (void)form;
-    // Парсим deftype
+
+    // 1. Парсим структуру через Deftype (наполняем метаданные в TypeSystem)
     DeftypeResult result = parse_deftype(rest, &ts_, nullptr);
+    Type* type_info = result.type_info;
     
-    // Получаем информацию о типе
-    StructureType* struct_type = dynamic_cast<StructureType*>(result.type_info);
-    if (!struct_type) {
-        lg::error("Only structure types are supported for serialization");
-        return {};
-    }
-    
-    // Создаем TypeDesc
-    TypeDesc type_desc;
-    type_desc.name = StringId(struct_type->get_name());
-    type_desc.parent_type_id = StringId(struct_type->get_parent());
-    type_desc.methods_count = struct_type->get_num_methods();
-    type_desc.states_count = struct_type->get_states_declared_for_type().size();
-    type_desc.flags = result.flags.flag;
-    type_desc.load_size = struct_type->get_load_size();
-    type_desc.in_memory_alignment = struct_type->get_in_memory_alignment();
-    type_desc.inline_array_stride_alignment = struct_type->get_inline_array_stride_alignment();
-    type_desc.inline_array_start_alignment = struct_type->get_inline_array_start_alignment();
-    type_desc.offset = struct_type->get_offset();
-    
-    // Собираем методы
-    std::vector<MethodDef> methods;
-    for (const auto& method : struct_type->get_methods_defined_for_type()) {
-        MethodDef method_def;
-        method_def.name = StringId(method.name);
-        method_def.type = StringId("function");
-        method_def.flags = method.no_virtual ? MethodFlags::None : MethodFlags::Virtual;
-        method_def.data = nullptr;
-        methods.push_back(method_def);
-    }
-    
-    // Собираем состояния
-    std::vector<StateDef> states;
-    for (const auto& [state_name, state_type] : struct_type->get_states_declared_for_type()) {
-        StateDef state_def;
-        state_def.name = StringId(state_name);
-        state_def.type = StringId("state");
-        state_def.flags = SymbolFlags::Export;
-        state_def.data = nullptr;
-        states.push_back(state_def);
-    }
-    
-    // Строим буфер
-    auto buffer  = build_type_buffer(type_desc, methods, states);
-
-    if (buffer.size() > 0) {
-        // Добавляем дефиницию в билдер через компилятор
-        std::string type_name = struct_type->get_name();
-        builder_.add_definition(type_name, "type", std::move(buffer));
+    if (!type_info) {
+        lg::error("Failed to parse type definition");
+        return nullptr;
     }
 
-    return buffer;
+    // 2. Создаем TypeEnv — контекст для этого типа
+    auto* t_env = new TypeEnv(type_info);
+
+    // 3. Наполняем методы (декларативно)
+    for (auto& method : type_info->get_methods_defined_for_type()) {
+        // Создаем в куче, чтобы объект жил до конца компиляции типа
+        auto* m_env = new MethodEnv(t_env, method.name, type_info);
+        
+        // Если у метода уже есть сырые формы (тело), сохраняем их для build
+        // m_env->set_source_forms(...); 
+        
+        t_env->add_method(*m_env);
+    }
+
+    // 4. Наполняем состояния (StateEnv напрямую)
+    for (const auto& [s_name, s_type_spec] : type_info->get_states_declared_for_type()) {
+        // Аналогично: создаем StateEnv в куче
+        auto* s_env = new StateEnv(t_env, s_name, type_info);
+        
+        // Здесь можно сразу прокинуть спецификацию типа состояния
+        // s_env->set_type_spec(s_type_spec);
+
+        t_env->add_state(*s_env);
+    }
+    // 5. Регистрируем в Env и возвращаем IR_Type
+    auto* ir_type = new IR_Type(t_env);
+    env->bind(type_info->get_name(), ir_type);
+    
+    return ir_type;
 }
 
-RelocatableBuffer TypeCompiler::build_type_buffer(const TypeDesc& type_desc,
-                                                   const std::vector<MethodDef>& methods,
-                                                   const std::vector<StateDef>& states) {
+RelocatableBuffer TypeCompiler::build(IR_Type* ir_type) {
     RelocatableBuffer buffer;
+    auto* t_env = ir_type->get_env();
     
-    // Записываем TypeDesc
+    // Нам нужно полное определение TypeDesc для sizeof
+    ::carbon::files::TypeDesc desc{};
+    // Заполняем поля desc из t_env->get_type_info()...
+    
     u32 type_start = buffer.size();
-    buffer.add_bytes(&type_desc, sizeof(TypeDesc));
+    buffer.add_bytes(&desc, sizeof(::carbon::files::TypeDesc));
     
-    // Отмечаем pointers как relocatable
-    u32 methods_ptr_offset = type_start + offsetof(TypeDesc, methods_offset);
-    u32 states_ptr_offset = type_start + offsetof(TypeDesc, states_offset);
-    
+    // Релокации для методов
+    auto methods = t_env->methods();
     if (!methods.empty()) {
-        buffer.add_relocatable_offset(methods_ptr_offset);
-    }
-    if (!states.empty()) {
-        buffer.add_relocatable_offset(states_ptr_offset);
-    }
-    
-    // Записываем массив методов
-    u32 methods_start = 0;
-    if (!methods.empty()) {
-        methods_start = buffer.size();
+        u32 m_offset = buffer.size();
         buffer.add_bytes(methods.data(), methods.size() * sizeof(MethodDef));
         
-        // Обновляем methods_offset в TypeDesc
-        Ptr<MethodDef>* methods_ptr = 
-            reinterpret_cast<Ptr<MethodDef>*>(buffer.data() + methods_ptr_offset);
-        methods_ptr->offset = methods_start;
+        u32 ptr_field = type_start + offsetof(::carbon::files::TypeDesc, methods_offset);
+        // Фиксим смещение в уже записанном TypeDesc
+        if (buffer.size() >= ptr_field + sizeof(u64)) {
+            *reinterpret_cast<u64*>(buffer.data() + ptr_field) = (u64)m_offset;
+        }
+        buffer.add_relocatable_offset(ptr_field);
     }
     
-    // Записываем массив состояний
-    u32 states_start = 0;
+    // Релокации для состояний (StateDef)
+    auto states = t_env->states();
     if (!states.empty()) {
-        states_start = buffer.size();
+        u32 s_offset = buffer.size();
         buffer.add_bytes(states.data(), states.size() * sizeof(StateDef));
         
-        // Обновляем states_offset в TypeDesc
-        Ptr<StateDef>* states_ptr = 
-            reinterpret_cast<Ptr<StateDef>*>(buffer.data() + states_ptr_offset);
-        states_ptr->offset = states_start;
+        u32 ptr_field = type_start + offsetof(::carbon::files::TypeDesc, states_offset);
+        if (buffer.size() >= ptr_field + sizeof(u64)) {
+            *reinterpret_cast<u64*>(buffer.data() + ptr_field) = (u64)s_offset;
+        }
+        buffer.add_relocatable_offset(ptr_field);
     }
     
     return buffer;

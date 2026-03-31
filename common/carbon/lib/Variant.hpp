@@ -98,6 +98,8 @@ namespace carbon::lib {
         inline static const StringId unnamed   = StringId("unnamed");
         inline static const StringId type      = StringId("type");
         inline static const StringId state     = StringId("state");
+        inline static const StringId method    = StringId("method");
+        inline static const StringId new_method= StringId("new-method");
         inline static const StringId null      = StringId("null");
         inline static const StringId number    = StringId("number");
         inline static const StringId integer   = StringId("integer");

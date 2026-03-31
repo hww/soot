@@ -1,7 +1,7 @@
 #include "common/carbon/files/FunctionDesc.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "common/carbon/lib/Ptr.hpp"
-#include "vm/Instructions.hpp"
+#include "common/carbon/vm/Instructions.hpp"
 #include <cstddef>
 #include <fmt/format.h>
 #include <string>
@@ -90,7 +90,8 @@ std::string FunctionDesc::inspect() const {
     result += "  Code:\n";
     if (code_ptr.ptr && code_count > 0) {
         for (size_t i=0; i<code_count; i++) {
-            result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(code_ptr.ptr[i]));
+            auto inst = code_ptr.ptr[i];
+            result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(inst));
         }
     }
     return result;

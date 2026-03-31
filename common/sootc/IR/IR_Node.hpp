@@ -43,7 +43,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
   IR_Const *value_;
@@ -56,7 +56,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
   IR_Field *field_;
@@ -69,7 +69,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Field *field_;
   IR_Value *value_;
@@ -83,7 +83,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *result_;
   IR_Value *function_;
@@ -99,7 +99,10 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value*> get_used_values() const override {
+      // ОБЯЗАТЕЛЬНО возвращаем и цель, и операнды
+      return { dest_, left_, right_ }; 
+  }
 private:
   Op op_;
   IR_Reg *dest_;
@@ -115,7 +118,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value*> get_used_values() const override ;
 private:
   Cond cond_;
   IR_Reg *dest_;
@@ -168,7 +171,7 @@ public:
   std::string to_string() const override;
   void generate(FunctionDescBuilder &builder,
                 const std::unordered_map<IR_Value *, u32> &reg_map) override;
-
+  std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Value *value_;
 };

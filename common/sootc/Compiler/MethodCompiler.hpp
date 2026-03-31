@@ -1,32 +1,32 @@
-// common/sootc/Compiler/MethodCompiler.hpp
 #pragma once
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
-#include <string>
-
-using namespace carbon::files;
+#include "common/carbon/files/Definition.hpp"
+#include "sootc/Compiler/Env.hpp"
 
 namespace sootc {
 
+class Compiler;
+
 class MethodCompiler {
 public:
-    MethodCompiler(TypeSystem& ts);
+    MethodCompiler(TypeSystem& ts, Compiler* compiler);
     
-    // Компилирует определение метода
-    // Пример: (define-method add type ((a int) (b int)) (+ a b))
-    RelocatableBuffer compile_method(const script::Object& form);
+    // Переименовали в declare для единообразия с FunctionCompiler
+    IR_Value* declare(const script::Object& form, const script::Object& rest, Env* env);
     
+    // Финализация
+    carbon::files::RelocatableBuffer build(IR_MethodValue* m_val);
+
 private:
+    carbon::files::RelocatableBuffer build_method_buffer(const carbon::files::MethodDef& method_def,
+                                                      const carbon::files::RelocatableBuffer& func_buffer);
+    std::string extract_owner_name(const script::Object& rest);
+    
     TypeSystem& ts_;
-    
-    // Компиляция тела метода в FunctionDesc
-    RelocatableBuffer compile_function_body(const script::Object& body, 
-                                             const std::vector<std::string>& params);
-    
-    RelocatableBuffer build_method_buffer(const MethodDef& method_def,
-                                           const RelocatableBuffer& function_buffer);
+    Compiler* compiler_;
 };
 
 } // namespace sootc

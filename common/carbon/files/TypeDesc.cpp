@@ -16,41 +16,21 @@ std::string TypeDesc::inspect() const {
         "  parent: {}\n"
         "  flags: 0x{:016x}\n"
         "  size_in_memory: {}\n"
-        "  load_size: {}\n"
-        "  load_signed: {}\n"
-        "  offset: {}\n"
-        "  in_memory_alignment: {}\n"
-        "  inline_array_stride_alignment: {}\n"
-        "  inline_array_start_alignment: {}\n"
-        "  preferred_reg_class: {}\n"
         "  methods_offset: {}\n"
         "  methods_count: {}\n"
         "  states_offset: {}\n"
         "  states_count: {}\n"
-        "  is_boxed: {}\n"
         "  heap_base: {}\n"
-        "  generate_inspect: {}\n"
-        "  allow_in_runtime: {}\n"
         "}}",
         name,
         parent_type_id,
         flags,
         size_in_memory,
-        load_size,
-        load_signed,
-        offset,
-        in_memory_alignment,
-        inline_array_stride_alignment,
-        inline_array_start_alignment,
-        static_cast<int>(preferred_reg_class),
         methods_offset.offset,
         methods_count,
         states_offset.offset,
         states_count,
-        is_boxed,
-        heap_base,
-        generate_inspect,
-        allow_in_runtime
+        heap_base
     );
     
     if (methods_offset.ptr && methods_count > 0) {

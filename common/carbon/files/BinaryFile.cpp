@@ -150,7 +150,8 @@ namespace carbon::files {
 
         return result.str();
     }
-   std::string BinaryFile::hex_dump() const {
+
+    std::string BinaryFile::hex_dump() const {
         const u8* header_bytes = reinterpret_cast<const u8*>(this);
         std::string result;
 
