@@ -20,12 +20,14 @@ public:
     std::shared_ptr<carbon::modules::Module> compile_module(const script::Object& forms, Env* env);
 
     // СЕРДЦЕ: Рекурсивная компиляция формы в IR-значение
-    IR_Value* compile(const script::Object& form, Env* env);
+    IR_Value* declare(const script::Object& form, Env* env);
     
     // Регистрация в бинарном билдере
     void add_definition(const std::string& name, const std::string& type, 
                         carbon::files::RelocatableBuffer buffer, 
                         carbon::files::SymbolFlags flags = carbon::files::SymbolFlags::Export);
+    
+    TypeSystem& ts() { return ts_; }
 
 private:
     TypeSystem& ts_;

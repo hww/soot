@@ -6,6 +6,8 @@
 #include "sootc/Compiler/Env.hpp"
 #include "sootc/IR/IR_Value.hpp"
 
+using namespace carbon::files;
+
 namespace sootc {
 
 class Compiler;
@@ -21,7 +23,7 @@ public:
 
     void compile_body(IR_FunctionValue* f_val);
 
-    carbon::files::RelocatableBuffer build(FunctionEnv* fe);
+    RelocatableBuffer build(FunctionEnv* fe);
 
 private:
     TypeSystem& ts_;

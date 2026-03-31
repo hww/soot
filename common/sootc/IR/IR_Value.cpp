@@ -1,9 +1,21 @@
 // common/sootc/src/IR/IR_Value.cpp
 #include "common/sootc/IR/IR_Value.hpp"
-#include "sootc/IR/IR_Node.hpp"
 #include "common/sootc/Compiler/Env.hpp"
+#include "sootc/Compiler/FunctionCompiler.hpp"
+#include "sootc/Compiler/MethodCompiler.hpp"
+#include "sootc/Compiler/TypeCompiler.hpp"
+#include "sootc/Compiler/Compiler.hpp"
+#include "sootc/IR/IR_Node.hpp"
 
 namespace sootc {
+
+// ===========================================================
+// Reg
+// ===========================================================
+    
+std::optional<std::pair<std::string, RelocatableBuffer>> IR_Value::build(Compiler* c) {
+    return std::nullopt; 
+}
 
 // ===========================================================
 // Reg
@@ -66,6 +78,20 @@ std::string IR_Field::to_string() const {
 }
 
 // ===========================================================
+// Function
+// ===========================================================
+
+void IR_FunctionValue::resolve(Compiler* c) {
+    FunctionCompiler fn_c(c->ts(), c);
+    fn_c.compile_body(this);
+}
+
+std::optional<std::pair<std::string, RelocatableBuffer>> IR_FunctionValue::build(Compiler* c) {
+    FunctionCompiler fn_c(c->ts(), c);
+    return {{"function", fn_c.build(this->get_env())}};
+}
+
+// ===========================================================
 // Method
 // ===========================================================
 
@@ -85,6 +111,16 @@ std::string IR_StateValue::type_name() const { return m_env->type()->get_name();
 
 std::string IR_Type::to_string() const { 
     return "type:" + (m_env ? m_env->get_name() : "unknown"); 
+}
+
+void IR_Type::resolve(Compiler* c) {
+    // Типам обычно не нужно resolve тел, но если у них есть 
+    // инициализаторы статических полей — это делается здесь.
+}
+
+std::optional<std::pair<std::string, RelocatableBuffer>> IR_Type::build(Compiler* c) {
+    TypeCompiler t_c(c->ts(), c);
+    return {{"type", t_c.build(this)}};
 }
 
 } // namespace sootc

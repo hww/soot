@@ -1,6 +1,7 @@
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/Compiler.hpp"
 #include "common/carbon/files/FunctionDesc.hpp" 
+#include "common/carbon/files/RelocatableBuffer.hpp" 
 #include "sootc/IR/IR_Value.hpp"
 #include "sootc/IR/IR_Node.hpp"
 
@@ -61,7 +62,7 @@ void FunctionCompiler::compile_body(IR_FunctionValue* f_val) {
     auto current_f = body_forms;
 
     while (current_f.is_pair()) {
-        last_val = compiler_->compile(current_f.as_pair()->car, f_env);
+        last_val = compiler_->declare(current_f.as_pair()->car, f_env);
         current_f = current_f.as_pair()->cdr;
     }
 

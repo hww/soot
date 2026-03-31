@@ -35,37 +35,37 @@ void Compiler::setup_forms() {
 // ПЕРВЫЙ ПРОХОД
 std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::Object& forms, Env* env) {
     
-    // ФАЗА 1: DECLARE (Регистрация всех имен и структур)
+    // ФАЗА 1: DECLARE
     auto current = forms;
     while (current.is_pair()) {
-        compile(current.as_pair()->car, env); 
+        declare(current.as_pair()->car, env); 
         current = current.as_pair()->cdr;
     }
 
-    // ФАЗА 2: RESOLVE (Генерация IR узлов для всех функций и методов)
-    // Мы проходим по всем символам, которые задекларировали на 1 этапе
-    FunctionCompiler fn_compiler(ts_, this);
+    // Собираем список всех значений для итерации (чтобы не было проблем с изменением map)
+    std::vector<std::pair<std::string, IR_Value*>> work_list;
     for (auto& [name, value] : env->symbols()) {
-        if (auto* f_val = dynamic_cast<IR_FunctionValue*>(value)) {
-            // Наполняем функцию IR-узлами (теперь это compile_body или resolve_body)
-            fn_compiler.compile_body(f_val);
-        }
+        work_list.push_back({name, value});
     }
 
-    // ФАЗА 3: BUILD (Генерация байткода из готового IR)
-    for (auto& [name, value] : env->symbols()) {
-        if (auto* f_val = dynamic_cast<IR_FunctionValue*>(value)) {
-            auto buffer = fn_compiler.build(f_val->get_env());
-            builder_.add_definition(name, "function", std::move(buffer));
+    // ФАЗА 2: RESOLVE (Полиморфно)
+    for (auto& [name, value] : work_list) {
+        value->resolve(this);
+    }
+
+    // ФАЗА 3: BUILD (Полиморфно)
+    for (auto& [name, value] : work_list) {
+        if (auto result = value->build(this)) {
+            const auto& [type_tag, buffer] = *result;
+            builder_.add_definition(name, type_tag, std::move(buffer));
         }
-        // Здесь же можно добавить сборку типов (TypeCompiler::build)
     }
 
     return builder_.build_module();
 }
 
 
-IR_Value* Compiler::compile(const script::Object& form, Env* env) {
+IR_Value* Compiler::declare(const script::Object& form, Env* env) {
     if (form.is_number()) return compile_number(form, env);
     if (form.is_symbol()) return compile_symbol(form, env);
 
@@ -86,8 +86,8 @@ IR_Value* Compiler::compile(const script::Object& form, Env* env) {
 IR_Value* Compiler::compile_add(const script::Object& form, const script::Object& rest, Env* env) {
     (void)form;
     auto args = rest;
-    IR_Value* v_left = compile(args.as_pair()->car, env);
-    IR_Value* v_right = compile(args.as_pair()->cdr.as_pair()->car, env);
+    IR_Value* v_left = declare(args.as_pair()->car, env);
+    IR_Value* v_right = declare(args.as_pair()->cdr.as_pair()->car, env);
 
     IR_Reg* r_left = v_left->to_reg(static_cast<Env&>(*env));
     IR_Reg* r_right = v_right->to_reg(static_cast<Env&>(*env));
@@ -101,8 +101,8 @@ IR_Value* Compiler::compile_add(const script::Object& form, const script::Object
 IR_Value* Compiler::compile_sub(const script::Object& form, const script::Object& rest, Env* env) {
     (void)form;
     auto args = rest;
-    IR_Value* v_left = compile(args.as_pair()->car, env);
-    IR_Value* v_right = compile(args.as_pair()->cdr.as_pair()->car, env);
+    IR_Value* v_left = declare(args.as_pair()->car, env);
+    IR_Value* v_right = declare(args.as_pair()->cdr.as_pair()->car, env);
 
     IR_Reg* r_left = v_left->to_reg(static_cast<Env&>(*env));
     IR_Reg* r_right = v_right->to_reg(static_cast<Env&>(*env));
@@ -118,7 +118,7 @@ IR_Value* Compiler::compile_define(const script::Object&, const script::Object& 
     auto value_form = rest.as_pair()->cdr.as_pair()->car;
 
     // Рекурсивно компилируем (например, лямбду), получаем IR_Value
-    IR_Value* val = compile(value_form, env);
+    IR_Value* val = declare(value_form, env);
     
     // Просто запоминаем: "по имени name лежит вот этот IR"
     env->bind(name, val); 
@@ -131,7 +131,7 @@ IR_Value* Compiler::compile_begin(const script::Object& form, const script::Obje
     auto current = rest;
     IR_Value* last = nullptr;
     while (current.is_pair()) {
-        last = compile(current.as_pair()->car, env);
+        last = declare(current.as_pair()->car, env);
         current = current.as_pair()->cdr;
     }
     return last;

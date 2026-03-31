@@ -1,7 +1,11 @@
 #pragma once
 
 #include "common/type_system/Type.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include <string>
+#include <optional>
+
+using namespace carbon::files;
 
 namespace sootc {
 
@@ -13,6 +17,7 @@ class IR_LoadField;
 class TypeEnv;
 class MethodEnv;
 class StateEnv;
+class Compiler;
 
 class IR_Value {
   public:
@@ -32,6 +37,13 @@ class IR_Value {
         return type_;
     }
     virtual IR_Reg* to_reg(class Env& env) = 0;
+
+    // Фаза 2: Наполнение логикой (IR-узлами)
+    virtual void resolve(Compiler* c) {}
+
+    // Фаза 3: Генерация байткода
+    // Возвращает пару {тип_определения, буфер}
+    virtual std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c);
   protected:
     Type *type_;
 };
@@ -70,6 +82,9 @@ public:
     // Виртуальные методы из базового класса
     class IR_Reg* to_reg(class Env&) override { return nullptr; }
     std::string to_string() const override { return "function_ptr"; }
+
+    void resolve(Compiler* c) override; 
+    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c) override;
 
 private:
     class FunctionEnv* m_env;
@@ -194,6 +209,9 @@ public:
     TypeEnv* get_env() const {
         return m_env;
     }
+
+    void resolve(Compiler* c);
+    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c);
 
 private:
     TypeEnv* m_env;
