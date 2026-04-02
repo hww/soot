@@ -100,7 +100,7 @@ namespace carbon::files {
         SymbolFlags flags;
         u32 reserved;
         /** Pointer to the actual data or code for this definition */
-        Ptr<u8> data;
+        Ptr<u8> ptr;
 
         /**
          * @brief Convert to simple string representation
@@ -179,7 +179,7 @@ namespace carbon::files {
 
     struct StateDef : Definition {
         StateDesc* get_state() {
-            return reinterpret_cast<StateDesc*>(data.ptr);
+            return reinterpret_cast<StateDesc*>(ptr.ptr);
         }
     };        
 } // end of namespace

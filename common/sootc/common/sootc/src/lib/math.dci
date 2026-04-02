@@ -1,5 +1,0 @@
-﻿(../../common/sootc/src/lib/math (528)
-  (import)
-  (export add sub)
-  (strings ../../common/sootc/src/lib/math math add process event-message number i8 code null type event u64 unnamed trans u32 bool exit integer i32 none unknown sinteger string_id i64 i16 uinteger sub post enter u8 function u16 string float native)
-)

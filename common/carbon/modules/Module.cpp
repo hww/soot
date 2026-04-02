@@ -104,7 +104,7 @@ namespace carbon::modules {
     FunctionDesc* Module::resolve_function(StringId name) {
         auto definition = resolve_symbol(name);
         if (definition && definition->type == TypeIds::function)
-            return (FunctionDesc*)definition->data.get();
+            return (FunctionDesc*)definition->ptr.get();
         return nullptr;
     }
 
@@ -214,7 +214,7 @@ namespace carbon::modules {
     TypeDesc* Module::resolve_type(StringId name) {
         auto def = resolve_symbol(name);
         if (def && def->type == TypeIds::type) {
-            return reinterpret_cast<TypeDesc*>(def->data.get());
+            return reinterpret_cast<TypeDesc*>(def->ptr.get());
         }
         return nullptr;
     }

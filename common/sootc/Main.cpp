@@ -184,9 +184,10 @@ int main(int argc, char* argv[]) {
         // Создаем компилятор
         Compiler compiler(ts, module_name);
         GlobalEnv global_env;
-        
+        FileEnv file_env(&global_env, input_file);  // ← создаем FileEnv
+
         // Компилируем весь файл - компилятор сам разберет формы и вернет список определений
-        auto module = compiler.compile_module(forms, &global_env);
+        auto module = compiler.compile_module(forms, &file_env);
         
         if (module.get() == nullptr) {
             lg::error("Failed to build module");

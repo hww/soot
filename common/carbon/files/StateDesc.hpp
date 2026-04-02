@@ -107,7 +107,7 @@ struct StateDesc  {
         auto def = get_definition(idx);
         if (def) {
             // Calculate pointer to the handler table
-            return reinterpret_cast<FunctionDesc*>(def->data.ptr);
+            return reinterpret_cast<FunctionDesc*>(def->ptr.ptr);
         }
         return nullptr;
     }

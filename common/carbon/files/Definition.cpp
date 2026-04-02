@@ -64,61 +64,63 @@ namespace carbon::files {
 
     std::string Definition::to_string() const {
         return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
-            name, type, (u64)data.offset, get_symbol_flags_string(flags));
+            name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
     }
 
     std::string Definition::inspect() const {
         auto result = std::format("(definition `{}` :type `{}` :ptr {:x} :flags {})\n",
-            name, type, (u64)data.offset, get_symbol_flags_string(flags));
+            name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
 
-        if (data.ptr) {
-            if (data.offset) {
+        if (ptr.ptr) {
+            if (ptr.offset) {
                 if (type == TypeIds::function)
-                    result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();    
+                    result += (reinterpret_cast<FunctionDesc*>(ptr.ptr))->inspect();    
                 else if (type == TypeIds::type)
-                    result += (reinterpret_cast<TypeDesc*>(data.ptr))->inspect();    
+                    result += (reinterpret_cast<TypeDesc*>(ptr.ptr))->inspect();    
                 else if (type == TypeIds::new_method)
-                    result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();  
+                    result += (reinterpret_cast<FunctionDesc*>(ptr.ptr))->inspect();  
                 else if (type == TypeIds::method)
-                    result += (reinterpret_cast<FunctionDesc*>(data.ptr))->inspect();  
+                    result += (reinterpret_cast<FunctionDesc*>(ptr.ptr))->inspect();  
                 else if (type == TypeIds::state)
-                    result += (reinterpret_cast<StateDesc*>(data.ptr))->inspect();  
+                    result += (reinterpret_cast<StateDesc*>(ptr.ptr))->inspect();  
                 else
-                    lg::error("Definition::inspect unexpected definition type {}\n", type);
+                    lg::error("Definition::inspect unexpected definition type `{}`\n",  type.to_cstring());
             }            
+        } else {
+            result += " <null>";
         }
         return result;
     }
 
     void Definition::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
-        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, data.offset);
+        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
 
         if (to_memory) {
-            if (data.offset != 0) 
-                data.offset+=delta;
+            if (ptr.offset != 0) 
+                ptr.offset+=delta;
         }
 
-        if (data.offset) {
+        if (ptr.offset) {
             if (type == TypeIds::function)
-                (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
             else if (type == TypeIds::method)
-                (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
             else if (type == TypeIds::new_method)
-                (reinterpret_cast<FunctionDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
             else if (type == TypeIds::type)
-                (reinterpret_cast<TypeDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);    
+                (reinterpret_cast<TypeDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
             else if (type == TypeIds::state)
-                (reinterpret_cast<StateDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);  
+                (reinterpret_cast<StateDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);  
             else
-                lg::error("unexpected definition type {}\n", type);
+                lg::error("unexpected definition type `{}`\n", type.to_cstring());
         }
 
         if (!to_memory) {
-            if (data.offset != 0) 
-                data.offset+=delta;
+            if (ptr.offset != 0) 
+                ptr.offset+=delta;
         }
 
-        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, data.offset);
+        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
     }
 
     // =============================================================================
@@ -160,6 +162,8 @@ namespace carbon::files {
             name, type, (u64)data.offset, get_symbol_flags_string(flags));
         if (data.ptr!=nullptr)
             result += data.ptr->inspect();
+        else 
+            result += " <null>";
         return result;
     }
 
@@ -179,7 +183,7 @@ namespace carbon::files {
             else if (type == TypeIds::state)
                 (reinterpret_cast<StateDesc*>(data.ptr))->relocate_pointers(to_memory, delta, module);  
             else
-                lg::error("unexpected definition type {}\n", type);
+                lg::error("unexpected definition type `{}`\n",  type.to_cstring());
         }
 
         if (!to_memory) {

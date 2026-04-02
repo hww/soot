@@ -410,16 +410,16 @@ class Type : public NativeObject {
     }
 
     size_t methods_max_id() const;
+    size_t get_methods_count() const { return methods_max_id() + 1; } 
 
     // State system
     void add_state(const std::string &name, const TypeSpec &type);
+    bool get_my_state(const std::string &name, TypeSpec *out) const;
+    size_t states_count() const { return m_states.size(); }
 
     const std::map<std::string, TypeSpec> &get_states_declared_for_type() const {
         return m_states;
     }
-
-    size_t states_count() const { return m_states.size(); }
-
 
     // NativeObjects
     void set_runtime_type(std::string name) {
@@ -484,7 +484,7 @@ class Type : public NativeObject {
 
     // Serialization
     virtual bool serialize_obj(Archive &ar, Object &data) = 0;
-
+    
   protected:
     virtual std::string diff_impl(const Type &other) const = 0;
     std::string         incompatible_diff(const Type &other) const;
@@ -496,8 +496,8 @@ class Type : public NativeObject {
     std::string m_runtime_name;
     bool        m_allow_in_runtime = true;
     bool        m_is_boxed = false;
-    int         m_heap_base = 0;
     bool        m_generate_inspect = true;
+    int         m_heap_base = 0;
 
     // Method system
     std::vector<MethodInfo> m_methods;

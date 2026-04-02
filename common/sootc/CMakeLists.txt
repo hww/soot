@@ -7,9 +7,13 @@ add_library(libsootc
     common/sootc/Compiler/MethodCompiler.cpp
     common/sootc/Compiler/TypeCompiler.cpp
     common/sootc/Compiler/Compiler.cpp
-    common/sootc/Compiler/Env.cpp
+    common/sootc/Env/Env.cpp
+    common/sootc/Env/GlobalEnv.cpp
+    common/sootc/Env/FileEnv.cpp
+    common/sootc/Env/FunctionEnv.cpp
     common/sootc/IR/IR_Value.cpp
     common/sootc/IR/IR_Node.cpp    
+    common/sootc/IR/StaticObject.cpp
 )
 
 # Пути для include

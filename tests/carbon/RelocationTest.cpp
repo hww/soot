@@ -27,7 +27,7 @@ protected:
         };
         
         RelocatableBuffer rbuffer;
-        rbuffer.add_function(code, {}, {});
+        rbuffer.add_function("test_func", code, {}, {});
         builder.add_definition("test_func", "function", rbuffer);
         
         // Получаем бинарник
@@ -93,7 +93,7 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     
     std::vector<u8> data = {0x01, 0x02, 0x03, 0x04};
     RelocatableBuffer rbuffer;
-    rbuffer.add_function(code, data, {});
+    rbuffer.add_function("test_func", code, data, {});
     builder.add_definition("test_func", "function", rbuffer);
     
     std::vector<u8> binary = builder.build();
@@ -102,7 +102,7 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
 
     // Находим FunctionDesc
     Definition* def = original->get_definition(0);
-    FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(def->data.get());
+    FunctionDesc* bc = reinterpret_cast<FunctionDesc*>(def->ptr.get());
     
     // Сохраняем исходные указатели
     u64 original_code_ptr = bc->code_ptr.offset;
@@ -120,7 +120,7 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     
     // Проверяем
     Definition* def_rel = relocated->get_definition(0);
-    FunctionDesc* bc_rel = reinterpret_cast<FunctionDesc*>(def_rel->data.get());
+    FunctionDesc* bc_rel = reinterpret_cast<FunctionDesc*>(def_rel->ptr.get());
     
     ptrdiff_t delta = reinterpret_cast<u8*>(relocated) - reinterpret_cast<u8*>(original);
     EXPECT_EQ(bc_rel->code_ptr.offset, original_code_ptr + delta);

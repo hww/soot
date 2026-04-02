@@ -40,6 +40,7 @@ protected:
             };
             RelocatableBuffer rbuffer;
             rbuffer.add_function(
+                def_name,
                 code,
                 {}, // пустые данные
                 {}  // пустая отладочная информация
@@ -171,7 +172,7 @@ TEST_F(BinaryFileTest, FindFunctionDescByName) {
     Definition* def1 = module->binary_file->get_definition(1);
 
     // Создаем FunctionDesc для второго определения
-    FunctionDesc* FunctionDesc1 = reinterpret_cast<FunctionDesc*>(def1->data.get());
+    FunctionDesc* FunctionDesc1 = reinterpret_cast<FunctionDesc*>(def1->ptr.get());
      
     // Инициализируем FunctionDesc
     FunctionDesc1->code_count = 10;

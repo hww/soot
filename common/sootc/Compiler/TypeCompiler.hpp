@@ -2,27 +2,35 @@
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/carbon/files/RelocatableBuffer.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp" 
 #include "common/carbon/files/TypeDesc.hpp"
-#include "sootc/Compiler/Env.hpp"
+#include "files/RelocatableBuffer.hpp"
+#include "sootc/Env/Export.hpp"
 
 namespace sootc {
 
 class Compiler;
+class IR_Type;
+class TypeEnv;
 
 class TypeCompiler {
 public:
     TypeCompiler(TypeSystem& ts, Compiler* compiler);
     
-    // Первый проход: Регистрируем тип в TypeSystem и создаем IR_Type
+    // DECLARE Phase
     IR_Value* declare(const script::Object& form, const script::Object& rest, Env* env);
     
-    // Второй проход: Собираем TypeDesc и вложенные определения в буфер
-    carbon::files::RelocatableBuffer build(IR_Type* ir_type);
+    // RESOLVE Phase
+    void resolve(TypeEnv* t_env);
+    
+    // BUILD Phase
+    RelocatableBuffer build(TypeEnv* t_env);  // ← RelocatableBuffer → SimpleBuffer
 
 private:
     TypeSystem& ts_;
     Compiler* compiler_;
+    
+    MethodEnv* find_method_in_hierarchy(TypeEnv* start_env, int method_id, TypeEnv*& out_defining_type);
 };
 
 } // namespace sootc

@@ -342,6 +342,16 @@ void Type::add_state(const std::string &name, const TypeSpec &type) {
     }
 }
 
+bool Type::get_my_state(const std::string &name, TypeSpec *out) const {
+    auto it = m_states.find(name);
+    if (it != m_states.end()) {
+        if (out)
+            *out = it->second;
+        return true;
+    }
+    return false;
+}
+
 std::string Type::diff(const Type &other) const {
     return common_type_info_diff(other) + diff_impl(other);
 }

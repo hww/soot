@@ -72,7 +72,7 @@ namespace carbon::files {
             if (def->name == name) {
                 // Only return FunctionDesc for function definitions
                 if (def->type == TypeIds::function) {
-                    return def->data.cast<FunctionDesc>().get();
+                    return def->ptr.cast<FunctionDesc>().get();
                 }
                 else {
                     return nullptr;

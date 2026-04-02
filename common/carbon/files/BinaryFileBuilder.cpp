@@ -1,9 +1,7 @@
 ﻿#include "common/carbon/files/BinaryFileBuilder.hpp"
 #include "common/carbon/modules/Module.hpp"
 #include "files/BinaryFile.hpp"
-#include "files/FunctionDesc.hpp"
 #include "files/TypeDesc.hpp"
-#include "files/StateDesc.hpp"
 #include "fmt/format.h"
 #include "lib/StringId.hpp"
 #include "util/Log.hpp"
@@ -34,7 +32,8 @@ namespace carbon::files {
     }
 
 
-    /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
+    /** Построить бинарник */
+     /** Построить бинарник - ПРОСТОЙ ВАРИАНТ */
     std::vector<u8> BinaryFileBuilder::build() {
         std::vector<u8> buffer(65536);
         
@@ -87,11 +86,11 @@ namespace carbon::files {
             std::memcpy(dest, def.data.bytes().data(), def.data.bytes().size());
             
             // Обновляем указатель в таблице
-            defs_table[i].data = Ptr<u8>(def_offsets[i]);
+            defs_table[i].ptr = Ptr<u8>(def_offsets[i]);
             
             // Релокация: обновляем все помеченные указатели внутри этого буфера
-            for (u32 reloc_offset : def.data.relocatable_offsets()) {
-                u64* ptr = reinterpret_cast<u64*>(dest + reloc_offset);
+            for (auto reloc : def.data.relocatable_offsets()) {
+                u64* ptr = reinterpret_cast<u64*>(dest + reloc.offset);
                 *ptr += def_offsets[i];
             }
         }
@@ -109,6 +108,7 @@ namespace carbon::files {
         
         return buffer;
     }
+
 
     /** Просмотреть входные данные которые были добавлены */
     std::string BinaryFileBuilder::inspect_input() const {

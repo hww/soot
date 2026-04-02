@@ -1,9 +1,12 @@
 #include "sootc/Compiler/TypeCompiler.hpp"
 #include "sootc/Compiler/Compiler.hpp"
-#include "sootc/Compiler/Env.hpp"
+#include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/IR/IR_Value.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/util/Log.hpp"
+#include "type_system/TypeSpec.hpp"
+#include <cstddef>
 
 namespace sootc {
 
@@ -12,10 +15,13 @@ using namespace ::carbon::files;
 TypeCompiler::TypeCompiler(TypeSystem& ts, Compiler* compiler) 
     : ts_(ts), compiler_(compiler) {}
 
+// ============================================================================
+// DECLARE Phase
+// ============================================================================
+
 IR_Value* TypeCompiler::declare(const script::Object& form, const script::Object& rest, Env* env) {
     (void)form;
 
-    // 1. Парсим структуру через Deftype (наполняем метаданные в TypeSystem)
     DeftypeResult result = parse_deftype(rest, &ts_, nullptr);
     Type* type_info = result.type_info;
     
@@ -24,73 +30,145 @@ IR_Value* TypeCompiler::declare(const script::Object& form, const script::Object
         return nullptr;
     }
 
-    // 2. Создаем TypeEnv — контекст для этого типа
-    auto* t_env = new TypeEnv(type_info);
+    auto* t_env = new TypeEnv(type_info->get_name(), type_info, env);
 
-    // 3. Наполняем методы (декларативно)
     for (auto& method : type_info->get_methods_defined_for_type()) {
-        // Создаем в куче, чтобы объект жил до конца компиляции типа
-        auto* m_env = new MethodEnv(t_env, method.name, type_info);
-        
-        // Если у метода уже есть сырые формы (тело), сохраняем их для build
-        // m_env->set_source_forms(...); 
-        
-        t_env->add_method(*m_env);
+        auto* m_env = new MethodEnv(method.name, t_env, type_info, t_env);
+        m_env->method_id = method.id;
+        t_env->bind(method.name, new IR_MethodValue(m_env));
     }
 
-    // 4. Наполняем состояния (StateEnv напрямую)
     for (const auto& [s_name, s_type_spec] : type_info->get_states_declared_for_type()) {
-        // Аналогично: создаем StateEnv в куче
-        auto* s_env = new StateEnv(t_env, s_name, type_info);
-        
-        // Здесь можно сразу прокинуть спецификацию типа состояния
-        // s_env->set_type_spec(s_type_spec);
-
-        t_env->add_state(*s_env);
+        auto* s_env = new StateEnv(s_name, t_env, type_info, t_env);
+        t_env->bind(s_name, new IR_StateValue(s_env));
     }
-    // 5. Регистрируем в Env и возвращаем IR_Type
+    
     auto* ir_type = new IR_Type(t_env);
     env->bind(type_info->get_name(), ir_type);
     
     return ir_type;
 }
 
-RelocatableBuffer TypeCompiler::build(IR_Type* ir_type) {
-    RelocatableBuffer buffer;
-    auto* t_env = ir_type->get_env();
+// ============================================================================
+// RESOLVE Phase
+// ============================================================================
+
+void TypeCompiler::resolve(TypeEnv* t_env) {
+    FunctionCompiler func_compiler(ts_, compiler_);
     
-    // Нам нужно полное определение TypeDesc для sizeof
-    ::carbon::files::TypeDesc desc{};
-    // Заполняем поля desc из t_env->get_type_info()...
-    
-    u32 type_start = buffer.size();
-    buffer.add_bytes(&desc, sizeof(::carbon::files::TypeDesc));
-    
-    // Релокации для методов
-    auto methods = t_env->methods();
-    if (!methods.empty()) {
-        u32 m_offset = buffer.size();
-        buffer.add_bytes(methods.data(), methods.size() * sizeof(MethodDef));
-        
-        u32 ptr_field = type_start + offsetof(::carbon::files::TypeDesc, methods_offset);
-        // Фиксим смещение в уже записанном TypeDesc
-        if (buffer.size() >= ptr_field + sizeof(u64)) {
-            *reinterpret_cast<u64*>(buffer.data() + ptr_field) = (u64)m_offset;
+    for (size_t id = 0; id < t_env->method_count(); ++id) {
+        MethodEnv* m_env = t_env->get_method(static_cast<int>(id));
+        if (m_env) {
+            func_compiler.resolve_method_body(m_env);  // ← прямой вызов
         }
-        buffer.add_relocatable_offset(ptr_field);
+    }
+}
+
+// ============================================================================
+// BUILD Phase
+// ============================================================================
+
+MethodEnv* TypeCompiler::find_method_in_hierarchy(TypeEnv* start_env, int method_id, TypeEnv*& out_defining_type) {
+    MethodEnv* m_env = start_env->get_method(method_id);
+    if (m_env) {
+        out_defining_type = start_env;
+        return m_env;
     }
     
-    // Релокации для состояний (StateDef)
-    auto states = t_env->states();
-    if (!states.empty()) {
-        u32 s_offset = buffer.size();
-        buffer.add_bytes(states.data(), states.size() * sizeof(StateDef));
+    Env* global = start_env->global_env();
+    std::string parent_name = start_env->get_type()->get_parent();
+    
+    while (!parent_name.empty() && parent_name != "object") {
+        IR_Value* parent_val = global->lookup(parent_name);
+        if (!parent_val) break;
         
-        u32 ptr_field = type_start + offsetof(::carbon::files::TypeDesc, states_offset);
-        if (buffer.size() >= ptr_field + sizeof(u64)) {
-            *reinterpret_cast<u64*>(buffer.data() + ptr_field) = (u64)s_offset;
+        auto* parent_ir_type = dynamic_cast<IR_Type*>(parent_val);
+        if (!parent_ir_type) break;
+        
+        TypeEnv* parent_env = parent_ir_type->get_env();
+        if (!parent_env) break;
+        
+        m_env = parent_env->get_method(method_id);
+        if (m_env) {
+            out_defining_type = parent_env;
+            return m_env;
         }
-        buffer.add_relocatable_offset(ptr_field);
+        
+        parent_name = parent_env->get_type()->get_parent();
+    }
+    
+    out_defining_type = nullptr;
+    return nullptr;
+}
+
+RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
+    RelocatableBuffer buffer;  // ← теперь RelocatableBuffer известен
+    Type* type_info = t_env->get_type();
+    std::string type_name = type_info->get_name();
+
+    // 1. Заголовок TypeDesc
+    TypeDesc desc{};
+    desc.name = StringId(type_name.c_str()); 
+    desc.parent_type_id = StringId(type_info->get_parent().c_str());
+    desc.size_in_memory = type_info->get_size_in_memory();
+    desc.methods_count  = type_info->get_methods_count();
+    desc.states_count   = type_info->states_count();
+    desc.flags = 0;
+    desc.methods_offset = Ptr<MethodDef>();
+    desc.states_offset = Ptr<StateDef>();
+
+    u32 type_start = buffer.size();
+    buffer.add_bytes(&desc, sizeof(TypeDesc));
+    
+    u32 methods_offset_field = type_start + offsetof(TypeDesc, methods_offset);
+    u32 states_offset_field = type_start + offsetof(TypeDesc, states_offset);
+    
+    // ========================================================================
+    // 2. VTable (методы)
+    // ========================================================================
+    if (desc.methods_count > 0) {
+        for (int id = 0; id < (int)desc.methods_count; ++id) {
+            TypeEnv* defining_type = nullptr;
+            MethodEnv* m_env = find_method_in_hierarchy(t_env, id, defining_type);
+            
+            if (!m_env) {
+                throw std::runtime_error(fmt::format("Method ID {} not found in type '{}'", id, type_name));
+            }
+            
+            std::string owner_name = defining_type->get_type()->get_name();
+            std::string method_symbol = owner_name + "::" + m_env->name();
+            
+            buffer.add_u64(0);
+            buffer.add_relocatable(buffer.size() - 8, 
+                                   Relocation::Type::FILE_RELATIVE, 
+                                   method_symbol + "#code");
+        }
+        
+        buffer.add_relocatable(methods_offset_field, 
+                               Relocation::Type::FILE_RELATIVE, 
+                               type_name + "#methods");
+    }
+    
+    // ========================================================================
+    // 3. StateTable (состояния)
+    // ========================================================================
+    if (desc.states_count > 0) {
+        for (auto* s_env : t_env->states()) {
+            u32 slot_pos = buffer.size();
+            StateDef slot{};
+            slot.name = StringId(s_env->name().c_str());
+            slot.flags = SymbolFlags::None;
+            slot.ptr = Ptr<u8>();
+            buffer.add_bytes(&slot, sizeof(StateDef));
+            
+            std::string state_label = type_name + "::" + s_env->name();
+            u32 ptr_in_slot = slot_pos + offsetof(StateDef, ptr);
+            buffer.add_relocatable(ptr_in_slot, Relocation::Type::FILE_RELATIVE, state_label);
+        }
+        
+        buffer.add_relocatable(states_offset_field, 
+                               Relocation::Type::FILE_RELATIVE, 
+                               type_name + "#states");
     }
     
     return buffer;

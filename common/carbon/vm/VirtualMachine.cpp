@@ -24,22 +24,22 @@ namespace carbon::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == TypeIds::i64)
-					return *((s64*)resolved->data.get());
+					return *((s64*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i32)
-					return *((s32*)resolved->data.get());
+					return *((s32*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i16)
-					return *((s16*)resolved->data.get());
+					return *((s16*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i8)
-					return *((s8*)resolved->data.get());
+					return *((s8*)resolved->ptr.get());
 
 				if (resolved->type == TypeIds::u64)
-					return *((u64*)resolved->data.get());
+					return *((u64*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u32)
-					return *((u32*)resolved->data.get());
+					return *((u32*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u16)
-					return *((u16*)resolved->data.get());
+					return *((u16*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u8)
-					return *((u8*)resolved->data.get());
+					return *((u8*)resolved->ptr.get());
 
             	throw VmTypeError("resolve_integer", frame, resolved->type);
 			}
@@ -56,22 +56,22 @@ namespace carbon::vm {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
 				if (resolved->type == TypeIds::i64)
-					return *((s64*)resolved->data.get());
+					return *((s64*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i32)
-					return *((s32*)resolved->data.get());
+					return *((s32*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i16)
-					return *((s16*)resolved->data.get());
+					return *((s16*)resolved->ptr.get());
 				if (resolved->type == TypeIds::i8)
-					return *((s8*)resolved->data.get());
+					return *((s8*)resolved->ptr.get());
 
 				if (resolved->type == TypeIds::u64)
-					return *((u64*)resolved->data.get());
+					return *((u64*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u32)
-					return *((u32*)resolved->data.get());
+					return *((u32*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u16)
-					return *((u16*)resolved->data.get());
+					return *((u16*)resolved->ptr.get());
 				if (resolved->type == TypeIds::u8)
-					return *((u8*)resolved->data.get());
+					return *((u8*)resolved->ptr.get());
 
             	throw VmTypeError("resolve_float", frame, resolved->type);
 			}
@@ -87,7 +87,7 @@ namespace carbon::vm {
 		if (module) {
 			Definition* resolved = module->resolve_symbol(name);
 			if (resolved) {
-				return resolved->data.get();
+				return resolved->ptr.get();
 			}
 			else {
 				throw VmResolvingError("resolve_pointer", frame, name);

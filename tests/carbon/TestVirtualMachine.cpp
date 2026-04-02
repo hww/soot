@@ -53,7 +53,7 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));                   // return r1
 
     RelocatableBuffer rbuffer;
-    rbuffer.add_function(code);
+    rbuffer.add_function("simple_answer", code, {}, {});
     builder.add_definition("simple_answer", "function", rbuffer);
 
     // ИСПРАВЛЕНИЕ: build_file() вызывается правильно
@@ -82,7 +82,7 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     code.push_back(Instruction::create_a(Opcode::RETURN, 5));                  // return r5
 
     RelocatableBuffer rbuffer;
-    rbuffer.add_function(code);
+    rbuffer.add_function("calculate", code, {}, {});
     builder.add_definition("calculate", "function", rbuffer);
 
     auto    module = builder.build_module();
@@ -106,7 +106,7 @@ TEST_F(VirtualMachineTest, FunctionCall) {
 
     // Добавляем функцию в билдер
     RelocatableBuffer rbuffer;
-    rbuffer.add_function(main_code);
+    rbuffer.add_function("main", main_code, {}, {});
     builder.add_definition("main", "function", rbuffer);
 
     // УБИРАЕМ: builder.inspect() - этого метода нет
@@ -143,7 +143,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
     RelocatableBuffer rbuffer;
-    rbuffer.add_function(code);
+    rbuffer.add_function("test_native_call", code, {}, {});
     builder.add_definition("test_native_call", "function", rbuffer);
 
     auto module = builder.build_module();
@@ -172,7 +172,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     code.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
     RelocatableBuffer rbuffer;
-    rbuffer.add_function( code);
+    rbuffer.add_function("conditional", code, {}, {});
     builder.add_definition("conditional", "function", rbuffer);
 
 
@@ -207,7 +207,7 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     code1.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
     RelocatableBuffer rbuffer1;
-    rbuffer1.add_function(code1);
+    rbuffer1.add_function("func1", code1, {}, {});
     binary1.add_definition("func1", "function", rbuffer1);    
 
 
@@ -218,7 +218,7 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
     code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
 
     RelocatableBuffer rbuffer2;
-    rbuffer2.add_function(code2);
+    rbuffer2.add_function("func2", code2, {}, {});
     binary2.add_definition("func2", "function", rbuffer2); 
 
     auto module1 = binary1.build_module();

@@ -4,14 +4,14 @@
 namespace carbon::files {
 
 void RelocatableBuffer::add_function(
+    const std::string& name,
     const std::vector<vm::Instruction>& code,
     const std::vector<u8>& data,
     const std::vector<SourceLocation>& debug_info,
     SymbolFlags flags) {
     
-    // Сохраняем начало буфера для этого определения
-    u32 start_offset = bytes_.size();
-    
+    (void)flags; 
+
     // Заполняем FunctionDesc
     FunctionDesc desc;
     desc.code_count = static_cast<u32>(code.size());
@@ -30,17 +30,17 @@ void RelocatableBuffer::add_function(
     // Отмечаем relocatable поля
     if (!code.empty()) {
         u32 code_ptr_offset = header_start + offsetof(FunctionDesc, code_ptr);
-        add_relocatable_offset(code_ptr_offset);
+        add_relocatable( code_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#code");
     }
     
     if (!data.empty()) {
         u32 data_ptr_offset = header_start + offsetof(FunctionDesc, data_ptr);
-        add_relocatable_offset(data_ptr_offset);
+        add_relocatable(data_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#data");
     }
     
     if (!debug_info.empty()) {
         u32 debug_ptr_offset = header_start + offsetof(FunctionDesc, debug_ptr);
-        add_relocatable_offset(debug_ptr_offset);
+        add_relocatable(debug_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#debug");
     }
     
     // Записываем код

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/type_system/Type.hpp"
-#include "files/RelocatableBuffer.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp"
 #include <string>
 #include <optional>
 
@@ -39,11 +39,13 @@ class IR_Value {
     virtual IR_Reg* to_reg(class Env& env) = 0;
 
     // Фаза 2: Наполнение логикой (IR-узлами)
-    virtual void resolve(Compiler* c) {}
+    virtual void resolve(Compiler* c) { (void)c; }
 
     // Фаза 3: Генерация байткода
     // Возвращает пару {тип_определения, буфер}
     virtual std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c);
+
+    
   protected:
     Type *type_;
 };
@@ -210,8 +212,8 @@ public:
         return m_env;
     }
 
-    void resolve(Compiler* c);
-    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c);
+    void resolve(Compiler* c) override;
+    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c) override;
 
 private:
     TypeEnv* m_env;

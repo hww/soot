@@ -2,6 +2,7 @@
 
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/sootc/IR/IR_Value.hpp"
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +21,7 @@ public:
   virtual void generate(FunctionDescBuilder &builder,
                         const std::unordered_map<IR_Value *, u32> &reg_map) = 0;
   virtual std::vector<IR_Value *> get_used_values() const { return {}; }
+  virtual std::string print() const { return to_string(); }
 };
 
 // Перемещение
