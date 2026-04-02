@@ -18,26 +18,33 @@ FunctionCompiler::FunctionCompiler(TypeSystem& ts, Compiler* compiler)
     : ts_(ts), compiler_(compiler) {}
 
 // ============================================================================
-// DECLARE Phase
+// compile_function — один проход
 // ============================================================================
 
-IR_Value* FunctionCompiler::declare_function(const script::Object& form, 
-                                              const script::Object& rest, 
-                                              Env* env) {
+IR_Value* FunctionCompiler::compile_function(const script::Object& form, 
+                                               const script::Object& rest, 
+                                               Env* env) {
     (void)form;
     
     auto args_list = rest.as_pair()->car;
     auto body_forms = rest.as_pair()->cdr;
 
     auto* f_env = new FunctionEnv(env, "lambda");
-    f_env->set_source_form(body_forms);
     
+    // Парсим аргументы
     parse_arguments(args_list, f_env);
+    
+    // Компилируем тело (создаем IR_Node)
+    compile_body(body_forms, f_env);
     
     return new IR_FunctionValue(f_env);
 }
 
-IR_Value* FunctionCompiler::declare_method(const script::Object& form,
+// ============================================================================
+// compile_method — один проход
+// ============================================================================
+
+IR_Value* FunctionCompiler::compile_method(const script::Object& form,
                                             const script::Object& rest,
                                             TypeEnv* type_env,
                                             int method_id) {
@@ -51,29 +58,39 @@ IR_Value* FunctionCompiler::declare_method(const script::Object& form,
     
     auto* m_env = new MethodEnv(method_name, type_env, type, type_env);
     m_env->method_id = method_id;
-    m_env->set_source_form(body_forms);
     
     // Парсим аргументы (this уже добавлен в конструкторе)
     parse_arguments(args_list, m_env);
     
+    // Компилируем тело
+    compile_body(body_forms, m_env);
+    
     return new IR_MethodValue(m_env);
 }
 
-IR_Value* FunctionCompiler::declare_state(const script::Object& form,
+// ============================================================================
+// compile_state — один проход
+// ============================================================================
+
+IR_Value* FunctionCompiler::compile_state(const script::Object& form,
                                            const script::Object& rest,
                                            TypeEnv* type_env) {
-    (void)rest;
-    
     std::string state_name = form.as_pair()->car.as_symbol().c_str();
     Type* type = type_env->get_type();
     
     auto* s_env = new StateEnv(state_name, type_env, type, type_env);
-    s_env->set_source_form(rest);
+    
+    // Состояние не имеет тела, только обработчики
+    // Обработчики будут добавлены позже через defmethod
     
     return new IR_StateValue(s_env);
 }
 
-StaticObject* FunctionCompiler::declare_static(const script::Object& form, Env* env) {
+// ============================================================================
+// compile_static
+// ============================================================================
+
+StaticObject* FunctionCompiler::compile_static(const script::Object& form, Env* env) {
     (void)env;
     
     if (form.is_string()) {
@@ -85,60 +102,60 @@ StaticObject* FunctionCompiler::declare_static(const script::Object& form, Env* 
         if (form.is_float()) {
             return new StaticFloat(form.as_float());
         }
-        // Integer
         double num = form.as_integer();
         return new StaticFloat(static_cast<float>(num));
     }
     
-    // TODO: pairs, structures, etc.
     return nullptr;
 }
 
 // ============================================================================
-// RESOLVE Phase
+// compile_body — создает IR_Node для всех форм тела
 // ============================================================================
 
-void FunctionCompiler::resolve_body(FunctionEnv* f_env) {
-    auto body_forms = f_env->source_form();
+void FunctionCompiler::compile_body(const script::Object& body_forms, FunctionEnv* env) {
     auto current = body_forms;
-    
     IR_Value* last_val = nullptr;
+    
     while (current.is_pair()) {
-        last_val = compiler_->resolve(current.as_pair()->car, f_env);
+        last_val = compiler_->compile(current.as_pair()->car, env);
         current = current.as_pair()->cdr;
     }
     
     if (last_val) {
-        f_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
+        env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
     } else {
         Type* obj_type = ts_.lookup_type("object");
-        f_env->emit(script::Object(), std::make_unique<IR_Return>(new IR_Const(obj_type, static_cast<s64>(0))));
+        env->emit(script::Object(), std::make_unique<IR_Return>(new IR_Const(obj_type, static_cast<s64>(0))));
     }
-}
-
-void FunctionCompiler::resolve_method_body(MethodEnv* m_env) {
-    // Аналогично resolve_body, но с MethodEnv
-    auto body_forms = m_env->source_form();
-    auto current = body_forms;
-    
-    IR_Value* last_val = nullptr;
-    while (current.is_pair()) {
-        last_val = compiler_->resolve(current.as_pair()->car, m_env);
-        current = current.as_pair()->cdr;
-    }
-    
-    if (last_val) {
-        m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
-    }
-}
-
-void FunctionCompiler::resolve_state_body(StateEnv* s_env) {
-    // Состояние не имеет своего тела, оно только содержит методы-обработчики
-    // Обработчики уже добавлены через bind в TypeEnv
 }
 
 // ============================================================================
-// BUILD Phase
+// parse_arguments
+// ============================================================================
+
+void FunctionCompiler::parse_arguments(const script::Object& args_form, FunctionEnv* env) {
+    auto current = args_form;
+    int arg_idx = env->params().size(); // учитываем уже существующие аргументы (например, this)
+    
+    while (current.is_pair()) {
+        auto arg_decl = current.as_pair()->car;
+        if (arg_decl.is_pair()) {
+            std::string arg_name = arg_decl.as_pair()->car.as_symbol().c_str();
+            std::string type_name = arg_decl.as_pair()->cdr.as_pair()->car.as_symbol().c_str();
+            Type* arg_type = ts_.lookup_type(type_name);
+            env->define_argument(arg_name, arg_type, arg_idx++);
+        } else if (arg_decl.is_symbol()) {
+            std::string arg_name = arg_decl.as_symbol().c_str();
+            Type* arg_type = ts_.lookup_type("object");
+            env->define_argument(arg_name, arg_type, arg_idx++);
+        }
+        current = current.as_pair()->cdr;
+    }
+}
+
+// ============================================================================
+// BUILD Phase (без изменений, но методы переименованы)
 // ============================================================================
 
 RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
@@ -191,7 +208,6 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
 }
 
 RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
-    // Аналогично build, но с MethodEnv
     FunctionDescBuilder func_builder; 
     std::unordered_map<IR_Value*, u32> reg_map;
     
@@ -238,27 +254,20 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
 }
 
 RelocatableBuffer FunctionCompiler::build_state(StateEnv* se) {
-    // State не содержит кода, только метаданные
-    // Возвращает пустой буфер или буфер с информацией о состоянии
+    (void)se;
     RelocatableBuffer buffer;
-    
-    // Можно записать информацию о состоянии для отладки
-    // Но сам state не генерирует код
-    
     return buffer;
 }
 
 RelocatableBuffer FunctionCompiler::build_static(StaticObject* so) {
     RelocatableBuffer buffer;
-    std::vector<u8> data;      // ← отдельный не-const вектор
+    std::vector<u8> data;
     std::vector<u64> relocations;
     
     so->generate(data, relocations);
     
-    // Добавляем байты в буфер
     buffer.add_bytes(data.data(), data.size());
     
-    // Добавляем релокации
     for (u64 pos : relocations) {
         buffer.add_relocatable(pos, Relocation::Type::FILE_RELATIVE, "");
     }
@@ -269,34 +278,6 @@ RelocatableBuffer FunctionCompiler::build_static(StaticObject* so) {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-void FunctionCompiler::parse_arguments(const script::Object& args_form, FunctionEnv* env) {
-    auto current = args_form;
-    int arg_idx = env->params().size(); // учитываем уже существующие аргументы (например, this)
-    
-    while (current.is_pair()) {
-        auto arg_decl = current.as_pair()->car;
-        if (arg_decl.is_pair()) {
-            std::string arg_name = arg_decl.as_pair()->car.as_symbol().c_str();
-            std::string type_name = arg_decl.as_pair()->cdr.as_pair()->car.as_symbol().c_str();
-            Type* arg_type = ts_.lookup_type(type_name);
-            env->define_argument(arg_name, arg_type, arg_idx++);
-        } else if (arg_decl.is_symbol()) {
-            std::string arg_name = arg_decl.as_symbol().c_str();
-            Type* arg_type = ts_.lookup_type("object");
-            env->define_argument(arg_name, arg_type, arg_idx++);
-        }
-        current = current.as_pair()->cdr;
-    }
-}
-
-void FunctionCompiler::compile_body_from_forms(const script::Object& body_forms, FunctionEnv* env) {
-    auto current = body_forms;
-    while (current.is_pair()) {
-        compiler_->resolve(current.as_pair()->car, env);
-        current = current.as_pair()->cdr;
-    }
-}
 
 std::string FunctionCompiler::make_function_symbol(const std::string& name) {
     return name;

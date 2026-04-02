@@ -231,6 +231,15 @@ Type::Type(std::string parent, std::string name, bool is_boxed, int heap_base)
     m_runtime_name = m_name;
 }
 
+int Type::get_method_id(const std::string &name) const {
+    for (const auto &method : m_methods) {
+        if (method.name == name) {
+            return method.id;
+        }
+    }
+    return -1;
+}
+
 bool Type::get_my_method(const std::string &name, MethodInfo *out) const {
 
     for (const auto &method : m_methods) {

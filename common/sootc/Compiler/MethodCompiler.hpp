@@ -16,19 +16,19 @@ class MethodCompiler {
 public:
     MethodCompiler(TypeSystem& ts, Compiler* compiler);
     
-    // DECLARE Phase: создает MethodEnv
-    IR_Value* declare(const script::Object& form, const script::Object& rest, Env* env);
+    // Единый метод компиляции метода
+    IR_Value* compile(const script::Object& form, 
+                      const script::Object& rest, 
+                      TypeEnv* type_env,
+                      int method_id);
     
-    // RESOLVE Phase: компилирует тело метода
-    void resolve(MethodEnv* m_env);
-    
-    // BUILD Phase: генерирует байткод
+    // BUILD Phase
     carbon::files::RelocatableBuffer build(MethodEnv* m_env);
 
 private:
     std::string extract_method_name(const script::Object& form);
-    std::string extract_owner_name(const script::Object& rest);
     void parse_arguments(const script::Object& args_form, MethodEnv* m_env);
+    void compile_body(const script::Object& body_forms, MethodEnv* m_env);
     
     TypeSystem& ts_;
     Compiler* compiler_;

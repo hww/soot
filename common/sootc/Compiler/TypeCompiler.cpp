@@ -16,12 +16,13 @@ TypeCompiler::TypeCompiler(TypeSystem& ts, Compiler* compiler)
     : ts_(ts), compiler_(compiler) {}
 
 // ============================================================================
-// DECLARE Phase
+// compile — один проход
 // ============================================================================
 
-IR_Value* TypeCompiler::declare(const script::Object& form, const script::Object& rest, Env* env) {
+IR_Value* TypeCompiler::compile(const script::Object& form, const script::Object& rest, Env* env) {
     (void)form;
 
+    // Парсим определение типа
     DeftypeResult result = parse_deftype(rest, &ts_, nullptr);
     Type* type_info = result.type_info;
     
@@ -30,38 +31,28 @@ IR_Value* TypeCompiler::declare(const script::Object& form, const script::Object
         return nullptr;
     }
 
+    // Создаем TypeEnv
     auto* t_env = new TypeEnv(type_info->get_name(), type_info, env);
 
+    // Создаем MethodEnv для каждого объявленного метода
     for (auto& method : type_info->get_methods_defined_for_type()) {
         auto* m_env = new MethodEnv(method.name, t_env, type_info, t_env);
         m_env->method_id = method.id;
+        // Метод пока без тела — тело появится позже в defmethod
         t_env->bind(method.name, new IR_MethodValue(m_env));
     }
 
+    // Создаем StateEnv для каждого объявленного состояния
     for (const auto& [s_name, s_type_spec] : type_info->get_states_declared_for_type()) {
         auto* s_env = new StateEnv(s_name, t_env, type_info, t_env);
         t_env->bind(s_name, new IR_StateValue(s_env));
     }
     
+    // Регистрируем тип в окружении
     auto* ir_type = new IR_Type(t_env);
     env->bind(type_info->get_name(), ir_type);
     
     return ir_type;
-}
-
-// ============================================================================
-// RESOLVE Phase
-// ============================================================================
-
-void TypeCompiler::resolve(TypeEnv* t_env) {
-    FunctionCompiler func_compiler(ts_, compiler_);
-    
-    for (size_t id = 0; id < t_env->method_count(); ++id) {
-        MethodEnv* m_env = t_env->get_method(static_cast<int>(id));
-        if (m_env) {
-            func_compiler.resolve_method_body(m_env);  // ← прямой вызов
-        }
-    }
 }
 
 // ============================================================================
@@ -102,7 +93,7 @@ MethodEnv* TypeCompiler::find_method_in_hierarchy(TypeEnv* start_env, int method
 }
 
 RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
-    RelocatableBuffer buffer;  // ← теперь RelocatableBuffer известен
+    RelocatableBuffer buffer;
     Type* type_info = t_env->get_type();
     std::string type_name = type_info->get_name();
 

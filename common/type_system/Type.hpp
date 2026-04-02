@@ -387,6 +387,7 @@ class Type : public NativeObject {
     bool              get_my_method(int id, MethodInfo *out) const;
     bool              get_my_last_method(MethodInfo *out) const;
     bool              get_my_new_method(MethodInfo *out) const;
+    int               get_method_id(const std::string &name) const;
     int               get_num_methods() const;
     const MethodInfo &add_method(const MethodInfo &info);
     const MethodInfo &add_new_method(const MethodInfo &info);

@@ -12,48 +12,55 @@ MethodCompiler::MethodCompiler(TypeSystem& ts, Compiler* compiler)
     : ts_(ts), compiler_(compiler) {}
 
 // ============================================================================
-// DECLARE Phase
+// compile — один проход
 // ============================================================================
 
-IR_Value* MethodCompiler::declare(const script::Object& form, const script::Object& rest, Env* env) {
+IR_Value* MethodCompiler::compile(const script::Object& form, 
+                                   const script::Object& rest, 
+                                   TypeEnv* type_env,
+                                   int method_id) {
     std::string method_name = extract_method_name(form);
-    std::string owner_name = extract_owner_name(rest);
-    
-    IR_Value* owner_val = env->lookup(owner_name);
-    if (!owner_val) {
-        lg::error("Type '{}' not found for method '{}'", owner_name, method_name);
-        return nullptr;
-    }
-    
-    auto* owner_type = dynamic_cast<IR_Type*>(owner_val);
-    if (!owner_type) {
-        lg::error("'{}' is not a type", owner_name);
-        return nullptr;
-    }
-    
-    TypeEnv* type_env = owner_type->get_env();
     Type* type_info = type_env->get_type();
     
+    // rest = (args... body...)
     auto args_list = rest.as_pair()->car;
     auto body_forms = rest.as_pair()->cdr;
     
+    // Создаем MethodEnv
     auto* m_env = new MethodEnv(method_name, type_env, type_info, type_env);
-    m_env->set_source_form(body_forms);
+    m_env->method_id = method_id;
     
+    // Парсим аргументы (this уже добавлен в конструкторе)
     parse_arguments(args_list, m_env);
     
+    // Компилируем тело метода
+    compile_body(body_forms, m_env);
+    
+    // Регистрируем метод в типе
     type_env->bind(method_name, new IR_MethodValue(m_env));
     
     return new IR_MethodValue(m_env);
 }
 
 // ============================================================================
-// RESOLVE Phase
+// compile_body — создает IR_Node для тела метода
 // ============================================================================
 
-void MethodCompiler::resolve(MethodEnv* m_env) {
-    FunctionCompiler func_compiler(ts_, compiler_);
-    func_compiler.resolve_method_body(m_env);
+void MethodCompiler::compile_body(const script::Object& body_forms, MethodEnv* m_env) {
+    auto current = body_forms;
+    IR_Value* last_val = nullptr;
+    
+    while (current.is_pair()) {
+        last_val = compiler_->compile(current.as_pair()->car, m_env);
+        current = current.as_pair()->cdr;
+    }
+    
+    if (last_val) {
+        m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
+    } else {
+        Type* obj_type = ts_.lookup_type("object");
+        m_env->emit(script::Object(), std::make_unique<IR_Return>(new IR_Const(obj_type, static_cast<s64>(0))));
+    }
 }
 
 // ============================================================================
@@ -70,6 +77,7 @@ carbon::files::RelocatableBuffer MethodCompiler::build(MethodEnv* m_env) {
 // ============================================================================
 
 std::string MethodCompiler::extract_method_name(const script::Object& form) {
+    // form = (defmethod name ...)
     auto pair = form.as_pair();
     if (pair && pair->cdr.is_pair()) {
         auto second = pair->cdr.as_pair()->car;
@@ -80,26 +88,20 @@ std::string MethodCompiler::extract_method_name(const script::Object& form) {
     return "unknown-method";
 }
 
-std::string MethodCompiler::extract_owner_name(const script::Object& rest) {
-    auto pair = rest.as_pair();
-    if (pair && pair->car.is_symbol()) {
-        return pair->car.as_symbol().c_str();
-    }
-    return "unknown-owner";
-}
-
 void MethodCompiler::parse_arguments(const script::Object& args_form, MethodEnv* m_env) {
     auto current = args_form;
-    int arg_idx = m_env->params().size();
+    int arg_idx = m_env->params().size(); // 0 для this
     
     while (current.is_pair()) {
         auto arg_decl = current.as_pair()->car;
         if (arg_decl.is_pair()) {
+            // (name type)
             std::string arg_name = arg_decl.as_pair()->car.as_symbol().c_str();
             std::string type_name = arg_decl.as_pair()->cdr.as_pair()->car.as_symbol().c_str();
             Type* arg_type = ts_.lookup_type(type_name);
             m_env->define_argument(arg_name, arg_type, arg_idx++);
         } else if (arg_decl.is_symbol()) {
+            // name (тип object по умолчанию)
             std::string arg_name = arg_decl.as_symbol().c_str();
             Type* arg_type = ts_.lookup_type("object");
             m_env->define_argument(arg_name, arg_type, arg_idx++);
