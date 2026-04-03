@@ -6,7 +6,7 @@ namespace sootc {
 // --- IR_Move ---
 IR_Move::IR_Move(IR_Reg *dest, IR_Value *src) : dest_(dest), src_(src) {}
 std::string IR_Move::to_string() const { return fmt::format("mov {}, {}", dest_->to_string(), src_->to_string()); }
-void IR_Move::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_Move::generate(RelocatableBuffer   &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     builder.add_instruction(Opcode::MOVE, reg_map.at(dest_), reg_map.at(src_), 0);
 }
 std::vector<IR_Value*> IR_Move::get_used_values() const { 
@@ -18,7 +18,7 @@ std::string IR_LoadConst::to_string() const { return fmt::format("load {}, {}", 
 std::vector<IR_Value*> IR_LoadConst::get_used_values() const { 
     return { dest_ }; 
 }
-void IR_LoadConst::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_LoadConst::generate(RelocatableBuffer   &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     u32 d = reg_map.at(dest_);
     if (value_->is_float()) {
         builder.add_instruction(Opcode::LOAD_IMMEDIATE_FLOAT, d, 0, 0); // В твоем Opcode есть LOAD_IMMEDIATE_FLOAT
@@ -33,7 +33,7 @@ std::vector<IR_Value*> IR_LoadField::get_used_values() const {
     return { dest_, field_->get_base() };
 }
 std::string IR_LoadField::to_string() const { return fmt::format("get_field {}, {}", dest_->to_string(), field_->to_string()); }
-void IR_LoadField::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_LoadField::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     builder.add_instruction(Opcode::LOAD_IND_POINTER, reg_map.at(dest_), reg_map.at(field_->get_base()), static_cast<u16>(field_->get_offset()));
 }
 
@@ -43,7 +43,7 @@ std::vector<IR_Value*> IR_StoreField::get_used_values() const {
     return { field_->get_base(), value_ };
 }
 std::string IR_StoreField::to_string() const { return fmt::format("set_field {}, {}", field_->to_string(), value_->to_string()); }
-void IR_StoreField::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_StoreField::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     builder.add_instruction(Opcode::STORE_IND_POINTER, reg_map.at(field_->get_base()), reg_map.at(value_), static_cast<u16>(field_->get_offset()));
 }
 
@@ -53,7 +53,7 @@ std::string IR_Binary::to_string() const {
     return fmt::format("binary_op {}, {}, {}", dest_->to_string(), left_->to_string(), right_->to_string());
 }
 
-void IR_Binary::generate(FunctionDescBuilder& builder, const std::unordered_map<IR_Value*, u32>& reg_map) {
+void IR_Binary::generate(RelocatableBuffer & builder, const std::unordered_map<IR_Value*, u32>& reg_map) {
     Opcode opcode;
     switch (op_) {
         case Op::ADD: opcode = Opcode::ADD_INT; break;
@@ -75,7 +75,7 @@ std::vector<IR_Value*> IR_Compare::get_used_values() const {
     return { dest_, left_, right_ };
 }
 std::string IR_Compare::to_string() const { return "cmp"; }
-void IR_Compare::generate(FunctionDescBuilder& builder, const std::unordered_map<IR_Value*, u32>& reg_map) {
+void IR_Compare::generate(RelocatableBuffer & builder, const std::unordered_map<IR_Value*, u32>& reg_map) {
     Opcode opcode;
     switch (cond_) {
         case Cond::EQ: opcode = Opcode::CMP_EQUAL; break;
@@ -90,30 +90,36 @@ void IR_Compare::generate(FunctionDescBuilder& builder, const std::unordered_map
 }
 
 // --- Flow Control ---
-IR_BranchIf::IR_BranchIf(IR_Value *cond, int t, int f) : cond_(cond), true_label_(t), false_label_(f) {}
-void IR_BranchIf::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
-    builder.add_instruction(Opcode::BRANCH_IF, reg_map.at(cond_), 0, (u16)true_label_);
+IR_BranchIf::IR_BranchIf(IR_Value *cond, Label t) : cond_(cond), true_label_(t) {}
+void IR_BranchIf::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+    builder.add_branch_reference(true_label_.name); 
+    builder.add_instruction_imm_s16(Opcode::BRANCH_IF, reg_map.at(cond_), 0/* placeholder */);
 }
 
-IR_Branch::IR_Branch(int l) : label_(l) {}
-void IR_Branch::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &) { builder.add_branch_label(label_); }
+IR_Branch::IR_Branch(Label l) : label_(l) {}
+void IR_Branch::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &) { 
+    builder.add_branch_reference(label_.name); 
+    builder.add_instruction_imm_s16(Opcode::BRANCH, 0, 0 /* placeholder */);
+}
 
-IR_Label::IR_Label(int l) : label_(l) {}
-void IR_Label::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &) { builder.add_label(label_); }
+IR_Label::IR_Label(Label l) : label_(l) {}
+void IR_Label::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &) { 
+    builder.add_label(label_.name); 
+}
 
 IR_Return::IR_Return(IR_Value *v) : value_(v) {}
 std::vector<IR_Value*> IR_Return::get_used_values() const {
     if (value_) return { value_ };
     return {};
 }
-void IR_Return::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_Return::generate(RelocatableBuffer  &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     builder.add_instruction(Opcode::RETURN, value_ ? reg_map.at(value_) : 0, 0, 0);
 }
 
 // Пустые заглушки для to_string там, где они нужны для линковки
 std::string IR_BranchIf::to_string() const { return "br_if"; }
 std::string IR_Branch::to_string() const { return "jmp"; }
-std::string IR_Label::to_string() const { return fmt::format("L{}:", label_); }
+std::string IR_Label::to_string() const { return fmt::format("L{}:", label_.name); }
 std::string IR_Return::to_string() const { return "ret"; }
 std::string IR_Call::to_string() const { return "call"; }
 
@@ -126,7 +132,7 @@ std::vector<IR_Value*> IR_Call::get_used_values() const {
     for (auto* a : args_) res.push_back(a);
     return res;
 }
-void IR_Call::generate(FunctionDescBuilder &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
+void IR_Call::generate(RelocatableBuffer &builder, const std::unordered_map<IR_Value *, u32> &reg_map) {
     builder.add_instruction(Opcode::CALL, result_ ? reg_map.at(result_) : 0, reg_map.at(function_), (u16)args_.size());
 }
 

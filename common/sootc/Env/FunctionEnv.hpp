@@ -174,9 +174,6 @@ public:
 
     IR_Reg* push_reg_val(std::unique_ptr<IR_Reg> in);
 
-    const std::vector<std::unique_ptr<IR_Node>>& nodes() const { return m_nodes; }
-    std::vector<std::unique_ptr<IR_Node>>& nodes() { return m_nodes; }
-
     int get_max_param_index() const {
         int max_idx = -1;
         for (auto* reg : m_params) {
@@ -190,7 +187,6 @@ protected:
     void resolve_gotos();
 
     std::string m_name;
-    std::vector<std::unique_ptr<IR_Node>> m_nodes;  // промижуточный код
     std::vector<std::unique_ptr<IR_Node>> m_code;   // финальный код после оптимизаций
     std::vector<script::Object> m_code_debug_source;
 

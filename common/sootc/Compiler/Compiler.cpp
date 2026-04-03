@@ -69,15 +69,8 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
         current = current.as_pair()->cdr;
     }
     
-    // Собираем все скомпилированные IR_Value
-    std::vector<std::pair<std::string, IR_Value*>> work_list;
-    for (auto& value : env->symbols()) {
-        auto name = env->get_value_name(value);
-        work_list.push_back({name, value});
-    }
-
     // ПРОХОД 2: BUILD — генерация буферов (с relocations)
-    for (auto& [name, value] : work_list) {
+    for (auto& [name, value] : env->sybols_table()) {
         if (auto result = value->build(this)) {
             const auto& [type_tag, buffer] = *result;
             builder_.add_definition(name, type_tag, std::move(buffer));

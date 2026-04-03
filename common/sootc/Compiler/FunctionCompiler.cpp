@@ -159,19 +159,21 @@ void FunctionCompiler::parse_arguments(const script::Object& args_form, Function
 // ============================================================================
 
 RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
-    FunctionDescBuilder func_builder; 
+    RelocatableBuffer buffer;
     std::unordered_map<IR_Value*, u32> reg_map;
     
     const u32 ARG_START = 24; 
     const u32 LOCAL_START = 0;
 
+    // 1. Регистрируем аргументы
     u32 next_arg = ARG_START;
     for (auto* arg_val : fe->params()) { 
         reg_map[arg_val] = next_arg++;
     }
 
+    // 2. Регистрируем локальные переменные
     u32 next_local = LOCAL_START;
-    for (auto& node : fe->nodes()) {
+    for (auto& node : fe->code()) {
         for (auto* val : node->get_used_values()) {
             if (val && reg_map.find(val) == reg_map.end()) {
                 if (next_local >= ARG_START) {
@@ -182,33 +184,33 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
         }
     }
 
-    for (auto& node : fe->nodes()) {
-        node->generate(func_builder, reg_map);
+    // 3. Генерируем байткод прямо в буфер
+    for (auto& node : fe->code()) {
+        node->generate(buffer, reg_map);  // ← generate теперь принимает RelocatableBuffer
     }
     
-    auto instructions = func_builder.get_instructions();
-
+    // 4. Заголовок функции
     FunctionDesc desc{}; 
-    desc.code_count = static_cast<u32>(instructions.size());
+    desc.code_count = static_cast<u32>(buffer.size() / sizeof(Instruction));
     desc.code_ptr = reinterpret_cast<Instruction*>(sizeof(FunctionDesc));
 
-    RelocatableBuffer buffer;  
-    buffer.add_bytes(&desc, sizeof(desc));
+    // 5. Вставляем заголовок В НАЧАЛО буфера
+    RelocatableBuffer result;
+    result.add_bytes(&desc, sizeof(desc));
     
     std::string symbol_name = make_function_symbol(fe->name());
-    buffer.add_relocatable(offsetof(FunctionDesc, code_ptr), 
-                           Relocation::Type::FILE_RELATIVE, 
+    result.add_relocatable(offsetof(FunctionDesc, code_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
                            symbol_name + "#code");
-
-    if (!instructions.empty()) {
-        buffer.add_bytes(instructions.data(), instructions.size() * sizeof(Instruction));
-    }
     
-    return buffer;
+    // Добавляем сгенерированный код после заголовка
+    result.add_buffer(buffer);
+    
+    return result;
 }
 
 RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
-    FunctionDescBuilder func_builder; 
+
     std::unordered_map<IR_Value*, u32> reg_map;
     
     const u32 ARG_START = 24; 
@@ -220,7 +222,7 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     }
 
     u32 next_local = LOCAL_START;
-    for (auto& node : me->nodes()) {
+    for (auto& node : me->code()) {
         for (auto* val : node->get_used_values()) {
             if (val && reg_map.find(val) == reg_map.end()) {
                 reg_map[val] = next_local++;
@@ -228,29 +230,29 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
         }
     }
 
-    for (auto& node : me->nodes()) {
-        node->generate(func_builder, reg_map);
+    RelocatableBuffer code_buffer;  // буфер для кода
+    for (auto& node : me->code()) {
+        node->generate(code_buffer, reg_map);
     }
     
-    auto instructions = func_builder.get_instructions();
-    RelocatableBuffer buffer;
-
+    // Теперь создаем финальный буфер с заголовком
+    RelocatableBuffer result;
+    
     FunctionDesc desc{}; 
-    desc.code_count = static_cast<u32>(instructions.size());
+    desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr = reinterpret_cast<Instruction*>(sizeof(FunctionDesc));
-
-    buffer.add_bytes(&desc, sizeof(desc));
+    
+    result.add_bytes(&desc, sizeof(desc));
     
     std::string symbol_name = make_method_symbol(me->type_env()->name(), me->name());
-    buffer.add_relocatable(offsetof(FunctionDesc, code_ptr), 
-                           Relocation::Type::FILE_RELATIVE, 
+    result.add_relocatable(offsetof(FunctionDesc, code_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
                            symbol_name + "#code");
-
-    if (!instructions.empty()) {
-        buffer.add_bytes(instructions.data(), instructions.size() * sizeof(Instruction));
-    }
     
-    return buffer;
+    // Добавляем сгенерированный код
+    result.add_buffer(code_buffer);
+    
+    return result;
 }
 
 RelocatableBuffer FunctionCompiler::build_state(StateEnv* se) {
@@ -269,7 +271,7 @@ RelocatableBuffer FunctionCompiler::build_static(StaticObject* so) {
     buffer.add_bytes(data.data(), data.size());
     
     for (u64 pos : relocations) {
-        buffer.add_relocatable(pos, Relocation::Type::FILE_RELATIVE, "");
+        buffer.add_relocatable(pos, Relocation::Type::FIXED_ADDRESS, "");
     }
     
     return buffer;

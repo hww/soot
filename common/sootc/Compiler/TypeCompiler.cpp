@@ -131,12 +131,12 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             
             buffer.add_u64(0);
             buffer.add_relocatable(buffer.size() - 8, 
-                                   Relocation::Type::FILE_RELATIVE, 
+                                   Relocation::Type::FIXED_ADDRESS, 
                                    method_symbol + "#code");
         }
         
         buffer.add_relocatable(methods_offset_field, 
-                               Relocation::Type::FILE_RELATIVE, 
+                               Relocation::Type::FIXED_ADDRESS, 
                                type_name + "#methods");
     }
     
@@ -154,11 +154,11 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             
             std::string state_label = type_name + "::" + s_env->name();
             u32 ptr_in_slot = slot_pos + offsetof(StateDef, ptr);
-            buffer.add_relocatable(ptr_in_slot, Relocation::Type::FILE_RELATIVE, state_label);
+            buffer.add_relocatable(ptr_in_slot, Relocation::Type::FIXED_ADDRESS, state_label);
         }
         
         buffer.add_relocatable(states_offset_field, 
-                               Relocation::Type::FILE_RELATIVE, 
+                               Relocation::Type::FIXED_ADDRESS, 
                                type_name + "#states");
     }
     

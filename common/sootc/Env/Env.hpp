@@ -82,6 +82,16 @@ public:
         return empty;
     }
 
+    // Собираем все скомпилированные IR_Value
+    std::vector<std::pair<std::string, IR_Value*>> sybols_table() const {
+        std::vector<std::pair<std::string, IR_Value*>> table;
+        for (auto& value : symbols()) {
+            auto name = get_value_name(value);
+            table.push_back({name, value});
+        }
+        return table;
+    }
+
     // ========================================================================
     // Основные операции
     // ========================================================================

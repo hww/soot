@@ -9,6 +9,7 @@
 
 using namespace carbon::lib;
 
+
 namespace carbon::vm {
 
     class InstructionTable;

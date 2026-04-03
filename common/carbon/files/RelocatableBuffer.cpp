@@ -30,17 +30,17 @@ void RelocatableBuffer::add_function(
     // Отмечаем relocatable поля
     if (!code.empty()) {
         u32 code_ptr_offset = header_start + offsetof(FunctionDesc, code_ptr);
-        add_relocatable( code_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#code");
+        add_relocatable( code_ptr_offset, Relocation::Type::FIXED_ADDRESS, name + "#code");
     }
     
     if (!data.empty()) {
         u32 data_ptr_offset = header_start + offsetof(FunctionDesc, data_ptr);
-        add_relocatable(data_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#data");
+        add_relocatable(data_ptr_offset, Relocation::Type::FIXED_ADDRESS, name + "#data");
     }
     
     if (!debug_info.empty()) {
         u32 debug_ptr_offset = header_start + offsetof(FunctionDesc, debug_ptr);
-        add_relocatable(debug_ptr_offset, Relocation::Type::FILE_RELATIVE, name + "#debug");
+        add_relocatable(debug_ptr_offset, Relocation::Type::FIXED_ADDRESS, name + "#debug");
     }
     
     // Записываем код
