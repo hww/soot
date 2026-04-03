@@ -22,6 +22,8 @@ namespace carbon::files {
      * debugging information mapping back to source code.
      */
     struct FunctionDesc {
+        static constexpr bool verbose = false; // Включить для подробного логирования при релокации
+
         /** Number of instructions in the code section */
         u32 code_count;
         /** Size of constant data in bytes */

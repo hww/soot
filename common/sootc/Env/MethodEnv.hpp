@@ -9,8 +9,10 @@ class TypeEnv;
 
 class MethodEnv : public FunctionEnv {
 public:
-    MethodEnv(const std::string& name, Env* parent, Type* type, TypeEnv* type_env = nullptr)
-        : FunctionEnv(parent, name), m_type(type), m_type_env(type_env) {
+    MethodEnv(u32 id, const std::string& name, Env* parent, Type* type)
+        : FunctionEnv(parent, name), m_id(id), m_type(type), 
+        m_type_env(parent ? parent->type_env() : nullptr)
+    {
         // this — первый аргумент (регистр 0)
         define_argument("this", type, 0);
         
@@ -27,8 +29,9 @@ public:
         return fmt::format("MethodEnv(name={}, type={})", 
                            name(), m_type ? m_type->get_name() : "unknown");
     }
-    
+    u32 id() const { return m_id; }
 private:    
+    u32 m_id = 0;  
     Type* m_type;
     TypeEnv* m_type_env = nullptr;  // обратная ссылка на тип
 };

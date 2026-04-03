@@ -5,6 +5,7 @@
 #include "common/carbon/files/RelocatableBuffer.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/util/Log.hpp"
+#include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
 #include <cstddef>
 
@@ -30,16 +31,22 @@ IR_Value* TypeCompiler::compile(const script::Object& form, const script::Object
         lg::error("Failed to parse type definition");
         return nullptr;
     }
-
+    lg::info("TypeCompiler compile type '{}', parent '{}', methods {}, states {}", 
+             type_info->get_name(), type_info->get_parent(), 
+             type_info->get_methods_count(), type_info->states_count());
     // Создаем TypeEnv
     auto* t_env = new TypeEnv(type_info->get_name(), type_info, env);
 
     // Создаем MethodEnv для каждого объявленного метода
-    for (auto& method : type_info->get_methods_defined_for_type()) {
-        auto* m_env = new MethodEnv(method.name, t_env, type_info, t_env);
-        m_env->method_id = method.id;
-        // Метод пока без тела — тело появится позже в defmethod
-        t_env->bind(method.name, new IR_MethodValue(m_env));
+    for (u32 id = 0; id < type_info->get_methods_count(); ++id) {
+        MethodInfo method;
+        if (ts_.try_lookup_method(type_info->get_name(), id, &method)) {
+            auto* m_env = new MethodEnv(id, method.name, t_env, type_info);
+            // Метод пока без тела — тело появится позже в defmethod
+            t_env->bind(method.name, new IR_MethodValue(m_env));
+        } else {
+            lg::error("Method ID {} not found in type '{}'", id, type_info->get_name());
+        }
     }
 
     // Создаем StateEnv для каждого объявленного состояния
@@ -60,36 +67,35 @@ IR_Value* TypeCompiler::compile(const script::Object& form, const script::Object
 // ============================================================================
 
 MethodEnv* TypeCompiler::find_method_in_hierarchy(TypeEnv* start_env, int method_id, TypeEnv*& out_defining_type) {
+    // Проверяем текущий тип
     MethodEnv* m_env = start_env->get_method(method_id);
     if (m_env) {
         out_defining_type = start_env;
         return m_env;
     }
     
-    Env* global = start_env->global_env();
+    // Ищем в родителях через глобальное окружение
     std::string parent_name = start_env->get_type()->get_parent();
-    
-    while (!parent_name.empty() && parent_name != "object") {
-        IR_Value* parent_val = global->lookup(parent_name);
-        if (!parent_val) break;
-        
-        auto* parent_ir_type = dynamic_cast<IR_Type*>(parent_val);
-        if (!parent_ir_type) break;
-        
-        TypeEnv* parent_env = parent_ir_type->get_env();
-        if (!parent_env) break;
-        
-        m_env = parent_env->get_method(method_id);
-        if (m_env) {
-            out_defining_type = parent_env;
-            return m_env;
-        }
-        
-        parent_name = parent_env->get_type()->get_parent();
+    if (parent_name.empty() || parent_name == "object") {
+        out_defining_type = nullptr;
+        return nullptr;
     }
     
-    out_defining_type = nullptr;
-    return nullptr;
+    Env* global = start_env->global_env();
+    IR_Value* parent_val = global->lookup(parent_name);
+    if (!parent_val) {
+        out_defining_type = nullptr;
+        return nullptr;
+    }
+    
+    auto* parent_ir_type = dynamic_cast<IR_Type*>(parent_val);
+    if (!parent_ir_type) {
+        out_defining_type = nullptr;
+        return nullptr;
+    }
+    
+    // Рекурсивно ищем в родителе
+    return find_method_in_hierarchy(parent_ir_type->get_env(), method_id, out_defining_type);
 }
 
 RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
@@ -123,7 +129,12 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             MethodEnv* m_env = find_method_in_hierarchy(t_env, id, defining_type);
             
             if (!m_env) {
-                throw std::runtime_error(fmt::format("Method ID {} not found in type '{}'", id, type_name));
+                    MethodInfo info;
+                if (type_info->get_my_method(id, &info)) {
+                    throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", info.name, type_name));
+                } else {
+                    throw std::runtime_error(fmt::format("Method ID {} not found in type '{}'", id, type_name));
+                }
             }
             
             std::string owner_name = defining_type->get_type()->get_name();

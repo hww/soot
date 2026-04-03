@@ -140,7 +140,7 @@ namespace carbon::files {
         /** Flags for the definition */           
         MethodFlags flags;
         /** Pointer to the actual data or code for this definition */
-        Ptr<FunctionDesc> data;        
+        Ptr<FunctionDesc> ptr;        
         /**
         * @brief Convert to simple string representation
         * @return Basic string representation

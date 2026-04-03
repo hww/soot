@@ -8,6 +8,7 @@
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/Env/TypeEnv.hpp"
 #include "sootc/IR/StaticObject.hpp"
+#include "type_system/Type.hpp"
 
 using namespace ::carbon::files;
 using namespace ::carbon::vm;
@@ -55,9 +56,13 @@ IR_Value* FunctionCompiler::compile_method(const script::Object& form,
     
     std::string method_name = form.as_pair()->car.as_symbol().c_str();
     Type* type = type_env->get_type();
-    
-    auto* m_env = new MethodEnv(method_name, type_env, type, type_env);
-    m_env->method_id = method_id;
+
+    MethodInfo method_info;                                              
+
+    if (!ts_.try_lookup_method(type->get_name(), method_name, &method_info)) {
+        throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", method_name, type->get_name()));
+    }
+    auto* m_env = new MethodEnv(method_info.id, method_name, type_env, type);
     
     // Парсим аргументы (this уже добавлен в конструкторе)
     parse_arguments(args_list, m_env);

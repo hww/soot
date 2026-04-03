@@ -87,7 +87,7 @@ struct TypeDesc {
      */
     FunctionDesc* get_method_function(u32 index) const {
         auto def = get_method_def(index);
-        return def != nullptr ? def->data.ptr : nullptr;
+        return def != nullptr ? def->ptr.ptr : nullptr;
     }
     
     /**

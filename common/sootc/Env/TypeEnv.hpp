@@ -52,19 +52,22 @@ public:
 
     
     void bind(const std::string& name, IR_Value* val) override {
-        // 1. Стандартный bind
-        Env::bind(name, val);
-
         // 2. Специфичная логика для TypeEnv
-        if (auto* m_env = dynamic_cast<MethodEnv*>(val)) {
-            MethodInfo m_info;
-            if (m_type->get_my_method(name, &m_info)) {
-                m_vtable_slots[m_info.id] = m_env;
-                m_env->set_type_env(this);  // обратная ссылка
+        if (auto* m_val = dynamic_cast<IR_MethodValue*>(val)) {
+            MethodEnv* m_env = m_val->get_env();
+            if (m_env->id() >= m_vtable_slots.size()) {
+                throw std::runtime_error(fmt::format("Method ID {} exceeds declared method count for type '{}'", 
+                                                     m_env->id(), m_name));
             }
-        } else if (auto* s_env = dynamic_cast<StateEnv*>(val)) {
+            m_vtable_slots[m_env->id()] = m_env;
+            m_env->set_type_env(this);
+        } else if (auto* s_val = dynamic_cast<IR_StateValue*>(val)) {
+            StateEnv* s_env = s_val->get_env();
             m_states_list.push_back(s_env);
-            s_env->set_type_env(this);  // обратная ссылка
+            s_env->set_type_env(this);
+        } else {
+            // 1. Стандартный bind
+            Env::bind(name, val);
         }
     }
 

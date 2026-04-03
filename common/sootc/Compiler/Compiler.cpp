@@ -1,5 +1,6 @@
 #include "Compiler.hpp"
 #include "common/util/Log.hpp"
+#include "lib/StringId.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/MethodCompiler.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
@@ -71,8 +72,10 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
     
     // ПРОХОД 2: BUILD — генерация буферов (с relocations)
     for (auto& [name, value] : env->sybols_table()) {
-        if (auto result = value->build(this)) {
+        lg::info("Compiler compile symbol '{}'", name);
+        if (auto result = value->build(this)) {            
             const auto& [type_tag, buffer] = *result;
+             lg::info("  > add_definition compile symbol '{}' type '{}'", name, type_tag);
             builder_.add_definition(name, type_tag, std::move(buffer));
         }
     }
@@ -111,29 +114,8 @@ IR_Value* Compiler::compile_begin(const script::Object& form, const script::Obje
 }
 
 IR_Value* Compiler::compile_defmethod(const script::Object& form, const script::Object& rest, Env* env) {
-    // rest = (type-name args... body...)
-    std::string type_name = rest.as_pair()->car.as_symbol().c_str();
-    
-    IR_Value* type_val = env->lookup(type_name);
-    if (!type_val) {
-        lg::error("Type '{}' not found for method", type_name);
-        return nullptr;
-    }
-    
-    auto* ir_type = dynamic_cast<IR_Type*>(type_val);
-    if (!ir_type) {
-        lg::error("'{}' is not a type", type_name);
-        return nullptr;
-    }
-    
-    TypeEnv* type_env = ir_type->get_env();
-    
-    // Получаем ID метода из TypeSystem по имени метода
-    std::string method_name = form.as_pair()->car.as_symbol().c_str();
-    int method_id = type_env->get_type()->get_method_id(method_name);
-    
     MethodCompiler method_compiler(ts_, this);
-    return method_compiler.compile(form, rest.as_pair()->cdr, type_env, method_id);
+    return method_compiler.compile(form, rest, env);
 }
 
 IR_Value* Compiler::compile_deftype(const script::Object& form, const script::Object& rest, Env* env) {
@@ -185,6 +167,17 @@ IR_Value* Compiler::compile_number(const script::Object& form, Env*) {
 
 IR_Value* Compiler::compile_symbol(const script::Object& form, Env* env) {
     std::string name = form.as_symbol().c_str();
+    
+    // Keyword (начинается с ':') — самовычисляемая константа
+    if (!name.empty() && name[0] == ':') {
+        // Создаем константу типа keyword
+        Type* keyword_type = ts_.lookup_type("symbol");
+        auto string_id = static_cast<s64>(StringId(name));
+        // TODO: нужно создать IR_Const, который хранит StringId
+        return new IR_Const(keyword_type,string_id); // placeholder
+    }
+    
+    // Обычный символ — ищем в окружении
     IR_Value* val = env->lookup(name);
     if (!val) {
         lg::error("Undefined variable: {}", name);
