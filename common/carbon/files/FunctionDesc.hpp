@@ -22,7 +22,7 @@ namespace carbon::files {
      * debugging information mapping back to source code.
      */
     struct FunctionDesc {
-        static constexpr bool verbose = false; // Включить для подробного логирования при релокации
+        static constexpr bool verbose = true; // Включить для подробного логирования при релокации
 
         /** Number of instructions in the code section */
         u32 code_count;
@@ -38,6 +38,8 @@ namespace carbon::files {
         Ptr<u8> data_ptr;
         /** Pointer to debug information array */
         Ptr<SourceLocation> debug_ptr;
+        /** Unique name identifier within the module */
+        StringId name;
         /** Module that owns this FunctionDesc (set during linking) */
         Module* owner_module;
 

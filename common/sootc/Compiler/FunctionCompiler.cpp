@@ -1,4 +1,5 @@
 #include "sootc/Compiler/FunctionCompiler.hpp"
+#include "fmt/format.h"
 #include "sootc/Compiler/Compiler.hpp"
 #include "common/carbon/files/FunctionDesc.hpp" 
 #include "common/carbon/files/RelocatableBuffer.hpp"
@@ -15,6 +16,9 @@ using namespace ::carbon::vm;
 
 namespace sootc {
 
+int FunctionCompiler::s_lambda_index = 1;
+
+
 FunctionCompiler::FunctionCompiler(TypeSystem& ts, Compiler* compiler)
     : ts_(ts), compiler_(compiler) {}
 
@@ -29,6 +33,8 @@ IR_Value* FunctionCompiler::compile_function(const script::Object& form,
     
     auto args_list = rest.as_pair()->car;
     auto body_forms = rest.as_pair()->cdr;
+
+
 
     auto* f_env = new FunctionEnv(env, "lambda");
     
@@ -164,7 +170,9 @@ void FunctionCompiler::parse_arguments(const script::Object& args_form, Function
 // ============================================================================
 
 RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
-    RelocatableBuffer buffer;
+    RelocatableBuffer code_buffer;
+    RelocatableBuffer data_buffer;
+    RelocatableBuffer debug_buffer;
     std::unordered_map<IR_Value*, u32> reg_map;
     
     const u32 ARG_START = 24; 
@@ -191,26 +199,48 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
 
     // 3. Генерируем байткод прямо в буфер
     for (auto& node : fe->code()) {
-        node->generate(buffer, reg_map);  // ← generate теперь принимает RelocatableBuffer
+        node->generate(code_buffer, reg_map);  // ← generate теперь принимает RelocatableBuffer
     }
-    
+
     // 4. Заголовок функции
     FunctionDesc desc{}; 
-    desc.code_count = static_cast<u32>(buffer.size() / sizeof(Instruction));
-    desc.code_ptr = reinterpret_cast<Instruction*>(sizeof(FunctionDesc));
+    desc.name = StringId(fe->name());
+    desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
+    desc.code_ptr.offset = sizeof(FunctionDesc);
+    desc.data_size = 0;
+    desc.data_ptr.offset = 0;
+    desc.debug_count = 0;
+    desc.debug_ptr.offset = 0;
 
     // 5. Вставляем заголовок В НАЧАЛО буфера
     RelocatableBuffer result;
-    result.add_bytes(&desc, sizeof(desc));
     
-    std::string symbol_name = make_function_symbol(fe->name());
+    std::string label_name = make_function_symbol(fe->name());
+    std::string code_name = label_name + "#code";
+    std::string data_name = label_name + "#data";
+    std::string debug_name = label_name + "#debug";
+
     result.add_relocatable(offsetof(FunctionDesc, code_ptr), 
                            Relocation::Type::FIXED_ADDRESS, 
-                           symbol_name + "#code");
-    
+                           code_name);    
+    result.add_relocatable(offsetof(FunctionDesc, data_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
+                           data_name);
+    result.add_relocatable(offsetof(FunctionDesc, debug_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
+                           debug_name);
+    result.add_bytes(&desc, sizeof(desc));
+
     // Добавляем сгенерированный код после заголовка
-    result.add_buffer(buffer);
-    
+    result.add_label(code_name);
+    result.add_buffer(code_buffer);
+
+    result.add_label(data_name);
+    result.add_buffer(data_buffer);
+
+    result.add_label(debug_name);
+    result.add_buffer(debug_buffer);
+
     return result;
 }
 
@@ -236,27 +266,50 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     }
 
     RelocatableBuffer code_buffer;  // буфер для кода
+    RelocatableBuffer data_buffer;
+    RelocatableBuffer debug_buffer;
+
     for (auto& node : me->code()) {
         node->generate(code_buffer, reg_map);
     }
     
     // Теперь создаем финальный буфер с заголовком
     RelocatableBuffer result;
-    
-    FunctionDesc desc{}; 
-    desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
-    desc.code_ptr = reinterpret_cast<Instruction*>(sizeof(FunctionDesc));
-    
-    result.add_bytes(&desc, sizeof(desc));
-    
+
     std::string symbol_name = make_method_symbol(me->type_env()->name(), me->name());
+    std::string code_name = symbol_name + "#code";
+    std::string data_name = symbol_name + "#data";
+    std::string debug_name = symbol_name + "#debug";
+
+    FunctionDesc desc{}; 
+    desc.name = StringId(me->name());
+    desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
+    desc.code_ptr.offset = sizeof(FunctionDesc);
+    desc.data_size = 0;
+    desc.data_ptr.offset = 0;
+    desc.debug_count = 0;
+    desc.debug_ptr.offset = 0;
+
     result.add_relocatable(offsetof(FunctionDesc, code_ptr), 
                            Relocation::Type::FIXED_ADDRESS, 
-                           symbol_name + "#code");
+                           code_name);
+    result.add_relocatable(offsetof(FunctionDesc, data_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
+                           data_name);
+    result.add_relocatable(offsetof(FunctionDesc, debug_ptr), 
+                           Relocation::Type::FIXED_ADDRESS, 
+                           debug_name);
+    result.add_bytes(&desc, sizeof(desc));
     
     // Добавляем сгенерированный код
+    result.add_label(code_name);
     result.add_buffer(code_buffer);
     
+    result.add_label(data_name);
+    result.add_buffer(data_buffer);
+
+    result.add_label(debug_name);
+    result.add_buffer(debug_buffer);
     return result;
 }
 
@@ -287,7 +340,7 @@ RelocatableBuffer FunctionCompiler::build_static(StaticObject* so) {
 // ============================================================================
 
 std::string FunctionCompiler::make_function_symbol(const std::string& name) {
-    return name;
+    return fmt::format("{}-{}", name, s_lambda_index++);
 }
 
 std::string FunctionCompiler::make_method_symbol(const std::string& type_name, 

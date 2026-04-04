@@ -77,7 +77,7 @@ namespace carbon::modules {
         Definition* resolve_export(StringId name);
         Definition* resolve_symbol(StringId name, StringId type);
         FunctionDesc* resolve_function(StringId name);
-        MethodDef* resolve_method(StringId type_name, StringId method_name);
+        FunctionDesc* resolve_method(StringId type_name, StringId method_name);
         StateDesc* resolve_state(StringId type_name, StringId state_name);
         TypeDesc* resolve_type(StringId name);
         TypeDesc* find_type(StringId name);

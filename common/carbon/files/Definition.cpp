@@ -95,6 +95,8 @@ namespace carbon::files {
     void Definition::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
         fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
 
+        auto old_offset = ptr.offset;
+
         if (to_memory) {
             if (ptr.offset != 0) 
                 ptr.offset+=delta;
@@ -120,82 +122,7 @@ namespace carbon::files {
                 ptr.offset+=delta;
         }
 
-        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
+        fmt::print("[Definition] relocate_pointers :name {} :offset {:016X} :old {:016X} \n", name, ptr.offset, old_offset);
     }
-
-    // =============================================================================
-    // MethoodDefinition Implementation
-    // =============================================================================
-    
-    void MethodDef::relocate_pointers_table(bool to_memory, intptr_t delta, MethodDef* definitions, size_t definitions_count, Module* module) {
-        // Применяем ко всем определениям
-        for (u32 i = 0; i < definitions_count; i++) {
-
-            MethodDef* def = &definitions[i];
-            def->relocate_pointers(to_memory, delta, module);
-        }                  
-    }
-
-    inline bool has_flag(MethodFlags flags, MethodFlags flag) {
-        return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
-    }
-
-    std::string get_symbol_flags_string(MethodFlags flags) {
-        if (flags == MethodFlags::None) return "none";
-        
-        std::string result;
-        if (has_flag(flags, MethodFlags::Virtual)) result += "virtual";
-        if (has_flag(flags, MethodFlags::Override)) {
-            if (!result.empty()) result += "|";
-            result += "override";
-        }
-        return result;
-    }
-
-    std::string MethodDef::to_string() const {
-        return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
-            name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
-    }
-
-    std::string MethodDef::inspect() const {
-        auto result = std::format("(definition {} :type {} :ptr {:x} :flags {})",
-            name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
-        if (ptr.ptr!=nullptr)
-            result += ptr.ptr->inspect();
-        else 
-            result += " <null>";
-        return result;
-    }
-
-    void MethodDef::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
-        fmt::print("[MethodDef] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
-
-        if (to_memory) {
-            if (ptr.offset != 0) 
-                ptr.offset+=delta;
-        }
-
-        if (ptr.offset) {
-            if (type == TypeIds::function)
-                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
-            else if (type == TypeIds::method)
-                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
-            else if (type == TypeIds::new_method)
-                (reinterpret_cast<FunctionDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
-            else if (type == TypeIds::type)
-                (reinterpret_cast<TypeDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);    
-            else if (type == TypeIds::state)
-                (reinterpret_cast<StateDesc*>(ptr.ptr))->relocate_pointers(to_memory, delta, module);  
-            else
-                lg::error("unexpected definition type `{}`\n",  type.to_cstring());
-        }
-
-        if (!to_memory) {
-            if (ptr.offset != 0) 
-                ptr.offset+=delta;
-        }
-
-        fmt::print("[MethodDef] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
-    }    
 
 } // end of namespace

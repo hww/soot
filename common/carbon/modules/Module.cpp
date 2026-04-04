@@ -3,6 +3,7 @@
 #include "common/carbon/files/TypeDesc.hpp"
 #include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/files/DciFile.hpp"
+#include "files/FunctionDesc.hpp"
 #include "lib/Variant.hpp"
 #include <fmt/format.h>
 
@@ -220,11 +221,11 @@ namespace carbon::modules {
     }
     
     // Вспомогательные функции для работы с TypeDesc в Module
-    inline MethodDef* Module::resolve_method(StringId type_name, StringId method_name) {
+    inline FunctionDesc* Module::resolve_method(StringId type_name, StringId method_name) {
         auto type_def = resolve_type(type_name);
         if (!type_def) return nullptr;
         
-        return type_def->resolve_method_def(method_name);
+        return type_def->get_method(method_name);
     }
 
     inline StateDesc* Module::resolve_state(StringId type_name, StringId state_name) {

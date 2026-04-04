@@ -51,17 +51,6 @@ namespace carbon::files {
     ENUM_FLAG_OPERATORS(SymbolFlags);
 
     /**
-     * Method flags
-     */
-    enum class MethodFlags {
-        None = 0,
-        Virtual = 1 << 0,    // виртуальный метод
-        Override = 1 << 1,   // переопределенный метод
-    };
-    
-    ENUM_FLAG_OPERATORS(MethodFlags);
-
-    /**
      * @brief Source code location information for debugging
      *
      * Maps FunctionDesc instructions back to original source code locations.
@@ -131,55 +120,5 @@ namespace carbon::files {
         static void relocate_pointers_table(bool to_memory, intptr_t delta, Definition* definitions, size_t definitions_count, Module* module);
     };
 
-
-    struct MethodDef  {
-        /** Unique name identifier within the module */
-        StringId name;
-        /** Type identifier (function, data, constant, etc.) */
-        StringId type;
-        /** Flags for the definition */           
-        MethodFlags flags;
-        /** Pointer to the actual data or code for this definition */
-        Ptr<FunctionDesc> ptr;        
-        /**
-        * @brief Convert to simple string representation
-        * @return Basic string representation
-        */
-        std::string to_string() const;
-        /**
-        * @brief Create detailed inspection string
-        * @return Detailed formatted string for debugging
-        */
-        std::string inspect() const;
-        /**
-        * @brief Create detailed inspection string
-        * @return Detailed formatted string for debugging
-        */
-        std::string dump() const;
-        
-        
-        inline bool has_flag(MethodFlags flag) const {
-            return (static_cast<int>(flags) & static_cast<int>(flag)) != 0;
-        }
-        inline void set_flag(MethodFlags flag) {
-            flags |= flag;
-        }
-        inline void clear_flag(MethodFlags flag) {
-            flags &= flag;
-        }
-
-        /**
-         * Every defition points to descriptor
-         */
-        void relocate_pointers(bool to_memory, intptr_t delta, Module* module);
-
-        static void relocate_pointers_table(bool to_memory, intptr_t delta, MethodDef* definitions, size_t definitions_count, Module* module);
-    };
-
-
-    struct StateDef : Definition {
-        StateDesc* get_state() {
-            return reinterpret_cast<StateDesc*>(ptr.ptr);
-        }
-    };        
+     
 } // end of namespace

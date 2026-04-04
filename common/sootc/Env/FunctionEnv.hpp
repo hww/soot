@@ -120,7 +120,8 @@ public:
     const std::string& name() const { return m_name; }
     const std::vector<IR_Value*>& symbols() const override { return m_ordered_symbols; }
     const std::unordered_map<std::string, IR_Value*>& symbols_map() const { return m_symbols_map; }
-
+    void set_name(std::string name) { m_name = name; }
+    
     // ========================================================================
     // Source form (для отладки)
     // ========================================================================

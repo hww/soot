@@ -1,12 +1,19 @@
 #include "Compiler.hpp"
 #include "common/util/Log.hpp"
+#include "files/BinaryFile.hpp"
+#include "files/BinaryFileBuilder.hpp"
+#include "files/Definition.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include "lib/StringId.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/MethodCompiler.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
+#include "sootc/Env/FileEnv.hpp"
 #include "sootc/IR/IR_Node.hpp"
 #include "sootc/Env/Export.hpp"
 #include "common/carbon/files/FunctionDesc.hpp"
+#include "sootc/IR/IR_Value.hpp"
+#include <cstddef>
 
 using namespace carbon::files;
 
@@ -59,29 +66,93 @@ IR_Value* Compiler::compile(const script::Object& form, Env* env) {
 // ============================================================================
 // compile_module — один проход компиляции, потом сборка
 // ============================================================================
-
-std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::Object& forms, Env* env) {
+std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::Object& forms, FileEnv* env) {
     
     // ПРОХОД 1: Компиляция всех форм в IR_Value
-    // (типы, функции, методы — всё компилируется сразу)
     auto current = forms;
     while (current.is_pair()) {
         compile(current.as_pair()->car, env);
         current = current.as_pair()->cdr;
     }
     
-    // ПРОХОД 2: BUILD — генерация буферов (с relocations)
+    // ПРОХОД 2: BUILD — генерация буферов
+    RelocatableBuffer definitions;
+    RelocatableBuffer descriptors;
+    int definitions_count = 0;
+
     for (auto& [name, value] : env->sybols_table()) {
         lg::info("Compiler compile symbol '{}'", name);
         if (auto result = value->build(this)) {            
             const auto& [type_tag, buffer] = *result;
-             lg::info("  > add_definition compile symbol '{}' type '{}'", name, type_tag);
-            builder_.add_definition(name, type_tag, std::move(buffer));
-        }
-    }
 
-    // ПРОХОД 3: Линковка — разрешение relocations и запись файла
-    return builder_.build_module();
+            lg::info("  > add_definition compile symbol '{}' type '{}'", name, type_tag);
+
+            // Метка для дефиниции
+            definitions.add_label(name);
+            
+            // Заголовок дефиниции
+            Definition definition{
+                StringId(name),
+                StringId(type_tag),
+                SymbolFlags::Export,
+                0,
+                Ptr<u8>()
+            };
+            
+            // Ссылка на дескриптор
+            std::string descriptor_label = name + "#desc";
+            definitions.add_relocatable(offsetof(Definition, ptr), 
+                                        Relocation::Type::LABEL_ADDRESS, 
+                                        descriptor_label);
+            definitions.add_bytes(&definition, sizeof(Definition));
+            
+            // Дескриптор
+            descriptors.add_label(descriptor_label);
+            descriptors.add_buffer(buffer);
+            
+            definitions_count++;
+        } 
+    }
+    
+    // Создаем заголовок
+    RelocatableBuffer file_buffer;
+    
+    // Заглушка для BinaryFile (заполним позже)
+    u32 header_pos = file_buffer.size();
+    BinaryFile dummy_header{};
+    file_buffer.add_bytes(&dummy_header, sizeof(BinaryFile));
+    
+    // Добавляем таблицу дефиниций
+    u32 definitions_offset = file_buffer.size();
+    file_buffer.add_buffer(definitions);
+    
+    // Добавляем дескрипторы
+    u32 descriptors_offset = file_buffer.size();
+    file_buffer.add_buffer(descriptors);
+    
+    // Теперь патчим заголовок
+    BinaryFile header{};
+    header.base_offset = 0;
+    header.magic = BinaryFile::MAGIC;
+    header.generation = BinaryFile::CURRENT_GENERATION;
+    header.definitions_count = definitions_count;
+    header.definitions.offset = definitions_offset;
+    header.file_size = file_buffer.size();
+    header.used_size = file_buffer.size();
+    
+    // Записываем заголовок поверх заглушки
+    file_buffer.write_at(header_pos, &header, sizeof(BinaryFile));
+    
+    // Линковка
+    auto file = file_buffer.link_file();
+    
+    // Создаем модуль
+    auto module = std::make_shared<Module>();
+    file->relocate_pointers(true, module.get());
+    module->name = StringId(env->name().c_str());
+    module->set_file(file_buffer.bytes());
+    
+    return module;
 }
 
 // ============================================================================
@@ -93,6 +164,11 @@ IR_Value* Compiler::compile_define(const script::Object&, const script::Object& 
     auto value_form = rest.as_pair()->cdr.as_pair()->car;
 
     IR_Value* val = compile(value_form, env);
+    // For a function
+    auto* function = reinterpret_cast<IR_FunctionValue*>(val);
+    if (function) {
+        function->get_env()->set_name(name);
+    }
     env->bind(name, val);
     return val;
 }

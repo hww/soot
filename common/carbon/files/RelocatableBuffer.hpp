@@ -2,10 +2,13 @@
 #pragma once
 
 #include <cstddef>
+#include <stdexcept>
+#include <string>
 #include <vector>
 #include <cstring>
 #include "common/CommonTypes.hpp"
 #include "common/carbon/files/Definition.hpp"
+#include "files/BinaryFile.hpp"
 #include "vm/Instructions.hpp"
 #include "fmt/format.h"
 
@@ -23,11 +26,25 @@ namespace carbon::files {
         Type type;          // тип релокации
         std::string name;   // имя целевого объекта
         u64 offset;         // позиция в буфере, куда нужно записать адрес
+
+        std::string to_string() const { 
+            switch (type) {
+                case Type::FIXED_ADDRESS:
+                    return fmt::format("Relocation(type=FIXED_ADDRESS name={} offset=0x{:016X})", name, offset);
+                case Type::LABEL_ADDRESS:
+                    return fmt::format("Relocation(type=LABEL_ADDRESS name={} offset=0x{:016X})", name, offset);
+                case Type::BRANCH_DISP16:
+                    return fmt::format("Relocation(type=BRANCH_DISP   name={} offset=0x{:016X})", name, offset);
+            }
+            throw std::runtime_error("unexpected");
+        }
     };
 
     struct RelLabel {
         std::string name;   // имя целевого объекта
-        u64 address;        // позиция в буфере
+        u64 offset;        // позиция в буфере
+
+        std::string to_string() const { return fmt::format("RelLabel(name={} offset=0x{:016X})", name, offset);}
     };
 
 class RelocatableBuffer {
@@ -55,6 +72,39 @@ public:
     void add_bytes(const void* data, size_t size) {
         const u8* ptr = reinterpret_cast<const u8*>(data);
         bytes_.insert(bytes_.end(), ptr, ptr + size);
+    }
+
+    // ==============================================================================
+    // Заменить данные
+    // ==============================================================================    
+
+    void write_at(u64 position, const void* data, size_t size) {
+        if (position + size > bytes_.size()) {
+            throw std::out_of_range("write_at out of range");
+        }
+        std::memcpy(bytes_.data() + position, data, size);
+    }
+
+    // Чтение по позиции
+    void read_at(u64 position, void* data, size_t size) const {
+        if (position + size > bytes_.size()) {
+            throw std::out_of_range("read_at out of range");
+        }
+        std::memcpy(data, bytes_.data() + position, size);
+    }
+
+    // Generic read для произвольного типа T
+    template<typename T>
+    T read_at(u64 position) const {
+        T result;
+        read_at(position, &result, sizeof(T));
+        return result;
+    }
+
+    // Generic write для произвольного типа T
+    template<typename T>
+    void write_at(u64 position, const T& value) {
+        write_at(position, &value, sizeof(T));
     }
 
     // ==============================================================================
@@ -153,24 +203,28 @@ public:
     // ==============================================================================
 
     // Добавить подбуфер (для вложенных структур)
-    void add_buffer(const RelocatableBuffer& other, u64 base_offset = 0, bool throw_error = false) {
-
-        (void)base_offset;
-
+    void add_buffer(const RelocatableBuffer& other) {
         u32 insert_pos = bytes_.size();
         bytes_.insert(bytes_.end(), other.bytes_.begin(), other.bytes_.end());
         
-        // Копируем relocatable offsets из подбуфера
-        for (const auto& item : other.relocatations_) {
-            relocatations_.push_back({ item.type, item.name, insert_pos + item.offset });            
-        }
-
-        // Копируем метки offsets из подбуфера
+        // Копируем метки
         for (const auto& label : other.labels_) {
             if (get_label(label.name)) {
                 throw std::runtime_error("Duplicate label name: " + label.name);
             }
-            labels_.push_back({ label.name, insert_pos + label.address });
+            labels_.push_back({label.name, insert_pos + label.offset});
+        }
+        
+        // Копируем релокации и ОБНОВЛЯЕМ ДАННЫЕ для FIXED_ADDRESS
+        for (const auto& reloc : other.relocatations_) {
+            if (reloc.type == Relocation::Type::FIXED_ADDRESS) {
+                // Обновляем значение в скопированных байтах
+                u64* ptr = reinterpret_cast<u64*>(bytes_.data() + insert_pos + reloc.offset);
+                *ptr += insert_pos;  // ← прибавляем смещение!
+                lg::info("[RelocatableBuffer] add_buffer update FIXED_ADDRESS at 0x{:016X} from {} to {}", 
+                        insert_pos + reloc.offset, *ptr - insert_pos, *ptr);
+            }
+            relocatations_.push_back({reloc.type, reloc.name, insert_pos + reloc.offset});
         }
     }
 
@@ -229,29 +283,42 @@ public:
                     // мы просто считаем, что в *target_ptr уже лежит офсет,
                     // и его нужно оставить как есть для загрузчика.
                     // (Или прибавить базу, если link() — это финальная стадия).
+                    lg::info("[RelocatableBuffer] link FIXED_ADDRESS {} ", reloc.to_string());
                     break; 
                 }
                 case Relocation::Type::LABEL_ADDRESS: {
                     // ПРЯМАЯ ЗАПИСЬ: Находим метку и пишем её адрес "с нуля"
                     const RelLabel* label = get_label(reloc.name);
                     if (!label) throw std::runtime_error("Undefined label: " + reloc.name);
-                    *target_ptr = label->address; 
+                    lg::info("[RelocatableBuffer] link LABEL_ADDRESS {} replace 0x{:016X} by 0x{:016X}", reloc.to_string(), *target_ptr, label->offset);
+                    *target_ptr = label->offset; 
                     break;
                 }
                 case Relocation::Type::BRANCH_DISP16: {
                     // ПРЯМАЯ ЗАПИСЬ: Находим метку и пишем смещение от текущей позиции до метки
                     const RelLabel* label = get_label(reloc.name);
                     if (!label) throw std::runtime_error("Undefined label: " + reloc.name);
-                    u64 current_pos = reloc.offset;                   
-                    u64 target_pos = label->address;
-                    s64 offset = static_cast<s64>(target_pos) - static_cast<s64>(current_pos);
-                    
+                    u64 reloc_pos = reloc.offset;                   
+                    u64 target_pos = label->offset;
+                    s64 offset = static_cast<s64>(target_pos) - static_cast<s64>(reloc_pos);
+                    s64 inst_offset = offset / sizeof(Instruction);
                     Instruction* instr = reinterpret_cast<Instruction*>(bytes_.data() + reloc.offset);
-                    instr->imm16 = static_cast<u16>(offset);
+                    lg::info("[RelocatableBuffer] link BRANCH_DISP16 {} replace immediate 0x{:04X} by 0x{:04X}", reloc.to_string(), instr->imm16, inst_offset);
+                    instr->imm16 = static_cast<u16>(inst_offset);
                     break;
                 }
             }
         }
+    }
+
+    /**
+     * Link and update file size
+     */
+    BinaryFile* link_file() {
+        link();
+        BinaryFile* binary_file = reinterpret_cast<BinaryFile*>(data());
+        binary_file->file_size = size();
+        return binary_file;
     }
 
     // ==============================================================================
@@ -286,24 +353,16 @@ public:
             result += "...";
         }
         result += "]";
+        //
         result += fmt::format("  Relocations[{}] [", relocatations_.size());
         for (size_t j = 0; j < std::min(relocatations_.size(), size_t(MAX_LEN)); j++) {
-            switch (relocatations_[j].type) {
-                case Relocation::Type::FIXED_ADDRESS:
-                    result += fmt::format("{:016x} FIXED_ADDRESS {}", relocatations_[j].offset, relocatations_[j].name);
-                    break;
-                case Relocation::Type::LABEL_ADDRESS:
-                    result += fmt::format("{:016x} LABEL_ADDRESS {}", relocatations_[j].offset, relocatations_[j].name);
-                    break;
-                case Relocation::Type::BRANCH_DISP16:
-                    result += fmt::format("{:016x} BRANCH_DISP16 {}", relocatations_[j].offset, relocatations_[j].name);
-                    break;                    
-            }
+            result += fmt::format("{}\n", relocatations_[j].to_string());
         }
         result += "]";
+        // 
         result += fmt::format("  Labels[{}] [", labels_.size());
         for (size_t j = 0; j < std::min(labels_.size(), size_t(MAX_LEN)); j++) {
-            result += fmt::format("{:016x} LABEL          {}", labels_[j].address, labels_[j].name);
+            result += fmt::format("{}\n", labels_[j].to_string());
         }
         result += "]";
 

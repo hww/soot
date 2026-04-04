@@ -1,4 +1,7 @@
 #include "sootc/Compiler/TypeCompiler.hpp"
+#include "files/FunctionDesc.hpp"
+#include "files/StateDesc.hpp"
+#include "lib/Ptr.hpp"
 #include "sootc/Compiler/Compiler.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/IR/IR_Value.hpp"
@@ -111,25 +114,33 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
     desc.methods_count  = type_info->get_methods_count();
     desc.states_count   = type_info->states_count();
     desc.flags = 0;
-    desc.methods_offset = Ptr<MethodDef>();
-    desc.states_offset = Ptr<StateDef>();
+    desc.methods_offset = Ptr<Ptr<FunctionDesc>>();
+    desc.states_offset = Ptr<Ptr<StateDesc>>();
 
     u32 type_start = buffer.size();
     buffer.add_bytes(&desc, sizeof(TypeDesc));
     
-    u32 methods_offset_field = type_start + offsetof(TypeDesc, methods_offset);
-    u32 states_offset_field = type_start + offsetof(TypeDesc, states_offset);
-    
+    buffer.add_relocatable(type_start + offsetof(TypeDesc, methods_offset),
+                            Relocation::Type::FIXED_ADDRESS, 
+                            type_name + "#vtable");
+
+    buffer.add_relocatable(type_start + offsetof(TypeDesc, states_offset), 
+                            Relocation::Type::FIXED_ADDRESS, 
+                            type_name + "#states");
+
     // ========================================================================
     // 2. VTable (методы)
     // ========================================================================
     if (desc.methods_count > 0) {
+
+        buffer.add_label(type_name + "#vtable");
+
         for (int id = 0; id < (int)desc.methods_count; ++id) {
-            TypeEnv* defining_type = nullptr;
-            MethodEnv* m_env = find_method_in_hierarchy(t_env, id, defining_type);
+            TypeEnv* method_type = nullptr;
+            MethodEnv* method_env = find_method_in_hierarchy(t_env, id, method_type);
             
-            if (!m_env) {
-                    MethodInfo info;
+            if (!method_env) {
+                MethodInfo info;
                 if (type_info->get_my_method(id, &info)) {
                     throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", info.name, type_name));
                 } else {
@@ -137,40 +148,30 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
                 }
             }
             
-            std::string owner_name = defining_type->get_type()->get_name();
-            std::string method_symbol = owner_name + "::" + m_env->name();
+            std::string type_name = method_type->get_type()->get_name();
+            std::string method_label = type_name + "::" + method_env->name();
             
-            buffer.add_u64(0);
-            buffer.add_relocatable(buffer.size() - 8, 
-                                   Relocation::Type::FIXED_ADDRESS, 
-                                   method_symbol + "#code");
+            // Вставляем заголовок FunctionDesc с нулевыми полями (потенциально с именем метода для отладки)
+            buffer.add_relocatable(Relocation::Type::FIXED_ADDRESS, 
+                                   method_label);
+            Ptr<FunctionDesc> slot{};
+            buffer.add_bytes(&slot, sizeof(Ptr<FunctionDesc>)); // function pointer (будет заполнено позже)
         }
-        
-        buffer.add_relocatable(methods_offset_field, 
-                               Relocation::Type::FIXED_ADDRESS, 
-                               type_name + "#methods");
     }
     
     // ========================================================================
     // 3. StateTable (состояния)
     // ========================================================================
+    
     if (desc.states_count > 0) {
+        buffer.add_label(type_name + "#states");
         for (auto* s_env : t_env->states()) {
-            u32 slot_pos = buffer.size();
-            StateDef slot{};
-            slot.name = StringId(s_env->name().c_str());
-            slot.flags = SymbolFlags::None;
-            slot.ptr = Ptr<u8>();
-            buffer.add_bytes(&slot, sizeof(StateDef));
-            
             std::string state_label = type_name + "::" + s_env->name();
-            u32 ptr_in_slot = slot_pos + offsetof(StateDef, ptr);
-            buffer.add_relocatable(ptr_in_slot, Relocation::Type::FIXED_ADDRESS, state_label);
+
+            Ptr<StateDesc> slot{};           
+            buffer.add_relocatable(Relocation::Type::FIXED_ADDRESS, state_label);
+            buffer.add_bytes(&slot, sizeof(Ptr<StateDesc>));  // state pointer (будет заполнено позже)
         }
-        
-        buffer.add_relocatable(states_offset_field, 
-                               Relocation::Type::FIXED_ADDRESS, 
-                               type_name + "#states");
     }
     
     return buffer;

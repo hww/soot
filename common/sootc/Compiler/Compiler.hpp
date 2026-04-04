@@ -3,6 +3,7 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
 #include "sootc/Env/Export.hpp"
+#include "sootc/Env/FileEnv.hpp"
 #include "sootc/IR/IR_Value.hpp"
 #include "sootc/IR/IR_Node.hpp"
 #include "common/carbon/files/BinaryFileBuilder.hpp"
@@ -17,7 +18,7 @@ public:
     Compiler(TypeSystem& ts, std::string module_name);
     
     // Точка входа для файла
-    std::shared_ptr<carbon::modules::Module> compile_module(const script::Object& forms, Env* env);
+    std::shared_ptr<carbon::modules::Module> compile_module(const script::Object& forms, FileEnv* env);
 
     // Единый метод компиляции (один проход)
     IR_Value* compile(const script::Object& form, Env* env);

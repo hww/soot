@@ -52,6 +52,8 @@ private:
     std::string make_function_symbol(const std::string& name);
     std::string make_method_symbol(const std::string& type_name, const std::string& method_name);
     std::string make_state_symbol(const std::string& type_name, const std::string& state_name);
+
+    static int s_lambda_index;
 };
 
 } // namespace sootc
