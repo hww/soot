@@ -12,45 +12,57 @@ class TypeEnv;
 class StateEnv : public Env {  // ← наследуем Env, НЕ FunctionEnv
 public:
     StateEnv(const std::string& name, Env* parent, Type* type, TypeEnv* type_env = nullptr)
-        : Env(EnvKind::STATE_ENV, parent), m_name(name), m_type(type), m_type_env(type_env) {}
+        : Env(EnvKind::STATE_ENV, parent), m_name(name), m_type(type), m_type_env(type_env),
+          m_source_form(), m_is_virtual(false),  
+          m_enter_method(), m_exit_method(), m_code_method(), 
+          m_post_method(), m_trans_method(), m_event_method() {}
     
     const std::string& name() const { return m_name; }
     const Type* type() const { return m_type; }
     TypeEnv* type_env() const { return m_type_env; }
     
+    void set_is_virtual(bool is_virtual) { m_is_virtual = is_virtual; }
+    bool is_virtual() { return m_is_virtual; }
+
     // Обработчики состояния — это методы (функции)
     void set_enter_method(MethodEnv* method) { m_enter_method = method; }
     void set_exit_method(MethodEnv* method) { m_exit_method = method; }
     void set_code_method(MethodEnv* method) { m_code_method = method; }
     void set_post_method(MethodEnv* method) { m_post_method = method; }
+    void set_trans_method(MethodEnv* method) { m_trans_method = method; }
     void set_event_method(MethodEnv* method) { m_event_method = method; }
     
     MethodEnv* enter_method() const { return m_enter_method; }
     MethodEnv* exit_method() const { return m_exit_method; }
     MethodEnv* code_method() const { return m_code_method; }
     MethodEnv* post_method() const { return m_post_method; }
+    MethodEnv* trans_method() const { return m_trans_method; }
     MethodEnv* event_method() const { return m_event_method; }
     
     void set_type_env(TypeEnv* env) { m_type_env = env; }
 
     std::string print() const override {
         return fmt::format("StateEnv(name={}, type={})", 
-                           m_name, m_type ? m_type->get_name() : "unknown");
+                           m_name, m_type ? m_type->name() : "unknown");
     }
 
     void set_source_form(const script::Object& form) { m_source_form = form; }
     script::Object source_form() const { return m_source_form; }    
+
 private:
     std::string m_name;
     Type* m_type;
     TypeEnv* m_type_env = nullptr;
     script::Object m_source_form;
 
+    bool m_is_virtual;
+
     // Ссылки на методы-обработчики (функции)
     MethodEnv* m_enter_method = nullptr; 
     MethodEnv* m_exit_method = nullptr; 
     MethodEnv* m_code_method = nullptr; 
     MethodEnv* m_post_method = nullptr; 
+    MethodEnv* m_trans_method = nullptr; 
     MethodEnv* m_event_method = nullptr;     
 };
 

@@ -35,11 +35,11 @@ struct TypeDesc {
     int heap_base;                    // Heap base offset (for process types)
     
     // === Methods ===
-    Ptr<Ptr<FunctionDesc>> methods_offset;    // Pointer to methods array
+    Ptr<Ptr<FunctionDesc>> methods_ptr;    // Pointer to methods array
     uint32_t methods_count;           // Number of methods
     
     // === States ===
-    Ptr<Ptr<StateDesc>>  states_offset;      // Pointer to states array
+    Ptr<Ptr<StateDesc>>  states_ptr;      // Pointer to states array
     uint32_t states_count;            // Number of states
     
     // === Serialization methods ===
@@ -56,11 +56,11 @@ struct TypeDesc {
      * @return Pointer to MethodDesc or nullptr if index out of bounds
      */
     FunctionDesc* get_method(u32 index) const {
-        if (methods_offset == 0 || index >= methods_count) {
+        if (methods_ptr == 0 || index >= methods_count) {
             return nullptr;
         }
 
-        return methods_offset.ptr[index].ptr;
+        return methods_ptr.ptr[index].ptr;
     }
     /**
      * @brief Resolve a method by name
@@ -68,11 +68,11 @@ struct TypeDesc {
      * @return Pointer to MethodDesc or nullptr if not found
      */
     FunctionDesc* get_method(StringId name) const {
-        if (methods_offset == 0 || methods_count == 0) {
+        if (methods_ptr == 0 || methods_count == 0) {
             return nullptr;
         }
         
-        Ptr<FunctionDesc>* methods = methods_offset.ptr;
+        Ptr<FunctionDesc>* methods = methods_ptr.ptr;
         
         for (u32 i = 0; i < methods_count; i++) {
             if (methods[i].ptr->name == name) {
@@ -87,10 +87,10 @@ struct TypeDesc {
      * @return Pointer to methods array and count
      */
     std::pair<Ptr<FunctionDesc>*, u32> get_methods() const {
-        if (methods_offset == 0 || methods_count == 0) {
+        if (methods_ptr == 0 || methods_count == 0) {
             return {nullptr, 0};
         }
-        return {methods_offset.ptr, methods_count};
+        return {methods_ptr.ptr, methods_count};
     }
     
     // ===================================================================
@@ -103,10 +103,10 @@ struct TypeDesc {
      * @return Pointer to StateDesc or nullptr if index out of bounds
      */
     StateDesc* get_state(u32 index) const {
-        if (states_offset == 0 || index >= states_count) {
+        if (states_ptr == 0 || index >= states_count) {
             return nullptr;
         }
-        return states_offset.ptr[index].ptr;
+        return states_ptr.ptr[index].ptr;
     }
 
     /**
@@ -115,11 +115,11 @@ struct TypeDesc {
      * @return Pointer to StateDesc or nullptr if not found
      */
     StateDesc* resolve_state(StringId name) const {
-        if (states_offset == 0 || states_count == 0) {
+        if (states_ptr == 0 || states_count == 0) {
             return nullptr;
         }
         
-        Ptr<StateDesc>* defs = states_offset.ptr;
+        Ptr<StateDesc>* defs = states_ptr.ptr;
         
         for (u32 i = 0; i < states_count; i++) {
             if (defs[i].ptr->name == name) {
@@ -134,10 +134,10 @@ struct TypeDesc {
      * @return Pointer to states array and count
      */
     std::pair<Ptr<StateDesc>*, u32> get_states() const {
-        if (states_offset == 0 || states_count == 0) {
+        if (states_ptr == 0 || states_count == 0) {
             return {nullptr, 0};
         }
-        return {states_offset.ptr, states_count};
+        return {states_ptr.ptr, states_count};
     }
 
    /**

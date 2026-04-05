@@ -1,5 +1,6 @@
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "fmt/format.h"
+#include "lib/Variant.hpp"
 #include "sootc/Compiler/Compiler.hpp"
 #include "common/carbon/files/FunctionDesc.hpp" 
 #include "common/carbon/files/RelocatableBuffer.hpp"
@@ -65,8 +66,8 @@ IR_Value* FunctionCompiler::compile_method(const script::Object& form,
 
     MethodInfo method_info;                                              
 
-    if (!ts_.try_lookup_method(type->get_name(), method_name, &method_info)) {
-        throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", method_name, type->get_name()));
+    if (!ts_.try_lookup_method(type->name(), method_name, &method_info)) {
+        throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", method_name, type->name()));
     }
     auto* m_env = new MethodEnv(method_info.id, method_name, type_env, type);
     
@@ -208,13 +209,15 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
     desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr.offset = sizeof(FunctionDesc);
     desc.data_size = 0;
-    desc.data_ptr.offset = 0;
+    desc.data_ptr = nullptr;
     desc.debug_count = 0;
-    desc.debug_ptr.offset = 0;
+    desc.debug_ptr = nullptr;
 
     // 5. Вставляем заголовок В НАЧАЛО буфера
     RelocatableBuffer result;
-    
+    result.set_name(fe->name());
+    result.set_type_tag(TypeIds::function.to_string());
+
     std::string label_name = make_function_symbol(fe->name());
     std::string code_name = label_name + "#code";
     std::string data_name = label_name + "#data";
@@ -229,7 +232,9 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
     result.add_relocatable(offsetof(FunctionDesc, debug_ptr), 
                            Relocation::Type::FIXED_ADDRESS, 
                            debug_name);
-    result.add_bytes(&desc, sizeof(desc));
+
+    // Сохраняем заголовое                           
+    result.add_bytes(&desc, sizeof(FunctionDesc));
 
     // Добавляем сгенерированный код после заголовка
     result.add_label(code_name);
@@ -275,6 +280,8 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     
     // Теперь создаем финальный буфер с заголовком
     RelocatableBuffer result;
+    result.set_name(me->name());
+    result.set_type_tag(TypeIds::function.to_string());
 
     std::string symbol_name = make_method_symbol(me->type_env()->name(), me->name());
     std::string code_name = symbol_name + "#code";
@@ -286,9 +293,9 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr.offset = sizeof(FunctionDesc);
     desc.data_size = 0;
-    desc.data_ptr.offset = 0;
+    desc.data_ptr.ptr = nullptr;
     desc.debug_count = 0;
-    desc.debug_ptr.offset = 0;
+    desc.debug_ptr = nullptr;
 
     result.add_relocatable(offsetof(FunctionDesc, code_ptr), 
                            Relocation::Type::FIXED_ADDRESS, 
@@ -299,7 +306,7 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     result.add_relocatable(offsetof(FunctionDesc, debug_ptr), 
                            Relocation::Type::FIXED_ADDRESS, 
                            debug_name);
-    result.add_bytes(&desc, sizeof(desc));
+    result.add_bytes(&desc, sizeof(FunctionDesc));
     
     // Добавляем сгенерированный код
     result.add_label(code_name);
@@ -310,6 +317,7 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
 
     result.add_label(debug_name);
     result.add_buffer(debug_buffer);
+
     return result;
 }
 

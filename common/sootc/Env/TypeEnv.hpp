@@ -121,7 +121,7 @@ public:
     // ========================================================================
     const std::string& name() const { return m_name; }
     Type* get_type() const { return m_type; }
-    Type* get_parent_type() const { return TypeSystem::instance().lookup_type(m_type->get_parent()); }
+    Type* get_parent_type() const { return TypeSystem::instance().lookup_type(m_type->parent()); }
     
     // Для отложенной компиляции — установка смещения
     void set_file_offset(u64 offset) { m_file_offset = offset; }

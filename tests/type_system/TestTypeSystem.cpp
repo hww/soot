@@ -21,19 +21,19 @@ TEST_F(TypeSystemTest, BasicTypeCreation) {
 
     // Проверяем иерархию КАК В ОРИГИНАЛЕ
     Type* int_type = ts->lookup_type("int");
-    EXPECT_EQ(int_type->get_parent(), "integer");  // int -> integer
+    EXPECT_EQ(int_type->parent(), "integer");  // int -> integer
 
     Type* int32_type = ts->lookup_type("int32");
-    EXPECT_EQ(int32_type->get_parent(), "sinteger");  // int32 -> sinteger
+    EXPECT_EQ(int32_type->parent(), "sinteger");  // int32 -> sinteger
 
     Type* sinteger_type = ts->lookup_type("sinteger");
-    EXPECT_EQ(sinteger_type->get_parent(), "integer");  // sinteger -> integer
+    EXPECT_EQ(sinteger_type->parent(), "integer");  // sinteger -> integer
 
     Type* integer_type = ts->lookup_type("integer");
-    EXPECT_EQ(integer_type->get_parent(), "number");  // integer -> number
+    EXPECT_EQ(integer_type->parent(), "number");  // integer -> number
 
     Type* number_type = ts->lookup_type("number");
-    EXPECT_EQ(number_type->get_parent(), "object");  // number -> object
+    EXPECT_EQ(number_type->parent(), "object");  // number -> object
 }
 
 TEST_F(TypeSystemTest, ValueTypeOperations) {
@@ -176,8 +176,8 @@ TEST_F(TypeSystemTest, TypeHierarchy) {
     std::vector<std::string> path;
 
     while (type && type->has_parent()) {
-        path.push_back(type->get_name());
-        type = ts->lookup_type(type->get_parent());
+        path.push_back(type->name());
+        type = ts->lookup_type(type->parent());
     }
     path.push_back("object");
 

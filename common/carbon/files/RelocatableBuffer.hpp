@@ -49,7 +49,52 @@ namespace carbon::files {
 
 class RelocatableBuffer {
 public:
-
+    // Конструкторы
+    RelocatableBuffer() = default;
+    
+    // Конструктор копирования
+    RelocatableBuffer(const RelocatableBuffer& other)
+        : bytes_(other.bytes_)
+        , relocatations_(other.relocatations_)
+        , labels_(other.labels_)
+        , name_(other.name_)
+        , type_tag_(other.type_tag_) {}
+    
+    // Конструктор перемещения
+    RelocatableBuffer(RelocatableBuffer&& other) noexcept
+        : bytes_(std::move(other.bytes_))
+        , relocatations_(std::move(other.relocatations_))
+        , labels_(std::move(other.labels_))
+        , name_(other.name_)
+        , type_tag_(other.type_tag_) {
+    }
+    
+    // Оператор присваивания копированием
+    RelocatableBuffer& operator=(const RelocatableBuffer& other) {
+        if (this != &other) {
+            bytes_ = other.bytes_;
+            relocatations_ = other.relocatations_;
+            labels_ = other.labels_;
+            name_ = other.name_;
+            type_tag_ = other.type_tag_;
+        }
+        return *this;
+    }
+    
+    // Оператор присваивания перемещением
+    RelocatableBuffer& operator=(RelocatableBuffer&& other) noexcept {
+        if (this != &other) {
+            bytes_ = std::move(other.bytes_);
+            relocatations_ = std::move(other.relocatations_);
+            labels_ = std::move(other.labels_);
+            name_ = other.name_;
+            type_tag_ = other.type_tag_;
+        }
+        return *this;
+    }
+    
+    // Деструктор (по умолчанию)
+    ~RelocatableBuffer() = default;
 
     // ==============================================================================
     // Дополнительные методы для удобства
@@ -149,7 +194,7 @@ public:
     // ==============================================================================
       
     // Добавить значение с возможностью релокации
-    void add_relocatable(u64 offset, Relocation::Type type, const std::string& name = "") {
+    void add_relocatable_at(u64 offset, Relocation::Type type, const std::string& name = "") {
         switch (type) {
             case Relocation::Type::FIXED_ADDRESS:
                 relocatations_.push_back({type, name, offset});
@@ -166,23 +211,21 @@ public:
         }
     }
 
-    /** Сохранить текузий адрес как метсо branch инструкции которую нужно релокировать */
-    void add_branch_reference(const std::string& label_name) {
-        add_relocatable(bytes_.size(), Relocation::Type::BRANCH_DISP16, label_name);
-    } 
-
-    // Добавить указатель (смещение)
-    void add_relocatable(u32 offset, Relocation::Type type, const std::string& name = "") {
-        // В любом случае добавляем 64 битный релоцируемый указатель
-        add_relocatable((u64)offset, type, name);
+    void add_relocatable(u64 offset, Relocation::Type type, const std::string& name = "") {
+        add_relocatable_at(bytes_.size() + offset, type, name);
     }
 
+    /** Сохранить текузий адрес как метсо branch инструкции которую нужно релокировать */
+    void add_branch_reference(const std::string& label_name) {
+        add_relocatable(Relocation::Type::BRANCH_DISP16, label_name);
+    } 
+
     void add_relocatable(Relocation::Type type, const std::string& name = "") {
-        add_relocatable(bytes_.size(), type, name);
+        add_relocatable(type, name);
     }
 
     void add_relocatable_pointer(u64 ptr, Relocation::Type type, const std::string& name = "") {
-        add_relocatable(bytes_.size(), type, name);
+        add_relocatable(type, name);
         add_u64(ptr);
     }
 
@@ -218,11 +261,15 @@ public:
         // Копируем релокации и ОБНОВЛЯЕМ ДАННЫЕ для FIXED_ADDRESS
         for (const auto& reloc : other.relocatations_) {
             if (reloc.type == Relocation::Type::FIXED_ADDRESS) {
-                // Обновляем значение в скопированных байтах
                 u64* ptr = reinterpret_cast<u64*>(bytes_.data() + insert_pos + reloc.offset);
-                *ptr += insert_pos;  // ← прибавляем смещение!
-                lg::info("[RelocatableBuffer] add_buffer update FIXED_ADDRESS at 0x{:016X} from {} to {}", 
-                        insert_pos + reloc.offset, *ptr - insert_pos, *ptr);
+                if (*ptr != 0) {  // ← только если не nullptr
+                    *ptr += insert_pos;
+                    lg::info("[RelocatableBuffer] add_buffer update FIXED_ADDRESS at 0x{:016X} from {} to {}", 
+                            insert_pos + reloc.offset, *ptr - insert_pos, *ptr);
+                } else {
+                    lg::info("[RelocatableBuffer] add_buffer skip FIXED_ADDRESS at 0x{:016X} (nullptr)", 
+                            insert_pos + reloc.offset);
+                }
             }
             relocatations_.push_back({reloc.type, reloc.name, insert_pos + reloc.offset});
         }
@@ -369,12 +416,16 @@ public:
         return result;
     }
 
-
+    std::string name() const { return name_; }
+    std::string type_tag() const { return type_tag_; }
+    void set_name(std::string name) { name_ = name; }
+    void set_type_tag(std::string type_tag) { type_tag_ = type_tag; }
 private:
     std::vector<u8> bytes_;
     std::vector<Relocation> relocatations_;
     std::vector<RelLabel> labels_;
-    u64 dummy_ = 0;
+    std::string name_;
+    std::string type_tag_;
 };
 
 } // namespace carbon::files

@@ -199,7 +199,7 @@ EnumType* parse_defenum(const script::Object& defenum,
 
                 auto entry_val = value_obj.as_integer();
                 if (!integer_fits(static_cast<int64_t>(entry_val), type->get_load_size(), type->get_load_signed())) {
-                    fmt::print("Warning: Integer {} does not fit inside a {}\n", entry_val, type->get_name());
+                    fmt::print("Warning: Integer {} does not fit inside a {}\n", entry_val, type->name());
                 }
 
                 if (entries.empty()) {
@@ -228,7 +228,7 @@ EnumType* parse_defenum(const script::Object& defenum,
             if (maybe_docstring) {
                 new_type->m_metadata.docstring = *maybe_docstring;
             }
-            new_type->set_runtime_name(parent_value->get_runtime_name());
+            new_type->set_runtime_name(parent_value->runtime_name());
             return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));
         }
         else {

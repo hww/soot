@@ -90,7 +90,7 @@ Object Register::get_at(const Object &key) {
                     // Если это не битфилд, это просто константа,
                     // но мы всё равно можем вернуть алиас на это значение
                     next_step->offset = this->offset;
-                    next_step->type_name = Object::make_symbol(enum_ptr->get_name());
+                    next_step->type_name = Object::make_symbol(enum_ptr->name());
                 }
                 return Object::make_heap_obj(next_step);
             }

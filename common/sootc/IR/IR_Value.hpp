@@ -43,7 +43,7 @@ class IR_Value {
 
     // Фаза 3: Генерация байткода
     // Возвращает пару {тип_определения, буфер}
-    virtual std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c);
+    virtual RelocatableBuffer build(Compiler* c);
 
     
   protected:
@@ -86,7 +86,7 @@ public:
     std::string to_string() const override { return "function_ptr"; }
 
     void resolve(Compiler* c) override; 
-    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c) override;
+    RelocatableBuffer build(Compiler* c) override;
 
 private:
     class FunctionEnv* m_env;
@@ -213,7 +213,7 @@ public:
     }
 
     void resolve(Compiler* c) override;
-    std::optional<std::pair<std::string, RelocatableBuffer>> build(Compiler* c) override;
+    RelocatableBuffer build(Compiler* c) override;
 
 private:
     TypeEnv* m_env;

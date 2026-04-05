@@ -27,7 +27,7 @@ public:
     // Для отладки
     std::string print() const override {
         return fmt::format("MethodEnv(name={}, type={})", 
-                           name(), m_type ? m_type->get_name() : "unknown");
+                           name(), m_type ? m_type->name() : "unknown");
     }
     u32 id() const { return m_id; }
 private:    

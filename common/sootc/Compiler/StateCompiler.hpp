@@ -4,6 +4,7 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
+#include "sootc/Env/StateEnv.hpp"
 #include "sootc/IR/IR_Value.hpp"
 #include <string>
 
@@ -13,21 +14,34 @@ namespace sootc {
 
 class StateCompiler {
 public:
-    StateCompiler(TypeSystem& ts);
+    StateCompiler(TypeSystem& ts, Compiler* compiler);
     
     // Компилирует определение состояния
-    // Пример: (define-state Running (parent State) 
-    //          (on-enter ...) (on-exit ...) (on-event ...))
-    IR_Value compile_state(const script::Object& form, const std::string& state_name);
+    // Пример: (defstate name (parent) :virtual #t :event ... :enter ... :exit ... :code ... :post ...)
+    IR_Value* compile(const script::Object& form, const script::Object& rest, Env* env);
     
+    // BUILD Phase
+    RelocatableBuffer build(StateEnv* s_env);
+
 private:
+    struct HandlerForms {
+        script::Object event;
+        script::Object enter;
+        script::Object exit;
+        script::Object code;
+        script::Object post;
+        script::Object trans;
+        bool is_virtual = false;
+    };
+    
+    std::string extract_state_name(const script::Object& form);
+    std::string extract_parent_name(const script::Object& rest);
+    HandlerForms extract_handlers(const script::Object& rest);
+    void compile_handler(const script::Object& handler_form, const std::string& handler_name, 
+                         StateEnv* s_env, MethodEnv*& out_method_env);
+    
     TypeSystem& ts_;
-    
-    // Компиляция обработчиков (enter, exit, event, code, trans, post)
-    std::vector<RelocatableBuffer> compile_handlers(const script::Object& handlers_form);
-    
-    RelocatableBuffer build(const StateDesc& state_desc,
-                                          const std::vector<Definition>& handlers);
+    Compiler* compiler_;
 };
 
 } // namespace sootc

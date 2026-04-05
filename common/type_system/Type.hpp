@@ -348,7 +348,7 @@ class Type : public NativeObject {
     }
 
     uint32_t get_type_tag() {
-        return util::compute_crc32(get_name());
+        return util::compute_crc32(name());
     }
 
     // Core type properties - PURE VIRTUAL
@@ -370,12 +370,12 @@ class Type : public NativeObject {
 
     // Printing and debugging
     virtual std::string print() const override {
-        return "#<" + class_name() + " " + get_name() + ">";
+        return "#<" + class_name() + " " + name() + ">";
     }
     virtual Object inspect() const override {
         ListBuilder builder;
         builder.add_symbol(class_name());
-        builder.add_key_value("name", Object::make_string(get_name()));
+        builder.add_key_value("name", Object::make_string(name()));
         return builder.build();
     }
 
@@ -387,8 +387,9 @@ class Type : public NativeObject {
     bool              get_my_method(int id, MethodInfo *out) const;
     bool              get_my_last_method(MethodInfo *out) const;
     bool              get_my_new_method(MethodInfo *out) const;
-    int               get_method_id(const std::string &name) const;
+    int               get_my_methods_count() const { return m_methods.size(); }
     int               get_num_methods() const;
+    int               get_method_id(const std::string &name) const;
     const MethodInfo &add_method(const MethodInfo &info);
     const MethodInfo &add_new_method(const MethodInfo &info);
     std::string       print_method_info() const;
@@ -426,12 +427,12 @@ class Type : public NativeObject {
     void set_runtime_type(std::string name) {
         m_runtime_name = std::move(name);
     }
-    std::string get_name() const {
+    std::string name() const {
         return m_name;
     }
-    std::string get_runtime_name() const;
+    std::string runtime_name() const;
     
-    std::string get_parent() const {
+    std::string parent() const {
         return m_parent;
     }
     void set_runtime_name(std::string name) {
@@ -815,7 +816,7 @@ class BasicType : public StructureType {
     Object      inspect() const override {
         ListBuilder lb;
         lb.add_symbol("basic-type");
-        lb.add_string(get_name());
+        lb.add_string(name());
         return lb.build();
     }
     bool operator==(const Type &other) const override;
@@ -859,7 +860,7 @@ class BitFieldType : public ValueType {
     Object      inspect() const override {
         ListBuilder builder;
         builder.add_symbol("bitfield-type");
-        builder.add_string(get_name());
+        builder.add_string(name());
         return builder.build();
     }
     bool operator==(const Type &other) const override;
@@ -904,7 +905,7 @@ class EnumType : public ValueType {
     Object      inspect() const override {
         ListBuilder builder;
         builder.add_symbol("enum-type");
-        builder.add_string(get_name());
+        builder.add_string(name());
         builder.add_key_value("size", Object::make_integer(m_entries.size()));
         return builder.build();
     }

@@ -62,8 +62,8 @@ TEST_F(DefTypeTest, BasicStructure) {
 
     auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
-    EXPECT_EQ(structure->get_name(), "test-structure");
-    EXPECT_EQ(structure->get_parent(), "structure");
+    EXPECT_EQ(structure->name(), "test-structure");
+    EXPECT_EQ(structure->parent(), "structure");
 }
 
 TEST_F(DefTypeTest, BasicType) {
@@ -79,8 +79,8 @@ TEST_F(DefTypeTest, BasicType) {
 
     auto basic = dynamic_cast<BasicType *>(result.type_info);
     ASSERT_NE(basic, nullptr);
-    EXPECT_EQ(basic->get_name(), "test-basic");
-    EXPECT_EQ(basic->get_parent(), "basic");
+    EXPECT_EQ(basic->name(), "test-basic");
+    EXPECT_EQ(basic->parent(), "basic");
 }
 
 TEST_F(DefTypeTest, BitfieldType) {
@@ -96,8 +96,8 @@ TEST_F(DefTypeTest, BitfieldType) {
 
     auto bitfield = dynamic_cast<BitFieldType *>(result.type_info);
     ASSERT_NE(bitfield, nullptr);
-    EXPECT_EQ(bitfield->get_name(), "test-bitfield");
-    EXPECT_EQ(bitfield->get_parent(), "integer");
+    EXPECT_EQ(bitfield->name(), "test-bitfield");
+    EXPECT_EQ(bitfield->parent(), "integer");
 }
 
 TEST_F(DefTypeTest, WithDocstring) {
@@ -111,7 +111,7 @@ TEST_F(DefTypeTest, WithDocstring) {
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
-    EXPECT_EQ(result.type_info->get_name(), "documented-type");
+    EXPECT_EQ(result.type_info->name(), "documented-type");
 
     // Проверяем что докстринг сохранился
     EXPECT_TRUE(result.type_info->m_metadata.has_docstring());
@@ -293,7 +293,7 @@ TEST_F(DefTypeTest, Inheritance) {
 
     auto child = dynamic_cast<StructureType *>(child_result.type_info);
     ASSERT_NE(child, nullptr);
-    EXPECT_EQ(child->get_parent(), "parent-type"); // Должно работать
+    EXPECT_EQ(child->parent(), "parent-type"); // Должно работать
 
     // Проверяем что унаследовались поля
     Field parent_field, child_field;

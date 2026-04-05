@@ -91,13 +91,18 @@ std::string FunctionDesc::inspect() const {
         fmt::ptr(debug_ptr.get()),
         fmt::ptr(owner_module)
     );
-    result += "  Code:\n";
-    if (code_ptr.ptr && code_count > 0) {
-        for (size_t i=0; i<code_count; i++) {
+    
+    // Только если code_ptr валидный и code_count > 0
+    if (code_ptr.ptr && code_count > 0 && code_ptr.ptr != reinterpret_cast<Instruction*>(0x10)) {
+        result += "  Code:\n";
+        for (size_t i = 0; i < code_count; i++) {
             auto inst = code_ptr.ptr[i];
             result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(inst));
         }
+    } else if (code_count > 0) {
+        result += "  Code: (invalid pointer, skipping)\n";
     }
+    
     return result;
 }
 

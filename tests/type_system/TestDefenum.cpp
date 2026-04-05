@@ -33,8 +33,8 @@ TEST_F(DefEnumTest, DebugSimpleEnum) {
     try {
         EnumType* test_enum = parse_deftype_string(code);
         ASSERT_NE(test_enum, nullptr);
-        fmt::print("DEBUG: Enum name: '{}'\n", test_enum->get_name());
-        EXPECT_EQ(test_enum->get_name(), "test");
+        fmt::print("DEBUG: Enum name: '{}'\n", test_enum->name());
+        EXPECT_EQ(test_enum->name(), "test");
     }
     catch (const std::exception& e) {
         fmt::print("ERROR: {}\n", e.what());
@@ -49,7 +49,7 @@ TEST_F(DefEnumTest, BasicEnum) {
 
     EnumType* color_enum = parse_deftype_string(code);
     ASSERT_NE(color_enum, nullptr);
-    EXPECT_EQ(color_enum->get_name(), "color");
+    EXPECT_EQ(color_enum->name(), "color");
     EXPECT_FALSE(color_enum->is_bitfield());
 }
 
@@ -61,7 +61,7 @@ TEST_F(DefEnumTest, BitfieldEnum) {
 
     EnumType* flags_enum = parse_deftype_string(code);
     ASSERT_NE(flags_enum, nullptr);
-    EXPECT_EQ(flags_enum->get_name(), "flags");
+    EXPECT_EQ(flags_enum->name(), "flags");
     EXPECT_TRUE(flags_enum->is_bitfield());
 }
 
@@ -71,7 +71,7 @@ TEST_F(DefEnumTest, EnumWithExplicitValues) {
 
     EnumType* weapon_enum = parse_deftype_string(code);
     ASSERT_NE(weapon_enum, nullptr);
-    EXPECT_EQ(weapon_enum->get_name(), "weapon");
+    EXPECT_EQ(weapon_enum->name(), "weapon");
 }
 
 TEST_F(DefEnumTest, EnumWithType) {
@@ -80,7 +80,7 @@ TEST_F(DefEnumTest, EnumWithType) {
 
     EnumType* small_enum = parse_deftype_string(code);
     ASSERT_NE(small_enum, nullptr);
-    EXPECT_EQ(small_enum->get_name(), "small");
+    EXPECT_EQ(small_enum->name(), "small");
 }
 
 TEST_F(DefEnumTest, EnumWithDocstring) {
@@ -96,7 +96,7 @@ TEST_F(DefEnumTest, EnumWithDocstring) {
         DefinitionMetadata metadata;
         EnumType* state_enum = parse_deftype_string(code, &metadata);
         ASSERT_NE(state_enum, nullptr);
-        EXPECT_EQ(state_enum->get_name(), "state");
+        EXPECT_EQ(state_enum->name(), "state");
         EXPECT_TRUE(metadata.has_docstring());
         EXPECT_EQ(metadata.get_docstring_or_empty(), "State machine states");
     }
@@ -111,7 +111,7 @@ TEST_F(DefEnumTest, MixedAutoAndExplicitValues) {
 
     EnumType* mixed_enum = parse_deftype_string(code);
     ASSERT_NE(mixed_enum, nullptr);
-    EXPECT_EQ(mixed_enum->get_name(), "mixed");
+    EXPECT_EQ(mixed_enum->name(), "mixed");
 }
 
 
@@ -150,7 +150,7 @@ TEST_F(DefEnumTest, EmptyEnum) {
     try {
         EnumType* empty_enum = parse_deftype_string(code);
         ASSERT_NE(empty_enum, nullptr);
-        EXPECT_EQ(empty_enum->get_name(), "empty");
+        EXPECT_EQ(empty_enum->name(), "empty");
     }
     catch (const std::exception& e) {
         FAIL() << "Exception: " << e.what();
@@ -163,7 +163,7 @@ TEST_F(DefEnumTest, EnumWithFalseBitfield) {
     try {
         EnumType* normal_enum = parse_deftype_string(code);
         ASSERT_NE(normal_enum, nullptr);
-        EXPECT_EQ(normal_enum->get_name(), "normal");
+        EXPECT_EQ(normal_enum->name(), "normal");
         EXPECT_FALSE(normal_enum->is_bitfield());
     }
     catch (const std::exception& e) {
@@ -181,7 +181,7 @@ TEST_F(DefEnumTest, LargeEnum) {
     try {
         EnumType* big_enum = parse_deftype_string(code);
         ASSERT_NE(big_enum, nullptr);
-        EXPECT_EQ(big_enum->get_name(), "big-enum");
+        EXPECT_EQ(big_enum->name(), "big-enum");
     }
     catch (const std::exception& e) {
         FAIL() << "Exception: " << e.what();
@@ -194,7 +194,7 @@ TEST_F(DefEnumTest, EnumWithNegativeValues) {
     try {
         EnumType* signed_enum = parse_deftype_string(code);
         ASSERT_NE(signed_enum, nullptr);
-        EXPECT_EQ(signed_enum->get_name(), "signed");
+        EXPECT_EQ(signed_enum->name(), "signed");
     }
     catch (const std::exception& e) {
         FAIL() << "Exception: " << e.what();
@@ -225,7 +225,7 @@ TEST_F(DefEnumTest, SimpleSymbolEntries) {
     try {
         EnumType* simple_enum = parse_deftype_string(code);
         ASSERT_NE(simple_enum, nullptr);
-        EXPECT_EQ(simple_enum->get_name(), "simple");
+        EXPECT_EQ(simple_enum->name(), "simple");
 
         // Проверяем что entries создались
         auto& entries = simple_enum->entries();

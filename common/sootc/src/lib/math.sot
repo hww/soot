@@ -1,16 +1,16 @@
 (define add (lambda ((a int) (b int)) (+ a b)))
 (define sub (lambda ((a int) (b int)) (- a b)))
 
-;(deftype vector3 (basic) 
-;    (
-;        (x  float)
-;        (y  float)
-;        (z  float)
-;    )
-;    (:methods
-;        (new () _type_)
-;        (set (_type_ float float float) none)
-;    ))
+(deftype vector3 (basic) 
+    (
+        (x  float)
+        (y  float)
+        (z  float)
+    )
+    (:methods
+        (new () _type_)
+        (set (_type_ float float float) none)
+    ))
 ;
 ;
 ;(defmethod new vector3 () 

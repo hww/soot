@@ -14,9 +14,9 @@ namespace sootc {
 // IR_Value
 // ===========================================================
     
-std::optional<std::pair<std::string, RelocatableBuffer>> IR_Value::build(Compiler* c) {
+RelocatableBuffer IR_Value::build(Compiler* c) {
     (void)c;
-    return std::nullopt; 
+    return RelocatableBuffer{}; 
 }
 
 // ===========================================================
@@ -87,9 +87,9 @@ void IR_FunctionValue::resolve(Compiler* c) {
     (void)c;
 }
 
-std::optional<std::pair<std::string, RelocatableBuffer>> IR_FunctionValue::build(Compiler* c) {
+RelocatableBuffer IR_FunctionValue::build(Compiler* c) {
     FunctionCompiler fn_c(c->ts(), c);
-    return {{"function", fn_c.build(this->get_env())}};
+    return fn_c.build(this->get_env());
 }
 
 // ===========================================================
@@ -97,14 +97,14 @@ std::optional<std::pair<std::string, RelocatableBuffer>> IR_FunctionValue::build
 // ===========================================================
 
 std::string IR_MethodValue::name() const { return m_env->name(); }
-std::string IR_MethodValue::type_name() const { return m_env->type()->get_name(); }
+std::string IR_MethodValue::type_name() const { return m_env->type()->name(); }
 
 // ===========================================================
 // IR_StateValue
 // ===========================================================
 
 std::string IR_StateValue::name() const { return m_env->name(); }
-std::string IR_StateValue::type_name() const { return m_env->type()->get_name(); }
+std::string IR_StateValue::type_name() const { return m_env->type()->name(); }
 
 // ===========================================================
 // IR_Type
@@ -119,9 +119,9 @@ void IR_Type::resolve(Compiler* c) {
     // В новой архитектуре resolve не нужен
 }
 
-std::optional<std::pair<std::string, RelocatableBuffer>> IR_Type::build(Compiler* c) {
+RelocatableBuffer IR_Type::build(Compiler* c) {
     TypeCompiler t_c(c->ts(), c);
-    return {{"type", t_c.build(this->get_env())}};
+    return t_c.build(this->get_env());
 }
 
 } // namespace sootc

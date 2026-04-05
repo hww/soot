@@ -5,6 +5,7 @@ add_library(libsootc
     common/sootc/Main.cpp
     common/sootc/Compiler/FunctionCompiler.cpp
     common/sootc/Compiler/MethodCompiler.cpp
+    common/sootc/Compiler/StateCompiler.cpp
     common/sootc/Compiler/TypeCompiler.cpp
     common/sootc/Compiler/Compiler.cpp
     common/sootc/Env/Env.cpp

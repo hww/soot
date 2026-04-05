@@ -425,7 +425,7 @@ void declare_method(Type *type, TypeSystem *type_system, const script::Object &d
                         lg::print(":behavior tag used without providing the process type name in a "
                                   "method "
                                   "declaration. {}::{}\n",
-                                  type->get_name(), method_name.c_str());
+                                  type->name(), method_name.c_str());
                         throw std::runtime_error("Bad usage of :behavior in a method declaration");
                     }
                     function_typespec.add_new_tag("behavior", symbol_string(obj->as_pair()->car));
@@ -456,7 +456,7 @@ void declare_method(Type *type, TypeSystem *type_system, const script::Object &d
         if (overlay_method && (no_virtual || replace_method)) {
             throw std::runtime_error(
                 fmt::format("method {} in type {} has invalid combination of keywords", method_name,
-                            type->get_name()));
+                            type->name()));
         }
 
         MethodInfo info;
@@ -542,7 +542,7 @@ void declare_state(Type *type, TypeSystem *type_system, const script::Object &de
             for_each_in_list(*args, [&](const script::Object &o) {
                 state_typespec.add_arg(parse_typespec(type_system, o));
             });
-            state_typespec.add_arg(TypeSpec(type->get_name()));
+            state_typespec.add_arg(TypeSpec(type->name()));
 
             type->add_state(state_name, state_typespec);
         } else {
@@ -550,7 +550,7 @@ void declare_state(Type *type, TypeSystem *type_system, const script::Object &de
             auto state_name = symbol_string(*obj);
 
             TypeSpec state_typespec("state");
-            state_typespec.add_arg(TypeSpec(type->get_name()));
+            state_typespec.add_arg(TypeSpec(type->name()));
 
             type->add_state(state_name, state_typespec);
         }
@@ -640,7 +640,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
     }
 
     if (ts->fully_defined_type_exists(TypeSpec("process")) &&
-        ts->tc(TypeSpec("process"), TypeSpec(type->get_parent()))) {
+        ts->tc(TypeSpec("process"), TypeSpec(type->parent()))) {
         // check heap-base if this is a child of process.
         auto process_type = ts->get_type_of_type<BasicType>("process");
         auto auto_hb = (flags.size - process_type->size() + 0xf) & ~0xf;
@@ -651,7 +651,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
             // was set manually so verify if that's correct.
             throw std::runtime_error(fmt::format(
                 "Process heap underflow in type {}: heap-base is {} vs. auto-detected {}",
-                type->get_name(), flags.heap_base, auto_hb));
+                type->name(), flags.heap_base, auto_hb));
             //} else if (flags.heap_base != auto_hb) {
             //  lg::print("Type {} has manual heap-base ({} vs {}). This is fine. \n",
             //  type->get_name(),
@@ -662,21 +662,21 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
     if (size_assert != -1 && flags.size != u16(size_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
-                        type->get_name(), int(flags.size), int(flags.size), size_assert));
+                        type->name(), int(flags.size), int(flags.size), size_assert));
     }
 
     flags.methods = ts->get_next_method_id(type);
 
     if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
         throw std::runtime_error(
-            "Type " + type->get_name() + " has " + std::to_string(int(flags.methods)) +
+            "Type " + type->name() + " has " + std::to_string(int(flags.methods)) +
             " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
     }
 
     if (flag_assert_set && (flags.flag != flag_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} has flag 0x{:x} but flag-assert was set to 0x{:x}",
-                        type->get_name(), flags.flag, flag_assert));
+                        type->name(), flags.flag, flag_assert));
     }
 
     result.flags = flags;
@@ -751,21 +751,21 @@ BitFieldTypeDefResult parse_bitfield_type_def(BitFieldType *type, TypeSystem *ts
     if (size_assert != -1 && flags.size != u16(size_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
-                        type->get_name(), int(flags.size), int(flags.size), size_assert));
+                        type->name(), int(flags.size), int(flags.size), size_assert));
     }
 
     flags.methods = ts->get_next_method_id(type);
 
     if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
         throw std::runtime_error(
-            "Type " + type->get_name() + " has " + std::to_string(int(flags.methods)) +
+            "Type " + type->name() + " has " + std::to_string(int(flags.methods)) +
             " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
     }
 
     if (flag_assert_set && (flags.flag != flag_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} has flag 0x{:x} but flag-assert was set to 0x{:x}",
-                        type->get_name(), flags.flag, flag_assert));
+                        type->name(), flags.flag, flag_assert));
     }
 
     result.flags = flags;
@@ -869,7 +869,7 @@ DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
                                 name, parent_type_name));
             }
             new_type->inherit(pto);
-            ts->forward_declare_type_as(name, pto->get_name());
+            ts->forward_declare_type_as(name, pto->name());
             auto sr =
                 parse_structure_def(new_type.get(), ts, field_list_obj, options_obj, constants);
             result.flags = sr.flags;
@@ -900,7 +900,7 @@ DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
             auto pto = dynamic_cast<StructureType *>(ts->lookup_type(parent_type));
             ASSERT(pto);
             new_type->inherit(pto);
-            ts->forward_declare_type_as(name, pto->get_name());
+            ts->forward_declare_type_as(name, pto->name());
             auto sr =
                 parse_structure_def(new_type.get(), ts, field_list_obj, options_obj, constants);
             result.flags = sr.flags;
@@ -930,7 +930,7 @@ DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
             auto parent_value = dynamic_cast<ValueType *>(pto);
             ASSERT(parent_value);
             new_type->inherit(parent_value);
-            new_type->set_runtime_type(pto->get_runtime_name());
+            new_type->set_runtime_type(pto->runtime_name());
             auto sr = parse_bitfield_type_def(new_type.get(), ts, field_list_obj, options_obj);
             result.flags = sr.flags;
             result.create_runtime_type = sr.generate_runtime_type;

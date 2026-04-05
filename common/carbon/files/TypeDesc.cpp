@@ -27,17 +27,17 @@ std::string TypeDesc::inspect() const {
         parent_type_id,
         flags,
         size_in_memory,
-        methods_offset.offset,
+        methods_ptr.offset,
         methods_count,
-        states_offset.offset,
+        states_ptr.offset,
         states_count,
         heap_base
     );
     
-    if (methods_offset.ptr && methods_count > 0) {
+    if (methods_ptr.ptr && methods_count > 0) {
         result += "  Methods:\n";
         for (uint32_t i = 0; i < methods_count; i++) {
-            auto* method_desc = methods_offset.ptr[i].ptr;
+            auto* method_desc = methods_ptr.ptr[i].ptr;
             if (method_desc) {
                 result += fmt::format("    [{}] {}\n", i, method_desc->inspect());
             } else {
@@ -46,10 +46,10 @@ std::string TypeDesc::inspect() const {
         }
     }
     
-    if (states_offset.ptr && states_count > 0) {
+    if (states_ptr.ptr && states_count > 0) {
         result += "  States:\n";
         for (uint32_t i = 0; i < states_count; i++) {
-            auto* state_desc = states_offset.ptr[i].ptr;
+            auto* state_desc = states_ptr.ptr[i].ptr;
             if (state_desc) {
                 result += fmt::format("    [{}] {}\n", i, state_desc->inspect());
             } else {
@@ -63,22 +63,22 @@ std::string TypeDesc::inspect() const {
 
 void TypeDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* owner) {
     if (to_memory) {
-        if (methods_offset.offset) {
-            methods_offset.offset += delta;
+        if (methods_ptr.offset) {
+            methods_ptr.offset += delta;
             relocate_methods_table(to_memory, delta, owner);
         }
-        if (states_offset.offset) {
-            states_offset.offset += delta;
+        if (states_ptr.offset) {
+            states_ptr.offset += delta;
             relocate_states_table(to_memory, delta, owner);
         }
     } else {
-        if (methods_offset.offset) {
+        if (methods_ptr.offset) {
             relocate_methods_table(to_memory, delta,  owner);
-            methods_offset.offset += delta;
+            methods_ptr.offset += delta;
         }
-        if (states_offset.offset) {
+        if (states_ptr.offset) {
             relocate_states_table(to_memory, delta, owner);
-            states_offset.offset += delta;
+            states_ptr.offset += delta;
         }
     }
 }
@@ -86,8 +86,8 @@ void TypeDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* owner) 
 void TypeDesc::relocate_methods_table(bool to_memory, intptr_t delta, Module* module) {
     // Применяем ко всем определениям
     for (u32 i = 0; i < methods_count; i++) {
-        if (methods_offset.ptr[i].offset) {
-            FunctionDesc* def = methods_offset.ptr[i].ptr;
+        if (methods_ptr.ptr[i].offset) {
+            FunctionDesc* def = methods_ptr.ptr[i].ptr;
             def->relocate_pointers(to_memory, delta, module);
         }
     }                  
@@ -95,8 +95,8 @@ void TypeDesc::relocate_methods_table(bool to_memory, intptr_t delta, Module* mo
 void TypeDesc::relocate_states_table(bool to_memory, intptr_t delta, Module* module) {
     // Применяем ко всем определениям
     for (u32 i = 0; i < states_count; i++) {
-        if (states_offset.ptr[i].offset) {
-            StateDesc* def = states_offset.ptr[i].ptr;
+        if (states_ptr.ptr[i].offset) {
+            StateDesc* def = states_ptr.ptr[i].ptr;
             def->relocate_pointers(to_memory, delta, module);
         }
     }                  

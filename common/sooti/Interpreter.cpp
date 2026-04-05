@@ -1803,12 +1803,12 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
             // --- ДОБАВЛЯЕМ РАСЧЕТ РАЗМЕРА ---
             auto type_ptr = TypeSystem::instance().lookup_type(alias->type_name.to_std_string());
             if (type_ptr) {
-                if (type_ptr->get_name() == "_type_") {
+                if (type_ptr->name() == "_type_") {
                     alias->bit_size = TypeConfig::pointer_size * 8;
                     // Явно проверяем на "none" или "void"
-                } else if (type_ptr->get_name() == "none") {
+                } else if (type_ptr->name() == "none") {
                     alias->bit_size = 0;
-                } else if (type_ptr->get_name() == "void") {
+                } else if (type_ptr->name() == "void") {
                     alias->bit_size = 0;
                 } else {
                     alias->bit_size = type_ptr->get_size_in_memory() * 8;
@@ -5462,7 +5462,7 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
         reg->type_name = second;
     else if (second.is_native_obj<Type>())
         reg->type_name =
-            Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
+            Object::make_symbol(second.as_heap_obj<Type>()->name()); // Используй get_name()
 
     // 2. Привязываем регистр
     if (args.has_named("reg"))
@@ -5580,7 +5580,7 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
         auto type_shared = std::shared_ptr<Type>(result.type_info, [](Type *) {
             /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
         });
-        auto name = result.type_info->get_name();
+        auto name = result.type_info->name();
 
         m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
                                                 Object::make_heap_obj(type_shared));
@@ -5602,7 +5602,7 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
         /* Ничего не делаем, TypeSystem сама удалит его через unique_ptr */
     });
 
-    auto name = enum_ptr->get_name();
+    auto name = enum_ptr->name();
 
     m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
                                             Object::make_heap_obj(enum_shared));
@@ -5648,7 +5648,7 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
             // Предположим, у тебя есть метод проверки типа в рантайме
             if (type) {
                 // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
-                return Object::make_symbol(type->get_name());
+                return Object::make_symbol(type->name());
             }
 
             throw_eval_error(
@@ -6014,7 +6014,7 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
             MethodInfo info;
             if (!type->get_my_method(args.unnamed[1].as_integer(), &info)) {
                 throw_eval_error(form, fmt::format("Method ID {} not found in type {}",
-                                                   args.unnamed[1].as_integer(), type->get_name()));
+                                                   args.unnamed[1].as_integer(), type->name()));
             }
             method_name = info.name;
         }
@@ -6025,7 +6025,7 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
 
         if (args.has_named("declare-extern") && is_true(args.named["declare-extern"])) {
             auto full_name =
-                fmt::format("{}::{}", type->get_name(), args.unnamed[1].to_std_string());
+                fmt::format("{}::{}", type->name(), args.unnamed[1].to_std_string());
             auto full_name_ptr = intern_ptr(full_name);
             if (m_symbol_types.lookup(full_name_ptr)) {
                 throw_eval_error(form, fmt::format("The method is already {} defined", full_name));
@@ -6062,12 +6062,12 @@ Object Interpreter::eval_method_of(const Object &form, Arguments &args,
     auto type = ts.lookup_type(type_name.name_ptr);
     if (args.unnamed[1].is_integer()) {
         auto method_id = args.unnamed[1].as_integer();
-        auto m_info = ts.lookup_method(type->get_name(), method_id);
+        auto m_info = ts.lookup_method(type->name(), method_id);
         auto method_ptr = std::make_shared<MethodInfo>(m_info);
         return Object::make_heap_obj(method_ptr);
     } else {
         auto method_name = args.unnamed[1].as_symbol();
-        auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+        auto m_info = ts.lookup_method(type->name(), method_name.name_ptr);
         auto method_ptr = std::make_shared<MethodInfo>(m_info); // Честная копия
         return Object::make_heap_obj(method_ptr);
     }
@@ -6092,7 +6092,7 @@ Object Interpreter::eval_method_id_of(const Object &form, Arguments &args,
     }
 
     auto type = ts.lookup_type(type_name.name_ptr);
-    auto m_info = ts.lookup_method(type->get_name(), method_name.name_ptr);
+    auto m_info = ts.lookup_method(type->name(), method_name.name_ptr);
 
     return Object::make_integer(m_info.id);
 }
@@ -6125,7 +6125,7 @@ Object Interpreter::eval_offset_of(const Object &form, Arguments &args,
     auto field_name = args.unnamed[1].as_symbol();
     // Проверяем существование поля перед получением инфо
     try {
-        auto info = ts.lookup_field_info(type->get_name(), field_name);
+        auto info = ts.lookup_field_info(type->name(), field_name);
 
         // Логика смещения: если объект boxed, смещение в коде обычно считается от начала
         // данных, а не от тега.
@@ -6159,7 +6159,7 @@ Object Interpreter::eval_size_of(const Object &form, Arguments &args,
         auto field_name = args.unnamed[1].as_symbol();
 
         auto type = ts.lookup_type(type_name.name_ptr);
-        auto info = ts.lookup_field_info(type->get_name(), field_name.name_ptr);
+        auto info = ts.lookup_field_info(type->name(), field_name.name_ptr);
 
         // Берем тип самого поля и узнаем его размер
         auto field_type = ts.lookup_type(info.field.type().base_type());
@@ -6189,7 +6189,7 @@ Object Interpreter::eval_the(const Object &form, Arguments &args,
 
     // Если мы передали объект типа (уже вычисленный ранее или найденный в env)
     if (type_form.is_native_obj<Type>()) {
-        expected_spec = TypeSpec(type_form.as_heap_obj<Type>()->get_name());
+        expected_spec = TypeSpec(type_form.as_heap_obj<Type>()->name());
     }
     // Если это символ/строка (ищем в системе типов напрямую)
     else if (type_form.is_symbol() || type_form.is_string()) {
@@ -6237,7 +6237,7 @@ Object Interpreter::eval_the_as(const Object &form, Arguments &args,
 
     // Поддержка "Типов как объектов"
     if (type_arg.is_native_obj<Type>()) {
-        new_type_name = type_arg.as_heap_obj<Type>()->get_name();
+        new_type_name = type_arg.as_heap_obj<Type>()->name();
     }
     // Поддержка символов/строк (классика)
     else if (type_arg.is_symbol() || type_arg.is_string()) {
@@ -6378,10 +6378,10 @@ Object Interpreter::eval_type_for_each_method(const Object &form, Arguments &arg
             }
 
             // Если не нашли, идем выше
-            if (current_type->get_name() == "object")
+            if (current_type->name() == "object")
                 break;
 
-            auto parent_name = current_type->get_parent();
+            auto parent_name = current_type->parent();
             if (parent_name.empty())
                 break; // Защита от пустых имен родителей
 

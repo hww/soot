@@ -14,6 +14,7 @@
 #include "common/carbon/files/FunctionDesc.hpp"
 #include "sootc/IR/IR_Value.hpp"
 #include <cstddef>
+#include <utility>
 
 using namespace carbon::files;
 
@@ -82,33 +83,36 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
 
     for (auto& [name, value] : env->sybols_table()) {
         lg::info("Compiler compile symbol '{}'", name);
-        if (auto result = value->build(this)) {            
-            const auto& [type_tag, buffer] = *result;
+        auto result =  value->build(this);
+        if (!result.is_empty()) {            
 
-            lg::info("  > add_definition compile symbol '{}' type '{}'", name, type_tag);
+            lg::info("  > add_definition compile symbol '{}' type '{}'", result.name(), result.type_tag());
 
-            // Метка для дефиниции
-            definitions.add_label(name);
+
             
             // Заголовок дефиниции
             Definition definition{
-                StringId(name),
-                StringId(type_tag),
+                StringId(result.name()),
+                StringId(result.type_tag()),
                 SymbolFlags::Export,
                 0,
                 Ptr<u8>()
             };
             
             // Ссылка на дескриптор
-            std::string descriptor_label = name + "#desc";
+            std::string descriptor_label = name + "#descriptor";
+
+            // добавим ссылку на другой буфер по имени
             definitions.add_relocatable(offsetof(Definition, ptr), 
                                         Relocation::Type::LABEL_ADDRESS, 
                                         descriptor_label);
+            // Метка для дефиниции
+            definitions.add_label(name);                                        
             definitions.add_bytes(&definition, sizeof(Definition));
             
-            // Дескриптор
+            // Дескриптор в отдельный буфер
             descriptors.add_label(descriptor_label);
-            descriptors.add_buffer(buffer);
+            descriptors.add_buffer(result);
             
             definitions_count++;
         } 
@@ -144,13 +148,12 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
     file_buffer.write_at(header_pos, &header, sizeof(BinaryFile));
     
     // Линковка
-    auto file = file_buffer.link_file();
+    file_buffer.link_file();
     
     // Создаем модуль
     auto module = std::make_shared<Module>();
-    file->relocate_pointers(true, module.get());
     module->name = StringId(env->name().c_str());
-    module->set_file(file_buffer.bytes());
+    module->set_file(std::move(file_buffer.bytes()));
     
     return module;
 }
