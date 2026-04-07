@@ -1,6 +1,7 @@
 // StringIdManager.cpp
 #include "common/carbon/lib/StringIdManager.hpp"
 #include "common/util/Log.hpp"
+#include "fmt/format.h"
 #include "util/Crc32.hpp"
 #include <fstream>
 #include <mutex>
@@ -58,9 +59,7 @@ std::string StringIdManager::get_string(u32 id) const {
     }
     
     // Формат: <unknown:0xDEADBEEF>
-    std::ostringstream oss;
-    oss << "<unknown:0x" << std::hex << std::uppercase << id << ">";
-    return oss.str();
+    return fmt::format("<unknown:0x{:08X}>", id);
 }
 
 const char* StringIdManager::get_cstring(u32 id) const {

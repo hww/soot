@@ -37,10 +37,8 @@ bool FunctionDesc::has_debug_info() const {
 void FunctionDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
     (void)to_memory;
     owner_module = module;
-    if (verbose) {
-        fmt::print("[FunctionDesc] before relocate_pointers_for_memory :code_ptr 0x{:016X} :data_ptr 0x{:016X} :debug_ptr 0x{:016X}\n", 
-            code_ptr.offset, data_ptr.offset, debug_ptr.offset);
-    }
+
+
     if (code_ptr.offset) {
         code_ptr.offset += delta;
     }
@@ -51,7 +49,7 @@ void FunctionDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* mod
         debug_ptr.offset += delta;
     }
     if (verbose) {
-        fmt::print("[FunctionDesc] after  relocate_pointers_for_memory :code_ptr 0x{:016X} :data_ptr 0x{:016X} :debug_ptr 0x{:016X}\n", 
+        lg::info("[FunctionDesc] relocate_pointers #code {:016X} #data {:016X} #debug {:016X}", 
             code_ptr.offset, data_ptr.offset, debug_ptr.offset);
     }
 }

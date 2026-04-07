@@ -77,49 +77,44 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
     }
     
     // ПРОХОД 2: BUILD — генерация буферов
-    RelocatableBuffer definitions;
-    RelocatableBuffer descriptors;
+    RelocatableBuffer definitions("definitions", "definitions", true);
+    RelocatableBuffer descriptors("descriptors", "descriptors", true);
     int definitions_count = 0;
 
     for (auto& [name, value] : env->sybols_table()) {
         lg::info("Compiler compile symbol '{}'", name);
-        auto result =  value->build(this);
-        if (!result.is_empty()) {            
+        auto descriptor =  value->build(this);
+        if (!descriptor.is_empty()) {            
 
-            lg::info("  > add_definition compile symbol '{}' type '{}'", result.name(), result.type_tag());
+            //lg::info("add_definition compile symbol '{}' type '{}'", result.name(), result.type_tag());
 
-
-            
             // Заголовок дефиниции
             Definition definition{
-                StringId(result.name()),
-                StringId(result.type_tag()),
+                StringId(descriptor.name()),
+                StringId(descriptor.type_tag()),
                 SymbolFlags::Export,
                 0,
-                Ptr<u8>()
+                nullptr
             };
             
-            // Ссылка на дескриптор
-            std::string descriptor_label = name + "#descriptor";
 
             // добавим ссылку на другой буфер по имени
             definitions.add_relocatable(offsetof(Definition, ptr), 
                                         Relocation::Type::LABEL_ADDRESS, 
-                                        descriptor_label);
+                                        descriptor.name());
             // Метка для дефиниции
             definitions.add_label(name);                                        
             definitions.add_bytes(&definition, sizeof(Definition));
             
             // Дескриптор в отдельный буфер
-            descriptors.add_label(descriptor_label);
-            descriptors.add_buffer(result);
+            descriptors.add_buffer(descriptor);
             
             definitions_count++;
         } 
     }
     
     // Создаем заголовок
-    RelocatableBuffer file_buffer;
+    RelocatableBuffer file_buffer("file", "file");
     
     // Заглушка для BinaryFile (заполним позже)
     u32 header_pos = file_buffer.size();

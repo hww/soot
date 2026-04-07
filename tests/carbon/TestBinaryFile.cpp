@@ -38,7 +38,7 @@ protected:
                 Instruction::create_a(Opcode::RETURN,0),
                 Instruction::create_a(Opcode::RETURN,0)
             };
-            RelocatableBuffer rbuffer;
+            RelocatableBuffer rbuffer(def_name, "temp");
             rbuffer.add_function(
                 def_name,
                 code,

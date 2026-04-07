@@ -9,6 +9,7 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/files/Definition.hpp"
 #include "files/BinaryFile.hpp"
+#include "fmt/base.h"
 #include "vm/Instructions.hpp"
 #include "fmt/format.h"
 
@@ -18,6 +19,7 @@ namespace carbon::files {
     
     struct Relocation {
         enum class Type { 
+            NULL_ADDRESS,   // значение пустое
             FIXED_ADDRESS,  // относительное смещение от начала файла (для глобальных символов)
             LABEL_ADDRESS,  // адрес метки по имени (для символов)
             BRANCH_DISP16   // для инструкций перехода (рассчитывается как смещение от текущей позиции до метки)
@@ -29,6 +31,8 @@ namespace carbon::files {
 
         std::string to_string() const { 
             switch (type) {
+                case Type::NULL_ADDRESS:
+                    return fmt::format("Relocation(type=NULL_ADDRESS  name={} offset=0x{:016X})", name, offset);
                 case Type::FIXED_ADDRESS:
                     return fmt::format("Relocation(type=FIXED_ADDRESS name={} offset=0x{:016X})", name, offset);
                 case Type::LABEL_ADDRESS:
@@ -42,7 +46,7 @@ namespace carbon::files {
 
     struct RelLabel {
         std::string name;   // имя целевого объекта
-        u64 offset;        // позиция в буфере
+        u64 offset;         // позиция в буфере
 
         std::string to_string() const { return fmt::format("RelLabel(name={} offset=0x{:016X})", name, offset);}
     };
@@ -50,15 +54,18 @@ namespace carbon::files {
 class RelocatableBuffer {
 public:
     // Конструкторы
-    RelocatableBuffer() = default;
-    
+    RelocatableBuffer() : name_("unnamed"), type_("unknown") {};
+    RelocatableBuffer(std::string name, std::string type, bool create_label = false) : name_(name), type_(type){
+        if (create_label) add_label(name);
+    }
+
     // Конструктор копирования
     RelocatableBuffer(const RelocatableBuffer& other)
         : bytes_(other.bytes_)
         , relocatations_(other.relocatations_)
         , labels_(other.labels_)
         , name_(other.name_)
-        , type_tag_(other.type_tag_) {}
+        , type_(other.type_) {}
     
     // Конструктор перемещения
     RelocatableBuffer(RelocatableBuffer&& other) noexcept
@@ -66,7 +73,7 @@ public:
         , relocatations_(std::move(other.relocatations_))
         , labels_(std::move(other.labels_))
         , name_(other.name_)
-        , type_tag_(other.type_tag_) {
+        , type_(other.type_) {
     }
     
     // Оператор присваивания копированием
@@ -76,7 +83,7 @@ public:
             relocatations_ = other.relocatations_;
             labels_ = other.labels_;
             name_ = other.name_;
-            type_tag_ = other.type_tag_;
+            type_ = other.type_;
         }
         return *this;
     }
@@ -88,7 +95,7 @@ public:
             relocatations_ = std::move(other.relocatations_);
             labels_ = std::move(other.labels_);
             name_ = other.name_;
-            type_tag_ = other.type_tag_;
+            type_ = other.type_;
         }
         return *this;
     }
@@ -196,6 +203,9 @@ public:
     // Добавить значение с возможностью релокации
     void add_relocatable_at(u64 offset, Relocation::Type type, const std::string& name = "") {
         switch (type) {
+            case Relocation::Type::NULL_ADDRESS:
+                relocatations_.push_back({type, name, offset});
+                break;
             case Relocation::Type::FIXED_ADDRESS:
                 relocatations_.push_back({type, name, offset});
                 break;
@@ -248,30 +258,36 @@ public:
     // Добавить подбуфер (для вложенных структур)
     void add_buffer(const RelocatableBuffer& other) {
         u32 insert_pos = bytes_.size();
+        lg::info("add_buffer {}[{:08X}] {}", name(), other.bytes_.size(), other.name());
+        
+
         bytes_.insert(bytes_.end(), other.bytes_.begin(), other.bytes_.end());
         
         // Копируем метки
         for (const auto& label : other.labels_) {
-            if (get_label(label.name)) {
-                throw std::runtime_error("Duplicate label name: " + label.name);
+            auto duplicate = get_label(label.name);
+            if (duplicate) {
+                throw std::runtime_error(fmt::format("Label {}\n conflicting with existing {}", label.to_string(), duplicate->to_string()));
             }
-            labels_.push_back({label.name, insert_pos + label.offset});
+            RelLabel new_label{label.name, insert_pos + label.offset};
+            labels_.push_back(new_label);
+            print_formatted_line("add_buffer", new_label.offset, new_label.name, "LABEL", "");
         }
         
-        // Копируем релокации и ОБНОВЛЯЕМ ДАННЫЕ для FIXED_ADDRESS
+        // Копируем релокации
         for (const auto& reloc : other.relocatations_) {
+            // Для FIXED_ADDRESS обновляем значение в буфере
+            Relocation relocation{reloc.type, reloc.name, insert_pos + reloc.offset};
+            relocatations_.push_back(relocation);
+
+            u64* target_ptr = reinterpret_cast<u64*>(bytes_.data() + relocation.offset);
             if (reloc.type == Relocation::Type::FIXED_ADDRESS) {
-                u64* ptr = reinterpret_cast<u64*>(bytes_.data() + insert_pos + reloc.offset);
-                if (*ptr != 0) {  // ← только если не nullptr
-                    *ptr += insert_pos;
-                    lg::info("[RelocatableBuffer] add_buffer update FIXED_ADDRESS at 0x{:016X} from {} to {}", 
-                            insert_pos + reloc.offset, *ptr - insert_pos, *ptr);
-                } else {
-                    lg::info("[RelocatableBuffer] add_buffer skip FIXED_ADDRESS at 0x{:016X} (nullptr)", 
-                            insert_pos + reloc.offset);
-                }
+                *target_ptr += insert_pos;
+            } else if (reloc.type  == Relocation::Type::NULL_ADDRESS) {
+                *target_ptr = 0;
             }
-            relocatations_.push_back({reloc.type, reloc.name, insert_pos + reloc.offset});
+            print_formatted_line("add_buffer", relocation.offset, *target_ptr, reloc.name, reloc_type_to_string(reloc.type), "");
+            // Для всех типов копируем релокацию
         }
     }
 
@@ -322,23 +338,32 @@ public:
     void link() {
         for (auto& reloc : relocatations_) {
             // 1. Пытаемся найти данные по этому офсету в буфере
-            u64* target_ptr = reinterpret_cast<u64*>(bytes_.data() + reloc.offset);
+      
             
             switch (reloc.type) {
+                case Relocation::Type::NULL_ADDRESS: {
+                    // Ничего или обнулить
+                    u64* target_ptr = reinterpret_cast<u64*>(bytes_.data() + reloc.offset);
+                    *target_ptr = 0;
+                    print_formatted_line("link", reloc.offset, *target_ptr, reloc.name, reloc_type_to_string(reloc.type), "");
+                    break;
+                }
                 case Relocation::Type::FIXED_ADDRESS: {
                     // АДДИТИВНАЯ ЗАПИСЬ: Мы ничего не ищем по имени, 
                     // мы просто считаем, что в *target_ptr уже лежит офсет,
                     // и его нужно оставить как есть для загрузчика.
                     // (Или прибавить базу, если link() — это финальная стадия).
-                    lg::info("[RelocatableBuffer] link FIXED_ADDRESS {} ", reloc.to_string());
+                    u64* target_ptr = reinterpret_cast<u64*>(bytes_.data() + reloc.offset);
+                    print_formatted_line("link", reloc.offset, *target_ptr, reloc.name, reloc_type_to_string(reloc.type), "");
                     break; 
                 }
                 case Relocation::Type::LABEL_ADDRESS: {
                     // ПРЯМАЯ ЗАПИСЬ: Находим метку и пишем её адрес "с нуля"
                     const RelLabel* label = get_label(reloc.name);
                     if (!label) throw std::runtime_error("Undefined label: " + reloc.name);
-                    lg::info("[RelocatableBuffer] link LABEL_ADDRESS {} replace 0x{:016X} by 0x{:016X}", reloc.to_string(), *target_ptr, label->offset);
+                    u64* target_ptr = reinterpret_cast<u64*>(bytes_.data() + reloc.offset);
                     *target_ptr = label->offset; 
+                    print_formatted_line("link", reloc.offset, *target_ptr, reloc.name, reloc_type_to_string(reloc.type), "");
                     break;
                 }
                 case Relocation::Type::BRANCH_DISP16: {
@@ -350,8 +375,9 @@ public:
                     s64 offset = static_cast<s64>(target_pos) - static_cast<s64>(reloc_pos);
                     s64 inst_offset = offset / sizeof(Instruction);
                     Instruction* instr = reinterpret_cast<Instruction*>(bytes_.data() + reloc.offset);
-                    lg::info("[RelocatableBuffer] link BRANCH_DISP16 {} replace immediate 0x{:04X} by 0x{:04X}", reloc.to_string(), instr->imm16, inst_offset);
                     instr->imm16 = static_cast<u16>(inst_offset);
+                    auto disasm = InstructionTable::instance().disassemble(*instr);
+                    print_formatted_line("link", reloc.offset, *(u64*)instr, reloc.name, disasm, "");
                     break;
                 }
             }
@@ -415,17 +441,105 @@ public:
 
         return result;
     }
+    std::string reloc_type_to_string(Relocation::Type type) {
+        switch (type) {
+            case Relocation::Type::FIXED_ADDRESS:
+                return "FIXED_ADDRESS";
+            case Relocation::Type::LABEL_ADDRESS:
+                return "LABEL_ADDRESS";
+            case Relocation::Type::BRANCH_DISP16:
+                return "BRANCH_DISP16";
+            case Relocation::Type::NULL_ADDRESS:
+                return "NULL_ADDRESS";
+        }
+    }
+    void print_formatted_line(const std::string& prefix, 
+                            u64 address, 
+                            const std::string& label, 
+                            const std::string& instruction, 
+                            const std::string& comment,
+                            int prefix_width = 20,
+                            int addr_width = 16,
+                            int data_width = 16,
+                            int label_width = 24,
+                            int inst_width = 30) {
+        print_formatted_line(prefix, 
+                                    address, 
+                                    0, 
+                                    label, 
+                                    instruction, 
+                                    comment,
+                                    prefix_width,
+                                    addr_width,
+                                    data_width,
+                                    label_width,
+                                    inst_width,
+                                    false);                                
+    }
 
+    void print_formatted_line(const std::string& prefix, 
+                            u64 address, 
+                            u64 data, 
+                            const std::string& label, 
+                            const std::string& instruction, 
+                            const std::string& comment,
+                            int prefix_width = 20,
+                            int addr_width = 16,
+                            int data_width = 16,
+                            int label_width = 24,
+                            int inst_width = 30,
+                            bool dump_data = true) {
+        std::string result;
+        
+        // Prefix
+        result += fmt::format("{:<{}}", prefix, prefix_width);
+        
+        // Address
+        result += fmt::format(" 0x{:0{}X}", address, addr_width);
+        
+        // Data
+        if (dump_data)
+            result += fmt::format(" 0x{:0{}X}", data, data_width);
+        else
+            result += fmt::format("   {: >{}}", "", data_width);  // пробелы
+
+        // Label
+        if (!label.empty()) {
+            result += fmt::format(" {}:", label);
+            int padding = label_width - (int)label.length() - 1;
+            if (padding > 0) result += std::string(padding, ' ');
+            else result += " ";
+        } else {
+            result += std::string(label_width, ' ');
+        }
+        
+        // Instruction
+        if (!instruction.empty()) {
+            result += fmt::format(" {}", instruction);
+            int padding = inst_width - (int)instruction.length();
+            if (padding > 0) result += std::string(padding, ' ');
+            else result += " ";
+        } else {
+            result += std::string(inst_width, ' ');
+        }
+        
+        // Comment
+        if (!comment.empty()) {
+            result += fmt::format(" ;; {}", comment);
+        }
+        
+        lg::info("{}", result);
+    }
     std::string name() const { return name_; }
-    std::string type_tag() const { return type_tag_; }
+    std::string type_tag() const { return type_; }
     void set_name(std::string name) { name_ = name; }
-    void set_type_tag(std::string type_tag) { type_tag_ = type_tag; }
+    void set_type(std::string type_tag) { type_ = type_tag; }
 private:
     std::vector<u8> bytes_;
     std::vector<Relocation> relocatations_;
     std::vector<RelLabel> labels_;
     std::string name_;
-    std::string type_tag_;
+    std::string type_;
 };
 
 } // namespace carbon::files

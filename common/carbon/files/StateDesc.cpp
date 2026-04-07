@@ -58,7 +58,7 @@ std::string StateDesc::inspect() const {
 
 void StateDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
     (void)module;
-    fmt::print("[StateDesc] relocate_pointers :to_memory {} :definitions 0x{:016X}\n", to_memory, definitions.offset);        
+   
     if (to_memory)
     {
         if (definitions.offset!=0) {
@@ -72,7 +72,7 @@ void StateDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* module
             definitions.offset += delta;
         }
     }
-    fmt::print("[StateDesc] relocate_pointers :to_memory {} :definitions 0x{:016X}\n", to_memory, definitions.offset);            
+    lg::print("[StateDesc] relocate_pointers #definitions {:016X} {}\n", definitions.offset, name);            
 }
 
 } // end of namespace

@@ -207,7 +207,7 @@ IR_Value* StateCompiler::compile(const script::Object& form,
 // ============================================================================
 
 RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
-    RelocatableBuffer buffer;
+    RelocatableBuffer buffer(s_env->name(),"state");
     
     // 1. Создаем массив Definition для обработчиков
     std::vector<Definition> definitions;

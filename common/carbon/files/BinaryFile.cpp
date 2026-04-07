@@ -110,18 +110,18 @@ namespace carbon::files {
     void BinaryFile::apply_delta_to_pointers(bool to_memory, ptrdiff_t delta, Module* module) {
         owner_module = module;
         // Применяем к definitions
-        fmt::print("apply_delta_to_pointers :base {} :delta {} :newbase {}\n", 
-            (void*)definitions.ptr, 
-            delta, 
-            (void*)((uint8_t*)definitions.ptr + delta)
-        );
+
         if (to_memory) {
             definitions.offset += delta;
+            lg::info("[BinaryFile] relocate_pointers {:016X} #definitions",definitions.offset);            
             Definition::relocate_pointers_table(to_memory, delta, definitions.ptr, definitions_count, module);
         } else {
+            lg::info("[BinaryFile] relocate_pointers {:016X} #definitions",definitions.offset+delta);            
             Definition::relocate_pointers_table(to_memory, delta, definitions.ptr, definitions_count, module);
             definitions.offset += delta;
         }
+
+
     }
 
     // =============================================================================

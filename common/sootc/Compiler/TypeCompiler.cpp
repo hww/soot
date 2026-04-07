@@ -107,16 +107,14 @@ MethodEnv* TypeCompiler::find_method_in_hierarchy(TypeEnv* start_env, int method
 }
 
 RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
-    RelocatableBuffer result_desc;
-    RelocatableBuffer result_vtable;
-    RelocatableBuffer result_stable;
-    RelocatableBuffer result_functions;
-    RelocatableBuffer result_states;
     Type* type = t_env->get_type();
     std::string type_name = type->name();
 
-    result_desc.set_name(type_name);
-    result_desc.set_type_tag("type");
+    RelocatableBuffer result_desc(type_name + "#descriptor", "type", true);
+    RelocatableBuffer result_vtable(type_name + "#vtable", "vtable", true);
+    RelocatableBuffer result_stable(type_name + "#stable", "stable", true);
+    RelocatableBuffer result_functions(type_name+"::vtable::functions-segment", "void", true);
+    RelocatableBuffer result_states(type_name+"::vtable::states-segment", "void", true);
 
     // 1. Заголовок TypeDesc
     TypeDesc desc{};
@@ -129,22 +127,20 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
     desc.states_ptr = nullptr;
     desc.flags = 0;
 
-    auto vtable_label = type_name + "#vtable";
-    auto stable_label = type_name + "#stable";
+
 
     // make references to methods only if there is vtable
-    if (desc.methods_count > 0) {
-        result_desc.add_relocatable(offsetof(TypeDesc, methods_ptr),
-                                Relocation::Type::FIXED_ADDRESS, 
-                                vtable_label);
-    } 
+    result_desc.add_relocatable(offsetof(TypeDesc, methods_ptr),
+                                desc.methods_count ? Relocation::Type::LABEL_ADDRESS : Relocation::Type::NULL_ADDRESS, 
+                                result_vtable.name());
 
     // make references to states only if there is states
-    if (desc.states_count > 0) {
-        result_desc.add_relocatable(offsetof(TypeDesc, states_ptr), 
-                                Relocation::Type::FIXED_ADDRESS, 
-                                stable_label);
-    }
+    result_desc.add_relocatable(offsetof(TypeDesc, states_ptr), 
+                            desc.states_count ? Relocation::Type::LABEL_ADDRESS : Relocation::Type::NULL_ADDRESS, 
+                            result_stable.name());
+    
+    // write header
+    result_desc.add_bytes(&desc, sizeof(TypeDesc));
 
     // ========================================================================
     // 2. VTable (методы)
@@ -154,8 +150,6 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
     //      тоесть если метод не определен то ошибка уже сформирована
 
     if (desc.methods_count > 0) {
-
-        result_vtable.add_label(vtable_label);
 
         for (int id = 0; id < (int)desc.methods_count; ++id) {
             
@@ -179,7 +173,10 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             std::string method_label = type_name + "::" + method_env->name() + "#descriptor";
             
             // Method Step 3. Вставляем заголовок FunctionDesc с нулевыми полями (потенциально с именем метода для отладки)
-            result_vtable.add_relocatable(offsetof(Ptr<FunctionDesc>, ptr), Relocation::Type::FIXED_ADDRESS, method_label);
+            result_vtable.add_relocatable(
+                offsetof(Ptr<FunctionDesc>, ptr), 
+                Relocation::Type::LABEL_ADDRESS, 
+                method_label);
             Ptr<FunctionDesc> empty_pointer;
             result_vtable.add_bytes(&empty_pointer, sizeof(Ptr<FunctionDesc>)); // function pointer (будет заполнено позже)
 
@@ -187,7 +184,6 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
                 // Method Step 3. Этот метод этого класса создадим его имплементацию
                 MethodCompiler method_compiler(ts_, compiler_);
                 auto method_desc = method_compiler.build(method_env);
-                result_functions.add_label(method_label);
                 result_functions.add_buffer(method_desc);
             }
         }
@@ -198,12 +194,14 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
     // ========================================================================
     
     if (desc.states_count > 0) {
-        result_stable.add_label(stable_label);
 
         for (auto* s_env : t_env->states()) {
             std::string state_label = type_name + "::" + s_env->name() + "#descriptor";
 
-            result_stable.add_relocatable(Relocation::Type::FIXED_ADDRESS, state_label);
+            result_stable.add_relocatable(
+                offsetof(Ptr<FunctionDesc>, ptr), 
+                Relocation::Type::LABEL_ADDRESS, 
+                state_label);
             Ptr<FunctionDesc> empty_pointer;
             result_stable.add_bytes(&empty_pointer, sizeof(Ptr<StateDesc>));  // state pointer (будет заполнено позже)
 
@@ -211,15 +209,16 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
                 // Method Step 3. Этот метод этого класса создадим его имплементацию
                 StateCompiler state_compiler(ts_, compiler_);
                 auto state_desc = state_compiler.build(s_env);
-                result_functions.add_label(state_label);
                 result_functions.add_buffer(state_desc);
             }            
         }
     }
 
-    // write header
-    result_desc.add_bytes(&desc, sizeof(TypeDesc));
 
+    result_desc.add_buffer(result_vtable);
+    result_desc.add_buffer(result_stable);
+    result_desc.add_buffer(result_functions);
+    result_desc.add_buffer(result_states);
 
     return result_desc;
 }

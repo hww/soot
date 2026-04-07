@@ -11,12 +11,22 @@
         (new () _type_)
         (set (_type_ float float float) none)
     ))
+;;    (:states
+;       (idle (_type_) none))
+; )
 ;
 ;
 ;(defmethod new vector3 () 
 ;    :dummy-result);
-;
+
 ;(defmethod set ((this vector3) (x float) (y float) (z float)) 
 ;    :dummy-result)
 
-
+;
+;(defstate idle (vector3)
+;  :virtual #t
+;  :code
+;    (function ()
+;       :none))
+;  :enter (function () :none)
+;)

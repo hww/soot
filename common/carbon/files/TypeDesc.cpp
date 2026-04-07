@@ -62,6 +62,7 @@ std::string TypeDesc::inspect() const {
 }
 
 void TypeDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* owner) {
+
     if (to_memory) {
         if (methods_ptr.offset) {
             methods_ptr.offset += delta;
@@ -81,23 +82,41 @@ void TypeDesc::relocate_pointers(bool to_memory, intptr_t delta, Module* owner) 
             states_ptr.offset += delta;
         }
     }
+    lg::info("[TypeDesc] relocate_pointers #methods {:016X} #states {:016X}", methods_ptr.offset+delta, states_ptr.offset+delta, name);
 }
 
 void TypeDesc::relocate_methods_table(bool to_memory, intptr_t delta, Module* module) {
     // Применяем ко всем определениям
     for (u32 i = 0; i < methods_count; i++) {
-        if (methods_ptr.ptr[i].offset) {
-            FunctionDesc* def = methods_ptr.ptr[i].ptr;
-            def->relocate_pointers(to_memory, delta, module);
+        Ptr<FunctionDesc>* def = &methods_ptr.ptr[i];
+        if (to_memory) {
+            if (def->offset) {
+                def->offset += delta;
+                def->ptr->relocate_pointers(to_memory, delta, module);
+            }
+        } else {
+            if (def->offset) {
+                def->ptr->relocate_pointers(to_memory, delta, module);
+                def->offset += delta;
+            }
         }
     }                  
 }
+
 void TypeDesc::relocate_states_table(bool to_memory, intptr_t delta, Module* module) {
     // Применяем ко всем определениям
     for (u32 i = 0; i < states_count; i++) {
-        if (states_ptr.ptr[i].offset) {
-            StateDesc* def = states_ptr.ptr[i].ptr;
-            def->relocate_pointers(to_memory, delta, module);
+        Ptr<StateDesc>* def = &states_ptr.ptr[i];
+        if (to_memory) {
+            if (def->offset) {
+                def->offset += delta;
+                def->ptr->relocate_pointers(to_memory, delta, module);
+            }
+        } else {
+            if (def->offset) {
+                def->ptr->relocate_pointers(to_memory, delta, module);
+                def->offset += delta;
+            }
         }
     }                  
 }   

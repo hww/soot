@@ -92,13 +92,12 @@ namespace carbon::files {
     }
 
     void Definition::relocate_pointers(bool to_memory, intptr_t delta, Module* module) {
-        fmt::print("[Definition] relocate_pointers :name {} :offset {:08X}\n", name, ptr.offset);
 
-        auto old_offset = ptr.offset;
 
         if (to_memory) {
             if (ptr.offset != 0) 
                 ptr.offset+=delta;
+            lg::info("[Definition] relocate_pointers {:016X} {}", ptr.offset, name.to_cstring());
         }
 
         if (ptr.offset) {
@@ -119,9 +118,10 @@ namespace carbon::files {
         if (!to_memory) {
             if (ptr.offset != 0) 
                 ptr.offset+=delta;
+            lg::print("[Definition] relocate_pointers {:016X} {}", ptr.offset, name.to_cstring());
         }
 
-        fmt::print("[Definition] relocate_pointers :name {} :offset {:016X} :old {:016X} \n", name, ptr.offset, old_offset);
+
     }
 
 } // end of namespace
