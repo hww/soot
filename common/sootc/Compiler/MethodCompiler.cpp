@@ -113,10 +113,11 @@ IR_Value* MethodCompiler::compile(const script::Object& form,
 
     // Ищем MethodEnv для данного method_name в TypeEnv
     auto* m_env = new MethodEnv(method_info.id, method_name, type_env, type_info);
-    
+    m_env->set_defined(true);
+
     parse_arguments(args_list, m_env);
     compile_body(body_forms, m_env);
-    
+
     type_env->bind(method_name, new IR_MethodValue(m_env));
     return new IR_MethodValue(m_env);
 }

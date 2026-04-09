@@ -44,6 +44,11 @@ private:
     IR_Value* compile_begin(const script::Object& form, const script::Object& rest, Env* env);
     IR_Value* compile_defmethod(const script::Object& form, const script::Object& rest, Env* env);
     IR_Value* compile_deftype(const script::Object& form, const script::Object& rest, Env* env);
+    IR_Value* compile_defstate(const script::Object& form, const script::Object& rest, Env* env);
+
+    // Мультимодульность
+    IR_Value* compile_require(const script::Object& form, const script::Object& rest, Env* env);
+    IR_Value* compile_define_extern(const script::Object& form, const script::Object& rest, Env* env);
     
     // Арифметика
     IR_Value* compile_add(const script::Object& form, const script::Object& rest, Env* env);
@@ -53,6 +58,15 @@ private:
     IR_Value* compile_number(const script::Object& form, Env* env);
     IR_Value* compile_symbol(const script::Object& form, Env* env);
     IR_Value* compile_call(const script::Object& form, Env* env);
+
+    // Парсинг typespec
+    TypeSpec parse_typespec(const script::Object& form, Env* env);    
+
+    // пустой результат
+    IR_Value* get_none() { return new IR_None(); }
+
+    std::unordered_map<std::string, std::shared_ptr<Module>> m_loaded_modules;
+    
 };
 
 } // namespace sootc

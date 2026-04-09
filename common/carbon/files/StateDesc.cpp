@@ -1,5 +1,6 @@
 #include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/modules/Module.hpp"
+#include "common/util/Formatter.hpp"
 #include "fmt/ranges.h"
 #include <cstddef>
 #include <fmt/format.h>
@@ -7,6 +8,7 @@
 #include <string>
 
 using namespace carbon::lib;
+using namespace util;
 
 namespace carbon::files {
 
@@ -32,27 +34,27 @@ std::string StateDesc::to_string() const {
 }
 
 std::string StateDesc::inspect() const {
-    auto result = fmt::format(
-        "StateDesc {{\n"
-        "  name: {}\n"
-        "  parent_state: {}\n"
-        "  count: {:02x}\n"
-        "  offset: 0x{:04x}\n"
-        "  flags: 0x{:02x}{}\n"
-        "}}",
-        name,
-        parent_state,
-        defs_count,
-        definitions.offset,
-        static_cast<uint32_t>(flags),
-        format_flags(flags)
-    );
+    std::string result;
+    result += Formatter::instance().format("StateDesc {{\n");
+    Formatter::instance().inc_column(4);
+    result += Formatter::instance().format("name {}\n", name);
+    result += Formatter::instance().format("parent_state {}\n", parent_state);
+    result += Formatter::instance().format("count: {:02x}\n", defs_count);
+    result += Formatter::instance().format("offset: 0x{:04x}\n", definitions.offset);
+    result += Formatter::instance().format("flags: 0x{:02x}\n",  static_cast<uint32_t>(flags));
+    result += Formatter::instance().format("{}\n", format_flags(flags));
+
+    Formatter::instance().inc_column(4);
+
     if (definitions.ptr && defs_count > 0) {
         for (size_t i=0; i<defs_count && i<=EVENT_ID; i++) {
-            result += fmt::format("    [{}] {}", i, definitions.ptr[i].inspect());
+            result += Formatter::instance().format("[{}]\n", i);
+            result += definitions.ptr[i].inspect();
         }
     }
 
+    Formatter::instance().inc_column(-4);
+    Formatter::instance().inc_column(-4);
     return result;
 }
 

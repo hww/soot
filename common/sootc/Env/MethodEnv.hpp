@@ -30,10 +30,13 @@ public:
                            name(), m_type ? m_type->name() : "unknown");
     }
     u32 id() const { return m_id; }
+    void set_defined(bool defined) { m_is_defined = defined; }
+    bool is_defined() const { return m_is_defined; }
 private:    
     u32 m_id = 0;  
     Type* m_type;
     TypeEnv* m_type_env = nullptr;  // обратная ссылка на тип
+    bool m_is_defined = false;
 };
 
 } // namespace sootc

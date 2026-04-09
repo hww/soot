@@ -399,6 +399,21 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
 // ============================================================================
 // Method System: Поиск и Навигация
 // ============================================================================
+
+bool TypeSystem::try_lookup_method(const Type *type, const int id,
+                           MethodInfo *info) const {
+    while (true) {
+        if (type->get_my_method(id, info))
+            return true;
+
+        if (type->has_parent()) {
+            type = lookup_type(type->parent());
+        } else {
+            break;
+        }
+    }
+    return false;                         
+}
 /**
  * Внутренний хелпер. Вычисляет ID для нового метода, анализируя иерархию.
  * Гарантирует, что нумерация виртуальных методов (VTable) продолжается после родителя.
@@ -680,6 +695,99 @@ MethodInfo TypeSystem::override_method(Type *type, const std::string &method_nam
                              false, // overrides_parent
                              true,  // only_overrides_docstring
                              docstring, std::nullopt});
+}
+
+// ============================================================================
+// State System
+// ============================================================================
+
+TypeSpec TypeSystem::lookup_state(const std::string& type_name, const std::string& state_name) const {
+    auto* type = lookup_type(type_name);
+    if (!type) {
+        throw_typesystem_error("Type '{}' not found while looking for state '{}'", type_name, state_name);
+    }
+    
+    TypeSpec info;
+    const Type* current = type;
+    
+    while (current) {
+        if (current->get_my_state(state_name, &info)) {
+            return info;
+        }
+        
+        if (current->has_parent()) {
+            current = lookup_type(current->parent());
+            if (!current) {
+                throw_typesystem_error("Parent type '{}' of '{}' not found while looking for state '{}'",
+                                      current->parent(), type_name, state_name);
+            }
+        } else {
+            break;
+        }
+    }
+    
+    throw_typesystem_error("State '{}' not found in type '{}' or its parents", state_name, type_name);
+}
+
+TypeSpec TypeSystem::lookup_state(const Type* type, const std::string& state_name) const {
+    if (!type) {
+        throw_typesystem_error("Null type provided while looking for state '{}'", state_name);
+    }
+    
+    TypeSpec info;
+    const Type* current = type;
+    
+    while (current) {
+        if (current->get_my_state(state_name, &info)) {
+            return info;
+        }
+        
+        if (current->has_parent()) {
+            current = lookup_type(current->parent());
+            if (!current) {
+                throw_typesystem_error("Parent type '{}' not found while looking for state '{}' in type '{}'",
+                                      current->parent(), state_name, type->name());
+            }
+        } else {
+            break;
+        }
+    }
+    
+    throw_typesystem_error("State '{}' not found in type '{}' or its parents", state_name, type->name());
+}
+
+bool TypeSystem::try_lookup_state(const Type* type, const std::string& state_name, TypeSpec* info) const {
+    if (!type) {
+        return false;
+    }
+    
+    const Type* current = type;
+    
+    while (current) {
+        if (current->get_my_state(state_name, info)) {
+            return true;
+        }
+        
+        if (current->has_parent()) {
+            current = lookup_type(current->parent());
+            if (!current) {
+                return false;
+            }
+        } else {
+            break;
+        }
+    }
+    
+    return false;
+}
+
+bool TypeSystem::try_lookup_state(const std::string& type_name, const std::string& state_name, TypeSpec* info) const {
+    auto* type = lookup_type(type_name);
+    if (!type) {
+        return false;
+    }
+    
+    return try_lookup_state(type, state_name, info);
 }
 
 // ============================================================================

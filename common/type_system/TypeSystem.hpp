@@ -272,6 +272,8 @@ class TypeSystem : public NativeObject {
     MethodInfo lookup_method(const std::string &type_name, const std::string &method_name) const;
     MethodInfo lookup_method(const std::string &type_name, int method_id) const;
 
+    bool try_lookup_method(const Type *type, const int id,
+                           MethodInfo *info) const;
     bool try_lookup_method(const Type *type, const std::string &method_name,
                            MethodInfo *info) const;
     bool try_lookup_method(const std::string &type_name, const std::string &method_name,
@@ -280,6 +282,18 @@ class TypeSystem : public NativeObject {
 
     MethodInfo lookup_new_method(const std::string &type_name) const;
     void assert_method_id(const std::string &type_name, const std::string &method_name, int id);
+
+    // ========================================================================
+    // State System
+    // ========================================================================
+
+    TypeSpec lookup_state(const std::string &type_name, const std::string &state_name) const;
+    TypeSpec lookup_state(const Type *type, const std::string &state_name) const;
+
+    bool try_lookup_state(const Type *type, const std::string &method_name,
+                           TypeSpec *info) const;
+    bool try_lookup_state(const std::string &type_name, const std::string &method_name,
+                           TypeSpec *info) const;
 
     // ========================================================================
     // Field System

@@ -219,4 +219,42 @@ private:
     TypeEnv* m_env;
 };
 
+class IR_None : public IR_Value {
+public:
+    IR_None() : IR_Value(nullptr) {}
+    std::string to_string() const override { return "none"; }
+    IR_Reg* to_reg(Env& env) override { return nullptr; }
+};
+
+
+
+// Для define-extern 
+class IR_ExternValue : public IR_Value {
+public:
+    IR_ExternValue(const std::string& name, const TypeSpec& type_spec)
+        : IR_Value(nullptr), m_name(name), m_type_spec(type_spec) {}
+    
+    std::string name() const { return m_name; }
+    TypeSpec type_spec() const { return m_type_spec; }
+    
+    std::string to_string() const override {
+        return "extern:" + m_name;
+    }
+    
+    IR_Reg* to_reg(Env& env) override {
+        // Внешние символы не могут быть использованы напрямую в рантайме?
+        // Возвращаем nullptr или загружаем из глобальной таблицы
+        return nullptr;
+    }
+    
+    RelocatableBuffer build(Compiler* c) override {
+        // Внешние символы не генерируют код
+        return RelocatableBuffer();
+    }
+    
+private:
+    std::string m_name;
+    TypeSpec m_type_spec;
+};
+
 } // namespace sootc

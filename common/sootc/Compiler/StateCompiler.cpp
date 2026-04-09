@@ -5,6 +5,7 @@
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/Env/TypeEnv.hpp"
 #include "common/util/Log.hpp"
+#include <stdexcept>
 
 namespace sootc {
 
@@ -37,7 +38,7 @@ std::string StateCompiler::extract_parent_name(const script::Object& rest) {
     if (first.is_pair() && first.as_pair()->car.is_symbol()) {
         return first.as_pair()->car.as_symbol().c_str();
     }
-    return "process";  // базовый тип по умолчанию
+    return "basic";  // базовый тип по умолчанию
 }
 
 // ============================================================================
@@ -157,13 +158,13 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     // Находим TypeEnv родителя
     IR_Value* parent_val = env->lookup(parent_name);
     if (!parent_val) {
-        lg::error("Parent type '{}' not found for state '{}'", parent_name, state_name);
+        throw std::runtime_error(fmt::format("Undefined type '{}'", parent_name));
         return nullptr;
     }
     
     auto* parent_ir_type = dynamic_cast<IR_Type*>(parent_val);
     if (!parent_ir_type) {
-        lg::error("'{}' is not a type", parent_name);
+         throw std::runtime_error(fmt::format("'{}' is not a type", parent_name));
         return nullptr;
     }
     
@@ -173,7 +174,8 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     // Создаем StateEnv
     auto* s_env = new StateEnv(state_name, parent_type_env, parent_type, parent_type_env);
     s_env->set_is_virtual(handlers.is_virtual);
-    
+    s_env->set_defined(true);
+
     // Компилируем обработчики
     MethodEnv* event_method = nullptr;
     MethodEnv* enter_method = nullptr;

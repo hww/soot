@@ -3,15 +3,17 @@
 #include "common/carbon/modules/Module.hpp"
 #include "common/carbon/files/Definition.hpp"
 #include "common/carbon/files/FunctionDesc.hpp"
-#include "files/StateDesc.hpp"
-#include "files/TypeDesc.hpp"
+#include "common/carbon/files/StateDesc.hpp"
+#include "common/carbon/files/TypeDesc.hpp"
 #include "fmt/base.h"
 #include "fmt/format.h"
 #include "lib/Variant.hpp"
+#include "common/util/Formatter.hpp"
 #include <cstddef>
 #include <sstream>
 
 using namespace carbon::lib;
+using namespace util;
 
 namespace carbon::files {
 
@@ -136,16 +138,21 @@ namespace carbon::files {
     std::string BinaryFile::inspect() const {
         std::stringstream result;
 
-        result << std::format("BinaryFile[gen:{}, size:{}/{}]\n",
+        result << Formatter::instance().format("BinaryFile[gen:{}, size:{}/{}]\n",
             generation, used_size, file_size);
-        result << std::format("  Definitions: {} entries\n", definitions_count);
-        result << std::format("  Magic: 0x{:08x} ({})\n", magic,
+        result << Formatter::instance().format("  Definitions: {} entries\n", definitions_count);
+        result << Formatter::instance().format("  Magic: 0x{:08x} ({})\n", magic,
             magic == MAGIC ? "valid" : "INVALID");
 
         // Inspect each definition
         for (u32 i = 0; i < definitions_count; i++) {
             auto def = get_definition(i);
-            result << std::format("Definition[{}] {}\n", i, def->inspect());
+            Formatter::instance().inc_column(2);
+            result << Formatter::instance().format("Definition[{}]\n", i);
+
+            Formatter::instance().inc_column(2);
+            result << def->inspect();
+            Formatter::instance().inc_column(-4);
         }
 
         return result.str();

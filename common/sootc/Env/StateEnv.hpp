@@ -49,6 +49,9 @@ public:
     void set_source_form(const script::Object& form) { m_source_form = form; }
     script::Object source_form() const { return m_source_form; }    
 
+    void set_defined(bool defined) { m_is_defined = defined; }
+    bool is_defined() const { return m_is_defined; }
+
 private:
     std::string m_name;
     Type* m_type;
@@ -64,6 +67,8 @@ private:
     MethodEnv* m_post_method = nullptr; 
     MethodEnv* m_trans_method = nullptr; 
     MethodEnv* m_event_method = nullptr;     
+
+    bool m_is_defined = false;
 };
 
 } // namespace sootc

@@ -1,8 +1,11 @@
 #include "common/carbon/files/TypeDesc.hpp"
 #include "common/carbon/files/Definition.hpp"
 #include "common/carbon/files/StateDesc.hpp"
+#include "common/util/Formatter.hpp"
 #include "files/FunctionDesc.hpp"
 #include "fmt/format.h"
+
+using namespace util;
 
 namespace carbon::files {
 
@@ -11,52 +14,57 @@ std::string TypeDesc::to_string() const {
 }
 
 std::string TypeDesc::inspect() const {
-    std::string result = fmt::format(
-        "TypeDesc {{\n"
-        "  name: {}\n"
-        "  parent: {}\n"
-        "  flags: 0x{:016x}\n"
-        "  size_in_memory: {}\n"
-        "  methods_offset: {}\n"
-        "  methods_count: {}\n"
-        "  states_offset: {}\n"
-        "  states_count: {}\n"
-        "  heap_base: {}\n"
-        "}}",
-        name,
-        parent_type_id,
-        flags,
-        size_in_memory,
-        methods_ptr.offset,
-        methods_count,
-        states_ptr.offset,
-        states_count,
-        heap_base
-    );
+    std::string result;
+    result += Formatter::instance().format("TypeDesc {{\n");
+    Formatter::instance().inc_column(2);
+    result += Formatter::instance().format("name: {}\n", name);
+    result += Formatter::instance().format("parent: {}\n", parent_type_id);
+    result += Formatter::instance().format("flags: 0x{:016x}\n", flags);
+    result += Formatter::instance().format("size_in_memory: {}\n", size_in_memory);
+    result += Formatter::instance().format("methods_offset: {:016X}\n", methods_ptr.offset);
+    result += Formatter::instance().format("methods_count: {}\n", methods_count);
+    result += Formatter::instance().format("states_offset: {:016X}\n", states_ptr.offset);
+    result += Formatter::instance().format("states_count: {}\n", states_count);
+    result += Formatter::instance().format("heap_base: {:016X}\n",heap_base);
     
+
     if (methods_ptr.ptr && methods_count > 0) {
-        result += "  Methods:\n";
+        Formatter::instance().inc_column(2);
+        result += Formatter::instance().format("Methods:\n");
+        Formatter::instance().inc_column(2);
         for (uint32_t i = 0; i < methods_count; i++) {
             auto* method_desc = methods_ptr.ptr[i].ptr;
             if (method_desc) {
-                result += fmt::format("    [{}] {}\n", i, method_desc->inspect());
+                result += Formatter::instance().format("[{}]\n", i);
+                result += method_desc->inspect();
             } else {
-                result += fmt::format("    [{}] <null>\n", i);
+                result += Formatter::instance().format("[{}] <null>\n", i);
             }
         }
+        Formatter::instance().inc_column(-2);
+        Formatter::instance().inc_column(-2);
     }
     
     if (states_ptr.ptr && states_count > 0) {
-        result += "  States:\n";
+        Formatter::instance().inc_column(2);
+        result += Formatter::instance().format("States:\n");
+        Formatter::instance().inc_column(2);
         for (uint32_t i = 0; i < states_count; i++) {
             auto* state_desc = states_ptr.ptr[i].ptr;
             if (state_desc) {
-                result += fmt::format("    [{}] {}\n", i, state_desc->inspect());
+                result += Formatter::instance().format("[{}]\n", i);
+                result += state_desc->inspect();
             } else {
-                result += fmt::format("    [{}] <null>\n", i);
+                result += Formatter::instance().format("[{}] <null>\n", i);
             }
         }
+        Formatter::instance().inc_column(-2);
+        Formatter::instance().inc_column(-2);
     }
+
+
+    Formatter::instance().inc_column(-2);
+    result += Formatter::instance().format("}}\n");
     
     return result;
 }

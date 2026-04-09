@@ -5,9 +5,11 @@
 #include "common/carbon/files/StateDesc.hpp"
 #include "common/carbon/lib/Variant.hpp"
 #include "util/Log.hpp"
+#include "util/Formatter.hpp"
 
 using namespace carbon::lib;
 using namespace carbon::modules;
+using namespace util;
 
 namespace carbon::files {
     // =============================================================================
@@ -68,9 +70,10 @@ namespace carbon::files {
     }
 
     std::string Definition::inspect() const {
-        auto result = std::format("(definition `{}` :type `{}` :ptr {:x} :flags {})\n",
+        auto result = Formatter::instance().format("(definition `{}` :type `{}` :ptr {:x} :flags {})\n",
             name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
-
+        
+        Formatter::instance().inc_column(2);
 
         if (ptr.offset) {
             if (type == TypeIds::function)
@@ -88,6 +91,8 @@ namespace carbon::files {
         } else {
             result += " <null>";
         }
+        Formatter::instance().inc_column(-2);
+
         return result;
     }
 

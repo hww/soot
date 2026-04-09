@@ -2,12 +2,14 @@
 #include "common/carbon/modules/Module.hpp"
 #include "common/carbon/lib/Ptr.hpp"
 #include "common/carbon/vm/Instructions.hpp"
+#include "common/util/Formatter.hpp"
 #include <cstddef>
 #include <fmt/format.h>
 #include <string>
 
 using namespace carbon::lib;
 using namespace carbon::vm;
+using namespace util;
 
 namespace carbon::files {
 
@@ -71,36 +73,34 @@ SourceLocation FunctionDesc::find_source_location(u32 instruction_ip) const {
 }
 
 std::string FunctionDesc::inspect() const {
-    auto result = fmt::format(
-        "FunctionDesc {{\n"
-        "  code_count: {}\n"
-        "  data_size: {}\n"
-        "  debug_count: {}\n"
-        "  code_ptr: {}\n"
-        "  data_ptr: {}\n"
-        "  debug_ptr: {}\n"
-        "  owner_module: {}\n"
-        "  }}\n",
-        code_count,
-        data_size,
-        debug_count,
-        fmt::ptr(code_ptr.get()),
-        fmt::ptr(data_ptr.get()),
-        fmt::ptr(debug_ptr.get()),
-        fmt::ptr(owner_module)
-    );
-    
+    std::string result;
+
+    result += Formatter::instance().format("FunctionDesc {{\n");
+    Formatter::instance().inc_column(2);
+
+    result += Formatter::instance().format("code_count: {}\n", code_count);
+    result += Formatter::instance().format("data_size: {}\n", data_size);
+    result += Formatter::instance().format("debug_count: {}\n", debug_count);
+    result += Formatter::instance().format("code_ptr: {}\n", fmt::ptr(code_ptr.get()));
+    result += Formatter::instance().format("data_ptr: {}\n", fmt::ptr(data_ptr.get()));
+    result += Formatter::instance().format("debug_ptr: {}\n", fmt::ptr(debug_ptr.get()));
+    result += Formatter::instance().format("owner_module: {}\n", fmt::ptr(owner_module));
+
+    Formatter::instance().inc_column(2);
+
     // Только если code_ptr валидный и code_count > 0
     if (code_ptr.ptr && code_count > 0 && code_ptr.ptr != reinterpret_cast<Instruction*>(0x10)) {
-        result += "  Code:\n";
+        result +=  Formatter::instance().format("Code:\n");
         for (size_t i = 0; i < code_count; i++) {
             auto inst = code_ptr.ptr[i];
-            result += fmt::format("    [{}] {}\n", i, InstructionTable::instance().disassemble(inst));
+            result += Formatter::instance().format("[{}] {}\n", i, InstructionTable::instance().disassemble(inst));
         }
     } else if (code_count > 0) {
-        result += "  Code: (invalid pointer, skipping)\n";
+        result += Formatter::instance().format("Code: (invalid pointer, skipping)\n");
     }
-    
+    Formatter::instance().inc_column(-2);
+    Formatter::instance().inc_column(-2);
+    result += Formatter::instance().format("}}\n");
     return result;
 }
 

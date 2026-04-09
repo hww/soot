@@ -157,16 +157,18 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             TypeEnv* method_type = nullptr;
             MethodEnv* method_env = find_method_in_hierarchy(t_env, id, method_type);
 
-            // Защита от ошибок
-            if (!method_env) {
-                MethodInfo info;
-                if (type->get_my_method(id, &info)) {
-                    throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", info.name, type_name));
-                } else {
-                    throw std::runtime_error(fmt::format("Method ID {} not found in type '{}'", id, type_name));
-                }
+            MethodInfo info;
+            if (!ts_.try_lookup_method(type, id, &info)) {
+                throw std::runtime_error(fmt::format("Method [{}] not found in type '{}'", id, type_name));
             }
 
+            // Защита от ошибок
+            if (!method_env) {
+               throw std::runtime_error(fmt::format("Method '{}' not found in type '{}'", info.name, type_name));
+            }
+            if (!method_env->is_defined()) {
+                throw std::runtime_error(fmt::format("Method '{}' is not defined in type '{}'", info.name, type_name));
+            }
             // Method Step 2. получить тип метода это может быть родительский тип
             std::string type_name = method_type->get_type()->name();
             // получить метку метода
@@ -196,6 +198,16 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
     if (desc.states_count > 0) {
 
         for (auto* s_env : t_env->states()) {
+
+            if (!s_env->is_defined()) {
+                TypeSpec info;
+                if (ts_.try_lookup_state(type, s_env->name(),&info)) {
+                    throw std::runtime_error(fmt::format("State '{}' is not defined in type '{}'", s_env->name(), type_name));
+                } else {
+                    throw std::runtime_error(fmt::format("State ID {} not found in type '{}'", s_env->name(), type_name));
+                }
+            }
+
             std::string state_label = type_name + "::" + s_env->name() + "#descriptor";
 
             result_stable.add_relocatable(
@@ -204,6 +216,7 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
                 state_label);
             Ptr<FunctionDesc> empty_pointer;
             result_stable.add_bytes(&empty_pointer, sizeof(Ptr<StateDesc>));  // state pointer (будет заполнено позже)
+
 
             if (type == s_env->type()) {
                 // Method Step 3. Этот метод этого класса создадим его имплементацию
