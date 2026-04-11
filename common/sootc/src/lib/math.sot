@@ -16,7 +16,8 @@
     (:states
        idle 
        goto-position0
-       (goto-position vector3))
+       (goto-position vector3)
+       )
 )
 ;; ===================================================================
 ;; Vector3 methods
@@ -59,14 +60,14 @@
     (function ()
        :none)
   :enter (function () :none))
-
+;
 (defstate goto-position0 (vector3)
   :virtual #t
   :code
     (function ()
        :none)
   :enter (function () :none))
-
+;
 (defstate goto-position (vector3)
   :virtual #t
   :code

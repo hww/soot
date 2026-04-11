@@ -283,9 +283,6 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     s_env->set_post_method(post_method);
     s_env->set_trans_method(trans_method);
     
-    // Регистрируем состояние в типе
-    parent_type_env->bind(state_name, new IR_StateValue(s_env));
-
 
     return new IR_StateValue(s_env);
 }
@@ -293,59 +290,76 @@ IR_Value* StateCompiler::compile(const script::Object& form,
 // ============================================================================
 // build
 // ============================================================================
-
 RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
-    RelocatableBuffer buffer(s_env->name(),"state");
+    std::string state_full_name = s_env->type_env()->name() + "::" + s_env->name();
     
-    // 1. Создаем массив Definition для обработчиков
-    std::vector<Definition> definitions;
+    // 1. Создаем буферы для разных сегментов (по аналогии с эталоном)
+    RelocatableBuffer result_state(state_full_name + "#descriptor", "state", true);
+    RelocatableBuffer result_defs(state_full_name + "#definitions", "defs", true);
+    RelocatableBuffer result_bodies(state_full_name + "#bodies", "code", true);
+
+    // Подготавливаем список хендлеров
     std::vector<std::pair<int, MethodEnv*>> handlers = {
-        {StateDesc::CODE_ID, s_env->code_method()},
+        {StateDesc::CODE_ID,  s_env->code_method()},
         {StateDesc::ENTER_ID, s_env->enter_method()},
-        {StateDesc::EXIT_ID, s_env->exit_method()},
+        {StateDesc::EXIT_ID,  s_env->exit_method()},
         {StateDesc::TRANS_ID, s_env->trans_method()},
-        {StateDesc::POST_ID, s_env->post_method()},
+        {StateDesc::POST_ID,  s_env->post_method()},
         {StateDesc::EVENT_ID, s_env->event_method()},
     };
-    
+
+    // 2. Сборка таблицы Definitions и тел методов
     for (auto& [id, method] : handlers) {
+        Definition def{};
+        
         if (method) {
-            Definition def{};
             def.name = StringId(method->get_name());
             def.type = StringId("function");
-            def.flags = SymbolFlags::None;
-            def.ptr = Ptr<u8>();  // будет заполнено при линковке
             
-            // Добавляем релокацию на код метода
-            std::string method_symbol = s_env->type_env()->name() + "::" + method->get_name();
-            buffer.add_relocatable(offsetof(Definition, ptr), 
-                                   Relocation::Type::LABEL_ADDRESS, 
-                                   method_symbol + "#code");
-            buffer.add_bytes(&def, sizeof(Definition));
-        } else {
-            // Пустая заглушка
-            Definition def{};
-            buffer.add_bytes(&def, sizeof(Definition));
+            // Метка для FunctionDesc этого метода
+            std::string method_desc_label = state_full_name + "::" + method->get_name() + "#descriptor";
+
+            // Definition.ptr должен указывать на FunctionDesc (которую вернет MethodCompiler)
+            result_defs.add_relocatable(
+                result_defs.size() + offsetof(Definition, ptr), 
+                Relocation::Type::LABEL_ADDRESS, 
+                method_desc_label
+            );
+
+            // Компилируем само тело (FunctionDesc + Bytecode)
+            FunctionCompiler method_compiler(ts_, compiler_);
+            RelocatableBuffer method_res = method_compiler.build(method);
+            
+            // Добавляем скомпилированный метод в сегмент тел
+            result_bodies.add_buffer(method_res);
         }
+
+        // Записываем структуру Definition в таблицу
+        result_defs.add_bytes(&def, sizeof(Definition));
     }
-    
-    // 2. Заголовок StateDesc
+
+    // 3. Формируем заголовок StateDesc
     StateDesc desc{};
     desc.name = StringId(s_env->name());
-    desc.parent_state = StringId(s_env->type()->name());  // нужно добавить метод
-    desc.defs_count = definitions.size();
+    desc.parent_state = StringId(s_env->type()->name());
+    desc.defs_count = (u32)handlers.size();
     desc.flags = s_env->is_virtual() ? StateFlags::Virtual : StateFlags::None;
-    
-    // 3. Записываем StateDesc и таблицу определений
-    u32 desc_start = buffer.size();
-    buffer.add_bytes(&desc, sizeof(StateDesc));
-    
-    // Патчим указатель на таблицу определений
-    u32 definitions_offset = buffer.size();
-    buffer.add_relocatable(offsetof(StateDesc, definitions), 
-                           Relocation::Type::FIXED_ADDRESS, "");
-    
-    return buffer;
-}
+    desc.definitions = nullptr; 
 
+    // Релокация: StateDesc::definitions указывает на начало сегмента result_defs
+    result_state.add_relocatable(
+        offsetof(StateDesc, definitions),
+        Relocation::Type::LABEL_ADDRESS, 
+        result_defs.name()
+    );
+
+    result_state.add_bytes(&desc, sizeof(StateDesc));
+
+    // 4. Склеиваем всё в один итоговый буфер в правильном порядке
+    // Сначала идет дескриптор состояния, потом таблица определений, потом сами функции
+    result_state.add_buffer(result_defs);
+    result_state.add_buffer(result_bodies);
+
+    return result_state;
+}
 } // namespace sootc
