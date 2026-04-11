@@ -1,4 +1,4 @@
-    #pragma once
+#pragma once
 
 #include "common/sootc/Env/Env.hpp"
 #include "common/sootc/IR/StaticObject.hpp"  
@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace sootc {
 
@@ -28,12 +29,43 @@ public:
     IR_Value* lookup(const std::string& name) override;
     void bind(const std::string& name, IR_Value* val) override;
 
+    const std::vector<IR_Value*>& symbols() const override { 
+        return m_ordered_symbols; 
+    }
+
+    std::string get_value_name(IR_Value* value) const override;
+
+    // ========================================================================
+    // Import management
+    // ========================================================================
+    const std::vector<FileEnv*>& imported_envs() const { return m_imports; }
+    
+    void add_import(FileEnv* imported) {
+        // Избегаем дубликатов
+        if (!has_import(imported->name())) {
+            m_imports.push_back(imported);
+        }
+    }
+    
+    const std::vector<FileEnv*>& imports() const { return m_imports; }
+    
+    bool has_import(const std::string& name) const {
+        for (auto* imp : m_imports) {
+            if (imp->name() == name) return true;
+        }
+        return false;
+    }
+
     // ========================================================================
     // Function management
     // ========================================================================
     void add_function(std::unique_ptr<FunctionEnv> fe);
     void add_top_level_function(std::unique_ptr<FunctionEnv> fe);
-    const std::vector<std::unique_ptr<FunctionEnv>>& functions() const { return m_functions; }
+    
+    const std::vector<std::unique_ptr<FunctionEnv>>& functions() const { 
+        return m_functions; 
+    }
+    
     const FunctionEnv* top_level_function() const { return m_top_level_func; }
     FunctionEnv* top_level_function() { return m_top_level_func; }
     
@@ -45,7 +77,9 @@ public:
     // Static data management
     // ========================================================================
     void add_static(std::unique_ptr<StaticObject> s);
-    const std::vector<std::unique_ptr<StaticObject>>& statics() const { return m_statics; }
+    const std::vector<std::unique_ptr<StaticObject>>& statics() const { 
+        return m_statics; 
+    }
 
     // ========================================================================
     // Segment management (для GOAL совместимости)
@@ -68,9 +102,10 @@ public:
     // ========================================================================
     template <typename T, class... Args>
     T* alloc_val(Args&&... args) {
-        std::unique_ptr<T> new_obj = std::make_unique<T>(std::forward<Args>(args)...);
+        auto new_obj = std::make_unique<T>(std::forward<Args>(args)...);
+        T* ptr = new_obj.get();
         m_vals.push_back(std::move(new_obj));
-        return static_cast<T*>(m_vals.back().get());
+        return ptr;
     }
 
     // ========================================================================
@@ -79,17 +114,20 @@ public:
     std::unordered_set<std::string> m_required_files;
     std::unordered_set<std::string> m_missing_required_files;
 
-    const std::vector<IR_Value*>& symbols() const override { 
-        return m_ordered_symbols; 
+    // ========================================================================
+    // Symbol iteration
+    // ========================================================================
+    const std::unordered_map<std::string, IR_Value*>& symbols_map() const {
+        return m_symbols_map;
     }
 
-    std::string get_value_name(IR_Value* value) const override {
-        for (const auto& [name, val] : m_symbols_map) {
-            if (val == value) return name;
-        }
-        return "<unknown>";
-    }    
+    // ========================================================================
+    // Function lookup (отдельно от IR_Value)
+    // ========================================================================
+    FunctionEnv* find_function(const std::string& name) const;
+    
 protected:
+
     std::string m_name;
     std::vector<std::unique_ptr<FunctionEnv>> m_functions;
     std::vector<std::unique_ptr<StaticObject>> m_statics;
@@ -100,10 +138,13 @@ protected:
     // Top-level function (точка входа файла)
     FunctionEnv* m_top_level_func = nullptr;
     
-    // Таблица символов файла
+    // Таблица символов файла (только для IR_Value)
     std::unordered_map<std::string, IR_Value*> m_symbols_map;
     std::vector<IR_Value*> m_ordered_symbols;
     
+    // Файлы, которые были (require ...) в этом файле
+    std::vector<FileEnv*> m_imports;
+
     // Константы сегментов
     static constexpr int MAIN_SEGMENT = 0;
     static constexpr int DEBUG_SEGMENT = 1;

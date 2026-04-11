@@ -187,7 +187,7 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
         for (auto* val : node->get_used_values()) {
             if (val && reg_map.find(val) == reg_map.end()) {
                 if (next_local >= ARG_REGISTERS_OFFSET) {
-                    lg::error("Function {}: Out of local registers!", fe->name());
+                    lg::error("Function {}: Out of local registers!", fe->get_name());
                 }
                 reg_map[val] = next_local++;
             }
@@ -195,7 +195,7 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
     }
 
     // 3. Создаеми буферы
-    std::string label_name = make_function_symbol(fe->name());
+    std::string label_name = make_function_symbol(fe->get_name());
 
     RelocatableBuffer result(label_name + "#descriptor", "function", true);
     RelocatableBuffer code_buffer(label_name + "#code","function", true);
@@ -209,7 +209,7 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe) {
 
     // 5. Заголовок функции
     FunctionDesc desc{}; 
-    desc.name = StringId(fe->name());
+    desc.name = StringId(fe->get_name());
     desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr.offset = sizeof(FunctionDesc);
     desc.data_size = 0;
@@ -257,7 +257,7 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     }
 
     // Создаем буферы
-    std::string label_name = make_method_symbol(me->type_env()->name(), me->name());
+    std::string label_name = make_method_symbol(me->type_env()->name(), me->get_name());
 
     RelocatableBuffer descriptor(label_name + "#descriptor", "function", true);
     RelocatableBuffer code_buffer(label_name + "#code","function", true);
@@ -269,7 +269,7 @@ RelocatableBuffer FunctionCompiler::build_method(MethodEnv* me) {
     }
     
     FunctionDesc desc{}; 
-    desc.name = StringId(me->name());
+    desc.name = StringId(me->get_name());
     desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr.offset = sizeof(FunctionDesc);
     desc.data_size = 0;

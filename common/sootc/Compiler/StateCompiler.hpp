@@ -39,7 +39,13 @@ private:
     HandlerForms extract_handlers(const script::Object& rest);
     void compile_handler(const script::Object& handler_form, const std::string& handler_name, 
                          StateEnv* s_env, MethodEnv*& out_method_env);
-    
+    void compile_handler_with_signature(
+    const script::Object& handler_form,
+    const std::string& handler_name,
+    StateEnv* s_env,
+    const TypeSpec& expected_signature,
+    MethodEnv*& out_method_env);
+
     TypeSystem& ts_;
     Compiler* compiler_;
 };

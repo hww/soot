@@ -97,7 +97,7 @@ RelocatableBuffer IR_FunctionValue::build(Compiler* c) {
 // IR_MethodValue
 // ===========================================================
 
-std::string IR_MethodValue::name() const { return m_env->name(); }
+std::string IR_MethodValue::name() const { return m_env->get_name(); }
 std::string IR_MethodValue::type_name() const { return m_env->type()->name(); }
 
 // ===========================================================

@@ -11,6 +11,7 @@ add_library(libsootc
     common/sootc/Env/Env.cpp
     common/sootc/Env/GlobalEnv.cpp
     common/sootc/Env/FileEnv.cpp
+    common/sootc/Env/TypeEnv.cpp
     common/sootc/Env/FunctionEnv.cpp
     common/sootc/IR/IR_Value.cpp
     common/sootc/IR/IR_Node.cpp    

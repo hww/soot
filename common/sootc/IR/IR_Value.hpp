@@ -2,6 +2,7 @@
 
 #include "common/type_system/Type.hpp"
 #include "common/carbon/files/RelocatableBuffer.hpp"
+#include "sootc/IR/StaticObject.hpp"
 #include <string>
 #include <optional>
 
@@ -256,5 +257,29 @@ private:
     std::string m_name;
     TypeSpec m_type_spec;
 };
+
+
+class IR_StaticValue : public IR_Value {
+public:
+    IR_StaticValue(StaticObject* obj, Type* type) 
+        : IR_Value(type), m_obj(obj) {}
+    
+    std::string to_string() const override {
+        return m_obj->print();
+    }
+    
+    IR_Reg* to_reg(Env& env) override {
+        // Загрузка статического объекта в регистр
+        return nullptr; // Реализовать позже
+    }
+    
+    RelocatableBuffer build(Compiler* c) override;
+    
+    StaticObject* get_object() const { return m_obj; }
+    
+private:
+    StaticObject* m_obj;
+};
+
 
 } // namespace sootc

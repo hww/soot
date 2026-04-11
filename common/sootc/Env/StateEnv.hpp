@@ -51,9 +51,13 @@ public:
 
     void set_defined(bool defined) { m_is_defined = defined; }
     bool is_defined() const { return m_is_defined; }
+    
+    void set_type_spec(const TypeSpec& spec) { m_type_spec = spec; }
+    const TypeSpec& type_spec() const { return m_type_spec; }
 
 private:
     std::string m_name;
+    TypeSpec m_type_spec; // аргументы функии code
     Type* m_type;
     TypeEnv* m_type_env = nullptr;
     script::Object m_source_form;

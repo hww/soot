@@ -34,7 +34,7 @@ public:
     // Для методов и состояний (отдельный поиск)
     MethodEnv* lookup_method(const std::string& name) const {
         for (auto* m_env : m_vtable_slots) {
-            if (m_env && m_env->name() == name) {
+            if (m_env && m_env->get_name() == name) {
                 return m_env;
             }
         }
@@ -85,9 +85,9 @@ public:
         return nullptr;
     }
     
-    MethodEnv* find_method_local(const std::string& name) const {
+    MethodEnv* find_method_local(const std::string& name)  {
         for (auto* m_env : m_vtable_slots) {
-            if (m_env && m_env->name() == name) {
+            if (m_env && m_env->get_name() == name) {
                 return m_env;
             }
         }
@@ -126,6 +126,33 @@ public:
     // Для отложенной компиляции — установка смещения
     void set_file_offset(u64 offset) { m_file_offset = offset; }
     u64 get_file_offset() const { return m_file_offset; }
+
+     // Utility methods
+    bool has_method(const std::string& name) const;
+    bool has_method(int id) const;
+    bool has_state(const std::string& name) const;
+    
+    // Method creation helpers
+    MethodEnv* create_method(int id, const std::string& name);
+    MethodEnv* get_or_create_method(int id, const std::string& name);
+    
+    // State creation helpers
+    StateEnv* create_state(const std::string& name);
+    StateEnv* get_or_create_state(const std::string& name);
+    
+    // Debug and introspection
+    std::string dump_vtable() const;
+    std::string dump_states() const;
+    
+    // Validation
+    bool validate() const;
+    
+    // Inheritance helpers
+    void inherit_from(TypeEnv* parent_env);
+    
+    // Code generation helpers
+    std::vector<MethodEnv*> get_all_methods_including_inherited() const;
+    std::vector<StateEnv*> get_all_states_including_inherited() const;
 
 private:
     std::string m_name;

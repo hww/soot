@@ -65,7 +65,25 @@ private:
     // пустой результат
     IR_Value* get_none() { return new IR_None(); }
 
-    std::unordered_map<std::string, std::shared_ptr<Module>> m_loaded_modules;
+
+    // Только DECLARE фаза (создание IR_Value без тел)
+    void declare_module(const script::Object& forms, FileEnv* env);
+    // RESOLVE фаза (компиляция тел)
+    void resolve_module(FileEnv* env);
+    // BUILD фаза (генерация бинарника)
+    std::shared_ptr<carbon::modules::Module> build_module(FileEnv* env);
+    void add_imported_module(std::shared_ptr<Module> module) {
+        if (module) {
+            m_compiled_modules[module->name.to_string()] = module;
+        }
+    }
+    void clear_visited_modules() {
+        static std::unordered_set<std::string> visited_modules;
+        visited_modules.clear();
+    }
+
+    std::unordered_map<std::string, FileEnv*> m_compiled_files;
+    std::unordered_map<std::string, std::shared_ptr<Module>> m_compiled_modules;
     
 };
 

@@ -24,7 +24,8 @@ public:
 
 private:
     MethodEnv* find_method_in_hierarchy(TypeEnv* start_env, int method_id, TypeEnv*& out_defining_type);
-    
+    TypeSpec parse_state_type(const script::Object& form, Env* env);
+
     TypeSystem& ts_;
     Compiler* compiler_;
 };

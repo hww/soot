@@ -5,6 +5,7 @@
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/Env/TypeEnv.hpp"
 #include "common/util/Log.hpp"
+#include "type_system/TypeSpec.hpp"
 #include <stdexcept>
 
 namespace sootc {
@@ -17,12 +18,15 @@ StateCompiler::StateCompiler(TypeSystem& ts, Compiler* compiler)
 // ============================================================================
 
 std::string StateCompiler::extract_state_name(const script::Object& form) {
-    // form = (defstate name ...)
+    // form = (defstate idle (vector3) ...)
     auto pair = form.as_pair();
-    if (pair && pair->cdr.is_pair()) {
-        auto second = pair->cdr.as_pair()->car;
-        if (second.is_symbol()) {
-            return second.as_symbol().c_str();
+    if (pair) {
+        auto cdr = pair->cdr;
+        if (cdr.is_pair()) {
+            auto name_obj = cdr.as_pair()->car;
+            if (name_obj.is_symbol()) {
+                return name_obj.as_symbol().c_str();
+            }
         }
     }
     return "unknown-state";
@@ -32,13 +36,26 @@ std::string StateCompiler::extract_state_name(const script::Object& form) {
 // extract_parent_name
 // ============================================================================
 
-std::string StateCompiler::extract_parent_name(const script::Object& rest) {
-    // rest = (parent) ...
-    auto first = rest.as_pair()->car;
-    if (first.is_pair() && first.as_pair()->car.is_symbol()) {
-        return first.as_pair()->car.as_symbol().c_str();
+std::string StateCompiler::extract_parent_name(const script::Object& form) {
+    // form = (defstate idle (vector3) ...)
+    //                      ^^^^^^^^ третий элемент
+    auto pair = form.as_pair();
+    if (pair) {
+        auto cdr = pair->cdr;                    // (idle (vector3) ...)
+        if (cdr.is_pair()) {
+            auto cddr = cdr.as_pair()->cdr;      // ((vector3) ...)
+            if (cddr.is_pair()) {
+                auto parent_obj = cddr.as_pair()->car;
+                if (parent_obj.is_pair() && parent_obj.as_pair()->car.is_symbol()) {
+                    return parent_obj.as_pair()->car.as_symbol().c_str();
+                }
+                if (parent_obj.is_symbol()) {
+                    return parent_obj.as_symbol().c_str();
+                }
+            }
+        }
     }
-    return "basic";  // базовый тип по умолчанию
+    return "basic";
 }
 
 // ============================================================================
@@ -144,6 +161,50 @@ void StateCompiler::compile_handler(const script::Object& handler_form,
     out_method_env = m_env;
 }
 
+void StateCompiler::compile_handler_with_signature(
+    const script::Object& handler_form,
+    const std::string& handler_name,
+    StateEnv* s_env,
+    const TypeSpec& expected_signature,
+    MethodEnv*& out_method_env) {
+    
+    if (!handler_form.is_true()) {
+        out_method_env = nullptr;
+        return;
+    }
+    
+    Type* obj_type = ts_.lookup_type("object");
+    auto* m_env = new MethodEnv(0, handler_name, s_env, obj_type);
+    
+    // Добавляем аргументы согласно expected_signature
+    // expected_signature = (function (arg_types...) return_type)
+    int arg_idx = 0;
+    size_t num_args = expected_signature.get_args_count();
+    
+    // Последний аргумент в function - это возвращаемый тип
+    for (size_t i = 0; i < num_args - 1; i++) {
+        const TypeSpec& param_type = expected_signature.get_arg(i);
+        std::string arg_name = fmt::format("arg{}", arg_idx);
+        Type* arg_type = ts_.lookup_type(param_type);
+        m_env->define_argument(arg_name, arg_type, arg_idx++);
+    }
+    
+    // Сохраняем сигнатуру метода
+    m_env->method_function_type = expected_signature;
+    
+    // Компилируем тело функции
+    if (handler_form.is_pair()) {
+        auto body = handler_form.as_pair()->cdr;
+        IR_Value* last_val = compiler_->compile(body, m_env);
+        
+        if (last_val) {
+            m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
+        }
+    }
+    
+    out_method_env = m_env;
+}
+
 // ============================================================================
 // compile
 // ============================================================================
@@ -152,7 +213,7 @@ IR_Value* StateCompiler::compile(const script::Object& form,
                                   const script::Object& rest, 
                                   Env* env) {
     std::string state_name = extract_state_name(form);
-    std::string parent_name = extract_parent_name(rest);
+    std::string parent_name = extract_parent_name(form);  
     auto handlers = extract_handlers(rest);
     
     // Находим TypeEnv родителя
@@ -172,9 +233,15 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     Type* parent_type = parent_type_env->get_type();
     
     // Создаем StateEnv
-    auto* s_env = new StateEnv(state_name, parent_type_env, parent_type, parent_type_env);
+    auto* s_env = parent_type_env->find_state(state_name);
+    if (s_env == nullptr) {
+        throw std::runtime_error(fmt::format("Type environment '{}' does nop have state '{}'", parent_name, state_name));
+        return nullptr;   
+    }
+
     s_env->set_is_virtual(handlers.is_virtual);
     s_env->set_defined(true);
+
 
     // Компилируем обработчики
     MethodEnv* event_method = nullptr;
@@ -184,10 +251,28 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     MethodEnv* post_method = nullptr;
     MethodEnv* trans_method = nullptr;
     
+        
+    // Получаем объявленную сигнатуру
+    TypeSpec declared_signature = s_env->type_spec();
+    // Для :code используем declared_signature
+    if (handlers.code.is_true()) {
+        compile_handler_with_signature(handlers.code, "code", s_env, 
+                                       declared_signature, code_method);
+    }
+
+    // Валидация (теперь implemented_type будет правильным)
+    if (code_method) {
+        TypeSpec implemented_type = code_method->method_function_type;
+        if (!ts_.tc(declared_signature, implemented_type)) {
+            throw std::runtime_error(fmt::format(
+                "State '{}' code signature mismatch.\n  Declared: {}\n  Implemented: {}",
+                state_name, declared_signature.print(), implemented_type.print()));
+        }
+    }
+
     compile_handler(handlers.event, "event", s_env, event_method);
     compile_handler(handlers.enter, "enter", s_env, enter_method);
     compile_handler(handlers.exit, "exit", s_env, exit_method);
-    compile_handler(handlers.code, "code", s_env, code_method);
     compile_handler(handlers.post, "post", s_env, post_method);
     compile_handler(handlers.trans, "trans", s_env, trans_method);
     
@@ -200,7 +285,8 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     
     // Регистрируем состояние в типе
     parent_type_env->bind(state_name, new IR_StateValue(s_env));
-    
+
+
     return new IR_StateValue(s_env);
 }
 
@@ -225,13 +311,13 @@ RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
     for (auto& [id, method] : handlers) {
         if (method) {
             Definition def{};
-            def.name = StringId(method->name());
+            def.name = StringId(method->get_name());
             def.type = StringId("function");
             def.flags = SymbolFlags::None;
             def.ptr = Ptr<u8>();  // будет заполнено при линковке
             
             // Добавляем релокацию на код метода
-            std::string method_symbol = s_env->type_env()->name() + "::" + method->name();
+            std::string method_symbol = s_env->type_env()->name() + "::" + method->get_name();
             buffer.add_relocatable(offsetof(Definition, ptr), 
                                    Relocation::Type::LABEL_ADDRESS, 
                                    method_symbol + "#code");

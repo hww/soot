@@ -60,6 +60,7 @@ IR_Value* TypeCompiler::compile(const script::Object& form, const script::Object
     // Создаем StateEnv для каждого объявленного состояния
     for (const auto& [s_name, s_type_spec] : type_info->get_states_declared_for_type()) {
         auto* s_env = new StateEnv(s_name, t_env, type_info, t_env);
+        s_env->set_type_spec(s_type_spec);
         t_env->bind(s_name, new IR_StateValue(s_env));
     }
     
@@ -172,7 +173,7 @@ RelocatableBuffer TypeCompiler::build(TypeEnv* t_env) {
             // Method Step 2. получить тип метода это может быть родительский тип
             std::string type_name = method_type->get_type()->name();
             // получить метку метода
-            std::string method_label = type_name + "::" + method_env->name() + "#descriptor";
+            std::string method_label = type_name + "::" + method_env->get_name() + "#descriptor";
             
             // Method Step 3. Вставляем заголовок FunctionDesc с нулевыми полями (потенциально с именем метода для отладки)
             result_vtable.add_relocatable(

@@ -115,10 +115,10 @@ public:
     }
     
     // Быстрые геттеры (без dynamic_cast!)
-    GlobalEnv* global_env() { return m_global_env; }
-    FunctionEnv* function_env() { return m_function_env; }
-    TypeEnv* type_env() { return m_type_env; }
-    FileEnv* file_env() { return m_file_env; }
+    GlobalEnv* global_env() const { return m_global_env; }
+    FunctionEnv* function_env() const { return m_function_env; }
+    TypeEnv* type_env() const { return m_type_env; }
+    FileEnv* file_env() const { return m_file_env; }
     SymbolMacroEnv* symbol_macro_env() { return m_symbol_macro_env; }
     MacroExpandEnv* macro_expand_env() { return m_macro_expand_env; }
 

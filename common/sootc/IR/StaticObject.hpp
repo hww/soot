@@ -3,8 +3,8 @@
 
 #include <string>
 #include <vector>
-#include <cstring>
 #include "common/CommonTypes.hpp"
+
 
 namespace sootc {
 
@@ -32,7 +32,7 @@ public:
     virtual LoadInfo get_load_info() const = 0;
     virtual void generate(std::vector<u8>& data, std::vector<u64>& relocations) = 0;
     virtual u64 get_addr_offset() const = 0;
-    
+
     u64 file_offset = 0;
     std::string name;
 };
@@ -163,5 +163,10 @@ private:
     u64 m_car_offset = 0;
     u64 m_cdr_offset = 0;
 };
+
+
+
+
+
 
 } // namespace sootc

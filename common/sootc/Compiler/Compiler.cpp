@@ -76,68 +76,97 @@ IR_Value* Compiler::compile(const script::Object& form, Env* env) {
 // compile_module — один проход компиляции, потом сборка
 // ============================================================================
 std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::Object& forms, FileEnv* env) {
+    // ФАЗА 1: DECLARE (все формы, включая require)
+    declare_module(forms, env);
     
-    // ПРОХОД 1: Компиляция всех форм в IR_Value
+    // ФАЗА 2: RESOLVE (компиляция тел функций и методов)
+    resolve_module(env);
+    
+    // ФАЗА 3: BUILD (генерация бинарника)
+    return build_module(env);
+}
+
+void Compiler::declare_module(const script::Object& forms, FileEnv* env) {
     auto current = forms;
     while (current.is_pair()) {
         compile(current.as_pair()->car, env);
         current = current.as_pair()->cdr;
     }
+}
+
+void Compiler::resolve_module(FileEnv* env) {
+    // Рекурсивно резолвим все импортированные модули
+    for (auto* imported : env->imports()) {
+        resolve_module(imported);
+    }
     
-    // ПРОХОД 2: BUILD — генерация буферов
+    // Резолвим символы текущего модуля
+    for (auto& [name, value] : env->sybols_table()) {
+        value->resolve(this);
+    }
+}
+
+std::shared_ptr<carbon::modules::Module> Compiler::build_module(FileEnv* env) {
+    static std::unordered_set<std::string> visited_modules;
+    
+    // Проверка на уже посещённые модули (избегаем циклов)
+    if (visited_modules.find(env->name()) != visited_modules.end()) {
+        return nullptr;  // Уже обработан
+    }
+    visited_modules.insert(env->name());
+    
+    // Рекурсивно билдим импортированные модули
+    for (auto* imported : env->imports()) {
+        auto imported_module = build_module(imported);
+        if (imported_module) {
+            // Сохраняем или линкуем импортированный модуль
+            add_imported_module(imported_module);
+        }
+    }
+    
+    // Билдим текущий модуль
     RelocatableBuffer definitions("definitions", "definitions", true);
     RelocatableBuffer descriptors("descriptors", "descriptors", true);
     int definitions_count = 0;
 
-    for (auto& [name, value] : env->sybols_table()) {
-        lg::info("Compiler compile symbol '{}'", name);
-        auto descriptor =  value->build(this);
-        if (!descriptor.is_empty()) {            
-
-            //lg::info("add_definition compile symbol '{}' type '{}'", result.name(), result.type_tag());
-
-            // Заголовок дефиниции
+    for (auto& [name, value] : env->symbols_map()) {  // Исправлено: symbols_map
+        auto descriptor = value->build(this);
+        if (!descriptor.is_empty()) {
             Definition definition{
-                StringId(descriptor.name()),
-                StringId(descriptor.type_tag()),
+                StringId(descriptor.name().c_str()),      // Добавлен .c_str()
+                StringId(descriptor.type_tag().c_str()),  // Добавлен .c_str()
                 SymbolFlags::Export,
                 0,
-                nullptr
+                Ptr<u8>()  // nullptr
             };
             
-
-            // добавим ссылку на другой буфер по имени
             definitions.add_relocatable(offsetof(Definition, ptr), 
                                         Relocation::Type::LABEL_ADDRESS, 
                                         descriptor.name());
-            // Метка для дефиниции
             definitions.add_label(name);                                        
             definitions.add_bytes(&definition, sizeof(Definition));
-            
-            // Дескриптор в отдельный буфер
-            descriptors.add_buffer(descriptor);
-            
+            descriptors.add_buffer(std::move(descriptor));  // Перемещаем
             definitions_count++;
         } 
     }
     
     // Создаем заголовок
-    RelocatableBuffer file_buffer("file", "file");
+    RelocatableBuffer file_buffer(env->name() + ".module", "module");
     
-    // Заглушка для BinaryFile (заполним позже)
+    // Заглушка для BinaryFile
     u32 header_pos = file_buffer.size();
     BinaryFile dummy_header{};
     file_buffer.add_bytes(&dummy_header, sizeof(BinaryFile));
     
     // Добавляем таблицу дефиниций
     u32 definitions_offset = file_buffer.size();
-    file_buffer.add_buffer(definitions);
+    file_buffer.add_buffer(std::move(definitions));  // Перемещаем
     
     // Добавляем дескрипторы
     u32 descriptors_offset = file_buffer.size();
-    file_buffer.add_buffer(descriptors);
+    file_buffer.add_buffer(std::move(descriptors));  // Перемещаем
     
-    // Теперь патчим заголовок
+    // Патчим заголовок
     BinaryFile header{};
     header.base_offset = 0;
     header.magic = BinaryFile::MAGIC;
@@ -147,7 +176,6 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
     header.file_size = file_buffer.size();
     header.used_size = file_buffer.size();
     
-    // Записываем заголовок поверх заглушки
     file_buffer.write_at(header_pos, &header, sizeof(BinaryFile));
     
     // Линковка
@@ -156,7 +184,10 @@ std::shared_ptr<carbon::modules::Module> Compiler::compile_module(const script::
     // Создаем модуль
     auto module = std::make_shared<Module>();
     module->name = StringId(env->name().c_str());
-    module->set_file(std::move(file_buffer.bytes()));
+    
+    // Копируем данные до уничтожения buffer
+    auto file_data = std::move(file_buffer.bytes());
+    module->set_file(std::move(file_data));
     
     return module;
 }
@@ -215,7 +246,6 @@ IR_Value* Compiler::compile_defstate(const script::Object& form, const script::O
 // ============================================================================
 
 IR_Value* Compiler::compile_require(const script::Object& form, const script::Object& rest, Env* env) {
-    // (require "filename.soot")
     auto args = rest;
     if (!args.is_pair() || !args.as_pair()->car.is_string()) {
         lg::error("Invalid require syntax: expected (require \"filename\")");
@@ -225,38 +255,50 @@ IR_Value* Compiler::compile_require(const script::Object& form, const script::Ob
     std::string filename = args.as_pair()->car.as_string()->data;
     
     // Проверяем, не загружен ли уже модуль
-    if (m_loaded_modules.find(filename) != m_loaded_modules.end()) {
+    if (m_compiled_modules.find(filename) != m_compiled_modules.end()) {
         lg::info("Module already loaded: {}", filename);
         return get_none();
     }
     
-    // Загружаем и компилируем модуль
-    try {
-        std::string source = read_text(filename);
-        Reader reader;
-        Object forms = reader.read_from_string(source, false, filename);
-        
-        // Создаем временный FileEnv для импортируемого модуля
-        FileEnv temp_env(env->global_env(), filename);
-        
-        // Компилируем модуль
-        auto module = compile_module(forms, &temp_env);
-        if (!module) {
-            lg::error("Failed to compile required module: {}", filename);
-            return nullptr;
-        }
-        
-        // Импортируем все символы из модуля в текущее окружение
-        // Для этого нужно, чтобы Module хранил экспорты
-        // Пока просто помечаем модуль как загруженный
-        m_loaded_modules[filename] = module;
-        
-        lg::info("Successfully loaded module: {}", filename);
-        
-    } catch (const std::exception& e) {
-        throw std::runtime_error(fmt::format("Failed to require module '{}': {}", filename, e.what()));
-        return nullptr;
+    
+    FileEnv* current_env = dynamic_cast<FileEnv*>(env);
+    if (!current_env) {
+        throw std::runtime_error("require called outside of FileEnv");
     }
+    
+    // Проверяем, не импортирован ли уже
+    if (current_env->has_import(filename)) {
+        return get_none();
+    }
+    
+    
+    // Проверяем кэш компиляции
+    auto it = m_compiled_files.find(filename);
+    FileEnv* imported_env = nullptr;
+    
+    if (it != m_compiled_files.end()) {
+        imported_env = it->second;
+    } else {
+        // Загружаем и компилируем только DECLARE фазу
+        try {
+            std::string source = read_text(filename);
+            Reader reader;
+            Object forms = reader.read_from_string(source, false, filename);
+            
+            imported_env = new FileEnv(env->global_env(), filename);
+            
+            // Только DECLARE фаза
+            declare_module(forms, imported_env);
+            
+            m_compiled_files[filename] = imported_env;
+            
+        } catch (const std::exception& e) {
+            throw std::runtime_error(fmt::format("Failed to require module '{}': {}", filename, e.what()));
+        }
+    }
+    
+    // Добавляем как зависимость
+    current_env->add_import(imported_env);
     
     return get_none();
 }
