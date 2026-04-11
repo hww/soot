@@ -2,6 +2,7 @@
 #include "common/sootc/IR/IR_Value.hpp"
 #include "common/sootc/Env/FunctionEnv.hpp" 
 #include "common/sootc/Env/Env.hpp"
+#include "files/RelocatableBuffer.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/MethodCompiler.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
@@ -120,6 +121,19 @@ void IR_Type::resolve(Compiler* c) {
 }
 
 RelocatableBuffer IR_Type::build(Compiler* c) {
+    
+    TypeEnv* t_env = get_env();
+    Type* type = t_env->get_type();
+
+    // Если тип есть в TypeSystem и он builtin — не компилируем
+    if (type && c->ts().fully_defined_type_exists(type->name())) {
+        // Проверяем, не builtin ли это
+        if (type->name() == "type") {
+            // для builtin типов возвращать пустой буфер
+            return RelocatableBuffer{};
+        }
+    }
+
     TypeCompiler t_c(c->ts(), c);
     return t_c.build(this->get_env());
 }

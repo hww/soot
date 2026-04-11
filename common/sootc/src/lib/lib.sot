@@ -1,6 +1,0 @@
-(define-extern number type)
-(define-extern integer type)
-(define-extern float type)
-(define-extern object type)
-(define-extern uint128 type)
-(define-extern basic type)

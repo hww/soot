@@ -1,4 +1,4 @@
-(require "../common/sootc/src/lib/lib.sot")
+(require "../common/sootc/src/lib/builtins.sot")
 
 (define add (lambda ((a int) (b int)) (+ a b)))
 (define sub (lambda ((a int) (b int)) (- a b)))

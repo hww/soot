@@ -5,6 +5,8 @@
 #include "files/BinaryFileBuilder.hpp"
 #include "files/Definition.hpp"
 #include "files/RelocatableBuffer.hpp"
+#include "fmt/base.h"
+#include "fmt/format.h"
 #include "lib/StringId.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/MethodCompiler.hpp"
@@ -15,6 +17,7 @@
 #include "sootc/IR/IR_Value.hpp"
 #include <cstddef>
 #include <filesystem>
+#include <stdexcept>
 #include <utility>
 
 using namespace carbon::files;
@@ -251,7 +254,7 @@ IR_Value* Compiler::compile_require(const script::Object& form, const script::Ob
         lg::info("Successfully loaded module: {}", filename);
         
     } catch (const std::exception& e) {
-        lg::error("Failed to require module '{}': {}", filename, e.what());
+        throw std::runtime_error(fmt::format("Failed to require module '{}': {}", filename, e.what()));
         return nullptr;
     }
     
@@ -390,6 +393,12 @@ TypeSpec Compiler::parse_typespec(const script::Object& form, Env* env) {
         auto pair = form.as_pair();
         std::string type_name = pair->car.as_symbol().c_str();
         
+        if (type_name == "_type_") {
+            // В контексте метода _type_ означает тип this
+            // Пока возвращаем как обычный тип
+            return ts_.make_typespec("_type_");
+        }
+
         if (type_name == "function") {
             // (function arg1 arg2 ... ret)
             std::vector<TypeSpec> args;

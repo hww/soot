@@ -1,0 +1,71 @@
+;; ============================================================================
+;; Built-in Types Declaration
+;; ============================================================================
+;; Все встроенные типы должны быть объявлены через define-extern,
+;; чтобы компилятор знал о них при компиляции пользовательского кода.
+;; ============================================================================
+
+;; ----------------------------------------------------------------------------
+;; Core Types
+;; ----------------------------------------------------------------------------
+(define-extern #t symbol)
+(define-extern #f symbol)
+(define-extern object type)
+(define-extern structure type)
+(define-extern basic type)
+(define-extern type type)
+(define-extern pair type)
+(define-extern binteger type)
+
+;; ----------------------------------------------------------------------------
+;; Numeric Type Hierarchy
+;; object → number → integer → sinteger/uinteger
+;; ----------------------------------------------------------------------------
+(define-extern number type)
+(define-extern integer type)
+(define-extern float type)
+
+;; Signed integers
+(define-extern sinteger type)
+(define-extern int8 type)
+(define-extern int16 type)
+(define-extern int32 type)
+(define-extern int64 type)
+(define-extern int128 type)
+(define-extern int type)        ;; alias for int64
+
+;; Unsigned integers
+(define-extern uinteger type)
+(define-extern uint8 type)
+(define-extern uint16 type)
+(define-extern uint32 type)
+(define-extern uint64 type)
+(define-extern uint128 type)
+(define-extern uint type)       ;; alias for uint64
+
+;; ----------------------------------------------------------------------------
+;; Special Types
+;; ----------------------------------------------------------------------------
+(define-extern pointer type)
+(define-extern bitfield type)
+(define-extern array type)
+(define-extern inline-array type)
+(define-extern function type)
+(define-extern string type)
+(define-extern symbol type)
+
+;; ----------------------------------------------------------------------------
+;; Type System Helpers
+;; ----------------------------------------------------------------------------
+(define-extern _type_ type)
+(define-extern _varargs_ type)
+(define-extern none type)
+
+;; ----------------------------------------------------------------------------
+;; Forward Declarations (defined later in other files)
+;; ----------------------------------------------------------------------------
+;(define-extern memory-usage-block type)
+(define-extern process type)
+(define-extern state type)
+(define-extern entity type)
+(define-extern drawable type)

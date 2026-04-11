@@ -487,6 +487,7 @@ class Type : public NativeObject {
     // Serialization
     virtual bool serialize_obj(Archive &ar, Object &data) = 0;
     
+
   protected:
     virtual std::string diff_impl(const Type &other) const = 0;
     std::string         incompatible_diff(const Type &other) const;

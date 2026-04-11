@@ -976,7 +976,8 @@ script::Object TypeSystem::get_all_type_information() const {
 // ============================================================================
 
 StructureType *TypeSystem::add_builtin_structure(const std::string &parent,
-                                                 const std::string &type_name, bool boxed) {
+                                                 const std::string &type_name, 
+                                                 bool boxed) {
 
     auto structure = std::make_unique<StructureType>(parent, type_name, boxed, false, false, 0);
     StructureType *result = structure.get();
@@ -992,15 +993,19 @@ StructureType *TypeSystem::add_builtin_structure(const std::string &parent,
 }
 
 BasicType *TypeSystem::add_builtin_basic(const std::string &parent, const std::string &type_name) {
-    add_type(type_name, std::make_unique<BasicType>(parent, type_name, false, 0));
+    auto type = std::make_unique<BasicType>(parent, type_name, false, 0);
+    add_type(type_name, std::move(type));
     return get_type_of_type<BasicType>(type_name);
 }
 
 ValueType *TypeSystem::add_builtin_value_type(const std::string &parent,
-                                              const std::string &type_name, int size, bool boxed,
-                                              bool sign_extend, RegClass reg) {
-    add_type(type_name,
-             std::make_unique<ValueType>(parent, type_name, boxed, size, sign_extend, reg));
+                                              const std::string &type_name, 
+                                              int size, 
+                                              bool boxed,
+                                              bool sign_extend, 
+                                              RegClass reg) {
+    auto type = std::make_unique<ValueType>(parent, type_name, boxed, size, sign_extend, reg);
+    add_type(type_name, std::move(type));
     return get_type_of_type<ValueType>(type_name);
 }
 

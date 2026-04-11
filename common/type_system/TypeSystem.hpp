@@ -203,8 +203,7 @@ class TypeSystem : public NativeObject {
 
     TypeSpec make_typespec(const std::string &name) const;
     TypeSpec make_array_typespec(const std::string &array_type, const TypeSpec &element_type) const;
-    TypeSpec make_function_typespec(const std::vector<std::string> &arg_types,
-                                    const std::string              &return_type) const;
+    TypeSpec make_function_typespec(const std::vector<std::string> &arg_types, const std::string &return_type) const;
 
     TypeSpec make_pointer_typespec(const std::string &type) const;
     TypeSpec make_pointer_typespec(const TypeSpec &type) const;

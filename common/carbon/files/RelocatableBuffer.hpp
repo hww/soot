@@ -267,7 +267,7 @@ public:
         for (const auto& label : other.labels_) {
             auto duplicate = get_label(label.name);
             if (duplicate) {
-                throw std::runtime_error(fmt::format("Label {}\n conflicting with existing {}", label.to_string(), duplicate->to_string()));
+                throw std::runtime_error(fmt::format("Labels conflict\n  new label\n    {}\n  existing label\n    {}", label.to_string(), duplicate->to_string()));
             }
             RelLabel new_label{label.name, insert_pos + label.offset};
             labels_.push_back(new_label);
