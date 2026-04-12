@@ -2,6 +2,7 @@
 
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/sootc/IR/IR_Value.hpp"
+#include "common/sootc/IR/StaticSegment.hpp"
 #include "files/RelocatableBuffer.hpp"
 #include "sootc/Env/Label.hpp"
 #include <string>
@@ -15,6 +16,14 @@ namespace sootc {
 
 // Forward declaration
 struct Label;
+class StaticSegment;
+
+struct EmitContext {
+    RelocatableBuffer& code;           // Буфер для инструкций
+    StaticSegment& statics;           // Буфер для констант (наш "хвост")
+    const std::unordered_map<IR_Value*, u32>& regs; // Карта регистров
+    // Сюда можно добавить LabelManager для branch-команд
+};
 
 // Базовый класс IR узла
 class IR_Node {
@@ -22,7 +31,7 @@ public:
   virtual ~IR_Node() = default;
   virtual std::string to_string() const = 0;
   virtual void generate(RelocatableBuffer  &builder,
-                        const std::unordered_map<IR_Value *, u32> &reg_map) = 0;
+                        EmitContext& ctx) = 0;
   virtual std::vector<IR_Value *> get_used_values() const { return {}; }
   virtual std::string print() const { return to_string(); }
 };
@@ -33,7 +42,7 @@ public:
   IR_Move(IR_Reg *dest, IR_Value *src);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 
 private:
@@ -47,7 +56,7 @@ public:
   IR_LoadConst(IR_Reg *dest, IR_Const *value);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
@@ -60,7 +69,7 @@ public:
   IR_LoadField(IR_Reg *dest, IR_Field *field);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
@@ -73,7 +82,7 @@ public:
   IR_StoreField(IR_Field *field, IR_Value *value);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Field *field_;
@@ -87,7 +96,7 @@ public:
           std::vector<IR_Value *> args);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *result_;
@@ -103,7 +112,7 @@ public:
   IR_Binary(Op op, IR_Reg *dest, IR_Value *left, IR_Value *right);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value*> get_used_values() const override {
       // ОБЯЗАТЕЛЬНО возвращаем и цель, и операнды
       return { dest_, left_, right_ }; 
@@ -122,7 +131,7 @@ public:
   IR_Compare(Cond cond, IR_Reg *dest, IR_Value *left, IR_Value *right);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value*> get_used_values() const override ;
 private:
   Cond cond_;
@@ -137,7 +146,7 @@ public:
   IR_BranchIf(IR_Value *cond, Label true_label);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
 
 private:
   IR_Value *cond_;
@@ -150,7 +159,7 @@ public:
   explicit IR_Branch(Label label);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
 
 private:
   Label label_;
@@ -162,7 +171,7 @@ public:
   explicit IR_Label(Label label);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
 
 private:
   Label label_;
@@ -174,7 +183,7 @@ public:
   explicit IR_Return(IR_Value *value = nullptr);
   std::string to_string() const override;
   void generate(RelocatableBuffer  &builder,
-                const std::unordered_map<IR_Value *, u32> &reg_map) override;
+                EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Value *value_;

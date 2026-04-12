@@ -329,6 +329,7 @@ IR_Value* StateCompiler::compile(const script::Object& form,
 // build
 // ============================================================================
 RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
+    // Make state name type_name::state_name
     std::string state_full_name = s_env->type_env()->name() + "::" + s_env->name();
     
     // 1. Создаем буферы для разных сегментов (по аналогии с эталоном)
@@ -355,18 +356,19 @@ RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
             def.type = StringId("function");
             
             // Метка для FunctionDesc этого метода
-            std::string method_desc_label = state_full_name + "::" + method->get_name() + "#descriptor";
+            // Make state name type_name::state_name::method_name
+            std::string method_desc_label = state_full_name + "::" + method->get_name();;
 
             // Definition.ptr должен указывать на FunctionDesc (которую вернет MethodCompiler)
             result_defs.add_relocatable(
                 result_defs.size() + offsetof(Definition, ptr), 
                 Relocation::Type::LABEL_ADDRESS, 
-                method_desc_label
+                method_desc_label + "#descriptor"
             );
 
             // Компилируем само тело (FunctionDesc + Bytecode)
             FunctionCompiler method_compiler(ts_, compiler_);
-            RelocatableBuffer method_res = method_compiler.build(method);
+            RelocatableBuffer method_res = method_compiler.build(method, method_desc_label);
             
             // Добавляем скомпилированный метод в сегмент тел
             result_bodies.add_buffer(method_res);
