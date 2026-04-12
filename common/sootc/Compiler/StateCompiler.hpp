@@ -12,9 +12,9 @@ using namespace carbon::files;
 
 namespace sootc {
 
-class StaticData {
+class StateCompiler {
 public:
-    StaticData(TypeSystem& ts, Compiler* compiler);
+    StateCompiler(TypeSystem& ts, Compiler* compiler);
     
     // Компилирует определение состояния
     // Пример: (defstate name (parent) :virtual #t :event ... :enter ... :exit ... :code ... :post ...)

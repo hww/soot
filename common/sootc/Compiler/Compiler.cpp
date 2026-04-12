@@ -252,7 +252,7 @@ IR_Value* Compiler::compile_deftype(const script::Object& form, const script::Ob
 }
 
 IR_Value* Compiler::compile_defstate(const script::Object& form, const script::Object& rest, Env* env) {
-    StaticData state_compiler(ts_, this);
+    StateCompiler state_compiler(ts_, this);
     return state_compiler.compile(form, rest, env);
 }
 

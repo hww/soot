@@ -11,6 +11,8 @@
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/Env/TypeEnv.hpp"
 #include "sootc/IR/StaticObject.hpp"
+#include "sootc/IR/StaticSegment.hpp"
+#include "sootc/IR/IR_Node.hpp"
 #include "type_system/Type.hpp"
 
 using namespace ::carbon::files;
@@ -123,6 +125,8 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe, const std::string& na
             }
         }
     }
+    
+
 
     // 3. Создаеми буферы
     RelocatableBuffer result(name + "#descriptor", "function", true);
@@ -131,9 +135,11 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe, const std::string& na
     RelocatableBuffer debug_buffer(name + "#debug","void", true);
 
     // 4. Генерируем байткод прямо в буфер
+    StaticSegment statics;
+    EmitContext ctx { code_buffer, statics, reg_map };
     for (auto& node : fe->code()) {
         lg::info("FunctionCompiler::build {}", node->to_string());
-        node->generate(code_buffer, reg_map);  // ← generate теперь принимает RelocatableBuffer
+        node->generate(ctx);  // ← generate теперь принимает RelocatableBuffer
     }
 
     // 5. Заголовок функции

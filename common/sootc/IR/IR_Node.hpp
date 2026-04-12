@@ -16,13 +16,11 @@ namespace sootc {
 
 // Forward declaration
 struct Label;
-class StaticSegment;
 
 struct EmitContext {
-    RelocatableBuffer& code;           // Буфер для инструкций
-    StaticSegment& statics;           // Буфер для констант (наш "хвост")
-    const std::unordered_map<IR_Value*, u32>& regs; // Карта регистров
-    // Сюда можно добавить LabelManager для branch-команд
+    RelocatableBuffer& code; 
+    StaticSegment& statics;
+    const std::unordered_map<IR_Value*, u32>& regs;
 };
 
 // Базовый класс IR узла
@@ -30,8 +28,7 @@ class IR_Node {
 public:
   virtual ~IR_Node() = default;
   virtual std::string to_string() const = 0;
-  virtual void generate(RelocatableBuffer  &builder,
-                        EmitContext& ctx) = 0;
+  virtual void generate(EmitContext& ctx) = 0;
   virtual std::vector<IR_Value *> get_used_values() const { return {}; }
   virtual std::string print() const { return to_string(); }
 };
@@ -41,8 +38,7 @@ class IR_Move : public IR_Node {
 public:
   IR_Move(IR_Reg *dest, IR_Value *src);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 
 private:
@@ -55,8 +51,7 @@ class IR_LoadConst : public IR_Node {
 public:
   IR_LoadConst(IR_Reg *dest, IR_Const *value);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
@@ -68,8 +63,7 @@ class IR_LoadField : public IR_Node {
 public:
   IR_LoadField(IR_Reg *dest, IR_Field *field);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *dest_;
@@ -81,8 +75,7 @@ class IR_StoreField : public IR_Node {
 public:
   IR_StoreField(IR_Field *field, IR_Value *value);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Field *field_;
@@ -95,8 +88,7 @@ public:
   IR_Call(IR_Reg *result, IR_Value *function, IR_Value *this_ptr,
           std::vector<IR_Value *> args);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Reg *result_;
@@ -111,8 +103,7 @@ public:
   enum class Op { ADD, SUB, MUL, DIV, MOD, AND, OR, XOR };
   IR_Binary(Op op, IR_Reg *dest, IR_Value *left, IR_Value *right);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value*> get_used_values() const override {
       // ОБЯЗАТЕЛЬНО возвращаем и цель, и операнды
       return { dest_, left_, right_ }; 
@@ -130,8 +121,7 @@ public:
   enum class Cond { EQ, NE, LT, LE, GT, GE };
   IR_Compare(Cond cond, IR_Reg *dest, IR_Value *left, IR_Value *right);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value*> get_used_values() const override ;
 private:
   Cond cond_;
@@ -145,8 +135,7 @@ class IR_BranchIf : public IR_Node {
 public:
   IR_BranchIf(IR_Value *cond, Label true_label);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
 
 private:
   IR_Value *cond_;
@@ -158,8 +147,7 @@ class IR_Branch : public IR_Node {
 public:
   explicit IR_Branch(Label label);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
 
 private:
   Label label_;
@@ -170,8 +158,7 @@ class IR_Label : public IR_Node {
 public:
   explicit IR_Label(Label label);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
 
 private:
   Label label_;
@@ -182,8 +169,7 @@ class IR_Return : public IR_Node {
 public:
   explicit IR_Return(IR_Value *value = nullptr);
   std::string to_string() const override;
-  void generate(RelocatableBuffer  &builder,
-                EmitContext& ctx) override;
+  void generate(EmitContext& ctx) override;
   std::vector<IR_Value *> get_used_values() const override;
 private:
   IR_Value *value_;
