@@ -58,6 +58,26 @@ private:
   IR_Const *value_;
 };
 
+class IR_LoadString : public IR_Node {
+public:
+    IR_LoadString(IR_Reg* dest, const std::string& value)
+        : dest_(dest), value_(value) {}
+
+    std::string to_string() const override {
+        return std::format("{} = \"{}\"", dest_->to_string(), value_);
+    }
+
+    void generate(EmitContext& ctx) override;
+
+    std::vector<IR_Value*> get_used_values() const override {
+        return { dest_ };
+    }
+
+private:
+    IR_Reg* dest_;
+    std::string value_;
+};
+
 // Загрузка поля
 class IR_LoadField : public IR_Node {
 public:

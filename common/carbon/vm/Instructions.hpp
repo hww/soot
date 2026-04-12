@@ -330,27 +330,134 @@ namespace carbon::vm {
         }
 
         void initialize_table() {
-            // Control flow
-            add_instruction(Opcode::RETURN,         "ret", 1, false);
+            // ============================================================
+            // Control Flow Instructions
+            // ============================================================
+            add_instruction(Opcode::RETURN,         "return", 1, false);
             add_instruction(Opcode::MOVE,           "move", 2, false);
             add_instruction(Opcode::CALL,           "call", 3, false);
-            add_instruction(Opcode::CALL_NATIVE,    "calln", 3, false);
+            add_instruction(Opcode::CALL_NATIVE,    "call_native", 3, false);
             add_instruction(Opcode::BRANCH,         "br", 1, true);
-            add_instruction(Opcode::BRANCH_IF,      "brif", 1, true);
-            add_instruction(Opcode::BRANCH_IF_NOT,  "brno", 1, true);
+            add_instruction(Opcode::BRANCH_IF,      "br_if", 2, true);
+            add_instruction(Opcode::BRANCH_IF_NOT,  "br_if_not", 2, true);
 
-            // Integer operations
-            add_instruction(Opcode::ADD_INT, "add", 3, false);
-            add_instruction(Opcode::SUB_INT, "sub", 3, false);
-            add_instruction(Opcode::MUL_INT, "mul", 3, false);
-            add_instruction(Opcode::DIV_INT, "div", 3, false);
-            add_instruction(Opcode::MOD_INT, "mod", 3, false);
-            add_instruction(Opcode::ABS_INT, "abs", 2, false);
-            add_instruction(Opcode::NEG_INT, "neg", 2, false);
-            add_instruction(Opcode::ASH_INT, "ash", 2, false);
-            add_instruction(Opcode::TO_INT,  "toi", 2, false);
+            // ============================================================
+            // Integer Arithmetic Operations
+            // ============================================================
+            add_instruction(Opcode::ADD_INT,    "add_int", 3, false);
+            add_instruction(Opcode::SUB_INT,    "sub_int", 3, false);
+            add_instruction(Opcode::MUL_INT,    "mul_int", 3, false);
+            add_instruction(Opcode::DIV_INT,    "div_int", 3, false);
+            add_instruction(Opcode::MOD_INT,    "mod_int", 3, false);
+            add_instruction(Opcode::ABS_INT,    "abs_int", 2, false);
+            add_instruction(Opcode::NEG_INT,    "neg_int", 2, false);
+            add_instruction(Opcode::ASH_INT,    "ash_int", 3, false);
+            add_instruction(Opcode::TO_INT,     "to_int", 2, false);
 
-            // Add more instructions as needed...
+            // ============================================================
+            // Integer Immediate Operations
+            // ============================================================
+            add_instruction(Opcode::LOAD_IMMEDIATE_INT, "ldi_int", 2, true);
+            add_instruction(Opcode::ADD_IMM,            "add_imm", 3, true);
+            add_instruction(Opcode::SUB_IMM,            "sub_imm", 3, true);
+            add_instruction(Opcode::MUL_IMM,            "mul_imm", 3, true);
+            add_instruction(Opcode::DIV_IMM,            "div_imm", 3, true);
+
+            // ============================================================
+            // Floating Point Arithmetic Operations
+            // ============================================================
+            add_instruction(Opcode::ADD_FLOAT,   "add_float", 3, false);
+            add_instruction(Opcode::SUB_FLOAT,   "sub_float", 3, false);
+            add_instruction(Opcode::MUL_FLOAT,   "mul_float", 3, false);
+            add_instruction(Opcode::DIV_FLOAT,   "div_float", 3, false);
+            add_instruction(Opcode::MOD_FLOAT,   "mod_float", 3, false);
+            add_instruction(Opcode::ABS_FLOAT,   "abs_float", 2, false);
+            add_instruction(Opcode::NEG_FLOAT,   "neg_float", 2, false);
+            add_instruction(Opcode::TO_FLOAT,    "to_float", 2, false);
+
+            // ============================================================
+            // Comparison Operations
+            // ============================================================
+            add_instruction(Opcode::CMP_EQUAL,           "cmp_eq", 3, false);
+            add_instruction(Opcode::CMP_NOT_EQUAL,       "cmp_ne", 3, false);
+            add_instruction(Opcode::CMP_GT,              "cmp_gt", 3, false);
+            add_instruction(Opcode::CMP_GT_EQUAL,        "cmp_ge", 3, false);
+            add_instruction(Opcode::CMP_LT,              "cmp_lt", 3, false);
+            add_instruction(Opcode::CMP_LT_EQUAL,        "cmp_le", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_EQUAL,     "cmp_feq", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_NOT_EQUAL, "cmp_fne", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_GT,        "cmp_fgt", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_GT_EQUAL,  "cmp_fge", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_LT,        "cmp_flt", 3, false);
+            add_instruction(Opcode::CMP_FLOAT_LT_EQUAL,  "cmp_fle", 3, false);
+
+            // ============================================================
+            // Logical Operations
+            // ============================================================
+            add_instruction(Opcode::LOG_AND, "and", 3, false);
+            add_instruction(Opcode::LOG_OR,  "or", 3, false);
+            add_instruction(Opcode::LOG_NOT, "not", 2, false);
+
+            // ============================================================
+            // Bitwise Operations
+            // ============================================================
+            add_instruction(Opcode::BIT_AND, "bit_and", 3, false);
+            add_instruction(Opcode::BIT_OR,  "bit_or", 3, false);
+            add_instruction(Opcode::BIT_XOR, "bit_xor", 3, false);
+            add_instruction(Opcode::BIT_NOR, "bit_nor", 3, false);
+            add_instruction(Opcode::BIT_NOT, "bit_not", 2, false);
+
+            // ============================================================
+            // Utility Operations
+            // ============================================================
+            add_instruction(Opcode::LOAD_ARGC,      "load_argc", 1, false);
+            add_instruction(Opcode::GET_SID_STRING, "get_sid_str", 2, false);
+
+            // ============================================================
+            // Lookup Operations (Environment Access)
+            // ============================================================
+            add_instruction(Opcode::LOOKUP_INT,     "lookup_int", 2, true);
+            add_instruction(Opcode::LOOKUP_FLOAT,   "lookup_float", 2, true);
+            add_instruction(Opcode::LOOKUP_POINTER, "lookup_ptr", 2, true);
+
+            // ============================================================
+            // Indirect Load Operations (Memory Access via Pointer)
+            // ============================================================
+            add_instruction(Opcode::LOAD_IND_INT,     "ld_ind_int", 2, false);
+            add_instruction(Opcode::LOAD_IND_FLOAT,   "ld_ind_float", 2, false);
+            add_instruction(Opcode::LOAD_IND_POINTER, "ld_ind_ptr", 2, false);
+
+            // ============================================================
+            // Indirect Store Operations (Memory Access via Pointer)
+            // ============================================================
+            add_instruction(Opcode::STORE_IND_INT,     "st_ind_int", 2, false);
+            add_instruction(Opcode::STORE_IND_FLOAT,   "st_ind_float", 2, false);
+            add_instruction(Opcode::STORE_IND_POINTER, "st_ind_ptr", 2, false);
+
+            // ============================================================
+            // Static Load Operations (Data Segment Access)
+            // ============================================================
+            add_instruction(Opcode::LOAD_STATIC_INT,     "ld_static_int", 2, true);
+            add_instruction(Opcode::LOAD_STATIC_FLOAT,   "ld_static_float", 2, true);
+            add_instruction(Opcode::LOAD_STATIC_POINTER, "ld_static_ptr", 2, true);
+
+            // ============================================================
+            // Immediate Value Load Operations
+            // ============================================================
+            add_instruction(Opcode::LOAD_IMMEDIATE_FLOAT, "ldf_imm", 2, true);
+            add_instruction(Opcode::LOAD_IMMEDIATE_PTR,   "ldp_imm", 2, true);
+
+            // ============================================================
+            // Extended Operations (Reserved for Future Use)
+            // ============================================================
+            add_instruction(Opcode::CALL_BY_NAME,  "call_name", 2, false);
+            add_instruction(Opcode::CREATE_LAMBDA, "lambda", 3, false);
+
+            // ============================================================
+            // Debug Operations
+            // ============================================================
+            add_instruction(Opcode::DEBUG_BREAK, "break", 0, false);
+            add_instruction(Opcode::NOOP,        "noop", 0, false);
         }
 
         void add_instruction(Opcode opcode, const char* name, u8 operand_count, bool has_immediate) {

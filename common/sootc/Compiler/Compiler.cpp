@@ -57,7 +57,17 @@ IR_Value* Compiler::compile(const script::Object& form, Env* env) {
     
     if (form.is_number()) return compile_number(form, env);
     if (form.is_symbol()) return compile_symbol(form, env);
-
+    if (form.is_string()) { 
+        // Создаем конкретный объект IR_Reg вместо абстрактного IR_Value
+        // Type*, index (пока 0), is_arg (false)
+        auto* target = new IR_Reg(ts_.lookup_type("string"), 0, false);
+        
+        std::string str_value = form.to_std_string(); 
+        
+        // Используем static_cast, так как IR_Reg наследуется от IR_Value
+        env->emit(form, std::make_unique<IR_LoadString>(target, str_value));
+        return target; 
+    }
     if (form.is_pair()) {
         auto pair = form.as_pair();
         auto head = pair->car;
@@ -394,8 +404,22 @@ IR_Value* Compiler::compile_sub(const script::Object& form, const script::Object
 // Атомы и вызовы
 // ============================================================================
 
-IR_Value* Compiler::compile_number(const script::Object& form, Env*) {
-    return new IR_Const(ts_.lookup_type("int"), form.as_integer());
+IR_Value* Compiler::compile_number(const script::Object& form, Env* env) {
+    if (form.is_integer()) {
+        s64 val = form.as_integer();
+        
+        // Анализ: если это целое, но оно используется там, где ожидается float 
+        // (или если оно слишком большое для int32, если твоя ВМ 32-битная)
+        // В данном случае просто создаем int-константу
+        return IR_Const::create_int(ts_.lookup_type("int"), val);
+    } 
+    
+    if (form.is_float()) {
+        // Явное приведение к float убирает ошибку ambiguous call
+        return IR_Const::create_float(ts_.lookup_type("float"), static_cast<float>(form.as_float()));
+    }
+
+    throw std::runtime_error("Unknown numeric form");
 }
 
 IR_Value* Compiler::compile_symbol(const script::Object& form, Env* env) {
@@ -407,7 +431,7 @@ IR_Value* Compiler::compile_symbol(const script::Object& form, Env* env) {
         Type* keyword_type = ts_.lookup_type("symbol");
         auto string_id = static_cast<s64>(StringId(name));
         // TODO: нужно создать IR_Const, который хранит StringId
-        return new IR_Const(keyword_type,string_id); // placeholder
+        return IR_Const::create_int(keyword_type,string_id); // placeholder
     }
     
     // Обычный символ — ищем в окружении

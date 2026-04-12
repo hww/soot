@@ -38,9 +38,15 @@ std::string IR_Reg::to_string() const {
 // IR_Const
 // ===========================================================
 
-IR_Const::IR_Const(Type *type, s64 val) : IR_Value(type), int_val_(val), is_float_(false) {}
+// Статические методы создания
+IR_Const* IR_Const::create_int(Type* type, s64 val) {
+    return new IR_Const(type, val);
+}
 
-IR_Const::IR_Const(Type *type, float val) : IR_Value(type), float_val_(val), is_float_(true) {}
+IR_Const* IR_Const::create_float(Type* type, float val) {
+    return new IR_Const(type, val);
+}
+
 
 IR_Reg* IR_Const::to_reg(Env& env) {
     auto* f_env = env.function_env();

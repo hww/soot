@@ -94,24 +94,33 @@ private:
 };
 
 class IR_Const : public IR_Value {
-  public:
-    IR_Const(Type *type, s64 val);
-    IR_Const(Type *type, float val);
+public:
+    // Используем явные статические фабрики, чтобы избежать путаницы
+    static IR_Const* create_int(Type* type, s64 val);
+    static IR_Const* create_float(Type* type, float val);
+
     std::string to_string() const override;
-    bool        is_const() const override {
-        return true;
-    }
-    bool is_float() const {
-        return is_float_;
-    }
-    s64 get_int() const {
-        return int_val_;
-    }
-    float get_float() const {
-        return float_val_;
-    }
+    bool is_const() const override { return true; }
+    bool is_float() const { return is_float_; }
+    s64 get_int() const { return int_val_; }
+    float get_float() const { return float_val_; }
+
     IR_Reg* to_reg(Env& env) override;
-  private:
+
+private:
+    // Один приватный конструктор для всего
+    IR_Const(Type* type, s64 i_val, bool is_f) 
+        : IR_Value(type), int_val_(i_val), is_float_(is_f) {}
+    
+    IR_Const(Type* type, float f_val, bool is_f) 
+        : IR_Value(type), float_val_(f_val), is_float_(is_f) {}
+
+    IR_Const(Type* type, s64 val) 
+        : IR_Value(type), int_val_(val), is_float_(false) {}
+
+    IR_Const(Type* type, float val) 
+        : IR_Value(type), float_val_(val), is_float_(true) {}
+
     s64   int_val_ = 0;
     float float_val_ = 0.0f;
     bool  is_float_ = false;

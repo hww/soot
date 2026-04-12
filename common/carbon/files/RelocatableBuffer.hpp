@@ -231,7 +231,9 @@ public:
     } 
 
     void add_relocatable(Relocation::Type type, const std::string& name = "") {
-        add_relocatable(type, name);
+        // Вызываем версию: add_relocatable(u64 offset, Relocation::Type type, const std::string& name)
+        // Она в свою очередь вызовет add_relocatable_at(size + 0, ...)
+        this->add_relocatable(0, type, name); 
     }
 
     void add_relocatable_pointer(u64 ptr, Relocation::Type type, const std::string& name = "") {
@@ -291,6 +293,15 @@ public:
         }
     }
 
+    // В файле carbon/files/RelocatableBuffer.hpp
+    void patch_u32(u64 offset, u32 value) {
+        if (offset + 4 > bytes_.size()) {
+            throw std::out_of_range("RelocatableBuffer::patch_u32 out of bounds");
+        }
+        // Используем memcpy, чтобы не поймать проблемы с выравниванием (unaligned access)
+        std::memcpy(&bytes_[offset], &value, 4);
+    }
+    
     // ==============================================================================
     // Получить информацию о релокации по имени или индексу
     // ==============================================================================

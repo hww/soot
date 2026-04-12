@@ -2,6 +2,9 @@
 
 (define add (function ((a int) (b int)) (+ a b)))
 (define sub (function ((a int) (b int)) (- a b)))
+(define get-name (function () "Test String"))
+(define get-scale (function () 0.1))
+(define get-max-value (function () 999999999))
 
 (deftype vector3 (basic) 
     (

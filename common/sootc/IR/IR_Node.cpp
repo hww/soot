@@ -20,13 +20,53 @@ std::string IR_LoadConst::to_string() const { return fmt::format("load {}, {}", 
 std::vector<IR_Value*> IR_LoadConst::get_used_values() const { 
     return { dest_ }; 
 }
+
 void IR_LoadConst::generate(EmitContext& ctx) {
     u32 d = ctx.regs.at(dest_);
+
     if (value_->is_float()) {
-        ctx.code.add_instruction(Opcode::LOAD_IMMEDIATE_FLOAT, d, 0, 0); // В твоем Opcode есть LOAD_IMMEDIATE_FLOAT
+        float f_val = value_->get_float();
+        // Float всегда идет в статику, так как в 16 бит инструкции он не влезет
+        u16 slot_idx = static_cast<u16>(ctx.statics.add_float(f_val));
+        
+        // Используем LOAD_STATIC_FLOAT (0xB1)
+        // Формат: op(8), dest(8), index(16)
+        ctx.code.add_instruction_imm_u16(Opcode::LOAD_STATIC_FLOAT, d, slot_idx);
+        
     } else {
-        ctx.code.add_instruction(Opcode::LOAD_IMMEDIATE_INT, d, static_cast<u16>(value_->get_int()), 0);
+        int32_t i_val = value_->get_int();
+
+        // Проверяем, влезает ли целое число в signed 16-bit immediate
+        if (i_val >= -32768 && i_val <= 32767) {
+            // Влезает -> используем быструю инструкцию LOAD_IMMEDIATE_INT (0x20)
+            ctx.code.add_instruction_imm_u16(Opcode::LOAD_IMMEDIATE_INT, d, static_cast<s16>(i_val));
+        } else {
+            // Не влезает -> кладем в StaticSegment
+            u16 slot_idx = static_cast<u16>(ctx.statics.add_int32(i_val));
+            
+            // Используем LOAD_STATIC_INT (0xB0)
+            ctx.code.add_instruction_imm_u16(Opcode::LOAD_STATIC_INT, d, slot_idx);
+        }
     }
+}
+
+// --- IR_LoadString ---
+void IR_LoadString::generate(EmitContext& ctx) {
+    // 1. Получаем индекс целевого регистра
+    u32 d = ctx.regs.at(dest_);
+
+    // 2. Регистрируем строку в сегменте статики.
+    // add_string_pointer вернет индекс слота, в котором будет лежать оффсет на строку.
+    u32 slot_idx = ctx.statics.add_string_pointer(value_);
+
+    // 3. Генерируем инструкцию загрузки указателя из статики.
+    // Используем формат с 16-битным индексом (k).
+    // Opcode::LOAD_STATIC_POINTER (0xB2)
+    ctx.code.add_instruction_imm_u16(
+        carbon::vm::Opcode::LOAD_STATIC_POINTER, 
+        static_cast<u8>(d), 
+        static_cast<u16>(slot_idx)
+    );
 }
 
 // --- IR_LoadField ---

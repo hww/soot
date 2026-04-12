@@ -65,13 +65,23 @@ void FunctionCompiler::compile_body(const script::Object& body_forms, FunctionEn
     }
     
     if (last_val) {
-        env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
+        // КРИТИЧЕСКИЙ МОМЕНТ: 
+        // Если last_val это константа или сложное выражение, 
+        // нам нужно гарантировать, что оно в регистре.
+        // Метод to_reg(env) создаст IR_LoadConst или IR_Move, если это необходимо.
+        IR_Reg* final_reg = last_val->to_reg(*env);
+        
+        env->emit(script::Object(), std::make_unique<IR_Return>(final_reg));
     } else {
         Type* obj_type = ts_.lookup_type("object");
-        env->emit(script::Object(), std::make_unique<IR_Return>(new IR_Const(obj_type, static_cast<s64>(0))));
+        // Создаем константу 0 (nil/null)
+        IR_Const* nil_const = IR_Const::create_int(obj_type, 0);
+        
+        // Также переводим её в регистр перед возвратом
+        IR_Reg* nil_reg = nil_const->to_reg(*env);
+        env->emit(script::Object(), std::make_unique<IR_Return>(nil_reg));
     }
 }
-
 // ============================================================================
 // parse_arguments
 // ============================================================================
@@ -141,13 +151,16 @@ RelocatableBuffer FunctionCompiler::build(FunctionEnv* fe, const std::string& na
         lg::info("FunctionCompiler::build {}", node->to_string());
         node->generate(ctx);  // ← generate теперь принимает RelocatableBuffer
     }
+    
+    // Сбрасываем накопленные статические данные в data_buffer
+    statics.emit_to(data_buffer);
 
     // 5. Заголовок функции
     FunctionDesc desc{}; 
     desc.name = StringId(fe->get_name());
     desc.code_count = static_cast<u32>(code_buffer.size() / sizeof(Instruction));
     desc.code_ptr.offset = sizeof(FunctionDesc);
-    desc.data_size = 0;
+    desc.data_size = static_cast<u32>(data_buffer.size());
     desc.data_ptr = nullptr;
     desc.debug_count = 0;
     desc.debug_ptr = nullptr;

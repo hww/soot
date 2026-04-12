@@ -1,86 +1,85 @@
 #pragma once
 
 #include "CommonTypes.hpp"
+#include "common/carbon/files/RelocatableBuffer.hpp"
 #include <vector>
 #include <map>
 
 namespace sootc {
-
 class StaticSegment {
 public:
-    using SlotIndex = u32; // Индекс kk в командах ВМ
-    using Offset = u32;    // Байтовое смещение внутри пула
+    using SlotIndex = u32;
 
-    // Добавление I32/U32 - занимает 1 слот
+    // Добавляем значения в "таблицу констант" (slots)
     SlotIndex add_int32(int32_t value) {
-        return add_to_slots(static_cast<u32>(value));
+        slots.push_back(static_cast<u32>(value));
+        return static_cast<SlotIndex>(slots.size() - 1);
     }
 
-    // Добавление Float - занимает 1 слот
     SlotIndex add_float(float value) {
         u32 bits;
         std::memcpy(&bits, &value, 4);
-        return add_to_slots(bits);
+        slots.push_back(bits);
+        return static_cast<SlotIndex>(slots.size() - 1);
     }
 
-    // Добавление StringId (хэша) - занимает 1 слот
-    SlotIndex add_string_id(u32 hash) {
-        return add_to_slots(hash);
-    }
-
-SlotIndex add_string_pointer(const std::string& str) {
+    SlotIndex add_string_pointer(const std::string& str) {
         if (auto it = string_cache.find(str); it != string_cache.end()) {
             return it->second;
         }
 
         SlotIndex slot_idx = static_cast<SlotIndex>(slots.size());
+        // Резервируем место под оффсет (будет запатчен релокацией)
         slots.push_back(0); 
 
-        // Выравнивание для строк обычно 1, но для других данных может быть больше
-        Offset str_offset = add_to_raw_buffer(str.c_str(), str.size() + 1, 1);
+        // Записываем строку в raw_buffer
+        size_t str_offset = raw_buffer.size();
+        const char* c_str = str.c_str();
+        raw_buffer.insert(raw_buffer.end(), c_str, c_str + str.size() + 1);
+
+        // Запоминаем, что слот slot_idx должен указывать на str_offset внутри raw_buffer
+        pending_string_relocs.push_back({slot_idx, static_cast<u32>(str_offset)});
         
-        slots[slot_idx] = static_cast<u32>(str_offset);
         string_cache[str] = slot_idx;
         return slot_idx;
     }
 
-    std::vector<u8> finalize() {
-        std::vector<u8> result;
-        result.reserve(slots.size() * 4 + raw_buffer.size());
+    // Главный метод: переносит всё содержимое в итоговый RelocatableBuffer
+    void emit_to(RelocatableBuffer& final_buffer) {
+        size_t base_offset = final_buffer.size();
+
+        // 1. Записываем таблицу слотов
         for (u32 val : slots) {
-            u8 bytes[4];
-            std::memcpy(bytes, &val, 4);
-            result.insert(result.end(), bytes, bytes + 4);
+            final_buffer.add_u32(val);
         }
-        result.insert(result.end(), raw_buffer.begin(), raw_buffer.end());
-        return result;
+
+        // 2. Записываем сырые данные (строки и т.д.)
+        size_t raw_data_start = final_buffer.size();
+        final_buffer.add_bytes(raw_buffer.data(), raw_buffer.size());
+
+        // 3. Патчим оффсеты строк внутри уже записанных слотов
+        // Теперь оффсет в слоте будет указывать точно на начало строки относительно начала блока данных
+        for (auto& reloc : pending_string_relocs) {
+            u32 final_str_pos = static_cast<u32>(raw_data_start - base_offset + reloc.raw_offset);
+            // Патчим записанный ранее u32 в final_buffer
+            final_buffer.patch_u32(base_offset + (reloc.slot_idx * 4), final_str_pos);
+        }
+    }
+
+    size_t total_size() const {
+        return (slots.size() * 4) + raw_buffer.size();
     }
 
 private:
+    struct StringReloc {
+        u32 slot_idx;
+        u32 raw_offset;
+    };
+
     std::vector<u32> slots;
     std::vector<u8> raw_buffer;
     std::map<std::string, SlotIndex> string_cache;
-
-    SlotIndex add_to_slots(u32 val) {
-        slots.push_back(val);
-        return static_cast<SlotIndex>(slots.size() - 1);
-    }
-
-    Offset add_to_raw_buffer(const void* data, size_t size, size_t alignment) {
-        // Чинним варнинг и добавляем реальное выравнивание
-        size_t current_pos = slots.size() * 4 + raw_buffer.size();
-        size_t padding = (alignment - (current_pos % alignment)) % alignment;
-        
-        for (size_t i = 0; i < padding; ++i) {
-            raw_buffer.push_back(0);
-        }
-
-        Offset offset = static_cast<Offset>(slots.size() * 4 + raw_buffer.size());
-        const u8* ptr = reinterpret_cast<const u8*>(data);
-        raw_buffer.insert(raw_buffer.end(), ptr, ptr + size);
-
-        return offset;
-    }
+    std::vector<StringReloc> pending_string_relocs;
 };
 
 } // namespace sootc

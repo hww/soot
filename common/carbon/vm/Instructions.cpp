@@ -72,10 +72,7 @@ namespace carbon::vm {
 
             // Return (no operands or one operand)
             case Opcode::RETURN:
-                if (inst.a != 0 || inst.b != 0 || inst.c != 0) {
-                    return std::format("{} {}", mnemonic, reg(inst.a));
-                }
-                return mnemonic;
+                return std::format("{} {}", mnemonic, reg(inst.a));
 
             // Call instructions
             case Opcode::CALL:
