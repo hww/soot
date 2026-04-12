@@ -17,7 +17,8 @@ StateCompiler::StateCompiler(TypeSystem& ts, Compiler* compiler)
 // extract_state_name
 // ============================================================================
 
-std::string StateCompiler::extract_state_name(const script::Object& form) {
+std::string StateCompiler::extract_state_name(const script::Object& form, const script::Object& rest) {
+    (void)rest;
     // form = (defstate idle (vector3) ...)
     auto pair = form.as_pair();
     if (pair) {
@@ -36,7 +37,8 @@ std::string StateCompiler::extract_state_name(const script::Object& form) {
 // extract_parent_name
 // ============================================================================
 
-std::string StateCompiler::extract_parent_name(const script::Object& form) {
+std::string StateCompiler::extract_parent_name(const script::Object& form, const script::Object& rest) {
+    (void)rest;
     // form = (defstate idle (vector3) ...)
     //                      ^^^^^^^^ третий элемент
     auto pair = form.as_pair();
@@ -62,40 +64,60 @@ std::string StateCompiler::extract_parent_name(const script::Object& form) {
 // extract_handlers
 // ============================================================================
 
-StateCompiler::HandlerForms StateCompiler::extract_handlers(const script::Object& rest) {
+StateCompiler::HandlerForms StateCompiler::extract_handlers(const script::Object& form, const script::Object& rest) {
     HandlerForms handlers;
-    
+    // :rest = (name (type) :virtual #t :code ....)
     auto current = rest;
+    if (!current.is_pair()) {
+        throw std::runtime_error(fmt::format("Unexpected {} in {}", current.print(), form.print()));   
+    }
+    // Take rest of rest 
+    current = current.as_pair()->cdr;
+    // :rest = ((type) :virtual #t :code ....)
+    if (!current.is_pair()) {
+        throw std::runtime_error(fmt::format("Unexpected {} in {}", current.print(), form.print()));   
+    }
+    current = current.as_pair()->cdr;
+    // :rest = (:virtual #t :code ....)
     while (current.is_pair()) {
         auto item = current.as_pair()->car;
-        if (item.is_pair() && item.as_pair()->car.is_symbol()) {
-            std::string keyword = item.as_pair()->car.as_symbol().c_str();
+        auto next = current.as_pair()->cdr;
+        if (!next.is_pair()) {
+            throw std::runtime_error(fmt::format("Unexpected {} {} in {}", item.print(), next.print(), form.print()));   
+        }
+        auto value = next.as_pair()->car;
+        if (item.is_symbol()) {
+            std::string keyword = item.as_symbol().c_str();
             
             if (keyword == ":virtual") {
                 // :virtual #t или :virtual #f
-                auto value = item.as_pair()->cdr.as_pair()->car;
-                handlers.is_virtual = value.is_symbol() && value.as_symbol().c_str() == std::string("#t");
+                handlers.is_virtual = value.is_true();
             }
             else if (keyword == ":event") {
-                handlers.event = item.as_pair()->cdr.as_pair()->car;
+                handlers.event = value;
             }
             else if (keyword == ":enter") {
-                handlers.enter = item.as_pair()->cdr.as_pair()->car;
+                handlers.enter = value;
             }
             else if (keyword == ":exit") {
-                handlers.exit = item.as_pair()->cdr.as_pair()->car;
+                handlers.exit = value;
             }
             else if (keyword == ":code") {
-                handlers.code = item.as_pair()->cdr.as_pair()->car;
+                handlers.code = value;
             }
             else if (keyword == ":post") {
-                handlers.post = item.as_pair()->cdr.as_pair()->car;
+                handlers.post = value;
             }
             else if (keyword == ":trans") {
-                handlers.trans = item.as_pair()->cdr.as_pair()->car;
+                handlers.trans = value;
+            } else {
+                throw std::runtime_error(fmt::format("Unexpected state keyword '{}' in form {}", keyword.c_str(), form.print()));
             }
+        } else {
+            throw std::runtime_error(fmt::format("Unexpected {} in {}", current.print(), form.print()));   
         }
-        current = current.as_pair()->cdr;
+        
+        current = next.as_pair()->cdr;
     }
     
     return handlers;
@@ -168,39 +190,48 @@ void StateCompiler::compile_handler_with_signature(
     const TypeSpec& expected_signature,
     MethodEnv*& out_method_env) {
     
-    if (!handler_form.is_true()) {
+    if (handler_form.is_none()) { // или !handler_form.is_true() как в твоем оригинале
         out_method_env = nullptr;
         return;
     }
     
-    Type* obj_type = ts_.lookup_type("object");
-    auto* m_env = new MethodEnv(0, handler_name, s_env, obj_type);
+    // 1. Создаем Env. Важно: берем тип владельца стейта
+    Type* owner_type = const_cast<Type*>(s_env->type());
+    auto* m_env = new MethodEnv(0, handler_name, s_env, owner_type);
     
-    // Добавляем аргументы согласно expected_signature
-    // expected_signature = (function (arg_types...) return_type)
-    int arg_idx = 0;
+    // 2. Устанавливаем ту самую сигнатуру, которая была в твоем старом коде
+    m_env->method_function_type = expected_signature; 
+
+    // 3. Регистрируем аргументы
+    // Индекс 0 — это ВСЕГДА self (твой старый код его пропускал)
+    m_env->define_argument("self", owner_type, 0);
+    
+    // Остальные аргументы из сигнатуры (например, position) пойдут с индекса 1
+    int arg_idx = 1;
     size_t num_args = expected_signature.get_args_count();
     
-    // Последний аргумент в function - это возвращаемый тип
+    // Проходим по аргументам сигнатуры (минус возвращаемое значение)
     for (size_t i = 0; i < num_args - 1; i++) {
-        const TypeSpec& param_type = expected_signature.get_arg(i);
+        const TypeSpec& param_spec = expected_signature.get_arg(i);
+        Type* arg_type = ts_.lookup_type(param_spec);
+        
+        // Именуем arg1, arg2... (или можно вытянуть имя из формы, если нужно)
         std::string arg_name = fmt::format("arg{}", arg_idx);
-        Type* arg_type = ts_.lookup_type(param_type);
         m_env->define_argument(arg_name, arg_type, arg_idx++);
     }
     
-    // Сохраняем сигнатуру метода
-    m_env->method_function_type = expected_signature;
+    // 4. Компилируем тело
+    FunctionCompiler func_compiler(ts_, compiler_);
     
-    // Компилируем тело функции
-    if (handler_form.is_pair()) {
-        auto body = handler_form.as_pair()->cdr;
-        IR_Value* last_val = compiler_->compile(body, m_env);
-        
-        if (last_val) {
-            m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
-        }
+    // Если форма — это список (body...), компилируем его через наш новый унифицированный метод
+    // Если это (function (args) body...), нужно взять cdr->cdr
+    script::Object body = handler_form;
+    if (handler_form.is_pair() && handler_form.as_pair()->car.is_symbol() &&
+        handler_form.as_pair()->car.as_symbol().c_str() == std::string("function")) {
+        body = handler_form.as_pair()->cdr.as_pair()->cdr;
     }
+    
+    func_compiler.compile_body(body, m_env);
     
     out_method_env = m_env;
 }
@@ -212,9 +243,9 @@ void StateCompiler::compile_handler_with_signature(
 IR_Value* StateCompiler::compile(const script::Object& form, 
                                   const script::Object& rest, 
                                   Env* env) {
-    std::string state_name = extract_state_name(form);
-    std::string parent_name = extract_parent_name(form);  
-    auto handlers = extract_handlers(rest);
+    std::string state_name = extract_state_name(form, rest);
+    std::string parent_name = extract_parent_name(form, rest);  
+    auto handlers = extract_handlers(form, rest);
     
     // Находим TypeEnv родителя
     IR_Value* parent_val = env->lookup(parent_name);
@@ -242,25 +273,22 @@ IR_Value* StateCompiler::compile(const script::Object& form,
     s_env->set_is_virtual(handlers.is_virtual);
     s_env->set_defined(true);
 
-
-    // Компилируем обработчики
+    // 1. Инициализируем указатели
     MethodEnv* event_method = nullptr;
     MethodEnv* enter_method = nullptr;
     MethodEnv* exit_method = nullptr;
     MethodEnv* code_method = nullptr;
     MethodEnv* post_method = nullptr;
     MethodEnv* trans_method = nullptr;
-    
-        
-    // Получаем объявленную сигнатуру
+
+    // 2. Компилируем :code с учетом объявленной сигнатуры (аргументы из defstate)
     TypeSpec declared_signature = s_env->type_spec();
-    // Для :code используем declared_signature
-    if (handlers.code.is_true()) {
+    if (!handlers.code.is_none()) {
         compile_handler_with_signature(handlers.code, "code", s_env, 
-                                       declared_signature, code_method);
+                                    declared_signature, code_method);
     }
 
-    // Валидация (теперь implemented_type будет правильным)
+    // 3. Теперь валидация :code имеет смысл, так как code_method уже может быть не null
     if (code_method) {
         TypeSpec implemented_type = code_method->method_function_type;
         if (!ts_.tc(declared_signature, implemented_type)) {
@@ -270,19 +298,29 @@ IR_Value* StateCompiler::compile(const script::Object& form,
         }
     }
 
-    compile_handler(handlers.event, "event", s_env, event_method);
-    compile_handler(handlers.enter, "enter", s_env, enter_method);
-    compile_handler(handlers.exit, "exit", s_env, exit_method);
-    compile_handler(handlers.post, "post", s_env, post_method);
-    compile_handler(handlers.trans, "trans", s_env, trans_method);
-    
+    // 4. Компилируем остальные хендлеры (у них обычно фиксированные сигнатуры или behavior)
+    if (!handlers.event.is_none()) 
+        compile_handler(handlers.event, "event", s_env, event_method);
+
+    if (!handlers.enter.is_none())
+        compile_handler(handlers.enter, "enter", s_env, enter_method);
+
+    if (!handlers.exit.is_none())
+        compile_handler(handlers.exit, "exit", s_env, exit_method);
+
+    if (!handlers.post.is_none())
+        compile_handler(handlers.post, "post", s_env, post_method);
+
+    if (!handlers.trans.is_none())
+        compile_handler(handlers.trans, "trans", s_env, trans_method);
+
+    // 5. Записываем результат в окружение состояния
     s_env->set_event_method(event_method);
     s_env->set_enter_method(enter_method);
     s_env->set_exit_method(exit_method);
     s_env->set_code_method(code_method);
     s_env->set_post_method(post_method);
     s_env->set_trans_method(trans_method);
-    
 
     return new IR_StateValue(s_env);
 }

@@ -89,7 +89,7 @@ namespace carbon::files {
             else
                 lg::error("Definition::inspect unexpected definition type `{}`\n",  type.to_cstring());
         } else {
-            result += " <null>";
+            result += Formatter::instance().format("<null>\n");
         }
         Formatter::instance().inc_column(-2);
 

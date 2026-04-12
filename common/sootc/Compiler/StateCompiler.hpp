@@ -34,9 +34,9 @@ private:
         bool is_virtual = false;
     };
     
-    std::string extract_state_name(const script::Object& form);
-    std::string extract_parent_name(const script::Object& rest);
-    HandlerForms extract_handlers(const script::Object& rest);
+    std::string extract_state_name(const script::Object& form, const script::Object& rest);
+    std::string extract_parent_name(const script::Object& form, const script::Object& rest);
+    HandlerForms extract_handlers(const script::Object& form, const script::Object& rest);
     void compile_handler(const script::Object& handler_form, const std::string& handler_name, 
                          StateEnv* s_env, MethodEnv*& out_method_env);
     void compile_handler_with_signature(

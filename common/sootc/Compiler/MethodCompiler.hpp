@@ -24,9 +24,8 @@ private:
                     std::string& out_type_name,
                     script::Object& out_args_list,
                     script::Object& out_body_forms);
-    void parse_arguments(const script::Object& args_form, MethodEnv* m_env);
-    void compile_body(const script::Object& body_forms, MethodEnv* m_env);
-    
+
+
     TypeSystem& ts_;
     Compiler* compiler_;
 };

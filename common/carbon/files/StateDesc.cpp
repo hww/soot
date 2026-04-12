@@ -35,14 +35,12 @@ std::string StateDesc::to_string() const {
 
 std::string StateDesc::inspect() const {
     std::string result;
-    result += Formatter::instance().format("StateDesc {{\n");
+    result += Formatter::instance().format("StateDesc '{}'{{\n", name);
     Formatter::instance().inc_column(4);
-    result += Formatter::instance().format("name {}\n", name);
     result += Formatter::instance().format("parent_state {}\n", parent_state);
-    result += Formatter::instance().format("count: {:02x}\n", defs_count);
-    result += Formatter::instance().format("offset: 0x{:04x}\n", definitions.offset);
-    result += Formatter::instance().format("flags: 0x{:02x}\n",  static_cast<uint32_t>(flags));
-    result += Formatter::instance().format("{}\n", format_flags(flags));
+    result += Formatter::instance().format("count:       {:02x}\n", defs_count);
+    result += Formatter::instance().format("offset:      0x{:04x}\n", definitions.offset);
+    result += Formatter::instance().format("flags:       0x{:02x} ({})\n",  static_cast<uint32_t>(flags), format_flags(flags));
 
     Formatter::instance().inc_column(4);
 
@@ -55,6 +53,7 @@ std::string StateDesc::inspect() const {
 
     Formatter::instance().inc_column(-4);
     Formatter::instance().inc_column(-4);
+    result += Formatter::instance().format("}}\n");
     return result;
 }
 

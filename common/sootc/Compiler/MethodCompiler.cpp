@@ -115,65 +115,25 @@ IR_Value* MethodCompiler::compile(const script::Object& form,
     auto* m_env = new MethodEnv(method_info.id, method_name, type_env, type_info);
     m_env->set_defined(true);
 
-    parse_arguments(args_list, m_env);
-    compile_body(body_forms, m_env);
+    FunctionCompiler func_compiler(ts_, compiler_);
+    func_compiler.parse_arguments(args_list, m_env);
+    func_compiler.compile_body(body_forms, m_env);
 
     type_env->bind(method_name, new IR_MethodValue(m_env));
     return new IR_MethodValue(m_env);
 }
 
-// ============================================================================
-// parse_arguments
-// ============================================================================
-
-void MethodCompiler::parse_arguments(const script::Object& args_form, MethodEnv* m_env) {
-    auto current = args_form;
-    int arg_idx = m_env->params().size(); // 0 для this
-    
-    while (current.is_pair()) {
-        auto arg_decl = current.as_pair()->car;
-        if (arg_decl.is_pair()) {
-            std::string arg_name = arg_decl.as_pair()->car.as_symbol().c_str();
-            std::string type_name = arg_decl.as_pair()->cdr.as_pair()->car.as_symbol().c_str();
-            Type* arg_type = ts_.lookup_type(type_name);
-            m_env->define_argument(arg_name, arg_type, arg_idx++);
-        } else if (arg_decl.is_symbol()) {
-            std::string arg_name = arg_decl.as_symbol().c_str();
-            Type* arg_type = ts_.lookup_type("object");
-            m_env->define_argument(arg_name, arg_type, arg_idx++);
-        }
-        current = current.as_pair()->cdr;
-    }
-}
-
-// ============================================================================
-// compile_body
-// ============================================================================
-
-void MethodCompiler::compile_body(const script::Object& body_forms, MethodEnv* m_env) {
-    auto current = body_forms;
-    IR_Value* last_val = nullptr;
-    
-    while (current.is_pair()) {
-        last_val = compiler_->compile(current.as_pair()->car, m_env);
-        current = current.as_pair()->cdr;
-    }
-    
-    if (last_val) {
-        m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
-    } else {
-        Type* obj_type = ts_.lookup_type("object");
-        m_env->emit(script::Object(), std::make_unique<IR_Return>(new IR_Const(obj_type, static_cast<s64>(0))));
-    }
-}
 
 // ============================================================================
 // build
 // ============================================================================
 
-carbon::files::RelocatableBuffer MethodCompiler::build(MethodEnv* m_env) {
+RelocatableBuffer MethodCompiler::build(MethodEnv* me) {
+    // Просто создаем функциональный компилятор и просим его собрать наш Env
+    // Так как MethodEnv наследуется от FunctionEnv, всё пройдет гладко.
     FunctionCompiler func_compiler(ts_, compiler_);
-    return func_compiler.build_method(m_env);
+    return func_compiler.build(me, me->type()->name() + "::" + me->get_name()); 
 }
+
 
 } // namespace sootc

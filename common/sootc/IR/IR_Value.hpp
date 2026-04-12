@@ -224,7 +224,7 @@ class IR_None : public IR_Value {
 public:
     IR_None() : IR_Value(nullptr) {}
     std::string to_string() const override { return "none"; }
-    IR_Reg* to_reg(Env& env) override { return nullptr; }
+    IR_Reg* to_reg(Env& env) override { (void)env; return nullptr; }
 };
 
 
@@ -243,12 +243,14 @@ public:
     }
     
     IR_Reg* to_reg(Env& env) override {
+        (void)env;
         // Внешние символы не могут быть использованы напрямую в рантайме?
         // Возвращаем nullptr или загружаем из глобальной таблицы
         return nullptr;
     }
     
     RelocatableBuffer build(Compiler* c) override {
+        (void)c;
         // Внешние символы не генерируют код
         return RelocatableBuffer();
     }
@@ -269,6 +271,7 @@ public:
     }
     
     IR_Reg* to_reg(Env& env) override {
+        (void)env;
         // Загрузка статического объекта в регистр
         return nullptr; // Реализовать позже
     }

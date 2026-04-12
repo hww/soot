@@ -19,6 +19,7 @@ public:
     
     const std::string& name() const { return m_name; }
     const Type* type() const { return m_type; }
+    Type* type() { return m_type; }
     TypeEnv* type_env() const { return m_type_env; }
     
     void set_is_virtual(bool is_virtual) { m_is_virtual = is_virtual; }

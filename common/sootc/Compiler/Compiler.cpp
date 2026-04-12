@@ -36,7 +36,7 @@ Compiler::Compiler(TypeSystem& ts, std::string module_name)
 
 void Compiler::setup_forms() {
     REGISTER_FORM("define", compile_define);
-    REGISTER_FORM("lambda", compile_lambda);
+    REGISTER_FORM("function", compile_lambda);
     REGISTER_FORM("begin",  compile_begin);
     REGISTER_FORM("defmethod", compile_defmethod);
     REGISTER_FORM("deftype", compile_deftype);
@@ -60,13 +60,28 @@ IR_Value* Compiler::compile(const script::Object& form, Env* env) {
 
     if (form.is_pair()) {
         auto pair = form.as_pair();
-        if (pair->car.is_symbol()) {
-            auto op = pair->car.as_symbol().c_str();
+        auto head = pair->car;
+
+        if (head.is_symbol()) {
+            std::string op = head.as_symbol().c_str();
+            
+            // 1. Пытаемся найти специальную форму (if, define, lambda, function...)
             auto it = m_forms.find(op);
             if (it != m_forms.end()) {
                 return it->second(this, form, pair->cdr, env);
             }
+
+            // 2. Если это не спец-форма, проверяем, определена ли такая функция/переменная
+            // Это поможет отловить (funtion ...) до того, как оно станет CALL
+            if (!env->lookup(op)) {
+                lg::error("Compile error: unknown form or undefined symbol '{}'", op);
+                // Вместо падения в CALL, лучше бросить исключение или вернуть IR_Error
+                throw std::runtime_error(fmt::format("Undefined identifier: {}", op));
+            }
         }
+
+        // 3. Только если мы уверены, что голова списка — это что-то вызываемое
+        lg::info("Compiling call to '{}'", head.is_symbol() ? head.as_symbol().c_str() : "lambda");
         return compile_call(form, env);
     }
     return nullptr;

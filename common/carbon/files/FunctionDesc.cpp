@@ -75,15 +75,15 @@ SourceLocation FunctionDesc::find_source_location(u32 instruction_ip) const {
 std::string FunctionDesc::inspect() const {
     std::string result;
 
-    result += Formatter::instance().format("FunctionDesc {{\n");
+    result += Formatter::instance().format("FunctionDesc '{}' {{\n", name.to_string());
     Formatter::instance().inc_column(2);
 
-    result += Formatter::instance().format("code_count: {}\n", code_count);
-    result += Formatter::instance().format("data_size: {}\n", data_size);
-    result += Formatter::instance().format("debug_count: {}\n", debug_count);
-    result += Formatter::instance().format("code_ptr: {}\n", fmt::ptr(code_ptr.get()));
-    result += Formatter::instance().format("data_ptr: {}\n", fmt::ptr(data_ptr.get()));
-    result += Formatter::instance().format("debug_ptr: {}\n", fmt::ptr(debug_ptr.get()));
+    result += Formatter::instance().format("code_count:   {}\n", code_count);
+    result += Formatter::instance().format("data_size:    {}\n", data_size);
+    result += Formatter::instance().format("debug_count:  {}\n", debug_count);
+    result += Formatter::instance().format("code_ptr:     {}\n", fmt::ptr(code_ptr.get()));
+    result += Formatter::instance().format("data_ptr:     {}\n", fmt::ptr(data_ptr.get()));
+    result += Formatter::instance().format("debug_ptr:    {}\n", fmt::ptr(debug_ptr.get()));
     result += Formatter::instance().format("owner_module: {}\n", fmt::ptr(owner_module));
 
     Formatter::instance().inc_column(2);

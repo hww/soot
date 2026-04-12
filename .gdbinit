@@ -1,24 +1,29 @@
-# В файле .gdbinit
-import gdb
+python
+# ~/.gdbinit
+# set auto-load safe-path /
+
+import gdb.printing
 
 class StringIdPrinter:
-    """Printer for carbon::lib::StringId"""
-    
     def __init__(self, val):
         self.val = val
-        
     def to_string(self):
         try:
-            # Вызываем to_string() если метод доступен
-            return gdb.parse_and_eval('((carbon::lib::StringId){}).to_cstring()'.format(self.val.address))
+            return self.val.call_method("to_cstring")
         except:
-            # fallback на отображение числового значения
-            return str(self.val['_id'])
-            
+            return "ID: {}".format(self.val['_id'])
     def display_hint(self):
         return 'string'
 
-def register_printers(objfile):
-    objfile.pretty_printers.append(lambda val: StringIdPrinter(val) if str(val.type) == 'carbon::lib::StringId' else None)
+def register_soot_printers():
+    pp = gdb.printing.RegexpCollectionPrettyPrinter("soot")
+    pp.add_printer('StringId', '^carbon::lib::StringId$', StringIdPrinter)
+    gdb.printing.register_pretty_printer(None, pp, replace=True)
 
-gdb.current_objfile().pretty_printers.append(register_printers)
+register_soot_printers()
+end
+
+# Пропуски стека
+skip -gfi /usr/include/c++/*/*
+skip -gfi /usr/include/c++/*
+skip function std::*
