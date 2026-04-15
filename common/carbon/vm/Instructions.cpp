@@ -113,7 +113,7 @@ namespace carbon::vm {
             // Immediate operations
             case Opcode::LOAD_IMMEDIATE_INT:
             case Opcode::LOAD_IMMEDIATE_FLOAT:
-                return std::format("{} {}, {}", mnemonic, reg(inst.a_imm), inst.imm16);
+                return std::format("{} {}, imm({})", mnemonic, reg(inst.a_imm), inst.imm16);
 
             case Opcode::ADD_IMM:
             case Opcode::SUB_IMM:
@@ -125,13 +125,13 @@ namespace carbon::vm {
             case Opcode::LOAD_STATIC_INT:
             case Opcode::LOAD_STATIC_FLOAT:
             case Opcode::LOAD_STATIC_POINTER:
-                return std::format("{} {}, {}", mnemonic, reg(inst.a), inst.imm16);
+                return std::format("{} {}, data[{}]", mnemonic, reg(inst.a), inst.imm16);
 
             // Lookup operations
             case Opcode::LOOKUP_INT:
             case Opcode::LOOKUP_FLOAT:
             case Opcode::LOOKUP_POINTER:
-                return std::format("{} {}, {}", mnemonic, reg(inst.a), inst.imm16);
+                return std::format("{} {}, lookup(data[{}])", mnemonic, reg(inst.a), inst.imm16);
 
             // Indirect loads/stores
             case Opcode::LOAD_IND_INT:

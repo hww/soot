@@ -1,5 +1,8 @@
 ﻿
 # Создаем нашу библиотеку БЕЗ replxx файлов
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common/carbon/defconstruct/include)
+
 add_library(libcarbon 
     # External
     common/util/Crc32.cpp
@@ -11,6 +14,12 @@ add_library(libcarbon
     ## Local Libs
     common/carbon/lib/StringIdManager.cpp
     common/carbon/lib/Ptr.cpp
+
+    ## Defconstruct
+    common/carbon/defconstruct/source/base/sidbase.cpp
+    common/carbon/defconstruct/source/base/binaryfile.cpp
+    common/carbon/defconstruct/source/disassembly/instructions.cpp
+    common/carbon/defconstruct/source/ast/type.cpp
 
     ## Files
     common/carbon/files/RelocatableBuffer.cpp
@@ -30,6 +39,7 @@ add_library(libcarbon
     common/carbon/vm/Instructions.cpp
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
+
     ## Kernel
     common/carbon/kernel/EventMessage.cpp   
     common/carbon/kernel/NativeFunc.cpp   
@@ -42,8 +52,15 @@ add_library(libcarbon
     common/carbon/kernel/Scheduler.cpp
     common/carbon/kernel/StateFrame.cpp
 )
+
+target_compile_features(libcarbon PRIVATE cxx_std_23)
+
+get_target_property(carbon_std libcarbon CXX_STANDARD)
+message(STATUS "libcarbon C++ standard: ${carbon_std}")
+
 # Исполняемый файл для тестирования VM
 add_executable(carbon common/carbon/Main.cpp)
+target_compile_features(carbon PRIVATE cxx_std_23)
 
 target_link_libraries(carbon PRIVATE 
     libsoti 

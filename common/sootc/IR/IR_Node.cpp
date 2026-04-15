@@ -5,7 +5,9 @@
 
 namespace sootc {
 
+// ===================================================
 // --- IR_Move ---
+// ===================================================
 IR_Move::IR_Move(IR_Reg *dest, IR_Value *src) : dest_(dest), src_(src) {}
 std::string IR_Move::to_string() const { return fmt::format("mov {}, {}", dest_->to_string(), src_->to_string()); }
 void IR_Move::generate(EmitContext& ctx) {
@@ -14,7 +16,10 @@ void IR_Move::generate(EmitContext& ctx) {
 std::vector<IR_Value*> IR_Move::get_used_values() const { 
     return { src_ }; 
 }
+
+// ===================================================
 // --- IR_LoadConst ---
+// ===================================================
 IR_LoadConst::IR_LoadConst(IR_Reg *dest, IR_Const *value) : dest_(dest), value_(value) {}
 std::string IR_LoadConst::to_string() const { return fmt::format("load {}, {}", dest_->to_string(), value_->to_string()); }
 std::vector<IR_Value*> IR_LoadConst::get_used_values() const { 
@@ -50,7 +55,9 @@ void IR_LoadConst::generate(EmitContext& ctx) {
     }
 }
 
+// ===================================================
 // --- IR_LoadString ---
+// ===================================================
 void IR_LoadString::generate(EmitContext& ctx) {
     // 1. Получаем индекс целевого регистра
     u32 d = ctx.regs.at(dest_);
@@ -69,7 +76,9 @@ void IR_LoadString::generate(EmitContext& ctx) {
     );
 }
 
+// ===================================================
 // --- IR_LoadField ---
+// ===================================================
 IR_LoadField::IR_LoadField(IR_Reg *dest, IR_Field *field) : dest_(dest), field_(field) {}
 std::vector<IR_Value*> IR_LoadField::get_used_values() const {
     return { dest_, field_->get_base() };
@@ -79,7 +88,9 @@ void IR_LoadField::generate( EmitContext& ctx) {
     ctx.code.add_instruction(Opcode::LOAD_IND_POINTER, ctx.regs.at(dest_), ctx.regs.at(field_->get_base()), static_cast<u16>(field_->get_offset()));
 }
 
+// ===================================================
 // --- IR_StoreField ---
+// ===================================================
 IR_StoreField::IR_StoreField(IR_Field *field, IR_Value *value) : field_(field), value_(value) {}
 std::vector<IR_Value*> IR_StoreField::get_used_values() const {
     return { field_->get_base(), value_ };
@@ -89,7 +100,9 @@ void IR_StoreField::generate( EmitContext& ctx) {
     ctx.code.add_instruction(Opcode::STORE_IND_POINTER, ctx.regs.at(field_->get_base()), ctx.regs.at(value_), static_cast<u16>(field_->get_offset()));
 }
 
+// ===================================================
 // --- IR_Binary ---
+// ===================================================
 IR_Binary::IR_Binary(Op op, IR_Reg* dest, IR_Value* left, IR_Value* right) : op_(op), dest_(dest), left_(left), right_(right) {}
 std::string IR_Binary::to_string() const {
     return fmt::format("binary_op {}, {}, {}", dest_->to_string(), left_->to_string(), right_->to_string());
@@ -111,7 +124,9 @@ void IR_Binary::generate(EmitContext& ctx) {
     ctx.code.add_instruction(opcode, ctx.regs.at(dest_), ctx.regs.at(left_), ctx.regs.at(right_));
 }
 
+// ===================================================
 // --- IR_Compare ---
+// ===================================================
 IR_Compare::IR_Compare(Cond cond, IR_Reg* dest, IR_Value* left, IR_Value* right) : cond_(cond), dest_(dest), left_(left), right_(right) {}
 std::vector<IR_Value*> IR_Compare::get_used_values() const {
     return { dest_, left_, right_ };
@@ -131,7 +146,9 @@ void IR_Compare::generate(EmitContext& ctx) {
     ctx.code.add_instruction(opcode, ctx.regs.at(dest_), ctx.regs.at(left_), ctx.regs.at(right_));
 }
 
+// ===================================================
 // --- Flow Control ---
+// ===================================================
 IR_BranchIf::IR_BranchIf(IR_Value *cond, Label t) : cond_(cond), true_label_(t) {}
 void IR_BranchIf::generate( EmitContext& ctx) {
     ctx.code.add_branch_reference(true_label_.name); 

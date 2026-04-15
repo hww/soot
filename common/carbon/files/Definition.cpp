@@ -66,7 +66,7 @@ namespace carbon::files {
 
     std::string Definition::to_string() const {
         return std::format("Definition(:name '{}', :type '{}', :ptr {:x} :flags {})",
-            name, type, (u64)ptr.offset, get_symbol_flags_string(flags));
+            name.to_string(), type.to_string(), (u64)ptr.offset, get_symbol_flags_string(flags));
     }
 
     std::string Definition::inspect() const {

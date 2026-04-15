@@ -124,7 +124,7 @@ namespace carbon::vm {
             is_suspended = false;
             is_break = false;
             is_error = false;
-            break_reason = nullptr;
+            break_reason.clear();
             current_frame = nullptr;
         }        
 

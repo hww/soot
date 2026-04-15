@@ -30,6 +30,10 @@ public:
     bool save_table(const std::string& filename) const;
     bool load_table(const std::string& filename);
 
+    // Сериализация бинарного файла
+    bool load_dconstruct_sidbase(const std::string& filename);
+    bool save_dconstruct_sidbase(const std::string& filename) const;
+
     // Инспекция
     std::string inspect() const;
     size_t size() const;
