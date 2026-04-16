@@ -20,6 +20,8 @@ add_library(libcarbon
     common/carbon/defconstruct/source/base/binaryfile.cpp
     common/carbon/defconstruct/source/disassembly/instructions.cpp
     common/carbon/defconstruct/source/ast/type.cpp
+    common/carbon/defconstruct/source/compilation/program_binary_element.cpp
+    common/carbon/defconstruct/source/compilation/function.cpp
 
     ## Files
     common/carbon/files/RelocatableBuffer.cpp

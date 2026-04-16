@@ -13,6 +13,9 @@
 #include <set>
 
 namespace dconstruct {
+    /**
+     * Symbol type used in the symbol's table
+     */
     enum class symbol_type {
         B8,
         I32,
@@ -23,6 +26,9 @@ namespace dconstruct {
         UNKNOWN
     };
 
+    /**
+     * Symbol used in the symbol's table
+     */
     struct symbol {
         symbol_type type;
         sid64 id;

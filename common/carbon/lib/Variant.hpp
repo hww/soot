@@ -113,11 +113,15 @@ namespace carbon::lib {
         inline static const StringId u32       = StringId("u32");
         inline static const StringId u16       = StringId("u16");
         inline static const StringId u8        = StringId("u8");
-        inline static const StringId f32       = StringId("float");
-        inline static const StringId boolean   = StringId("bool");
-        inline static const StringId string_id = StringId("string_id");
+        inline static const StringId f32       = StringId("f32");
+        inline static const StringId f64       = StringId("f64");
+        inline static const StringId bool_id   = StringId("bool");
+        inline static const StringId char_id   = StringId("char");
+        inline static const StringId string_id = StringId("string");
+        inline static const StringId sid       = StringId("sid");
         inline static const StringId native    = StringId("native");
         inline static const StringId string    = StringId("string");
+
         inline static const StringId function  = StringId("function");
         inline static const StringId event_message  = StringId("event-message");
         inline static const StringId process   = StringId("process");
@@ -183,7 +187,7 @@ namespace carbon::lib {
         }
 
         Variant(StringId sid)
-            : type_(TypeIds::string_id)
+            : type_(TypeIds::sid)
             , int_value(static_cast<s32>(sid))
         {
         }
@@ -328,7 +332,7 @@ namespace carbon::lib {
         }
 
         void set_bool(bool value) {
-            type_ = TypeIds::boolean;
+            type_ = TypeIds::bool_id;
             int_value = value;
         }
 
@@ -348,7 +352,7 @@ namespace carbon::lib {
         }
 
         void set_sid(StringId sid) {
-            type_ = TypeIds::string_id;
+            type_ = TypeIds::sid;
             int_value = static_cast<s32>(sid);
         }
 
@@ -424,8 +428,8 @@ namespace carbon::lib {
         }
 
         StringId get_sid() const {
-            if (type_ != TypeIds::string_id && type_ != TypeIds::_int_) {
-                throw TypeError("get_sid()", TypeIds::string_id, type_);
+            if (type_ != TypeIds::sid && type_ != TypeIds::_int_) {
+                throw TypeError("get_sid()", TypeIds::sid, type_);
             }
             return static_cast<StringId>(int_value);
         }
@@ -464,23 +468,23 @@ namespace carbon::lib {
         vm_int to_int() const {
             if (type_ == TypeIds::_int_) return int_value;
             if (type_ == TypeIds::_float_) return static_cast<s32>(float_value);
-            if (type_ == TypeIds::boolean) return int_value;
-            if (type_ == TypeIds::string_id) return static_cast<s32>(int_value);
+            if (type_ == TypeIds::bool_id) return int_value;
+            if (type_ == TypeIds::sid) return static_cast<s32>(int_value);
             throw TypeError("to_int() cannot convert from", type_);
         }
 
         vm_float to_float() const {
             if (type_ == TypeIds::_float_) return float_value;
             if (type_ == TypeIds::_int_) return static_cast<float>(int_value);
-            if (type_ == TypeIds::boolean) return int_value;
+            if (type_ == TypeIds::bool_id) return int_value;
             throw TypeError("to_float() cannot convert from", type_);
         }
 
         bool to_bool() const {
-            if (type_ == TypeIds::boolean) return int_value;
+            if (type_ == TypeIds::bool_id) return int_value;
             if (type_ == TypeIds::_int_) return int_value != 0;
             if (type_ == TypeIds::_float_) return float_value != 0.0f;
-            if (type_ == TypeIds::string_id) return int_value != 0;
+            if (type_ == TypeIds::sid) return int_value != 0;
             else return ptr_value != nullptr;
             return false; // null is false
         }
@@ -494,14 +498,14 @@ namespace carbon::lib {
         bool is_null() const { return type_ == TypeIds::null; }
 
         // Проверка семейства или нативного типа используемого VM
-        inline bool is_number() const { return type_ == TypeIds::_int_ || type_ == TypeIds::_float_ || type_ == TypeIds::string_id; }
+        inline bool is_number() const { return type_ == TypeIds::_int_ || type_ == TypeIds::_float_ || type_ == TypeIds::sid; }
         inline bool is_ptr() const { return !is_number(); }
 
         // Проверка конкретного типа VM
         bool is_int() const { return type_ == TypeIds::_int_; }
         bool is_float() const { return type_ == TypeIds::_float_; }
         bool is_bool() const { return type_ == TypeIds::_int_; }
-        bool is_sid() const { return type_ == TypeIds::string_id; }
+        bool is_sid() const { return type_ == TypeIds::sid; }
 
  
         // there are possible thousands of pointer

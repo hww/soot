@@ -3,6 +3,7 @@
 #include <memory>
 #include <filesystem>
 #include <expected>
+#include <stdexcept>
 
 namespace dconstruct {
     struct SIDBaseEntry {
@@ -30,6 +31,22 @@ namespace dconstruct {
         
         [[nodiscard]] const char* search(const sid64 hash) const noexcept;
         [[nodiscard]] bool sid_exists(const sid64 hash) const noexcept;
+        u64 numEntries() { return m_numEntries; }
+        SIDBaseEntry& operator[](size_t idx) {
+            return m_entries[idx];
+        }
+
+        const SIDBaseEntry& operator[](size_t idx) const {
+            return m_entries[idx];
+        }
+
+        const char* get_string(size_t offset) const {
+            return reinterpret_cast<const char*>(m_sidbytes.get()) + offset;
+        }
+
+        const char* get_string_by_offset(size_t offset) {
+            return reinterpret_cast<char*>(m_sidbytes.get()) + offset;
+        }
     };
 }
 

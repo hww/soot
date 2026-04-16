@@ -1,8 +1,10 @@
 // StringIdManager.cpp
 #include "common/carbon/lib/StringIdManager.hpp"
+#include "common/carbon/defconstruct/include/sidbase.h"
 #include "common/util/Log.hpp"
 #include "fmt/format.h"
 #include "util/Crc32.hpp"
+#include <algorithm>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -250,67 +252,65 @@ void StringIdManager::clear() {
 // ============================================================================
 
 // Экспорт в бинарный формат dconstruct
-    bool StringIdManager::save_dconstruct_sidbase(const std::string& filename) const {
-        std::shared_lock lock(mutex_);
+bool StringIdManager::save_dconstruct_sidbase(const std::string& filename) const {
+    std::shared_lock lock(mutex_);
+    
+    // Собираем все записи
+    std::vector<dconstruct::SIDBaseEntry> entries;
+    entries.reserve(reverse_lookup_.size());
+    
+    // Сначала нужно собрать строки и вычислить офсеты
+    std::vector<char> string_pool;
+    
+    for (const auto& [id, name] : reverse_lookup_) {
+        dconstruct::SIDBaseEntry entry;
+        entry.hash = id;  // ВАЖНО: преобразовать 32→64 бит
+        entry.offset = string_pool.size();
+        entries.push_back(entry);
         
-        // Собираем все записи
-        std::vector<SIDBaseEntry> entries;
-        entries.reserve(reverse_lookup_.size());
-        
-        // Сначала нужно собрать строки и вычислить офсеты
-        std::vector<char> string_pool;
-        
-        for (const auto& [id, name] : reverse_lookup_) {
-            SIDBaseEntry entry;
-            entry.hash = id;  // ВАЖНО: преобразовать 32→64 бит
-            entry.offset = string_pool.size();
-            entries.push_back(entry);
-            
-            // Добавляем строку с нуль-терминатором
-            string_pool.insert(string_pool.end(), name.begin(), name.end());
-            string_pool.push_back('\0');
-        }
-        
-        // Сортируем по hash для бинарного поиска
-        std::sort(entries.begin(), entries.end(), 
-                  [](const auto& a, const auto& b) { return a.hash < b.hash; });
-        
-        // Пишем файл
-        std::ofstream file(filename, std::ios::binary);
-        u64 num_entries = entries.size();
-        file.write(reinterpret_cast<const char*>(&num_entries), 8);
-        file.write(reinterpret_cast<const char*>(entries.data()), 
-                   entries.size() * sizeof(SIDBaseEntry));
-        file.write(string_pool.data(), string_pool.size());
-        
-        return true;
+        // Добавляем строку с нуль-терминатором
+        string_pool.insert(string_pool.end(), name.begin(), name.end());
+        string_pool.push_back('\0');
     }
     
-    // Загрузка из бинарного формата dconstruct
-    bool StringIdManager::load_dconstruct_sidbase(const std::string& filename) {
-        auto result = dconstruct::SIDBase::from_binary(filename);
-        if (!result) {
-            return false;
-        }
-        
-        auto& sidbase = *result;
-        
-        std::unique_lock lock(mutex_);
-        reverse_lookup_.clear();
-        
-        // Итерируем по всем записям
-        for (u64 i = 0; i < sidbase.m_numEntries; ++i) {
-            const auto& entry = sidbase.m_entries[i];
-            const char* name = reinterpret_cast<const char*>(
-                sidbase.m_sidbytes.get() + entry.offset);
-            
-            // Преобразуем 64→32 бит (если влазит)
-            u32 id32 = static_cast<u32>(entry.hash);
-            reverse_lookup_[id32] = name;
-        }
-        
-        return true;
+    // Сортируем по hash для бинарного поиска
+    std::sort(entries.begin(), entries.end(), 
+              [](const auto& a, const auto& b) { return a.hash < b.hash; });
+    
+    // Пишем файл
+    std::ofstream file(filename, std::ios::binary);
+    u64 num_entries = entries.size();
+    file.write(reinterpret_cast<const char*>(&num_entries), 8);
+    file.write(reinterpret_cast<const char*>(entries.data()), 
+               entries.size() * sizeof(dconstruct::SIDBaseEntry));
+    file.write(string_pool.data(), string_pool.size());
+    
+    return true;
+}
+
+// Загрузка из бинарного формата dconstruct
+bool StringIdManager::load_dconstruct_sidbase(const std::string& filename) {
+    auto result = dconstruct::SIDBase::from_binary(filename);
+    if (!result) {
+        return false;
     }
-};
+    
+    auto& sidbase = *result;
+    
+    std::unique_lock lock(mutex_);
+    reverse_lookup_.clear();
+    
+    // Итерируем по всем записям
+    for (u64 i = 0; i < sidbase.numEntries(); ++i) {
+        const auto& entry = sidbase[i];
+        const char* name = sidbase.get_string_by_offset(entry.offset);
+        
+        // Преобразуем 64→32 бит (если влазит)
+        u32 id32 = static_cast<u32>(entry.hash);
+        reverse_lookup_[id32] = name;
+    }
+    
+    return true;
+}
 
 } // namespace carbon::lib

@@ -28,12 +28,12 @@ namespace carbon::kernel {
 
         if constexpr (std::is_same_v<T, s32>) {
             if (actual_type == TypeIds::_int_) return arg.get_int32();
-            if (actual_type == TypeIds::string_id) return arg.get_int32();
+            if (actual_type == TypeIds::sid) return arg.get_int32();
             if (actual_type == TypeIds::_float_) return static_cast<s32>(arg.get_float());
         }
         else if constexpr (std::is_same_v<T, vm_int>) {
             if (actual_type == TypeIds::_int_) return arg.get_int();
-            if (actual_type == TypeIds::string_id) return arg.get_int();
+            if (actual_type == TypeIds::sid) return arg.get_int();
             if (actual_type == TypeIds::_float_) return static_cast<vm_int>(arg.get_float());
         }
         else if constexpr (std::is_same_v<T, f32>) {
@@ -49,11 +49,11 @@ namespace carbon::kernel {
             if (actual_type == TypeIds::_float_) return arg.get_float() != 0.0f;
         }
         else if constexpr (std::is_same_v<T, StringId>) {
-            if (actual_type == TypeIds::string_id) return arg.get_sid();
+            if (actual_type == TypeIds::sid) return arg.get_sid();
             if (actual_type == TypeIds::_int_) return static_cast<StringId>(arg.get_int());
         }
         else if constexpr (std::is_same_v<T, std::string>) {
-            if (actual_type == TypeIds::string_id) return arg.to_string();
+            if (actual_type == TypeIds::sid) return arg.to_string();
             if (actual_type == TypeIds::string) return arg.to_string();
         }
         else if constexpr (std::is_pointer_v<T>) {
