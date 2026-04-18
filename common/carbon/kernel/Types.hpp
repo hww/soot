@@ -1,9 +1,8 @@
 ﻿#pragma once
 
 #include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringId.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // Process Status Enum
@@ -66,4 +65,4 @@ namespace carbon::kernel {
         NATIVE      // Нативная функция C++
     };
 
-} // namespace carbon::kernel
+} // namespace carbon

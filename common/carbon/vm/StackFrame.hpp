@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/vm/Instructions.hpp"
@@ -8,17 +7,16 @@
 #include "common/carbon/kernel/EventMessage.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
+#include "file/DCScript.hpp"
 #include "lib/StringId.hpp"
 #include <iostream>
 #include <ostream>
 #include <functional>
 #include <memory>  
 
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::kernel;
+using namespace carbon;
 
-namespace carbon::vm {
+namespace carbon {
 
     // ============================================================================
     // Stack Frame Structure
@@ -38,10 +36,10 @@ namespace carbon::vm {
         // ------------------------------------------------------------------------
         StringId name;                          // Имя фрейма (для отладки и throw)
         FrameType frame_type;                   // Тип фрейма
-        FunctionDesc* byte_code = nullptr;      // Pointer to FunctionDesc
+        ScriptLambda* byte_code = nullptr;      // Pointer to FunctionDesc
         Instruction* code_ptr = nullptr;        // Pointer to FunctionDesc instructions
-        u8* data_ptr = nullptr;                 // Pointer to static data
-        std::shared_ptr<StackFrame> parent;       // Parent frame (for call stack)
+        u64* data_ptr = nullptr;                // Pointer to static data
+        std::shared_ptr<StackFrame> parent;     // Parent frame (for call stack)
         u32 pc = 0;                             // Program counter
         u32 argc = 0;                           // Number of arguments
         u32 ret_num = 0;                        // Return register number
@@ -60,8 +58,8 @@ namespace carbon::vm {
         }
 
        
-        StackFrame(FunctionDesc* functionDesc, std::shared_ptr<StackFrame> parent = nullptr,
-            FrameType frame_type = FrameType::GENERIC, StringId name = TypeIds::none);
+        StackFrame(ScriptLambda* functionDesc, std::shared_ptr<StackFrame> parent = nullptr,
+            FrameType frame_type = FrameType::GENERIC, StringId name = StringIds::none);
 
         virtual ~StackFrame(){}
 
@@ -158,7 +156,7 @@ namespace carbon::vm {
         // ============================================================================
 
         // Установка аргумента с конкретными типами
-        void set_argument_int(u32 index, s32 value) {
+        void set_argument_int(u32 index, i32 value) {
             set_argument(index, Variant(value));
         }
 
@@ -178,20 +176,20 @@ namespace carbon::vm {
             set_argument(index, Variant(value));
         }
 
-        void set_argument_ptr(u32 index, void* value, StringId type_id) {
-            set_argument(index, Variant(value, type_id));
+        void set_argument_ptr(u32 index, void* value) {
+            set_argument(index, Variant(value));
         }
 
         void set_argument_process(u32 index, Process* value) {
-            set_argument(index, Variant(value, TypeIds::process));
+            set_argument(index, Variant(value));
         }
 
         void set_argument_event_message(u32 index, EventMessage* value) {
-            set_argument(index, Variant(value, TypeIds::event_message));
+            set_argument(index, Variant(value));
         }
 
         // Установка локальной переменной с конкретными типами
-        void set_local_int(u32 index, s32 value) {
+        void set_local_int(u32 index, i32 value) {
             set_local(index, Variant(value));
         }
 
@@ -211,12 +209,12 @@ namespace carbon::vm {
             set_local(index, Variant(value));
         }
 
-        void set_local_ptr(u32 index, void* value, StringId type_id) {
-            set_local(index, Variant(value, type_id));
+        void set_local_ptr(u32 index, void* value) {
+            set_local(index, Variant(value));
         }
 
         // Установка регистра с конкретными типами
-        void set_register_int(u32 index, s32 value) {
+        void set_register_int(u32 index, i32 value) {
             set_register(index, Variant(value));
         }
 
@@ -236,8 +234,8 @@ namespace carbon::vm {
             set_register(index, Variant(value));
         }
 
-        void set_register_ptr(u32 index, void* value, StringId type_id) {
-            set_register(index, Variant(value, type_id));
+        void set_register_ptr(u32 index, void* value) {
+            set_register(index, Variant(value));
         }        
 
         // ------------------------------------------------------------------------
@@ -276,18 +274,18 @@ namespace carbon::vm {
         // Data Access
         // ------------------------------------------------------------------------
 
-        vm_int get_static_int(u32 offset) const {
+        i64 get_static_int(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            // Data is stored as Variants, so we need to extract s32
-            return *((s32*)(data_ptr + offset));
+            // Data is stored as Variants, so we need to extract i32
+            return *((i32*)(data_ptr + offset));
         }
 
-        vm_float get_static_float(u32 offset) const {
+        f64 get_static_float(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             return *((float*)(data_ptr + offset));
         }
 
-        const void* get_static_pointer(u32 offset) const {
+        void* get_static_pointer(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             return (void*)(data_ptr + offset);
         }
@@ -350,7 +348,7 @@ namespace carbon::vm {
 
     // Исправленные функции
     inline std::shared_ptr<StackFrame> create_stack_frame(
-        FunctionDesc* FunctionDesc, 
+        ScriptLambda* FunctionDesc, 
         std::shared_ptr<StackFrame> parent = nullptr) 
     {
         return std::make_shared<StackFrame>(FunctionDesc, parent);
@@ -364,7 +362,7 @@ namespace carbon::vm {
     }
 
     inline std::shared_ptr<StackFrame> push_stack_frame(
-        FunctionDesc* FunctionDesc, 
+        ScriptLambda* FunctionDesc, 
         std::shared_ptr<StackFrame> parent = nullptr) {
         
         return create_stack_frame(FunctionDesc, parent);
@@ -400,7 +398,7 @@ namespace carbon::vm {
     class CatchFrame : public StackFrame {
     public:
 
-        CatchFrame(FunctionDesc* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = SID("null"))
+        CatchFrame(ScriptLambda* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = SID("null"))
             : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
         }
 
@@ -433,7 +431,7 @@ namespace carbon::vm {
         /// Данные для очистки (опционально)
         void* user_data = nullptr;
 
-        ProtectFrame(FunctionDesc* function_desc, std::shared_ptr<StackFrame> parent = nullptr, std::function<void()> cleanup = nullptr)
+        ProtectFrame(ScriptLambda* function_desc, std::shared_ptr<StackFrame> parent = nullptr, std::function<void()> cleanup = nullptr)
             : StackFrame(function_desc, parent, FrameType::PROTECT, SID("protected"))
             , cleanup_function(std::move(cleanup)) {
         }

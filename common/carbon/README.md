@@ -116,7 +116,7 @@ struct FBinFileHeader {
 ```cpp
 struct FDefinition {
     StringId Name;    // имя определения (SID)
-    StringId Type;    // тип ("lambda", "s32", "float", etc.)
+    StringId Type;    // тип ("lambda", "i32", "float", etc.)
     u32 Offset;       // смещение от начала файла
 };
 ```
@@ -155,8 +155,8 @@ struct FStackFrame {
     FRecord* data_ptr;     // указатель на данные
     FStackFrame* parent_ptr; // родительский фрейм
     size_t pc;             // программный счетчик
-    s32 argc;              // количество аргументов
-    s32 ret_num;           // регистр возврата
+    i32 argc;              // количество аргументов
+    i32 ret_num;           // регистр возврата
     FVariant registers[DC_FRAME_MAX_REGISTERS_NUM]; // регистры
 };
 ```
@@ -165,10 +165,10 @@ struct FStackFrame {
 
 ```cpp
 struct FVariant {
-    StringId type;  // SID("nil"), SID("s32"), SID("f32"), SID("ptr")
+    StringId type;  // SID("nil"), SID("i32"), SID("f32"), SID("ptr")
     union {
         PTRINT as_ptr;
-        s32 as_s32; 
+        i32 as_s32; 
         f32 as_f32;
     };
 };
@@ -198,7 +198,7 @@ Lisp AST
 
 Система типов вашего интерпретатора должна маппиться на:
 
-- `integer` → `SID("s32")`
+- `integer` → `SID("i32")`
 - `float` → `SID("f32")`
 - `string` → `SID("string")`
 - `symbol` → `SID("symbol")`
@@ -471,7 +471,7 @@ struct FVariant {
     StringId type;
     union {
         PTRINT as_ptr;  // для сложных объектов
-        s32 as_s32;     // встроенные типы
+        i32 as_s32;     // встроенные типы
         f32 as_f32;
     };
 };

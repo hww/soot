@@ -3,7 +3,7 @@
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/ListBuilder.hpp"
 #include "common/sooti/Reader.hpp"
-#include "common/util/Crc32.hpp"
+#include "common/util/StringIdHash.hpp"
 
 #include "fmt/format.h"
 #include <assert.h>
@@ -137,7 +137,7 @@ const Object &SymbolTable::object_type_to_symbol(const ObjectType type) const {
 
 InternedSymbolPtr SymbolTable::intern(const char *str) {
     size_t   string_len = strlen(str);
-    uint32_t hash = util::compute_crc32(str, string_len);
+    uint32_t hash = util::ToStringId32(str);
 
     // probe
     for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -748,21 +748,21 @@ HeapObject *Object::as_heap_obj() const {
 uint32_t Object::as_crc32() const {
     switch (type) {
     case ObjectType::NONE:
-        return util::compute_crc32("none");
+        return util::ToStringId32_Const("none");
     case ObjectType::EMPTY_LIST:
-        return util::compute_crc32("null");
+        return util::ToStringId32_Const("null");
     case ObjectType::INT:
-        return util::compute_crc32(print());
+        return util::ToStringId32(print());
     case ObjectType::FLOAT:
-        return util::compute_crc32(print());
+        return util::ToStringId32(print());
     case ObjectType::CHAR:
-        return util::compute_crc32(print());
+        return util::ToStringId32(print());
     case ObjectType::SYMBOL:
-        return util::compute_crc32(print());
+        return util::ToStringId32(print());
     default:
         if (is_heap_object() && heap_obj)
             return heap_obj->as_crc32();
-        return util::compute_crc32("unknown");
+        return util::ToStringId32_Const("unknown");
     }
 }
 
@@ -863,7 +863,7 @@ Object build_list(const std::vector<Object> &objects) {
     std::shared_ptr<PairObject> head =
         std::make_shared<PairObject>(objects.back(), Object::make_null());
 
-    s64 idx = ((s64)objects.size()) - 2;
+    i64 idx = ((i64)objects.size()) - 2;
     while (idx >= 0) {
         Object next;
         next.type = ObjectType::PAIR;
@@ -892,7 +892,7 @@ Object build_list(std::vector<Object> &&objects) {
     std::shared_ptr<PairObject> head =
         std::make_shared<PairObject>(objects.back(), Object::make_null());
 
-    s64 idx = ((s64)objects.size()) - 2;
+    i64 idx = ((i64)objects.size()) - 2;
     while (idx >= 0) {
         Object next;
         next.type = ObjectType::PAIR;

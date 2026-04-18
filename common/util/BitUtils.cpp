@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-bool integer_fits(s64 in, int size, bool is_signed) {
+bool integer_fits(i64 in, int size, bool is_signed) {
   switch (size) {
     case 1:
       if (is_signed) {

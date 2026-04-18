@@ -1915,7 +1915,7 @@ Object Interpreter::eval_while_special(const Object &form, const Object &rest,
 Object Interpreter::build_list_with_links(std::vector<QuasiquoteEntry> &&entries, Object tail) {
     Object current_tail = tail;
 
-    for (s64 i = (s64)entries.size() - 1; i >= 0; --i) {
+    for (i64 i = (i64)entries.size() - 1; i >= 0; --i) {
         Object new_pair;
         new_pair.type = ObjectType::PAIR;
         new_pair.heap_obj = std::make_shared<PairObject>(entries[i].value, current_tail);

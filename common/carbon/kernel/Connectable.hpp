@@ -2,7 +2,7 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
     class Process;
     class Engine;

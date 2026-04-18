@@ -1,9 +1,9 @@
 // StringIdManager.cpp
 #include "common/carbon/lib/StringIdManager.hpp"
-#include "common/carbon/defconstruct/include/sidbase.h"
+#include "common/carbon/lib/SIDBase.hpp"
 #include "common/util/Log.hpp"
+#include "common/util/StringIdHash.hpp"
 #include "fmt/format.h"
-#include "util/Crc32.hpp"
 #include <algorithm>
 #include <fstream>
 #include <mutex>
@@ -12,14 +12,14 @@
 #include <iomanip>
 #include <cctype>
 
-namespace carbon::lib {
+namespace carbon {
 
 // ============================================================================
 // Registration (for reverse lookup only)
 // ============================================================================
 
 u32 StringIdManager::register_string(const std::string& str) {
-    u32 id = util::compute_crc32(str);
+    u32 id = util::ToStringId32(str);
     
     std::unique_lock<std::shared_mutex> lock(mutex_);
     
@@ -48,7 +48,7 @@ u32 StringIdManager::register_string(const char* str) {
 // Lookup
 // ============================================================================
 
-std::string StringIdManager::get_string(u32 id) const {
+std::string StringIdManager::get_string(u64 id) const {
     if (id == 0) {
         return "";
     }
@@ -64,14 +64,14 @@ std::string StringIdManager::get_string(u32 id) const {
     return fmt::format("<unknown:0x{:08X}>", id);
 }
 
-const char* StringIdManager::get_cstring(u32 id) const {
+const char* StringIdManager::get_cstring(u64 id) const {
     // Используем thread_local буфер для возврата указателя
     static thread_local std::string buffer;
     buffer = get_string(id);
     return buffer.c_str();
 }
 
-bool StringIdManager::has_string(u32 id) const {
+bool StringIdManager::has_string(u64 id) const {
     if (id == 0) {
         return false;
     }
@@ -84,8 +84,8 @@ bool StringIdManager::has_string(u32 id) const {
 // Helper: parse hex string to u32
 // ============================================================================
 
-static u32 parse_hex(const std::string& hex_str) {
-    u32 value = 0;
+static u64 parse_hex(const std::string& hex_str) {
+    u64 value = 0;
     std::stringstream ss;
     ss << std::hex << hex_str;
     ss >> value;
@@ -256,14 +256,14 @@ bool StringIdManager::save_dconstruct_sidbase(const std::string& filename) const
     std::shared_lock lock(mutex_);
     
     // Собираем все записи
-    std::vector<dconstruct::SIDBaseEntry> entries;
+    std::vector<SIDBaseEntry> entries;
     entries.reserve(reverse_lookup_.size());
     
     // Сначала нужно собрать строки и вычислить офсеты
     std::vector<char> string_pool;
     
     for (const auto& [id, name] : reverse_lookup_) {
-        dconstruct::SIDBaseEntry entry;
+        SIDBaseEntry entry;
         entry.hash = id;  // ВАЖНО: преобразовать 32→64 бит
         entry.offset = string_pool.size();
         entries.push_back(entry);
@@ -282,7 +282,7 @@ bool StringIdManager::save_dconstruct_sidbase(const std::string& filename) const
     u64 num_entries = entries.size();
     file.write(reinterpret_cast<const char*>(&num_entries), 8);
     file.write(reinterpret_cast<const char*>(entries.data()), 
-               entries.size() * sizeof(dconstruct::SIDBaseEntry));
+               entries.size() * sizeof(SIDBaseEntry));
     file.write(string_pool.data(), string_pool.size());
     
     return true;
@@ -290,7 +290,7 @@ bool StringIdManager::save_dconstruct_sidbase(const std::string& filename) const
 
 // Загрузка из бинарного формата dconstruct
 bool StringIdManager::load_dconstruct_sidbase(const std::string& filename) {
-    auto result = dconstruct::SIDBase::from_binary(filename);
+    auto result = SIDBase::from_binary(filename);
     if (!result) {
         return false;
     }
@@ -313,4 +313,4 @@ bool StringIdManager::load_dconstruct_sidbase(const std::string& filename) {
     return true;
 }
 
-} // namespace carbon::lib
+} // namespace carbon

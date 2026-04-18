@@ -3,7 +3,7 @@
 #include <cassert>
 #include "common/CommonTypes.hpp"
 
-namespace carbon::lib
+namespace carbon
 {
     /**
      * @class Ptr
@@ -71,7 +71,7 @@ namespace carbon::lib
          * @param diff Количество элементов для смещения
          * @return Новый указатель, смещенный на diff элементов
          */
-        Ptr operator+(s64 diff) const {
+        Ptr operator+(i64 diff) const {
             return Ptr(offset + diff * sizeof(T));
         }
 
@@ -80,7 +80,7 @@ namespace carbon::lib
          * @param diff Количество элементов для обратного смещения
          * @return Новый указатель, смещенный на -diff элементов
          */
-        Ptr operator-(s64 diff) const {
+        Ptr operator-(i64 diff) const {
             return Ptr(offset - diff * sizeof(T));
         }
 
@@ -89,7 +89,7 @@ namespace carbon::lib
          * @param other Другой указатель того же типа
          * @return Количество элементов между указателями
          */
-        s64 operator-(const Ptr<T>& other) const {
+        i64 operator-(const Ptr<T>& other) const {
             return (offset - other.offset) / sizeof(T);
         }
 
@@ -162,4 +162,4 @@ namespace carbon::lib
         return Ptr<T>(offset);
     }
 
-} // namespace carbon::lib
+} // namespace carbon

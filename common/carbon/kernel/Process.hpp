@@ -4,19 +4,17 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/files/TypeDesc.hpp"
+#include "common/carbon/file/DCScript.hpp"
 #include "common/carbon/kernel/Types.hpp"
 #include "common/carbon/kernel/Connectable.hpp"
 #include "kernel/EventMessage.hpp"
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 
 
-using namespace carbon::files;
-using namespace carbon::vm;
-
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // Process Class
@@ -60,7 +58,7 @@ namespace carbon::kernel {
         ProcessMask mask = ProcessMask::NONE;
 
         /// Тип процесса, имеется в виду структура бинарного файла
-        TypeDesc* type = nullptr;
+        StateScript* type = nullptr;
 
         // ============================================================================
         // Memory Management & Pool
@@ -106,10 +104,10 @@ namespace carbon::kernel {
         std::shared_ptr<StackFrame> current_state_frame = nullptr;
 
         /// Текущее состояние процесса (определяет поведение)
-        StateDesc* current_state = nullptr;
+        SsState* current_state = nullptr;
 
         /// Следующее состояние (для отложенных переходов)
-        StateDesc* next_state = nullptr;
+        SsState* next_state = nullptr;
 
         // ============================================================================
         // State Hooks (обработчики из текущего состояния)
@@ -117,14 +115,11 @@ namespace carbon::kernel {
 
         /// Trans-обработчик - выполняется ПЕРЕД основным кодом каждый кадр
         /// Используется для подготовки данных, проверки условий
-        FunctionDesc* trans_hook = nullptr;
+        ScriptLambda* trans_hook = nullptr;
 
         /// Post-обработчик - выполняется ПОСЛЕ основного кода каждый кадр  
         /// Используется для очистки, финализации, пост-обработки
-        FunctionDesc* post_hook = nullptr;
-
-        /// Event-обработчик - обрабатывает события, отправленные процессу
-        FunctionDesc* event_handler = nullptr;
+        ScriptLambda* post_hook = nullptr;
 
         // ============================================================================
         // Entity & Game World Integration
@@ -169,7 +164,7 @@ namespace carbon::kernel {
         /// Перейти в указанное состояние
         /// @param state Идентификатор состояния для перехода
         /// @return true если переход успешно запланирован
-        bool go_state(StateDesc* state);
+        bool go_state(SsState* state);
 
         /// Отправить событие от этого процесса процессу
         /// @param target Получатель события
@@ -332,16 +327,16 @@ namespace carbon::kernel {
         u32 generate_pid();
 
         /// Выполнить немедленный переход между состояниями
-        bool execute_immediate_transition(StateDesc* new_state);
+        bool execute_immediate_transition(SsState* new_state);
 
         /// Выполнить отложенный переход между состояниями
-        bool execute_deferred_transition(StateDesc* new_state);
+        bool execute_deferred_transition(SsState* new_state);
 
         /// Обновить обработчики из текущего состояния
         void update_state_hooks(VirtualMachine& vm);
 
         /// Выполнить post-обработчик  
-        void execute_enter_handler(VirtualMachine& vm, FunctionDesc* enter_hook);
+        void execute_enter_handler(VirtualMachine& vm, ScriptLambda* enter_hook);
 
         /// Выполнить trans-обработчик
         void execute_trans_handler(VirtualMachine& vm);
@@ -356,7 +351,25 @@ namespace carbon::kernel {
         void cleanup();
 
         /// Наличие делегатов
-        bool has_event_handler() { return event_handler != nullptr; }
+        ScriptLambda* event_handler(StringId event_id) {
+            if (current_state)
+                return current_state->get_event_handler(event_id); 
+            return nullptr; 
+        }
+
+        /// Наличие делегатов
+        bool has_event_handler(StringId event_id) {
+            if (current_state)
+                return current_state->lookup(BlockType::Event, event_id) != nullptr; 
+            return false; 
+        }
+
+        /// Наличие любого делегатов
+        bool has_any_event_handler() {
+            if (current_state)
+                return current_state->lookup(BlockType::Event) != nullptr; 
+            return false; 
+        }
     };
 
     // ============================================================================

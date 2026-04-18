@@ -1,5 +1,6 @@
 // common/sootc/Compiler/StateCompiler.cpp
 #include "common/sootc/Compiler/StateCompiler.hpp"
+#include "file/ProgramBinaryElement.hpp"
 #include "sootc/Compiler/Compiler.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Env/StateEnv.hpp"
@@ -328,7 +329,7 @@ IR_Value* StateCompiler::compile(const script::Object& form,
 // ============================================================================
 // build
 // ============================================================================
-RelocatableBuffer StateCompiler::build(StateEnv* s_env) {
+ProgramBinaryElement StateCompiler::build(StateEnv* s_env) {
     // Make state name type_name::state_name
     std::string state_full_name = s_env->type_env()->name() + "::" + s_env->name();
     

@@ -348,7 +348,7 @@ class Type : public NativeObject {
     }
 
     uint32_t get_type_tag() {
-        return util::compute_crc32(name());
+        return util::ToStringId32(name());
     }
 
     // Core type properties - PURE VIRTUAL
@@ -427,34 +427,19 @@ class Type : public NativeObject {
     void set_runtime_type(std::string name) {
         m_runtime_name = std::move(name);
     }
-    std::string name() const {
-        return m_name;
-    }
+    std::string name() const { return m_name; }
+
     std::string runtime_name() const;
+    void set_runtime_name(std::string name) { m_runtime_name = std::move(name); }
+    void disallow_in_runtime() { m_allow_in_runtime = false; }
+    bool allow_in_runtime() { return m_allow_in_runtime; }
     
-    std::string parent() const {
-        return m_parent;
-    }
-    void set_runtime_name(std::string name) {
-        m_runtime_name = std::move(name);
-    }
-    bool has_parent() const {
-        return !m_parent.empty() && m_name != "object";
-    }
+    std::string parent() const { return m_parent; }
+    bool has_parent() const { return !m_parent.empty() && m_name != "object"; }
 
-    bool is_boxed() const {
-        return m_is_boxed;
-    }
-    int heap_base() const {
-        return m_heap_base;
-    }
-    bool gen_inspect() const {
-        return m_generate_inspect;
-    }
-
-    void disallow_in_runtime() {
-        m_allow_in_runtime = false;
-    }
+    bool is_boxed() const { return m_is_boxed; }
+    int heap_base() const { return m_heap_base; }
+    bool gen_inspect() const { return m_generate_inspect; }
 
     // Metadata
     DefinitionMetadata& get_metadata() { return m_metadata;}

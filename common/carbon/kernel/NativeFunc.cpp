@@ -5,7 +5,7 @@
 #include <iostream>
 
 
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // Native Function Registry Implementation
@@ -102,7 +102,7 @@ namespace carbon::kernel {
             return Variant(argv[0].to_float() / divisor);
         }
         else {
-            s32 divisor = argv[1].to_int();
+            i32 divisor = argv[1].to_int();
             if (divisor == 0) {
                 lg::warn("Division by zero in native function");
                 return Variant(0);

@@ -1,4 +1,5 @@
 #include "common/type_system/Type.hpp"
+#include "util/StringIdHash.hpp"
 #include "TypeSystem.hpp"
 #include "common/sooti/ListBuilder.hpp"
 #include "common/util/Assert.hpp"
@@ -1258,7 +1259,7 @@ bool BasicType::serialize_obj(Archive &ar, Object &data) {
         // ============================================================
 
         // Пишем CRC типа
-        uint32_t     type_crc = util::compute_crc32(name());
+        uint32_t     type_crc = util::ToStringId32(name());
         CompactCrc32 crc(type_crc);
         ar << crc;
 

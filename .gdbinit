@@ -17,7 +17,7 @@ class StringIdPrinter:
 
 def register_soot_printers():
     pp = gdb.printing.RegexpCollectionPrettyPrinter("soot")
-    pp.add_printer('StringId', '^carbon::lib::StringId$', StringIdPrinter)
+    pp.add_printer('StringId', '^carbon::StringId$', StringIdPrinter)
     gdb.printing.register_pretty_printer(None, pp, replace=True)
 
 register_soot_printers()

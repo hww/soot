@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <shared_mutex>
 
-namespace carbon::lib {
+namespace carbon {
 
 class StringIdManager {
 public:
@@ -14,17 +14,16 @@ public:
         static StringIdManager inst;
         return inst;
     }
-
     // Регистрация строки (вычисляет CRC32 и сохраняет для обратного поиска)
     u32 register_string(const std::string& str);
     u32 register_string(const char* str);
 
     // Получение строки по ID (CRC32)
-    std::string get_string(u32 id) const;
-    const char* get_cstring(u32 id) const;
+    std::string get_string(u64 id) const;
+    const char* get_cstring(u64 id) const;
 
     // Проверка наличия
-    bool has_string(u32 id) const;
+    bool has_string(u64 id) const;
 
     // Сериализация таблицы обратного поиска
     bool save_table(const std::string& filename) const;
@@ -39,7 +38,7 @@ public:
     size_t size() const;
 
     // Итераторы
-    using const_iterator = std::unordered_map<u32, std::string>::const_iterator;
+    using const_iterator = std::unordered_map<u64, std::string>::const_iterator;
     const_iterator begin() const { return reverse_lookup_.begin(); }
     const_iterator end() const { return reverse_lookup_.end(); }
 
@@ -49,7 +48,7 @@ public:
 private:
     StringIdManager() = default;
     mutable std::shared_mutex mutex_;
-    std::unordered_map<u32, std::string> reverse_lookup_;  // ID -> string
+    std::unordered_map<u64, std::string> reverse_lookup_;  // ID -> string
 };
 
-} // namespace carbon::lib
+} // namespace carbon

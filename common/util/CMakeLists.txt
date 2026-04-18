@@ -3,7 +3,7 @@ add_library(libsootutils
 
 common/util/Assert.cpp 
 common/util/BitUtils.cpp 
-common/util/Crc32.cpp 
+common/util/StringIdHash.cpp 
 common/util/Diff.cpp 
 common/util/FileUtil.cpp 
 common/util/ImageResize.cpp 

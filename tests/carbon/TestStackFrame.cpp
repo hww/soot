@@ -4,11 +4,11 @@
 
 #include "carbon/Export.hpp"
 
-using namespace carbon::vm;
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
-using namespace carbon::kernel;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
 
 TEST(StackFrame, Construction) {
@@ -25,11 +25,11 @@ TEST(StackFrame, RegisterAccess) {
 
     // Test local register access
     frame.get_local(0) = Variant(42);
-    EXPECT_EQ(frame.get_local(0).get_int(), 42);
+    EXPECT_EQ(frame.get_local(0).get_i64(), 42);
 
     // Test argument register access
     frame.get_argument(0) = Variant(100);
-    EXPECT_EQ(frame.get_argument(0).get_int(), 100);
+    EXPECT_EQ(frame.get_argument(0).get_i64(), 100);
 
     // Test bounds checking - should throw for out-of-bounds
     EXPECT_THROW(frame.get_register(MAX_REGISTERS), std::exception);
@@ -62,8 +62,8 @@ TEST(StackFrame, ArgumentCopying) {
     callee.setup_call(2, 25); // 2 arguments, return to r25
     callee.copy_arguments_from(caller);
 
-    EXPECT_EQ(callee.get_argument(0).get_int(), 10);
-    EXPECT_EQ(callee.get_argument(1).get_int(), 20);
+    EXPECT_EQ(callee.get_argument(0).get_i64(), 10);
+    EXPECT_EQ(callee.get_argument(1).get_i64(), 20);
     EXPECT_EQ(callee.argc, 2);
     EXPECT_EQ(callee.ret_num, 25);
 }

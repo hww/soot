@@ -1,7 +1,7 @@
 #include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
-#include "common/util/Crc32.hpp"
+#include "common/util/StringIdHash.hpp"
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -18,7 +18,7 @@ class MemorySymbolTable : public NativeObject {
 
         SymbolEntry() : crc32(0), string_offset(0) {}
         SymbolEntry(const std::string &n)
-            : name(n), crc32(util::compute_crc32(n)), string_offset(0) {}
+            : name(n), crc32(util::ToStringId32(n)), string_offset(0) {}
         ~SymbolEntry() = default;
 
         void serialize(Archive &ar) {
@@ -31,7 +31,7 @@ class MemorySymbolTable : public NativeObject {
                 ar.serialize_obj(&name[0], name_len.value); // CompactIndex в int
 
                 // Вычисляем CRC заново
-                crc32 = util::compute_crc32(name);
+                crc32 = util::ToStringId32(name);
                 string_offset = 0;
             } else {
                 // При сохранении пишем имя
@@ -49,7 +49,7 @@ class MemorySymbolTable : public NativeObject {
      * @return индекс символа или std::nullopt если не найден
      */
     std::optional<size_t> find_by_name(const std::string &name) const {
-        uint32_t crc = util::compute_crc32(name);
+        uint32_t crc = util::ToStringId32(name);
         return find_by_crc32(crc);
     }
 
@@ -146,7 +146,7 @@ class MemorySymbolTable : public NativeObject {
     // ============================================================
 
     size_t add_symbol(const std::string &name) {
-        uint32_t crc = util::compute_crc32(name);
+        uint32_t crc = util::ToStringId32(name);
 
         auto it = m_crc_to_index.find(crc);
         if (it != m_crc_to_index.end()) {

@@ -1,24 +1,15 @@
-// common/sootc/IR/IR_Value.cpp
+// IR_Value.cpp
 #include "common/sootc/IR/IR_Value.hpp"
 #include "common/sootc/Env/FunctionEnv.hpp" 
+#include "common/sootc/Env/TypeEnv.hpp"
 #include "common/sootc/Env/Env.hpp"
-#include "files/RelocatableBuffer.hpp"
-#include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Compiler/MethodCompiler.hpp"
+#include "sootc/Compiler/StateCompiler.hpp"
 #include "sootc/Compiler/TypeCompiler.hpp"
 #include "sootc/Compiler/Compiler.hpp"
-#include "sootc/IR/IR_Node.hpp"
+#include <stdexcept>
 
 namespace sootc {
-
-// ===========================================================
-// IR_Value
-// ===========================================================
-    
-RelocatableBuffer IR_Value::build(Compiler* c) {
-    (void)c;
-    return RelocatableBuffer{}; 
-}
 
 // ===========================================================
 // IR_Reg
@@ -38,23 +29,12 @@ std::string IR_Reg::to_string() const {
 // IR_Const
 // ===========================================================
 
-// Статические методы создания
-IR_Const* IR_Const::create_int(Type* type, s64 val) {
+IR_Const* IR_Const::create_int(Type* type, i64 val) {
     return new IR_Const(type, val);
 }
 
-IR_Const* IR_Const::create_float(Type* type, float val) {
+IR_Const* IR_Const::create_float(Type* type, f64 val) {
     return new IR_Const(type, val);
-}
-
-
-IR_Reg* IR_Const::to_reg(Env& env) {
-    auto* f_env = env.function_env();
-    if (!f_env) return nullptr;
-
-    auto* r = f_env->alloc_reg(type_);
-    env.emit(script::Object(), std::unique_ptr<IR_Node>(new IR_LoadConst(r, this)));
-    return r;
 }
 
 std::string IR_Const::to_string() const {
@@ -65,57 +45,55 @@ std::string IR_Const::to_string() const {
 }
 
 // ===========================================================
-// IR_Field
-// ===========================================================
-
-IR_Field::IR_Field(IR_Value *base, const Field &field)
-    : IR_Value(field.type().get()), base_(base), field_(field) {}
-
-IR_Reg* IR_Field::to_reg(Env& env) {
-    auto* f_env = env.function_env();
-    if (!f_env) return nullptr;
-
-    auto* r = f_env->alloc_reg(type_);
-    env.emit(script::Object(), std::unique_ptr<IR_Node>(new IR_LoadField(r, this)));
-    return r;
-}
-
-std::string IR_Field::to_string() const {
-    return base_->to_string() + "." + field_.name();
-}
-
-// ===========================================================
-// IR_FunctionValue
-// ===========================================================
-
-void IR_FunctionValue::resolve(Compiler* c) {
-    // В новой архитектуре resolve не нужен — тело уже скомпилировано в compile()
-    // Этот метод может быть пустым или удален
-    (void)c;
-}
-
-RelocatableBuffer IR_FunctionValue::build(Compiler* c) {
-    FunctionCompiler fn_c(c->ts(), c);
-    return fn_c.build(this->get_env());
-}
-
-// ===========================================================
 // IR_MethodValue
 // ===========================================================
 
-std::string IR_MethodValue::name() const { return m_env->get_name(); }
-std::string IR_MethodValue::type_name() const { return m_env->type()->name(); }
+IR_MethodValue::IR_MethodValue(MethodEnv* env) 
+        : IR_Value(env->type()), m_env(env) {
+}
+
+
+void IR_MethodValue::resolve(Compiler* c) {
+    if (m_env) {
+        for (auto& [name, value] : m_env->symbols_map()) {
+            if (value) value->resolve(c);
+        }
+    }
+}
+
+ProgramBinaryElement IR_MethodValue::serialize(Compiler* c) {
+    MethodCompiler m_c(c->ts(), c);
+    return m_c.build(m_env);
+}
 
 // ===========================================================
 // IR_StateValue
 // ===========================================================
 
-std::string IR_StateValue::name() const { return m_env->name(); }
-std::string IR_StateValue::type_name() const { return m_env->type()->name(); }
+IR_StateValue::IR_StateValue(StateEnv* env) 
+        : IR_Value(env->type()), m_env(env) {}
+
+void IR_StateValue::resolve(Compiler* c) {
+    /* FIX ME 
+    if (m_env) {
+        for (auto& [name, value] : m_env->symbols_map()) {
+            if (value) value->resolve(c);
+        }
+    }
+        */
+}
+
+ProgramBinaryElement IR_StateValue::serialize(Compiler* c) {
+    StateCompiler s_c(c->ts(), c);
+    return s_c.build(m_env);
+}
 
 // ===========================================================
 // IR_Type
 // ===========================================================
+
+IR_Type::IR_Type(TypeEnv* env) 
+        : IR_Value(env->get_type()), m_env(env) {}
 
 std::string IR_Type::to_string() const { 
     return "type:" + (m_env ? m_env->name() : "unknown"); 
@@ -123,20 +101,17 @@ std::string IR_Type::to_string() const {
 
 void IR_Type::resolve(Compiler* c) {
     (void)c;
-    // В новой архитектуре resolve не нужен
+    // Типы не требуют разрешения имен
 }
 
-RelocatableBuffer IR_Type::build(Compiler* c) {
-    
+ProgramBinaryElement IR_Type::serialize(Compiler* c) {
     TypeEnv* t_env = get_env();
-    Type* type = t_env->get_type();
+    Type* type = t_env ? t_env->get_type() : nullptr;
 
-    // Если тип есть в TypeSystem и он builtin — не компилируем
+    // Builtin типы не компилируем
     if (type && c->ts().fully_defined_type_exists(type->name())) {
-        // Проверяем, не builtin ли это
-        if (type->name() == "type") {
-            // для builtin типов возвращать пустой буфер
-            return RelocatableBuffer{};
+        if (type->name() == "type" || type->allow_in_runtime()) {
+            return ProgramBinaryElement{0};
         }
     }
 
@@ -144,4 +119,41 @@ RelocatableBuffer IR_Type::build(Compiler* c) {
     return t_c.build(this->get_env());
 }
 
+// ===========================================================
+// IR_ExternValue
+// ===========================================================
+
+void IR_ExternValue::resolve(Compiler* c) {
+    // Проверяем, что extern символ действительно существует
+    //if (!c->ts().has_symbol(m_name)) {
+        // Можно добавить warning, но не ошибка - extern может быть из другого модуля
+        // lg::warn("Extern symbol '{}' not found in current module", m_name);
+    //}
+    throw std::runtime_error("FIX ME");
+}
+
+// ===========================================================
+// IR_StaticValue
+// ===========================================================
+
+void IR_StaticValue::resolve(Compiler* c) {
+    (void)c;
+    // Статические значения не требуют разрешения
+}
+
+// ===========================================================
+// IR_LiteralValue
+// ===========================================================
+
+// ===========================================================
+// IR_SymbolReference
+// ===========================================================
+
+void IR_SymbolReference::resolve(Compiler* c) {
+    // Ищем в окружении, используя сам объект символа
+    IR_Value* found = env_->lookup(symbol_.to_std_string());
+    if (found) {
+        // Подменяем...
+    }
+}
 } // namespace sootc

@@ -1,18 +1,20 @@
 ﻿#include "common/carbon/kernel/ProcessRunner.hpp"
 #include "common/carbon/kernel/Kernel.hpp"
-#include "common/carbon/modules/ModuleManager.hpp"
 #include "common/util/Log.hpp"
+#include "file/DCScript.hpp"
+#include "file/Globals.hpp"
+#include "lib/StringId.hpp"
 #include "vm/StackFrame.hpp"
 #include <memory>
 
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // One-shot Process Creation
     // ============================================================================
 
     Process* ProcessRunner::spawn(StringId name, Process* parent,
-        FunctionDesc* entry_point, std::shared_ptr<StackFrame> stack_top) {
+        ScriptLambda* entry_point, std::shared_ptr<StackFrame> stack_top) {
         if (!kernel().is_initialized()) {
             lg::error("Cannot spawn process - Kernel not initialized");
             return nullptr;
@@ -42,7 +44,7 @@ namespace carbon::kernel {
     }
 
     Process* ProcessRunner::spawn_with_state(StringId name, Process* parent,
-        StateDesc* initial_state, std::shared_ptr<StackFrame> stack_top) {
+        SsState* initial_state, std::shared_ptr<StackFrame> stack_top) {
         if (!initial_state) {
             lg::error("Cannot spawn process with state - invalid state definition");
             return nullptr;
@@ -57,7 +59,7 @@ namespace carbon::kernel {
         process->go_state(initial_state); // Если есть такой метод
 
         lg::debug("Spawned process '{}' with initial state '{}'",
-            name, initial_state->name);
+            name, initial_state->name());
         return process;
     }
 
@@ -91,7 +93,7 @@ namespace carbon::kernel {
         return success;
     }
 
-    bool ProcessRunner::run(Process* process, FunctionDesc* entry_point) {
+    bool ProcessRunner::run(Process* process, ScriptLambda* entry_point) {
         if (!process || !entry_point) {
             lg::error("Cannot run process - invalid parameters");
             return false;
@@ -136,14 +138,13 @@ namespace carbon::kernel {
         }
 
         // Загружаем модуль
-        auto module = ModuleManager::instance().load_module(module_name);
-        if (!module) {
+        if (!Globals::inst().load_module(module_name.to_string())) {
             lg::error("Module '{}' not found", module_name);
             return nullptr;
         }
 
         // Находим функцию
-        auto function = module->resolve_function(function_name);
+        auto function = reinterpret_cast<ScriptLambda*>(Globals::inst().lookup(function_name, StringIds::script_lambda));
         if (!function) {
             lg::error("Function '{}' not found in module '{}'", function_name, module_name);
             return nullptr;
@@ -194,4 +195,4 @@ namespace carbon::kernel {
         return 0;
     }
 
-} // namespace carbon::kernel
+} // namespace carbon

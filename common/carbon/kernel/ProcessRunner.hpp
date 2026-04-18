@@ -2,9 +2,9 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/kernel/Kernel.hpp"
-#include "files/StateDesc.hpp"
+#include "file/DCScript.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // ProcessRunner Class - Упрощенный API для создания процессов
@@ -25,7 +25,7 @@ namespace carbon::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn(StringId name, Process* parent,
-            FunctionDesc* entry_point, std::shared_ptr<StackFrame> stack_top);
+            ScriptLambda* entry_point, std::shared_ptr<StackFrame> stack_top);
 
         /// Создать процесс с состоянием одной функцией
         /// @param name Имя процесса
@@ -34,7 +34,7 @@ namespace carbon::kernel {
         /// @param stack_top Указатель на вершину стека
         /// @return Указатель на созданный процесс или nullptr при ошибке
         static Process* spawn_with_state(StringId name, Process* parent,
-            StateDesc* initial_state, std::shared_ptr<StackFrame> stack_top);
+            SsState* initial_state, std::shared_ptr<StackFrame> stack_top);
 
         // ============================================================================
         // Two-stage Process Creation (как в OpenGoal)
@@ -56,7 +56,7 @@ namespace carbon::kernel {
         /// @param process Процесс для выполнения
         /// @param entry_point Байткод функции для запуска
         /// @return true если запуск успешен
-        static bool run(Process* process, FunctionDesc* entry_point);
+        static bool run(Process* process, ScriptLambda* entry_point);
 
         // ============================================================================
         // Pool-based Creation (для оптимизации)
@@ -103,4 +103,4 @@ namespace carbon::kernel {
         ProcessRunner() = delete;
     };
 
-} // namespace carbon::kernel
+} // namespace carbon

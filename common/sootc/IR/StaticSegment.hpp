@@ -1,11 +1,13 @@
 #pragma once
 
 #include "CommonTypes.hpp"
-#include "common/carbon/files/RelocatableBuffer.hpp"
+#include "common/carbon/file/ProgramBinaryElement.hpp"
 #include <vector>
 #include <map>
 
+using namespace carbon;
 namespace sootc {
+
 class StaticSegment {
 public:
     using SlotIndex = u32;
@@ -45,24 +47,24 @@ public:
     }
 
     // Главный метод: переносит всё содержимое в итоговый RelocatableBuffer
-    void emit_to(RelocatableBuffer& final_buffer) {
+    void emit_to(ProgramBinaryElement& final_buffer) {
         size_t base_offset = final_buffer.size();
 
         // 1. Записываем таблицу слотов
-        for (u32 val : slots) {
-            final_buffer.add_u32(val);
+        for (u64 val : slots) {
+            final_buffer.push_bytes(val,0);
         }
 
         // 2. Записываем сырые данные (строки и т.д.)
         size_t raw_data_start = final_buffer.size();
-        final_buffer.add_bytes(raw_buffer.data(), raw_buffer.size());
+        final_buffer.push_blob(raw_buffer.data(), raw_buffer.size());
 
         // 3. Патчим оффсеты строк внутри уже записанных слотов
         // Теперь оффсет в слоте будет указывать точно на начало строки относительно начала блока данных
         for (auto& reloc : pending_string_relocs) {
             u32 final_str_pos = static_cast<u32>(raw_data_start - base_offset + reloc.raw_offset);
             // Патчим записанный ранее u32 в final_buffer
-            final_buffer.patch_u32(base_offset + (reloc.slot_idx * 4), final_str_pos);
+            // FIX IT  final_buffer.patch_u32(base_offset + (reloc.slot_idx * 4), final_str_pos);
         }
     }
 

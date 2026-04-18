@@ -3,9 +3,9 @@
 
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/files/StateDesc.hpp"
+#include "common/carbon/file/Export.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
 /**
  * @brief Фрейм для состояний процесса
@@ -25,7 +25,7 @@ public:
      * @param process Процесс-владелец
      * @param parent Родительский фрейм
      */
-    StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent = nullptr);
+    StateFrame(SsState* state_desc, std::shared_ptr<StackFrame> parent = nullptr);
     
     /**
      * @brief Деструктор
@@ -42,15 +42,13 @@ public:
     bool has_trans() const { return trans_function_ != nullptr; }
     bool has_code() const { return code_function_ != nullptr; }
     bool has_post() const { return post_function_ != nullptr; }
-    bool has_event() const { return event_handler_ != nullptr; }
     
     /// Доступ к обработчикам (для Process/StateMachine)
-    FunctionDesc* get_enter() const { return enter_function_; }
-    FunctionDesc* get_trans() const { return trans_function_; }
-    FunctionDesc* get_code() const { return code_function_; }
-    FunctionDesc* get_post() const { return post_function_; }
-    FunctionDesc* get_exit() const { return exit_function_; }
-    FunctionDesc* get_event() const { return event_handler_; }
+    ScriptLambda* get_enter() const { return enter_function_; }
+    ScriptLambda* get_trans() const { return trans_function_; }
+    ScriptLambda* get_code() const { return code_function_; }
+    ScriptLambda* get_post() const { return post_function_; }
+    ScriptLambda* get_exit() const { return exit_function_; }
     
     // ============================================================================
     // Отладочная информация
@@ -91,12 +89,11 @@ private:
     // ============================================================================
     
     // Копии обработчиков из StateDesc (как в GOAL)
-    FunctionDesc* enter_function_ = nullptr;
-    FunctionDesc* trans_function_ = nullptr;
-    FunctionDesc* code_function_ = nullptr;
-    FunctionDesc* post_function_ = nullptr;
-    FunctionDesc* exit_function_ = nullptr;
-    FunctionDesc* event_handler_= nullptr;
+    ScriptLambda* enter_function_ = nullptr;
+    ScriptLambda* trans_function_ = nullptr;
+    ScriptLambda* code_function_ = nullptr;
+    ScriptLambda* post_function_ = nullptr;
+    ScriptLambda* exit_function_ = nullptr;
 };
 
 // ============================================================================
@@ -104,7 +101,7 @@ private:
 // ============================================================================
 
 /// Создать StateFrame (автоматически вызовет exit при разрушении)
-StateFrame* create_state_frame(StateDesc* state_desc, Process* process, StackFrame* parent = nullptr);
+StateFrame* create_state_frame(SsState* state_desc, Process* process, StackFrame* parent = nullptr);
 
 /// Удалить StateFrame (вызовет exit через ProtectFrame)
 void destroy_state_frame(StateFrame* frame);
@@ -112,4 +109,4 @@ void destroy_state_frame(StateFrame* frame);
 /// Найти текущий StateFrame в стеке
 StateFrame* find_current_state_frame(StackFrame* top_frame);
 
-} // namespace carbon::kernel
+} // namespace carbon

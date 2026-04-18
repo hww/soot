@@ -1,13 +1,14 @@
 ﻿#include "common/carbon/kernel/Kernel.hpp"
 #include "common/carbon/kernel/Process.hpp"
 #include "common/util/Log.hpp"
+#include "file/DCScript.hpp"
 #include "vm/StackFrame.hpp"
 #include <format>
 #include <functional> // Добавлен для std::function
 
-using namespace carbon::lib;
+using namespace carbon;
 
-namespace carbon::kernel {
+namespace carbon {
 
     bool Kernel::initialize() {
         if (initialized_) {
@@ -86,7 +87,7 @@ namespace carbon::kernel {
         return true;
     }
 
-    bool Kernel::run_process_function(Process* process, FunctionDesc* entry_point) {
+    bool Kernel::run_process_function(Process* process, ScriptLambda* entry_point) {
         if (!initialized_ || !process || !entry_point) {
             lg::error("Cannot run process function - invalid parameters");
             return false;
@@ -201,4 +202,4 @@ namespace carbon::kernel {
             });
     }
 
-} // namespace carbon::kernel
+} // namespace carbon

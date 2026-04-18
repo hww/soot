@@ -2,7 +2,7 @@
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   
   <!-- StringId -->
-  <Type Name="carbon::lib::StringId">
+  <Type Name="carbon::StringId">
     <DisplayString>{value}</DisplayString>
     <StringView>to_string()</StringView>
     <Expand>
@@ -12,7 +12,7 @@
   </Type>
   
   <!-- Ptr<T> -->
-  <Type Name="carbon::lib::Ptr&lt;*&gt;">
+  <Type Name="carbon::Ptr&lt;*&gt;">
     <DisplayString Condition="offset != 0">0x{offset,x}</DisplayString>
     <DisplayString Condition="offset == 0">null</DisplayString>
     <Expand>
@@ -22,7 +22,7 @@
   </Type>
   
   <!-- Definition -->
-  <Type Name="carbon::files::Definition">
+  <Type Name="carbon::Definition">
     <DisplayString>{name} : {type}</DisplayString>
     <Expand>
       <Item Name="name">name</Item>
@@ -33,7 +33,7 @@
   </Type>
   
   <!-- BinaryFile -->
-  <Type Name="carbon::files::BinaryFile">
+  <Type Name="carbon::BinaryFile">
     <DisplayString>BinaryFile: {definitions_count} definitions</DisplayString>
     <Expand>
       <Item Name="magic">magic</Item>
@@ -45,7 +45,7 @@
   </Type>
   
   <!-- FunctionDesc -->
-  <Type Name="carbon::files::FunctionDesc">
+  <Type Name="carbon::FunctionDesc">
     <DisplayString>Function: {code_count} instructions, {data_size} bytes data</DisplayString>
     <Expand>
       <Item Name="code_count">code_count</Item>
@@ -57,7 +57,7 @@
   </Type>
   
   <!-- TypeDesc -->
-  <Type Name="carbon::files::TypeDesc">
+  <Type Name="carbon::TypeDesc">
     <DisplayString>Type: {name}</DisplayString>
     <Expand>
       <Item Name="name">name</Item>
@@ -68,7 +68,7 @@
   </Type>
   
   <!-- StateDesc -->
-  <Type Name="carbon::files::StateDesc">
+  <Type Name="carbon::StateDesc">
     <DisplayString>State: {parent_state}</DisplayString>
     <Expand>
       <Item Name="parent_state">parent_state</Item>
@@ -78,7 +78,7 @@
   </Type>
   
   <!-- MethodDesc -->
-  <Type Name="carbon::files::MethodDesc">
+  <Type Name="carbon::MethodDesc">
     <DisplayString>Method: {name}</DisplayString>
     <Expand>
       <Item Name="name">name</Item>
@@ -89,7 +89,7 @@
   </Type>
   
   <!-- Module -->
-  <Type Name="carbon::modules::Module">
+  <Type Name="carbon::Module">
     <DisplayString>Module: {name}</DisplayString>
     <Expand>
       <Item Name="name">name</Item>

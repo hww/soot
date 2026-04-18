@@ -1,7 +1,7 @@
 ﻿#include "gtest/gtest.h"
 #include "common/carbon/lib/Ptr.hpp"
 
-using namespace carbon::lib;
+using namespace carbon;
 
 // Тестовая структура
 struct TestStruct {

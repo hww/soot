@@ -5,9 +5,9 @@
 #include "common/carbon/kernel/Connection.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
-using namespace carbon::lib;
+using namespace carbon;
 
-namespace carbon::kernel {
+namespace carbon {
 
 class Process;
 

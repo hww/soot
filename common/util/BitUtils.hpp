@@ -63,7 +63,7 @@ std::optional<int> get_power_of_two(T in) {
   }
 }
 
-bool integer_fits(s64 in, int size, bool is_signed);
+bool integer_fits(i64 in, int size, bool is_signed);
 u32 float_as_u32(float x);
 
 template <typename T>

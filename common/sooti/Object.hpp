@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/util/Assert.hpp"
-#include "common/util/Crc32.hpp"
+#include "common/util/StringIdHash.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -505,7 +505,7 @@ template <typename T> class InternedPtrMap {
             return nullptr;
         }
         uint32_t hash =
-            util::compute_crc32(str.name_ptr, sizeof(const char *)); // ← Используем name_ptr
+            util::ToStringId32(str.name_ptr); // ← Используем name_ptr
 
         // probe
         for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -525,7 +525,7 @@ template <typename T> class InternedPtrMap {
 
     void set(InternedSymbolPtr ptr, const T &obj) {
         uint32_t hash =
-            util::compute_crc32(ptr.name_ptr, sizeof(const char *)); // ← Используем name_ptr
+            util::ToStringId32(ptr.name_ptr); // ← Используем name_ptr
 
         // probe
         for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -560,7 +560,7 @@ template <typename T> class InternedPtrMap {
     }
 
     bool remove(InternedSymbolPtr ptr) {
-        uint32_t hash = util::compute_crc32(ptr.name_ptr, sizeof(const char *));
+        uint32_t hash = util::ToStringId32(ptr.name_ptr);
 
         // Ищем существующий entry
         for (uint32_t i = 0; i < m_entries.size(); i++) {
@@ -590,7 +590,7 @@ template <typename T> class InternedPtrMap {
                     }
 
                     // Перехешируем следующий элемент
-                    uint32_t next_hash = util::compute_crc32(next.key, sizeof(const char *));
+                    uint32_t next_hash = util::ToStringId32(next.key);
                     uint32_t ideal_slot = next_hash & m_mask;
 
                     // Если идеальный слот находится ДО или РАВНО текущей позиции удаления
@@ -632,7 +632,7 @@ template <typename T> class InternedPtrMap {
         for (const auto &old_entry : m_entries) {
             if (old_entry.key) {
                 bool     done = false;
-                uint32_t hash = util::compute_crc32(old_entry.key, sizeof(const char *));
+                uint32_t hash = util::ToStringId32(old_entry.key);
                 for (uint32_t i = 0; i < new_entries.size(); i++) {
                     uint32_t slot_addr = (hash + i) & m_mask;
                     auto    &slot = new_entries[slot_addr];

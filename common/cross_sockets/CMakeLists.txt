@@ -1,4 +1,4 @@
-# Создаем нашу библиотеку БЕЗ replxx файлов
+# РЎРѕР·РґР°РµРј РЅР°С€Сѓ Р±РёР±Р»РёРѕС‚РµРєСѓ Р‘Р•Р— replxx С„Р°Р№Р»РѕРІ
 add_library(xsockets_lib 
     common/cross_sockets/XSocket.cpp
     common/cross_sockets/XSocketClient.cpp

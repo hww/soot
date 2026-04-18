@@ -4,13 +4,13 @@
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/carbon/kernel/Process.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
 // ============================================================================
 // Конструктор
 // ============================================================================
 
-StateFrame::StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent)
+StateFrame::StateFrame(SsState* state_desc, std::shared_ptr<StackFrame> parent)
     : ProtectFrame(
         nullptr,  // нет основного кода во фрейме
         parent,
@@ -19,7 +19,7 @@ StateFrame::StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent
 {
     if (state_desc) {
         // Устанавливаем имя фрейма
-        name = state_desc->name;
+        name = state_desc->state_id();
         frame_type = FrameType::STATE;
         
         // Копируем обработчики из StateDesc (как в GOAL)
@@ -28,7 +28,6 @@ StateFrame::StateFrame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent
         code_function_ = state_desc->get_code_function();
         post_function_ = state_desc->get_post_function();
         exit_function_ = state_desc->get_exit_function();
-        event_handler_ = state_desc->get_event_handler();
     }
     
     lg::debug("StateFrame created for state '{}'", name.to_string());
@@ -88,14 +87,13 @@ std::string StateFrame::to_string() const {
 
 std::string StateFrame::inspect() const {
     return fmt::format(
-        "StateFrame(state:'{}', handlers:[enter:{}, trans:{}, update:{}, post:{}, exit:{}, events:{}], pc:{}, parent:{})",
+        "StateFrame(state:'{}', handlers:[enter:{}, trans:{}, update:{}, post:{}, exit:{}], pc:{}, parent:{})",
         name,
         has_enter() ? "yes" : "no",
         has_trans() ? "yes" : "no",
         has_code() ? "yes" : "no",
         has_post() ? "yes" : "no",
         has_exit() ? "yes" : "no",
-        has_event(),
         pc,
         parent ? "yes" : "no"
     );
@@ -109,7 +107,6 @@ std::string StateFrame::inspect() const {
         if (has_code()) result += " code";
         if (has_post()) result += " post";
         if (has_exit()) result += " exit";
-        if (has_event()) result += " event";
         return result.empty() ? "none" : result.substr(1);
     }
 
@@ -117,7 +114,7 @@ std::string StateFrame::inspect() const {
 // Вспомогательные функции
 // ============================================================================
 
-StateFrame* create_state_frame(StateDesc* state_desc, std::shared_ptr<StackFrame> parent) {
+StateFrame* create_state_frame(SsState* state_desc, std::shared_ptr<StackFrame> parent) {
     return new StateFrame(state_desc, parent);
 }
 
@@ -149,4 +146,4 @@ StateFrame* find_current_state_frame_raw(std::shared_ptr<StackFrame> top_frame) 
     return nullptr;
 }
 
-} // namespace carbon::kernel
+} // namespace carbon

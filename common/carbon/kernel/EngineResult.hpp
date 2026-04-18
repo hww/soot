@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-namespace carbon::kernel
+namespace carbon
 {
     /// <summary>
     /// Represents the result state of engine operations.

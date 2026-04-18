@@ -4,16 +4,18 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringIdManager.hpp"
 
-namespace carbon::lib {
+namespace carbon {
 
 class StringId {
 public:
-    u32 value;
+    u64 value;
 
     constexpr StringId() : value(0) {}
+    constexpr explicit StringId(u64 val) : value(val) {}
+    constexpr explicit StringId(i64 val) : value(static_cast<u64>(val)) {}
     constexpr explicit StringId(u32 val) : value(val) {}
-    constexpr explicit StringId(s32 val) : value(static_cast<u32>(val)) {}
-    
+    constexpr explicit StringId(i32 val) : value(static_cast<u64>(val)) {}
+
     StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
     StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}
 
@@ -32,6 +34,7 @@ public:
 
 
  struct StringIds {
+    inline static const StringId none   = StringId("none");
     inline static const StringId unknown   = StringId("unknown");
     inline static const StringId unnamed   = StringId("unnamed");
     inline static const StringId enter     = StringId("enter");
@@ -40,10 +43,12 @@ public:
     inline static const StringId event     = StringId("event");
     inline static const StringId post      = StringId("post");
     inline static const StringId code      = StringId("code");
+    inline static const StringId script_lambda      = StringId("script-lambda");
+
  };
 
 
-} // namespace carbon::lib
+} // namespace carbon
 
 
 /**
@@ -51,9 +56,9 @@ public:
  * Used in code, generator tool finds these calls
  * Example: SID("player") -> CRC32 of "player"
  */
-#include "common/util/Crc32.hpp"
+#include "common/util/StringIdHash.hpp"
 
-#define SID(str) (::carbon::lib::StringId(::util::compute_crc32_constexpr(str)))
+#define SID(str) (::carbon::StringId(::util::ToStringId64_Const(str)))
 
 
 // 3. РАСШИРЕНИЕ СТАНДАРТНОЙ БИБЛИОТЕКИ
@@ -61,10 +66,10 @@ public:
 
 namespace std {
     template <>
-    struct hash<carbon::lib::StringId> {
-        size_t operator()(const carbon::lib::StringId& sid) const noexcept {
-            // Просто используем стандартный хеш для u32
-            return std::hash<u32>{}(sid.value);
+    struct hash<carbon::StringId> {
+        size_t operator()(const carbon::StringId& sid) const noexcept {
+            // Используем u64, чтобы не терять биты хеша
+            return std::hash<uint64_t>{}(sid.value);
         }
     };
 }
@@ -74,7 +79,7 @@ namespace std {
 #include "fmt/format.h"
 
 template <>
-struct fmt::formatter<carbon::lib::StringId> {
+struct fmt::formatter<carbon::StringId> {
     // Парсим формат (например, {:x} для hex или {:s} для строки)
     // По умолчанию будем выводить строку, если она есть
     constexpr auto parse(format_parse_context& ctx) {
@@ -82,7 +87,7 @@ struct fmt::formatter<carbon::lib::StringId> {
     }
 
     template <typename FormatContext>
-    auto format(const carbon::lib::StringId& sid, FormatContext& ctx) const {
+    auto format(const carbon::StringId& sid, FormatContext& ctx) const {
         // Пытаемся получить имя из глобальной таблицы
         const char* name = sid.to_cstring();
         
@@ -101,14 +106,14 @@ struct fmt::formatter<carbon::lib::StringId> {
 
 namespace std {
     template <>
-    struct formatter<carbon::lib::StringId> {
+    struct formatter<carbon::StringId> {
         // Парсим формат
         constexpr auto parse(format_parse_context& ctx) {
             return ctx.begin();
         }
 
         // Форматируем
-        auto format(const carbon::lib::StringId& sid, format_context& ctx) const {
+        auto format(const carbon::StringId& sid, format_context& ctx) const {
             const char* name = sid.to_cstring();
             
             if (std::string(name) == "<unknown>") {

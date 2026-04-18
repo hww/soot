@@ -5,6 +5,8 @@
 
 namespace sootc {
 
+class Env;
+
 /*!
  * An Env which manages the scope for (declare ...) statements.
  */

@@ -4,57 +4,61 @@
 #include "common/carbon/lib/Variant.hpp"
 #include <map>
 
-using namespace carbon::lib;
+using namespace carbon;
 
-namespace carbon::kernel {
+namespace carbon {
 
     /**
      * @brief Safe argument access for native functions
      * @example
      *   StringId obj_name = SC_ARG(0, get_as_sid, SID("default"));
-     *   s32 value = SC_ARG(1, get_as_s32, 0);
+     *   i32 value = SC_ARG(1, get_as_s32, 0);
      */
     #define SC_ARG(arg_num, T, default_val) \
         sc_arg_convert<T>(arg_num, argc, argv, SID(#T), (default_val))
 
     template<typename T>
     T sc_arg_convert(u32 arg_num, u32 argc, const Variant* argv,
-        StringId expected_type, T default_val) {
+        RuntimeType  expected_type, T default_val) {
         if (arg_num >= argc) return default_val;
         auto& arg = argv[arg_num];
         if (arg.is_null()) return default_val;
 
-        StringId actual_type = arg.get_type();
+        auto actual_type = arg.get_type();
 
-        if constexpr (std::is_same_v<T, s32>) {
-            if (actual_type == TypeIds::_int_) return arg.get_int32();
-            if (actual_type == TypeIds::sid) return arg.get_int32();
-            if (actual_type == TypeIds::_float_) return static_cast<s32>(arg.get_float());
+        if constexpr (std::is_same_v<T, i32>) {
+            if (actual_type == RuntimeType ::Int) return arg.get_i32();
+            if (actual_type == RuntimeType ::Float) return static_cast<i32>(arg.get_f32());
         }
-        else if constexpr (std::is_same_v<T, vm_int>) {
-            if (actual_type == TypeIds::_int_) return arg.get_int();
-            if (actual_type == TypeIds::sid) return arg.get_int();
-            if (actual_type == TypeIds::_float_) return static_cast<vm_int>(arg.get_float());
+        else if constexpr (std::is_same_v<T, i64>) {
+            if (actual_type == RuntimeType ::Int) return arg.get_i64();
+            if (actual_type == RuntimeType ::Float) return static_cast<i64>(arg.get_f64());
+        }
+        else if constexpr (std::is_same_v<T, u32>) {
+            if (actual_type == RuntimeType ::Int) return arg.get_u32();
+            if (actual_type == RuntimeType ::Float) return static_cast<u32>(arg.get_f32());
+        }
+        else if constexpr (std::is_same_v<T, u64>) {
+            if (actual_type == RuntimeType ::Int) return arg.get_u64();
+            if (actual_type == RuntimeType ::Float) return static_cast<u64>(arg.get_f64());
         }
         else if constexpr (std::is_same_v<T, f32>) {
-            if (actual_type == TypeIds::_float_) return arg.get_float();
-            if (actual_type == TypeIds::_int_) return static_cast<f32>(arg.get_int());
+            if (actual_type == RuntimeType ::Float) return arg.get_f32();
+            if (actual_type == RuntimeType ::Int) return static_cast<f32>(arg.get_i64());
         }
-        else if constexpr (std::is_same_v<T, vm_float>) {
-            if (actual_type == TypeIds::_float_) return arg.get_float();
-            if (actual_type == TypeIds::_int_) return static_cast<vm_float>(arg.get_int());
+        else if constexpr (std::is_same_v<T, f64>) {
+            if (actual_type == RuntimeType ::Float) return arg.get_f64();
+            if (actual_type == RuntimeType ::Int) return static_cast<f64>(arg.get_i64());
         }
         else if constexpr (std::is_same_v<T, bool>) {
-            if (actual_type == TypeIds::_int_) return arg.get_int() != 0;
-            if (actual_type == TypeIds::_float_) return arg.get_float() != 0.0f;
+            if (actual_type == RuntimeType ::Int) return arg.get_i64() != 0;
+            if (actual_type == RuntimeType ::Float) return arg.get_f32() != 0.0f;
         }
         else if constexpr (std::is_same_v<T, StringId>) {
-            if (actual_type == TypeIds::sid) return arg.get_sid();
-            if (actual_type == TypeIds::_int_) return static_cast<StringId>(arg.get_int());
+            if (actual_type == RuntimeType ::Int) return static_cast<StringId>(arg.get_i64());
         }
         else if constexpr (std::is_same_v<T, std::string>) {
-            if (actual_type == TypeIds::sid) return arg.to_string();
-            if (actual_type == TypeIds::string) return arg.to_string();
+            if (actual_type == RuntimeType ::Pointer) return arg.to_string();
         }
         else if constexpr (std::is_pointer_v<T>) {
             if (actual_type == expected_type) {

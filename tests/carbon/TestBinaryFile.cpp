@@ -4,12 +4,13 @@
 #include "files/RelocatableBuffer.hpp"
 #include "fmt/format.h"
 #include "lib/StringIdManager.hpp"
+#include "vm/Instructions.hpp"
 
-using namespace carbon::vm;
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
-using namespace carbon::kernel;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
 
 
@@ -35,8 +36,8 @@ protected:
 
             // Создаем простую функцию с минимальным кодом
             std::vector<Instruction> code = {
-                Instruction::create_a(Opcode::RETURN,0),
-                Instruction::create_a(Opcode::RETURN,0)
+                InstructionFactory::a(Opcode::Return,0),
+                InstructionFactory::a(Opcode::Return,0)
             };
             RelocatableBuffer rbuffer(def_name, "temp");
             rbuffer.add_function(

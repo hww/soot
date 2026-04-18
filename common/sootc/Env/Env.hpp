@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/sootc/IR/IR_Value.hpp"
-#include "common/sootc/IR/IR_Node.hpp"  
+#include "common/sootc/IR/IR_Expression.hpp"  
 #include "common/sootc/Env/Label.hpp" 
 #include "common/type_system/TypeSpec.hpp"
 #include <string>
@@ -24,7 +24,7 @@ enum class EnvKind {
     OTHER_ENV,
 };
 
-class IR_Node;
+class IR_Expression;
 class IR_Method;
 class FileEnv;
 class GlobalEnv;
@@ -110,7 +110,7 @@ public:
         else throw std::runtime_error("No place to bind " + name);
     }
     
-    virtual void emit(const script::Object& form, std::unique_ptr<IR_Node> node) {
+    virtual void emit(const script::Object& form, std::unique_ptr<IR_Expression> node) {
         if (m_parent) m_parent->emit(form, std::move(node));
     }
     

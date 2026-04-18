@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <format>
 
-namespace carbon::kernel {
+namespace carbon {
 
     Scheduler::Scheduler() {
         // Создаем корневой процесс
@@ -240,4 +240,4 @@ namespace carbon::kernel {
             });
     }
 
-} // namespace carbon::kernel
+} // namespace carbon

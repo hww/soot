@@ -1,41 +1,25 @@
 ﻿
 # Создаем нашу библиотеку БЕЗ replxx файлов
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common/carbon/defconstruct/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common/carbon)
+
 
 add_library(libcarbon 
     # External
-    common/util/Crc32.cpp
+    common/util/StringIdHash.cpp
     common/util/Assert.cpp
     common/util/FileUtil.cpp
     common/util/PrintFloat.cpp
     common/util/Log.cpp
 
     ## Local Libs
+    common/carbon/lib/SIDBase.cpp
     common/carbon/lib/StringIdManager.cpp
     common/carbon/lib/Ptr.cpp
 
-    ## Defconstruct
-    common/carbon/defconstruct/source/base/sidbase.cpp
-    common/carbon/defconstruct/source/base/binaryfile.cpp
-    common/carbon/defconstruct/source/disassembly/instructions.cpp
-    common/carbon/defconstruct/source/ast/type.cpp
-    common/carbon/defconstruct/source/compilation/program_binary_element.cpp
-    common/carbon/defconstruct/source/compilation/function.cpp
-
-    ## Files
-    common/carbon/files/RelocatableBuffer.cpp
-    common/carbon/files/Definition.cpp
-    common/carbon/files/StateDesc.cpp
-    common/carbon/files/TypeDesc.cpp
-    common/carbon/files/FunctionDesc.cpp
-    common/carbon/files/BinaryFile.cpp   
-    common/carbon/files/BinaryFileBuilder.cpp
-
-    ## Modules
-    common/carbon/modules/Module.cpp
-    common/carbon/modules/ModuleRegistry.cpp
-    common/carbon/modules/ModuleManager.cpp
+    ## File
+    common/carbon/file/BinaryFile.cpp   
+    common/carbon/file/ProgramBinaryElement.cpp   
 
     ## Virtual machine
     common/carbon/vm/Instructions.cpp

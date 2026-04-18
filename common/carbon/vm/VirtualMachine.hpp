@@ -9,12 +9,12 @@
 #include <memory>
 
 
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
-using namespace carbon::kernel;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
-namespace carbon::vm {
+namespace carbon {
 
     // Running modes
     enum class RunMode { Run, Step, StepIn, StepOut };
@@ -141,7 +141,7 @@ namespace carbon::vm {
         // ------------------------------------------------------------------------
 
         Variant execute_function(Module* module, StringId function, RunMode mode = RunMode::Run);
-        Variant execute_function(FunctionDesc* FunctionDesc, RunMode mode = RunMode::Run);
+        Variant execute_function(ScriptLambda* script_lambda, RunMode mode = RunMode::Run);
         Variant execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode = RunMode::Run);
         Variant execute(RunMode mode = RunMode::Run);
 
@@ -152,9 +152,9 @@ namespace carbon::vm {
         // Internal Helpers
         // ------------------------------------------------------------------------
 
-        vm_int resolve_integer(std::shared_ptr<StackFrame> frame, StringId name);
+        i64 resolve_integer(std::shared_ptr<StackFrame> frame, StringId name);
 
-        vm_float resolve_float(std::shared_ptr<StackFrame> frame, StringId name);
+        f64 resolve_float(std::shared_ptr<StackFrame> frame, StringId name);
 
         void* resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name);
 
@@ -171,7 +171,7 @@ namespace carbon::vm {
             return frame;
         }
 
-        std::shared_ptr<StackFrame> create_stack_frame(Instruction* code_ptr, u8* data_ptr, std::shared_ptr<StackFrame> parent) {
+        std::shared_ptr<StackFrame> create_stack_frame(Instruction* code_ptr, u64* data_ptr, std::shared_ptr<StackFrame> parent) {
             auto frame = std::make_shared<StackFrame>();
             frame->parent = parent;
             frame->code_ptr = code_ptr;

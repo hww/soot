@@ -2,20 +2,21 @@
 
 # Библиотека компилятора
 add_library(libsootc
-    common/sootc/Main.cpp
-    common/sootc/Compiler/FunctionCompiler.cpp
-    common/sootc/Compiler/MethodCompiler.cpp
-    common/sootc/Compiler/StateCompiler.cpp
-    common/sootc/Compiler/TypeCompiler.cpp
-    common/sootc/Compiler/Compiler.cpp
-    common/sootc/Env/Env.cpp
-    common/sootc/Env/GlobalEnv.cpp
-    common/sootc/Env/FileEnv.cpp
-    common/sootc/Env/TypeEnv.cpp
-    common/sootc/Env/FunctionEnv.cpp
-    common/sootc/IR/IR_Value.cpp
-    common/sootc/IR/IR_Node.cpp    
-    common/sootc/IR/StaticObject.cpp
+    common/sootc/tree/Node.cpp
+    common/sootc/tree/FunctionNode.cpp
+    #common/sootc/Main.cpp
+    #common/sootc/Compiler/Compiler.cpp
+    #common/sootc/Env/Env.cpp
+    #common/sootc/Env/GlobalEnv.cpp
+    #common/sootc/Env/FileEnv.cpp
+    #common/sootc/Env/FunctionEnv.cpp
+    #common/sootc/Env/TypeEnv.cpp
+
+    #common/sootc/IR/IR_Value.cpp
+    #common/sootc/IR/IR_FunctionValue.cpp
+    #common/sootc/IR/IR_Expression.cpp    
+
+    #common/sootc/IR/StaticObject.cpp
 )
 
 # Пути для include
@@ -43,7 +44,7 @@ if(WIN32)
 endif()
 
 # Исполняемый файл для тестирования компилятора
-add_executable(sootc common/sootc/Main.cpp)
+add_executable(sootc common/sootc/MainDev.cpp)
 
 # ВАЖНО: добавляем все библиотеки, которые нужны исполняемому файлу
 target_link_libraries(sootc PRIVATE 

@@ -4,6 +4,7 @@
 #include "common/sootc/IR/IR_Value.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/sootc/Env/FunctionEnv.hpp"
+#include "common/sootc/Env/FileEnv.hpp"
 #include <memory>
 #include <string>
 #include <vector>

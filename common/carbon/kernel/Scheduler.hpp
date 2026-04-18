@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <functional>
 
-namespace carbon::kernel {
+namespace carbon {
 
     /**
      * @class Scheduler
@@ -266,4 +266,4 @@ namespace carbon::kernel {
         void remove_from_tree_internal(Process* process);
     };
 
-} // namespace carbon::kernel
+} // namespace carbon

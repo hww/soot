@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace carbon::kernel {
+namespace carbon {
 
     // Static buffer for string representations
     static char s_StringBuffer[1024];

@@ -89,6 +89,7 @@ namespace script {
 
         collect_environment_info(env, include_parents, max_parent_depth, visited,
             [&](const EnvironmentObject& current_env, int depth, bool is_parent) {
+                (void)is_parent;
                 if (!first_env) {
                     ss << "\n";
                 }

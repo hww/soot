@@ -3,7 +3,7 @@
 #include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/kernel/Connectable.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
 class Process;
 class Engine;

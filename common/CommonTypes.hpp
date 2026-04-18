@@ -20,12 +20,16 @@ using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
-using s8 = int8_t;
-using s16 = int16_t;
-using s32 = int32_t;
-using s64 = int64_t;
+using i8 = int8_t;
+using i16 = int16_t;
+using i32 = int32_t;
+using i64 = int64_t;
 using f32 = float;
 using f64 = double;
+using p64 = uintptr_t;
+
+using sid64 = uint64_t;
+using sid32 = uint32_t;
 
 // ============================================================================
 // 128-bit Types
@@ -34,13 +38,13 @@ using f64 = double;
 struct u128 {
     union {
         u64 du64[2];
-        s64 ds64[2];
+        i64 ds64[2];
         u32 du32[4];
-        s32 ds32[4];
+        i32 ds32[4];
         u16 du16[8];
-        s16 ds16[8];
+        i16 ds16[8];
         u8 du8[16];
-        s8 ds8[16];
+        i8 ds8[16];
         float f[4];
     };
 };
@@ -50,7 +54,7 @@ static_assert(sizeof(u128) == 16, "u128 must be 16 bytes");
 // Constants
 // ============================================================================
 
-constexpr s32 INVALID_INDEX = -1;  // Было INDEX_NONE, переименовано чтобы избежать конфликта с макросом
+constexpr i32 INVALID_INDEX = -1;  // Было INDEX_NONE, переименовано чтобы избежать конфликта с макросом
 constexpr u32 MAX_REGISTERS = 34;
 constexpr u32 ARG_REGISTERS_OFFSET = 24;  // r24-r33: arguments
 constexpr u32 LOCAL_REGISTERS_OFFSET = 0; // r0-r23: local variables
@@ -80,11 +84,11 @@ inline u32 safe_cast_u32(u64 value) {
     return static_cast<u32>(value);
 }
 
-inline s32 safe_cast_s32(s64 value) {
-    if (value > std::numeric_limits<s32>::max() || value < std::numeric_limits<s32>::min()) {
-        throw OverflowException(fmt::format("Value {} out of range for s32", value));
+inline i32 safe_cast_s32(i64 value) {
+    if (value > std::numeric_limits<i32>::max() || value < std::numeric_limits<i32>::min()) {
+        throw OverflowException(fmt::format("Value {} out of range for i32", value));
     }
-    return static_cast<s32>(value);
+    return static_cast<i32>(value);
 }
 
 inline f32 safe_cast_f32(f64 value) {
@@ -102,13 +106,13 @@ inline f32 safe_cast_f32(f64 value) {
 
 union U32Float {
     u32 as_u32;
-    s32 as_s32;
+    i32 as_s32;
     f32 as_f32;
 };
 
 union U64Float {
     u64 as_u64;
-    s64 as_s64;
+    i64 as_s64;
     f64 as_f64;
 };
 

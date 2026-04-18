@@ -5,9 +5,9 @@
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/lib/StringId.hpp"
 
-using namespace carbon::lib;
+using namespace carbon;
 
-namespace carbon::kernel {
+namespace carbon {
      class Process;   
 /**
  * @brief Event message structure (like in GOAL)
@@ -66,4 +66,4 @@ struct EventMessage {
     std::string to_string() const ;
 };
 
-} // namespace carbon::kernel
+} // namespace carbon

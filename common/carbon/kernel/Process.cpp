@@ -3,7 +3,8 @@
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/Log.hpp"
-#include "files/StateDesc.hpp"
+#include "common/carbon/file/Export.hpp"
+#include "file/DCScript.hpp"
 #include "kernel/EventMessage.hpp"
 #include "kernel/Kernel.hpp"
 #include "lib/StringId.hpp"
@@ -12,7 +13,7 @@
 #include <format>
 #include <memory>
 
-namespace carbon::kernel {
+namespace carbon {
 
     // ============================================================================
     // Static Member Initialization
@@ -42,7 +43,6 @@ namespace carbon::kernel {
         , next_state(nullptr)
         , trans_hook(nullptr)
         , post_hook(nullptr)
-        , event_handler(nullptr)
         , entity(nullptr) {
     }
 
@@ -100,7 +100,7 @@ namespace carbon::kernel {
         return go_state(new_state);
     }
 
-    bool Process::go_state(StateDesc* new_state) {
+    bool Process::go_state(SsState* new_state) {
 
         // Проверить что состояние валидное
         if (!new_state) {
@@ -112,7 +112,7 @@ namespace carbon::kernel {
         // Проверяем возможность перехода
         if (new_state->is_virtual() && !new_state->is_override()) {
             lg::error("Process '{}': cannot activate virtual state '{}'",
-                get_name_string(), new_state != nullptr ? new_state->name.to_string() : "null");
+                get_name_string(), new_state != nullptr ? new_state->name() : "null");
             return false;
         }
 
@@ -130,16 +130,14 @@ namespace carbon::kernel {
             // Очищаем хуки текущего состояния
             trans_hook = nullptr;
             post_hook = nullptr;
-            event_handler = nullptr;
         }
         
         // Устанавливаем новое состояние
         current_state = new_state;
         
-        // Копируем делегаты из StateDesc в процесс (как в GOAL)
+        // Копируем делегаты из SsState в процесс (как в GOAL)
         trans_hook = new_state->get_trans_function();
         post_hook = new_state->get_post_function();
-        event_handler = new_state->get_event_handler();  // или event_handlers, если нужно
         
         // Создаём новый StateFrame (будет вызывать exit при выходе)
         current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
@@ -165,7 +163,7 @@ namespace carbon::kernel {
         }
         
         lg::debug("Process '{}': transitioned to state '{}'",
-            get_name_string(), new_state != nullptr ? new_state->name.to_string() : "null");
+            get_name_string(), new_state != nullptr ? new_state->name() : "null");
         
         return true;
     }
@@ -179,7 +177,6 @@ namespace carbon::kernel {
         if (current_state) {
             trans_hook = current_state->get_trans_function();
             post_hook = current_state->get_post_function();
-            event_handler = current_state->get_event_handler();
         }
     }
 
@@ -191,7 +188,7 @@ namespace carbon::kernel {
      * Send message from this object to target
      */
     bool Process::send_event(Process* target, u32 argc, StringId event, Variant* argv) {
-        if (!target || !target->has_event_handler() || !target->is_runnable()) {
+        if (!target || !target->has_any_event_handler() || !target->is_runnable()) {
             return false;
         }
 
@@ -215,7 +212,7 @@ namespace carbon::kernel {
      * Send message from this object to target
      */
     bool Process::send_event(Process* target, u32 argc, StringId event, EventMessage* message) {
-        if (!target || !target->has_event_handler() || !target->is_runnable()) {
+        if (!target || !target->is_runnable()) {
             return false;
         }
         
@@ -236,23 +233,24 @@ namespace carbon::kernel {
      * Receive the event
      */
     bool Process::execute_event(Process* sender, u32 argc, StringId event, EventMessage* message) {
-        if (!has_event_handler()) return false;
+        auto handler = event_handler(event);
+        if (handler == nullptr) return false;
 
         auto saved_top_thread = top_thread;
         auto& vm = Kernel::instance().virtual_machine();
 
         auto event_frame = std::make_shared<StackFrame>(
-            event_handler,
+            handler,
             nullptr,
             StackFrame::FrameType::GENERIC,
             event
         );
 
         // Исправлено: используем ссылки для изменения аргументов
-        event_frame->set_argument(0, Variant(sender, TypeIds::process));
+        event_frame->set_argument(0, Variant(sender));
         event_frame->set_argument(1, Variant(argc));
         event_frame->set_argument(2, Variant(event));
-        event_frame->set_argument(3, Variant(message, TypeIds::event_message));
+        event_frame->set_argument(3, Variant(message));
 
         auto result = vm.execute(event_frame);
         
@@ -448,7 +446,7 @@ namespace carbon::kernel {
 
         lg::debug("Process '{}': activated with state '{}'",
             get_name_string(),
-            current_state ? current_state->name.to_string() : "null");
+            current_state ? current_state->name() : "null");
     }
 
     void Process::suspend() {
@@ -558,12 +556,12 @@ namespace carbon::kernel {
     // Private Methods
     // ============================================================================
 
-    bool Process::execute_immediate_transition(StateDesc* new_state) {
+    bool Process::execute_immediate_transition(SsState* new_state) {
         // Для немедленного перехода выполняем всё в текущем контексте
         if (!new_state) return false;
         
         // Сохраняем текущее состояние
-        StateDesc* old_state = current_state;
+        SsState* old_state = current_state;
         
         // Выходим из текущего состояния
         if (current_state_frame) {
@@ -578,7 +576,6 @@ namespace carbon::kernel {
         // Копируем делегаты
         trans_hook = new_state->get_trans_function();
         post_hook = new_state->get_post_function();
-        event_handler = new_state->get_event_handler();
         
         // Создаем новый фрейм состояния
         current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
@@ -593,13 +590,13 @@ namespace carbon::kernel {
         
         lg::debug("Process '{}': immediate transition from '{}' to '{}'",
             get_name_string(),
-            old_state ? old_state->name.to_string() : "null",
-            new_state->name.to_string());
+            old_state ? old_state->name() : "null",
+            new_state->name());
         
         return true;
     }
 
-    bool Process::execute_deferred_transition(StateDesc* new_state) {
+    bool Process::execute_deferred_transition(SsState* new_state) {
         auto& vm = Kernel::instance().virtual_machine();
         
         // Удаляем текущий StateFrame (вызовет exit-обработчик)
@@ -618,13 +615,12 @@ namespace carbon::kernel {
         }
 
         // Обновляем текущее состояние
-        StateDesc* old_state = current_state;
+        SsState* old_state = current_state;
         current_state = new_state;
         
-        // Копируем делегаты из StateDesc в процесс
+        // Копируем делегаты из SsState в процесс
         trans_hook = new_state->get_trans_function();
         post_hook = new_state->get_post_function();
-        event_handler = new_state->get_event_handler();
 
         // Создаем новый StateFrame
         current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
@@ -644,8 +640,8 @@ namespace carbon::kernel {
 
         lg::debug("Process '{}': transitioned from '{}' to '{}'",
             get_name_string(),
-            old_state ? old_state->name.to_string() : "null",
-            new_state->name.to_string());
+            old_state ? old_state->name() : "null",
+            new_state->name());
 
         return true;
     }
@@ -659,7 +655,6 @@ namespace carbon::kernel {
         // Очищаем обработчики
         trans_hook = nullptr;
         post_hook = nullptr;
-        event_handler = nullptr;
 
         // Сбрасываем статус
         status = ProcessStatus::DEAD;
@@ -676,7 +671,8 @@ namespace carbon::kernel {
     // State Hooks Execution (create temporary frames, use local pointers only)
     // ============================================================================
     
-    void Process::execute_enter_handler(VirtualMachine& vm, FunctionDesc* enter_hook) {
+    void Process::execute_enter_handler(VirtualMachine& vm, ScriptLambda* enter_hook) {
+        
         if (!enter_hook) return;
         
         // Create temporary frame for post handler
@@ -760,7 +756,7 @@ namespace carbon::kernel {
             pid,
             get_name_string(),
             static_cast<int>(status),
-            current_state ? current_state->name.to_string() : "null"
+            current_state ? current_state->name() : "null"
         );
     }
 
@@ -770,8 +766,8 @@ namespace carbon::kernel {
         lg::debug("  Name: '{}'", get_name_string());
         lg::debug("  Status: {}", static_cast<int>(status));
         lg::debug("  Mask: 0x{:08x}", static_cast<u32>(mask));
-        lg::debug("  State: '{}'", current_state ? current_state->name : "null");
-        lg::debug("  Next State: '{}'", next_state ? next_state->name : "null");
+        lg::debug("  State: '{}'", current_state ? current_state->name() : "null");
+        lg::debug("  Next State: '{}'", next_state ? next_state->name() : "null");
         lg::debug("  Heap: {}/{} bytes", heap_used(), heap_size());
         lg::debug("  Stack Depth: {}", [this]() {
             u32 depth = 0;
@@ -787,4 +783,4 @@ namespace carbon::kernel {
             }());
     }
 
-} // namespace carbon::kernel
+} // namespace carbon

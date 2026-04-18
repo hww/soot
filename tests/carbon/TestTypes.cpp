@@ -2,11 +2,11 @@
 
 #include "carbon/Export.hpp"
 
-using namespace carbon::vm;
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
-using namespace carbon::kernel;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
 TEST(Types, SafeCasting) {
     EXPECT_EQ(safe_cast_u32(1000u), 1000u);

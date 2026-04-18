@@ -2,9 +2,11 @@
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/carbon/files/RelocatableBuffer.hpp"
-#include "common/carbon/files/Definition.hpp"
-#include "sootc/Env/Export.hpp"
+#include "common/carbon/file/ProgramBinaryElement.hpp"
+#include "sootc/IR/IR_Value.hpp"
+
+using  namespace carbon;
+using  namespace carbon;
 
 namespace sootc {
 
@@ -16,7 +18,7 @@ public:
     IR_Value* compile(const script::Object& form, const script::Object& rest, Env* env);
     
     // BUILD Phase
-    carbon::files::RelocatableBuffer build(MethodEnv* m_env);
+    ProgramBinaryElement build(MethodEnv* m_env);
 
 private:
     std::string extract_method_name(const script::Object& form);

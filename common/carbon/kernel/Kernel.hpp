@@ -12,7 +12,7 @@
 #include "common/carbon/kernel/Scheduler.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
 
     /**
      * @class Kernel
@@ -254,7 +254,7 @@ namespace carbon::kernel {
          * @note Автоматически управляет контекстом выполнения
          * @note Безопасен для вложенных вызовов
          */
-        bool run_process_function(Process* process, FunctionDesc* entry_point);
+        bool run_process_function(Process* process, ScriptLambda* entry_point);
 
         // ============================================================================
         // Frame Execution
@@ -342,4 +342,4 @@ namespace carbon::kernel {
      */
     inline ProcessMask global_mask() { return kernel().global_mask(); }
 
-} // namespace carbon::kernel
+} // namespace carbon

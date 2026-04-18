@@ -1,4 +1,5 @@
 #include "common/type_system/TypeSystem.hpp"
+#include "util/StringIdHash.hpp"
 #include "common/sooti/ListBuilder.hpp"
 #include "common/sooti/Printer.hpp"
 #include "common/type_system/Deftype.hpp"
@@ -62,7 +63,7 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 // Keep old type for reference
                 m_old_types.push_back(std::move(m_types[name]));
                 // Update with new type
-                uint32_t crc = util::compute_crc32(type->name());
+                uint32_t crc = util::ToStringId32(type->name());
                 m_types_by_crc[crc] = type.get();
                 m_types[name] = std::move(type);
             } else {
@@ -97,7 +98,7 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
             }
         }
 
-        uint32_t crc = util::compute_crc32(type->name());
+        uint32_t crc = util::ToStringId32(type->name());
         m_types_by_crc[crc] = type.get();
         m_types[name] = std::move(type);
 

@@ -17,8 +17,8 @@
 
 namespace sootc {
 
-using namespace ::carbon::files;
-using namespace ::carbon::lib;
+using namespace ::carbon;
+using namespace ::carbon;
 
 TypeCompiler::TypeCompiler(TypeSystem& ts, Compiler* compiler) 
     : ts_(ts), compiler_(compiler) {}

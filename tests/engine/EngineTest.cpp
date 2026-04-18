@@ -6,8 +6,8 @@
 #include <thread>
 #include <memory>
 
-using namespace carbon::kernel;
-using namespace carbon::lib;
+using namespace carbon;
+using namespace carbon;
 
 class EngineTest : public ::testing::Test
 {

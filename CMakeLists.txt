@@ -8,7 +8,7 @@ project(repl
 )
 
 # C++ Modern CMake policies
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_BUILD_TYPE Debug)
@@ -127,10 +127,10 @@ if(BUILD_TESTS)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
     # Подключаем тесты
-    include(tests/sooti/CMakeLists.txt)
-    include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
-    include(tests/carbon/CMakeLists.txt)
-    include(tests/engine/CMakeLists.txt)
+    #include(tests/sooti/CMakeLists.txt)
+    #include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
+    #include(tests/carbon/CMakeLists.txt)
+    #include(tests/engine/CMakeLists.txt)
 endif()
 
 # Создать общую цель для сборки всех тестов

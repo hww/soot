@@ -211,12 +211,12 @@ std::string TypeEnv::dump_vtable() const {
     
     for (size_t i = 0; i < m_vtable_slots.size(); i++) {
         if (m_vtable_slots[i]) {
-            auto* m_env = m_vtable_slots[i];
+            auto* method_env = m_vtable_slots[i];
             result += fmt::format("  [{}] {} : {} (defined: {})\n",
                                   i, 
-                                  m_env->get_name(),
-                                  m_env->method_function_type.print(),
-                                  m_env->is_defined());
+                                  method_env->get_name(),
+                                  method_env->method_function_type.print(),
+                                  method_env->is_defined());
         } else {
             // Ищем в родителях
             MethodEnv* parent_method = find_method(static_cast<int>(i));

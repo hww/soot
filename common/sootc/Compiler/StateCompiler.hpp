@@ -3,12 +3,12 @@
 
 #include "common/type_system/TypeSystem.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/carbon/files/RelocatableBuffer.hpp"
+#include "common/carbon/file/ProgramBinaryElement.hpp"
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/IR/IR_Value.hpp"
 #include <string>
 
-using namespace carbon::files;
+using namespace carbon;
 
 namespace sootc {
 
@@ -21,7 +21,7 @@ public:
     IR_Value* compile(const script::Object& form, const script::Object& rest, Env* env);
     
     // BUILD Phase
-    RelocatableBuffer build(StateEnv* s_env);
+    ProgramBinaryElement build(StateEnv* s_env);
 
 private:
     struct HandlerForms {

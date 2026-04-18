@@ -6,11 +6,11 @@
 #include "lib/StringIdManager.hpp"
 #include "lib/Variant.hpp"
 
-using namespace carbon::vm;
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
-using namespace carbon::kernel;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
 class VirtualMachineTest : public ::testing::Test {
   protected:
@@ -50,7 +50,7 @@ TEST_F(VirtualMachineTest, SimpleExecution) {
     // Простая функция: return 42
     std::vector<Instruction> code;
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 42)); // r1 = 42
-    code.push_back(Instruction::create_a(Opcode::RETURN, 1));                   // return r1
+    code.push_back(Instruction::create_a(Opcode::Return, 1));                   // return r1
 
     RelocatableBuffer rbuffer;
     rbuffer.add_function("simple_answer", code, {}, {});
@@ -76,10 +76,10 @@ TEST_F(VirtualMachineTest, BasicArithmetic) {
     std::vector<Instruction> code;
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 5)); // r1 = 5
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 2, 3)); // r2 = 3
-    code.push_back(Instruction::create_abc(Opcode::ADD_INT, 3, 1, 2));         // r3 = r1 + r2
+    code.push_back(Instruction::create_abc(Opcode::IAdd, 3, 1, 2));         // r3 = r1 + r2
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 4, 2)); // r4 = 2
-    code.push_back(Instruction::create_abc(Opcode::MUL_INT, 5, 3, 4));         // r5 = r3 * r4
-    code.push_back(Instruction::create_a(Opcode::RETURN, 5));                  // return r5
+    code.push_back(Instruction::create_abc(Opcode::IMul, 5, 3, 4));         // r5 = r3 * r4
+    code.push_back(Instruction::create_a(Opcode::Return, 5));                  // return r5
 
     RelocatableBuffer rbuffer;
     rbuffer.add_function("calculate", code, {}, {});
@@ -102,7 +102,7 @@ TEST_F(VirtualMachineTest, FunctionCall) {
     std::vector<Instruction> main_code = {
         // Просто возвращаем значение
         Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 42),
-        Instruction::create_a(Opcode::RETURN, 1)};
+        Instruction::create_a(Opcode::Return, 1)};
 
     // Добавляем функцию в билдер
     RelocatableBuffer rbuffer;
@@ -140,7 +140,7 @@ TEST_F(VirtualMachineTest, NativeFunctionCall) {
     // Упрощенная функция которая просто возвращает значение
     std::vector<Instruction> code;
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 30));
-    code.push_back(Instruction::create_a(Opcode::RETURN, 1));
+    code.push_back(Instruction::create_a(Opcode::Return, 1));
 
     RelocatableBuffer rbuffer;
     rbuffer.add_function("test_native_call", code, {}, {});
@@ -169,7 +169,7 @@ TEST_F(VirtualMachineTest, ControlFlow) {
     std::vector<Instruction> code;
     // Всегда возвращаем 10
     code.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 10));
-    code.push_back(Instruction::create_a(Opcode::RETURN, 1));
+    code.push_back(Instruction::create_a(Opcode::Return, 1));
 
     RelocatableBuffer rbuffer;
     rbuffer.add_function("conditional", code, {}, {});
@@ -204,7 +204,7 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
 
     std::vector<Instruction> code1;
     code1.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 100));
-    code1.push_back(Instruction::create_a(Opcode::RETURN, 1));
+    code1.push_back(Instruction::create_a(Opcode::Return, 1));
 
     RelocatableBuffer rbuffer1;
     rbuffer1.add_function("func1", code1, {}, {});
@@ -215,7 +215,7 @@ TEST_F(VirtualMachineTest, MultipleBinaries) {
 
     std::vector<Instruction> code2;
     code2.push_back(Instruction::create_imm(Opcode::LOAD_IMMEDIATE_INT, 1, 200));
-    code2.push_back(Instruction::create_a(Opcode::RETURN, 1));
+    code2.push_back(Instruction::create_a(Opcode::Return, 1));
 
     RelocatableBuffer rbuffer2;
     rbuffer2.add_function("func2", code2, {}, {});

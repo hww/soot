@@ -6,10 +6,10 @@
 #include "fmt/format.h"
 #include "lib/Variant.hpp"
 
-using namespace carbon::vm;
-using namespace carbon::lib;
-using namespace carbon::files;
-using namespace carbon::modules;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
+using namespace carbon;
 
 class RelocationTest : public ::testing::Test {
 protected:
@@ -23,7 +23,7 @@ protected:
         
         // Добавляем тестовую функцию
         std::vector<Instruction> code = {
-            Instruction::create_a(Opcode::RETURN, 0)
+            Instruction::create_a(Opcode::Return, 0)
         };
         
         RelocatableBuffer rbuffer;
@@ -87,8 +87,8 @@ TEST_F(RelocationTest, RelocateFunctionDescPointers) {
     
     // Создаем функцию с данными
     std::vector<Instruction> code = {
-        Instruction::create_abc(Opcode::ADD_INT, 0, 1, 2),
-        Instruction::create_a(Opcode::RETURN, 0)
+        Instruction::create_abc(Opcode::IAdd, 0, 1, 2),
+        Instruction::create_a(Opcode::Return, 0)
     };
     
     std::vector<u8> data = {0x01, 0x02, 0x03, 0x04};

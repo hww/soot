@@ -1,4 +1,5 @@
 #include "sootc/Compiler/MethodCompiler.hpp"
+#include "file/ProgramBinaryElement.hpp"
 #include "sootc/Compiler/Compiler.hpp"
 #include "sootc/Compiler/FunctionCompiler.hpp"
 #include "sootc/Env/MethodEnv.hpp"
@@ -128,7 +129,7 @@ IR_Value* MethodCompiler::compile(const script::Object& form,
 // build
 // ============================================================================
 
-RelocatableBuffer MethodCompiler::build(MethodEnv* me) {
+ProgramBinaryElement MethodCompiler::build(MethodEnv* me) {
     // Просто создаем функциональный компилятор и просим его собрать наш Env
     // Так как MethodEnv наследуется от FunctionEnv, всё пройдет гладко.
     FunctionCompiler func_compiler(ts_, compiler_);

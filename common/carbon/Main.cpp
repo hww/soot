@@ -1,4 +1,3 @@
-#include "common/carbon/modules/ModuleManager.hpp"
 #include "common/carbon/kernel/Kernel.hpp"
 #include "common/carbon/kernel/ProcessRunner.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
@@ -9,14 +8,11 @@
 #include "lib/StringId.hpp"
 #include <cstddef>
 #include <memory>
-#include <iostream>
 #include <string>
 #include <vector>
 #include <filesystem>
 
-using namespace carbon::modules;
-using namespace carbon::kernel;
-using namespace carbon::vm;
+using namespace carbon;
 using namespace script;
 
 namespace fs = std::filesystem;
@@ -26,7 +22,7 @@ Variant parse_argument(const char* arg) {
     char* endptr = nullptr;
     long long_val = strtol(arg, &endptr, 10);
     if (*endptr == '\0' && endptr != arg) {
-        return Variant(static_cast<s32>(long_val));
+        return Variant(static_cast<i32>(long_val));
     }
     
     // Пробуем как число с плавающей точкой
@@ -67,7 +63,7 @@ void print_usage(const char* program_name) {
 }
 
 int main(int argc, char* argv[]) {
-
+    /*
     fmt::print("=== DEBUG: argc = {} ===\n", argc);
     for (int i = 0; i < argc; i++) {
         fmt::print("  argv[{}] = '{}'\n", i, argv[i]);
@@ -316,6 +312,6 @@ int main(int argc, char* argv[]) {
     
     // 9. Очистка
     kernel.shutdown();
-    
+    */
     return 0;
 }

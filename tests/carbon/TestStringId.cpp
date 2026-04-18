@@ -9,7 +9,7 @@
 #include "lib/StringId.hpp"
 #include "lib/StringIdManager.hpp"
 
-using namespace carbon::lib;
+using namespace carbon;
 
 class StringIdTest : public ::testing::Test {
 protected:

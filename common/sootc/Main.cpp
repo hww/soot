@@ -1,20 +1,20 @@
 ﻿#include "common/sooti/Reader.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sootc/Compiler/Compiler.hpp"
+#include "common/sootc/Compiler/FileCompiler.hpp"
+#include "common/sootc/Env/GlobalEnv.hpp"
+#include "common/carbon/file/Export.hpp"
 #include "common/util/Log.hpp"
-#include "common/carbon/files/BinaryFileBuilder.hpp"
-#include "common/carbon/files/RelocatableBuffer.hpp"
-#include "common/carbon/vm/Instructions.hpp"
+#include "sootc/Env/FileEnv.hpp"
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <string>
-#include <vector>
 
 using namespace script;
 using namespace sootc;
-using namespace carbon::files;
-using namespace carbon::vm;
+using namespace carbon;
+using namespace carbon;
 
 namespace fs = std::filesystem;
 
@@ -179,29 +179,39 @@ int main(int argc, char* argv[]) {
         lg::info("Parsed: {}", forms.print());
         
         TypeSystem& ts = TypeSystem::instance();
+        // 1. Подготовка типов
         ts.add_builtin_types();
-        
-        // Создаем компилятор
-        Compiler compiler(ts, module_name);
-        GlobalEnv global_env;
-        FileEnv file_env(&global_env, input_file);  // ← создаем FileEnv
 
-        // Компилируем весь файл - компилятор сам разберет формы и вернет список определений
-        auto module = compiler.compile_module(forms, &file_env);
-        
-        if (module.get() == nullptr) {
-            lg::error("Failed to build module");
+        // 2. Инициализация окружения
+        GlobalEnv global_env;
+
+
+        // 3. Создаем компилятор
+        Compiler compiler(ts);
+
+        // 4. Запускаем процесс
+        auto result = compiler.compile_file(forms, &global_env, input_file);
+
+        if (!result) {
+            lg::error("Failed to build module: {}", result.error());
             return 1;
         }
-        
-        lg::info("Module dump:\n{}", module->inspect());
-        
-        // Сохраняем модуль
-        if (!module->save_to_files(output_dir.string())) {
-            lg::error("Failed to save module files");
+
+        // Извлекаем наш скомпилированный бинарный файл
+        // Предположим, result содержит std::unique_ptr<BinaryFile> или аналогичную структуру
+        auto& bin_file = result.value();
+
+        // 5. Инспекция и сохранение
+        lg::info("Module dump:\n{}", bin_file->inspect());
+
+        // Сохраняем (bin_file знает свое имя и формат)
+        if (!bin_file->save(output_dir.string())) {
+            lg::error("Failed to save module files to: {}", output_dir.string());
             return 1;
         }
-        
+
+        lg::info("Module {} successfully built.", input_file);
+                
         lg::info("=== Compilation complete ===");
         lg::info("Module: {}", module_name);
         lg::info("Saved .bin and .dci to: {}", output_dir.string());

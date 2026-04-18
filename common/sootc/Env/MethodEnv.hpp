@@ -20,7 +20,7 @@ public:
         m_kind = EnvKind::METHOD_ENV;
     }
 
-    const Type* type() const { return m_type; }
+    Type* type() const { return m_type; }
     TypeEnv* type_env() const { return m_type_env; }
     void set_type_env(TypeEnv* env) { m_type_env = env; }
     

@@ -1,7 +1,7 @@
 #include "common/carbon/kernel/EventMessage.hpp"
 #include "common/carbon/kernel/Process.hpp"
 
-namespace carbon::kernel {
+namespace carbon {
     /**
      * @brief Convert to string for debugging
      */
