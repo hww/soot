@@ -1,8 +1,8 @@
 #pragma once
 
 #include <fmt/format.h>
-#include <fmt/ostream.h>
 #include <string>
+#include <string_view>
 
 namespace util {
 
@@ -22,28 +22,30 @@ public:
         return std::string(m_column, ' ');
     }
 
-    // Для compile-time строк (шаблон)
+    // 1. Для простых строк без форматирования (самый быстрый путь)
+    std::string format(std::string_view msg) const {
+        return indent() + std::string(msg);
+    }
+
+    // 2. Универсальный шаблон для форматирования. 
+    // Используем vformat, чтобы избежать проблем с дедукцией типов вложенных шаблонов fmt.
     template<typename... Args>
-    void print(fmt::format_string<Args...> format, Args&&... args) const {
-        fmt::print("{}{}", indent(), fmt::format(format, std::forward<Args>(args)...));
+    std::string format(std::string_view fmt_str, Args... args) const { 
+        // Убрали &&, теперь аргументы передаются по значению или копируются.
+        // Для тяжелых объектов это чуть медленнее, но для примитивов (int, float, sid64) 
+        // это убирает все проблемы со ссылками на члены структур.
+        return indent() + fmt::vformat(fmt_str, fmt::make_format_args(args...));
     }
 
+    // 3. Методы print
     template<typename... Args>
-    void print_no_newline(fmt::format_string<Args...> format, Args&&... args) const {
-        fmt::print("{}{}", indent(), fmt::format(format, std::forward<Args>(args)...));
+    void print(std::string_view fmt_str, Args&&... args) const {
+        fmt::print("{}", indent());
+        fmt::vprint(fmt_str, fmt::make_format_args(args...));
     }
 
-    template<typename... Args>
-    std::string format(fmt::format_string<Args...> format, Args&&... args) const {
-        return fmt::format("{}{}", indent(), fmt::format(format, std::forward<Args>(args)...));
-    }
-
-    // Для runtime-строк (если очень нужно)
-    void print_runtime(const std::string& msg) const {
-        fmt::print("{}{}", indent(), msg);
-    }
-
-    void print_runtime(const char* msg) const {
+    // Для вывода заранее отформатированной строки
+    void print_runtime(std::string_view msg) const {
         fmt::print("{}{}", indent(), msg);
     }
 

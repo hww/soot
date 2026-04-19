@@ -15,6 +15,14 @@ using namespace carbon;
 
 
 namespace carbon {
+
+    // Константы из эталонного кода
+    constexpr sid64 SCRIPT_LAMBDA_SID = SID("script-lambda");
+    constexpr sid64 ARRAY_SID = SID("array");
+    constexpr sid64 GLOBAL_SID = SID("global");
+    constexpr sid64 FUNCTION_SID = SID("function");
+    constexpr u64 DEADBEEF = 0xDEAD'BEEF'1337'F00D;
+
     struct SsDeclarationList;
     struct SsDeclaration;
     struct StateScript;
@@ -184,7 +192,7 @@ namespace carbon {
         SsTrackGroup  m_trackGroup;
 
         ScriptLambda* lambda() { return  (ScriptLambda*)m_pScriptLambda;}
-        std::string name() { return m_blockType != BlockType::Event ? block_type_to_string(m_blockType) :  fmt::format("{} {}", block_type_to_string(m_blockType), StringId(m_blockEventId)); }
+        std::string name() const { return m_blockType != BlockType::Event ? block_type_to_string(m_blockType) :  fmt::format("{} {}", block_type_to_string(m_blockType), StringId(m_blockEventId)); }
     };
 
     // ============================================================================
@@ -230,8 +238,8 @@ namespace carbon {
         u64    m_sidGlobal;       // either SID("global") if in global scope or something else if inside state-script
         u64    m_always0_3;
 
-        Instruction* get_code_ptr() { return (Instruction*)m_pInstruction;}
-        u64* get_symbols_ptr() { return m_pSymbols;}
+        Instruction* get_code_ptr() const { return (Instruction*)m_pInstruction;}
+        u64* get_symbols_ptr() const { return m_pSymbols;}
     };
     
     inline SsOnBlock* SsState::lookup(BlockType type) {

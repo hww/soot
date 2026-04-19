@@ -2,8 +2,12 @@
 
 # Библиотека компилятора
 add_library(libsootc
-    common/sootc/tree/Node.cpp
-    common/sootc/tree/FunctionNode.cpp
+    common/sootc/node/Node.cpp
+    common/sootc/node/FunctionNode.cpp
+    common/sootc/compiler/NodeBuilder.cpp
+    common/sootc/compiler/Compiler.cpp
+    common/sootc/compiler/FunctionCompiler.cpp
+    common/sootc/compiler/FileCompiler.cpp
     #common/sootc/Main.cpp
     #common/sootc/Compiler/Compiler.cpp
     #common/sootc/Env/Env.cpp
@@ -44,7 +48,7 @@ if(WIN32)
 endif()
 
 # Исполняемый файл для тестирования компилятора
-add_executable(sootc common/sootc/MainDev.cpp)
+add_executable(sootc common/sootc/Main.cpp)
 
 # ВАЖНО: добавляем все библиотеки, которые нужны исполняемому файлу
 target_link_libraries(sootc PRIVATE 

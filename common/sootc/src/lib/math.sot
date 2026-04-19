@@ -1,81 +1,81 @@
-﻿(require "../common/sootc/src/lib/builtins.sot")
+﻿;(require "../common/sootc/src/lib/builtins.sot")
 
 (define add (function ((a int) (b int)) (+ a b)))
-(define sub (function ((a int) (b int)) (- a b)))
-(define get-name (function () "Test String"))
-(define get-scale (function () 0.1))
-(define get-max-value (function () 999999999))
-
-(deftype vector3 (basic) 
-    (
-        (x  float)
-        (y  float)
-        (z  float)
-    )
-    (:methods
-        (new () _type_)
-        (set (_type_ float float float) none)
-    )
-    (:states
-       idle 
-       goto-position0
-       (goto-position vector3)
-       )
-)
-
-;; ===================================================================
-;; Vector3 methods
-;; ===================================================================
-
-(defmethod new vector3 () 
-    0)
-
-(defmethod delete ((this vector3)) 
-    0)
-
-(defmethod print ((this vector3)) 
-    0)
-
-(defmethod inspect ((this vector3)) 
-    0)
-
-(defmethod length ((this vector3)) 
-    0)
-
-(defmethod asize-of ((this vector3)) 
-    0)
-(defmethod copy ((this vector3)) 
-    0)
-
-(defmethod relocate ((this vector3)) 
-    0)
-(defmethod mem-usage ((this vector3)) 
-    0)
-
-(defmethod set ((this vector3) (x float) (y float) (z float)) 
-    :dummy-result)
-
-;; ===================================================================
-;; States 
-;; ===================================================================
-
-(defstate idle (vector3)
-  :virtual #t
-  :code
-    (function ()
-       :none)
-  :enter (function () :none))
+;(define sub (function ((a int) (b int)) (- a b)))
+;(define get-name (function () "Test String"))
+;(define get-scale (function () 0.1))
+;(define get-max-value (function () 999999999))
 ;
-(defstate goto-position0 (vector3)
-  :virtual #t
-  :code
-    (function ()
-       :none)
-  :enter (function () :none))
+;(deftype vector3 (basic) 
+;    (
+;        (x  float)
+;        (y  float)
+;        (z  float)
+;    )
+;    (:methods
+;        (new () _type_)
+;        (set (_type_ float float float) none)
+;    )
+;    (:states
+;       idle 
+;       goto-position0
+;       (goto-position vector3)
+;       )
+;)
 ;
-(defstate goto-position (vector3)
-  :virtual #t
-  :code
-    (function ((position vector3))
-       :none)
-  :enter (function () :none))
+;;; ===================================================================
+;;; Vector3 methods
+;;; ===================================================================
+;
+;(defmethod new vector3 () 
+;    0)
+;
+;(defmethod delete ((this vector3)) 
+;    0)
+;
+;(defmethod print ((this vector3)) 
+;    0)
+;
+;(defmethod inspect ((this vector3)) 
+;    0)
+;
+;(defmethod length ((this vector3)) 
+;    0)
+;
+;(defmethod asize-of ((this vector3)) 
+;    0)
+;(defmethod copy ((this vector3)) 
+;    0)
+;
+;(defmethod relocate ((this vector3)) 
+;    0)
+;(defmethod mem-usage ((this vector3)) 
+;    0)
+;
+;(defmethod set ((this vector3) (x float) (y float) (z float)) 
+;    :dummy-result)
+;
+;;; ===================================================================
+;;; States 
+;;; ===================================================================
+;
+;(defstate idle (vector3)
+;  :virtual #t
+;  :code
+;    (function ()
+;       :none)
+;  :enter (function () :none))
+;;
+;(defstate goto-position0 (vector3)
+;  :virtual #t
+;  :code
+;    (function ()
+;       :none)
+;  :enter (function () :none))
+;;
+;(defstate goto-position (vector3)
+;  :virtual #t
+;  :code
+;    (function ((position vector3))
+;       :none)
+;  :enter (function () :none))

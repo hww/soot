@@ -14,26 +14,32 @@ class FunctionNode;
 // Бинарная операция
 // ========================================================================
 
+
 class BinaryNode : public ExpressionNode {
 public:
     enum class Op { ADD, SUB, MUL, DIV };
     
 private:
     Op m_op;
-    ExpressionNode* m_left;
-    ExpressionNode* m_right;
+    std::unique_ptr<ExpressionNode> m_left;
+    std::unique_ptr<ExpressionNode> m_right;
     
 public:
-    BinaryNode(Op op, ExpressionNode* left, ExpressionNode* right)
-        : m_op(op), m_left(left), m_right(right) {}
+    BinaryNode(Op op, std::unique_ptr<ExpressionNode> left, std::unique_ptr<ExpressionNode> right)
+        : m_op(op), m_left(std::move(left)), m_right(std::move(right)) 
+    {
+        if (m_left && m_left->get_type()) {
+            m_type = m_left->get_type();
+        }
+    }
     
     void emit(FunctionNode& fn) override {
         m_left->emit(fn);
         m_right->emit(fn);
         
-        u8 left_reg = fn.get_reg(m_left);
-        u8 right_reg = fn.get_reg(m_right);
-        u8 dest_reg = fn.alloc_reg(nullptr);
+        u8 left_reg = fn.get_temp_reg(m_left.get());
+        u8 right_reg = fn.get_temp_reg(m_right.get());
+        u8 dest_reg = fn.alloc_temp_reg(m_type);
         
         Opcode opcode;
         switch (m_op) {
@@ -44,7 +50,7 @@ public:
         }
         
         fn.add_instruction(opcode, dest_reg, left_reg, right_reg);
-        fn.set_reg(this, dest_reg);
+        fn.set_temp_reg(this, dest_reg);
     }
     
     std::string to_string() const override {
@@ -58,5 +64,6 @@ public:
         return "(" + m_left->to_string() + " " + op_str + " " + m_right->to_string() + ")";
     }
 };
+
 
 } // namespace sootc

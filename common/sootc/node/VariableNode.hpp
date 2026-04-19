@@ -6,22 +6,21 @@
 #include "ExpressionNode.hpp"
 
 namespace sootc {
-
+    
 class VariableNode : public ExpressionNode {
     std::string m_name;
     u8 m_reg;
-    
 public:
-    VariableNode(const std::string& name, u8 reg) 
-        : m_name(name), m_reg(reg) {}
+    VariableNode(const std::string& name, Type* type, u8 reg) 
+        : ExpressionNode(type), m_name(name), m_reg(reg) {}
     
     void emit(FunctionNode& fn) override {
-        // Переменная уже в регистре, просто запоминаем результат
-        fn.set_reg(this, m_reg);  // ← set_reg, а не set_result
+        fn.set_temp_reg(this, m_reg);
     }
     
     std::string to_string() const override {
         return m_name;
     }
 };
+
 }

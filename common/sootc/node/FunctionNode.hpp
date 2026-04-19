@@ -2,10 +2,10 @@
 
 #include "Node.hpp"
 #include "Parameter.hpp"
-#include "LocalVariable.hpp"
+#include "VariableInfo.hpp"
 #include "file/ProgramBinaryElement.hpp"
 #include "carbon/vm/Instructions.hpp"
-#include "sooti/Object.hpp"
+#include "sootc/node/CompareOp.hpp"
 #include "type_system/Type.hpp"
 #include <vector>
 #include <unordered_map>
@@ -23,13 +23,18 @@ class FunctionNode : public Node {
     // Параметры
     std::vector<Parameter*> m_params;
     std::unordered_map<std::string, u8> m_param_map;
+
+    // Возвращаемый результат
+    Type* m_return_type = nullptr;
     
-    // Локальные переменные
-    std::vector<std::unique_ptr<LocalVariable>> m_locals;
-    int m_next_reg = 0;
+    // Переменные (локальные + параметры)
+    std::vector<VariableInfo> m_variables;
+    std::unordered_map<std::string, size_t> m_variable_index;
+    size_t m_param_count = 0;
     
-    // Результаты выражений
-    std::unordered_map<const Node*, u8> m_reg_map;
+    // Временные регистры (результаты выражений)
+    int m_next_temp_reg = 0;
+    std::unordered_map<const Node*, u8> m_temp_regs;
     
     // Генерация кода
     std::vector<Instruction> m_instructions;
@@ -39,7 +44,8 @@ class FunctionNode : public Node {
     // Branch resolution
     std::unordered_map<std::string, u32> m_labels;
     std::vector<std::pair<std::string, u32>> m_unresolved_branches;
-    
+    int m_label_counter = 0;
+
     // Тело функции
     std::unique_ptr<ExpressionNode> m_body;
     
@@ -50,7 +56,7 @@ protected:
     
 public:
     explicit FunctionNode(const std::string& name);
-    ~FunctionNode() = default;  // деструктор в .cpp не нужен, т.к. unique_ptr сам удалит
+    ~FunctionNode() = default;
     
     const char* node_type() const override { return "FunctionNode"; }
     std::string to_string() const override;
@@ -64,13 +70,34 @@ public:
     // Параметры
     // ========================================================================
     void add_parameter(const std::string& name, Type* type);
+    size_t param_count() const { return m_param_count; }
     
     // ========================================================================
-    // Регистры
+    // Локальные переменные
     // ========================================================================
-    u8 alloc_reg(Type* type);
+    void add_local_variable(const std::string& name, Type* type);
+    const VariableInfo* lookup_variable(const std::string& name) const;
+    u8 get_variable_reg(const std::string& name) const;
+    Type* get_variable_type(const std::string& name) const;
+    
+    // ========================================================================
+    // Временные регистры (для результатов выражений)
+    // ========================================================================
+    u8 alloc_temp_reg(Type* type);
+    void set_temp_reg(const Node* node, u8 reg);
+    u8 get_temp_reg(const Node* node) const;
+    
+    // ========================================================================
+    // Общий доступ к регистрам
+    // ========================================================================
     u8 get_reg(const Node* node) const;
-    void set_reg(const Node* node, u8 reg);
+    void set_reg(const Node* node, u8 reg) { set_temp_reg(node, reg); }
+    
+    // ========================================================================
+    // Возвращаемый тип
+    // ========================================================================
+    void set_return_type(Type* type) { m_return_type = type; }
+    Type* get_return_type() const { return m_return_type; }
     
     // ========================================================================
     // Константы
@@ -90,7 +117,9 @@ public:
     void add_label(const std::string& name);
     void add_branch_reference(const std::string& label);
     void resolve_branches();
-    
+    void add_compare(u8 left, u8 right, CompareOp op);
+    std::string create_unique_label(const std::string& prefix);
+
     // ========================================================================
     // Генерация кода
     // ========================================================================

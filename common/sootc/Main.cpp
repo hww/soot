@@ -1,11 +1,10 @@
 ﻿#include "common/sooti/Reader.hpp"
 #include "common/sooti/Object.hpp"
-#include "common/sootc/Compiler/Compiler.hpp"
-#include "common/sootc/Compiler/FileCompiler.hpp"
-#include "common/sootc/Env/GlobalEnv.hpp"
-#include "common/carbon/file/Export.hpp"
+#include "common/sootc/compiler/Compiler.hpp"
+#include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
-#include "sootc/Env/FileEnv.hpp"
+#include "file/BinaryFileInspector.hpp"
+#include "fmt/color.h"
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -13,7 +12,6 @@
 
 using namespace script;
 using namespace sootc;
-using namespace carbon;
 using namespace carbon;
 
 namespace fs = std::filesystem;
@@ -182,39 +180,28 @@ int main(int argc, char* argv[]) {
         // 1. Подготовка типов
         ts.add_builtin_types();
 
-        // 2. Инициализация окружения
-        GlobalEnv global_env;
-
-
-        // 3. Создаем компилятор
+        // 2. Создаем компилятор (без Env!)
         Compiler compiler(ts);
 
-        // 4. Запускаем процесс
-        auto result = compiler.compile_file(forms, &global_env, input_file);
+        // 3. Запускаем компиляцию
+        auto result = compiler.compile_file(forms, input_file);
 
         if (!result) {
             lg::error("Failed to build module: {}", result.error());
             return 1;
         }
 
-        // Извлекаем наш скомпилированный бинарный файл
-        // Предположим, result содержит std::unique_ptr<BinaryFile> или аналогичную структуру
-        auto& bin_file = result.value();
-
-        // 5. Инспекция и сохранение
-        lg::info("Module dump:\n{}", bin_file->inspect());
-
-        // Сохраняем (bin_file знает свое имя и формат)
-        if (!bin_file->save(output_dir.string())) {
-            lg::error("Failed to save module files to: {}", output_dir.string());
-            return 1;
-        }
-
-        lg::info("Module {} successfully built.", input_file);
-                
+        // 4. Сохраняем результат
+        auto& binary = result.value();
+        
+        // TODO: Сохранение бинарника
+        // binary->save(output_dir.string());
+        
+        BinaryFileInspector inspector(*binary, 2);
+        fmt::print("{}", inspector.inspect());
+        lg::info("Module {} successfully compiled.", input_file);
         lg::info("=== Compilation complete ===");
         lg::info("Module: {}", module_name);
-        lg::info("Saved .bin and .dci to: {}", output_dir.string());
         
     } catch (const std::exception& e) {
         lg::error("Compilation failed: {}", e.what());

@@ -19,6 +19,7 @@ add_library(libcarbon
 
     ## File
     common/carbon/file/BinaryFile.cpp   
+    common/carbon/file/BinaryFileInspector.cpp   
     common/carbon/file/ProgramBinaryElement.cpp   
 
     ## Virtual machine

@@ -106,6 +106,7 @@ namespace carbon {
         // ресурс в памяти который требуется удалить
         using byte_uptr = std::unique_ptr<std::byte[], aligned_deleter>;
 
+        BinaryFile() = default;
 
         BinaryFile(std::filesystem::path path, const u64 size, byte_uptr&& bytes, DC_Header* dcheader) noexcept
             : m_path(std::move(path)), m_dcheader(dcheader), m_size(size), m_bytes(std::move(bytes)) {};
