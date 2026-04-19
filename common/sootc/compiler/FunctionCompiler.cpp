@@ -7,30 +7,27 @@
 namespace sootc {
 namespace FunctionCompiler {
 
-std::unique_ptr<FunctionNode> compile_function(const script::Object& form,
-                                                Node* node,
-                                                NodeBuilder& builder) {
-    (void)form;
+std::unique_ptr<FunctionNode> FunctionCompiler::compile_function(
+    const script::Object& form, Node* context, NodeBuilder& builder) {
+    
     auto rest = form.as_pair()->cdr;
     auto args_list = rest.as_pair()->car;
     auto body_forms = rest.as_pair()->cdr;
     
-    // Создаем функцию
     auto fn = std::make_unique<FunctionNode>("lambda");
     
     // Парсим аргументы
-    parse_arguments(args_list, fn.get(), node, builder);
+    parse_arguments(args_list, fn.get(), context, builder);
     
     // Компилируем тело
     auto current = body_forms;
     std::unique_ptr<ExpressionNode> last_expr;
     
     while (current.is_pair()) {
-        last_expr = builder.build_expression(current.as_pair()->car, node);
+        last_expr = builder.build_expression(current.as_pair()->car, fn.get());
         current = current.as_pair()->cdr;
     }
     
-    // Оборачиваем последнее выражение в return
     if (last_expr) {
         auto ret = std::make_unique<ReturnNode>(std::move(last_expr));
         fn->set_body(std::move(ret));

@@ -1,6 +1,7 @@
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/compiler/FunctionCompiler.hpp"
-
+#include "common/sootc/node/FileNode.hpp"      
+#include "common/sootc/node/FunctionNode.hpp"  
 
 namespace sootc {
 
@@ -26,12 +27,11 @@ std::unique_ptr<Node> NodeBuilder::build(const script::Object& form, Node* node)
     std::string keyword = head.as_symbol();
     
     if (keyword == "define") {
-        // Обработка define отдельно, через FunctionCompiler
-        //return FunctionCompiler::compile_define(form, node, *this);
+        return build_define(form, node);
     }
     
     if (keyword == "lambda" || keyword == "function") {
-        return build_function(form, node);
+        return build_lambda(form, node);
     }
     
     if (keyword == "if") {
@@ -55,7 +55,7 @@ std::unique_ptr<Node> NodeBuilder::build(const script::Object& form, Node* node)
     return build_call(form, node);
 }
 
-std::unique_ptr<FunctionNode> NodeBuilder::build_function(const script::Object& form, Node* node) {
+std::unique_ptr<FunctionNode> NodeBuilder::build_lambda(const script::Object& form, Node* node) {
     return FunctionCompiler::compile_function(form, node, *this);
 }
 
@@ -194,6 +194,54 @@ Type* NodeBuilder::parse_type(const script::Object& type_form, Node* node) {
     }
     // TODO: сложные типы
     return m_ts.lookup_type("object");
+}
+
+std::unique_ptr<Node> NodeBuilder::build_define(const script::Object& form, Node* context) {
+    auto rest = form.as_pair()->cdr;
+    auto def_form = rest.as_pair()->car;
+    auto value_form = rest.as_pair()->cdr.as_pair()->car;
+    
+    // Случай 1: (define (name args...) body) - определение функции
+    if (def_form.is_pair()) {
+        auto name = def_form.as_pair()->car.as_symbol();
+        auto args = def_form.as_pair()->cdr;
+        auto body = value_form;
+        
+        // Создаем временную форму (lambda (args) body)
+        // Это то, что ожидает build_lambda
+        script::Object lambda_form = script::Object::make_pair(
+            script::Object::make_symbol("lambda"),
+            script::Object::make_pair(args, body)
+        );
+        
+        // Вызываем build_lambda с 2 аргументами
+        auto lambda = build_lambda(lambda_form, context);
+        lambda->set_name(name);
+        
+        if (auto* file = dynamic_cast<FileNode*>(context)) {
+            file->bind(name, lambda.get());
+        }
+        
+        return lambda;
+    }
+    
+    // Случай 2: (define name value) - определение переменной
+    if (def_form.is_symbol()) {
+        std::string name = def_form.as_symbol();
+        auto value = build_expression(value_form, context);
+        
+        auto var = std::make_unique<VariableNode>(name, value->get_type());
+        
+        if (auto* file = dynamic_cast<FileNode*>(context)) {
+            file->bind(name, var.get());
+        } else if (auto* fn = dynamic_cast<FunctionNode*>(context)) {
+            fn->add_local_variable(name, value->get_type());
+        }
+        
+        return var;
+    }
+    
+    return nullptr;
 }
 
 } // namespace sootc

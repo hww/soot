@@ -14,9 +14,8 @@ class NodeBuilder;
 namespace FunctionCompiler {
 
 // Компилирует lambda/function формы в FunctionNode
-std::unique_ptr<FunctionNode> compile_function(const script::Object& form, 
-                                                Node* node, 
-                                                NodeBuilder& builder);
+std::unique_ptr<FunctionNode> compile_function(
+    const script::Object& form, Node* context, NodeBuilder& builder);
 
 // Парсит аргументы функции
 void parse_arguments(const script::Object& args_form, 

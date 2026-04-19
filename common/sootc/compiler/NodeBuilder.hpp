@@ -25,7 +25,7 @@ public:
     
     // Специализированные методы для разных типов форм
     std::unique_ptr<ExpressionNode> build_expression(const script::Object& form, Node* node);
-    std::unique_ptr<FunctionNode> build_function(const script::Object& form, Node* node);
+    std::unique_ptr<FunctionNode> build_lambda(const script::Object& form, Node* node);
     std::unique_ptr<CompareNode> build_compare(const script::Object& form, Node* node);
     std::unique_ptr<BinaryNode> build_binary(const script::Object& form, Node* node);
     std::unique_ptr<IfNode> build_if(const script::Object& form, Node* node);
@@ -33,7 +33,8 @@ public:
     std::unique_ptr<CallNode> build_call(const script::Object& form, Node* node);
     std::unique_ptr<VariableNode> build_variable(const script::Object& form, Node* node);
     std::unique_ptr<ConstNode> build_const(const script::Object& form, Node* node);
-    
+    std::unique_ptr<Node> build_define(const script::Object& form, Node* context);
+
     // Вспомогательные методы
     Type* parse_type(const script::Object& type_form, Node* node);
     std::vector<std::unique_ptr<ExpressionNode>> parse_args(const script::Object& args_form, Node* node);
