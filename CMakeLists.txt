@@ -10,7 +10,11 @@ project(repl
 # C++ Modern CMake policies
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS ON)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+endif()
+
 set(CMAKE_BUILD_TYPE Debug)
 # или
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")

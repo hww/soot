@@ -1,14 +1,16 @@
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"  
 #include "common/carbon/file/ProgramBinaryElement.hpp"
-#include "sootc/node/CompareOp.hpp"
+#include "sootc/node/Node.hpp"
+#include "sootc/node/ExpressionNode.hpp"
+#include "sootc/libs/CompareOp.hpp"
 
 namespace sootc {
 
 // ========================================================================
 // Constructor
 // ========================================================================
-FunctionNode::FunctionNode(const std::string& name) : m_name(name) {}
+FunctionNode::FunctionNode(const std::string& name) : Node(NodeType::FunctionNode), m_name(name) {}
 
 // ========================================================================
 // to_string
@@ -196,7 +198,7 @@ void FunctionNode::emit_body() {
 // ========================================================================
 // Сериализация
 // ========================================================================
-carbon::ProgramBinaryElement FunctionNode::build_binary(const std::string& module_name) {
+ProgramBinaryElement FunctionNode::build_binary(const std::string& module_name, GlobalState& state) {
     (void)module_name;
     
     // Вычисляем размер

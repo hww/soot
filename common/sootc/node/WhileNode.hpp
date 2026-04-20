@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ControlNode.hpp"
+#include "sootc/node/Node.hpp"
 #include <memory>
 
 namespace sootc {
@@ -12,7 +13,8 @@ class WhileNode : public ControlNode {
 public:
     WhileNode(std::unique_ptr<ExpressionNode> cond,
               std::unique_ptr<ExpressionNode> body)
-        : m_condition(std::move(cond))
+        : ControlNode(NodeType::WhileNode)
+        , m_condition(std::move(cond))
         , m_body(std::move(body)) {}
     
     void emit(FunctionNode& fn) override {

@@ -3,6 +3,7 @@
 #include "CommonTypes.hpp"
 #include "DCHeader.hpp"
 #include "DCScript.hpp"
+#include "lib/ByteUtils.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -73,6 +74,8 @@ namespace carbon {
 
         size_t size() { return m_rawData.size(); }
         bool is_empty() { return m_rawData.size() == 0;}
+
+        byte_uptr to_byte_uptr() const;
 
         Entry m_entry;
         std::vector<std::byte> m_rawData;

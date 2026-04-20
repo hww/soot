@@ -1,7 +1,10 @@
 #include "sootc/compiler/NodeBuilder.hpp"
+#include "fmt/format.h"
 #include "sootc/compiler/FunctionCompiler.hpp"
 #include "common/sootc/node/FileNode.hpp"      
 #include "common/sootc/node/FunctionNode.hpp"  
+#include "sootc/node/Node.hpp"
+#include <stdexcept>
 
 namespace sootc {
 
@@ -153,8 +156,7 @@ std::unique_ptr<VariableNode> NodeBuilder::build_variable(const script::Object& 
     
     // Глобальная переменная - регистр будет выделен при использовании
     // TODO: поддержка глобальных переменных
-    
-    return nullptr;
+    throw std::runtime_error(fmt::format("Undefined symbol {}",form.to_std_string()));
 }
 
 std::unique_ptr<ConstNode> NodeBuilder::build_const(const script::Object& form, Node* node) {
@@ -173,7 +175,12 @@ std::unique_ptr<ConstNode> NodeBuilder::build_const(const script::Object& form, 
 
 std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const script::Object& form, Node* node) {
     auto child_node = build(form, node);
-    return std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode*>(child_node.release()));
+    auto child_node_type = child_node->get_node_type_string();
+
+    auto result = std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode*>(child_node.release()));
+    if (result.get() == nullptr)
+        throw std::runtime_error(fmt::format("build_expression can't cast {} to ExpressionNode", child_node_type));
+    return result;
 }
 
 std::vector<std::unique_ptr<ExpressionNode>> NodeBuilder::parse_args(const script::Object& args_form, Node* node) {
@@ -201,47 +208,22 @@ std::unique_ptr<Node> NodeBuilder::build_define(const script::Object& form, Node
     auto def_form = rest.as_pair()->car;
     auto value_form = rest.as_pair()->cdr.as_pair()->car;
     
-    // Случай 1: (define (name args...) body) - определение функции
-    if (def_form.is_pair()) {
-        auto name = def_form.as_pair()->car.as_symbol();
-        auto args = def_form.as_pair()->cdr;
-        auto body = value_form;
-        
-        // Создаем временную форму (lambda (args) body)
-        // Это то, что ожидает build_lambda
-        script::Object lambda_form = script::Object::make_pair(
-            script::Object::make_symbol("lambda"),
-            script::Object::make_pair(args, body)
-        );
-        
-        // Вызываем build_lambda с 2 аргументами
-        auto lambda = build_lambda(lambda_form, context);
-        lambda->set_name(name);
-        
-        if (auto* file = dynamic_cast<FileNode*>(context)) {
-            file->bind(name, lambda.get());
-        }
-        
-        return lambda;
+    if (!def_form.is_symbol()) {
+        throw std::runtime_error("define: first argument must be a symbol");
     }
     
-    // Случай 2: (define name value) - определение переменной
-    if (def_form.is_symbol()) {
-        std::string name = def_form.as_symbol();
-        auto value = build_expression(value_form, context);
-        
-        auto var = std::make_unique<VariableNode>(name, value->get_type());
-        
-        if (auto* file = dynamic_cast<FileNode*>(context)) {
-            file->bind(name, var.get());
-        } else if (auto* fn = dynamic_cast<FunctionNode*>(context)) {
-            fn->add_local_variable(name, value->get_type());
-        }
-        
-        return var;
+    std::string name = def_form.to_std_string();
+    auto value = build(value_form, context);
+    
+    if (!value) {
+        throw std::runtime_error(fmt::format("define: cannot compile value: {}", value_form.print()));
     }
     
-    return nullptr;
+    // Биндим значение напрямую (без обертки в VariableNode)
+    auto file_node = context->file();
+    file_node->bind(name, value.get());
+    
+    return value;
 }
 
 } // namespace sootc

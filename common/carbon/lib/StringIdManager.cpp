@@ -11,6 +11,7 @@
 #include <shared_mutex>
 #include <iomanip>
 #include <cctype>
+#include <vector>
 
 namespace carbon {
 

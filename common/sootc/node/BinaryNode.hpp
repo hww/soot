@@ -26,7 +26,7 @@ private:
     
 public:
     BinaryNode(Op op, std::unique_ptr<ExpressionNode> left, std::unique_ptr<ExpressionNode> right)
-        : m_op(op), m_left(std::move(left)), m_right(std::move(right)) 
+        : ExpressionNode(NodeType::BinaryNode),  m_op(op), m_left(std::move(left)), m_right(std::move(right)) 
     {
         if (m_left && m_left->get_type()) {
             m_type = m_left->get_type();

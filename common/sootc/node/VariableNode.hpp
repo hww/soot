@@ -4,6 +4,7 @@
 #include "CommonTypes.hpp"
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
+#include "sootc/node/Node.hpp"
 
 namespace sootc {
     
@@ -12,9 +13,9 @@ class VariableNode : public ExpressionNode {
     u8 m_reg;
 public:
     VariableNode(const std::string& name, Type* type, u8 reg) 
-        : ExpressionNode(type), m_name(name), m_reg(reg) {}
+        : ExpressionNode(NodeType::VariableNode, type), m_name(name), m_reg(reg) {}
     VariableNode(const std::string& name, Type* type) 
-        : ExpressionNode(type), m_name(name), m_reg(0) {}
+        : ExpressionNode(NodeType::VariableNode, type), m_name(name), m_reg(0) {}
 
     void set_reg(u8 reg) { m_reg = reg; }
             

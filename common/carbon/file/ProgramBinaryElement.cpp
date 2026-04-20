@@ -48,4 +48,21 @@ void ProgramBinaryElement::adjust_offsets(const u64 offset) noexcept {
     }
 }
 
+byte_uptr ProgramBinaryElement::to_byte_uptr() const {
+        struct LocalDeleter {
+            void operator()(std::byte* p) const noexcept {
+                ::operator delete[](p, std::align_val_t(64));
+            }
+        };
+        
+        std::unique_ptr<std::byte[], LocalDeleter> bytes(
+            static_cast<std::byte*>(::operator new[](m_rawData.size(), std::align_val_t(64))),
+            LocalDeleter()
+        );
+        std::memcpy(bytes.get(), m_rawData.data(), m_rawData.size());
+        
+        // Нужно сконвертировать в BinaryFile::byte_uptr
+        // Это сложно, так как типы deleter'ов разные
+        return byte_uptr(bytes.release());
+    }
 }

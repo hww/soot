@@ -6,23 +6,19 @@ BUILD_DIR="$PROJECT_ROOT/build"
 
 echo "--- Настройка проекта Soot с использованием GCC ---"
 
-# Очистка старой сборки
-if [ -d "$BUILD_DIR" ]; then
-    echo "Удаление старой папки build..."
-    rm -rf "$BUILD_DIR"
-fi
-
+rm -rf "$BUILD_DIR"
 mkdir "$BUILD_DIR"
 cd "$BUILD_DIR" || exit
 
-# Указываем GCC как системный компилятор
 export CC=gcc
 export CXX=g++
 
-echo "Запуск CMake с GCC..."
-cmake -DCMAKE_BUILD_TYPE=Debug ..
+# Добавляем генерацию compile_commands.json для LSP
+echo "Запуск CMake..."
+cmake -DCMAKE_BUILD_TYPE=Debug \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      -DCMAKE_CXX_STANDARD=23 \
+      ..
 
 echo "Сборка проекта..."
 cmake --build . -j$(nproc)
-
-echo "--- Готово! Проверьте папку build/bin ---"

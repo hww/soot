@@ -37,6 +37,17 @@ public:
         return indent() + fmt::vformat(fmt_str, fmt::make_format_args(args...));
     }
 
+    // 2. Универсальный шаблон для форматирования. 
+    // Используем vformat, чтобы избежать проблем с дедукцией типов вложенных шаблонов fmt.
+    template<typename... Args>
+    std::string format_print(std::string_view fmt_str, Args... args) const { 
+        // Убрали &&, теперь аргументы передаются по значению или копируются.
+        // Для тяжелых объектов это чуть медленнее, но для примитивов (int, float, sid64) 
+        // это убирает все проблемы со ссылками на члены структур.
+        auto result = indent() + fmt::vformat(fmt_str, fmt::make_format_args(args...));
+        fmt::print("{}", result);
+    }
+
     // 3. Методы print
     template<typename... Args>
     void print(std::string_view fmt_str, Args&&... args) const {

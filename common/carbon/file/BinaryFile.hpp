@@ -4,6 +4,7 @@
 #include "DCScript.hpp"
 #include "common/carbon/lib/SIDBase.hpp"
 #include "common/carbon/vm/Instructions.hpp"
+#include "lib/ByteUtils.hpp"
 
 
 #include <memory>
@@ -96,16 +97,8 @@ namespace carbon {
 
     class BinaryFile
     {
-        struct aligned_deleter {
-            void operator()(std::byte* p) const noexcept {
-                ::operator delete[](p, std::align_val_t(64));
-            }
-        };
 
     public:
-        // ресурс в памяти который требуется удалить
-        using byte_uptr = std::unique_ptr<std::byte[], aligned_deleter>;
-
         BinaryFile() = default;
 
         BinaryFile(std::filesystem::path path, const u64 size, byte_uptr&& bytes, DC_Header* dcheader) noexcept

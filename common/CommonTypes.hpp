@@ -28,8 +28,21 @@ using f32 = float;
 using f64 = double;
 using p64 = uintptr_t;
 
+// ============================================================================
+// Windows & Visual Studio
+// ============================================================================
+
 using sid64 = uint64_t;
 using sid32 = uint32_t;
+
+#ifdef _WIN32
+    #include <io.h>
+    #include <winsock2.h>
+
+    // Вместо #define close _close используй это:
+    inline int posix_close(int fd) { return _close(fd); }
+    inline int socket_close(SOCKET s) { return closesocket(s); }
+#endif
 
 // ============================================================================
 // 128-bit Types

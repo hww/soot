@@ -40,14 +40,11 @@ add_library(libcarbon
     common/carbon/kernel/StateFrame.cpp
 )
 
-target_compile_features(libcarbon PRIVATE cxx_std_23)
 
-get_target_property(carbon_std libcarbon CXX_STANDARD)
-message(STATUS "libcarbon C++ standard: ${carbon_std}")
 
 # Исполняемый файл для тестирования VM
 add_executable(carbon common/carbon/Main.cpp)
-target_compile_features(carbon PRIVATE cxx_std_23)
+
 
 target_link_libraries(carbon PRIVATE 
     libsoti 

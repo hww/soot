@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ControlNode.hpp"
+#include "sootc/node/Node.hpp"
 #include <memory>
 
 namespace sootc {
@@ -14,7 +15,8 @@ public:
     IfNode(std::unique_ptr<ExpressionNode> cond,
            std::unique_ptr<ExpressionNode> then_branch,
            std::unique_ptr<ExpressionNode> else_branch = nullptr)
-        : m_condition(std::move(cond))
+        : ControlNode(NodeType::IfNode)
+        , m_condition(std::move(cond))
         , m_then_branch(std::move(then_branch))
         , m_else_branch(std::move(else_branch)) {}
     

@@ -1,8 +1,10 @@
 // BinaryFileInspector.cpp
 #include "BinaryFileInspector.hpp"
 #include "common/carbon/lib/StringId.hpp"
+#include <bitset>
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 namespace carbon {
 
@@ -13,27 +15,96 @@ std::string BinaryFileInspector::inspect() {
     std::string result;
     
     // Header
-    result += m_formatter.format("=== Binary File: {} ===\n", m_file.m_path.string());
+    result += m_formatter.format_print("=== Binary File: {} ===\n", m_file.m_path.string());
     result += inspect_header();
     
     // Relocation table
-    result += m_formatter.format("\n--- Relocation Table ---\n");
-    // TODO: implement relocation table inspection
+    result += m_formatter.format_print("\n--- Relocation Table ---\n");
+    inspect_relocations();
     
     // String table
-    result += m_formatter.format("\n--- String Table ---\n");
+    result += m_formatter.format_print("\n--- String Table ---\n");
     for (const auto& [id, str] : m_file.m_sidCache) {
-        result += m_formatter.format("  {}: {}\n", sid_str(id), str);
+        result += m_formatter.format_print("  {}: {}\n", sid_str(id), str);
     }
     
     // Entries
-    result += m_formatter.format("\n--- Entries ({} total) ---\n", m_file.m_dcheader->m_numEntries);
+    result += m_formatter.format_print("\n--- Entries ({} total) ---\n", m_file.m_dcheader->m_numEntries);
     {
         util::Formatter::Block block(m_formatter, m_indent);
         for (u32 i = 0; i < m_file.m_dcheader->m_numEntries; i++) {
-            result += inspect_entry(m_file.m_dcheader->m_pStartOfData[i]);
+            //result += inspect_entry(m_file.m_dcheader->m_pStartOfData[i]);
         }
     }
+    
+    return result;
+}
+
+std::string BinaryFileInspector::inspect_relocations() {
+    std::string result;
+    result += m_formatter.format_print("\n--- Relocation Table ---\n");
+    
+    // Проверка через сравнение m_ptr с nullptr (нужен метод или оператор)
+    if (m_file.m_relocTable.as<std::byte>() == nullptr) {
+        result += "  (empty)\n";
+        return result;
+    }
+    
+    // Получаем размер (первый u32)
+    const u32 size = m_file.m_relocTable.get<u32>(0);
+    result += m_formatter.format_print("  Size: {} bytes\n", size);
+    
+    if (size == 0 || size > 1024 * 1024) {
+        result += "  (invalid size)\n";
+        return result;
+    }
+    
+    // Получаем указатель на начало relocation данных через as<u8>()
+    const u8* reloc_base = m_file.m_relocTable.as<u8>(0);
+    if (!reloc_base) {
+        result += "  (null pointer)\n";
+        return result;
+    }
+    
+    // Bitmap начинается с offset 4
+    const u8* bitmap = reloc_base + 4;
+    
+    // Count set bits
+    u32 count = 0;
+    for (u32 i = 0; i < size && i < 1024; i++) {
+        count += std::bitset<8>(bitmap[i]).count();
+    }
+    
+    result += m_formatter.format_print("  Relocations: {} bits\n", count);
+    
+    // Show first few offsets
+    if (count > 0) {
+        result += "  Offsets: ";
+        u32 shown = 0;
+        for (u32 byte = 0; byte < size && shown < 16; byte++) {
+            for (u32 bit = 0; bit < 8 && shown < 16; bit++) {
+                if (bitmap[byte] & (1 << bit)) {
+                    if (shown > 0) result += ", ";
+                    u64 offset = static_cast<u64>(byte) * 64 + static_cast<u64>(bit) * 8;
+                    result += fmt::format("0x{:X}", offset);
+                    shown++;
+                }
+            }
+        }
+        if (count > 16) result += ", ...";
+        result += "\n";
+    }
+    
+    // Show bitmap hexdump (first 32 bytes)
+    result += "  Bitmap (first 32 bytes): ";
+    for (u32 i = 0; i < std::min(size, 32u); i++) {
+        result += fmt::format("{:02X} ", bitmap[i]);
+        if ((i + 1) % 16 == 0 && i + 1 < std::min(size, 32u)) {
+            result += "\n                           ";
+        }
+    }
+    if (size > 32) result += "...";
+    result += "\n";
     
     return result;
 }
@@ -178,27 +249,27 @@ std::string BinaryFileInspector::inspect_header() {
     if (!hdr) return "";
     
     std::string result;
-    result += m_formatter.format("Magic: 0x{:08X} ({})\n", hdr->m_magic, 
+    result += m_formatter.format_print("Magic: 0x{:08X} ({})\n", hdr->m_magic, 
                                   hdr->m_magic == DC_MAGIC ? "DC00" : "INVALID");
-    result += m_formatter.format("Version: {}\n", hdr->m_versionNumber);
-    result += m_formatter.format("Text Size: 0x{:X} ({} bytes)\n", hdr->m_textSize, hdr->m_textSize);
-    result += m_formatter.format("Strings Offset: 0x{:X}\n", hdr->m_stringsOffset);
-    result += m_formatter.format("Field 10: {}\n", hdr->field_10);
-    result += m_formatter.format("Num Entries: {}\n", hdr->m_numEntries);
-    result += m_formatter.format("Data Start: {}\n", ptr_str(hdr->m_pStartOfData));
+    result += m_formatter.format_print("Version: {}\n", hdr->m_versionNumber);
+    result += m_formatter.format_print("Text Size: 0x{:X} ({} bytes)\n", hdr->m_textSize, hdr->m_textSize);
+    result += m_formatter.format_print("Strings Offset: 0x{:X}\n", hdr->m_stringsOffset);
+    result += m_formatter.format_print("Field 10: {}\n", hdr->field_10);
+    result += m_formatter.format_print("Num Entries: {}\n", hdr->m_numEntries);
+    result += m_formatter.format_print("Data Start: {}\n", ptr_str(hdr->m_pStartOfData));
     
     return result;
 }
 
 std::string BinaryFileInspector::inspect_entry(const Entry& entry) {
     std::string result;
-    result += m_formatter.format("Entry:\n");
+    result += m_formatter.format_print("Entry:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
-    
-    result += m_formatter.format("Name: {}\n", sid_str(entry.m_nameID));
-    result += m_formatter.format("Type: {}\n", sid_str(entry.m_typeId));
-    result += m_formatter.format("Ptr: {}\n", ptr_str(entry.m_entryPtr));
+    result += m_formatter.format_print("Address: {:p}\n", (void*)&entry);
+    result += m_formatter.format_print("Name: {}\n", sid_str(entry.m_nameID));
+    result += m_formatter.format_print("Type: {}\n", sid_str(entry.m_typeId));
+    result += m_formatter.format_print("Ptr: {}\n", ptr_str(entry.m_entryPtr));
     
     // Try to inspect based on type
     if (entry.m_typeId == StringId("state-script").value) {
@@ -211,16 +282,16 @@ std::string BinaryFileInspector::inspect_entry(const Entry& entry) {
 
 std::string BinaryFileInspector::inspect_state_script(const StateScript& ss) {
     std::string result;
-    result += m_formatter.format("StateScript:\n");
+    result += m_formatter.format_print("StateScript:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("ID: {}\n", sid_str(ss.m_stateScriptId));
-    result += m_formatter.format("Initial State: {}\n", sid_str(ss.m_initialStateId));
-    result += m_formatter.format("State Count: {}\n", ss.m_stateCount);
-    result += m_formatter.format("Line: {}\n", ss.m_line);
-    result += m_formatter.format("Debug File: {}\n", ss.m_pDebugFileName ? ss.m_pDebugFileName : "(null)");
-    result += m_formatter.format("Error Name: {}\n", ss.m_pErrorName ? ss.m_pErrorName : "(null)");
+    result += m_formatter.format_print("ID: {}\n", sid_str(ss.m_stateScriptId));
+    result += m_formatter.format_print("Initial State: {}\n", sid_str(ss.m_initialStateId));
+    result += m_formatter.format_print("State Count: {}\n", ss.m_stateCount);
+    result += m_formatter.format_print("Line: {}\n", ss.m_line);
+    result += m_formatter.format_print("Debug File: {}\n", ss.m_pDebugFileName ? ss.m_pDebugFileName : "(null)");
+    result += m_formatter.format_print("Error Name: {}\n", ss.m_pErrorName ? ss.m_pErrorName : "(null)");
     
     if (ss.m_pSsDeclList) {
         result += inspect_declaration_list(*ss.m_pSsDeclList);
@@ -231,7 +302,7 @@ std::string BinaryFileInspector::inspect_state_script(const StateScript& ss) {
     }
     
     if (ss.m_pSsStateTable && ss.m_stateCount > 0) {
-        result += m_formatter.format("States:\n");
+        result += m_formatter.format_print("States:\n");
         util::Formatter::Block state_block(m_formatter, m_indent);
         for (i16 i = 0; i < ss.m_stateCount; i++) {
             result += inspect_state(ss.m_pSsStateTable[i]);
@@ -243,15 +314,15 @@ std::string BinaryFileInspector::inspect_state_script(const StateScript& ss) {
 
 std::string BinaryFileInspector::inspect_declaration_list(const SsDeclarationList& list) {
     std::string result;
-    result += m_formatter.format("Declaration List:\n");
+    result += m_formatter.format_print("Declaration List:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("Total Size: {} bytes\n", list.m_totalDeclarationSize);
-    result += m_formatter.format("Num Declarations: {}\n", list.m_numDeclarations);
+    result += m_formatter.format_print("Total Size: {} bytes\n", list.m_totalDeclarationSize);
+    result += m_formatter.format_print("Num Declarations: {}\n", list.m_numDeclarations);
     
     if (list.m_pDeclarations && list.m_numDeclarations > 0) {
-        result += m_formatter.format("Declarations:\n");
+        result += m_formatter.format_print("Declarations:\n");
         util::Formatter::Block decl_block(m_formatter, m_indent);
         for (u32 i = 0; i < list.m_numDeclarations; i++) {
             result += inspect_declaration(list.m_pDeclarations[i]);
@@ -263,27 +334,27 @@ std::string BinaryFileInspector::inspect_declaration_list(const SsDeclarationLis
 
 std::string BinaryFileInspector::inspect_declaration(const SsDeclaration& decl) {
     std::string result;
-    result += m_formatter.format("Declaration:\n");
+    result += m_formatter.format_print("Declaration:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("ID: {}\n", sid_str(decl.m_declId));
-    result += m_formatter.format("Type: {}\n", sid_str(decl.m_declTypeId));
-    result += m_formatter.format("Size: {} bytes\n", decl.m_varSizeSum);
-    result += m_formatter.format("Is Var: {}\n", decl.m_isVar);
-    result += m_formatter.format("Value Ptr: {}\n", ptr_str(decl.m_pDeclValue));
+    result += m_formatter.format_print("ID: {}\n", sid_str(decl.m_declId));
+    result += m_formatter.format_print("Type: {}\n", sid_str(decl.m_declTypeId));
+    result += m_formatter.format_print("Size: {} bytes\n", decl.m_varSizeSum);
+    result += m_formatter.format_print("Is Var: {}\n", decl.m_isVar);
+    result += m_formatter.format_print("Value Ptr: {}\n", ptr_str(decl.m_pDeclValue));
     
     return result;
 }
 
 std::string BinaryFileInspector::inspect_options(const SsOptions& opts) {
     std::string result;
-    result += m_formatter.format("Options:\n");
+    result += m_formatter.format_print("Options:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("Option String: {}\n", opts.m_optionString ? opts.m_optionString : "(null)");
-    result += m_formatter.format("Unknown Flags: 0x{:X}\n", opts.m_unknownFlags);
+    result += m_formatter.format_print("Option String: {}\n", opts.m_optionString ? opts.m_optionString : "(null)");
+    result += m_formatter.format_print("Unknown Flags: 0x{:X}\n", opts.m_unknownFlags);
     
     if (opts.m_pSymbolArray) {
         result += inspect_symbol_array(*opts.m_pSymbolArray, "SymbolArray");
@@ -298,26 +369,26 @@ std::string BinaryFileInspector::inspect_options(const SsOptions& opts) {
         result += inspect_symbol_array(*opts.m_symbolArray4, "SymbolArray4");
     }
     
-    result += m_formatter.format("Field 0x38: {}\n", opts.m_always5);
-    result += m_formatter.format("Field 0x3C: {}\n", opts.m_mostly0);
+    result += m_formatter.format_print("Field 0x38: {}\n", opts.m_always5);
+    result += m_formatter.format_print("Field 0x3C: {}\n", opts.m_mostly0);
     
     return result;
 }
 
 std::string BinaryFileInspector::inspect_symbol_array(const SymbolArray& arr, const std::string& name) {
     std::string result;
-    result += m_formatter.format("{}:\n", name);
+    result += m_formatter.format_print("{}:\n", name);
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("Num Entries: {}\n", arr.m_numEntries);
-    result += m_formatter.format("Unknown: {}\n", arr.m_unk);
+    result += m_formatter.format_print("Num Entries: {}\n", arr.m_numEntries);
+    result += m_formatter.format_print("Unknown: {}\n", arr.m_unk);
     
     if (arr.m_pSymbols && arr.m_numEntries > 0) {
-        result += m_formatter.format("Symbols:\n");
+        result += m_formatter.format_print("Symbols:\n");
         util::Formatter::Block sym_block(m_formatter, m_indent);
         for (u32 i = 0; i < arr.m_numEntries; i++) {
-            result += m_formatter.format("[{}] {}\n", i, sid_str(arr.m_pSymbols[i]));
+            result += m_formatter.format_print("[{}] {}\n", i, sid_str(arr.m_pSymbols[i]));
         }
     }
     
@@ -326,14 +397,14 @@ std::string BinaryFileInspector::inspect_symbol_array(const SymbolArray& arr, co
 
 std::string BinaryFileInspector::inspect_state(const SsState& state) {
     std::string result;
-    result += m_formatter.format("State: {}\n", sid_str(state.m_stateId));
+    result += m_formatter.format_print("State: {}\n", sid_str(state.m_stateId));
     
     util::Formatter::Block block(m_formatter, m_indent);
     
-    result += m_formatter.format("Num OnBlocks: {}\n", state.m_numSsOnBlocks);
+    result += m_formatter.format_print("Num OnBlocks: {}\n", state.m_numSsOnBlocks);
     
     if (state.m_pSsOnBlocks && state.m_numSsOnBlocks > 0) {
-        result += m_formatter.format("OnBlocks:\n");
+        result += m_formatter.format_print("OnBlocks:\n");
         util::Formatter::Block onblock_block(m_formatter, m_indent);
         for (i64 i = 0; i < state.m_numSsOnBlocks; i++) {
             result += inspect_on_block(state.m_pSsOnBlocks[i]);
@@ -360,9 +431,9 @@ std::string BinaryFileInspector::inspect_on_block(const SsOnBlock& block) {
     }
     
     if (block.m_blockType == BlockType::Event) {
-        result += m_formatter.format("OnBlock: {} ({})\n", type_str, sid_str(block.m_blockEventId));
+        result += m_formatter.format_print("OnBlock: {} ({})\n", type_str, sid_str(block.m_blockEventId));
     } else {
-        result += m_formatter.format("OnBlock: {}\n", type_str);
+        result += m_formatter.format_print("OnBlock: {}\n", type_str);
     }
     
     util::Formatter::Block inner_block(m_formatter, m_indent);
@@ -372,13 +443,13 @@ std::string BinaryFileInspector::inspect_on_block(const SsOnBlock& block) {
     }
     
     // Track group inspection
-    result += m_formatter.format("TrackGroup:\n");
+    result += m_formatter.format_print("TrackGroup:\n");
     util::Formatter::Block track_block(m_formatter, m_indent);
-    result += m_formatter.format("Name: {}\n", block.m_trackGroup.m_name ? block.m_trackGroup.m_name : "(null)");
-    result += m_formatter.format("Num Tracks: {}\n", block.m_trackGroup.m_numTracks);
+    result += m_formatter.format_print("Name: {}\n", block.m_trackGroup.m_name ? block.m_trackGroup.m_name : "(null)");
+    result += m_formatter.format_print("Num Tracks: {}\n", block.m_trackGroup.m_numTracks);
     
     if (block.m_trackGroup.m_aTracks && block.m_trackGroup.m_numTracks > 0) {
-        result += m_formatter.format("Tracks:\n");
+        result += m_formatter.format_print("Tracks:\n");
         util::Formatter::Block track_list_block(m_formatter, m_indent);
         for (i16 i = 0; i < block.m_trackGroup.m_numTracks; i++) {
             result += inspect_track(block.m_trackGroup.m_aTracks[i]);
@@ -390,14 +461,14 @@ std::string BinaryFileInspector::inspect_on_block(const SsOnBlock& block) {
 
 std::string BinaryFileInspector::inspect_track(const SsTrack& track) {
     std::string result;
-    result += m_formatter.format("Track: {}\n", sid_str(track.m_trackId));
+    result += m_formatter.format_print("Track: {}\n", sid_str(track.m_trackId));
     
     util::Formatter::Block block(m_formatter, m_indent);
-    result += m_formatter.format("Index: {}\n", track.m_trackIdx);
-    result += m_formatter.format("Lambda Count: {}\n", track.m_totalLambdaCount);
+    result += m_formatter.format_print("Index: {}\n", track.m_trackIdx);
+    result += m_formatter.format_print("Lambda Count: {}\n", track.m_totalLambdaCount);
     
     if (track.m_pSsLambda && track.m_totalLambdaCount > 0) {
-        result += m_formatter.format("Lambdas:\n");
+        result += m_formatter.format_print("Lambdas:\n");
         util::Formatter::Block lambda_block(m_formatter, m_indent);
         for (i16 i = 0; i < track.m_totalLambdaCount; i++) {
             result += inspect_lambda(track.m_pSsLambda[i]);
@@ -409,14 +480,14 @@ std::string BinaryFileInspector::inspect_track(const SsTrack& track) {
 
 std::string BinaryFileInspector::inspect_lambda(const SsLambda& lambda) {
     std::string result;
-    result += m_formatter.format("SsLambda:\n");
+    result += m_formatter.format_print("SsLambda:\n");
     
     util::Formatter::Block block(m_formatter, m_indent);
     
     if (lambda.m_pScriptLambda) {
         result += inspect_script_lambda(*lambda.m_pScriptLambda);
     }
-    result += m_formatter.format("Counter: 0x{:X}\n", lambda.m_someSortOfCounter);
+    result += m_formatter.format_print("Counter: 0x{:X}\n", lambda.m_someSortOfCounter);
     
     return result;
 }
@@ -428,7 +499,7 @@ std::string BinaryFileInspector::disassemble(const ScriptLambda& lambda, const s
     auto* code = lambda.get_code_ptr();
     auto* symbols = lambda.get_symbols_ptr();
     
-    result += m_formatter.format("script-lambda {} {{\n", name.empty() ? "" : fmt::format("[{}] ", name));
+    result += m_formatter.format_print("script-lambda {} {{\n", name.empty() ? "" : fmt::format("[{}] ", name));
     
     util::Formatter::Block block(m_formatter, m_indent);
     
@@ -453,7 +524,7 @@ std::string BinaryFileInspector::disassemble(const ScriptLambda& lambda, const s
     }
     
     if (!args.empty()) {
-        result += m_formatter.format("[{} args] ", args.size());
+        result += m_formatter.format_print("[{} args] ", args.size());
         bool first = true;
         for (u8 arg : args) {
             if (!first) result += ", ";
@@ -482,10 +553,10 @@ std::string BinaryFileInspector::disassemble(const ScriptLambda& lambda, const s
         }
         
         if (is_target) {
-            result += m_formatter.format("L_{:X}:\n", i);
+            result += m_formatter.format_print("L_{:X}:\n", i);
         }
         
-        result += m_formatter.format("{:04X}   {:08X}   {:02X} {:02X} {:02X}   {:<20}",
+        result += m_formatter.format_print("{:04X}   {:08X}   {:02X} {:02X} {:02X}   {:<20}",
             i,
             reinterpret_cast<uintptr_t>(&code[i]),
             static_cast<u8>(ins.opcode),
@@ -512,23 +583,23 @@ std::string BinaryFileInspector::disassemble(const ScriptLambda& lambda, const s
     
     // Symbol table
     if (symbols && num_ins > 0) {
-        result += m_formatter.format("\nSYMBOL TABLE:\n");
+        result += m_formatter.format_print("\nSYMBOL TABLE:\n");
         util::Formatter::Block sym_block(m_formatter, m_indent);
         
         for (u32 i = 0; i < num_ins; i++) {
             sid64 sid = symbols[i];
             auto it = m_file.m_sidCache.find(sid);
             if (it != m_file.m_sidCache.end()) {
-                result += m_formatter.format("{:04X}   {:08X}   {}: {}\n", 
+                result += m_formatter.format_print("{:04X}   {:08X}   {}: {}\n", 
                     i, reinterpret_cast<uintptr_t>(&symbols[i]), it->second, sid_str(sid));
             } else {
-                result += m_formatter.format("{:04X}   {:08X}   {}\n", 
+                result += m_formatter.format_print("{:04X}   {:08X}   {}\n", 
                     i, reinterpret_cast<uintptr_t>(&symbols[i]), sid_str(sid));
             }
         }
     }
     
-    result += m_formatter.format("}}\n\n");
+    result += m_formatter.format_print("}}\n\n");
     
     return result;
 }
@@ -539,19 +610,19 @@ std::string BinaryFileInspector::inspect_script_lambda(const ScriptLambda& lambd
 
 std::string BinaryFileInspector::inspect_symbol(const symbol& sym) {
     std::string result;
-    result += m_formatter.format("Symbol: ID={}, Type={}\n", sid_str(sym.id), type_name(sym.type));
+    result += m_formatter.format_print("Symbol: ID={}, Type={}\n", sid_str(sym.id), type_name(sym.type));
     
     util::Formatter::Block block(m_formatter, m_indent);
     
     switch (sym.type) {
         case symbol_type::B8:
-            result += m_formatter.format("Value: {}\n", sym.b8_ptr ? *sym.b8_ptr : false);
+            result += m_formatter.format_print("Value: {}\n", sym.b8_ptr ? *sym.b8_ptr : false);
             break;
         case symbol_type::I32:
-            result += m_formatter.format("Value: {}\n", sym.i32_ptr ? *sym.i32_ptr : 0);
+            result += m_formatter.format_print("Value: {}\n", sym.i32_ptr ? *sym.i32_ptr : 0);
             break;
         case symbol_type::F32:
-            result += m_formatter.format("Value: {:.6f}\n", sym.f32_ptr ? *sym.f32_ptr : 0.0f);
+            result += m_formatter.format_print("Value: {:.6f}\n", sym.f32_ptr ? *sym.f32_ptr : 0.0f);
             break;
         case symbol_type::SS:
             if (sym.ss_ptr) {

@@ -2,11 +2,17 @@
 #pragma once
 
 #include "Node.hpp"
+#include "common/carbon/file/ProgramBinaryElement.hpp"
+#include "common/carbon/file/BinaryFile.hpp"
+#include "common/sootc/libs/GlobalState.hpp"
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <expected>
 
 namespace sootc {
+
+class FunctionNode;
 
 class FileNode : public Node {
     std::string m_name;
@@ -20,54 +26,38 @@ protected:
     }
     
 public:
-    explicit FileNode(const std::string& name) : m_name(name) {}
+    explicit FileNode(const std::string& name);
     
     const char* node_type() const override { return "FileNode"; }
-    
-    std::string to_string() const override {
-        return "FileNode(name=" + m_name + ", symbols=" + std::to_string(m_symbols.size()) + ")";
-    }
+    std::string to_string() const override;
     
     // ========================================================================
     // Имя
     // ========================================================================
-    
     const std::string& name() const { return m_name; }
+    
+    // ========================================================================
+    // Генерация бинарника (интерфейс Node)
+    // ========================================================================
+    ProgramBinaryElement generate(GlobalState& state) override;
     
     // ========================================================================
     // Управление символами
     // ========================================================================
-    
-    Node* lookup(const std::string& name) override {
-        // 1. Свои символы
-        auto it = m_symbols.find(name);
-        if (it != m_symbols.end()) return it->second;
-        
-        // 2. Импорты
-        for (auto* imp : m_imports) {
-            if (auto* val = imp->lookup(name)) return val;
-        }
-        
-        // 3. Родитель
-        return parent() ? parent()->lookup(name) : nullptr;
-    }
-        
-    void bind(const std::string& name, Node* node) {
-        if (m_symbols.find(name) == m_symbols.end()) {
-            m_ordered_symbols.push_back(node);
-        }
-        m_symbols[name] = node;
-    }
+    Node* lookup(const std::string& name) override;
+    void bind(const std::string& name, Node* node);
     
     // ========================================================================
     // Импорты
     // ========================================================================
-    
-    void add_import(FileNode* file) {
-        m_imports.push_back(file);
-    }
-    
+    void add_import(FileNode* file);
     const std::vector<FileNode*>& imports() const { return m_imports; }
+    
+    static void insert_into_reloctable(u8* reloc_table, u64& byte_offset, u64& bit_offset, u8 bits, u64 num_bits) noexcept;
+private:
+    // Вспомогательные методы для генерации
+    std::vector<ProgramBinaryElement> collect_functions(GlobalState& state);
+    ProgramBinaryElement make_binary(std::vector<ProgramBinaryElement> functions, GlobalState& state);
 };
 
 } // namespace sootc

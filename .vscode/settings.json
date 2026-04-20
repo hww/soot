@@ -2,6 +2,7 @@
     // Отключаем C++ IntelliSense
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.errorSquiggles": "disabled",
+    "editor.inlayHints.enabled": "on",
     // Настройки clangd
     "clangd.path": "/usr/bin/clangd",
     "clangd.arguments": [
@@ -17,9 +18,8 @@
         "--malloc-trim"
     ],
     "clangd.fallbackFlags": [
-        "-std=c++17"
+        "-std=c++23"
     ],
-    "editor.inlayHints.enabled": "on",
     "clangd.restartAfterCrash": true,
     // Форматирование
     "editor.formatOnSave": false,
