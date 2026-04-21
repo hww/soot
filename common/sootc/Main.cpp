@@ -46,6 +46,9 @@ void print_usage(const char* program_name) {
 }
 
 int main(int argc, char* argv[]) {
+
+    for (int i=0;i<argc;i++) printf("[%d]>> %s \n", i, argv[i]);
+
     if (argc < 3) {
         print_usage(argv[0]);
         return 1;

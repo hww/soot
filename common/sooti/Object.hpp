@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/CommonTypes.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/StringIdHash.hpp"
 #include <algorithm>

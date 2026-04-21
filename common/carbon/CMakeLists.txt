@@ -56,11 +56,11 @@ target_link_libraries(carbon PRIVATE
     libsootutils 
     fmt 
     libcarbon
-    pthread
 )
-
 if(WIN32)
     target_link_libraries(carbon PRIVATE ws2_32)
+else()
+    target_link_libraries(carbon PRIVATE pthread)
 endif()
 
 set_target_properties(carbon PROPERTIES

@@ -1,3 +1,4 @@
+#include "CommonTypes.hpp"
 #include "common/soot/nrepl/ReplServer.hpp"
 #include "common/util/Log.hpp"
 #include <thread>
@@ -5,6 +6,8 @@
 #include <fcntl.h>
 #ifdef _WIN32
 #include <ws2tcpip.h>
+#include <sys/types.h>
+
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>

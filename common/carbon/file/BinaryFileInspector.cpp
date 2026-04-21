@@ -190,7 +190,7 @@ std::string BinaryFileInspector::inspect_header() {
     return result;
 }
 
-std::string BinaryFileInspector::inspect_entry(const Entry& entry) {
+std::string BinaryFileInspector::inspect_entry(const DCEntry& entry) {
     std::string result;
     result += m_formatter.format("Entry:\n");
     

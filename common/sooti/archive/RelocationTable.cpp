@@ -87,7 +87,7 @@ void RelocationTable::set_at(const Object &key, const Object &value) {
                                     if (type_str == ":abs" || type_str == "abs") {
                                         type = RelocType::ABS_ADDR;
                                     } else if (type_str == ":rel" || type_str == "rel") {
-                                        type = RelocType::RELATIVE;
+                                        type = RelocType::RELATIVES;
                                     } else if (type_str == ":crc" || type_str == "crc") {
                                         type = RelocType::SYMBOL_CRC;
                                     } else if (type_str == ":table" || type_str == "table") {

@@ -1,7 +1,15 @@
 ﻿# Верхний уровень
 cmake_minimum_required(VERSION 3.10)
 
-project(repl
+#set(CMAKE_C_COMPILER "clang.exe")
+#set(CMAKE_CXX_COMPILER "clang++.exe")
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    #add_compile_options(-stdlib=libc++ -std=c++23)
+    #add_link_options(-stdlib=libc++)
+endif()
+
+project(sootsystem
     VERSION 1.0.0
     DESCRIPTION "SOOT: Scriptable Object-Oriented Toolkit"
     LANGUAGES C CXX
@@ -74,6 +82,27 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g3 -ggdb")
 endif()
 
+# Функция-костыль для Clang в VS
+macro(safe_add_subdirectory dir)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND WIN32)
+        # Сохраняем текущие флаги
+        set(_SAVED_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+        set(_SAVED_CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+        
+        # Упрощаем флаги для вложенных project()
+        set(CMAKE_CXX_FLAGS "-g -O0")
+        set(CMAKE_C_FLAGS "-g -O0")
+        
+        add_subdirectory(${dir} EXCLUDE_FROM_ALL)
+        
+        # Восстанавливаем
+        set(CMAKE_CXX_FLAGS "${_SAVED_CMAKE_CXX_FLAGS}")
+        set(CMAKE_C_FLAGS "${_SAVED_CMAKE_C_FLAGS}")
+    else()
+        add_subdirectory(${dir} EXCLUDE_FROM_ALL)
+    endif()
+endmacro()
+
 # --- Build options -------------------------------------------
 # Флаг для сборки тестов (по умолчанию выключен)
 option(BUILD_TESTS "Build tests" ON)
@@ -92,19 +121,22 @@ write_revision_h()
 # Include folders
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(common)
-include_directories(common/cross_sockets)
-include_directories(third_party/fmt/include)
+include_directories(third_party)
+
 
 # build format library
+safe_add_subdirectory(third_party/fmt)
 include_directories(third_party/fmt/include)
-add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
+include_directories(third_party/fmt)
 
+safe_add_subdirectory(third_party/replxx)
 include_directories(third_party/replxx/include)
-add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 
 # Include subdirectories
+include(common/cross_sockets/CMakeLists.txt)
+include(common/repl/CMakeLists.txt)
 include(common/sooti/CMakeLists.txt)
-include(common/soot/CMakeLists.txt)
+#include(common/soot/CMakeLists.txt)
 include(common/sootc/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
@@ -112,7 +144,9 @@ include(common/carbon/CMakeLists.txt)
 include(common/xiff/CMakeLists.txt)
 include(common/util/CMakeLists.txt)
 
-
+set_target_properties(sootc PROPERTIES
+    VS_DEBUGGER_COMMAND_ARGUMENTS   "--script test.sot"
+)
 # Если у тебя есть папка с дополнительными лиспами
 # install(DIRECTORY common/lisp/ DESTINATION ${SOOT_SHARE_DIR}/lib)
 
@@ -142,3 +176,4 @@ add_custom_target(tests
         carbon_test
         engine_test
 )
+

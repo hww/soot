@@ -74,7 +74,7 @@ namespace carbon {
         size_t size() { return m_rawData.size(); }
         bool is_empty() { return m_rawData.size() == 0;}
 
-        Entry m_entry;
+        DCEntry m_entry;
         std::vector<std::byte> m_rawData;
         std::vector<u64> m_stringOffsets;
         std::vector<bool> m_relocTable;

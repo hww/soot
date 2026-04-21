@@ -7307,7 +7307,7 @@ Object Interpreter::eval_memory_buffer_reloc_set(const Object &form, Arguments &
     if (type_str == ":abs" || type_str == "abs" || type_str == "absolute") {
         type = RelocationTable::RelocType::ABS_ADDR;
     } else if (type_str == ":rel" || type_str == "rel" || type_str == "relative") {
-        type = RelocationTable::RelocType::RELATIVE;
+        type = RelocationTable::RelocType::RELATIVES;
     } else if (type_str == ":crc" || type_str == "crc" || type_str == "symbol-crc") {
         type = RelocationTable::RelocType::SYMBOL_CRC;
     } else if (type_str == ":table" || type_str == "table" || type_str == "symbol-table") {
@@ -7400,7 +7400,7 @@ std::string Interpreter::relocation_type_to_string(RelocationTable::RelocType ty
     switch (type) {
     case RelocationTable::RelocType::ABS_ADDR:
         return ":abs";
-    case RelocationTable::RelocType::RELATIVE:
+    case RelocationTable::RelocType::RELATIVES:
         return ":rel";
     case RelocationTable::RelocType::SYMBOL_CRC:
         return ":crc";
@@ -7428,7 +7428,7 @@ Object Interpreter::eval_memory_buffer_reloc_list(const Object &form, Arguments 
         case RelocationTable::RelocType::ABS_ADDR:
             type_str = ":abs";
             break;
-        case RelocationTable::RelocType::RELATIVE:
+        case RelocationTable::RelocType::RELATIVES:
             type_str = ":rel";
             break;
         case RelocationTable::RelocType::SYMBOL_CRC:

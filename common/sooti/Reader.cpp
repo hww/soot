@@ -232,7 +232,7 @@ Object Reader::read_from_file(const std::vector<std::string> &file_path, bool ch
             fmt::format("Cannot read {}, file doesn't exist", joined_file_path));
     }
     auto path = file_util::get_absolute_path(joined_file_path);
-    auto textFrag = std::make_shared<FileText>(path, path);
+    auto textFrag = std::make_shared<FileText>(path.string(), path.string());
     m_db.insert(textFrag);
 
     auto result = internal_read(textFrag, check_encoding, add_top_level, eval_callback);

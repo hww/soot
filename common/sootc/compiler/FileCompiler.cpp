@@ -104,7 +104,7 @@ make_binary(std::vector<ProgramBinaryElement> program_elements, const GlobalStat
     constexpr u32 header_size = sizeof(DC_Header) + sizeof(ARRAY_SID);
     
     const u64 num_entries = program_elements.size();
-    const u32 entries_size = static_cast<u32>(sizeof(Entry) * num_entries);
+    const u32 entries_size = static_cast<u32>(sizeof(DCEntry) * num_entries);
     
     // Вычисляем размеры
     const u64 entries_data_size = std::accumulate(
@@ -164,13 +164,13 @@ make_binary(std::vector<ProgramBinaryElement> program_elements, const GlobalStat
         data_size,
         0x1,
         static_cast<u32>(num_entries),
-        reinterpret_cast<Entry*>(first_entry_offset)
+        reinterpret_cast<DCEntry*>(first_entry_offset)
     };
     push_bytes(header, 0b1000);
     push_bytes(ARRAY_SID, 0b0);
     
     // Пишем таблицу entry point'ов
-    const u64 first_function_start = header_size + num_entries * sizeof(Entry);
+    const u64 first_function_start = header_size + num_entries * sizeof(DCEntry);
     u64 prev_entry_size = sizeof(FUNCTION_SID);
     
     for (auto& element : program_elements) {

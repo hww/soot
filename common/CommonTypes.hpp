@@ -13,6 +13,21 @@
 #include "fmt/format.h"
 
 // ============================================================================
+// Windows
+// ============================================================================
+
+#if _WIN32
+
+typedef unsigned long int ulong;
+typedef unsigned short int ushort;
+typedef unsigned int uint;
+
+#include <cstddef>
+using ssize_t = ptrdiff_t;  // или long long
+
+#endif
+
+// ============================================================================
 // Basic Integer Types
 // ============================================================================
 

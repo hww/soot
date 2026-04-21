@@ -10,6 +10,7 @@
 
 #include "common/sooti/PrettyPrinter.hpp"
 
+
 namespace fs = std::filesystem;
 
 // ============================================================
@@ -719,7 +720,7 @@ void ReplWrapper::execute_line_internal(const std::string &line, bool print_resu
 
 void ReplWrapper::load_startup_files() {
 
-    std::string lib_path = file_util::find_config_file("lib.sot");
+    std::string lib_path = file_util::find_config_file("lib.sot").string();
     if (!lib_path.empty()) {
         fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", lib_path);
         execute_line_internal(fmt::format("(load \"{}\")", lib_path), false);
@@ -727,7 +728,7 @@ void ReplWrapper::load_startup_files() {
 
     // ЭТАП 1: Pre-Network (Настройка окружения, загрузка библиотек)
     // Ищем везде, где может лежать startup-pre.gc
-    std::string pre_path = file_util::find_config_file("startup-pre.sot");
+    std::string pre_path = file_util::find_config_file("startup-pre.sot").string();
     if (!pre_path.empty()) {
         // lg::info("Loading pre-startup: {}", pre_path);
         fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", pre_path);
@@ -736,7 +737,7 @@ void ReplWrapper::load_startup_files() {
 
     // ЭТАП 2: Post-Network (Только если сеть успешно поднята)
     if (config_.enable_network && is_server_running_) {
-        std::string post_path = file_util::find_config_file("startup-post.sot");
+        std::string post_path = file_util::find_config_file("startup-post.sot").string();
         if (!post_path.empty()) {
             lg::info("Loading post-startup: {}", post_path);
             fmt::print(fg(fmt::color::gray), "✓ Loading: {}\n", post_path);
@@ -815,7 +816,7 @@ void ReplWrapper::setup_keybinds() {
 
 void ReplWrapper::load_config(const std::string &filename) {
     // 1. Пытаемся найти полный путь к конфигу
-    std::string actual_path = file_util::find_config_file(filename);
+    std::string actual_path = file_util::find_config_file(filename).string();
 
     // 2. Если файл не найден ни в одной из локаций
     if (actual_path.empty()) {

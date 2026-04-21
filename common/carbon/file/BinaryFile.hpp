@@ -90,7 +90,7 @@ namespace carbon {
             StateScript* ss_ptr;
             ScriptLambda* lambda_ptr;
             uint64_t* hash_ptr;
-            Entry raw_entry;
+            DCEntry raw_entry;
         };
     };
 

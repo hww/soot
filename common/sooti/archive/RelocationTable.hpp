@@ -2,6 +2,7 @@
 // RelocationTable.hpp
 #pragma once
 
+#include "CommonTypes.hpp"
 #include "common/sooti/Archive.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Printer.hpp"
@@ -13,10 +14,10 @@ namespace script {
 
 class RelocationTable : public NativeObject {
   public:
-    enum class RelocType : uint8_t {
+    enum class RelocType : u8 {
         ABS_ADDR = 0,   // Абсолютный адрес
         SYMBOL_CRC = 1, // CRC символа
-        RELATIVE = 2,   // Относительный адрес
+        RELATIVES = 2,   // Относительный адрес
         SYMBOL_TABLE_REF = 3
     };
 

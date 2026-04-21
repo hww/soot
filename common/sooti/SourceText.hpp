@@ -91,18 +91,32 @@ class ProgramString : public SourceText {
 
 class FileText : public SourceText {
   public:
-    // file_path - absolute file path
-    // description_name - relative file path
+    // Конструктор с двумя аргументами
     FileText(const std::string &file_path, const std::string &description_name);
+    
+    // Добавить конструктор с одним аргументом (если нужно)
+    FileText(const std::string &file_path) : FileText(file_path, file_path) {}
+    
+    // Добавить конструкторы копирования и перемещения
+    FileText(const FileText&) = default;
+    FileText(FileText&&) = default;
+    
+    // Конструктор по умолчанию
+    FileText() = default;
+    
+    // Операторы присваивания
+    FileText& operator=(const FileText&) = default;
+    FileText& operator=(FileText&&) = default;
+    
+    ~FileText() = default;
+    
     std::string get_description() override {
         return m_desc_name;
     }
-    FileText() = default;
-    ~FileText() = default;
 
   private:
-    std::string m_filepath;  // absolute file path
-    std::string m_desc_name; // relative file path
+    std::string m_filepath;
+    std::string m_desc_name;
 };
 
 struct TextRef {

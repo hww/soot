@@ -3,6 +3,7 @@
 
 #include "Node.hpp"
 #include <unordered_map>
+#include <string>
 
 namespace sootc {
 

@@ -12,4 +12,6 @@ target_include_directories(xsockets_lib PUBLIC
 # Platform-specific linking
 if(WIN32)
     target_link_libraries(xsockets_lib PRIVATE ws2_32)
-endif() 
+else()
+    target_link_libraries(xsockets_lib PRIVATE pthread)
+endif()

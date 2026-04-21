@@ -40,11 +40,11 @@ target_link_libraries(libsootc PRIVATE
     replxx 
     xsockets_lib
     libcarbon
-    pthread
 )
-
 if(WIN32)
     target_link_libraries(libsootc PRIVATE ws2_32)
+else()
+    target_link_libraries(libsootc PRIVATE pthread)
 endif()
 
 # Исполняемый файл для тестирования компилятора
@@ -61,11 +61,12 @@ target_link_libraries(sootc PRIVATE
     replxx 
     xsockets_lib
     libcarbon
-    pthread
 )
 
 if(WIN32)
     target_link_libraries(sootc PRIVATE ws2_32)
+else()
+    target_link_libraries(sootc PRIVATE ptread)
 endif()
 
 set_target_properties(sootc PROPERTIES 

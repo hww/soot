@@ -16,7 +16,7 @@ bool XiffCompiler::load_library(const std::string& lib_name) {
         return false;
     }
     
-    m_interp.eval_string(path.string(), path);
+    m_interp.eval_string(path.string(), path.string());
     return true;
 }
 
@@ -27,7 +27,7 @@ void XiffCompiler::scan_file(const fs::path& asm_path) {
     std::string line;
     std::string soot_buffer;
 
-    auto expression = fmt::format("(xiff-define-file \"{}\")\n", asm_path.c_str());
+    auto expression = fmt::format("(xiff-define-file \"{}\")\n", asm_path.string());
     auto result = m_interp.eval_string(expression, "xiff");
 
     while (std::getline(file, line)) {
@@ -37,7 +37,7 @@ void XiffCompiler::scan_file(const fs::path& asm_path) {
         if (pos != std::string::npos) {
             soot_buffer += line.substr(pos + 6) + " ";
         } else if (!soot_buffer.empty()) {
-            m_interp.eval_string(soot_buffer, asm_path);
+            m_interp.eval_string(soot_buffer, asm_path.string());
             soot_buffer.clear();
         }
     }
@@ -49,7 +49,7 @@ bool XiffCompiler::finalize_and_inject() {
     for (const auto& f : m_scanned_files) {   
         std::string target_file;
 
-        auto get_targets_exp = fmt::format("(xiff-get-targets \"{}\")\n", f.c_str());
+        auto get_targets_exp = fmt::format("(xiff-get-targets \"{}\")\n", f.string());
         auto get_targets_res = m_interp.eval_string(get_targets_exp, "finalize_and_inject");
         
         if (!get_targets_res.is_array()) {
@@ -96,7 +96,7 @@ bool XiffCompiler::finalize_and_inject() {
                 return false;
             }
 
-            auto res = m_injector.inject(path_str->data, "xiff", generate_res.as_string()->data, f);
+            auto res = m_injector.inject(path_str->data, "xiff", generate_res.as_string()->data, f.string());
             if (!res.success) {
                 fmt::print(stderr, "[ERR] [XiffCompiler] xiff-generate injection is not sucessfull.\n");
                 return false;
