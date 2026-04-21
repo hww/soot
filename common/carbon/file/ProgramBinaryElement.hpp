@@ -75,6 +75,8 @@ namespace carbon {
         size_t size() { return m_rawData.size(); }
         bool is_empty() { return m_rawData.size() == 0;}
 
+        void dump(const std::string& title = "");
+
         byte_uptr to_byte_uptr() const;
 
         Entry m_entry;

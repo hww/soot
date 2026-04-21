@@ -63,6 +63,22 @@ std::vector<ProgramBinaryElement> FileNode::collect_functions(GlobalState& state
 // ============================================================================
 ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements, 
                                             GlobalState& state) {
+
+    printf("=== make_binary DEBUG ===\n");
+    printf("program_elements.size() = %zu\n", program_elements.size());
+    
+    if (program_elements.empty()) {
+        printf("ERROR: program_elements is EMPTY!\n");
+        return ProgramBinaryElement(0);
+    }
+
+    for (size_t i = 0; i < program_elements.size(); i++) {
+        printf("  element[%zu]: m_rawData.size() = %zu\n", 
+               i, program_elements[i].m_rawData.size());
+        printf("  element[%zu]: m_relocTable.size() = %zu\n", 
+               i, program_elements[i].m_relocTable.size());
+    }
+
     constexpr sid64 ARRAY_SID = SID("array");
     constexpr sid64 FUNCTION_SID = SID("function");
     constexpr u64 reloc_table_size_offset = 0x4;
@@ -112,8 +128,17 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     
     // Лямбда для записи с релокацией
     auto push_bytes = [&](auto&& arg, auto&&... bits) {
-        std::memcpy(element.m_rawData.data() + current_size, std::addressof(arg), sizeof(arg));
+        size_t before = element.m_rawData.size();
+        
+        // Используем insert вместо memcpy
+        const std::byte* p = reinterpret_cast<const std::byte*>(std::addressof(arg));
+        element.m_rawData.insert(element.m_rawData.end(), p, p + sizeof(arg));
+        
         current_size += sizeof(arg);
+        size_t after = element.m_rawData.size();
+        printf("push_bytes: added %zu bytes, before=%zu, after=%zu, current_size=%llu\n", 
+            sizeof(arg), before, after, current_size);
+        
         const std::vector<u8> bits_list = {static_cast<u8>(bits)...};
         for (size_t i = 0; i < bits_list.size() - 1; ++i) {
             insert_into_reloctable(reloc_table_ptr, byte_offset, bit_offset, bits_list[i], 8);
@@ -184,7 +209,9 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     current_size += reloc_table_size;
     
     assert(current_size == total_size);
-    
+    printf("total_size = %u\n", total_size);
+    printf("=====================\n");
+    element.dump();
     return element;
 }
 

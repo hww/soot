@@ -1,5 +1,6 @@
 #include "ProgramBinaryElement.hpp"
-
+#include "carbon/lib/StringId.hpp"
+#include "lib/StringIdManager.hpp"
 
 namespace carbon {
 
@@ -65,4 +66,44 @@ byte_uptr ProgramBinaryElement::to_byte_uptr() const {
         // Это сложно, так как типы deleter'ов разные
         return byte_uptr(bytes.release());
     }
+}
+
+void ProgramBinaryElement::dump(const std::string& title) {
+    if (!title.empty()) {
+        printf("=== %s ===\n", title.c_str());
+    } else {
+        printf("=== ProgramBinaryElement Dump ===\n");
+    }
+    
+    printf("  Raw Data: %zu bytes\n", m_rawData.size());
+    printf("  Reloc Table: %zu bits\n", m_relocTable.size());
+    printf("  String Offsets: %zu\n", m_stringOffsets.size());
+    
+    // Entry
+    printf("  Entry: {\n");
+    printf("    nameID: {}\n", StringIdManager::instance().get_cstring(m_entry.m_nameID));
+    printf("    typeId: {}\n", StringIdManager::instance().get_cstring(m_entry.m_typeId));
+    printf("    ptr: %p\n", m_entry.m_entryPtr);
+    printf("  }\n");
+    
+    // Raw data hex dump
+    printf("  Raw Data (hex):\n");
+    size_t dump_size = std::min(m_rawData.size(), size_t(128));
+    for (size_t i = 0; i < dump_size; i++) {
+        if (i % 16 == 0) printf("    %04zx: ", i);
+        printf("%02X ", static_cast<unsigned char>(m_rawData[i]));
+        if ((i + 1) % 8 == 0 && (i + 1) % 16 != 0) printf(" ");
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    if (dump_size % 16 != 0) printf("\n");
+    if (m_rawData.size() > 128) printf("    ... (%zu more bytes)\n", m_rawData.size() - 128);
+    
+    // Relocation table summary
+    size_t reloc_count = 0;
+    for (bool b : m_relocTable) if (b) reloc_count++;
+    printf("  Relocations: %zu / %zu bits (%.1f%%)\n", 
+           reloc_count, m_relocTable.size(), 
+           m_relocTable.empty() ? 0 : 100.0 * reloc_count / m_relocTable.size());
+    
+    printf("=== End Dump ===\n");
 }
