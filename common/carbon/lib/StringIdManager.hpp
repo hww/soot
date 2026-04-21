@@ -15,8 +15,10 @@ public:
         return inst;
     }
     // Регистрация строки (вычисляет CRC32 и сохраняет для обратного поиска)
-    u32 register_string(const std::string& str);
-    u32 register_string(const char* str);
+    sid64 register_string(const std::string& str);
+    sid64 register_string(const char* str);
+    sid32 register_string32(const std::string& str);
+    sid32 register_string32(const char* str);
 
     // Получение строки по ID (CRC32)
     std::string get_string(u64 id) const;
@@ -46,9 +48,11 @@ public:
     void clear();
 
 private:
+    void debug_dump() const;
+
     StringIdManager() = default;
     mutable std::shared_mutex mutex_;
-    std::unordered_map<u64, std::string> reverse_lookup_;  // ID -> string
+    std::unordered_map<sid64, std::string> reverse_lookup_;  // ID -> string
 };
 
 } // namespace carbon

@@ -46,6 +46,7 @@ public:
         // это убирает все проблемы со ссылками на члены структур.
         auto result = indent() + fmt::vformat(fmt_str, fmt::make_format_args(args...));
         fmt::print("{}", result);
+        return result;
     }
 
     // 3. Методы print

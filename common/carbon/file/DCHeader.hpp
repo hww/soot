@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CommonTypes.hpp"
+#include "fmt/format.h"
+#include <cstddef>
+#include <string>
 
 // Thanks to icemesh!
 
@@ -11,6 +14,8 @@ namespace carbon {
         sid64			    m_nameID;				///< <c>0x00</c>: StringId64 of the script name
         sid64				m_typeId;				///< <c>0x08</c>: StringId64 of the script type eg SID("state-script")
         const void*         m_entryPtr;				///< <c>0x10</c>: ptr to the scriptType cast this to the IdGroup || StateScript etc..
+
+        std::string to_string() { return  fmt::format("<Entry name 0x{:016X} type 0x{:016X} ptr {:p}", m_nameID, m_typeId, m_entryPtr);}
     };
 
     struct DC_Header

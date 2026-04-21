@@ -398,7 +398,7 @@ namespace carbon {
     class CatchFrame : public StackFrame {
     public:
 
-        CatchFrame(ScriptLambda* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = SID("null"))
+        CatchFrame(ScriptLambda* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = StringId("null"))
             : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
         }
 
@@ -432,7 +432,7 @@ namespace carbon {
         void* user_data = nullptr;
 
         ProtectFrame(ScriptLambda* function_desc, std::shared_ptr<StackFrame> parent = nullptr, std::function<void()> cleanup = nullptr)
-            : StackFrame(function_desc, parent, FrameType::PROTECT, SID("protected"))
+            : StackFrame(function_desc, parent, FrameType::PROTECT, StringId("protected"))
             , cleanup_function(std::move(cleanup)) {
         }
 

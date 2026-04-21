@@ -1,6 +1,9 @@
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"  
+#include "Log.hpp"
 #include "common/carbon/file/ProgramBinaryElement.hpp"
+#include "lib/StringId.hpp"
+#include "lib/StringIdManager.hpp"
 #include "sootc/node/Node.hpp"
 #include "sootc/node/ExpressionNode.hpp"
 #include "sootc/libs/CompareOp.hpp"
@@ -199,62 +202,45 @@ void FunctionNode::emit_body() {
 // Сериализация
 // ========================================================================
 ProgramBinaryElement FunctionNode::build_binary(const std::string& module_name, GlobalState& state) {
-    (void)module_name;
-    
-    // Вычисляем размер
     u64 total_size = sizeof(sid64) + sizeof(ScriptLambda) + 
                      m_instructions.size() * sizeof(Instruction) + 
                      m_constants.size() * sizeof(u64);
     
-    carbon::ProgramBinaryElement element(total_size);
+    ProgramBinaryElement element(total_size);
     
-    // Устанавливаем entry point
+    // Entry - как в эталонном коде
     element.m_entry = {
-        .m_nameID = SID(m_name.c_str()),
-        .m_typeId = SCRIPT_LAMBDA_SID,
+        .m_nameID = StringId(m_name).value,
+        .m_typeId = StringId("script-lambda").value,
         .m_entryPtr = nullptr
     };
+    lg::info("FunctionNode::build_binary for entry {}", element.m_entry.to_string());
+    // Данные функции
+    element.push_bytes(StringId("script-lambda").value, 0b0);
     
-    // 1. Записываем sid64 (тип ScriptLambda)
-    sid64 script_lambda_sid = SCRIPT_LAMBDA_SID;
-    element.push_bytes(script_lambda_sid, 0b0);
+    ScriptLambda lambda = {
+        reinterpret_cast<u64*>(sizeof(ScriptLambda)),
+        reinterpret_cast<u64*>(sizeof(ScriptLambda) + m_instructions.size() * sizeof(Instruction)),
+        StringId("function").value,
+        12 + 4 * (m_instructions.size() + m_constants.size()),
+        0x0,
+        DEADBEEF,
+        0x0,
+        static_cast<u32>(m_instructions.size()),
+        -1,
+        StringId("global").value,
+        0x0
+    };
+    element.push_bytes(lambda, 0b0000'0011, 0b00);
     
-    // 2. Создаем и записываем ScriptLambda структуру
-    ScriptLambda lambda{};
-    lambda.m_pInstruction = nullptr;  // Будет заполнено при линковке
-    lambda.m_pSymbols = nullptr;      // Будет заполнено при линковке
-    lambda.m_typeId = FUNCTION_SID;
-    lambda.m_sum = 12 + 4 * (m_instructions.size() + m_constants.size());
-    lambda.m_funcName = SID(m_name.c_str());
-    lambda.m_instructionFlag = DEADBEEF;
-    lambda.m_always0_2 = 0;
-    lambda.m_numInstructions = static_cast<u32>(m_instructions.size());
-    lambda.m_neg1 = -1;
-    lambda.m_sidGlobal = GLOBAL_SID;
-    lambda.m_always0_3 = 0;
-    
-    // Записываем структуру с флагами релокации для указателей
-    element.push_bytes(lambda, 0b0, 0b0, 0b0, 0b0, 0b0, 0b0, 0b0, 0b0, 0b0, 0b0);
-    
-    // 3. Записываем инструкции
     for (const Instruction& instr : m_instructions) {
         element.push_bytes(instr, 0b0);
     }
     
-    // 4. Записываем таблицу констант
     for (size_t i = 0; i < m_constants.size(); ++i) {
-        // Определяем тип константы по m_constants_kind
-        u8 kind = m_constants_kind[i];
-        if (kind == static_cast<u8>(ConstKind::STRING)) {
-            element.insert_string_offset();
-            element.push_bytes(m_constants[i], 0b1);
-        } else {
-            element.push_bytes(m_constants[i], 0b0);
-        }
+        element.push_bytes(m_constants[i], 0b0);
     }
     
     return element;
 }
-
-
 } // namespace sootc

@@ -151,7 +151,7 @@ namespace carbon {
                 enter,
                 nullptr,
                 StackFrame::FrameType::GENERIC,
-                SID("state_enter")
+                StringId("state_enter")
             );
             
             auto saved_top_thread = top_thread;

@@ -1,29 +1,21 @@
 #include "ProgramBinaryElement.hpp"
 #include "carbon/lib/StringId.hpp"
 #include "lib/StringIdManager.hpp"
+#include "lib/Variant.hpp"
 
 namespace carbon {
 
 ProgramBinaryElement::ProgramBinaryElement(const u64 size) noexcept {
     m_rawData.reserve(size);
     m_relocTable.reserve(size / 64);
+    m_byteOffset = 0;
+    m_bitOffset = 0;
+    m_entry.m_entryPtr = nullptr;
+    m_entry.m_nameID = TypeIds::none;
+    m_entry.m_typeId = TypeIds::none;
 }
 
 void ProgramBinaryElement::insert_into_reloctable(const u8 bits, const u64 num_bits) noexcept {
-    // const u8 bit_space_remaining = (8 - m_bitOffset % 8);
-    // if (bit_space_remaining >= num_bits) {
-    //     m_relocTable[m_byteOffset] |= bits << m_bitOffset;
-    //     m_bitOffset += num_bits;
-    //     assert(m_bitOffset <= 8);
-    //     if (m_bitOffset == 8) {
-    //         m_bitOffset = 0;
-    //         m_byteOffset++;
-    //     }
-    // } else {
-    //     m_relocTable[m_byteOffset++] |= bits << m_bitOffset;
-    //     m_relocTable[m_byteOffset] |= bits >> bit_space_remaining;
-    //     m_bitOffset = num_bits - bit_space_remaining;
-    // }
     for (u64 i = 0; i < num_bits; ++i) {
         m_relocTable.push_back((bits >> i) & 0x1);
     }
@@ -39,7 +31,9 @@ void ProgramBinaryElement::insert_string_offset(const u64 offset) noexcept {
 
 void ProgramBinaryElement::adjust_offsets(const u64 offset) noexcept {
     const u64 chunks = m_rawData.size() / sizeof(u64);
-    for (u64 i = 0; i < chunks; ++i) {
+    const u64 reloc_size = m_relocTable.size();
+    
+    for (u64 i = 0; i < chunks && i < reloc_size; ++i) {  // ← проверка границ
         if (m_relocTable[i]) {
             u64* ptr = reinterpret_cast<u64*>(m_rawData.data() + i * sizeof(u64));
             if (*ptr != 0) {
@@ -67,7 +61,6 @@ byte_uptr ProgramBinaryElement::to_byte_uptr() const {
         return byte_uptr(bytes.release());
     }
 }
-
 void ProgramBinaryElement::dump(const std::string& title) {
     if (!title.empty()) {
         printf("=== %s ===\n", title.c_str());
@@ -79,10 +72,12 @@ void ProgramBinaryElement::dump(const std::string& title) {
     printf("  Reloc Table: %zu bits\n", m_relocTable.size());
     printf("  String Offsets: %zu\n", m_stringOffsets.size());
     
-    // Entry
+    // Entry - выводим числовые значения
     printf("  Entry: {\n");
-    printf("    nameID: {}\n", StringIdManager::instance().get_cstring(m_entry.m_nameID));
-    printf("    typeId: {}\n", StringIdManager::instance().get_cstring(m_entry.m_typeId));
+    std::string nameStr = StringIdManager::instance().get_string(m_entry.m_nameID);
+    std::string typeStr = StringIdManager::instance().get_string(m_entry.m_typeId);
+    printf("    nameID: 0x%llX `%s`\n", (unsigned long long)m_entry.m_nameID, nameStr.c_str());
+    printf("    typeId: 0x%llX `%s`\n", (unsigned long long)m_entry.m_typeId, typeStr.c_str());
     printf("    ptr: %p\n", m_entry.m_entryPtr);
     printf("  }\n");
     

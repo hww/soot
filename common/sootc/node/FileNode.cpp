@@ -63,30 +63,19 @@ std::vector<ProgramBinaryElement> FileNode::collect_functions(GlobalState& state
 // ============================================================================
 ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements, 
                                             GlobalState& state) {
-
     printf("=== make_binary DEBUG ===\n");
     printf("program_elements.size() = %zu\n", program_elements.size());
     
     if (program_elements.empty()) {
-        printf("ERROR: program_elements is EMPTY!\n");
         return ProgramBinaryElement(0);
     }
 
-    for (size_t i = 0; i < program_elements.size(); i++) {
-        printf("  element[%zu]: m_rawData.size() = %zu\n", 
-               i, program_elements[i].m_rawData.size());
-        printf("  element[%zu]: m_relocTable.size() = %zu\n", 
-               i, program_elements[i].m_relocTable.size());
-    }
-
     constexpr sid64 ARRAY_SID = SID("array");
-    constexpr sid64 FUNCTION_SID = SID("function");
-    constexpr u64 reloc_table_size_offset = 0x4;
     constexpr u64 first_entry_offset = 0x28;
     constexpr u32 header_size = sizeof(DC_Header) + sizeof(ARRAY_SID);
     
     const u64 num_entries = program_elements.size();
-    const u32 entries_size = static_cast<u32>(sizeof(Entry) * num_entries);
+    const u64 entries_size = sizeof(Entry) * num_entries;
     
     // Вычисляем размеры
     const u64 entries_data_size = std::accumulate(
@@ -111,67 +100,49 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         stringtable.push_back('\0');
     }
     
-    const u32 data_size = header_size + entries_size + static_cast<u32>(entries_data_size);
-    const u32 stringtable_reloctable_padding = stringtable_size % 4 == 0 ? 0 : 4 - (stringtable_size % 4);
-    const u32 relocatable_data_size = data_size + static_cast<u32>(stringtable_size);
-    const u32 reloc_table_size = static_cast<u32>(std::ceil(relocatable_data_size / 64.f));
-    const u32 non_relocatable_size = stringtable_reloctable_padding + reloc_table_size;
-    const u32 total_size = relocatable_data_size + reloc_table_size_offset + non_relocatable_size;
+    const u64 data_size = header_size + entries_size + entries_data_size;
+    const u64 total_size = data_size + stringtable_size + 4 + ((data_size + stringtable_size + 63) / 64);
     
-    // Создаем ProgramBinaryElement
+    printf("total_size = %lu\n", (unsigned long)total_size);
+    
+    // Создаем элемент
     ProgramBinaryElement element(total_size);
     
-    u64 current_size = 0;
-    const u32 reloc_table_start = relocatable_data_size + stringtable_reloctable_padding + reloc_table_size_offset;
-    u8* reloc_table_ptr = reinterpret_cast<u8*>(element.m_rawData.data() + reloc_table_start);
-    u64 byte_offset = 0, bit_offset = 0;
-    
-    // Лямбда для записи с релокацией
-    auto push_bytes = [&](auto&& arg, auto&&... bits) {
-        size_t before = element.m_rawData.size();
-        
-        // Используем insert вместо memcpy
-        const std::byte* p = reinterpret_cast<const std::byte*>(std::addressof(arg));
-        element.m_rawData.insert(element.m_rawData.end(), p, p + sizeof(arg));
-        
-        current_size += sizeof(arg);
-        size_t after = element.m_rawData.size();
-        printf("push_bytes: added %zu bytes, before=%zu, after=%zu, current_size=%llu\n", 
-            sizeof(arg), before, after, current_size);
-        
-        const std::vector<u8> bits_list = {static_cast<u8>(bits)...};
-        for (size_t i = 0; i < bits_list.size() - 1; ++i) {
-            insert_into_reloctable(reloc_table_ptr, byte_offset, bit_offset, bits_list[i], 8);
-        }
-        if (bits_list.size() > 0) {
-            insert_into_reloctable(reloc_table_ptr, byte_offset, bit_offset, bits_list.back(), sizeof(arg) * 8 / 8);
-        }
-    };
-    
-    // Пишем заголовок
+    // ========================================
+    // 1. ЗАГОЛОВОК
+    // ========================================
     DC_Header header{
         DC_MAGIC,
         DC_VERSION,
-        relocatable_data_size + stringtable_reloctable_padding,
-        data_size,
+        static_cast<uint32_t>(data_size + stringtable_size),
+        static_cast<uint32_t>(data_size),
         0x1,
-        static_cast<u32>(num_entries),
+        static_cast<uint32_t>(num_entries),
         reinterpret_cast<Entry*>(first_entry_offset)
     };
-    push_bytes(header, 0b1000);
-    push_bytes(ARRAY_SID, 0b0);
+    // header имеет 7 полей, последнее (индекс 6) - указатель, требует релокации
+    element.push_bytes(header, 0,0,0,0,0,0,1);
+    element.push_bytes(ARRAY_SID, 0b0);
     
-    // Пишем таблицу entry point'ов
+    // ========================================
+    // 2. ВСЕ ENTRY (без данных функций)
+    // ========================================
     const u64 first_function_start = header_size + num_entries * sizeof(Entry);
-    u64 prev_entry_size = sizeof(FUNCTION_SID);
+    u64 prev_entry_size = 0;
     
-    for (auto& element_item : program_elements) {
-        element_item.m_entry.m_entryPtr = reinterpret_cast<void*>(first_function_start + prev_entry_size);
-        push_bytes(element_item.m_entry, 0b100);
-        prev_entry_size += element_item.m_rawData.size();
+    for (auto& fn : program_elements) {
+        Entry entry = fn.m_entry;  // Entry уже создан в FunctionNode
+        entry.m_entryPtr = reinterpret_cast<void*>(first_function_start + prev_entry_size);
+        // Entry имеет 3 поля: nameID (0), typeId (1), entryPtr (2)
+        // Только entryPtr требует релокации
+        element.push_bytes(entry, 0, 0, 1);
+        prev_entry_size += fn.m_rawData.size();
+        lg::info("FileNode::make_binary entry {}", entry.to_string());
     }
     
-    // Пишем функции
+    // ========================================
+    // 3. ВСЕ ДАННЫЕ ФУНКЦИЙ
+    // ========================================
     for (auto& fn : program_elements) {
         // Корректируем строковые оффсеты
         for (const auto offset : fn.m_stringOffsets) {
@@ -180,37 +151,54 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
             for (u32 i = 0; i < str_index; ++i) {
                 relative_offset += state.m_strings[i].size() + 1;
             }
-            *reinterpret_cast<u64*>(&fn.m_rawData[offset]) = relative_offset - current_size;
+            *reinterpret_cast<u64*>(&fn.m_rawData[offset]) = relative_offset - element.m_rawData.size();
         }
         
-        fn.adjust_offsets(current_size);
-        std::memcpy(element.m_rawData.data() + current_size, fn.m_rawData.data(), fn.m_rawData.size());
-        current_size += fn.m_rawData.size();
+        fn.adjust_offsets(element.m_rawData.size());
+        
+        // Копируем данные функции
+        element.m_rawData.insert(element.m_rawData.end(), 
+                                  fn.m_rawData.begin(), 
+                                  fn.m_rawData.end());
         
         // Копируем relocation биты
         for (size_t i = 0; i < fn.m_relocTable.size(); ++i) {
             if (fn.m_relocTable[i]) {
-                u64 byte = (current_size - fn.m_rawData.size() + i * 8) / 8;
-                u64 bit = ((current_size - fn.m_rawData.size() + i * 8) % 8);
-                reloc_table_ptr[byte] |= (1 << bit);
+                element.m_relocTable.push_back(true);
+            } else {
+                element.m_relocTable.push_back(false);
             }
         }
     }
     
-    // Пишем string table
-    std::memcpy(element.m_rawData.data() + current_size, stringtable.data(), stringtable.size());
-    current_size += stringtable.size();
-    std::memset(element.m_rawData.data() + current_size, 0, stringtable_reloctable_padding);
-    current_size += stringtable_reloctable_padding;
+    // ========================================
+    // 4. STRING TABLE
+    // ========================================
+    element.m_rawData.insert(element.m_rawData.end(), 
+                              reinterpret_cast<const std::byte*>(stringtable.data()),
+                              reinterpret_cast<const std::byte*>(stringtable.data()) + stringtable.size());
     
-    // Пишем размер таблицы релокации
-    std::memcpy(element.m_rawData.data() + current_size, &reloc_table_size, sizeof(reloc_table_size));
-    current_size += sizeof(reloc_table_size);
-    current_size += reloc_table_size;
+    // 5. Padding
+    size_t padding = (4 - (stringtable.size() % 4)) % 4;
+    element.m_rawData.insert(element.m_rawData.end(), padding, std::byte{0});
     
-    assert(current_size == total_size);
-    printf("total_size = %u\n", total_size);
-    printf("=====================\n");
+    // 6. Размер reloc table
+    uint32_t reloc_size = static_cast<uint32_t>((data_size + stringtable_size + 63) / 64);
+    element.push_bytes(reloc_size, 0);
+    
+    // 7. Relocation table (битовая карта)
+    size_t reloc_bytes = (element.m_relocTable.size() + 7) / 8;
+    for (size_t i = 0; i < reloc_bytes; ++i) {
+        uint8_t byte = 0;
+        for (size_t bit = 0; bit < 8; ++bit) {
+            size_t idx = i * 8 + bit;
+            if (idx < element.m_relocTable.size() && element.m_relocTable[idx]) {
+                byte |= (1 << bit);
+            }
+        }
+        element.push_bytes(byte, 0);
+    }
+    
     element.dump();
     return element;
 }

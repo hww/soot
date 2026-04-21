@@ -3,6 +3,7 @@
 #include "common/carbon/kernel/StateFrame.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
 #include "common/carbon/kernel/Process.hpp"
+#include "lib/StringId.hpp"
 
 namespace carbon {
 
@@ -49,7 +50,7 @@ void StateFrame::execute_exit() {
         exit_function_,
         nullptr,
         StackFrame::FrameType::GENERIC,
-        SID("state_exit")
+        StringId("state_exit")
     );
 ;
     // Выполняем через VM

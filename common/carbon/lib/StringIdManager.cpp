@@ -1,5 +1,6 @@
 // StringIdManager.cpp
 #include "common/carbon/lib/StringIdManager.hpp"
+#include "CommonTypes.hpp"
 #include "common/carbon/lib/SIDBase.hpp"
 #include "common/util/Log.hpp"
 #include "common/util/StringIdHash.hpp"
@@ -19,31 +20,34 @@ namespace carbon {
 // Registration (for reverse lookup only)
 // ============================================================================
 
-u32 StringIdManager::register_string(const std::string& str) {
-    u32 id = util::ToStringId32(str);
+sid64 StringIdManager::register_string(const std::string& str) {
+    sid64 hash = util::ToStringId64(str);
     
     std::unique_lock<std::shared_mutex> lock(mutex_);
     
-    auto it = reverse_lookup_.find(id);
+    auto it = reverse_lookup_.find(hash);
     if (it != reverse_lookup_.end()) {
         if (it->second != str) {
             lg::error("StringIdManager: CRC32 collision detected! ID 0x{:08X} for both '{}' and '{}'",
-                id, it->second, str);
+                hash, it->second, str);
         }
-        return id;
+        return hash;
     }
     
-    reverse_lookup_[id] = str;
-    lg::debug("StringIdManager: registered '{}' as ID 0x{:08X}", str, id);
-    return id;
+    reverse_lookup_[hash] = str;
+    lg::debug("StringIdManager: registered '{}' as ID 0x{:016X}", str, hash);
+    return hash;
 }
 
-u32 StringIdManager::register_string(const char* str) {
+sid64 StringIdManager::register_string(const char* str) {
     if (!str || *str == '\0') {
         return 0;
     }
     return register_string(std::string(str));
 }
+
+sid32 StringIdManager::register_string32(const std::string& str) { return static_cast<sid32>(register_string(str)); }
+sid32 StringIdManager::register_string32(const char* str) { return static_cast<sid32>(register_string(str)); }
 
 // ============================================================================
 // Lookup
@@ -60,9 +64,9 @@ std::string StringIdManager::get_string(u64 id) const {
     if (it != reverse_lookup_.end()) {
         return it->second;
     }
-    
+    //debug_dump();
     // Формат: <unknown:0xDEADBEEF>
-    return fmt::format("<unknown:0x{:08X}>", id);
+    return fmt::format("<unknown:0x{:016X}>", id);
 }
 
 const char* StringIdManager::get_cstring(u64 id) const {
@@ -79,6 +83,14 @@ bool StringIdManager::has_string(u64 id) const {
     
     std::shared_lock<std::shared_mutex> lock(mutex_);
     return reverse_lookup_.find(id) != reverse_lookup_.end();
+}
+
+void StringIdManager::debug_dump() const {
+    std::shared_lock lock(mutex_);
+    lg::info("=== StringIdManager Dump ({} entries) ===", reverse_lookup_.size());
+    for (const auto& [id, str] : reverse_lookup_) {
+        lg::info("  0x{:016X} -> '{}'", id, str);
+    }
 }
 
 // ============================================================================

@@ -1,5 +1,6 @@
 ﻿#include "common/carbon/kernel/Scheduler.hpp"
 #include "common/util/Log.hpp"
+#include "lib/StringId.hpp"
 #include <algorithm>
 #include <format>
 
@@ -7,7 +8,7 @@ namespace carbon {
 
     Scheduler::Scheduler() {
         // Создаем корневой процесс
-        root = create_process(SID("root"));
+        root = create_process(StringId("root"));
         if (root) {
             root->add_mask(ProcessMask::PROCESS_TREE);
             lg::debug("Scheduler initialized with root process");

@@ -1,0 +1,3 @@
+[submodule "build/.vscode/libcxx-pretty-printers"]
+	path = build/.vscode/libcxx-pretty-printers
+	url = https://github.com/davenger/libcxx-pretty-printers.git

@@ -8,7 +8,7 @@ namespace carbon {
 
 class StringId {
 public:
-    u64 value;
+    sid64 value;
 
     constexpr StringId() : value(0) {}
     constexpr explicit StringId(u64 val) : value(val) {}
@@ -19,7 +19,7 @@ public:
     StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
     StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}
 
-    constexpr operator u32() const { return value; }
+    constexpr operator u64() const { return value; }
     constexpr bool operator==(const StringId& other) const { return value == other.value; }
     constexpr bool operator!=(const StringId& other) const { return value != other.value; }
 
@@ -58,8 +58,8 @@ public:
  */
 #include "common/util/StringIdHash.hpp"
 
-#define SID(str) (::carbon::StringId(::util::ToStringId64_Const(str)))
-
+#define SID(str) (static_cast<sid64>(util::ToStringId64_Const(str)))
+#define SID32(str) (static_cast<sid64>(util::ToStringId32_Const(str)))
 
 // 3. РАСШИРЕНИЕ СТАНДАРТНОЙ БИБЛИОТЕКИ
 #include <functional> // Обязательно для std::hash
