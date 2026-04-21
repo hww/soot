@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ExpressionNode.hpp"
+#include "sootc/node/Node.hpp"
 
 namespace sootc {
 
@@ -10,7 +11,8 @@ public:
     using ExpressionNode::ExpressionNode;
     
     // ControlNode не возвращает значение (тип void)
-    ControlNode() : ExpressionNode(nullptr) {}
+    ControlNode() : ExpressionNode(NodeType::ControlNode, nullptr) {}
+    ControlNode(NodeType node_type) : ExpressionNode(node_type, nullptr) {}
     
     virtual ~ControlNode() = default;
 };

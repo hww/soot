@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Node.hpp"
 #include "ExpressionNode.hpp"
 #include <vector>
 
@@ -11,7 +12,7 @@ class CallNode : public ExpressionNode {
     
 public:
     CallNode(const std::string& name, Type* return_type)
-        : ExpressionNode(return_type), m_function_name(name) {}
+        : ExpressionNode(NodeType::CallNode, return_type), m_function_name(name) {}
     
     void add_argument(std::unique_ptr<ExpressionNode> arg) {
         m_args.push_back(std::move(arg));

@@ -17,7 +17,7 @@ protected:
     }
     
 public:
-    GlobalNode() = default;
+    GlobalNode() : Node(NodeType::GlobalNode) {}
     
     const char* node_type() const override { return "GlobalNode"; }
     

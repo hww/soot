@@ -33,6 +33,8 @@ class ConstNode : public ExpressionNode {
     }
     
 public:
+    ConstNode() : ExpressionNode(NodeType::ConstNode) {} 
+
     static std::unique_ptr<ConstNode> make_int(i64 val) {
         return std::unique_ptr<ConstNode>(new ConstNode(val));
     }

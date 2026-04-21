@@ -5,7 +5,7 @@
 #include "FunctionNode.hpp"
 
 namespace sootc {
-
+    
 GlobalNode* Node::global() {
     if (!m_cached_global) {
         m_cached_global = find_ancestor<GlobalNode>();

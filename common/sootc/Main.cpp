@@ -201,7 +201,7 @@ int main(int argc, char* argv[]) {
         // binary->save(output_dir.string());
         
         BinaryFileInspector inspector(*binary, 2);
-        fmt::print("{}", inspector.inspect());
+        inspector.inspect();
         lg::info("Module {} successfully compiled.", input_file);
         lg::info("=== Compilation complete ===");
         lg::info("Module: {}", module_name);

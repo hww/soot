@@ -6,6 +6,7 @@
 
 namespace sootc {
 
+
 class CompareNode : public ExpressionNode {
 public:
     enum class Op { EQ, NE, LT, LE, GT, GE };
@@ -19,7 +20,8 @@ public:
     CompareNode(Op op, 
                 std::unique_ptr<ExpressionNode> left, 
                 std::unique_ptr<ExpressionNode> right)
-        : m_op(op)
+        : ExpressionNode(NodeType::CompareNode) 
+        , m_op(op)
         , m_left(std::move(left))
         , m_right(std::move(right)) 
     {

@@ -108,6 +108,13 @@
       "miDebuggerPath": "gdb",
       "setupCommands": [
         {
+            // N.B. Обязательно перед -enable-pretty-printing но требуется получить скрипты
+            // git clone https://github.com/davenger/libcxx-pretty-printers.git .vscode/libcxx-pretty-printers
+            "description": "Загружаем pretty-printer'ы для libc++",
+            "text": "python import sys; sys.path.insert(0, '${workspaceFolder}/.vscode/libcxx-pretty-printers/src'); from libcxx.v1.printers import register_libcxx_printers; register_libcxx_printers(None)",
+            "ignoreFailures": true
+        },        
+        {
           "description": "Enable pretty-printing for gdb",
           "text": "-enable-pretty-printing",
           "ignoreFailures": true

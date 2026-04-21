@@ -2,6 +2,7 @@
 #include "common/carbon/kernel/Process.hpp"
 #include "common/util/Log.hpp"
 #include "file/DCScript.hpp"
+#include "lib/StringId.hpp"
 #include "vm/StackFrame.hpp"
 #include <format>
 #include <functional> // Добавлен для std::function
@@ -20,7 +21,7 @@ namespace carbon {
             lg::info("Initializing Kernel...");
 
             // Создаем корневой процесс дерева через планировщик
-            root_ = scheduler_.create_process(SID("root"));
+            root_ = scheduler_.create_process(StringId("root"));
             if (!root_) {
                 lg::error("Failed to create root process");
                 return false;

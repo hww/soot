@@ -75,7 +75,7 @@ namespace carbon {
         return false;
     }
 
-
+    // Replace new line characters to the spaces inside the text buffer
     void BinaryFile::replace_newlines_in_stringtable() noexcept {
         constexpr u8 table_size_offset = 4;
         const u64 table_size = m_relocTable.num() - table_size_offset - m_strings.num();
@@ -119,6 +119,7 @@ namespace carbon {
     // }
 
     
+    // Make memory mapped (pointers from begin of memory)
     void BinaryFile::read_reloc_table() noexcept {
         std::byte *reloc_data = m_bytes.get() + m_dcheader->m_textSize;
 
@@ -161,8 +162,8 @@ namespace carbon {
         m_strings = location(m_bytes.get() + m_dcheader->m_stringsOffset);
     }
 
-    
-    [[nodiscard]] BinaryFile::byte_uptr BinaryFile::get_unmapped() const { 
+    // Make file mapped (pointers from begin of file)
+    [[nodiscard]] byte_uptr BinaryFile::get_unmapped() const { 
         std::byte *unmapped_bytes = static_cast<std::byte*>(::operator new[](m_size, std::align_val_t(64)));
 
         std::memcpy(unmapped_bytes, m_bytes.get(), m_size);

@@ -3,6 +3,7 @@
 #include "CommonTypes.hpp"
 #include "DCHeader.hpp"
 #include "DCScript.hpp"
+#include "lib/ByteUtils.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -14,7 +15,24 @@ namespace carbon {
     struct ProgramBinaryElement {
 
         ProgramBinaryElement(const u64 size) noexcept;
-
+        ProgramBinaryElement(const ProgramBinaryElement&) = delete;
+        ProgramBinaryElement& operator=(const ProgramBinaryElement&) = delete;
+        ProgramBinaryElement(ProgramBinaryElement&& other) noexcept
+            : m_entry(std::move(other.m_entry))  // ← std::move для POD - просто копия
+            , m_rawData(std::move(other.m_rawData))
+            , m_stringOffsets(std::move(other.m_stringOffsets))
+            , m_relocTable(std::move(other.m_relocTable))
+            , m_byteOffset(other.m_byteOffset)
+            , m_bitOffset(other.m_bitOffset)
+        {
+            // Очищаем other
+            other.m_rawData.clear();
+            other.m_relocTable.clear();
+            other.m_stringOffsets.clear();
+            other.m_entry.m_entryPtr = nullptr;
+            other.m_byteOffset = 0;
+            other.m_bitOffset = 0;
+        }    
         /**
          * @brief Сериализует объект в сырые байты и регистрирует позиции для релокации.
          * * Метод копирует побайтовое представление объекта T в конец внутреннего буфера m_rawData.
@@ -42,6 +60,9 @@ namespace carbon {
             const std::byte* p = reinterpret_cast<const std::byte*>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
             const std::vector<u8> bits_list = {static_cast<u8>(b)...};
+            
+            if (bits_list.empty()) return;  // ← добавить проверку!
+            
             for (u32 i = 0; i < bits_list.size() - 1; ++i) {
                 insert_into_reloctable(bits_list[i], 8);
             }
@@ -74,7 +95,9 @@ namespace carbon {
         size_t size() { return m_rawData.size(); }
         bool is_empty() { return m_rawData.size() == 0;}
 
+
         DCEntry m_entry;
+
         std::vector<std::byte> m_rawData;
         std::vector<u64> m_stringOffsets;
         std::vector<bool> m_relocTable;

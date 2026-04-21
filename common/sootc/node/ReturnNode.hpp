@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ExpressionNode.hpp"
+#include "sootc/node/Node.hpp"
 
 namespace sootc {
 
@@ -9,7 +10,7 @@ class ReturnNode : public ExpressionNode {
     
 public:
     explicit ReturnNode(std::unique_ptr<ExpressionNode> value = nullptr)
-        : m_value(std::move(value)) 
+        : ExpressionNode(NodeType::ReturnNode), m_value(std::move(value)) 
     {
         if (m_value && m_value->get_type()) {
             m_type = m_value->get_type();

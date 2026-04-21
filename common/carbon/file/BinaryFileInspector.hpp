@@ -5,9 +5,7 @@
 #include "file/DCHeader.hpp"
 #include "util/Formatter.hpp"
 #include <string>
-#include <vector>
-#include <map>
-#include <set>
+
 
 namespace carbon {
 
@@ -39,6 +37,7 @@ namespace carbon {
         // Inspection methods
         std::string inspect_header();
         std::string inspect_entry(const DCEntry& entry);
+        std::string inspect_relocations();
         std::string inspect_state_script(const StateScript& ss);
         std::string inspect_declaration_list(const SsDeclarationList& list);
         std::string inspect_declaration(const SsDeclaration& decl);

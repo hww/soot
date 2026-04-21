@@ -1,11 +1,12 @@
 #pragma once
 
 #include "Node.hpp"
-#include "Parameter.hpp"
-#include "VariableInfo.hpp"
+#include "sootc/libs/Parameter.hpp"
+#include "sootc/libs/VariableInfo.hpp"
 #include "file/ProgramBinaryElement.hpp"
 #include "carbon/vm/Instructions.hpp"
-#include "sootc/node/CompareOp.hpp"
+#include "sootc/libs/CompareOp.hpp"
+#include "sootc/node/Node.hpp"
 #include "type_system/Type.hpp"
 #include <vector>
 #include <unordered_map>
@@ -131,11 +132,16 @@ public:
     // ========================================================================
     // Сериализация
     // ========================================================================
-    carbon::ProgramBinaryElement build_binary(const std::string& module_name);
+    ProgramBinaryElement generate(GlobalState& state) override {
+        return build_binary(m_name, state);
+    }
+    private:
+    ProgramBinaryElement build_binary(const std::string& module_name, GlobalState& state);
     
     // ========================================================================
     // Доступ к результатам
     // ========================================================================
+    public:
     const std::vector<Instruction>& instructions() const { return m_instructions; }
     const std::vector<u64>& constants() const { return m_constants; }
 };

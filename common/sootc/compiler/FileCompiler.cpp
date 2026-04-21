@@ -1,32 +1,16 @@
 #include "common/sootc/compiler/FileCompiler.hpp"
 #include "common/sootc/compiler/NodeBuilder.hpp"
-#include "common/sootc/node/GlobalNode.hpp"
 #include "common/sootc/node/FileNode.hpp"
-#include "common/sootc/node/FunctionNode.hpp"
-#include "common/carbon/file/DCHeader.hpp"
-#include "common/util/Log.hpp"
-#include <cassert>
-#include <cstring>
-#include <numeric>
-
-using namespace carbon;
+#include "common/sootc/node/GlobalNode.hpp"
 
 namespace sootc {
 namespace FileCompiler {
 
-// ============================================================================
-// compile - основная функция
-// ============================================================================
-
-std::expected<std::unique_ptr<BinaryFile>, std::string> 
-compile(const script::Object& forms, const std::string& filename, Compiler& compiler) {
-    lg::info("Compiling file: {}", filename);
-    
-    // 1. Создаем строитель узлов
+std::unique_ptr<FileNode> compile(const script::Object& forms, 
+                                   const std::string& filename, 
+                                   Compiler& compiler) {
     NodeBuilder builder(compiler.ts(), &compiler);
     
-    // 2. Строим дерево
-    auto global = std::make_unique<GlobalNode>();
     auto file_node = std::make_unique<FileNode>(filename);
     
     auto current = forms;
@@ -37,8 +21,8 @@ compile(const script::Object& forms, const std::string& filename, Compiler& comp
         }
         current = current.as_pair()->cdr;
     }
-    global->add_child(std::move(file_node));
     
+
     // 3. Собираем бинарные элементы
     GlobalState state;
     auto elements = collect_binary_elements(global.get(), state);
