@@ -75,7 +75,7 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     constexpr u32 header_size = sizeof(DC_Header) + sizeof(ARRAY_SID);
     
     const u64 num_entries = program_elements.size();
-    const u64 entries_size = sizeof(Entry) * num_entries;
+    const u64 entries_size = sizeof(DCEntry) * num_entries;
     
     // Вычисляем размеры
     const u64 entries_data_size = std::accumulate(
@@ -118,7 +118,7 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         static_cast<uint32_t>(data_size),
         0x1,
         static_cast<uint32_t>(num_entries),
-        reinterpret_cast<Entry*>(first_entry_offset)
+        reinterpret_cast<DCEntry*>(first_entry_offset)
     };
     // header имеет 7 полей, последнее (индекс 6) - указатель, требует релокации
     element.push_bytes(header, 0,0,0,0,0,0,1);
@@ -127,11 +127,11 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     // ========================================
     // 2. ВСЕ ENTRY (без данных функций)
     // ========================================
-    const u64 first_function_start = header_size + num_entries * sizeof(Entry);
+    const u64 first_function_start = header_size + num_entries * sizeof(DCEntry);
     u64 prev_entry_size = 0;
     
     for (auto& fn : program_elements) {
-        Entry entry = fn.m_entry;  // Entry уже создан в FunctionNode
+        DCEntry entry = fn.m_entry;  // Entry уже создан в FunctionNode
         entry.m_entryPtr = reinterpret_cast<void*>(first_function_start + prev_entry_size);
         // Entry имеет 3 поля: nameID (0), typeId (1), entryPtr (2)
         // Только entryPtr требует релокации

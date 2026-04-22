@@ -67,7 +67,7 @@ target_link_libraries(sootc PRIVATE
 if(WIN32)
     target_link_libraries(sootc PRIVATE ws2_32)
 else()
-    target_link_libraries(sootc PRIVATE ptread)
+    target_link_libraries(sootc PRIVATE pthread)
 endif()
 
 set_target_properties(sootc PROPERTIES 

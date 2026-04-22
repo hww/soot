@@ -12,7 +12,7 @@ namespace sootc {
     class GlobalNode;
     class FileNode;
     class FunctionNode;
-    class GlobalState;
+    struct GlobalState;
     
 enum class NodeType {
     Node,

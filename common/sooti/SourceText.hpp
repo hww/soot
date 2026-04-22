@@ -94,7 +94,7 @@ class FileText : public SourceText {
     // Конструктор с двумя аргументами
     FileText(const std::string &file_path, const std::string &description_name);
     
-    // Добавить конструктор с одним аргументом (если нужно)
+    // Добавить конструктор с одним аргументом 
     FileText(const std::string &file_path) : FileText(file_path, file_path) {}
     
     // Добавить конструкторы копирования и перемещения
@@ -115,8 +115,8 @@ class FileText : public SourceText {
     }
 
   private:
-    std::string m_filepath;
-    std::string m_desc_name;
+    std::string m_filepath;  // absolute file path
+    std::string m_desc_name; // relative file path
 };
 
 struct TextRef {
