@@ -63,7 +63,7 @@ void print_usage(const char* program_name) {
 }
 
 int main(int argc, char* argv[]) {
-    /*
+
     fmt::print("=== DEBUG: argc = {} ===\n", argc);
     for (int i = 0; i < argc; i++) {
         fmt::print("  argv[{}] = '{}'\n", i, argv[i]);
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
         print_usage(argv[0]);
         return 1;
     }
-    
+       /* 
     std::vector<std::string> include_paths;
     std::vector<std::string> modules_to_load;
     std::string call_expr;

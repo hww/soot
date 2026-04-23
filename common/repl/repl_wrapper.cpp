@@ -20,60 +20,68 @@ namespace REPL {
 void Wrapper::clear_screen() {
   repl.clear_screen();
 }
+static constexpr std::string_view logo[] = {
+  "      ___      ",
+  "     /  /\\     ",
+  "    /  /:/_    ",
+  "   /  /:/ /\\   ",
+  "  /  /:/ /::\\  ",
+  " /__/:/ /:/\\:\\ ",
+  " \\  \\:\\/:/~/:/ ",
+  "  \\  \\::/ /:/  ",
+  "   \\__\\/ /:/   ",
+  "     /__/:/    ",
+  "     \\__\\/     ",
+  "               "
+};
 
 void Wrapper::print_welcome_message(const std::vector<std::string>& loaded_projects) {
-  std::string message;
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "        ..:::::..\n");
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "     .:-----------:.\n");
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "         .-----.");
-  message += fmt::format(fmt::emphasis::bold, "         Welcome to OpenGOAL {}.{} [{}]",
-                         versions::GOAL_VERSION_MAJOR, versions::GOAL_VERSION_MINOR,
-                         fmt::format(fg(fmt::color::gray), "{}", BUILT_SHA));
-  if (!username.empty() && username != "#f" && username != "unknown") {
-    message += fmt::format(fg(fmt::color::light_green), " {}", username);
-  }
-  message += "!\n";
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "          .---.");
-  if (repl_config.game_version == SootPlatform::Default) {
-    message += fmt::format("          [{}]: ", fmt::format(fg(fmt::color::orange), "default"));
-  } else {
-    message += fmt::format("          [{}]: ", fmt::format(fg(fmt::color::magenta), "undefined"));
-  }
-  const auto loaded_projects_str = fmt::format("{}", str_util::join(loaded_projects, ","));
-  message += fmt::format(fg(fmt::color::gray), "{}\n", loaded_projects_str);
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "  .        ---        .");
-  message += fmt::format("  Project Path: {}\n", 
-                           fmt::styled(file_util::get_path(file_util::PathType::PROJECT).string(), 
-                                       fg(fmt::color::gray)));
+    std::string message;
+    auto orange = fg(fmt::color::orange) | fmt::emphasis::bold;
+    auto cyan = fg(fmt::color::cyan);
+    auto gray = fg(fmt::color::gray);
 
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "  -       :===:       -");
+    auto add_line = [&](int logo_idx, const std::string& text) {
+        // Убрали "{}", теперь всё корректно
+        message += fmt::format(orange, fmt::runtime(logo[logo_idx]));
+        message += text + "\n";
+    };
 
+    add_line(0, "");
+    add_line(1, "");
+    
+    std::string welcome = fmt::format(fmt::emphasis::bold, "  Welcome to SOOT {}.{} [{}]",
+                          versions::GOAL_VERSION_MAJOR, versions::GOAL_VERSION_MINOR,
+                          fmt::format(gray, "{}", BUILT_SHA));
+    
+    if (!username.empty() && username != "#f" && username != "unknown") {
+        welcome += fmt::format(fg(fmt::color::light_green), " {}", username);
+    }
+    add_line(2, welcome + "!");
 
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "  --.   .--: :--.   .--");
-  message += "  nREPL:";
-  if (!nrepl_alive) {
-    message += fmt::format(fg(fmt::color::red), "DISABLED\n");
-  } else {
-    message += fmt::format(fg(fmt::color::light_green), " Listening on {}\n",
-                           repl_config.get_nrepl_port());
-  }
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "  .=======.    =======.");
-  message += "  Source File Search Dirs: ";
-  const auto search_dir_string =
-      fmt::format("{}", str_util::join(repl_config.asm_file_search_dirs, ","));
-  message += fmt::format("[{}]\n", fmt::styled(search_dir_string, fg(fmt::color::gray)));
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "   .-=====-. .-=====-");
-  message += fmt::format("    {} or {} for basic help and usage\n",
-                         fmt::format(fg(fmt::color::cyan), "(repl-help)"),
-                         fmt::format(fg(fmt::color::cyan), "(repl-keybinds)"));
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "     .-===========-.");
-  message +=
-      fmt::format("     {} to connect to the game\n", fmt::format(fg(fmt::color::cyan), "(lt)"));
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "         .-===-.");
-  message += fmt::format("         {} to recompile the active project.\n",
-                         fmt::format(fg(fmt::color::cyan), "(mi)"));
-  message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "            .\n");
-  fmt::print("{}", message);
+    std::string platform = (repl_config.game_version == SootPlatform::Default) 
+        ? fmt::format("     [{}]: ", fmt::format(orange, "default"))
+        : fmt::format("     [{}]: ", fmt::format(fg(fmt::color::magenta), "undefined"));
+    
+    add_line(3, platform + fmt::format(gray, "{}", str_util::join(loaded_projects, ",")));
+    add_line(4, fmt::format("  Project Path: {}", 
+                fmt::format(gray, "{}", file_util::get_path(file_util::PathType::PROJECT).string())));
+    add_line(5, "");
+
+    std::string nrepl = "  nREPL: ";
+    nrepl += (!nrepl_alive) 
+        ? fmt::format(fg(fmt::color::red), "DISABLED")
+        : fmt::format(fg(fmt::color::light_green), "Listening on {}", repl_config.get_nrepl_port());
+    add_line(6, nrepl);
+
+    add_line(7, fmt::format("  Source File Search Dirs: [{}]", 
+                fmt::format(gray, "{}", str_util::join(repl_config.asm_file_search_dirs, ","))));
+    add_line(8, fmt::format("    {} or {} for basic help", fmt::format(cyan, "(repl-help)"), fmt::format(cyan, "(repl-keybinds)")));
+    add_line(9, fmt::format("    {} to connect to the game", fmt::format(cyan, "(lt)")));
+    add_line(10, fmt::format("    {} to recompile the active project.", fmt::format(cyan, "(mi)")));
+    add_line(11, "");
+
+    fmt::print("{}", message);
 }
 
 void Wrapper::print_to_repl(const std::string& str) {

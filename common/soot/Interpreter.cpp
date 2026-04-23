@@ -1138,6 +1138,9 @@ Object Interpreter::eval_pair(const Object &obj, const std::shared_ptr<Environme
             m_profiler.end();
             return result;
         }
+
+        throw_eval_error(obj,
+                     "The primitive is not builting or custom function: " + eval_head.class_name() + " " + eval_head.print());
     }
 
     // --- MACROS ---

@@ -1,4 +1,6 @@
 ﻿// main.cpp
+#include "CommonTypes.hpp"
+#include "repl/nrepl/ReplServer.h"
 #include "sootc/compiler/Compiler.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
@@ -7,6 +9,7 @@
 #include "fmt/core.h"
 #include <iostream>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <optional>
@@ -47,6 +50,7 @@ struct CommandLineOptions {
     bool debug_mode = false;        // --debug
     bool debug_segment = false;     // --debug-segment
     bool listen_debugger = false;   // --listen
+    SootPlatform platform = SootPlatform::Default;
 };
 
 void print_banner() {
@@ -71,6 +75,7 @@ void print_help(const char* program_name) {
     fmt::print("  --debug-ast          Print AST during compilation\n");
     fmt::print("  --debug-ir           Print intermediate representation\n");
     fmt::print("  --debug-asm          Print generated assembly\n");
+    fmt::print("  --platfirm           Set platform (z80, ...)\n");
     fmt::print("  -h, --help           Show this help\n");
     fmt::print("  -v, --version        Show version\n");
     
@@ -199,74 +204,117 @@ CommandLineOptions parse_args(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
     try {
-        // Парсинг аргументов
         auto opts = parse_args(argc, argv);
         
-        if (opts.help) {
-            print_help(argv[0]);
-            return 0;
-        }
+        if (opts.help) { print_help(argv[0]); return 0; }
+        if (opts.version) { fmt::print("SOOT Compiler v1.0\n"); return 0; }
         
-        if (opts.version) {
-            fmt::print("SOOT Compiler v1.0\n");
-            return 0;
-        }
+        // Настройка логирования
+        lg::set_file_level(lg::level::info);
+        lg::set_stdout_level(lg::level::info);
+        lg::set_file("compiler");
+        lg::initialize();
         
-        // Инициализация системы типов
-        auto& ts = TypeSystem::instance();
-        ts.add_builtin_types();
-        
-        // Конфигурация компилятора
-        // Создание конфигурации REPL
-        REPL::Config repl_config(SootPlatform::Default);
+        // Загрузка конфигурации
+        REPL::Config repl_config(opts.platform);
         repl_config.asm_file_search_dirs.push_back(file_util::get_path(file_util::PathType::PROJECT).string());
         repl_config.per_game_history = true;
-        repl_config.nrepl_port = 8181;
-
-        // Настройка компилятора
-        sootc::Compiler::Config compiler_config;
-        compiler_config.mode = opts.mode;
-        compiler_config.user_profile = opts.user_profile;
-        compiler_config.debug_print_ast = opts.debug_ast;
-        compiler_config.debug_print_ir = opts.debug_ir;
-        compiler_config.debug_print_asm = opts.debug_asm;
-        compiler_config.search_paths = {".", "scripts", "src", "examples"};
-        compiler_config.repl_config = repl_config;  // Присваиваем REPL конфигурацию
-
-        // Создание компилятора
-        sootc::Compiler compiler(ts, compiler_config);
+        repl_config.nrepl_port = opts.port;
         
-        // Компиляция указанных файлов
-        bool has_errors = false;
+        auto startup_file = REPL::load_user_startup_file(opts.user_profile, opts.platform);
+        
+        // Инициализация nREPL
+        std::mutex compiler_mutex;
+        sootc::ReplStatus status = sootc::ReplStatus::OK;
+        
+        std::function<bool()> shutdown_callback = [&status]() { 
+            return status == sootc::ReplStatus::WANT_EXIT; 
+        };
+        
+        ReplServer repl_server(shutdown_callback, repl_config.get_nrepl_port());
+        bool nrepl_ok = repl_server.init_server(true);
+        
+        std::thread nrepl_thread;
+        
+        // Создание компилятора
+        sootc::Compiler::CompilationOptions comp_options;
+        comp_options.mode = sootc::CompilerMode::HYBRID;
+        comp_options.debug_print_ir = false;
+        comp_options.debug_print_ast = false;
+        comp_options.debug_print_asm = false;
+        comp_options.user_profile = opts.user_profile;
+        comp_options.search_paths = {".", "scripts", "src", "examples"};
+        comp_options.mode = opts.mode;
+
+        auto compiler = std::make_unique<sootc::Compiler>(
+            opts.platform, 
+            comp_options,
+            repl_config, 
+            opts.user_profile,
+            std::make_unique<REPL::Wrapper>(opts.user_profile, repl_config, startup_file, nrepl_ok)
+        );
+        
+        // Запуск nREPL потока
+        if (nrepl_ok) {
+            nrepl_thread = std::thread([&]() {
+                while (!shutdown_callback()) {
+                    auto msg = repl_server.get_msg();
+                    if (msg) {
+                        std::lock_guard<std::mutex> lock(compiler_mutex);
+                        status = compiler->handle_repl_string(msg.value());
+                        compiler->print_to_repl(compiler->get_prompt());
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+            });
+        }
+        
+        // Выполнение startup команд
+        for (const auto& cmd : startup_file.run_before_listen) {
+            status = compiler->handle_repl_string(cmd);
+        }
+        
+        // Компиляция файлов из командной строки
         for (const auto& input_file : opts.input_files) {
             lg::info("Processing: {}", input_file);
-            
-            auto result = compiler.compile_file(input_file);
+            auto result = compiler->compile_file(input_file);
             if (result) {
-                lg::info("✓ Compiled: {}", input_file);
-                
-                // Сохранение бинарника если нужно
-                if (!opts.target_dir.empty()) {
-                    // TODO: сохранить бинарник
-                }
+                lg::info("Compiled: {}", input_file);
             } else {
-                lg::error("✗ Failed: {} - {}", input_file, result.error());
-                has_errors = true;
-                if (!opts.interactive) break;
+                lg::error("Failed: {} - {}", input_file, result.error());
+            }
+        }
+
+        // Главный REPL цикл
+        while (status != sootc::ReplStatus::WANT_EXIT) {
+            if (status == sootc::ReplStatus::WANT_RELOAD) {
+                lg::info("Reloading compiler...");
+                std::lock_guard<std::mutex> lock(compiler_mutex);
+                compiler->save_repl_history();
+                compiler = std::make_unique<sootc::Compiler>(
+                    opts.platform, comp_options, repl_config, opts.user_profile,
+                    std::make_unique<REPL::Wrapper>(opts.user_profile, repl_config, startup_file, nrepl_ok)
+                );
+                status = sootc::ReplStatus::OK;
+            }
+            
+            std::string input = compiler->get_repl_input();
+            if (!input.empty()) {
+                std::lock_guard<std::mutex> lock(compiler_mutex);
+                status = compiler->handle_repl_string(input);
             }
         }
         
-        // Запуск REPL если нужно
-        if (opts.interactive && (!has_errors || opts.input_files.empty())) {
-            print_banner();
-            compiler.run_repl();
+        // Очистка
+        if (nrepl_ok) {
+            repl_server.shutdown_server();
+            nrepl_thread.join();
         }
         
-        return has_errors ? 1 : 0;
+        return 0;
         
     } catch (const std::exception& e) {
-        lg::error(fmt::format(fmt::fg(fmt::color::crimson) | fmt::emphasis::bold, 
-                  "Fatal error: {}", e.what()));
+        lg::error("Fatal error: {}", e.what());
         return 1;
     }
 }

@@ -1021,7 +1021,6 @@ void TypeSystem::add_builtin_types(SootPlatform plarform) {
             add_builtin_types_z80();
             break;
     }
-    throw std::runtime_error("unexpected platdform");
 }
 
 // ============================================================================

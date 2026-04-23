@@ -50,6 +50,7 @@ namespace REPL {
     int target_connect_attempts = 30;
     std::vector<std::string> asm_file_search_dirs = {};
     bool append_keybinds = true;
+
     std::vector<KeyBind> keybinds = {
         {KeyBind::Modifier::CTRL, "T", "Starts up the game runtime", "(test-play)"},
         {KeyBind::Modifier::CTRL, "Q", "Exit the REPL", "(e)"},

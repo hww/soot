@@ -1,5 +1,6 @@
 // sootc/compiler/Compiler.cpp
 #include "sootc/compiler/Compiler.hpp"
+#include "soot/PrettyPrinter.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -14,22 +15,23 @@
 
 namespace sootc {
 
-    Compiler::Compiler(SootPlatform platform,
-           const std::optional<REPL::Config> repl_config,
-           const std::string& user_profile,
-           std::unique_ptr<REPL::Wrapper> repl) 
+Compiler::Compiler(SootPlatform platform,
+                   const CompilationOptions comp_options,
+                   const std::optional<REPL::Config> repl_config,
+                   const std::string& user_profile,
+                   std::unique_ptr<REPL::Wrapper> repl) 
     : m_ts(TypeSystem::instance()),
-        m_platform(platform),
-        m_soot(user_profile),
-        //m_debugger(&m_listener, &m_goos.reader, version),
-        m_make(repl_config, user_profile),
-        m_repl(std::move(repl))
-    {
-        //m_listener.add_debugger(&m_debugger);
-        //m_listener.set_default_port(version);
-        m_ts.add_builtin_types(m_platform);
-        m_global_env = std::make_unique<GlobalNode>();
-        m_none = std::make_unique<NoneNode>();
+      m_platform(platform),
+      m_soot(user_profile, false),
+      m_make(repl_config, user_profile),
+      m_repl(std::move(repl))
+{
+    // Инициализация m_config
+    m_config = comp_options;
+    
+    m_ts.add_builtin_types(m_platform);
+    m_global_env = std::make_unique<GlobalNode>();
+    m_none = std::make_unique<NoneNode>();
 
     if (m_config.mode != CompilerMode::COMPILE_ONLY) {
         setup_repl();
@@ -41,19 +43,16 @@ namespace sootc {
 
      // load auto-complete history, only if we are running in the interactive mode.
     if (m_repl) {
-    m_repl->load_history();
-    // init repl
-    m_repl->print_welcome_message(m_make.get_loaded_projects());
-    auto& examples = m_repl->examples;
-    auto& regex_colors = m_repl->regex_colors;
-    m_repl->init_settings();
-    using namespace std::placeholders;
-    //m_repl->get_repl().set_completion_callback(std::bind(
-    //    &Compiler::find_symbols_or_object_file_by_prefix, this, _1, _2, std::cref(examples)));
-    //m_repl->get_repl().set_hint_callback(
-    //    std::bind(&Compiler::find_hints_by_prefix, this, _1, _2, _3, std::cref(examples)));
-    //m_repl->get_repl().set_highlighter_callback(
-    //    std::bind(&Compiler::repl_coloring, this, _1, _2, std::cref(regex_colors)));
+        m_repl->load_history();
+        m_repl->print_welcome_message(m_make.get_loaded_projects());
+        m_repl->init_settings();
+        using namespace std::placeholders;
+        //m_repl->get_repl().set_completion_callback(std::bind(
+        //    &Compiler::find_symbols_or_object_file_by_prefix, this, _1, _2, std::cref(examples)));
+        //m_repl->get_repl().set_hint_callback(
+        //    std::bind(&Compiler::find_hints_by_prefix, this, _1, _2, _3, std::cref(examples)));
+        //m_repl->get_repl().set_highlighter_callback(
+        //    std::bind(&Compiler::repl_coloring, this, _1, _2, std::cref(regex_colors)));
     }
 
     // add soot forms that get info from the compiler
@@ -84,6 +83,7 @@ void Compiler::setup_goos_forms() {
 soot::Object Compiler::builtin_get_enum_vals(const soot::Object& form, 
                                                soot::Arguments& args,
                                                const std::shared_ptr<soot::EnvironmentObject>& env) {
+    (void)form; (void)env;
     // Вычисляем аргументы (если нужно)
     // m_interpreter->eval_args(&args, env); // Раскомментируйте если аргументы нужно вычислить
     
@@ -261,65 +261,8 @@ Compiler::compile_internal(soot::Object& forms, const std::string& filename) {
 
 // ========== Интерпретация ==========
 
-soot::Object Compiler::interpret(const std::string& code) {
-    auto forms = m_reader.read_from_string(code, false, "<repl>");
-    return interpret(forms);
-}
 
-soot::Object Compiler::interpret(const soot::Object& forms) {
-    if (m_config.debug_print_ast) {
-        lg::info("AST: {}", forms.print());
-    }
-    return m_soot.eval_form(forms);
-}
-
-
-// ========== REPL ==========
-
-void Compiler::run_repl() {
-    if (!m_repl) {
-        throw std::runtime_error("REPL not initialized");
-    }
-    
-    // Печатаем приветствие (передаем пустой вектор загруженных проектов)
-    m_repl->print_welcome_message({});
-    
-    while (!m_want_exit) {
-        try {
-            // Используем readline для получения ввода
-            const char* line = m_repl->readline("soot> ");
-            if (!line) {
-                // EOF (Ctrl+D)
-                break;
-            }
-            
-            std::string input(line);
-            if (input.empty()) continue;
-            
-            // Добавляем в историю
-            m_repl->add_to_history(input);
-            
-            auto status = handle_repl_string(input);
-            
-            if (status == ReplStatus::WANT_EXIT) {
-                break;
-            } else if (status == ReplStatus::WANT_RELOAD) {
-                reload_environment();
-            }
-            
-        } catch (const std::exception& e) {
-            print_error("REPL Error", e);
-        }
-    }
-    
-    // Сохраняем историю
-    m_repl->save_history();
-}
-
-ReplStatus Compiler::handle_repl_string(const std::string& input) {
-    if (input.empty()) return ReplStatus::OK;
-    
-    // Специальные команды
+ReplStatus Compiler::handle_repl_command(const std::string& input) {
     if (input == ":exit" || input == ":quit") {
         return ReplStatus::WANT_EXIT;
     }
@@ -356,36 +299,29 @@ ReplStatus Compiler::handle_repl_string(const std::string& input) {
         return ReplStatus::OK;
     }
     
+    lg::warn("Unknown command: {}", input);
+    return ReplStatus::OK;
+}
+
+ReplStatus Compiler::handle_repl_string(const std::string& input) {
+    if (input.empty()) return ReplStatus::OK;
+    
+    // Специальные команды
+    if (input[0] == ':') {
+        return handle_repl_command(input);
+    }
+    
     try {
-        if (m_config.mode == CompilerMode::HYBRID) {
-            try {
-                auto result = interpret(input);
-                if (m_config.debug_print_ast) {
-                    lg::info("=> {}", result.print());
-                }
-            } catch (const std::exception& e) {
-                lg::debug("Interpret failed, trying compilation: {}", e.what());
-                auto forms = m_reader->read_from_string(input, false, "<repl>");
-                auto binary = compile_file(forms, "<repl>");
-                if (binary) {
-                    lg::info("Compiled successfully");
-                } else {
-                    throw;
-                }
-            }
-        } else if (m_config.mode == CompilerMode::INTERPRET_ONLY) {
-            auto result = interpret(input);
-            if (m_config.debug_print_ast) {
-                lg::info("=> {}", result.print());
-            }
-        } else {
-            auto forms = m_reader.read_from_string(input, false, "<repl>");
-            auto binary = compile_file(forms, "<repl>");
-            if (binary && m_config.debug_print_asm) {
-                lg::info("Compilation successful");
-            }
+        switch (m_config.mode) {
+            case CompilerMode::INTERPRET_ONLY:
+                return interpret_and_print(input);
+                
+            case CompilerMode::COMPILE_ONLY:
+                return compile_and_report(input);
+                
+            case CompilerMode::HYBRID:
+                return try_interpret_then_compile(input);
         }
-        
     } catch (const std::exception& e) {
         print_error("Evaluation error", e);
         return ReplStatus::ERROR;
@@ -394,13 +330,107 @@ ReplStatus Compiler::handle_repl_string(const std::string& input) {
     return ReplStatus::OK;
 }
 
+void Compiler::save_repl_history() {
+  m_repl->save_history();
+}
+
+void Compiler::print_to_repl(const std::string& str) {
+  m_repl->print_to_repl(str);
+}
+
+std::string Compiler::get_prompt() {
+  std::string prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "g > ");
+  return "\033[0m" + prompt;
+}
+
+std::string Compiler::get_repl_input() {
+  auto str = m_repl->readline(get_prompt());
+  if (str) {
+    m_repl->add_to_history(str);
+    return str;
+  } else {
+    return "";
+  }
+}
+
+// Вспомогательные методы
+ReplStatus Compiler::interpret_and_print(const std::string& code) {
+    auto result = interpret(code);
+    if (m_config.debug_print_ast) {
+        lg::info("=> {}", result.print());
+    }
+    return ReplStatus::OK;
+}
+
+ReplStatus Compiler::compile_and_report(const std::string& code) {
+    auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
+    auto binary = compile_file(forms, "<repl>");
+    if (!binary) {
+        throw std::runtime_error("Compilation failed");
+    }
+    if (m_config.debug_print_asm) {
+        lg::info("Compilation successful");
+    }
+    return ReplStatus::OK;
+}
+
+ReplStatus Compiler::try_interpret_then_compile(const std::string& code) {
+    try {
+        auto result = interpret(code);
+        if (m_config.debug_print_ast) {
+            lg::info("=> {}", result.print());
+        }
+        return ReplStatus::OK;
+    } catch (const std::exception& e) {
+        lg::debug("Interpret failed: {}, trying compilation", e.what());
+        return compile_and_report(code);
+    }
+}
+
+soot::Object Compiler::interpret(const std::string& input) {
+    auto forms = m_soot.get_reader().read_from_string(input, false, "<repl>");
+    return interpret(forms);
+}
+
+soot::Object Compiler::interpret(const soot::Object& forms) {
+    if (m_config.debug_print_ast) {
+        lg::info("AST: {}", forms.print());
+    }
+
+    soot::Object resutl = soot::Object::make_none();
+    try {
+        if (forms.is_pair()) {
+            for_each_in_list(forms, [&](const soot::Object& o) {
+                resutl = m_soot.eval_form(o);
+            });
+        } else {
+             resutl = m_soot.eval_form(forms);
+        }
+        // print
+        printf("%s\n", resutl.print().c_str());
+        return resutl;
+        
+    } catch (soot::ExitException &e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
+        exit(e.exit_code);
+    } catch (soot::EvalException &e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError:");
+        fmt::print("Error: {}", e.full_report(m_soot.get_reader()));
+    } catch (const std::exception &e) {
+        fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
+    }
+    return resutl;
+}
+
+// ========== Управление окружением ==========
+
 void Compiler::load_user_profile() {
     if (m_config.user_profile == "#f") return;
     
     // Используем функцию из REPL для загрузки startup файла
     REPL::StartupFile startup = REPL::load_user_startup_file(
         m_config.user_profile, 
-        SootPlatform::V1
+        SootPlatform::Default
     );
     
     // Выполняем команды из startup файла
@@ -442,7 +472,6 @@ void Compiler::setup_repl() {
     m_repl = std::make_unique<REPL::Wrapper>(SootPlatform::Default);
     
     // Настраиваем конфигурацию
-    m_repl->repl_config = m_config.repl_config;
     m_repl->username = m_config.user_profile;
     
     // Инициализируем настройки
@@ -478,7 +507,7 @@ std::string Compiler::find_file(const std::string& filename) {
     }
     
     // Используем asm_file_search_dirs из REPL конфигурации
-    for (const auto& dir : m_config.repl_config.asm_file_search_dirs) {
+    for (const auto& dir : m_config.search_paths) {
         std::string candidate = fs::path(dir) / filename;
         if (fs::exists(candidate)) {
             return candidate;

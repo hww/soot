@@ -40,25 +40,27 @@ enum class CompilerMode {
 
 class Compiler {
 public:
-    struct CompilationOptions {
-        std::string filename;                 // input file
-        std::string disassembly_output_file;  // file to write, containing x86 assembly output
-        bool load = false;                    // send to target
-        bool color = false;                   // do register allocation/code generation passes
-        bool write = false;                   // write object file to out/obj
-        bool no_code = false;                 // file shouldn't generate code, throw error if it does
-        bool disassemble = false;             // either print disassembly to stdout or output_file
-        bool disasm_code_only = false;        // if on, IR and source lines are not printed
-        bool print_time = false;              // print timing statistics
+   struct CompilationOptions {
+        std::string filename;
+        std::string disassembly_output_file;
+        bool load = false;
+        bool color = false;
+        bool write = false;
+        bool no_code = false;
+        bool disassemble = false;
+        bool disasm_code_only = false;
+        bool print_time = false;
         CompilerMode mode = CompilerMode::HYBRID;
-
-        bool debug_print_ir;
-        bool debug_print_ast;
-        bool debug_print_asm;
+        bool debug_print_ir = false;
+        bool debug_print_ast = false;
+        bool debug_print_asm = false;
+        std::string user_profile = "#f";
+        std::vector<std::string> search_paths;
     };
 
     // Исправьте конструктор - уберите дефолтное значение
-    Compiler(SootPlatform version,
+    Compiler(SootPlatform platform,
+           const CompilationOptions comp_options,
            const std::optional<REPL::Config> repl_config = {},
            const std::string& user_profile = "#f",
            std::unique_ptr<REPL::Wrapper> repl = nullptr);
@@ -75,10 +77,18 @@ public:
     [[nodiscard]] soot::Object interpret(const std::string& code);
     [[nodiscard]] soot::Object interpret(const soot::Object& forms);
     
+    void save_repl_history();
+    void print_to_repl(const std::string& str);
+    std::string get_prompt();
+    std::string get_repl_input();
+
     // ========== REPL ==========
-    void run_repl();
+    ReplStatus handle_repl_command(const std::string& cmd);
+    ReplStatus interpret_and_print(const std::string& code);
+    ReplStatus compile_and_report(const std::string& code);
+    ReplStatus try_interpret_then_compile(const std::string& code);
     ReplStatus handle_repl_string(const std::string& input);
-    
+
     // ========== Управление окружением ==========
     void set_global(const std::string& name, const soot::Object& value);
     soot::Object get_global(const std::string& name);
@@ -116,6 +126,8 @@ private:
     soot::Object builtin_get_enum_vals(const soot::Object& form, 
                                          soot::Arguments& args,
                                          const std::shared_ptr<soot::EnvironmentObject>& env);
+
+
 
     // ===============================================================
     // The arguments tools
@@ -185,12 +197,11 @@ private:
     
     // Компоненты
     soot::Interpreter m_soot;
-    //Debugger* m_debugger = nullptr;
     MakeSystem m_make;
     std::unique_ptr<REPL::Wrapper> m_repl;
-    soot::Reader m_reader;
     std::unique_ptr<GlobalNode> m_global_env;
     std::unique_ptr<NoneNode> m_none;
+
     // Состояние
     bool m_want_exit = false;
     bool m_want_reload = false;

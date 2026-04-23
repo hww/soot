@@ -5,7 +5,12 @@
 class MakeSystem {
     public:
 
-    MakeSystem(const std::optional<REPL::Config> repl_config, const std::string& username = "#f");
+    MakeSystem(const std::optional<REPL::Config>& repl_config, const std::string& user_profile) {
+        // Реализация конструктора
+        // Пока можно оставить пустым или с минимальной инициализацией
+        (void)repl_config;
+        (void)user_profile;
+    }
 
     std::vector<std::string> get_loaded_projects() const { return m_loaded_projects; }
     
