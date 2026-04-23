@@ -7,6 +7,7 @@
  */
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <limits>
 #include <exception>
@@ -88,6 +89,23 @@ constexpr u32 ARG_REGISTERS_OFFSET = 24;  // r24-r33: arguments
 constexpr u32 LOCAL_REGISTERS_OFFSET = 0; // r0-r23: local variables
 constexpr u32 MAX_LOCALS = ARG_REGISTERS_OFFSET - LOCAL_REGISTERS_OFFSET; // 24
 constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET; // 10
+
+// ============================================================================
+// Verioning
+// ============================================================================
+
+enum class SootPlatform { Default, Z80 };
+
+inline const char* version_to_game_name(SootPlatform v) {
+    switch (v) {
+        case SootPlatform::Default:
+            return "default";
+        case SootPlatform::Z80:
+            return "z80";
+    }
+    throw std::runtime_error("unknown platform");
+}
+  
 
 // ============================================================================
 // Exceptions

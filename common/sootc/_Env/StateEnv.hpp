@@ -47,8 +47,8 @@ public:
                            m_name, m_type ? m_type->name() : "unknown");
     }
 
-    void set_source_form(const script::Object& form) { m_source_form = form; }
-    script::Object source_form() const { return m_source_form; }    
+    void set_source_form(const soot::Object& form) { m_source_form = form; }
+    soot::Object source_form() const { return m_source_form; }    
 
     void set_defined(bool defined) { m_is_defined = defined; }
     bool is_defined() const { return m_is_defined; }
@@ -61,7 +61,7 @@ private:
     TypeSpec m_type_spec; // аргументы функии code
     Type* m_type;
     TypeEnv* m_type_env = nullptr;
-    script::Object m_source_form;
+    soot::Object m_source_form;
 
     bool m_is_virtual;
 

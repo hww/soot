@@ -1,7 +1,7 @@
-#include "common/sooti/Interpreter.hpp"
+#include "common/soot/Interpreter.hpp"
 #include <gtest/gtest.h>
 
-using namespace script;
+using namespace soot;
 
 class SystemTest : public ::testing::Test {
   protected:

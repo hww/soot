@@ -1,5 +1,5 @@
 ﻿
-#include "common/sooti/export.h" 
+#include "common/soot/export.h" 
 #include "common/type_system/export.h"
 
 #include "gtest/gtest.h"
@@ -46,12 +46,12 @@ TEST(TypeSystemReverse, NestedInlineWeird) {
     // and constant outer access, which will be constant propagated by the GOAL compiler.
     TypeSystem ts;
     ts.add_builtin_types();
-    script::Reader reader;
+    soot::Reader reader;
     auto add_type = [&](const std::string& str) {
         auto exp = reader.read_from_string(str);
         auto& in = exp.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
-        fmt::print("DEBUG NestedInlineWeird {} {} ", script::pretty_print::to_string(exp),
-            script::pretty_print::to_string(in));
+        fmt::print("DEBUG NestedInlineWeird {} {} ", soot::pretty_print::to_string(exp),
+            soot::pretty_print::to_string(in));
         parse_deftype(in, &ts);
         };
 
@@ -484,7 +484,7 @@ TEST(Deftype, deftype) {
     std::string input =
         "(deftype my-type (basic) ((f1 int64) (f2 string) (f3 int8) (f4 type :inline) (f5 uint64 "
         ":overlay-at f1)))";
-    script::Reader reader;
+    soot::Reader reader;
     auto expression = reader.read_from_string(input);
     auto& in = expression.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
     auto result = parse_deftype(in, &ts);

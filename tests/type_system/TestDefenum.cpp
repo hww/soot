@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "common/type_system/TypeSystem.hpp"
 #include "common/type_system/Defenum.hpp"
-#include "common/sooti/Export.hpp"
+#include "common/soot/Export.hpp"
 #include "fmt/format.h"
 
 class DefEnumTest : public ::testing::Test {
@@ -17,7 +17,7 @@ protected:
     // Хелпер для парсинга как в оригинале
     EnumType* parse_deftype_string(const std::string& code, DefinitionMetadata* metda_data = nullptr) {
         auto obj = reader.read_from_string(code, "test");
-        fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
+        fmt::print("\n\nParsed: {}\n", soot::pretty_print::to_string(obj));
         // Извлекаем форму deftype: (defenum name ...) 
         // в просто (name ...) 
         auto& inner_form = obj.as_pair()->cdr.as_pair()->car.as_pair()->cdr;
@@ -25,7 +25,7 @@ protected:
     }
 
     TypeSystem* ts;
-    script::Reader reader;
+    soot::Reader reader;
 };
 
 TEST_F(DefEnumTest, DebugSimpleEnum) {

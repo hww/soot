@@ -6,8 +6,8 @@
  */
 
 #include "Config.hpp"
-#include "common/sooti/Object.hpp"
-#include "common/sooti/Archive.hpp"
+#include "common/soot/Object.hpp"
+#include "common/soot/Archive.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -30,7 +30,7 @@ class BitField;
 class MethodInfo;
 class TypeSpec;
 
-using namespace script;
+using namespace soot;
 
 // ============================================================================
 // Definition Metadata
@@ -348,7 +348,7 @@ class Type : public NativeObject {
     }
 
     uint32_t get_type_tag() {
-        return util::ToStringId32(name());
+        return util::ToStringId32(get_name());
     }
 
     // Core type properties - PURE VIRTUAL
@@ -370,12 +370,12 @@ class Type : public NativeObject {
 
     // Printing and debugging
     virtual std::string print() const override {
-        return "#<" + class_name() + " " + name() + ">";
+        return "#<" + class_name() + " " + get_name() + ">";
     }
     virtual Object inspect() const override {
         ListBuilder builder;
         builder.add_symbol(class_name());
-        builder.add_key_value("name", Object::make_string(name()));
+        builder.add_key_value("name", Object::make_string(get_name()));
         return builder.build();
     }
 
@@ -427,14 +427,14 @@ class Type : public NativeObject {
     void set_runtime_type(std::string name) {
         m_runtime_name = std::move(name);
     }
-    std::string name() const { return m_name; }
+    std::string get_name() const { return m_name; }
 
     std::string runtime_name() const;
     void set_runtime_name(std::string name) { m_runtime_name = std::move(name); }
     void disallow_in_runtime() { m_allow_in_runtime = false; }
     bool allow_in_runtime() { return m_allow_in_runtime; }
     
-    std::string parent() const { return m_parent; }
+    std::string get_parent() const { return m_parent; }
     bool has_parent() const { return !m_parent.empty() && m_name != "object"; }
 
     bool is_boxed() const { return m_is_boxed; }
@@ -802,7 +802,7 @@ class BasicType : public StructureType {
     Object      inspect() const override {
         ListBuilder lb;
         lb.add_symbol("basic-type");
-        lb.add_string(name());
+        lb.add_string(get_name());
         return lb.build();
     }
     bool operator==(const Type &other) const override;
@@ -846,7 +846,7 @@ class BitFieldType : public ValueType {
     Object      inspect() const override {
         ListBuilder builder;
         builder.add_symbol("bitfield-type");
-        builder.add_string(name());
+        builder.add_string(get_name());
         return builder.build();
     }
     bool operator==(const Type &other) const override;
@@ -891,7 +891,7 @@ class EnumType : public ValueType {
     Object      inspect() const override {
         ListBuilder builder;
         builder.add_symbol("enum-type");
-        builder.add_string(name());
+        builder.add_string(get_name());
         builder.add_key_value("size", Object::make_integer(m_entries.size()));
         return builder.build();
     }

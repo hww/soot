@@ -1,8 +1,8 @@
 #include "Register.hpp"
-#include "common/sooti/ListBuilder.hpp"
+#include "common/soot/ListBuilder.hpp"
 #include "TypeSystem.hpp"
 
-namespace script {
+namespace soot {
 
 Object Register::get_at(const Object &key) {
 
@@ -90,7 +90,7 @@ Object Register::get_at(const Object &key) {
                     // Если это не битфилд, это просто константа,
                     // но мы всё равно можем вернуть алиас на это значение
                     next_step->offset = this->offset;
-                    next_step->type_name = Object::make_symbol(enum_ptr->name());
+                    next_step->type_name = Object::make_symbol(enum_ptr->get_name());
                 }
                 return Object::make_heap_obj(next_step);
             }
@@ -147,4 +147,4 @@ std::string Register::print() const {
     return fmt::format("#<reg-alias {} :type {} :reg {} :offset {} :bit-offset {} :bit-size {}>",
                        name.print(), type_name.print(), reg.print(), offset, bit_offset, bit_size);
 }
-} // namespace script
+} // namespace soot

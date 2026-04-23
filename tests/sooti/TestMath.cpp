@@ -1,8 +1,8 @@
-#include "common/sooti/Interpreter.hpp"
+#include "common/soot/Interpreter.hpp"
 #include <cmath>
 #include <gtest/gtest.h>
 
-using namespace script;
+using namespace soot;
 
 class MathTest : public ::testing::Test {
   protected:

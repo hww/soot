@@ -9,7 +9,7 @@ namespace sootc {
 namespace FunctionCompiler {
 
 std::unique_ptr<FunctionNode> compile_function(
-    const script::Object& form, 
+    const soot::Object& form, 
     Node* node, 
     NodeBuilder& builder) {
     
@@ -37,7 +37,7 @@ std::unique_ptr<FunctionNode> compile_function(
     return fn;
 }
 void parse_arguments(
-    const script::Object& args_form,
+    const soot::Object& args_form,
     FunctionNode* func_node,
     Node* node,
     NodeBuilder& builder) {

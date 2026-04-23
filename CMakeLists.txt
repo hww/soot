@@ -139,8 +139,7 @@ include_directories(third_party/replxx/include)
 # Include subdirectories
 include(common/cross_sockets/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
-include(common/sooti/CMakeLists.txt)
-#include(common/soot/CMakeLists.txt)
+include(common/soot/CMakeLists.txt)
 include(common/sootc/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
@@ -165,7 +164,7 @@ if(BUILD_TESTS)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
     # Подключаем тесты
-    #include(tests/sooti/CMakeLists.txt)
+    #include(tests/soot/CMakeLists.txt)
     #include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
     #include(tests/carbon/CMakeLists.txt)
     #include(tests/engine/CMakeLists.txt)

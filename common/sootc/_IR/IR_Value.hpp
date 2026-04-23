@@ -204,7 +204,7 @@ private:
 
 class IR_LiteralValue : public IR_Value {
 public:
-    explicit IR_LiteralValue(const script::Object& obj) 
+    explicit IR_LiteralValue(const soot::Object& obj) 
         : IR_Value(nullptr), data_(obj) {}
 
     std::string to_string() const override { return "literal"; }
@@ -215,13 +215,13 @@ public:
     }
 
 private:
-    script::Object data_;
+    soot::Object data_;
 };
 
 class IR_SymbolReference : public IR_Value {
 public:
-    // Мы принимаем script::Object, который уже является символом
-    IR_SymbolReference(script::Object symbol, Env* env) 
+    // Мы принимаем soot::Object, который уже является символом
+    IR_SymbolReference(soot::Object symbol, Env* env) 
         : IR_Value(nullptr), symbol_(symbol), env_(env) 
     {
         assert(symbol.is_symbol()); 
@@ -235,7 +235,7 @@ public:
     void resolve(Compiler* c) override;
 
 private:
-    script::Object symbol_; 
+    soot::Object symbol_; 
     Env* env_;
 };
 

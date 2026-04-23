@@ -1,215 +1,272 @@
-﻿#include "common/sooti/Reader.hpp"
-#include "common/sooti/Object.hpp"
-#include "common/sootc/compiler/Compiler.hpp"
+﻿// main.cpp
+#include "sootc/compiler/Compiler.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
-#include "file/BinaryFileInspector.hpp"
+#include "common/util/FileUtil.hpp"
 #include "fmt/color.h"
-#include <fstream>
+#include "fmt/core.h"
 #include <iostream>
 #include <filesystem>
 #include <string>
-
-using namespace script;
-using namespace sootc;
-using namespace carbon;
+#include <vector>
+#include <optional>
 
 namespace fs = std::filesystem;
 
-std::string read_file(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Cannot open file: " + filename);
-    }
-    
-    std::string content;
-    file.seekg(0, std::ios::end);
-    content.resize(file.tellg());
-    file.seekg(0, std::ios::beg);
-    file.read(&content[0], content.size());
-    return content;
-}
-
-void print_usage(const char* program_name) {
-    std::cerr << "Usage: " << program_name << " --target <dir> <input.soot> [options]\n";
-    std::cerr << "Required:\n";
-    std::cerr << "  --target <dir>   Target directory for compiled files\n";
-    std::cerr << "  --source-root <dir>  Root directory to determine module namespace\n";
-    std::cerr << "  <input.soot>     Source file to compile\n";
-    std::cerr << "\nOptions:\n";
-    std::cerr << "  -o <name>        Output base name (default: input file name)\n";
-    std::cerr << "  --flat           Don't preserve directory structure (flat output)\n";
-    std::cerr << "  -h, --help       Show this help\n";
-    std::cerr << "\nExamples:\n";
-    std::cerr << "  " << program_name << " --target build/modules math/add.soot\n";
-    std::cerr << "\nNote: One .sot file produces one .bin and one .dci\n";
-}
-
-int main(int argc, char* argv[]) {
-
-    for (int i=0;i<argc;i++) printf("[%d]>> %s \n", i, argv[i]);
-
-    if (argc < 3) {
-        print_usage(argv[0]);
-        return 1;
-    }
-    
-    std::string input_file;
-    std::string target_dir;
-    std::string source_root;
+struct CommandLineOptions {
+    std::vector<std::string> input_files;
+    std::string target_dir = "build";
+    std::string source_root = ".";
     std::string output_name;
+    std::string user_profile = "#f";
     bool flat_output = false;
+    bool interactive = true;
+    bool debug_ast = false;
+    bool debug_ir = false;
+    bool debug_asm = false;
+    bool help = false;
+    bool version = false;
+    sootc::CompilerMode mode = sootc::CompilerMode::HYBRID;
+
+    // Client/Server режимы
+    bool connect = false;           // --connect, -c
+    int port = 8181;                // --port
+    int temp_port = -1;             // --temp-port
+    int timeout_seconds = 30;       // --timeout
+    bool disconnect_after = false;  // --disconnect
+    bool no_send = false;           // --no-send
+    bool wait_connection = false;   // --wait
     
-    // Парсим аргументы
+    // Target управление
+    bool reset_target = false;      // --reset
+    bool stop_target = false;       // --stop
+    bool resume_target = false;     // --resume
+    bool check_status = false;      // --status
+    
+    // Debug
+    bool debug_mode = false;        // --debug
+    bool debug_segment = false;     // --debug-segment
+    bool listen_debugger = false;   // --listen
+};
+
+void print_banner() {
+    fmt::print(fmt::fg(fmt::color::cyan) | fmt::emphasis::bold,  "=== SOOT Compiler & Interpreter v1.0 ===");
+    fmt::print("Type :help for help, :exit to quit\n");
+}
+
+void print_help(const char* program_name) {
+    fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold, 
+               "SOOT Compiler and Interpreter\n\n");
+    fmt::print("Usage: {} [options] [files...]\n\n", program_name);
+    
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "Options:\n");
+    fmt::print("  --target <dir>       Target directory for compiled files (default: build)\n");
+    fmt::print("  --source-root <dir>  Root directory for module namespace (default: .)\n");
+    fmt::print("  --profile <name>     Load user profile\n");
+    fmt::print("  -o <name>            Output base name\n");
+    fmt::print("  --flat               Don't preserve directory structure\n");
+    fmt::print("  --no-repl, -n        Disable interactive REPL\n");
+    fmt::print("  --compile-only       Only compile, no interpretation\n");
+    fmt::print("  --interpret-only     Only interpret, no compilation\n");
+    fmt::print("  --debug-ast          Print AST during compilation\n");
+    fmt::print("  --debug-ir           Print intermediate representation\n");
+    fmt::print("  --debug-asm          Print generated assembly\n");
+    fmt::print("  -h, --help           Show this help\n");
+    fmt::print("  -v, --version        Show version\n");
+    
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nExamples:\n");
+    fmt::print("  {} script.soot\n", program_name);
+    fmt::print("  {} --target out --source-root src math/add.soot\n", program_name);
+    fmt::print("  {} --compile-only --debug-asm program.soot\n", program_name);
+    fmt::print("  {} --profile myprofile --no-repl init.soot\n", program_name);
+    
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nExamples:\n");
+    fmt::print("  {} script.soot\n", program_name);
+    fmt::print("  {} --connect --port 8182 script.soot\n", program_name);
+    fmt::print("  {} --target out --source-root src math/add.soot\n", program_name);
+    fmt::print("  {} --compile-only --debug-asm program.soot\n", program_name);
+    fmt::print("  {} --profile myprofile --no-repl init.soot\n", program_name);
+    fmt::print("  {} --connect --wait --reset kernel.soot\n", program_name);
+
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nREPL Commands:\n");
+    fmt::print("  :exit, :quit     Exit the REPL\n");
+    fmt::print("  :reload          Reload environment\n");
+    fmt::print("  :load <file>     Load and compile a file\n");
+    fmt::print("  :help            Show this help\n");
+}
+
+CommandLineOptions parse_args(int argc, char* argv[]) {
+    CommandLineOptions opts;
+    
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         
         if (arg == "--target" && i + 1 < argc) {
-            target_dir = argv[++i];
+            opts.target_dir = argv[++i];
         }
         else if (arg == "--source-root" && i + 1 < argc) {
-            source_root = argv[++i];
+            opts.source_root = argv[++i];
+        }
+        else if (arg == "--profile" && i + 1 < argc) {
+            opts.user_profile = argv[++i];
         }
         else if (arg == "-o" && i + 1 < argc) {
-            output_name = argv[++i];
+            opts.output_name = argv[++i];
         }
         else if (arg == "--flat") {
-            flat_output = true;
+            opts.flat_output = true;
+        }
+        else if (arg == "--no-repl" || arg == "-n") {
+            opts.interactive = false;
+        }
+        else if (arg == "--compile-only") {
+            opts.mode = sootc::CompilerMode::COMPILE_ONLY;
+        }
+        else if (arg == "--interpret-only") {
+            opts.mode = sootc::CompilerMode::INTERPRET_ONLY;
+        }
+        else if (arg == "--debug-ast") {
+            opts.debug_ast = true;
+        }
+        else if (arg == "--debug-ir") {
+            opts.debug_ir = true;
+        }
+        else if (arg == "--debug-asm") {
+            opts.debug_asm = true;
         }
         else if (arg == "-h" || arg == "--help") {
-            print_usage(argv[0]);
-            return 0;
+            opts.help = true;
+        }
+        else if (arg == "-v" || arg == "--version") {
+            opts.version = true;
         }
         else if (arg[0] != '-') {
-            if (input_file.empty()) {
-                input_file = arg;
+            opts.input_files.push_back(arg);
+        }
+        // -- Client/Server флаги --
+        else if (arg == "--connect" || arg == "-c") {
+            opts.connect = true;
+        }
+        else if (arg == "--port" && i + 1 < argc) {
+            opts.port = std::stoi(argv[++i]);
+        }
+        else if (arg == "--temp-port" && i + 1 < argc) {
+            opts.temp_port = std::stoi(argv[++i]);
+        }
+        else if (arg == "--timeout" && i + 1 < argc) {
+            opts.timeout_seconds = std::stoi(argv[++i]);
+        }
+        else if (arg == "--disconnect") {
+            opts.disconnect_after = true;
+        }
+        else if (arg == "--no-send") {
+            opts.no_send = true;
+        }
+        else if (arg == "--wait") {
+            opts.wait_connection = true;
+        }
+        // Target управление
+        else if (arg == "--reset") {
+            opts.reset_target = true;
+        }
+        else if (arg == "--stop") {
+            opts.stop_target = true;
+        }
+        else if (arg == "--resume") {
+            opts.resume_target = true;
+        }
+        else if (arg == "--status") {
+            opts.check_status = true;
+        }
+        // Debug флаги
+        else if (arg == "--debug") {
+            opts.debug_mode = true;
+        }
+        else if (arg == "--debug-segment") {
+            opts.debug_segment = true;
+        }
+        else if (arg == "--listen") {
+            opts.listen_debugger = true;
+        }        
+        else {
+            fmt::print(stderr, "Unknown option: {}\n", arg);
+            opts.help = true;
+        }
+    }
+    
+    return opts;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        // Парсинг аргументов
+        auto opts = parse_args(argc, argv);
+        
+        if (opts.help) {
+            print_help(argv[0]);
+            return 0;
+        }
+        
+        if (opts.version) {
+            fmt::print("SOOT Compiler v1.0\n");
+            return 0;
+        }
+        
+        // Инициализация системы типов
+        auto& ts = TypeSystem::instance();
+        ts.add_builtin_types();
+        
+        // Конфигурация компилятора
+        // Создание конфигурации REPL
+        REPL::Config repl_config(SootPlatform::Default);
+        repl_config.asm_file_search_dirs.push_back(file_util::get_path(file_util::PathType::PROJECT).string());
+        repl_config.per_game_history = true;
+        repl_config.nrepl_port = 8181;
+
+        // Настройка компилятора
+        sootc::Compiler::Config compiler_config;
+        compiler_config.mode = opts.mode;
+        compiler_config.user_profile = opts.user_profile;
+        compiler_config.debug_print_ast = opts.debug_ast;
+        compiler_config.debug_print_ir = opts.debug_ir;
+        compiler_config.debug_print_asm = opts.debug_asm;
+        compiler_config.search_paths = {".", "scripts", "src", "examples"};
+        compiler_config.repl_config = repl_config;  // Присваиваем REPL конфигурацию
+
+        // Создание компилятора
+        sootc::Compiler compiler(ts, compiler_config);
+        
+        // Компиляция указанных файлов
+        bool has_errors = false;
+        for (const auto& input_file : opts.input_files) {
+            lg::info("Processing: {}", input_file);
+            
+            auto result = compiler.compile_file(input_file);
+            if (result) {
+                lg::info("✓ Compiled: {}", input_file);
+                
+                // Сохранение бинарника если нужно
+                if (!opts.target_dir.empty()) {
+                    // TODO: сохранить бинарник
+                }
             } else {
-                std::cerr << "Error: Multiple input files specified: " << arg << "\n";
-                print_usage(argv[0]);
-                return 1;
+                lg::error("✗ Failed: {} - {}", input_file, result.error());
+                has_errors = true;
+                if (!opts.interactive) break;
             }
         }
-        else {
-            std::cerr << "Error: Unknown option: " << arg << "\n";
-            print_usage(argv[0]);
-            return 1;
+        
+        // Запуск REPL если нужно
+        if (opts.interactive && (!has_errors || opts.input_files.empty())) {
+            print_banner();
+            compiler.run_repl();
         }
-    }
-    
-    // Проверяем обязательные аргументы
-    if (target_dir.empty()) {
-        std::cerr << "Error: --target is required\n";
-        print_usage(argv[0]);
-        return 1;
-    }
-    
-    if (input_file.empty()) {
-        std::cerr << "Error: No input file specified\n";
-        print_usage(argv[0]);
-        return 1;
-    }
-    
-    if (source_root.empty()) {
-        std::cerr << "Error: --source-root is required\n";
-        print_usage(argv[0]);
-        return 1;
-    }
-    
-    // Извлекаем информацию о входном файле
-    fs::path input_path(input_file);
-    
-    if (!fs::exists(input_path)) {
-        std::cerr << "Error: Input file does not exist: " << input_file << "\n";
-        return 1;
-    }
-    
-    std::string base_name = input_path.stem().string();
-    std::string output_base = output_name.empty() ? base_name : output_name;
-    
-    // Получаем абсолютные пути
-    fs::path absolute_source_root = fs::absolute(source_root);
-    fs::path absolute_input = fs::absolute(input_path);
-    fs::path absolute_target = fs::absolute(target_dir);
-    
-    // Вычисляем относительный путь от source_root до директории исходника
-    fs::path relative_path;
-    try {
-        relative_path = fs::relative(absolute_input.parent_path(), absolute_source_root);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: Input file is not under source root: " << source_root << "\n";
-        return 1;
-    }
-    
-    // Формируем имя модуля: relative_path + base_name
-    std::string module_name;
-    if (relative_path.empty() || relative_path == ".") {
-        module_name = output_base;
-    } else {
-        module_name = (relative_path / output_base).string();
-    }
-    
-    // Формируем выходную директорию
-    fs::path output_dir;
-    if (flat_output) {
-        output_dir = absolute_target;
-    } else {
-        output_dir = absolute_target / relative_path;
-    }
-    
-    // Создаем директорию
-    try {
-        fs::create_directories(output_dir);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: Cannot create target directory: " << output_dir.string() 
-                  << " - " << e.what() << "\n";
-        return 1;
-    }
-    
-    lg::info("=== SOOT Compiler ===");
-    lg::info("Input: {}", input_file);
-    lg::info("Module Name: {}", module_name);
-    lg::info("Target Dir: {}", output_dir.string());
-    
-    try {
-        (void)Object::get_symbol_table();
-        std::string source = read_file(input_file);
         
-        Reader reader;
-        Object forms = reader.read_from_string(source, false, input_file);
-        
-        lg::info("Parsed: {}", forms.print());
-        
-        TypeSystem& ts = TypeSystem::instance();
-        // 1. Подготовка типов
-        ts.add_builtin_types();
-
-        // 2. Создаем компилятор (без Env!)
-        Compiler compiler(ts);
-
-        // 3. Запускаем компиляцию
-        auto result = compiler.compile_file(forms, input_file);
-
-        if (!result) {
-            lg::error("Failed to build module: {}", result.error());
-            return 1;
-        }
-
-        // 4. Сохраняем результат
-        auto& binary = result.value();
-        
-        // TODO: Сохранение бинарника
-        // binary->save(output_dir.string());
-        
-        BinaryFileInspector inspector(*binary, 2);
-        inspector.inspect();
-        lg::info("Module {} successfully compiled.", input_file);
-        lg::info("=== Compilation complete ===");
-        lg::info("Module: {}", module_name);
+        return has_errors ? 1 : 0;
         
     } catch (const std::exception& e) {
-        lg::error("Compilation failed: {}", e.what());
+        lg::error(fmt::format(fmt::fg(fmt::color::crimson) | fmt::emphasis::bold, 
+                  "Fatal error: {}", e.what()));
         return 1;
     }
-    
-    return 0;
 }

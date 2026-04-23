@@ -1,5 +1,5 @@
 
-#include "common/sooti/Export.hpp"
+#include "common/soot/Export.hpp"
 #include "common/util/FileUtil.hpp"
 #include "common/util/Log.hpp"
 #include "fmt/color.h"
@@ -63,9 +63,9 @@ int main(int argc, char *argv[]) {
 
     try {
         // 2. Инициализируем SOOT Runtime (без интерактивного режима)
-        script::Interpreter sooti("Xiff"); // Создаем ядро
+        soot::Interpreter soot("Xiff"); // Создаем ядро
 
-        XiffCompiler compiler(sooti);
+        XiffCompiler compiler(soot);
 
         // 1. Преамбула
         for (const auto &lib : libs) {

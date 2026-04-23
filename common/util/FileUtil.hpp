@@ -55,6 +55,9 @@ void      move_file(const fs::path &from, const fs::path &to);
 bool      remove_file(const fs::path &path);
 uintmax_t remove_dir(const fs::path &path);
 
+// =================== ОПЕРАЦИИ С ПУТЯМИ  ====================
+std::string convert_to_unix_path_separators(const std::string& path);
+
 // ========== ОПЕРАЦИИ С ФАЙЛАМИ ДЛЯ ЭТОГО ПРОЕКТА ============
 enum class PathType {
     CWD,    // Текущая рабочая директория

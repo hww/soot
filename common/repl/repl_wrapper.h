@@ -25,7 +25,7 @@ class Wrapper {
   std::vector<std::string> examples{};
   std::vector<std::pair<std::string, replxx::Replxx::Color>> regex_colors{};
 
-  Wrapper(GameVersion version) : repl_config(version) {}
+  Wrapper(SootPlatform version) : repl_config(version) {}
   Wrapper(const std::string& _username,
           const Config& config,
           const StartupFile& startup,
@@ -58,8 +58,8 @@ class Wrapper {
 };
 
 std::string find_repl_username();
-StartupFile load_user_startup_file(const std::string& username, const GameVersion game_version);
+StartupFile load_user_startup_file(const std::string& username, const SootPlatform game_version);
 REPL::Config load_repl_config(const std::string& username,
-                              const GameVersion game_version,
+                              const SootPlatform game_version,
                               const int nrepl_port);
 }  // namespace REPL

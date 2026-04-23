@@ -10,14 +10,14 @@
 #include <string>
 #include <vector>
 
-#include "common/sooti/ListBuilder.hpp"
-#include "common/sooti/Object.hpp"
+#include "common/soot/ListBuilder.hpp"
+#include "common/soot/Object.hpp"
 
-namespace script {
+namespace soot {
 class Object;
-}; // namespace script
+}; // namespace soot
 
-using namespace script;
+using namespace soot;
 
 // Forward declaration
 class Type;

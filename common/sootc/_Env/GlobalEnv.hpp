@@ -24,7 +24,7 @@ public:
     std::string print() const override;
     IR_Reg* make_ireg(const TypeSpec& ts, RegClass reg_class) override;
     void constrain_reg(const IRegConstraint& constraint) override;
-    IR_Reg* lexical_lookup(const script::Object& sym) override;
+    IR_Reg* lexical_lookup(const soot::Object& sym) override;
     BlockEnv* find_block(const std::string& name) override;
 
     FileEnv* add_file(std::string name);

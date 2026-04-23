@@ -52,7 +52,7 @@ SOOT provides a unified interface for the entire development lifecycle:
 
 | Feature                | Description                                                                          |
 |------------------------|--------------------------------------------------------------------------------------|
-| **Orchestration Core** | Lisp interpreter (`sooti`) for build automation, linking, and source preprocessing.  |
+| **Orchestration Core** | Lisp interpreter (`soot`) for build automation, linking, and source preprocessing.  |
 | **Carbon VM**          | A high-performance FunctionDesc execution engine for target platforms, managed by SOOT.  |
 | **Interactive REPL**   | Full-featured environment (`soot`) for real-time debugging of the entire pipeline.   |
 | **Hybrid Execution**   | Supports `.sot` (Lisp source) and the upcoming `.soc` (Carbon compiled FunctionDesc).    |
@@ -109,7 +109,7 @@ Start a local interactive session for real-time experimentation:
 bash> soot
 ```
 
-* 📖 [SOOT Script Language - Quick Reference](common/sooti/README.md)
+* 📖 [SOOT Script Language - Quick Reference](common/soot/README.md)
   
 #### 2. Network REPL (nREPL)
 
@@ -166,7 +166,7 @@ User Configuration (`~/.config/soot/config.sot`)
 
 SOOT includes a minimal Standard Library located at /usr/local/share/soot/lib.sot. This library is automatically loaded to provide essential definitions and to handle cross-platform hardware abstractions.
 
-* 📖 [SOOT Common Library Documentation](common/sooti/README.LIB.md)
+* 📖 [SOOT Common Library Documentation](common/soot/README.LIB.md)
 
 ## 📁 Configuration Paths and Files
 
@@ -316,8 +316,8 @@ The following EMacs config file should get you started and configure OpenGOAL's 
 
 ## 📖 Other Documentation
 
-* [SOOT Script Language - Quick Reference](common/sooti/README.md)
-* [SOOT Common Library Documentation](common/sooti/README.LIB.md)
+* [SOOT Script Language - Quick Reference](common/soot/README.md)
+* [SOOT Common Library Documentation](common/soot/README.LIB.md)
 
 ---
 

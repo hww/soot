@@ -1,8 +1,8 @@
 #include "common/carbon/kernel/Kernel.hpp"
 #include "common/carbon/kernel/ProcessRunner.hpp"
 #include "common/carbon/vm/VirtualMachine.hpp"
-#include "common/sooti/Reader.hpp"
-#include "common/sooti/Object.hpp"
+#include "common/soot/Reader.hpp"
+#include "common/soot/Object.hpp"
 #include "common/util/Log.hpp"
 #include "fmt/color.h"
 #include "lib/StringId.hpp"
@@ -13,7 +13,7 @@
 #include <filesystem>
 
 using namespace carbon;
-using namespace script;
+using namespace soot;
 
 namespace fs = std::filesystem;
 

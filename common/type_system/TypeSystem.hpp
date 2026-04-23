@@ -7,7 +7,7 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
-#include "common/sooti/Object.hpp"
+#include "common/soot/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 
@@ -366,8 +366,9 @@ class TypeSystem : public NativeObject {
     // Built-in Types
     // ========================================================================
 
-    void add_builtin_types();
-    void verify_type_sizes();
+    void add_builtin_types(SootPlatform plarform);
+    void add_builtin_types_pc();
+    void verify_type_sizes_pc();    
     void add_builtin_types_z80();
     void verify_type_sizes_z80();
 
@@ -388,9 +389,9 @@ class TypeSystem : public NativeObject {
     std::string print() const override {
         return fmt::format("#<type-system {}>", m_variant.print());
     }
-    script::Object           inspect() const override;
+    soot::Object           inspect() const override;
     std::string              print_all_type_information() const;
-    script::Object           get_all_type_information() const;
+    soot::Object           get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string &type) const;
     int                      get_next_method_id(const Type *type) const;
 
@@ -402,7 +403,7 @@ class TypeSystem : public NativeObject {
         m_types_allowed_to_be_redefined.push_back(type_name);
     }
 
-    script::Object           get_all_type_names_as_objects() const;
+    soot::Object           get_all_type_names_as_objects() const;
     std::vector<std::string> get_all_type_names();
     std::vector<std::string> search_types_by_parent_type(
         const std::string                             &parent_type,

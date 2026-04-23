@@ -2,7 +2,7 @@
 #pragma once
 
 #include "common/type_system/TypeSystem.hpp"
-#include "common/sooti/Object.hpp"
+#include "common/soot/Object.hpp"
 #include "common/carbon/file/ProgramBinaryElement.hpp"
 #include "sootc/Env/StateEnv.hpp"
 #include "sootc/IR/IR_Value.hpp"
@@ -18,29 +18,29 @@ public:
     
     // Компилирует определение состояния
     // Пример: (defstate name (parent) :virtual #t :event ... :enter ... :exit ... :code ... :post ...)
-    IR_Value* compile(const script::Object& form, const script::Object& rest, Env* env);
+    IR_Value* compile(const soot::Object& form, const soot::Object& rest, Env* env);
     
     // BUILD Phase
     ProgramBinaryElement build(StateEnv* s_env);
 
 private:
     struct HandlerForms {
-        script::Object event;
-        script::Object enter;
-        script::Object exit;
-        script::Object code;
-        script::Object post;
-        script::Object trans;
+        soot::Object event;
+        soot::Object enter;
+        soot::Object exit;
+        soot::Object code;
+        soot::Object post;
+        soot::Object trans;
         bool is_virtual = false;
     };
     
-    std::string extract_state_name(const script::Object& form, const script::Object& rest);
-    std::string extract_parent_name(const script::Object& form, const script::Object& rest);
-    HandlerForms extract_handlers(const script::Object& form, const script::Object& rest);
-    void compile_handler(const script::Object& handler_form, const std::string& handler_name, 
+    std::string extract_state_name(const soot::Object& form, const soot::Object& rest);
+    std::string extract_parent_name(const soot::Object& form, const soot::Object& rest);
+    HandlerForms extract_handlers(const soot::Object& form, const soot::Object& rest);
+    void compile_handler(const soot::Object& handler_form, const std::string& handler_name, 
                          StateEnv* s_env, MethodEnv*& out_method_env);
     void compile_handler_with_signature(
-    const script::Object& handler_form,
+    const soot::Object& handler_form,
     const std::string& handler_name,
     StateEnv* s_env,
     const TypeSpec& expected_signature,

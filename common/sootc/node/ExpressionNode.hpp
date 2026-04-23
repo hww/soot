@@ -24,6 +24,7 @@ public:
     virtual void emit(FunctionNode& fn) = 0;
     
      ProgramBinaryElement generate(GlobalState& state) override {
+        (void)state;
         // ExpressionNode не генерирует самостоятельный бинарник
         // Он генерируется только как часть FunctionNode
         throw std::runtime_error("ExpressionNode::generate should not be called directly");

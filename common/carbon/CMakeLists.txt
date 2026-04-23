@@ -47,8 +47,8 @@ add_executable(carbon common/carbon/Main.cpp)
 
 
 target_link_libraries(carbon PRIVATE 
-    libsoti 
-    libsoticore 
+    libsot 
+    libsotcore 
     libtypesys
     libsootutils 
     fmt 

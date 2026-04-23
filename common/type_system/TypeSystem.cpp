@@ -1,7 +1,8 @@
 #include "common/type_system/TypeSystem.hpp"
+#include "CommonTypes.hpp"
 #include "util/StringIdHash.hpp"
-#include "common/sooti/ListBuilder.hpp"
-#include "common/sooti/Printer.hpp"
+#include "common/soot/ListBuilder.hpp"
+#include "common/soot/Printer.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/type_system/Register.hpp"
 
@@ -63,7 +64,7 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 // Keep old type for reference
                 m_old_types.push_back(std::move(m_types[name]));
                 // Update with new type
-                uint32_t crc = util::ToStringId32(type->name());
+                uint32_t crc = util::ToStringId32(type->get_name());
                 m_types_by_crc[crc] = type.get();
                 m_types[name] = std::move(type);
             } else {
@@ -80,25 +81,25 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
         // New type
         if (name != "object" && name != "none" && name != "_type_" && name != "_varargs_") {
             // ДОБАВЛЕНО: Проверяем forward declared types более аккуратно
-            auto fwd_parent_it = m_forward_declared_types.find(type->parent());
+            auto fwd_parent_it = m_forward_declared_types.find(type->get_parent());
             if (fwd_parent_it != m_forward_declared_types.end()) {
                 throw_typesystem_error(
                     "Cannot create new type {}. The parent type {} is not fully defined.", name,
-                    type->parent());
+                    type->get_parent());
             }
 
-            auto parent_it = m_types.find(type->parent());
+            auto parent_it = m_types.find(type->get_parent());
             if (parent_it == m_types.end()) {
                 // ДОБАВЛЕНО: Для bitfield разрешаем создание без родителя
-                if (type->parent() != "bitfield") {
+                if (type->get_parent() != "bitfield") {
                     throw_typesystem_error(
                         "Cannot create new type {}. The parent type {} is not defined.", name,
-                        type->parent());
+                        type->get_parent());
                 }
             }
         }
 
-        uint32_t crc = util::ToStringId32(type->name());
+        uint32_t crc = util::ToStringId32(type->get_name());
         m_types_by_crc[crc] = type.get();
         m_types[name] = std::move(type);
 
@@ -377,7 +378,7 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
     // Make sure types exist
     lookup_type_allow_partial_def(exp);
 
-    if (exp == act || exp == lookup_type_allow_partial_def(act)->name()) {
+    if (exp == act || exp == lookup_type_allow_partial_def(act)->get_name()) {
         return true;
     }
 
@@ -386,7 +387,7 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
     auto        current_type = lookup_type_allow_partial_def(current_actual);
 
     while (current_type->has_parent()) {
-        current_actual = current_type->parent();
+        current_actual = current_type->get_parent();
         current_type = lookup_type_allow_partial_def(current_actual);
 
         if (exp == current_actual) {
@@ -408,7 +409,7 @@ bool TypeSystem::try_lookup_method(const Type *type, const int id,
             return true;
 
         if (type->has_parent()) {
-            type = lookup_type(type->parent());
+            type = lookup_type(type->get_parent());
         } else {
             break;
         }
@@ -428,7 +429,7 @@ int TypeSystem::get_next_method_id(const Type *type) const {
         }
 
         if (type->has_parent()) {
-            type = lookup_type(type->parent());
+            type = lookup_type(type->get_parent());
         } else {
             // No methods defined yet, start after new method
             return 1;
@@ -454,7 +455,7 @@ bool TypeSystem::try_lookup_method(const Type *type, const std::string &method_n
         }
 
         if (type->has_parent()) {
-            type = lookup_type(type->parent());
+            type = lookup_type(type->get_parent());
         } else {
             break;
         }
@@ -481,7 +482,7 @@ MethodInfo TypeSystem::lookup_method(const std::string &type_name,
         }
 
         if (type->has_parent()) {
-            type = lookup_type(type->parent());
+            type = lookup_type(type->get_parent());
         } else {
             break;
         }
@@ -503,7 +504,7 @@ MethodInfo TypeSystem::lookup_new_method(const std::string &type_name) const {
         }
 
         if (type->has_parent()) {
-            type = lookup_type(type->parent());
+            type = lookup_type(type->get_parent());
         } else {
             break;
         }
@@ -532,7 +533,7 @@ MethodInfo TypeSystem::declare_method(Type *type, const std::string &method_name
     if (method_name == "delete" && !override_type) {
         // Можно добавить специальную логику для delete
         if (Type::verbose)
-            fmt::print("DEBUG: Declaring delete method for type {}\n", type->name());
+            fmt::print("DEBUG: Declaring delete method for type {}\n", type->get_name());
     }
     // Look for existing method
     MethodInfo existing_info;
@@ -543,28 +544,28 @@ MethodInfo TypeSystem::declare_method(Type *type, const std::string &method_name
             throw_typesystem_error(
                 "Cannot use :replace on method {} of {} because this method was not "
                 "previously declared in a parent",
-                method_name, type->name());
+                method_name, type->get_name());
         }
 
-        return type->add_method({existing_info.id, method_name, ts, type->name(),
-                                 type->name(), no_virtual, true, false, docstring,
+        return type->add_method({existing_info.id, method_name, ts, type->get_name(),
+                                 type->get_name(), no_virtual, true, false, docstring,
                                  std::nullopt});
     } else {
         if (got_existing) {
             // Verify compatibility
-            if (!existing_info.type.is_compatible_child_method(ts, type->name())) {
+            if (!existing_info.type.is_compatible_child_method(ts, type->get_name())) {
                 throw_typesystem_error(
                     "The method {} of type {} was originally declared as {}, but has been "
                     "redeclared as {}. Originally declared in {}",
-                    method_name, type->name(), existing_info.type.print(), ts.print(),
+                    method_name, type->get_name(), existing_info.type.print(), ts.print(),
                     existing_info.defined_in_type);
             }
 
             return existing_info;
         } else {
             // Add new method
-            return type->add_method({get_next_method_id(type), method_name, ts, type->name(),
-                                     type->name(), no_virtual, false, false, docstring,
+            return type->add_method({get_next_method_id(type), method_name, ts, type->get_name(),
+                                     type->get_name(), no_virtual, false, false, docstring,
                                      std::nullopt});
         }
     }
@@ -598,15 +599,15 @@ MethodInfo TypeSystem::add_new_method(Type *type, const TypeSpec &ts,
     MethodInfo existing;
     if (type->get_my_new_method(&existing)) {
         // Verify compatibility
-        if (!existing.type.is_compatible_child_method(ts, type->name())) {
+        if (!existing.type.is_compatible_child_method(ts, type->get_name())) {
             throw_typesystem_error(
                 "Cannot add new method. Type does not match declaration. The new method of {} "
                 "was originally defined as {}, but has been redefined as {}",
-                type->name(), existing.type.print(), ts.print());
+                type->get_name(), existing.type.print(), ts.print());
         }
         return existing;
     } else {
-        return type->add_new_method({0, "new", ts, type->name(), type->name(), false, false,
+        return type->add_new_method({0, "new", ts, type->get_name(), type->get_name(), false, false,
                                      false, docstring, std::nullopt});
     }
 }
@@ -633,17 +634,17 @@ MethodInfo TypeSystem::define_method(Type *type, const std::string &method_name,
         }
 
         int bad_arg_idx = -1;
-        if (!existing_info.type.is_compatible_child_method(ts, type->name(), &bad_arg_idx)) {
+        if (!existing_info.type.is_compatible_child_method(ts, type->get_name(), &bad_arg_idx)) {
             if (bad_arg_idx == -1) {
                 throw_typesystem_error(
                     "The method {} of type {} was originally defined as {}, but has been "
                     "redefined as {}.",
-                    method_name, type->name(), existing_info.type.print(), ts.print());
+                    method_name, type->get_name(), existing_info.type.print(), ts.print());
             } else {
                 throw_typesystem_error(
                     "The method {} of type {} was originally defined as {}, but has been "
                     "redefined as {} (see argument index {})",
-                    method_name, type->name(), existing_info.type.print(), ts.print(),
+                    method_name, type->get_name(), existing_info.type.print(), ts.print(),
                     bad_arg_idx);
             }
         }
@@ -651,7 +652,7 @@ MethodInfo TypeSystem::define_method(Type *type, const std::string &method_name,
         return existing_info;
     } else {
         throw_typesystem_error("Cannot add method {} to type {} because it was not declared",
-                               method_name, type->name());
+                               method_name, type->get_name());
     }
 }
 /**
@@ -669,11 +670,11 @@ MethodInfo TypeSystem::overlay_method(Type *type, const std::string &method_name
         throw_typesystem_error(
             "Cannot use :overlay-at on method {} of {} because this method was not previously "
             "declared in a parent",
-            method_overlay_name, type->name());
+            method_overlay_name, type->get_name());
     }
 
     // CORRECTED: Proper construction
-    return type->add_method({existing_info.id, method_name, ts, type->name(), type->name(),
+    return type->add_method({existing_info.id, method_name, ts, type->get_name(), type->get_name(),
                              false, true, false, docstring,
                              std::make_optional(method_overlay_name)});
 }
@@ -685,14 +686,14 @@ MethodInfo TypeSystem::override_method(Type *type, const std::string &method_nam
                                        const std::optional<std::string> &docstring) {
     // Lookup the method from the parent type
     MethodInfo existing_info;
-    bool       exists = try_lookup_method(type->parent(), method_name, &existing_info);
+    bool       exists = try_lookup_method(type->get_parent(), method_name, &existing_info);
     if (!exists) {
         throw_typesystem_error("Trying to override a method that has no parent declaration");
     }
 
     // CORRECTED: Use proper MethodInfo construction
-    return type->add_method({existing_info.id, method_name, existing_info.type, type->name(),
-                             type->name(), existing_info.no_virtual,
+    return type->add_method({existing_info.id, method_name, existing_info.type, type->get_name(),
+                             type->get_name(), existing_info.no_virtual,
                              false, // overrides_parent
                              true,  // only_overrides_docstring
                              docstring, std::nullopt});
@@ -717,10 +718,10 @@ TypeSpec TypeSystem::lookup_state(const std::string& type_name, const std::strin
         }
         
         if (current->has_parent()) {
-            current = lookup_type(current->parent());
+            current = lookup_type(current->get_parent());
             if (!current) {
                 throw_typesystem_error("Parent type '{}' of '{}' not found while looking for state '{}'",
-                                      current->parent(), type_name, state_name);
+                                      current->get_parent(), type_name, state_name);
             }
         } else {
             break;
@@ -744,17 +745,17 @@ TypeSpec TypeSystem::lookup_state(const Type* type, const std::string& state_nam
         }
         
         if (current->has_parent()) {
-            current = lookup_type(current->parent());
+            current = lookup_type(current->get_parent());
             if (!current) {
                 throw_typesystem_error("Parent type '{}' not found while looking for state '{}' in type '{}'",
-                                      current->parent(), state_name, type->name());
+                                      current->get_parent(), state_name, type->get_name());
             }
         } else {
             break;
         }
     }
     
-    throw_typesystem_error("State '{}' not found in type '{}' or its parents", state_name, type->name());
+    throw_typesystem_error("State '{}' not found in type '{}' or its parents", state_name, type->get_name());
 }
 
 bool TypeSystem::try_lookup_state(const Type* type, const std::string& state_name, TypeSpec* info) const {
@@ -770,7 +771,7 @@ bool TypeSystem::try_lookup_state(const Type* type, const std::string& state_nam
         }
         
         if (current->has_parent()) {
-            current = lookup_type(current->parent());
+            current = lookup_type(current->get_parent());
             if (!current) {
                 return false;
             }
@@ -858,7 +859,7 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
     // Проверяем существование поля
     Field existing_field;
     if (type->lookup_field(field_name, &existing_field)) {
-        throw_typesystem_error("Type {} already has a field named {}", type->name(),
+        throw_typesystem_error("Type {} already has a field named {}", type->get_name(),
                                field_name);
     }
 
@@ -931,7 +932,7 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
     if (Type::verbose)
         fmt::print(
             "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {}\n",
-            field_name, type->name(), offset, field_size, is_inline, array_size);
+            field_name, type->get_name(), offset, field_size, is_inline, array_size);
 
     return offset;
 }
@@ -964,10 +965,10 @@ std::string TypeSystem::print_all_type_information() const {
     return result;
 }
 
-script::Object TypeSystem::get_all_type_information() const {
-    script::Object result = script::Object::make_null();
+soot::Object TypeSystem::get_all_type_information() const {
+    soot::Object result = soot::Object::make_null();
     for (const auto &kv : m_types) {
-        result = script::Object::make_pair(script::Object::make_string(kv.second->print()), result);
+        result = soot::Object::make_pair(soot::Object::make_string(kv.second->print()), result);
     }
     return result;
 }
@@ -1010,6 +1011,19 @@ ValueType *TypeSystem::add_builtin_value_type(const std::string &parent,
     return get_type_of_type<ValueType>(type_name);
 }
 
+
+void TypeSystem::add_builtin_types(SootPlatform plarform) {
+    switch (plarform) {
+        case SootPlatform::Default:
+            add_builtin_types_pc();
+            break;
+        case SootPlatform::Z80:
+            add_builtin_types_z80();
+            break;
+    }
+    throw std::runtime_error("unexpected platdform");
+}
+
 // ============================================================================
 // Builting Types Tree
 // object
@@ -1032,7 +1046,7 @@ ValueType *TypeSystem::add_builtin_value_type(const std::string &parent,
 // ├── basic
 // └── ...
 // ============================================================================
-void TypeSystem::add_builtin_types() {
+void TypeSystem::add_builtin_types_pc() {
     TypeConfig::pointer_reg_class = RegClass::GPR_64;
     TypeConfig::pointer_size = 4;
     TypeConfig::array_data_offset = 12;
@@ -1163,10 +1177,10 @@ void TypeSystem::add_builtin_types() {
 
     if (Type::verbose)
         fmt::print("DEBUG: Builtin types initialized successfully\n");
-    verify_type_sizes();
+    verify_type_sizes_pc();
 }
 
-void TypeSystem::verify_type_sizes() {
+void TypeSystem::verify_type_sizes_pc() {
     // Проверяем критические размеры
     auto check_size = [&](const std::string &name, size_t expected) {
         Type *type = lookup_type(name);
@@ -1416,7 +1430,7 @@ std::vector<std::string> TypeSystem::get_path_up_tree(const std::string &type) c
         if (!current_type->has_parent()) {
             break;
         }
-        current = current_type->parent();
+        current = current_type->get_parent();
     }
 
     return path;
@@ -1575,13 +1589,13 @@ void TypeSystem::add_field_to_bitfield(BitFieldType *type, const std::string &fi
     if (field_size > load_size) {
         throw_typesystem_error(
             "Type {}'s bitfield {}'s set size is {}, which is larger than the actual type: {}",
-            type->name(), field_name, field_size, load_size);
+            type->get_name(), field_name, field_size, load_size);
     }
 
     if (field_size + offset > type->get_load_size() * 8) {
         throw_typesystem_error("Type {}'s bitfield {} will run off the end of the type (ends at {} "
                                "bits, type is {} bits)",
-                               type->name(), field_name, field_size + offset,
+                               type->get_name(), field_name, field_size + offset,
                                type->get_load_size() * 8);
     }
 
@@ -1682,7 +1696,7 @@ std::string TypeSystem::generate_deftype_footer(const Type *type) const {
 
 std::string TypeSystem::generate_deftype_for_structure(const StructureType *st) const {
     std::string result;
-    result += fmt::format("(deftype {} ({})\n", st->name(), st->parent());
+    result += fmt::format("(deftype {} ({})\n", st->get_name(), st->get_parent());
 
     // Add docstring if present
     if (st->m_metadata.docstring) {
@@ -1743,7 +1757,7 @@ std::string TypeSystem::generate_deftype_for_structure(const StructureType *st) 
 
 std::string TypeSystem::generate_deftype_for_bitfield(const BitFieldType *type) const {
     std::string result;
-    result += fmt::format("(deftype {} ({})\n", type->name(), type->parent());
+    result += fmt::format("(deftype {} ({})\n", type->get_name(), type->get_parent());
 
     if (type->m_metadata.docstring) {
         result += fmt::format("  \"{}\"\n", type->m_metadata.docstring.value());
@@ -1791,7 +1805,7 @@ std::string TypeSystem::generate_deftype(const Type *type) const {
 
     return fmt::format(
         ";; cannot generate deftype for {}, it is not a structure or bitfield (parent {})\n",
-        type->name(), type->parent());
+        type->get_name(), type->get_parent());
 }
 
 // ============================================================================
@@ -1801,7 +1815,7 @@ std::string TypeSystem::generate_deftype(const Type *type) const {
 bool TypeSystem::should_use_virtual_methods(const Type *type, int method_id) const {
     auto as_basic = dynamic_cast<const BasicType *>(type);
     if (as_basic && !as_basic->final()) {
-        auto method_info = lookup_method(type->name(), method_id);
+        auto method_info = lookup_method(type->get_name(), method_id);
         return !method_info.no_virtual;
     }
     return false;
@@ -1814,7 +1828,7 @@ bool TypeSystem::should_use_virtual_methods(const TypeSpec &type, int method_id)
     } else {
         // For partially defined types, be conservative
         auto fwd_dec_type = lookup_type_allow_partial_def(type);
-        if (fwd_dec_type->name() == "structure") {
+        if (fwd_dec_type->get_name() == "structure") {
             return false; // Structures don't use virtual methods
         } else {
             return should_use_virtual_methods(fwd_dec_type, method_id);
@@ -1834,10 +1848,10 @@ std::vector<std::string> TypeSystem::get_all_type_names() {
     return results;
 }
 
-script::Object TypeSystem::get_all_type_names_as_objects() const {
-    script::Object result = script::Object::make_null();
+soot::Object TypeSystem::get_all_type_names_as_objects() const {
+    soot::Object result = soot::Object::make_null();
     for (const auto &kv : m_types) {
-        result = script::Object::make_pair(script::Object::make_string(kv.first.c_str()), result);
+        result = soot::Object::make_pair(soot::Object::make_string(kv.first.c_str()), result);
     }
     return result;
 }
@@ -1863,7 +1877,7 @@ TypeSystem::search_types_by_parent_type_strict(const std::string &parent_type) {
 
     std::vector<std::string> results;
     for (const auto &[type_name, type_info] : m_types) {
-        if (type_info->has_parent() && type_info->parent() == parent_type) {
+        if (type_info->has_parent() && type_info->get_parent() == parent_type) {
             results.push_back(type_name);
         }
     }
@@ -2074,7 +2088,7 @@ bool TypeSystem::try_lookup_method(const std::string &type_name, int method_id,
         }
 
         if (iter_type->has_parent()) {
-            iter_type = lookup_type(iter_type->parent());
+            iter_type = lookup_type(iter_type->get_parent());
         } else {
             break;
         }
@@ -2098,7 +2112,7 @@ MethodInfo TypeSystem::lookup_method(const std::string &type_name, int method_id
         }
 
         if (iter_type->has_parent()) {
-            iter_type = lookup_type(iter_type->parent());
+            iter_type = lookup_type(iter_type->get_parent());
         } else {
             break;
         }
@@ -2159,7 +2173,7 @@ bool TypeSystem::try_lookup_method(const std::string &type_name, const std::stri
     if (kv == m_types.end()) {
         // Try to look up a forward declared type
         auto fwd_dec_type = lookup_type_allow_partial_def(type_name);
-        if (tc(TypeSpec("basic"), TypeSpec(fwd_dec_type->name()))) {
+        if (tc(TypeSpec("basic"), TypeSpec(fwd_dec_type->get_name()))) {
             return try_lookup_method(fwd_dec_type, method_name, info);
         }
         return false;
@@ -2193,7 +2207,7 @@ int TypeSystem::get_alignment_in_type(const Field &field) {
         alignment = field_type->get_in_memory_alignment();
     }
     if (Type::verbose)
-        fmt::print("DEBUG: Field {} type {} alignment: {}\n", field.name(), field_type->name(),
+        fmt::print("DEBUG: Field {} type {} alignment: {}\n", field.name(), field_type->get_name(),
                    alignment);
 
     // Reference type - ИСПОЛЬЗУЕМ POINTER_SIZE
@@ -2246,7 +2260,7 @@ int TypeSystem::get_size_in_type(const Field &field) const {
 // ============================================================================
 
 void TypeSystem::builtin_structure_inherit(StructureType *st) {
-    st->inherit(get_type_of_type<StructureType>(st->parent()));
+    st->inherit(get_type_of_type<StructureType>(st->get_parent()));
 }
 
 // ============================================================================
@@ -2409,7 +2423,7 @@ void find_field_access_paths(const TypeSystem *ts, const StructureType *type, in
 
     // Ищем в родительских типах
     if (type->has_parent()) {
-        auto parent_type = ts->lookup_type_allow_partial_def(type->parent());
+        auto parent_type = ts->lookup_type_allow_partial_def(type->get_parent());
         if (auto parent_struct = dynamic_cast<const StructureType *>(parent_type)) {
             find_field_access_paths(ts, parent_struct, target_offset, current_path, results,
                                     depth + 1);
@@ -2441,14 +2455,14 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
         // Для простоты считаем что stride уже применен
     }
     if (Type::verbose)
-        fmt::print("DEBUG: Base type: {}, kind: {}\n", base_type->name(),
+        fmt::print("DEBUG: Base type: {}, kind: {}\n", base_type->get_name(),
                    typeid(*base_type).name());
 
     // Обрабатываем StructureType
     if (auto structure = dynamic_cast<StructureType *>(base_type)) {
         if (Type::verbose) {
             fmt::print("DEBUG: Processing structure '{}' with {} fields, total size: {}\n",
-                       structure->name(), structure->fields().size(),
+                       structure->get_name(), structure->fields().size(),
                        structure->get_size_in_memory());
 
             // Выводим информацию о всех полях для отладки
@@ -2494,7 +2508,7 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
         }
     } else if (auto bitfield = dynamic_cast<BitFieldType *>(base_type)) {
         if (Type::verbose)
-            fmt::print("DEBUG: Processing bitfield '{}'\n", bitfield->name());
+            fmt::print("DEBUG: Processing bitfield '{}'\n", bitfield->get_name());
 
         for (const auto &field : bitfield->fields()) {
             if (Type::verbose)
@@ -2571,8 +2585,8 @@ std::string FieldReverseLookupOutput::Token::print() const {
     }
 }
 
-script::Object TypeSystem::inspect() const {
-    return script::pretty_print::build_list(Object::make_symbol("type-system"),
+soot::Object TypeSystem::inspect() const {
+    return soot::pretty_print::build_list(Object::make_symbol("type-system"),
                                             Object::make_symbol(":size"),
                                             Object::make_integer(m_types.size()));
 }

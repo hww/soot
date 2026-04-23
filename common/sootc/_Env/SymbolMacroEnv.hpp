@@ -12,11 +12,11 @@ public:
     explicit SymbolMacroEnv(Env* parent) 
         : Env(EnvKind::SYMBOL_MACRO_ENV, parent) {}
     
-    void add_macro(const std::string& name, const script::Object& form) {
+    void add_macro(const std::string& name, const soot::Object& form) {
         m_macros[name] = form;
     }
     
-    script::Object* lookup_macro(const std::string& name) {
+    soot::Object* lookup_macro(const std::string& name) {
         auto it = m_macros.find(name);
         if (it != m_macros.end()) {
             return &it->second;
@@ -29,7 +29,7 @@ public:
     }
     
 private:
-    std::unordered_map<std::string, script::Object> m_macros;
+    std::unordered_map<std::string, soot::Object> m_macros;
 };
 
 } // namespace sootc

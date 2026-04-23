@@ -6,12 +6,12 @@ namespace sootc {
 
 /*  
     // В компиляторе
-    script::Object Compiler::macroexpand(const script::Object& form, Env* env) {
+    soot::Object Compiler::macroexpand(const soot::Object& form, Env* env) {
         if (!is_macro_call(form, env)) {
             return form;
         }
         
-        auto macro_name = get_macro_name(form);  // script::InternedSymbolPtr
+        auto macro_name = get_macro_name(form);  // soot::InternedSymbolPtr
         
         // Проверка на рекурсию
         if (env->macro_expand_env() && 
@@ -38,9 +38,9 @@ namespace sootc {
 class MacroExpandEnv : public Env {
 public:
     MacroExpandEnv(Env* parent,
-                   const script::InternedSymbolPtr& macro_name,
-                   const script::Object& macro_body,
-                   const script::Object& macro_use)
+                   const soot::InternedSymbolPtr& macro_name,
+                   const soot::Object& macro_body,
+                   const soot::Object& macro_use)
         : Env(EnvKind::MACRO_EXPAND_ENV, parent),
           m_macro_name(macro_name),
           m_macro_body(macro_body),
@@ -64,13 +64,13 @@ public:
     }
     
     // Геттеры
-    const script::InternedSymbolPtr& macro_name() const { return m_macro_name; }
-    const script::Object& macro_body() const { return m_macro_body; }
-    const script::Object& macro_use_location() const { return m_macro_use_location; }
-    const script::Object& root_form() const { return m_root_form; }
+    const soot::InternedSymbolPtr& macro_name() const { return m_macro_name; }
+    const soot::Object& macro_body() const { return m_macro_body; }
+    const soot::Object& macro_use_location() const { return m_macro_use_location; }
+    const soot::Object& root_form() const { return m_root_form; }
     
     // Проверка, не зациклился ли макрос
-    bool is_expanding(const script::InternedSymbolPtr& sym) const {
+    bool is_expanding(const soot::InternedSymbolPtr& sym) const {
         if (m_macro_name == sym) return true;
         auto* parent_macro = parent() ? parent()->macro_expand_env() : nullptr;
         return parent_macro ? parent_macro->is_expanding(sym) : false;
@@ -84,10 +84,10 @@ public:
     }
     
 private:
-    script::InternedSymbolPtr m_macro_name;
-    script::Object m_macro_body;
-    script::Object m_macro_use_location;
-    script::Object m_root_form;
+    soot::InternedSymbolPtr m_macro_name;
+    soot::Object m_macro_body;
+    soot::Object m_macro_use_location;
+    soot::Object m_root_form;
 };
 
 } // namespace sootc

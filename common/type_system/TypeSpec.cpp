@@ -1,6 +1,6 @@
 #include "common/type_system/TypeSpec.hpp"
-#include "common/sooti/Object.hpp"
-#include "common/sooti/Printer.hpp"
+#include "common/soot/Object.hpp"
+#include "common/soot/Printer.hpp"
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
 #include "type_system/TypeSystem.hpp"
@@ -9,7 +9,7 @@
 #include <functional>
 #include <stdexcept>
 
-using namespace script;
+using namespace soot;
 
 // ============================================================================
 // TypeSpec constructors

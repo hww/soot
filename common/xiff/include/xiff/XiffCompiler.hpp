@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sooti/Interpreter.hpp" // Твой sooti
+#include "common/soot/Interpreter.hpp" // Твой soot
 #include "XiffInjector.hpp"
 #include <string>
 #include <vector>
@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 class XiffCompiler {
 public:
     // Передаем ссылку на существующий интерпретатор
-    explicit XiffCompiler(script::Interpreter& shared_interp);
+    explicit XiffCompiler(soot::Interpreter& shared_interp);
 
     // 1. Загрузка библиотек (Преамбула)
     bool load_library(const std::string& lib_name);
@@ -28,7 +28,7 @@ private:
 
     void eval_string(const std::string& line, const std::string& file);
 
-    script::Interpreter& m_interp;
+    soot::Interpreter& m_interp;
     XiffInjector m_injector;
     std::vector<fs::path> m_scanned_files;
 };

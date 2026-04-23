@@ -25,7 +25,7 @@ void GlobalEnv::constrain_reg(const IRegConstraint& constraint) {
     throw std::runtime_error("Cannot constrain register in GlobalEnv");
 }
 
-IR_Reg* GlobalEnv::lexical_lookup(const script::Object& sym) {
+IR_Reg* GlobalEnv::lexical_lookup(const soot::Object& sym) {
     (void)sym;
     return nullptr;
 }

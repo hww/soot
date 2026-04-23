@@ -27,7 +27,7 @@ TypeCompiler::TypeCompiler(TypeSystem& ts, Compiler* compiler)
 // compile — один проход
 // ============================================================================
 
-IR_Value* TypeCompiler::compile(const script::Object& form, const script::Object& rest, Env* env) {
+IR_Value* TypeCompiler::compile(const soot::Object& form, const soot::Object& rest, Env* env) {
     (void)form;
 
     // Парсим определение типа

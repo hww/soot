@@ -62,7 +62,7 @@ public:
         throw std::runtime_error("constrain_reg not implemented in this Env");
     }
     
-    virtual IR_Value* lexical_lookup(const script::Object& sym) {
+    virtual IR_Value* lexical_lookup(const soot::Object& sym) {
         (void)sym;
         return nullptr;
     }
@@ -110,7 +110,7 @@ public:
         else throw std::runtime_error("No place to bind " + name);
     }
     
-    virtual void emit(const script::Object& form, std::unique_ptr<IR_Expression> node) {
+    virtual void emit(const soot::Object& form, std::unique_ptr<IR_Expression> node) {
         if (m_parent) m_parent->emit(form, std::move(node));
     }
     

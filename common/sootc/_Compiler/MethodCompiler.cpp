@@ -17,7 +17,7 @@ MethodCompiler::MethodCompiler(TypeSystem& ts, Compiler* compiler)
 // extract_method_name
 // ============================================================================
 
-std::string MethodCompiler::extract_method_name(const script::Object& form) {
+std::string MethodCompiler::extract_method_name(const soot::Object& form) {
     // form = (defmethod name ...)
     auto pair = form.as_pair();
     if (pair && pair->cdr.is_pair()) {
@@ -33,10 +33,10 @@ std::string MethodCompiler::extract_method_name(const script::Object& form) {
 // parse_form
 // ============================================================================
 
-void MethodCompiler::parse_form(const script::Object& rest,
+void MethodCompiler::parse_form(const soot::Object& rest,
                                  std::string& out_type_name,
-                                 script::Object& out_args_list,
-                                 script::Object& out_body_forms) {
+                                 soot::Object& out_args_list,
+                                 soot::Object& out_body_forms) {
     // rest = (type-or-args ...)
     auto first = rest.as_pair()->car;
     
@@ -67,8 +67,8 @@ void MethodCompiler::parse_form(const script::Object& rest,
 // compile — принимает form и rest
 // ============================================================================
 
-IR_Value* MethodCompiler::compile(const script::Object& form, 
-                                   const script::Object& rest, 
+IR_Value* MethodCompiler::compile(const soot::Object& form, 
+                                   const soot::Object& rest, 
                                    Env* env) {
     (void)rest; // rest не используется, парсим из form
     
@@ -86,8 +86,8 @@ IR_Value* MethodCompiler::compile(const script::Object& form,
     auto rest_after_name = form.as_pair()->cdr.as_pair()->cdr;
     
     std::string type_name;
-    script::Object args_list;
-    script::Object body_forms;
+    soot::Object args_list;
+    soot::Object body_forms;
     
     parse_form(rest_after_name, type_name, args_list, body_forms);
     

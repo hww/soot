@@ -5,7 +5,7 @@
 
 namespace {
 
-    std::string symbol_string(const script::Object& obj) {
+    std::string symbol_string(const soot::Object& obj) {
         if (obj.is_symbol()) {
             return obj.as_symbol().name_ptr;
         }
@@ -19,7 +19,7 @@ namespace {
         return ts->tc(ts->make_typespec(expected), actual);
     }
 
-    TypeSpec parse_typespec(TypeSystem* ts, const script::Object& src) {
+    TypeSpec parse_typespec(TypeSystem* ts, const soot::Object& src) {
         if (src.is_symbol()) {
             return ts->make_typespec(symbol_string(src));
         }
@@ -68,7 +68,7 @@ namespace {
 // (defenum simple (entry1) (entry2) (entry3))
 // but this method invoked with
 // (simple (entry1) (entry2) (entry3))
-EnumType* parse_defenum(const script::Object& defenum,
+EnumType* parse_defenum(const soot::Object& defenum,
     TypeSystem* ts,
     DefinitionMetadata* symbol_metadata) {
     // Базовая валидация - defenum должен быть списком
@@ -80,7 +80,7 @@ EnumType* parse_defenum(const script::Object& defenum,
     bool is_bitfield = false;
     std::unordered_map<std::string, int64_t> entries;
 
-    const script::Object* iter = &defenum;
+    const soot::Object* iter = &defenum;
 
     // Проверяем первый элемент - должен быть именем
     auto& name_obj = iter->as_pair()->car;
@@ -199,7 +199,7 @@ EnumType* parse_defenum(const script::Object& defenum,
 
                 auto entry_val = value_obj.as_integer();
                 if (!integer_fits(static_cast<int64_t>(entry_val), type->get_load_size(), type->get_load_signed())) {
-                    fmt::print("Warning: Integer {} does not fit inside a {}\n", entry_val, type->name());
+                    fmt::print("Warning: Integer {} does not fit inside a {}\n", entry_val, type->get_name());
                 }
 
                 if (entries.empty()) {

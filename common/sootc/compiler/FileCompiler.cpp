@@ -7,7 +7,7 @@ namespace sootc {
 namespace FileCompiler {
 
 // FileCompiler.cpp
-std::unique_ptr<FileNode> compile(const script::Object& forms, 
+std::unique_ptr<FileNode> compile(const soot::Object& forms, 
                                    const std::string& filename, 
                                    Compiler& compiler) {
     NodeBuilder builder(compiler.ts(), &compiler);

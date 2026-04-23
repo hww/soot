@@ -18,7 +18,7 @@ StateCompiler::StateCompiler(TypeSystem& ts, Compiler* compiler)
 // extract_state_name
 // ============================================================================
 
-std::string StateCompiler::extract_state_name(const script::Object& form, const script::Object& rest) {
+std::string StateCompiler::extract_state_name(const soot::Object& form, const soot::Object& rest) {
     (void)rest;
     // form = (defstate idle (vector3) ...)
     auto pair = form.as_pair();
@@ -38,7 +38,7 @@ std::string StateCompiler::extract_state_name(const script::Object& form, const 
 // extract_parent_name
 // ============================================================================
 
-std::string StateCompiler::extract_parent_name(const script::Object& form, const script::Object& rest) {
+std::string StateCompiler::extract_parent_name(const soot::Object& form, const soot::Object& rest) {
     (void)rest;
     // form = (defstate idle (vector3) ...)
     //                      ^^^^^^^^ третий элемент
@@ -65,7 +65,7 @@ std::string StateCompiler::extract_parent_name(const script::Object& form, const
 // extract_handlers
 // ============================================================================
 
-StateCompiler::HandlerForms StateCompiler::extract_handlers(const script::Object& form, const script::Object& rest) {
+StateCompiler::HandlerForms StateCompiler::extract_handlers(const soot::Object& form, const soot::Object& rest) {
     HandlerForms handlers;
     // :rest = (name (type) :virtual #t :code ....)
     auto current = rest;
@@ -128,7 +128,7 @@ StateCompiler::HandlerForms StateCompiler::extract_handlers(const script::Object
 // compile_handler
 // ============================================================================
 
-void StateCompiler::compile_handler(const script::Object& handler_form, 
+void StateCompiler::compile_handler(const soot::Object& handler_form, 
                                      const std::string& handler_name,
                                      StateEnv* s_env, 
                                      MethodEnv*& out_method_env) {
@@ -178,14 +178,14 @@ void StateCompiler::compile_handler(const script::Object& handler_form,
     }
     
     if (last_val) {
-        m_env->emit(script::Object(), std::make_unique<IR_Return>(last_val));
+        m_env->emit(soot::Object(), std::make_unique<IR_Return>(last_val));
     }
     
     out_method_env = m_env;
 }
 
 void StateCompiler::compile_handler_with_signature(
-    const script::Object& handler_form,
+    const soot::Object& handler_form,
     const std::string& handler_name,
     StateEnv* s_env,
     const TypeSpec& expected_signature,
@@ -226,7 +226,7 @@ void StateCompiler::compile_handler_with_signature(
     
     // Если форма — это список (body...), компилируем его через наш новый унифицированный метод
     // Если это (function (args) body...), нужно взять cdr->cdr
-    script::Object body = handler_form;
+    soot::Object body = handler_form;
     if (handler_form.is_pair() && handler_form.as_pair()->car.is_symbol() &&
         handler_form.as_pair()->car.as_symbol().c_str() == std::string("function")) {
         body = handler_form.as_pair()->cdr.as_pair()->cdr;
@@ -241,8 +241,8 @@ void StateCompiler::compile_handler_with_signature(
 // compile
 // ============================================================================
 
-IR_Value* StateCompiler::compile(const script::Object& form, 
-                                  const script::Object& rest, 
+IR_Value* StateCompiler::compile(const soot::Object& form, 
+                                  const soot::Object& rest, 
                                   Env* env) {
     std::string state_name = extract_state_name(form, rest);
     std::string parent_name = extract_parent_name(form, rest);  

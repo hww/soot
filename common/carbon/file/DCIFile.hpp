@@ -1,10 +1,9 @@
 ﻿#pragma once
 
 #include "common/CommonTypes.hpp"
-#include "common/carbon/ForwardDeclarations.hpp"
 #include "common/carbon/lib/StringIdManager.hpp"
 #include "common/carbon/lib/StringId.hpp"
-#include "common/sooti/Reader.hpp"
+#include "common/soot/Reader.hpp"
 #include <fstream> 
 
 using namespace carbon;
@@ -32,7 +31,7 @@ namespace carbon {
         }
 
         static DCIFile parse(const std::string& filename) {
-            script::Reader reader;
+            soot::Reader reader;
 
             // Парсим без top-level обёртки
             auto obj = reader.read_from_file({ filename }, true, false);
@@ -75,7 +74,7 @@ namespace carbon {
         }
 
     private:
-        static DCIFile parse_from_object(const script::Object& obj) {
+        static DCIFile parse_from_object(const soot::Object& obj) {
             DCIFile result;
 
             // obj должен быть списком: ((math/random (324386) ...))
@@ -126,7 +125,7 @@ namespace carbon {
             return result;
         }
 
-        static u32 parse_binary_size(const script::Object& obj) {
+        static u32 parse_binary_size(const soot::Object& obj) {
             // Ожидаем: (324386) - список с одним integer
             if (!obj.is_pair()) {
                 throw std::runtime_error("Expected list for binary size");
@@ -149,7 +148,7 @@ namespace carbon {
             return static_cast<u32>(first_element.as_integer());
         }
 
-        static void parse_import_export(const script::Object& obj, DCIFile& result) {
+        static void parse_import_export(const soot::Object& obj, DCIFile& result) {
             if (!obj.is_pair()) {
                 throw std::runtime_error("Expected non-empty list for import/export");
             }

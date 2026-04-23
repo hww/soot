@@ -3,7 +3,7 @@
 # Добавляем эту строку в самое начало
 include(GoogleTest)
 
-include_directories(common/sooti)
+include_directories(common/soot)
 
 # ==============================================================
 # Type System
@@ -16,7 +16,7 @@ add_executable(typesys_tests
     #tests/type_system/test_goos_ts.cpp
 )
 # Тестовый исполняемый файл
-target_link_libraries(typesys_tests libsoti libtypesys libsoticore gtest_main fmt)
+target_link_libraries(typesys_tests libsot libtypesys libsotcore gtest_main fmt)
 target_include_directories(typesys_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 if(MSVC)
     set_target_properties(typesys_tests PROPERTIES 

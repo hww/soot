@@ -4,9 +4,9 @@
 #include "fmt/color.h"
 #include "xiff/XiffCompiler.hpp"
 #include "common/util/FileUtil.hpp"
-#include "common/sooti/Export.hpp"
+#include "common/soot/Export.hpp"
 
-XiffCompiler::XiffCompiler(script::Interpreter& shared_interp) : m_interp(shared_interp) {}
+XiffCompiler::XiffCompiler(soot::Interpreter& shared_interp) : m_interp(shared_interp) {}
 
 bool XiffCompiler::load_library(const std::string& lib_name) {
     // Используем твой новый FileHub для поиска файла

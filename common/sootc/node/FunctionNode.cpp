@@ -202,6 +202,8 @@ void FunctionNode::emit_body() {
 // Сериализация
 // ========================================================================
 ProgramBinaryElement FunctionNode::build_binary(const std::string& module_name, GlobalState& state) {
+    (void)state;
+    (void)module_name;
     u64 total_size = sizeof(sid64) + sizeof(ScriptLambda) + 
                      m_instructions.size() * sizeof(Instruction) + 
                      m_constants.size() * sizeof(u64);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Node.hpp"
+#include "file/ProgramBinaryElement.hpp"
 #include <unordered_map>
 #include <string>
 
@@ -43,6 +44,8 @@ public:
     }
     
     const std::unordered_map<std::string, Node*>& symbols() const { return m_symbols; }
+    ProgramBinaryElement generate(GlobalState& state) override { (void)state; return ProgramBinaryElement{0}; };
+
 };
 
 } // namespace sootc

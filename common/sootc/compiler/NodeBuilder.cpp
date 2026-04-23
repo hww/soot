@@ -11,7 +11,7 @@ namespace sootc {
 NodeBuilder::NodeBuilder(TypeSystem& ts, Compiler* compiler)
     : m_ts(ts), m_compiler(compiler) {}
 
-std::unique_ptr<Node> NodeBuilder::build(const script::Object& form, Node* node) {
+std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
     if (form.is_symbol()) {
         return build_variable(form, node);
     }
@@ -58,11 +58,11 @@ std::unique_ptr<Node> NodeBuilder::build(const script::Object& form, Node* node)
     return build_call(form, node);
 }
 
-std::unique_ptr<FunctionNode> NodeBuilder::build_lambda(const script::Object& form, Node* node) {
+std::unique_ptr<FunctionNode> NodeBuilder::build_lambda(const soot::Object& form, Node* node) {
     return FunctionCompiler::compile_function(form, node, *this);
 }
 
-std::unique_ptr<IfNode> NodeBuilder::build_if(const script::Object& form, Node* node) {
+std::unique_ptr<IfNode> NodeBuilder::build_if(const soot::Object& form, Node* node) {
     auto rest = form.as_pair()->cdr;
     auto cond_form = rest.as_pair()->car;
     auto then_form = rest.as_pair()->cdr.as_pair()->car;
@@ -79,7 +79,7 @@ std::unique_ptr<IfNode> NodeBuilder::build_if(const script::Object& form, Node* 
     );
 }
 
-std::unique_ptr<WhileNode> NodeBuilder::build_while(const script::Object& form, Node* node) {
+std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object& form, Node* node) {
     auto rest = form.as_pair()->cdr;
     auto cond_form = rest.as_pair()->car;
     auto body_form = rest.as_pair()->cdr.as_pair()->car;
@@ -90,7 +90,7 @@ std::unique_ptr<WhileNode> NodeBuilder::build_while(const script::Object& form, 
     return std::make_unique<WhileNode>(std::move(cond), std::move(body));
 }
 
-std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const script::Object& form, Node* node) {
+std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const soot::Object& form, Node* node) {
     auto head = form.as_pair()->car.as_symbol();
     auto rest = form.as_pair()->cdr;
     
@@ -106,7 +106,7 @@ std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const script::Object& form
     return std::make_unique<BinaryNode>(op, std::move(left), std::move(right));
 }
 
-std::unique_ptr<CompareNode> NodeBuilder::build_compare(const script::Object& form, Node* node) {
+std::unique_ptr<CompareNode> NodeBuilder::build_compare(const soot::Object& form, Node* node) {
     auto head = form.as_pair()->car.as_symbol();
     auto rest = form.as_pair()->cdr;
     
@@ -124,7 +124,7 @@ std::unique_ptr<CompareNode> NodeBuilder::build_compare(const script::Object& fo
     return std::make_unique<CompareNode>(op, std::move(left), std::move(right));
 }
 
-std::unique_ptr<CallNode> NodeBuilder::build_call(const script::Object& form, Node* node) {
+std::unique_ptr<CallNode> NodeBuilder::build_call(const soot::Object& form, Node* node) {
     auto head = form.as_pair()->car;
     auto rest = form.as_pair()->cdr;
     
@@ -140,7 +140,7 @@ std::unique_ptr<CallNode> NodeBuilder::build_call(const script::Object& form, No
     return call;
 }
 
-std::unique_ptr<VariableNode> NodeBuilder::build_variable(const script::Object& form, Node* context) {
+std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object& form, Node* context) {
     std::string name = form.as_symbol();
     
     Node* current = context;
@@ -159,7 +159,8 @@ std::unique_ptr<VariableNode> NodeBuilder::build_variable(const script::Object& 
     throw std::runtime_error(fmt::format("Undefined symbol {}",form.to_std_string()));
 }
 
-std::unique_ptr<ConstNode> NodeBuilder::build_const(const script::Object& form, Node* node) {
+std::unique_ptr<ConstNode> NodeBuilder::build_const(const soot::Object& form, Node* node) {
+    (void)form; (void)node;
     if (form.is_integer()) {
         return ConstNode::make_int(form.as_integer());
     }
@@ -173,7 +174,7 @@ std::unique_ptr<ConstNode> NodeBuilder::build_const(const script::Object& form, 
     return nullptr;
 }
 
-std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const script::Object& form, Node* node) {
+std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const soot::Object& form, Node* node) {
     auto child_node = build(form, node);
     auto child_node_type = child_node->get_node_type_string();
 
@@ -183,7 +184,7 @@ std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const script::Obje
     return result;
 }
 
-std::vector<std::unique_ptr<ExpressionNode>> NodeBuilder::parse_args(const script::Object& args_form, Node* node) {
+std::vector<std::unique_ptr<ExpressionNode>> NodeBuilder::parse_args(const soot::Object& args_form, Node* node) {
     std::vector<std::unique_ptr<ExpressionNode>> args;
     auto current = args_form;
     
@@ -195,7 +196,8 @@ std::vector<std::unique_ptr<ExpressionNode>> NodeBuilder::parse_args(const scrip
     return args;
 }
 
-Type* NodeBuilder::parse_type(const script::Object& type_form, Node* node) {
+Type* NodeBuilder::parse_type(const soot::Object& type_form, Node* node) {
+    (void)node;
     if (type_form.is_symbol()) {
         return m_ts.lookup_type(type_form.as_symbol());
     }
@@ -203,7 +205,7 @@ Type* NodeBuilder::parse_type(const script::Object& type_form, Node* node) {
     return m_ts.lookup_type("object");
 }
 
-std::unique_ptr<Node> NodeBuilder::build_define(const script::Object& form, Node* context) {
+std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object& form, Node* context) {
     auto rest = form.as_pair()->cdr;
     auto def_form = rest.as_pair()->car;
     auto value_form = rest.as_pair()->cdr.as_pair()->car;

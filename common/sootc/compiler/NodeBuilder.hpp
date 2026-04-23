@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sooti/Object.hpp"
+#include "common/soot/Object.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/node/BinaryNode.hpp"
 #include "sootc/node/CompareNode.hpp"
@@ -21,23 +21,23 @@ public:
     NodeBuilder(TypeSystem& ts, Compiler* compiler);
     
     // Главный метод - строит узел из AST
-    std::unique_ptr<Node> build(const script::Object& form, Node* node);
+    std::unique_ptr<Node> build(const soot::Object& form, Node* node);
     
     // Специализированные методы для разных типов форм
-    std::unique_ptr<ExpressionNode> build_expression(const script::Object& form, Node* node);
-    std::unique_ptr<FunctionNode> build_lambda(const script::Object& form, Node* node);
-    std::unique_ptr<CompareNode> build_compare(const script::Object& form, Node* node);
-    std::unique_ptr<BinaryNode> build_binary(const script::Object& form, Node* node);
-    std::unique_ptr<IfNode> build_if(const script::Object& form, Node* node);
-    std::unique_ptr<WhileNode> build_while(const script::Object& form, Node* node);
-    std::unique_ptr<CallNode> build_call(const script::Object& form, Node* node);
-    std::unique_ptr<VariableNode> build_variable(const script::Object& form, Node* node);
-    std::unique_ptr<ConstNode> build_const(const script::Object& form, Node* node);
-    std::unique_ptr<Node> build_define(const script::Object& form, Node* context);
+    std::unique_ptr<ExpressionNode> build_expression(const soot::Object& form, Node* node);
+    std::unique_ptr<FunctionNode> build_lambda(const soot::Object& form, Node* node);
+    std::unique_ptr<CompareNode> build_compare(const soot::Object& form, Node* node);
+    std::unique_ptr<BinaryNode> build_binary(const soot::Object& form, Node* node);
+    std::unique_ptr<IfNode> build_if(const soot::Object& form, Node* node);
+    std::unique_ptr<WhileNode> build_while(const soot::Object& form, Node* node);
+    std::unique_ptr<CallNode> build_call(const soot::Object& form, Node* node);
+    std::unique_ptr<VariableNode> build_variable(const soot::Object& form, Node* node);
+    std::unique_ptr<ConstNode> build_const(const soot::Object& form, Node* node);
+    std::unique_ptr<Node> build_define(const soot::Object& form, Node* context);
 
     // Вспомогательные методы
-    Type* parse_type(const script::Object& type_form, Node* node);
-    std::vector<std::unique_ptr<ExpressionNode>> parse_args(const script::Object& args_form, Node* node);
+    Type* parse_type(const soot::Object& type_form, Node* node);
+    std::vector<std::unique_ptr<ExpressionNode>> parse_args(const soot::Object& args_form, Node* node);
     
     TypeSystem& m_ts;
     Compiler* m_compiler;

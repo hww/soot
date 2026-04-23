@@ -11,8 +11,8 @@ target_include_directories(libxiff PUBLIC
 )
 
 target_link_libraries(libxiff PRIVATE 
-libsoti 
-libsoticore 
+libsot 
+libsotcore 
 libtypesys
 fmt 
 replxx 

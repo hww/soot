@@ -29,10 +29,10 @@ public:
     explicit LexicalEnv(Env* parent) : DeclareEnv(EnvKind::LEXICAL_ENV, parent) {}
     
     // Лексические переменные (символ → регистр)
-    std::unordered_map<script::InternedSymbolPtr, IR_Value*, 
-                       script::InternedSymbolPtr::hash> vars;
+    std::unordered_map<soot::InternedSymbolPtr, IR_Value*, 
+                       soot::InternedSymbolPtr::hash> vars;
     
-    IR_Value* lexical_lookup(const script::Object& sym) override {  // ← IR_Value*, не IR_Reg*
+    IR_Value* lexical_lookup(const soot::Object& sym) override {  // ← IR_Value*, не IR_Reg*
         if (!sym.is_symbol()) return nullptr;
         auto it = vars.find(sym.as_symbol());
         if (it != vars.end()) return it->second;

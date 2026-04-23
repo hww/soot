@@ -1,0 +1,1 @@
+scoop install git llvm nasm python task ninja cmake

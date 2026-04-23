@@ -64,6 +64,17 @@ fs::path join_paths(const fs::path &a, const fs::path &b) {
     return a / b;
 }
 
+// =================== ОПЕРАЦИИ С ПУТЯМИ  ====================
+std::string convert_to_unix_path_separators(const std::string& path) {
+#ifdef _WIN32
+  std::string copy = path;
+  std::replace(copy.begin(), copy.end(), '\\', '/');
+  return copy;
+#else
+  return path;
+#endif
+}
+
 // ==================== РАБОТА С ДИРЕКТОРИЯМИ ====================
 
 bool create_dirs(const fs::path &path) {

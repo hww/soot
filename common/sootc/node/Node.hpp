@@ -149,6 +149,7 @@ public:
     }
 
     virtual Node* lookup(const std::string& name) {
+        (void)name;
         return nullptr;  // базовый класс не умеет искать
     }
 

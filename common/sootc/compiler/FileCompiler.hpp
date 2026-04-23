@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/sooti/Object.hpp"
+#include "common/soot/Object.hpp"
 #include <memory>
 #include <string>
 
@@ -12,7 +12,7 @@ class Compiler;
 namespace FileCompiler {
 
 // Только строит дерево из AST
-std::unique_ptr<FileNode> compile(const script::Object& forms, 
+std::unique_ptr<FileNode> compile(const soot::Object& forms, 
                                    const std::string& filename, 
                                    Compiler& compiler);
 

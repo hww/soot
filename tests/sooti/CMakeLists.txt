@@ -11,26 +11,26 @@ include_directories(common/script)
 
 # Создаем тестовый исполняемый файл
 add_executable(sooti_test
-    tests/sooti/MainScriptTest.cpp
-    tests/sooti/TestBasicTypes.cpp
-    tests/sooti/TestArithmetic.cpp
-    tests/sooti/TestLists.cpp
-    tests/sooti/TestSpecialForms.cpp
-    tests/sooti/TestPredicates.cpp
-    tests/sooti/TestLogical.cpp
-    tests/sooti/TestStrings.cpp
-    tests/sooti/TestVectors.cpp
-    tests/sooti/TestHashTables.cpp
-    tests/sooti/TestMacros.cpp
-    tests/sooti/TestQuasiquote.cpp
-    tests/sooti/TestLoops.cpp
-    tests/sooti/TestConversions.cpp
-    tests/sooti/TestMath.cpp
-    tests/sooti/TestSystem.cpp
+    tests/soot/MainScriptTest.cpp
+    tests/soot/TestBasicTypes.cpp
+    tests/soot/TestArithmetic.cpp
+    tests/soot/TestLists.cpp
+    tests/soot/TestSpecialForms.cpp
+    tests/soot/TestPredicates.cpp
+    tests/soot/TestLogical.cpp
+    tests/soot/TestStrings.cpp
+    tests/soot/TestVectors.cpp
+    tests/soot/TestHashTables.cpp
+    tests/soot/TestMacros.cpp
+    tests/soot/TestQuasiquote.cpp
+    tests/soot/TestLoops.cpp
+    tests/soot/TestConversions.cpp
+    tests/soot/TestMath.cpp
+    tests/soot/TestSystem.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest
-target_link_libraries(sooti_test libsoti libtypesys gtest_main fmt)
+target_link_libraries(sooti_test libsot libtypesys gtest_main fmt)
 target_include_directories(sooti_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
 if(MSVC)

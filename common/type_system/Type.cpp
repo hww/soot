@@ -1,7 +1,7 @@
 #include "common/type_system/Type.hpp"
 #include "util/StringIdHash.hpp"
 #include "TypeSystem.hpp"
-#include "common/sooti/ListBuilder.hpp"
+#include "common/soot/ListBuilder.hpp"
 #include "common/util/Assert.hpp"
 #include "fmt/format.h"
 #include <algorithm>
@@ -435,7 +435,7 @@ std::string Type::incompatible_diff(const Type &other) const {
 
 std::string Type::runtime_name() const {
     if (!m_allow_in_runtime) {
-        throw std::runtime_error(fmt::format("Type {} is not allowed in runtime", name()));
+        throw std::runtime_error(fmt::format("Type {} is not allowed in runtime", get_name()));
     }
     return m_runtime_name;
 }
@@ -445,11 +445,11 @@ Object Type::get_at(const Object &key) {
 
     // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
     if (name == ":name")
-        return Object::make_string(this->name());
+        return Object::make_string(this->get_name());
     if (name == ":class")
         return Object::make_string(this->class_name());
     if (name == ":parent")
-        return Object::make_string(this->parent());
+        return Object::make_string(this->get_parent());
     if (name == ":size" || name == ":size-in-memory")
         return Object::make_integer(this->get_size_in_memory());
     if (name == ":alignment" || name == ":in-memory-alignment")
@@ -732,7 +732,7 @@ Object ValueType::get_at(const Object &key) {
  * Serialize value type
  */
 bool ValueType::serialize_obj(Archive &ar, Object &data) {
-    std::string type_name = name();
+    std::string type_name = get_name();
 
     if (ar.is_reading()) {
         // ============================================================
@@ -973,7 +973,7 @@ void StructureType::inherit(StructureType *parent) {
     if (!parent)
         return;
     if (Type::verbose) {
-        fmt::print("DEBUG: Inheriting from {} to {}\n", parent->name(), name());
+        fmt::print("DEBUG: Inheriting from {} to {}\n", parent->get_name(), get_name());
         fmt::print("DEBUG: Parent has {} fields, size: {}\n", parent->fields().size(),
                    parent->get_size_in_memory());
     }
@@ -985,7 +985,7 @@ void StructureType::inherit(StructureType *parent) {
     m_idx_of_first_unique_field = m_fields.size();
 
     if (Type::verbose) {
-        fmt::print("DEBUG: After inheritance - {} has {} fields, size: {}\n", name(),
+        fmt::print("DEBUG: After inheritance - {} has {} fields, size: {}\n", get_name(),
                    m_fields.size(), m_size_in_mem);
     }
 }
@@ -1115,7 +1115,7 @@ bool StructureType::serialize_obj(Archive &ar, Object &data) {
             Type *field_type = TypeSystem::instance().lookup_type(field.type().base_type());
             if (!field_type) {
                 throw std::runtime_error("StructureType: unknown field type " +
-                                         field.type().base_type() + " in " + name());
+                                         field.type().base_type() + " in " + get_name());
             }
 
             // Читаем значение поля
@@ -1149,7 +1149,7 @@ bool StructureType::serialize_obj(Archive &ar, Object &data) {
             Type *field_type = TypeSystem::instance().lookup_type(field.type().base_type());
             if (!field_type) {
                 throw std::runtime_error("StructureType: unknown field type " +
-                                         field.type().base_type() + " in " + name());
+                                         field.type().base_type() + " in " + get_name());
             }
 
             // Если поле не найдено в property list, передаем null
@@ -1250,7 +1250,7 @@ bool BasicType::serialize_obj(Archive &ar, Object &data) {
 
         // Сериализуем сам объект через его тип
         Object::make_pair(Object::make_keyword("_type_"),
-                          Object::make_pair(Object::make_symbol(type->name()), structure_data));
+                          Object::make_pair(Object::make_symbol(type->get_name()), structure_data));
 
         return true;
     } else {
@@ -1259,7 +1259,7 @@ bool BasicType::serialize_obj(Archive &ar, Object &data) {
         // ============================================================
 
         // Пишем CRC типа
-        uint32_t     type_crc = util::ToStringId32(name());
+        uint32_t     type_crc = util::ToStringId32(get_name());
         CompactCrc32 crc(type_crc);
         ar << crc;
 
@@ -1533,7 +1533,7 @@ bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
 
 EnumType::EnumType(const ValueType *parent, std::string name, bool is_bitfield,
                    const std::unordered_map<std::string, int64_t> &entries)
-    : ValueType(parent->parent(), std::move(name), parent->is_boxed(), parent->get_load_size(),
+    : ValueType(parent->get_parent(), std::move(name), parent->is_boxed(), parent->get_load_size(),
                 parent->get_load_signed(), parent->get_preferred_reg_class()),
       m_is_bitfield(is_bitfield), m_entries(entries) {}
 

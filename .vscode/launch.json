@@ -14,6 +14,13 @@
       "miDebuggerPath": "gdb",
       "setupCommands": [
         {
+            // N.B. Обязательно перед -enable-pretty-printing но требуется получить скрипты
+            // git clone https://github.com/davenger/libcxx-pretty-printers.git .vscode/libcxx-pretty-printers
+            "description": "Загружаем pretty-printer'ы для libc++",
+            "text": "python import sys; sys.path.insert(0, '${workspaceFolder}/.vscode/libcxx-pretty-printers/src'); from libcxx.v1.printers import register_libcxx_printers; register_libcxx_printers(None)",
+            "ignoreFailures": true
+        },  
+        {
           "description": "Enable pretty-printing for gdb",
           "text": "-enable-pretty-printing",
           "ignoreFailures": true
@@ -25,33 +32,11 @@
       "showDisplayString": true
     },
     {
-      "name": "SOOT (HOME)",
+      "name": "SOOTC (--interpret-only)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/bin/soot",
-      "args": [],
-      "cwd": "/home/valery",  
-      "environment": [],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ],
-      "preLaunchTask": "Build All",
-      "stopAtEntry": true
-    },
-
-    {
-      "name": "SOOT Server",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/bin/soot",
-      "args": ["--server", "8181"],
+      "program": "${workspaceFolder}/build/bin/sootc",
+      "args": ["--interpret-only"],
       "cwd": "${workspaceFolder}/build",
       "environment": [],
       "externalConsole": false,
@@ -59,26 +44,12 @@
       "miDebuggerPath": "gdb",
       "setupCommands": [
         {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ],
-      "preLaunchTask": "Build All",
-      "stopAtEntry": false
-    },
-    {
-      "name": "SOOT Client",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/bin/soot",
-      "args": ["--client", "8181"],
-      "cwd": "${workspaceFolder}/build",
-      "environment": [],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
+            // N.B. Обязательно перед -enable-pretty-printing но требуется получить скрипты
+            // git clone https://github.com/davenger/libcxx-pretty-printers.git .vscode/libcxx-pretty-printers
+            "description": "Загружаем pretty-printer'ы для libc++",
+            "text": "python import sys; sys.path.insert(0, '${workspaceFolder}/.vscode/libcxx-pretty-printers/src'); from libcxx.v1.printers import register_libcxx_printers; register_libcxx_printers(None)",
+            "ignoreFailures": true
+        },  
         {
           "description": "Enable pretty-printing for gdb",
           "text": "-enable-pretty-printing",
@@ -86,15 +57,17 @@
         }
       ],
       "preLaunchTask": "Build All",
-      "stopAtEntry": false
-    },
-
+      "stopAtEntry": false,
+      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
+      "showDisplayString": true
+    },    
     {
-      "name": "SOOT Compiler",
+      "name": "SOOT (--no-repl)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/sootc",
       "args": [
+        "--no-repl",
         "--source-root",
         "${workspaceFolder}/common/sootc/src",
         "--target",
@@ -125,34 +98,6 @@
       "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
       "showDisplayString": true
     },
-    {
-      "name": "SOOT Compiler Single Function",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/bin/sootc",
-      "args": [
-        "--target",
-        "modules",
-        "${workspaceFolder}/common/sootc/src/math/add.sot"
-      ],
-      "cwd": "${workspaceFolder}/build",
-      "environment": [],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ],
-      "preLaunchTask": "Build All",
-      "stopAtEntry": false,
-      "visualizerFile": "${workspaceFolder}/.vscode/stringid.natvis",
-      "showDisplayString": true
-    }, 
-
     {
       "name": "Carbon VM",
       "type": "cppdbg",

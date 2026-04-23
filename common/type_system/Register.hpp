@@ -1,9 +1,9 @@
 #pragma once
-#include "common/sooti/Object.hpp"
+#include "common/soot/Object.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include <string>
 
-namespace script {
+namespace soot {
 struct Register : NativeObject {
     Object name;           // Имя переменной
     Object reg;            // Ссылка на физический регистр
@@ -36,4 +36,4 @@ struct Register : NativeObject {
     Object      inspect() const override;
 };
 
-} // namespace script
+} // namespace soot

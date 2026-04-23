@@ -5,6 +5,7 @@
 #include "fmt/core.h"
 
 namespace REPL {
+
 void to_json(json& j, const Config& obj) {
   j = json{
       {"nreplPort", obj.nrepl_port},

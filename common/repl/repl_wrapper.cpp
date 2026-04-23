@@ -1,5 +1,6 @@
 ﻿#include "repl_wrapper.h"
 
+#include "CommonTypes.hpp"
 #include "common/util/FileUtil.hpp"
 #include "common/util/JsonUtil.hpp"
 #include "common/util/StringUtil.hpp"
@@ -33,7 +34,7 @@ void Wrapper::print_welcome_message(const std::vector<std::string>& loaded_proje
   }
   message += "!\n";
   message += fmt::format(fmt::emphasis::bold | fg(fmt::color::orange), "          .---.");
-  if (repl_config.game_version == GameVersion::Default) {
+  if (repl_config.game_version == SootPlatform::Default) {
     message += fmt::format("          [{}]: ", fmt::format(fg(fmt::color::orange), "default"));
   } else {
     message += fmt::format("          [{}]: ", fmt::format(fg(fmt::color::magenta), "undefined"));
@@ -245,7 +246,7 @@ std::string find_repl_username() {
   return "unknown";
 }
 
-fs::path get_startup_file_path(const std::string& username, const GameVersion game_version) {
+fs::path get_startup_file_path(const std::string& username, const SootPlatform game_version) {
   // Сначала проверяем специфичный для версии файл в CONFIG
   auto game_specific_path = file_util::get_path(file_util::PathType::CONFIG) / 
                             fmt::format("startup-{}.sot", version_to_game_name(game_version));
@@ -269,7 +270,7 @@ fs::path get_startup_file_path(const std::string& username, const GameVersion ga
   return config_path;
 }
 
-StartupFile load_user_startup_file(const std::string& username, const GameVersion game_version) {
+StartupFile load_user_startup_file(const std::string& username, const SootPlatform game_version) {
   // Check for a `startup.gc` file, each line will be executed on the REPL on startup
   auto startup_file_path = get_startup_file_path(username, game_version);
   StartupFile startup_file;
@@ -292,7 +293,7 @@ StartupFile load_user_startup_file(const std::string& username, const GameVersio
 }
 
 REPL::Config load_repl_config(const std::string& username,
-                              const GameVersion game_version,
+                              const SootPlatform game_version,
                               const int nrepl_port) {
   auto repl_config_path =
       file_util::get_path(file_util::PathType::PROJECT) / "goal_src" / "user" / username / "repl-config.json";

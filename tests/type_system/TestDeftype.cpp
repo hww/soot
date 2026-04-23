@@ -1,4 +1,4 @@
-#include "common/sooti/Export.hpp"
+#include "common/soot/Export.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "fmt/format.h"
@@ -36,7 +36,7 @@ class DefTypeTest : public ::testing::Test {
     // Хелпер для парсинга как в оригинале
     DeftypeResult parse_deftype_string(const std::string &code) {
         auto obj = reader.read_from_string(code, "test");
-        fmt::print("\n\nParsed: {}\n", script::pretty_print::to_string(obj));
+        fmt::print("\n\nParsed: {}\n", soot::pretty_print::to_string(obj));
 
         // Извлекаем форму deftype: (top-level (deftype name ...))
         // в просто (name ...)
@@ -44,7 +44,7 @@ class DefTypeTest : public ::testing::Test {
         return parse_deftype(deftype_form, ts, nullptr);
     }
     TypeSystem    *ts;
-    script::Reader reader;
+    soot::Reader reader;
 };
 
 TEST_F(DefTypeTest, BasicStructure) {
