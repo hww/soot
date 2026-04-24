@@ -4,6 +4,7 @@
 #include "common/carbon/lib/StringIdManager.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/soot/Reader.hpp"
+#include "util/FileUtil.hpp"
 #include <fstream> 
 
 using namespace carbon;

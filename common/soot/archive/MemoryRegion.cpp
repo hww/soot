@@ -1,4 +1,5 @@
 #include "MemoryRegion.hpp"
+#include "FileUtil.hpp"
 #include <fstream>
 
 namespace soot {

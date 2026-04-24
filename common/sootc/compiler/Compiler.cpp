@@ -337,7 +337,19 @@ void Compiler::print_to_repl(const std::string& str) {
 }
 
 std::string Compiler::get_prompt() {
-  std::string prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "g > ");
+    std::string prompt = "";
+
+    switch (m_config.mode) {
+        case sootc::CompilerMode::COMPILE_ONLY:
+            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sc > ");
+            break;
+        case sootc::CompilerMode::INTERPRET_ONLY:
+            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "si > ");
+            break;
+        case sootc::CompilerMode::HYBRID:
+            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sci> ");
+            break;
+    }
   return "\033[0m" + prompt;
 }
 

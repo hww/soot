@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "common/soot/Object.hpp"
-#include "common/soot/Reader.hpp"
 
 namespace soot::pretty_print {
 	// string -> object (as a symbol)

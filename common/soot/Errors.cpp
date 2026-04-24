@@ -2,6 +2,7 @@
 #include "common/soot/Object.hpp"
 #include "common/soot/Reader.hpp"
 #include <fmt/ranges.h>
+
 namespace soot {
 
 // Основной метод для получения красивого отчета

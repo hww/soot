@@ -1,4 +1,5 @@
 #include "SourceText.hpp"
+#include "common/util/FileUtil.hpp"
 
 namespace soot {
 

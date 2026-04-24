@@ -1,4 +1,5 @@
 #pragma once
+
 #include "CommonTypes.hpp"
 #include "common/soot/Errors.hpp"
 #include "common/soot/Object.hpp"
@@ -11,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+
 class TypeSystem;
 
 namespace soot {

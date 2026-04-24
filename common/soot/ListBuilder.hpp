@@ -1,11 +1,8 @@
 #pragma once
 
 #include "common/soot/Object.hpp"
-#include "TextDb.hpp"
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 namespace soot {
 

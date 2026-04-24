@@ -1,9 +1,10 @@
 #include "common/type_system/Deftype.hpp"
-#include "common/soot/Export.hpp"
 #include "common/type_system/State.hpp"
 #include "common/util/Log.hpp"
 #include "common/util/StringUtil.hpp"
 #include "fmt/format.h"
+#include "soot/Errors.hpp"
+#include "soot/ParseHelpers.hpp"
 
 #include <unordered_map>
 

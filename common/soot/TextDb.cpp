@@ -1,12 +1,7 @@
 #include "TextDb.hpp"
-#include "common/util/FileUtil.hpp"
-#include "fmt/args.h"
 #include "fmt/base.h"
 #include "fmt/color.h"
-#include "fmt/format.h"
 #include <algorithm>
-#include <sstream>
-#include <stdexcept>
 
 namespace soot {
 

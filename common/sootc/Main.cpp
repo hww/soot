@@ -2,19 +2,15 @@
 #include "CommonTypes.hpp"
 #include "repl/nrepl/ReplServer.h"
 #include "sootc/compiler/Compiler.hpp"
-#include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
 #include "common/util/FileUtil.hpp"
 #include "fmt/color.h"
 #include "fmt/core.h"
-#include <iostream>
 #include <filesystem>
 #include <mutex>
 #include <string>
 #include <vector>
 #include <optional>
-
-namespace fs = std::filesystem;
 
 struct CommandLineOptions {
     std::vector<std::string> input_files;

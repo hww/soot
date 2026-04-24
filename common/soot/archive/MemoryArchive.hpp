@@ -4,7 +4,6 @@
 #include "MemoryRegion.hpp"
 #include "common/soot/Archive.hpp"
 #include "soot/Object.hpp"
-#include <stack>
 
 namespace soot {
 

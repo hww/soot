@@ -1,6 +1,7 @@
 #include "common/soot/Printer.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/soot/Object.hpp"
+#include "common/soot/Reader.hpp"
 #include "common/util/PrintFloat.hpp"
 #include <unordered_set>
 

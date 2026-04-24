@@ -1,13 +1,11 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <iostream>
 #include "common/soot/Reader.hpp"
 #include "common/soot/Object.hpp"
 #include "common/soot/Interpreter.hpp"
-#include "common/soot/TextDb.hpp"
-#include "repl/config.h"
+
 
 using namespace soot;
 

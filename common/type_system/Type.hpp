@@ -9,6 +9,7 @@
 #include "common/soot/Object.hpp"
 #include "common/soot/Archive.hpp"
 #include "common/type_system/TypeSpec.hpp"
+#include "soot/TextDb.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <map>

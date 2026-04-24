@@ -1,12 +1,8 @@
 #include "common/type_system/TypeSpec.hpp"
 #include "common/soot/Object.hpp"
 #include "common/soot/Printer.hpp"
-#include "common/util/Assert.hpp"
 #include "fmt/format.h"
-#include "type_system/TypeSystem.hpp"
-
-#include <algorithm>
-#include <functional>
+#include "common/type_system/TypeSystem.hpp"
 #include <stdexcept>
 
 using namespace soot;

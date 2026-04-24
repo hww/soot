@@ -1,4 +1,5 @@
 #include "Archive.hpp"
+#include "soot/Printer.hpp"
 #include "type_system/Config.hpp"
 #include "common/CommonTypes.hpp"
 #include <stdexcept>

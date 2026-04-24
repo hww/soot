@@ -1,13 +1,9 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "common/soot/Object.hpp"
-#include "common/util/FileUtil.hpp"
 
 namespace soot {
 
