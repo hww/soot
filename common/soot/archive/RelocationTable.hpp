@@ -54,14 +54,14 @@ class RelocationTable : public NativeObject {
         }
     };
 
-    RelocationTable(SymbolTable* st) : m_st(st) {};
+    RelocationTable() {};
 
     // ============================================================
     // HeapObject implementation
     // ============================================================
 
-    Object get_at(const Object &key) override;
-    void   set_at(const Object &key, const Object &value) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
+    void   set_at(SymbolTable* st, const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "relocation-table";
@@ -152,7 +152,7 @@ class RelocationTable : public NativeObject {
 
   private:
     std::vector<Relocation> m_relocations;
-    SymbolTable* m_st;
+
 };
 
 } // namespace soot

@@ -1,15 +1,12 @@
 #pragma once
 
 #include "LabelTable.hpp"
-#include "MemoryArchive.hpp"
 #include "MemoryRegion.hpp"
 #include "MemorySymbolTable.hpp"
 #include "RelocationTable.hpp"
 #include "common/soot/Archive.hpp"
-#include "common/type_system/Type.hpp"
 #include "soot/Object.hpp"
-#include <unordered_map>
-#include <vector>
+
 
 namespace soot {
 
@@ -34,15 +31,14 @@ class MemoryBuffer : public NativeObject {
     std::shared_ptr<MemorySymbolTable> m_symbols; // если нужны
     std::shared_ptr<RelocationTable>   m_relocs;  // если нужны
     std::shared_ptr<LabelTable>        m_labels;  // если нужны
-    SymbolTable* m_st;
 
   public:
-    MemoryBuffer(SymbolTable* st) :  m_st(st) {}
-    MemoryBuffer(SymbolTable* st, std::shared_ptr<MemoryRegion> region) : m_region(region), m_st(st) {
+    MemoryBuffer() {}
+    MemoryBuffer(std::shared_ptr<MemoryRegion> region) : m_region(region) {
 
-        m_symbols = std::make_shared<MemorySymbolTable>(st);
-        m_relocs = std::make_shared<RelocationTable>(st);
-        m_labels = std::make_shared<LabelTable>(st);
+        m_symbols = std::make_shared<MemorySymbolTable>();
+        m_relocs = std::make_shared<RelocationTable>();
+        m_labels = std::make_shared<LabelTable>();
     }
     ~MemoryBuffer() {}
     // Только геттеры и сеттеры компонентов
@@ -71,10 +67,10 @@ class MemoryBuffer : public NativeObject {
 
     void serialize(Archive &ar) override {
         if (ar.is_reading()) {
-            m_region = std::make_shared<MemoryRegion>(m_st);
-            m_symbols = std::make_shared<MemorySymbolTable>(m_st);
-            m_relocs = std::make_shared<RelocationTable>(m_st);
-            m_labels = std::make_shared<LabelTable>(m_st);
+            m_region = std::make_shared<MemoryRegion>();
+            m_symbols = std::make_shared<MemorySymbolTable>();
+            m_relocs = std::make_shared<RelocationTable>();
+            m_labels = std::make_shared<LabelTable>();
         }
 
         m_region->serialize(ar);
@@ -91,7 +87,7 @@ class MemoryBuffer : public NativeObject {
     // MativeObject implementation
     // ============================================================
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     // Object interface
     std::string class_name() const override {

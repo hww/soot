@@ -1,6 +1,5 @@
 // sootc/compiler/Compiler.cpp
 #include "sootc/compiler/Compiler.hpp"
-#include "soot/PrettyPrinter.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -124,7 +123,7 @@ soot::Object Compiler::builtin_get_enum_vals(const soot::Object& form,
     for (auto& thing : sorted_values) {
         enum_vals.push_back(
             soot::Object::make_pair(
-                soot::Object::make_symbol(thing.first),
+                soot::Object::make_symbol(&m_soot.symbol_table(), thing.first),
                 soot::Object::make_integer(thing.second)
             )
         );
@@ -454,7 +453,7 @@ void Compiler::set_global(const std::string& name, const soot::Object& value) {
 }
 
 soot::Object Compiler::get_global(const std::string& name) {
-    return m_soot.get_global(Object::intern(name.c_str()));
+    return m_soot.get_global(Object::intern(&m_soot.symbol_table(), name.c_str()));
 }
 
 

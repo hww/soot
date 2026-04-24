@@ -1,7 +1,7 @@
 #include "MemoryBuffer.hpp"
 
 namespace soot {
-Object MemoryBuffer::get_at(const Object &key) {
+Object MemoryBuffer::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -20,7 +20,7 @@ Object MemoryBuffer::get_at(const Object &key) {
 
     // Делегируем региону для доступа по смещению
     if (m_region) {
-        return m_region->get_at(key);
+        return m_region->get_at(st, key);
     }
 
     throw std::runtime_error(fmt::format("MemoryBuffer: unknown key {}", key.print()));

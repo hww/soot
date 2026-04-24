@@ -1,7 +1,8 @@
 #include "MemoryArchive.hpp"
 namespace soot {
 
-Object MemoryArchive::get_at(const Object &key) {
+Object MemoryArchive::get_at(SymbolTable* st, const Object &key) {
+    (void)st;
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -17,7 +18,8 @@ Object MemoryArchive::get_at(const Object &key) {
     throw std::runtime_error(fmt::format("MemoryArchive: unknown key {}", key.print()));
 }
 
-void MemoryArchive::set_at(const Object &key, const Object &value) {
+void MemoryArchive::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    (void)st;
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 

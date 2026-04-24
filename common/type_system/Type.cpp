@@ -1,4 +1,5 @@
 #include "common/type_system/Type.hpp"
+#include "soot/Object.hpp"
 #include "util/StringIdHash.hpp"
 #include "TypeSystem.hpp"
 #include "common/soot/ListBuilder.hpp"
@@ -47,7 +48,7 @@ bool MethodInfo::operator!=(const MethodInfo &other) const {
     return !(*this == other);
 }
 
-Object MethodInfo::get_at(const Object &key) {
+Object MethodInfo::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Простые поля
@@ -71,14 +72,14 @@ Object MethodInfo::get_at(const Object &key) {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой get_at
         auto base_type = this->type.base_type();
-        return TypeSystem::instance().get_at(Object::make_string(base_type));
+        return TypeSystem::instance().get_at(st, Object::make_string(base_type));
     }
 
     // 3. Флаги и логика
     if (name == "virtual?")
-        return Object::make_boolean(!this->no_virtual);
+        return Object::make_boolean(st, !this->no_virtual);
     if (name == "overrides?")
-        return Object::make_boolean(this->overrides_parent);
+        return Object::make_boolean(st, this->overrides_parent);
 
     // 4. Опциональные поля
     if (name == "doc") {
@@ -141,8 +142,8 @@ bool Field::operator!=(const Field &other) const {
     return !(*this == other);
 }
 
-Object Field::inspect() const {
-    ListBuilder lb;
+Object Field::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
     lb.add_symbol("field");
 
     lb.add_keyword("name");
@@ -175,7 +176,7 @@ Object Field::inspect() const {
     return lb.build();
 }
 
-Object Field::get_at(const Object &key) {
+Object Field::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Базовые свойства
@@ -194,16 +195,16 @@ Object Field::get_at(const Object &key) {
         // Оборачиваем TypeSpec. Теперь (-> method 'type 'base-type) сработает сам,
         // потому что у TypeSpec тоже будет свой get_at
         auto base_type = this->type().base_type();
-        return TypeSystem::instance().get_at(Object::make_string(base_type));
+        return TypeSystem::instance().get_at(st, Object::make_string(base_type));
     }
 
     // 3. Флаги состояния (теперь возвращают логический тип)
     if (name == ":inline?")
-        return Object::make_boolean(this->is_inline());
+        return Object::make_boolean(st, this->is_inline());
     if (name == ":dynamic?")
-        return Object::make_boolean(this->is_dynamic());
+        return Object::make_boolean(st, this->is_dynamic());
     if (name == ":array?")
-        return Object::make_boolean(this->is_array());
+        return Object::make_boolean(st, this->is_array());
 
     // 4. Специфичные поля
     if (name == ":array-size") {
@@ -216,7 +217,7 @@ Object Field::get_at(const Object &key) {
 
     auto type = TypeSystem::instance().lookup_type(m_type);
     if (type) {
-        return type->get_at(key);
+        return type->get_at(st, key);
     }
     // Если ключ не найден, возвращаем undefined, чтобы navigation понял, что пути нет
     return Object::make_none();
@@ -281,7 +282,7 @@ bool Type::get_my_last_method(MethodInfo *out) const {
     return false;
 }
 size_t Type::methods_max_id() const {
-    size_t id = -1;
+    int id = -1;
     if (has_new_method())
         id = 0;
     for (auto it = m_methods.rbegin(); it != m_methods.rend(); ++it) {
@@ -440,7 +441,7 @@ std::string Type::runtime_name() const {
     return m_runtime_name;
 }
 
-Object Type::get_at(const Object &key) {
+Object Type::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // Простое сравнение строк — это в разы быстрее, чем поиск в std::map<string, lambda>
@@ -455,17 +456,17 @@ Object Type::get_at(const Object &key) {
     if (name == ":alignment" || name == ":in-memory-alignment")
         return Object::make_integer(this->get_in_memory_alignment());
     if (name == ":boxed?")
-        return Object::make_boolean(this->is_boxed());
+        return Object::make_boolean(st, this->is_boxed());
     if (name == ":methods-count")
         return Object::make_integer(this->get_num_methods());
     if (name == ":has-methods")
-        return Object::make_boolean(this->get_num_methods() > 0);
+        return Object::make_boolean(st, this->get_num_methods() > 0);
     if (name == ":is-reference")
-        return Object::make_boolean(false);
+        return Object::make_boolean(st, false);
 
     // -----------------------------------
     if (name == ":methods") {
-        ListBuilder lb;
+        ListBuilder lb(st);
 
         // 1. Добавляем специальный метод 'new', если он определен
         if (m_new_method_info_defined) {
@@ -484,22 +485,22 @@ Object Type::get_at(const Object &key) {
         return lb.build();
     }
     if (name == ":methods-names") {
-        ListBuilder lb;
+        ListBuilder lb(st);
 
         // 1. Добавляем специальный метод 'new', если он определен
         if (m_new_method_info_defined) {
-            lb.add(Object::make_symbol("new"));
+            lb.add(Object::make_symbol(st, "new"));
         }
 
         // 2. Добавляем все остальные методы из вектора
         for (auto &method : m_methods) {
-            lb.add(Object::make_symbol(method.name.c_str()));
+            lb.add(Object::make_symbol(st, method.name.c_str()));
         }
 
         return lb.build();
     }
     if (name == ":methods-ids") {
-        ListBuilder lb;
+        ListBuilder lb(st);
 
         // 1. Добавляем специальный метод 'new', если он определен
         if (m_new_method_info_defined) {
@@ -599,17 +600,17 @@ std::string NullType::diff_impl(const Type &other) const {
     return (*this == other) ? "" : "NullType comparison failed";
 }
 
-Object NullType::get_at(const Object &key) {
+Object NullType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свои специфичные свойства
     if (name == ":null?") {
-        return Object::make_boolean(true); // Используем boolean вместо integer 1
+        return Object::make_boolean(st, true); // Используем boolean вместо integer 1
     }
 
     // 2. Если это не наше свойство, пробрасываем вызов родителю (Type)
     // Это и есть настоящая мощь наследования в нашей системе аксессоров.
-    return Type::get_at(key);
+    return Type::get_at(st, key);
 }
 
 // ============================================================================
@@ -707,14 +708,14 @@ RegClass ValueType::get_preferred_reg_class() const {
     return m_reg_kind;
 }
 
-Object ValueType::get_at(const Object &key) {
+Object ValueType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфичные поля ValueType
     if (name == ":size")
         return Object::make_integer(this->m_size);
     if (name == ":sign-extend?")
-        return Object::make_boolean(this->m_sign_extend);
+        return Object::make_boolean(st, this->m_sign_extend);
     if (name == ":offset")
         return Object::make_integer(this->m_offset);
 
@@ -725,7 +726,7 @@ Object ValueType::get_at(const Object &key) {
 
     // 2. Если это не наше поле, просим родителя (Type) ответить.
     // Тот проверит "name", "parent", "alignment" и т.д.
-    return Type::get_at(key);
+    return Type::get_at(st, key);
 }
 
 /*!
@@ -755,7 +756,7 @@ bool ValueType::serialize_obj(Archive &ar, Object &data) {
             ar.serialize_obj(&str[0], len.value);
 
             if (type_name == "symbol") {
-                data = Object::make_symbol(str);
+                data = Object::make_symbol(ar.symbol_table(), str);
             } else {
                 data = Object::make_string(str);
             }
@@ -764,7 +765,7 @@ bool ValueType::serialize_obj(Archive &ar, Object &data) {
             // Булево значение - 1 байт
             uint8_t b;
             ar << b;
-            data = Object::make_boolean(b != 0);
+            data = Object::make_boolean(ar.symbol_table(), b != 0);
 
         } else {
             // Числовые типы
@@ -920,14 +921,14 @@ std::string ReferenceType::print() const {
                        m_is_boxed, print_method_info());
 }
 
-Object ReferenceType::get_at(const Object &key) {
+Object ReferenceType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем то, что специфично для ссылок
     if (name == ":heap-base")
         return Object::make_integer(this->heap_base());
     if (name == ":pointer?")
-        return Object::make_boolean(true);
+        return Object::make_boolean(st, true);
     if (name == ":load-size")
         return Object::make_integer(this->get_load_size());
     if (name == "r:eg-class") {
@@ -935,10 +936,10 @@ Object ReferenceType::get_at(const Object &key) {
         return Object::make_string(reg_kind_to_string(this->get_preferred_reg_class()));
     }
     if (name == ":is-reference")
-        return Object::make_boolean(true);
+        return Object::make_boolean(st, true);
     // 2. Если это не наше, просим ответить базовый класс Type
     // Важно: мы ВОЗВРАЩАЕМ результат этого вызова
-    return Type::get_at(key);
+    return Type::get_at(st, key);
 }
 
 bool ReferenceType::serialize_obj(Archive &ar, Object &data) {
@@ -1052,22 +1053,22 @@ void StructureType::override_field_type(const std::string &field_name, const Typ
     }
 }
 
-Object StructureType::get_at(const Object &key) {
+Object StructureType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства структуры (динамическая проверка)
     if (name == ":dynamic?")
-        return Object::make_boolean(this->is_dynamic());
+        return Object::make_boolean(st, this->is_dynamic());
     if (name == ":packed?")
-        return Object::make_boolean(this->is_packed());
+        return Object::make_boolean(st, this->is_packed());
     if (name == ":always-stack-singleton?")
-        return Object::make_boolean(this->is_always_stack_singleton());
+        return Object::make_boolean(st, this->is_always_stack_singleton());
     if (name == ":fields-count")
         return Object::make_integer(this->fields().size());
     if (name == ":first-unique-field-idx")
         return Object::make_integer(this->first_unique_field_idx());
     if (name == ":fields") {
-        ListBuilder lb;
+        ListBuilder lb(st);
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
             // так как HeapObject ожидает владения, но мы его обманем.
@@ -1078,12 +1079,12 @@ Object StructureType::get_at(const Object &key) {
         return lb.build();
     }
     if (name == ":field-names") {
-        ListBuilder lb;
+        ListBuilder lb(st);
         for (auto &field : m_fields) {
             // 1. Приводим к неконстантному указателю (const_cast),
             // так как HeapObject ожидает владения, но мы его обманем.
             // 2. Добавляем лямбду-пустышку [](Field*){}, чтобы shared_ptr ничего не удалял.
-            lb.add(Object::make_symbol(field.name().c_str()));
+            lb.add(Object::make_symbol(st, field.name().c_str()));
         }
         return lb.build();
     }
@@ -1098,8 +1099,9 @@ Object StructureType::get_at(const Object &key) {
     // 2. Если это не "структурное" свойство, передаем запрос родителю.
     // ReferenceType проверит "heap-base", "pointer?", "load-size":
     // Если и он не найдет, запрос уйдет в Type за "name", "size" и т.д.
-    return ReferenceType::get_at(key);
+    return ReferenceType::get_at(st, key);
 }
+
 bool StructureType::serialize_obj(Archive &ar, Object &data) {
     if (ar.is_reading()) {
         // ============================================================
@@ -1124,7 +1126,7 @@ bool StructureType::serialize_obj(Archive &ar, Object &data) {
 
             // Добавляем в property list в формате (:field-name value)
             data = Object::make_pair(
-                Object::make_pair(Object::make_keyword(field.name()),
+                Object::make_pair(Object::make_keyword(ar.symbol_table(), field.name()),
                                   Object::make_pair(field_value, Object::make_null())),
                 data);
         }
@@ -1209,17 +1211,17 @@ std::string BasicType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object BasicType::get_at(const Object &key) {
+Object BasicType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Сначала проверяем свойства, специфичные для BasicType
     if (name == ":final?")
-        return Object::make_boolean(this->final());
+        return Object::make_boolean(st, this->final());
 
     // 2. Если это не наше, пробрасываем запрос ВВЕРХ по цепочке:
     // BasicType -> StructureType -> ReferenceType -> Type
     // ОБЯЗАТЕЛЬНО используем return, чтобы результат прошел обратно к пользователю.
-    return StructureType::get_at(key);
+    return StructureType::get_at(st, key);
 }
 
 /*!
@@ -1249,8 +1251,8 @@ bool BasicType::serialize_obj(Archive &ar, Object &data) {
         }
 
         // Сериализуем сам объект через его тип
-        Object::make_pair(Object::make_keyword("_type_"),
-                          Object::make_pair(Object::make_symbol(type->get_name()), structure_data));
+        Object::make_pair(Object::make_keyword(ar.symbol_table(), "_type_"),
+                          Object::make_pair(Object::make_symbol(ar.symbol_table(), type->get_name()), structure_data));
 
         return true;
     } else {
@@ -1290,7 +1292,7 @@ bool BitField::operator!=(const BitField &other) const {
     return !(*this == other);
 }
 
-Object BitField::get_at(const Object &key) {
+Object BitField::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Прямые свойства BitField
@@ -1301,7 +1303,7 @@ Object BitField::get_at(const Object &key) {
     if (name == ":size")
         return Object::make_integer(this->size());
     if (name == ":skip-decomp?")
-        return Object::make_boolean(this->skip_in_decomp());
+        return Object::make_boolean(st, this->skip_in_decomp());
 
     // 2. Сложные поля (рекурсия через HeapObject)
     if (name == ":type") {
@@ -1363,7 +1365,7 @@ std::string BitFieldType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object BitFieldType::get_at(const Object &key) {
+Object BitFieldType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Проверяем специфику BitFieldType
@@ -1373,7 +1375,7 @@ Object BitFieldType::get_at(const Object &key) {
 
     // 2. Если пользователь хочет получить список всех бит-полей
     if (name == ":fields") {
-        ListBuilder lb;
+        ListBuilder lb(st);
         for (const auto &bf : m_fields) {
             // Создаем HeapObject на BitField.
             // Используем shared_ptr, чтобы объект жил, пока на него ссылается Лисп.
@@ -1387,7 +1389,7 @@ Object BitFieldType::get_at(const Object &key) {
     // 3. Пробрасываем запрос ВВЕРХ: ValueType -> Type
     // Теперь цепочка полная: (-> bitfield-type 'size) придет сюда,
     // поймет что это не fields-count, и уйдет в ValueType.
-    return ValueType::get_at(key);
+    return ValueType::get_at(st, key);
 }
 
 bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
@@ -1434,7 +1436,7 @@ bool BitFieldType::serialize_obj(Archive &ar, Object &data) {
         for (const auto &field : m_fields) {
             uint64_t mask = ((1ULL << field.size()) - 1) << field.offset();
             if ((raw_value & mask) != 0) {
-                flags.push_back(Object::make_symbol(field.name()));
+                flags.push_back(Object::make_symbol(ar.symbol_table(), field.name()));
             }
         }
 
@@ -1570,12 +1572,12 @@ std::string EnumType::diff_impl(const Type &other) const {
     return result;
 }
 
-Object EnumType::get_at(const Object &key) {
+Object EnumType::get_at(SymbolTable* st, const Object &key) {
     std::string name = key.to_std_string();
 
     // 1. Специфические свойства EnumType
     if (name == ":bitfield-enum?")
-        return Object::make_boolean(this->is_bitfield());
+        return Object::make_boolean(st, this->is_bitfield());
     if (name == ":entries-count")
         return Object::make_integer(this->entries().size());
 
@@ -1588,7 +1590,7 @@ Object EnumType::get_at(const Object &key) {
 
     // 3. Если это не мета-свойство и не элемент энума, идем вверх:
     // EnumType -> ValueType -> Type
-    return ValueType::get_at(key);
+    return ValueType::get_at(st, key);
 }
 
 /*!
@@ -1618,7 +1620,7 @@ bool EnumType::serialize_obj(Archive &ar, Object &data) {
         // Преобразуем число в символ если есть имя
         std::string name = get_name_for_value(num);
         if (!name.empty()) {
-            data = Object::make_symbol(name);
+            data = Object::make_symbol(ar.symbol_table(), name);
         } else {
             data = raw_value; // оставляем числом
         }

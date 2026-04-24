@@ -7,6 +7,7 @@
  * lowest-common-ancestor, field access types, and reverse type lookups.
  */
 
+#include "CommonTypes.hpp"
 #include "common/soot/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
@@ -384,7 +385,7 @@ class TypeSystem : public NativeObject {
     // ========================================================================
 
     std::string print() const override {
-        return fmt::format("#<type-system {}>", m_variant.print());
+        return fmt::format("#<type-system {}>", soot_plaform_to_game_name(m_platform));
     }
     soot::Object             inspect(SymbolTable* st) const override;
     std::string              print_all_type_information() const;
@@ -466,7 +467,7 @@ class TypeSystem : public NativeObject {
     // ========================================================================
 
     // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     Object to_alias() {
         return Object::make_heap_obj(shared_from_this());
@@ -476,7 +477,8 @@ class TypeSystem : public NativeObject {
     // Check Arguments
     // ========================================================================
   public:
-    Object build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+    Object build_typespec_from_env(SymbolTable* st,
+                                   const std::shared_ptr<EnvironmentObject> &env,
                                    const Object                             &ret_type_name);
 
   private:
@@ -504,7 +506,7 @@ class TypeSystem : public NativeObject {
     std::vector<std::string>           m_types_allowed_to_be_redefined;
     bool                               m_allow_redefinition = false;
 
-    Object m_variant;
+    SootPlatform m_platform;
 
   public:
     static int verbose;

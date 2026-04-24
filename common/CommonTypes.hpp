@@ -96,7 +96,7 @@ constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET; // 10
 
 enum class SootPlatform { Default, Z80 };
 
-inline const char* version_to_game_name(SootPlatform v) {
+inline const char* soot_plaform_to_game_name(SootPlatform v) {
     switch (v) {
         case SootPlatform::Default:
             return "default";
@@ -105,7 +105,6 @@ inline const char* version_to_game_name(SootPlatform v) {
     }
     throw std::runtime_error("unknown platform");
 }
-  
 
 // ============================================================================
 // Exceptions

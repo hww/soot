@@ -1,7 +1,7 @@
 #include "RelocationTable.hpp"
 
 namespace soot {
-Object RelocationTable::get_at(const Object &key) {
+Object RelocationTable::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -15,11 +15,11 @@ Object RelocationTable::get_at(const Object &key) {
             std::vector<Object> reloc_list;
             for (const auto &reloc : m_relocations) {
                 reloc_list.push_back(pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword(m_st, "offset"),
+                    pretty_print::build_list(Object::make_keyword(st, "offset"),
                                              Object::make_integer(reloc.offset)),
-                    pretty_print::build_list(Object::make_keyword(m_st, "type"),
+                    pretty_print::build_list(Object::make_keyword(st, "type"),
                                              Object::make_integer(static_cast<int>(reloc.type))),
-                    pretty_print::build_list(Object::make_keyword(m_st, "target"),
+                    pretty_print::build_list(Object::make_keyword(st, "target"),
                                              Object::make_string(reloc.target_name))));
             }
             return Object::make_list(reloc_list);
@@ -34,11 +34,11 @@ Object RelocationTable::get_at(const Object &key) {
         if (idx < m_relocations.size()) {
             const auto &reloc = m_relocations[idx];
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword(m_st, "offset"),
+                pretty_print::build_list(Object::make_keyword(st, "offset"),
                                          Object::make_integer(reloc.offset)),
-                pretty_print::build_list(Object::make_keyword(m_st, "type"),
+                pretty_print::build_list(Object::make_keyword(st, "type"),
                                          Object::make_integer(static_cast<int>(reloc.type))),
-                pretty_print::build_list(Object::make_keyword(m_st, "target"),
+                pretty_print::build_list(Object::make_keyword(st, "target"),
                                          Object::make_string(reloc.target_name)));
         }
     }
@@ -46,7 +46,9 @@ Object RelocationTable::get_at(const Object &key) {
     throw std::runtime_error(fmt::format("RelocationTable: unknown key {}", key.print()));
 }
 
-void RelocationTable::set_at(const Object &key, const Object &value) {
+void RelocationTable::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    (void)st;
+
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 

@@ -106,9 +106,9 @@ class TypeSpec : public NativeObject {
         return m_type;
     }
 
-    Object to_sexpr_typspec() const;
-    Object to_sexpr_type_names() const;
-    Object to_sexpr_type_objects() const;
+    Object to_sexpr_typspec(SymbolTable* st) const;
+    Object to_sexpr_type_names(SymbolTable* st) const;
+    Object to_sexpr_type_objects(SymbolTable* st) const;
     void   append_to_sexpr(ListBuilder &builder, int mode) const;
 
     bool                        has_single_arg() const;
@@ -127,7 +127,7 @@ class TypeSpec : public NativeObject {
         return m_tags;
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
     Type  *get() const;
 
   private:

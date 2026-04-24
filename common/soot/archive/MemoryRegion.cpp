@@ -2,7 +2,8 @@
 #include <fstream>
 
 namespace soot {
-Object MemoryRegion::get_at(const Object &key) {
+Object MemoryRegion::get_at(SymbolTable* st, const Object &key) {
+    (void)st;
     // Системные свойства
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
@@ -33,7 +34,8 @@ Object MemoryRegion::get_at(const Object &key) {
     throw std::runtime_error(fmt::format("MemoryRegion: unknown key {}", key.print()));
 }
 
-void MemoryRegion::set_at(const Object &key, const Object &value) {
+void MemoryRegion::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    (void)st;
     // Доступ по смещению
     if (key.is_integer()) {
         size_t offset = key.as_integer() - base();

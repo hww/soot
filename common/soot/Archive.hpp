@@ -14,12 +14,12 @@ namespace soot {
 class Archive : public NativeObject {
   public:
     // Archive interface.
-    Archive()
+    Archive(SymbolTable* st)
         : m_version(0), m_is_reading(false), m_is_writing(false), m_is_persistent(false),
-          m_is_error(false) {}
-    Archive(bool is_loading, bool is_saving, bool presistant)
+          m_is_error(false), m_symbol_table(st) {}
+    Archive(SymbolTable* st, bool is_loading, bool is_saving, bool presistant)
         : m_version(0), m_is_reading(is_loading), m_is_writing(is_saving),
-          m_is_persistent(presistant), m_is_error(false) {}
+          m_is_persistent(presistant), m_is_error(false), m_symbol_table(st) {}
     virtual ~Archive();
 
     virtual void serialize_obj(void *v, int length);
@@ -133,6 +133,7 @@ class Archive : public NativeObject {
         return ar;
     }
 
+    SymbolTable* symbol_table() { return m_symbol_table; }
   protected:
     // Status variables.
     int  m_version;
@@ -141,6 +142,7 @@ class Archive : public NativeObject {
     bool m_is_persistent;
     bool m_is_error;
     bool is_big_endian;
+    SymbolTable* m_symbol_table;
 };
 /*!
  * Class for serializing objects in a compactly, mapping small values

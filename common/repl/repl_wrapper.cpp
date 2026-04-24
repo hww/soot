@@ -12,7 +12,9 @@
 #include "third_party/replxx/include/replxx.hxx"
 #include "common/versions/revision.h"
 
+#ifndef FMT_CONSTEVAL
 #define FMT_CONSTEVAL
+#endif
 
 using namespace file_util;
 
@@ -103,7 +105,7 @@ void Wrapper::add_to_history(const std::string& line) {
 void Wrapper::save_history() {
   fs::path path;
   if (repl_config.per_game_history) {
-    path = file_util::get_path(PathType::CACHE) / version_to_game_name(repl_config.game_version) /
+    path = file_util::get_path(PathType::CACHE) / soot_plaform_to_game_name(repl_config.game_version) /
            ".opengoal.repl.history";
   } else {
     path = file_util::get_path(PathType::CONFIG) / ".opengoal.repl.history";
@@ -115,7 +117,7 @@ void Wrapper::save_history() {
 void Wrapper::load_history() {
   fs::path path;
   if (repl_config.per_game_history) {
-    path = file_util::get_path(PathType::CACHE) / version_to_game_name(repl_config.game_version) /
+    path = file_util::get_path(PathType::CACHE) / soot_plaform_to_game_name(repl_config.game_version) /
            ".opengoal.repl.history";
   } else {
     path = file_util::get_path(PathType::CONFIG) / ".opengoal.repl.history";
@@ -255,9 +257,10 @@ std::string find_repl_username() {
 }
 
 fs::path get_startup_file_path(const std::string& username, const SootPlatform game_version) {
+  (void)username;
   // Сначала проверяем специфичный для версии файл в CONFIG
   auto game_specific_path = file_util::get_path(file_util::PathType::CONFIG) / 
-                            fmt::format("startup-{}.sot", version_to_game_name(game_version));
+                            fmt::format("startup-{}.sot", soot_plaform_to_game_name(game_version));
   if (file_util::exists(game_specific_path)) {
     return game_specific_path;
   }

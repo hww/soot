@@ -47,7 +47,8 @@ struct MemoryLabel : public NativeObject {
         return builder.build();
     }
 
-    Object get_at(const Object &key) override {
+    Object get_at(SymbolTable* st, const Object &key) override {
+        (void)st;
         if (key.is_symbol() || key.is_string()) {
             std::string key_str = key.to_std_string();
             if (key_str == ":name") {
@@ -137,17 +138,17 @@ struct MemoryLabel : public NativeObject {
 class LabelTable : public NativeObject {
   private:
     std::unordered_map<std::string, std::shared_ptr<MemoryLabel>> m_labels;
-    SymbolTable* m_st;
+   
   public:
-    LabelTable(SymbolTable* st) : m_st(st) {}
+    LabelTable() {}
     ~LabelTable() {}
 
     // ============================================================
     // NativeObject implementation
     // ============================================================
 
-    Object get_at(const Object &key) override;
-    void   set_at(const Object &key, const Object &value) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
+    void   set_at(SymbolTable* st, const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "label-table";

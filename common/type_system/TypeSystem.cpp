@@ -1,5 +1,6 @@
 #include "common/type_system/TypeSystem.hpp"
 #include "CommonTypes.hpp"
+#include "soot/Object.hpp"
 #include "util/StringIdHash.hpp"
 #include "common/soot/ListBuilder.hpp"
 #include "common/soot/Printer.hpp"
@@ -1055,7 +1056,7 @@ void TypeSystem::add_builtin_types_pc() {
     TypeConfig::struct_array_stride_alignment = 16;
     TypeConfig::struct_array_start_alignment = 16;
     TypeConfig::basic_array_start_alignment = 16;
-    m_variant = Object::make_symbol("default");
+    m_platform = SootPlatform::Default;
 
     // Проверяем что базовые типы еще не инициализированы
     if (!m_types.empty() && m_types.find("object") != m_types.end()) {
@@ -1233,7 +1234,7 @@ void TypeSystem::add_builtin_types_z80() {
     TypeConfig::struct_array_stride_alignment = 2;
     TypeConfig::struct_array_start_alignment = 2;
     TypeConfig::basic_array_start_alignment = 2;
-    m_variant = Object::make_symbol("z80");
+    m_platform = SootPlatform::Z80;
 
     // 1. Технические типы
     add_type("none", std::make_unique<NullType>("none"));
@@ -2266,9 +2267,9 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 // Aliases
 // ============================================================================
 
-Object TypeSystem::get_at(const Object &key) {
+Object TypeSystem::get_at(SymbolTable* st, const Object &key) {
     // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = HeapObject::get_at(key);
+    Object base_attempt = HeapObject::get_at(st, key);
 
     if (!base_attempt.is_none())
         return base_attempt;
@@ -2284,7 +2285,7 @@ Object TypeSystem::get_at(const Object &key) {
     }
 
     if (name == ":variant") {
-        return m_variant;
+        return Object::make_string(soot_plaform_to_game_name(m_platform));
     }
 
     if (name == ":types-count") {
@@ -2296,9 +2297,9 @@ Object TypeSystem::get_at(const Object &key) {
     }
 
     if (name == ":types") {
-        ListBuilder lb{};
+        ListBuilder lb(st);
         for (auto &kv : m_types) {
-            lb.push_back(Object::make_symbol(kv.first));
+            lb.push_back(Object::make_symbol(st, kv.first));
         }
         return lb.build();
     }
@@ -2323,7 +2324,9 @@ Object TypeSystem::get_at(const Object &key) {
 // Вспомогательная функция для рекурсивного поиска
 namespace {
 
-void find_field_access_paths(const TypeSystem *ts, const StructureType *type, int target_offset,
+void find_field_access_paths(const TypeSystem                      *ts, 
+                             const StructureType                   *type, 
+                             int                                    target_offset,
                              const ReverseLookupNode               *current_path,
                              std::vector<FieldReverseLookupOutput> &results, int depth = 0) {
 
@@ -2584,9 +2587,9 @@ std::string FieldReverseLookupOutput::Token::print() const {
     }
 }
 
-soot::Object TypeSystem::inspect() const {
-    return soot::pretty_print::build_list(Object::make_symbol("type-system"),
-                                            Object::make_symbol(":size"),
+soot::Object TypeSystem::inspect(SymbolTable* st) const {
+    return soot::pretty_print::build_list(Object::make_symbol(st, "type-system"),
+                                            Object::make_symbol(st, ":size"),
                                             Object::make_integer(m_types.size()));
 }
 
@@ -2594,7 +2597,8 @@ soot::Object TypeSystem::inspect() const {
 // argument Checket
 // ============================================================================
 
-Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+Object TypeSystem::build_typespec_from_env(SymbolTable* st,
+                                           const std::shared_ptr<EnvironmentObject> &env,
                                            const Object                             &ret_type) {
     auto entries = env->vars.get_all_entries();
 
@@ -2631,11 +2635,11 @@ Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObje
     for (int i = max_idx; i >= 0; --i) {
         Object t = ordered_args[i];
         if (t.is_none())
-            t = Object::make_symbol("object");
+            t = Object::make_symbol(st, "object");
         args_list = Object::make_pair(t, args_list);
     }
 
-    Object func_spec_form = Object::make_pair(Object::make_symbol("function"), args_list);
+    Object func_spec_form = Object::make_pair(Object::make_symbol(st, "function"), args_list);
 
     // 4. Парсим
     TypeSpec ts = parse_typespec(this, func_spec_form);

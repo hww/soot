@@ -115,7 +115,7 @@ class Reader {
 
     Object read_list(TextStream &ts, bool expect_close_paren = true, std::string terminator = ")",
                      EvalCallback eval_callback = nullptr);
-
+    SymbolTable& symbol_table() { return m_symbols; }
   private:
     // Внутренние методы как у них:
     Object internal_read(std::shared_ptr<SourceText> text, bool check_encoding,

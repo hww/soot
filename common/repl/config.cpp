@@ -66,8 +66,8 @@ void from_json(const json& j, Config& obj) {
     j.at("permissiveRedefinitions").get_to(obj.permissive_redefinitions);
   }
   // if there is game specific configuration, override any values we just set
-  if (j.contains(version_to_game_name(obj.game_version))) {
-    from_json(j.at(version_to_game_name(obj.game_version)), obj);
+  if (j.contains(soot_plaform_to_game_name(obj.game_version))) {
+    from_json(j.at(soot_plaform_to_game_name(obj.game_version)), obj);
   }
 }
 

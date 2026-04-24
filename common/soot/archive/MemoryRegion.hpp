@@ -23,10 +23,9 @@ class MemoryRegion : public NativeObject {
   private:
     std::vector<uint8_t> m_data;
     uint32_t             m_base; // виртуальный базовый адрес (origin)
-    SymbolTable*         m_st;
   public:
-    MemoryRegion(SymbolTable* st) : m_data(0, 0), m_base(0), m_st(st) {}
-    MemoryRegion(SymbolTable* st, size_t size, uint32_t base = 0) : m_data(size, 0), m_base(base), m_st(st) {}
+    MemoryRegion() : m_data(0, 0), m_base(0) {}
+    MemoryRegion(size_t size, uint32_t base = 0) : m_data(size, 0), m_base(base) {}
 
     // Доступ к данным (как было)
     uint8_t *data() {
@@ -104,8 +103,8 @@ class MemoryRegion : public NativeObject {
     // NativeObject implementation
     // ============================================================
 
-    Object get_at(const Object &key) override;
-    void   set_at(const Object &key, const Object &value) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
+    void   set_at(SymbolTable* st, const Object &key, const Object &value) override;
 
     // Object interface
     std::string class_name() const override {

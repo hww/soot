@@ -1,10 +1,11 @@
 #include "Register.hpp"
 #include "common/soot/ListBuilder.hpp"
 #include "TypeSystem.hpp"
+#include "soot/Object.hpp"
 
 namespace soot {
 
-Object Register::get_at(const Object &key) {
+Object Register::get_at(SymbolTable* st, const Object &key) {
 
     if (type_name.is_none()) {
         throw std::runtime_error("Register expects non empt type field");
@@ -30,7 +31,7 @@ Object Register::get_at(const Object &key) {
             return this->type_name;
 
         if (name == ":type")
-            return TypeSystem::instance().get_at(type_name);
+            return TypeSystem::instance().get_at(st, type_name);
 
         Type *type_ptr = TypeSystem::instance().lookup_type(type_name.to_std_string());
 
@@ -41,7 +42,7 @@ Object Register::get_at(const Object &key) {
                 auto next_step = std::make_shared<Register>();
                 next_step->reg = this->reg;
                 next_step->type_name =
-                    Object::make_symbol(field_type_name); // Переходим к типу поля
+                    Object::make_symbol(st, field_type_name); // Переходим к типу поля
                 next_step->offset = this->offset + field.offset();
                 // получить размер поля
                 auto bt = TypeSystem::instance().lookup_type(field_type_name);
@@ -55,7 +56,7 @@ Object Register::get_at(const Object &key) {
             if (bit_ptr->lookup_field(name, &bf)) {
                 auto next_step = std::make_shared<Register>();
                 next_step->reg = this->reg;
-                next_step->type_name = Object::make_symbol(bf.type().base_type());
+                next_step->type_name = Object::make_symbol(st, bf.type().base_type());
 
                 // bf.offset() — это абсолютный бит от начала структуры
                 // Итоговое байтовое смещение:
@@ -85,12 +86,12 @@ Object Register::get_at(const Object &key) {
                     next_step->offset = this->offset + (total_bit_offset / 8);
                     next_step->bit_offset = total_bit_offset % 8;
                     next_step->bit_size = 1;
-                    next_step->type_name = Object::make_symbol("bool"); // Флаг всегда булев
+                    next_step->type_name = Object::make_symbol(st, "bool"); // Флаг всегда булев
                 } else {
                     // Если это не битфилд, это просто константа,
                     // но мы всё равно можем вернуть алиас на это значение
                     next_step->offset = this->offset;
-                    next_step->type_name = Object::make_symbol(enum_ptr->get_name());
+                    next_step->type_name = Object::make_symbol(st, enum_ptr->get_name());
                 }
                 return Object::make_heap_obj(next_step);
             }
@@ -131,8 +132,8 @@ Object Register::get_at(const Object &key) {
     return Object::make_none();
 }
 
-Object Register::inspect() const {
-    ListBuilder lb;
+Object Register::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
     lb.add_symbol("reg-alias");
     lb.add_key_value("name", name);
     lb.add_key_value("physical-reg", reg);

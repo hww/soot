@@ -123,7 +123,7 @@ class MethodInfo : public NativeObject {
         return builder.build();
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 };
 
 // ============================================================================
@@ -222,7 +222,7 @@ class Field : public NativeObject {
         m_decomp_as_ts = ts;
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
   private:
     friend class TypeSystem;
@@ -302,7 +302,7 @@ class BitField : public NativeObject {
     }
     std::string diff(const BitField &other) const;
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
   private:
     TypeSpec    m_type;
@@ -368,7 +368,7 @@ class Type : public NativeObject {
     }
 
     std::string diff(const Type &other) const;
-    Object      get_at(const Object &key) override;
+    Object      get_at(SymbolTable* st, const Object &key) override;
 
     // Method system
     bool              get_my_method(const std::string &name, MethodInfo *out) const;
@@ -518,7 +518,7 @@ class NullType : public Type {
     }
     bool operator==(const Type &other) const override;
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override {
         (void)ar;
@@ -570,7 +570,7 @@ class ValueType : public Type {
 
     void inherit(const ValueType *parent);
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 
@@ -621,7 +621,7 @@ class ReferenceType : public Type {
         return builder.build();
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 
@@ -714,7 +714,7 @@ class StructureType : public ReferenceType {
     }
     void override_field_type(const std::string &field_name, const TypeSpec &new_type);
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 
@@ -787,7 +787,7 @@ class BasicType : public StructureType {
         m_final = true;
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 
@@ -828,7 +828,7 @@ class BitFieldType : public ValueType {
         m_generate_inspect = gen_inspect;
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 
@@ -873,7 +873,7 @@ class EnumType : public ValueType {
 
     std::string get_name_for_value(int64_t value) const;
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
     bool serialize_obj(Archive &ar, Object &data) override;
 

@@ -2,7 +2,7 @@
 
 namespace soot {
 
-Object MemorySymbolTable::get_at(const Object &key) {
+Object MemorySymbolTable::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -17,11 +17,11 @@ Object MemorySymbolTable::get_at(const Object &key) {
         if (idx) {
             // Возвращаем информацию о символе
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword(m_st, "name"),
+                pretty_print::build_list(Object::make_keyword(st, "name"),
                                          Object::make_string(get_name(*idx))),
-                pretty_print::build_list(Object::make_keyword(m_st, "crc32"),
+                pretty_print::build_list(Object::make_keyword(st, "crc32"),
                                          Object::make_integer(get_crc32(*idx))),
-                pretty_print::build_list(Object::make_keyword(m_st, "index"),
+                pretty_print::build_list(Object::make_keyword(st, "index"),
                                          Object::make_integer(*idx)));
         }
 
@@ -30,9 +30,9 @@ Object MemorySymbolTable::get_at(const Object &key) {
             size_t idx = key.as_integer();
             if (idx < m_symbols.size()) {
                 return pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword(m_st, "name"),
+                    pretty_print::build_list(Object::make_keyword(st, "name"),
                                              Object::make_string(m_symbols[idx].name)),
-                    pretty_print::build_list(Object::make_keyword(m_st, "crc32"),
+                    pretty_print::build_list(Object::make_keyword(st, "crc32"),
                                              Object::make_integer(m_symbols[idx].crc32)));
             }
         }
@@ -43,7 +43,8 @@ Object MemorySymbolTable::get_at(const Object &key) {
     throw std::runtime_error(fmt::format("MemorySymbolTable: unknown key {}", key.print()));
 }
 
-void MemorySymbolTable::set_at(const Object &key, const Object &value) {
+void MemorySymbolTable::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    (void)st;
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 

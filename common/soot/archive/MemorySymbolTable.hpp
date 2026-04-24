@@ -70,17 +70,17 @@ class MemorySymbolTable : public NativeObject {
     std::vector<SymbolEntry>             m_symbols;
     std::string                          m_string_pool;
     std::unordered_map<uint32_t, size_t> m_crc_to_index;
-    SymbolTable*                         m_st;
+
   public:
 
-    MemorySymbolTable(SymbolTable* st) : m_st(st) {}
-    
+    MemorySymbolTable() {}
+
     // ============================================================
     // MativeObject implementation
     // ============================================================
 
-    Object get_at(const Object &key) override;
-    void   set_at(const Object &key, const Object &value) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
+    void   set_at(SymbolTable* st, const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "memory-symbol-table";

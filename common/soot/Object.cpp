@@ -301,10 +301,10 @@ void Object::throw_type_error(const std::string &expected) const {
                              object_type_to_string(type));
 }
 
-Object Object::step(const Object &key) const {
+Object Object::step(SymbolTable* st, const Object &key) const {
     // Для всего, что живет в куче (HeapObject, Cell, Buffer, Array, String)
     if (this->heap_obj) {
-        return this->heap_obj->get_at(key);
+        return this->heap_obj->get_at(st, key);
     }
 
     throw std::runtime_error(
@@ -338,15 +338,15 @@ void Object::for_each_in_list(const Object &list, const std::function<void(const
 
 // 1. Для оператора (-> base key)
 // По умолчанию объект не дает в себя "зайти".
-Object HeapObject::get_at(const Object &key) {
-    (void)key;
+Object HeapObject::get_at(SymbolTable* st, const Object &key) {
+    (void)key;(void)st;
     // Ошибку "Object is not navigable" должен бросать сам ИНТЕРПРЕТАТОР,
     // если после всех попыток он получил undefined.
     return Object::make_none();
 }
 
-void HeapObject::set_at(const Object &key, const Object &value) {
-    Object target = this->get_at(key);
+void HeapObject::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    Object target = this->get_at(st, key);
     if (target.is_pointer())
         target.as_pointer()->set(value);
 }
@@ -1132,7 +1132,8 @@ void Pointer::set(const Object &val) {
     throw std::runtime_error("Unsupported memory write for type: " + m_type);
 }
 
-Object Pointer::get_at(const Object &key) {
+Object Pointer::get_at(SymbolTable* st, const Object &key) {
+    (void)st;
     if (key.is_integer()) {
         size_t element_size = get_primitive_size(m_type);
         if (element_size == 0) {
@@ -1149,9 +1150,9 @@ Object Pointer::get_at(const Object &key) {
     throw std::runtime_error("Pointer step accessor requires an integer offset");
 }
 
-void Pointer::set_at(const Object &key, const Object &value) {
+void Pointer::set_at(SymbolTable* st, const Object &key, const Object &value) {
     // 1. Создаем временный указатель на нужный оффсет/поле
-    Object target = this->get_at(key);
+    Object target = this->get_at(st, key);
 
     // 2. Если шаг успешен, пишем значение по новому адресу
     if (target.is_pointer()) {

@@ -218,7 +218,7 @@ class Object {
     static InternedSymbolPtr intern(SymbolTable* st, const char *name);
 
     // адресация к объекту -> key
-    Object step(const Object &key) const;
+    Object step(SymbolTable * st, const Object &key) const;
 
     // Constructors for fixed types
     static Object make_none();
@@ -703,8 +703,8 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
         return false;
     }
 
-    virtual Object get_at(const Object &key);
-    virtual void   set_at(const Object &key, const Object &val);
+    virtual Object get_at(SymbolTable* st, const Object &key);
+    virtual void   set_at(SymbolTable* st, const Object &key, const Object &val);
 
     virtual uint32_t as_crc32() {
         return 0;
@@ -738,8 +738,8 @@ class NativeObject : public HeapObject {
         return name == NativeObject::type_name_obj();
     }
 
-    virtual Object get_at(const Object &key) override { (void)key; return Object::make_none(); }
-    virtual void   set_at(const Object &key, const Object &val) override { (void)key;(void)val; }
+    virtual Object get_at(SymbolTable*, const Object &key) override { (void)key; return Object::make_none(); }
+    virtual void   set_at(SymbolTable*, const Object &key, const Object &val) override { (void)key;(void)val; }
 
     void serialize(Archive &ar) override {
         (void)ar;
@@ -768,7 +768,8 @@ class PairObject : public HeapObject {
         return count;
     }
 
-    Object get_at(const Object &key) override {
+    Object get_at(SymbolTable* st, const Object &key) override {
+        (void)st;
         if (key.is_integer()) {
             int index = key.as_integer();
             if (index < 0)
@@ -978,7 +979,8 @@ class ArrayObject : public HeapObject {
         return true;
     }
 
-    Object get_at(const Object &key) override {
+    Object get_at(SymbolTable* st, const Object &key) override {
+        (void)st;
         if (key.is_integer()) {
             int index = key.as_integer();
             if (index >= 0 && index < static_cast<int>(data.size())) {
@@ -988,7 +990,8 @@ class ArrayObject : public HeapObject {
         return Object::make_none();
     }
 
-    void set_at(const Object &key, const Object &val) override {
+    void set_at(SymbolTable* st, const Object &key, const Object &val) override {
+        (void)st;
         if (key.is_integer()) {
             int index = key.as_integer();
             if (index >= 0 && index < static_cast<int>(data.size())) {
@@ -1099,7 +1102,8 @@ class HashTableObject : public HeapObject {
         return true;
     }
 
-    Object get_at(const Object &key) override {
+    Object get_at(SymbolTable* st, const Object &key) override {
+        (void)st;        
         if (key.is_symbol() || key.is_string()) {
             auto skey = key.to_std_string();
             return data[skey];
@@ -1107,7 +1111,8 @@ class HashTableObject : public HeapObject {
         return Object::make_none();
     }
 
-    void set_at(const Object &key, const Object &val) override {
+    void set_at(SymbolTable* st, const Object &key, const Object &val) override {
+        (void)st;        
         if (key.is_string()) {
             data[key.to_std_string()] = val;
         }
@@ -1702,8 +1707,8 @@ class Pointer : public HeapObject {
         return m_type;
     };
 
-    Object         get_at(const Object &key) override;
-    void           set_at(const Object &key, const Object &val) override;
+    Object         get_at(SymbolTable* st, const Object &key) override;
+    void           set_at(SymbolTable* st, const Object &key, const Object &val) override;
     virtual Object get();
     virtual void   set(const Object &val);
     virtual Object deref() {

@@ -26,8 +26,8 @@ class MemoryArchive : public Archive {
      * @param loading true - чтение, false - запись
      * @param version версия формата (по умолчанию 0)
      */
-    MemoryArchive(std::shared_ptr<MemoryRegion> region, bool loading, bool saving, int persistant)
-        : m_region(region), m_position(0) {
+    MemoryArchive(SymbolTable* st, std::shared_ptr<MemoryRegion> region, bool loading, bool saving, int persistant)
+        : Archive(st), m_region(region), m_position(0) {
         m_version = VERSION;
         m_is_reading = loading;
         m_is_writing = saving;
@@ -42,21 +42,21 @@ class MemoryArchive : public Archive {
         is_big_endian = (test.c[0] == 1);
     }
 
-    static MemoryArchive for_writing(std::shared_ptr<MemoryRegion> region,
+    static MemoryArchive for_writing(SymbolTable* st, std::shared_ptr<MemoryRegion> region,
                                      bool                          persistant = false) {
-        MemoryArchive ar(region, false, true, persistant);
+        MemoryArchive ar(st, region, false, true, persistant);
         return ar;
     }
 
-    static MemoryArchive for_reading(std::shared_ptr<MemoryRegion> region,
+    static MemoryArchive for_reading(SymbolTable* st, std::shared_ptr<MemoryRegion> region,
                                      bool                          persistant = false) {
-        MemoryArchive ar(region, true, false, persistant);
+        MemoryArchive ar(st, region, true, false, persistant);
         return ar;
     }
 
-    Object get_at(const Object &key) override;
+    Object get_at(SymbolTable* st, const Object &key) override;
 
-    void set_at(const Object &key, const Object &value) override;
+    void set_at(SymbolTable* st, const Object &key, const Object &value) override;
 
     std::string class_name() const override {
         return "memory-archive";

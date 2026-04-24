@@ -1,7 +1,8 @@
 #include "LabelTable.hpp"
 
 namespace soot {
-Object LabelTable::get_at(const Object &key) {
+Object LabelTable::get_at(SymbolTable* st, const Object &key) {
+    (void)st;
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 
@@ -68,7 +69,8 @@ Object LabelTable::get_at(const Object &key) {
     throw std::runtime_error(fmt::format("LabelTable: unknown key {}", key.print()));
 }
 
-void LabelTable::set_at(const Object &key, const Object &value) {
+void LabelTable::set_at(SymbolTable* st, const Object &key, const Object &value) {
+    (void)st;(void)value;
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();
 

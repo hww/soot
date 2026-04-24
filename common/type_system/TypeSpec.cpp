@@ -305,7 +305,7 @@ Type *TypeSpec::get() const {
     return TypeSystem::instance().lookup_type(base_type());
 }
 
-Object TypeSpec::get_at(const Object &key) {
+Object TypeSpec::get_at(SymbolTable* st, const Object &key) {
 
     auto name = key.to_std_string();
     // 1. Имя базового типа (например, "pointer")
@@ -322,19 +322,19 @@ Object TypeSpec::get_at(const Object &key) {
     if (name == ":args-type-specs") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
-        return to_sexpr_typspec();
+        return to_sexpr_typspec(st);
     }
 
     if (name == ":args-type-names") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
-        return to_sexpr_type_names();
+        return to_sexpr_type_names(st);
     }
 
     if (name == ":args-types") {
         // Здесь можно либо вернуть список, либо специальный объект-итератор.
         // Пока оставим заглушку или вернем строку для отладки.
-        return to_sexpr_type_objects();
+        return to_sexpr_type_objects(st);
     }
 
     // 4. Количество тегов
@@ -354,11 +354,11 @@ Object TypeSpec::get_at(const Object &key) {
     }
 
     if (name == ":type") {
-        return TypeSystem::instance().get_at(Object::make_string(base_type()));
+        return TypeSystem::instance().get_at(st, Object::make_string(base_type()));
     }
 
     // Если ключ — символ (например, 'base-type), используем стандартную карту HeapObject
-    Object meta = HeapObject::get_at(key);
+    Object meta = HeapObject::get_at(st, key);
 
     if (!meta.is_none())
         return meta;
@@ -371,15 +371,15 @@ Object TypeSpec::get_at(const Object &key) {
 }
 
 // Вспомогательная функция для преобразования TypeSpec
-Object TypeSpec::inspect() const {
+Object TypeSpec::inspect(SymbolTable* st) const {
     std::vector<Object> list_elements;
-    list_elements.push_back(Object::make_symbol("type-spec"));
+    list_elements.push_back(Object::make_symbol(st, "type-spec"));
     if (base_type() == "none" || base_type().empty()) {
         list_elements.push_back(Object::make_null());
         return pretty_print::build_list(list_elements);
     }
 
-    Object base = Object::make_symbol(base_type());
+    Object base = Object::make_symbol(st, base_type());
 
     // Если нет ни аргументов, ни тегов — возвращаем просто символ (атом)
     if (get_args_count() == 0 && get_tags_count() == 0) {
@@ -392,27 +392,27 @@ Object TypeSpec::inspect() const {
 
     // 1. Добавляем вложенные TypeSpec (аргументы)
     for (size_t i = 0; i < get_args_count(); ++i) {
-        list_elements.push_back(get_arg(i).inspect());
+        list_elements.push_back(get_arg(i).inspect(st));
     }
 
     // 2. Добавляем теги в формате :key value
     for (const auto &tag : get_tags()) {
         // Превращаем имя тега в ключевое слово (например, "foo" -> ":foo")
         std::string keyword = ":" + tag.name;
-        list_elements.push_back(Object::make_symbol(keyword));
+        list_elements.push_back(Object::make_symbol(st, keyword));
 
         // Значение тега (предполагаем, что это может быть имя типа или строка)
         // Если значение выглядит как число, можно было бы парсить,
         // но пока оставим как символ/строку для простоты
-        list_elements.push_back(Object::make_symbol(tag.value));
+        list_elements.push_back(Object::make_symbol(st, tag.value));
     }
 
     return pretty_print::build_list(list_elements);
 }
 
 // 1) S-expression с TypeSpec объектами
-Object TypeSpec::to_sexpr_typspec() const {
-    ListBuilder builder;
+Object TypeSpec::to_sexpr_typspec(SymbolTable* st) const {
+    ListBuilder builder(st);
     builder.add(
         Object::make_heap_obj(std::make_shared<TypeSpec>(*this) // Создаем копию как HeapObject
                               ));
@@ -423,7 +423,7 @@ Object TypeSpec::to_sexpr_typspec() const {
     // Рекурсивно добавляем аргументы
     if (m_arguments) {
         for (const auto &arg : *m_arguments) {
-            builder.add(arg.to_sexpr_typspec());
+            builder.add(arg.to_sexpr_typspec(st));
         }
     }
 
@@ -431,14 +431,14 @@ Object TypeSpec::to_sexpr_typspec() const {
 }
 
 // 2) S-expression с именами типов (как строки/символы)
-Object TypeSpec::to_sexpr_type_names() const {
-    ListBuilder builder;
+Object TypeSpec::to_sexpr_type_names(SymbolTable* st) const {
+    ListBuilder builder(st);
     builder.add_symbol(m_type);
 
     // Рекурсивно добавляем аргументы
     if (m_arguments) {
         for (const auto &arg : *m_arguments) {
-            builder.add(arg.to_sexpr_type_names());
+            builder.add(arg.to_sexpr_type_names(st));
         }
     }
 
@@ -446,18 +446,18 @@ Object TypeSpec::to_sexpr_type_names() const {
 }
 
 // 3) S-expression с Type объектами (обертки для типов)
-Object TypeSpec::to_sexpr_type_objects() const {
-    ListBuilder builder;
+Object TypeSpec::to_sexpr_type_objects(SymbolTable* st) const {
+    ListBuilder builder(st);
 
     // Создаем объект, представляющий тип (может быть отдельный класс Type)
     // Предполагаем, что есть функция или конструктор make_type()
-    auto type = TypeSystem::instance().get_at(Object::make_string(m_type));
+    auto type = TypeSystem::instance().get_at(st, Object::make_string(m_type));
     builder.add(type);
 
     // Рекурсивно добавляем аргументы
     if (m_arguments) {
         for (const auto &arg : *m_arguments) {
-            builder.add(arg.to_sexpr_type_objects());
+            builder.add(arg.to_sexpr_type_objects(st));
         }
     }
 
@@ -474,7 +474,7 @@ void TypeSpec::append_to_sexpr(ListBuilder &builder, int mode) const {
         builder.add_symbol(m_type);
         break;
     case 2: // Type objects
-        auto type = TypeSystem::instance().get_at(Object::make_string(m_type));
+        auto type = TypeSystem::instance().get_at(builder.st, Object::make_string(m_type));
         builder.add(type);
         break;
     }

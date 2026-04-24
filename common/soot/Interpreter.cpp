@@ -26,6 +26,7 @@
 
 #include "common/CommonTypes.hpp"
 #include "common/versions/revision.h"
+#include "soot/archive/MemoryArchive.hpp"
 #include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
 #include <filesystem>
@@ -4336,7 +4337,7 @@ Object Interpreter::eval_get_at(const Object &form, Arguments &args,
     }
 
     // Вызываем виртуальный метод объекта
-    Object result = target.as_heap_obj()->get_at(key);
+    Object result = target.as_heap_obj()->get_at(&m_symbol_table, key);
 
     // Если ключ не найден (объект вернул undefined)
     if (result.is_none()) {
@@ -4367,7 +4368,7 @@ Object Interpreter::eval_set_at(const Object &form, Arguments &args,
         // Вызываем виртуальный метод.
         // Если это StaticBuffer — запишется в память.
         // Если HashTable — запишется в мапу.
-        target.as_heap_obj()->set_at(key, value);
+        target.as_heap_obj()->set_at(&m_symbol_table, key, value);
     } else {
         throw_eval_error(form, "set-at!: target must be a heap object (buffer, table, etc)");
     }
@@ -5789,7 +5790,7 @@ Object Interpreter::eval_deref(const Object &form, Arguments &args,
         try {
             // Метод step теперь полиморфен: он знает, как работать
             // и с TypeObject, и с HeapObject/Pointer.
-            Object next = current.step(key);
+            Object next = current.step(&m_symbol_table, key);
 
             if (next.is_none()) {
                 throw_eval_error(form, fmt::format("Access error: field or property '{}' "
@@ -5858,7 +5859,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         // Если current - это Type, он вернет метаданные.
         // Если current - это экземпляр, он вернет данные.
         try {
-            current = current.step(key);
+            current = current.step(&m_symbol_table, key);
         } catch (std::runtime_error &e) {
             throw_eval_error(form, e.what());
         }
@@ -6798,7 +6799,7 @@ Object Interpreter::eval_function_type_make(const Object &form, Arguments &args,
     // 3. Сборка финального TypeSpec
     // build_typespec_from_env соберет (function <return_type> (<arg1-type> <arg2-type> ...))
     settings.typespec =
-        TypeSystem::instance().build_typespec_from_env(rlet_env, settings.return_type);
+        TypeSystem::instance().build_typespec_from_env(&m_symbol_table, rlet_env, settings.return_type);
 
     return settings.typespec;
 }
@@ -6995,7 +6996,7 @@ Object Interpreter::eval_make_memory_archive(const Object &form, Arguments &args
     auto memory_region = args.unnamed[0].as_native_obj<MemoryRegion>();
 
     auto memory_archive =
-        std::make_shared<MemoryArchive>(memory_region, reading, writing, persistant);
+        std::make_shared<MemoryArchive>(&m_symbol_table, memory_region, reading, writing, persistant);
     return Object::make_heap_obj(memory_archive, ObjectType::NATIVE_OBJECT);
 }
 
@@ -7013,7 +7014,7 @@ Object Interpreter::eval_make_memory_region(const Object &form, Arguments &args,
     if (args.has_named("base"))
         region_base = is_true(args.named["base"]);
 
-    auto memory_region = std::make_shared<MemoryRegion>(&m_symbol_table, region_size, region_base);
+    auto memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
     return Object::make_heap_obj(memory_region, ObjectType::NATIVE_OBJECT);
 }
 
@@ -7092,10 +7093,10 @@ Object Interpreter::eval_make_memory_buffer(const Object &form, Arguments &args,
 
         if (region_size == 0)
             throw_eval_error(form, "make memory buffer required a :region or :size");
-        memory_region = std::make_shared<MemoryRegion>(&m_symbol_table, region_size, region_base);
+        memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
     }
 
-    auto memory_buffer = std::make_shared<MemoryBuffer>(&m_symbol_table, memory_region);
+    auto memory_buffer = std::make_shared<MemoryBuffer>(memory_region);
     return Object::make_heap_obj(memory_buffer, ObjectType::NATIVE_OBJECT);
 }
 

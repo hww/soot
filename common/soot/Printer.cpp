@@ -29,8 +29,7 @@ soot::Object float_representation(float value) {
     if (!proper_float(value)) {
         // lg::warn("PS2-incompatible float (0x{:08X}) detected! Writing as the-as cast.",
         // int_value);
-        return pretty_print::build_list("the-as", "float",
-                                        fmt::format("#x{:x}", (uint32_t)int_value));
+        return pretty_print::build_list("the-as", "float", fmt::format("#x{:x}", (uint32_t)int_value));
     } else if (const_floats.find(int_value) != const_floats.end()) {
         return pretty_print::to_symbol(const_floats.at(int_value));
     } else if (banned_floats.find(int_value) == banned_floats.end()) {
@@ -40,11 +39,19 @@ soot::Object float_representation(float value) {
     }
 }
 
+std::unique_ptr<soot::Reader> pretty_printer_reader;
 std::mutex pretty_printer_reader_mutex;
 
-soot::Object to_symbol(SymbolTable* st, const std::string &str) {
-    std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
-    return Object::make_symbol(st, str.c_str());
+soot::Reader& get_pretty_printer_reader() {
+  if (!pretty_printer_reader) {
+    pretty_printer_reader = std::make_unique<soot::Reader>();
+  }
+  return *pretty_printer_reader;
+}
+
+soot::Object to_symbol(const std::string& str) {
+  std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
+  return soot::Object::make_symbol(&get_pretty_printer_reader().symbol_table(), str.c_str());
 }
 
 soot::Object new_string(const std::string &str) {
