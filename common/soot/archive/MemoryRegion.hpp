@@ -23,10 +23,10 @@ class MemoryRegion : public NativeObject {
   private:
     std::vector<uint8_t> m_data;
     uint32_t             m_base; // виртуальный базовый адрес (origin)
-
+    SymbolTable*         m_st;
   public:
-    MemoryRegion() : m_data(0, 0), m_base(0) {}
-    MemoryRegion(size_t size, uint32_t base = 0) : m_data(size, 0), m_base(base) {}
+    MemoryRegion(SymbolTable* st) : m_data(0, 0), m_base(0), m_st(st) {}
+    MemoryRegion(SymbolTable* st, size_t size, uint32_t base = 0) : m_data(size, 0), m_base(base), m_st(st) {}
 
     // Доступ к данным (как было)
     uint8_t *data() {
@@ -111,21 +111,18 @@ class MemoryRegion : public NativeObject {
     std::string class_name() const override {
         return "memory-region";
     }
-    std::string full_class_name() const override {
-        return "MemoryRegion";
-    }
 
     std::string print() const override {
         return fmt::format("#<memory-region {:04x}-{:04x} size={}>", m_base, m_base + m_data.size(),
                            m_data.size());
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_symbol(":type"),
+            pretty_print::build_list(Object::make_symbol(st, ":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":base"), Object::make_integer(m_base)),
-            pretty_print::build_list(Object::make_symbol(":size"),
+            pretty_print::build_list(Object::make_symbol(st, ":base"), Object::make_integer(m_base)),
+            pretty_print::build_list(Object::make_symbol(st, ":size"),
                                      Object::make_integer(m_data.size())));
     }
 

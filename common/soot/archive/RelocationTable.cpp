@@ -15,11 +15,11 @@ Object RelocationTable::get_at(const Object &key) {
             std::vector<Object> reloc_list;
             for (const auto &reloc : m_relocations) {
                 reloc_list.push_back(pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword("offset"),
+                    pretty_print::build_list(Object::make_keyword(m_st, "offset"),
                                              Object::make_integer(reloc.offset)),
-                    pretty_print::build_list(Object::make_keyword("type"),
+                    pretty_print::build_list(Object::make_keyword(m_st, "type"),
                                              Object::make_integer(static_cast<int>(reloc.type))),
-                    pretty_print::build_list(Object::make_keyword("target"),
+                    pretty_print::build_list(Object::make_keyword(m_st, "target"),
                                              Object::make_string(reloc.target_name))));
             }
             return Object::make_list(reloc_list);
@@ -34,11 +34,11 @@ Object RelocationTable::get_at(const Object &key) {
         if (idx < m_relocations.size()) {
             const auto &reloc = m_relocations[idx];
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword("offset"),
+                pretty_print::build_list(Object::make_keyword(m_st, "offset"),
                                          Object::make_integer(reloc.offset)),
-                pretty_print::build_list(Object::make_keyword("type"),
+                pretty_print::build_list(Object::make_keyword(m_st, "type"),
                                          Object::make_integer(static_cast<int>(reloc.type))),
-                pretty_print::build_list(Object::make_keyword("target"),
+                pretty_print::build_list(Object::make_keyword(m_st, "target"),
                                          Object::make_string(reloc.target_name)));
         }
     }

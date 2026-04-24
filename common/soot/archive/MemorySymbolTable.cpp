@@ -17,11 +17,11 @@ Object MemorySymbolTable::get_at(const Object &key) {
         if (idx) {
             // Возвращаем информацию о символе
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword("name"),
+                pretty_print::build_list(Object::make_keyword(m_st, "name"),
                                          Object::make_string(get_name(*idx))),
-                pretty_print::build_list(Object::make_keyword("crc32"),
+                pretty_print::build_list(Object::make_keyword(m_st, "crc32"),
                                          Object::make_integer(get_crc32(*idx))),
-                pretty_print::build_list(Object::make_keyword("index"),
+                pretty_print::build_list(Object::make_keyword(m_st, "index"),
                                          Object::make_integer(*idx)));
         }
 
@@ -30,9 +30,9 @@ Object MemorySymbolTable::get_at(const Object &key) {
             size_t idx = key.as_integer();
             if (idx < m_symbols.size()) {
                 return pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword("name"),
+                    pretty_print::build_list(Object::make_keyword(m_st, "name"),
                                              Object::make_string(m_symbols[idx].name)),
-                    pretty_print::build_list(Object::make_keyword("crc32"),
+                    pretty_print::build_list(Object::make_keyword(m_st, "crc32"),
                                              Object::make_integer(m_symbols[idx].crc32)));
             }
         }

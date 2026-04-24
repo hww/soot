@@ -15,7 +15,7 @@ class MakeSystem {
     std::vector<std::string> get_loaded_projects() const { return m_loaded_projects; }
     
     
-    soot::Interpreter m_soot;
+    //soot::Interpreter m_soot;
     std::optional<REPL::Config> m_repl_config;
     std::vector<std::string> m_loaded_projects;
 };

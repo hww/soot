@@ -164,18 +164,15 @@ class TypeSystem : public NativeObject {
         static std::shared_ptr<TypeSystem> inst = std::shared_ptr<TypeSystem>(new TypeSystem());
         return *inst;
     }
-    std::string full_class_name() const override {
-        return "TypeSystem";
-    }
     std::string class_name() const override {
         return "type-system";
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == TypeSystem::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -389,9 +386,9 @@ class TypeSystem : public NativeObject {
     std::string print() const override {
         return fmt::format("#<type-system {}>", m_variant.print());
     }
-    soot::Object           inspect() const override;
+    soot::Object             inspect(SymbolTable* st) const override;
     std::string              print_all_type_information() const;
-    soot::Object           get_all_type_information() const;
+    soot::Object             get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string &type) const;
     int                      get_next_method_id(const Type *type) const;
 

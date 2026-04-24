@@ -69,21 +69,17 @@ class Archive : public NativeObject {
     }
 
     std::string print() const override;
-    Object      inspect() const override;
-
-    std::string full_class_name() const override {
-        return "Archive";
-    }
+    Object      inspect(SymbolTable* st) const override;
 
     std::string class_name() const override {
         return "archive";
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == Archive::type_name_obj() || NativeObject::is_class_name(name);
     }
 

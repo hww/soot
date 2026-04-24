@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <sstream>
+#include <string>
 
 namespace soot {
 
@@ -68,35 +69,6 @@ std::string object_type_to_string(ObjectType type) {
 // ============================================================================
 // SymbolTable
 // ============================================================================
-
-SymbolTable *Object::s_table = nullptr;
-
-SymbolTable *Object::get_symbol_table() {
-    if (!s_table)
-        s_table = new SymbolTable();
-    return s_table;
-}
-SymbolTable &Object::symbol_table() {
-    return *get_symbol_table();
-}
-
-/**
- * @brief Evaluates the truthiness of an object in accordance with Common Lisp semantics.
- * * This method implements the core logical branching rule: an object is considered
- * "false" (NIL) if it is either an empty list or the specific '#f' symbol.
- * All other objects (including zero, empty strings, etc.) evaluate to "true".
- * * Optimization: Uses direct pointer comparison for the false symbol,
- * leveraging the fact that symbols are interned.
- * * @param false_symbol A reference to the pre-interned symbol used for 'false' (e.g., "#f").
- * @return true if the object is truthy, false if it is an empty list or matches false_symbol.
- */
-bool Object::truthy() const {
-    // Ложь — это если объект является пустым списком ИЛИ символом #f
-    if (is_null())
-        return false;
-    return !(is_symbol() &&
-             as_symbol().name_ptr == Object::symbol_table().core.sym_false.as_symbol().name_ptr);
-}
 
 SymbolTable::SymbolTable() {
     m_power_of_two_size = 1; // 2 ^ 1 = 2
@@ -237,16 +209,16 @@ std::string Object::class_name() const {
     return object_type_to_string(type);
 }
 
-Object Object::type_name_obj() const {
+std::string Object::type_name_obj() const {
     if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->type_name_obj();
-    return symbol_table().object_type_to_symbol(type);
+    return object_type_to_string(type);
 }
 
-bool Object::is_class_name(const Object &name) const {
+bool Object::is_class_name(const std::string &name) const {
     if (type == ObjectType::NATIVE_OBJECT && heap_obj.get() != nullptr)
         return heap_obj->is_class_name(name);
-    return name == symbol_table().object_type_to_symbol(type);
+    return name == object_type_to_string(type);
 }
 
 std::vector<Object> Object::to_vector() const {
@@ -469,22 +441,16 @@ Object Object::make_list(const std::vector<Object> &elements) {
     return build_list(elements);
 }
 
-InternedSymbolPtr Object::intern(const char *name) {
-    if (get_symbol_table())
-        return get_symbol_table()->intern(name);
-    throw std::runtime_error("call set_symbol_table(...) before");
+InternedSymbolPtr Object::intern(SymbolTable* st, const char *name) {
+    return st->intern(name);
 }
 
-Object Object::make_symbol(const char *name) {
-    if (get_symbol_table())
-        return get_symbol_table()->make_symbol(name);
-    throw std::runtime_error("call set_symbol_table(...) before");
+Object Object::make_symbol(SymbolTable* st, const char *name) {
+    return st->make_symbol(name);
 }
 
-Object Object::make_keyword(const char *name) {
-    if (get_symbol_table())
-        return get_symbol_table()->make_keyword(name);
-    throw std::runtime_error("call set_symbol_table(...) before");
+Object Object::make_keyword(SymbolTable* st, const char *name) {
+    return st->make_keyword(name);
 }
 
 Object Object::make_string(const std::string &text) {
@@ -770,49 +736,49 @@ uint32_t Object::as_crc32() const {
 // CALLABLE
 // ============================================================================
 
-Object SpecialFormObject::inspect() const {
-    ListBuilder lb;
-    lb.add(Object::make_symbol("special-form"));
+Object SpecialFormObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.add(Object::make_symbol(st, "special-form"));
     // Если нужно, сюда можно добавить адрес метода для низкоуровневой отладки
     return lb.build();
 }
 
-Object BuiltinFunctionObject::inspect() const {
-    ListBuilder lb;
-    lb.add(Object::make_symbol("builtin-function"));
+Object BuiltinFunctionObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.add(Object::make_symbol(st, "builtin-function"));
 
     // Добавляем информацию о спецификации аргументов
-    lb.add(Object::make_symbol(":unamed-args"));
+    lb.add(Object::make_symbol(st, ":unamed-args"));
     lb.add(Object::make_integer(specs.unnamed_size()));
 
-    lb.add(Object::make_symbol(":named-args"));
+    lb.add(Object::make_symbol(st, ":named-args"));
     lb.add(Object::make_integer(specs.named_size()));
 
     // Если есть флаг varargs, можно добавить и его
     if (specs.varargs) {
-        lb.add(Object::make_symbol(":varargs"));
-        lb.add(Object::symbol_table().core.true_or_false(true));
+        lb.add(Object::make_symbol(st, ":varargs"));
+        lb.add(st->core.true_or_false(true));
     }
 
     return lb.build();
 }
 
 
-Object CustomFunctionObject::inspect() const {
-    ListBuilder lb;
-    lb.add(Object::make_symbol("builtin-function"));
+Object CustomFunctionObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.add(Object::make_symbol(st, "builtin-function"));
 
     // Добавляем информацию о спецификации аргументов
-    lb.add(Object::make_symbol(":unamed-args"));
+    lb.add(Object::make_symbol(st, ":unamed-args"));
     lb.add(Object::make_integer(specs.unnamed_size()));
 
-    lb.add(Object::make_symbol(":named-args"));
+    lb.add(Object::make_symbol(st, ":named-args"));
     lb.add(Object::make_integer(specs.named_size()));
 
     // Если есть флаг varargs, можно добавить и его
     if (specs.varargs) {
-        lb.add(Object::make_symbol(":varargs"));
-        lb.add(Object::symbol_table().core.true_or_false(true));
+        lb.add(Object::make_symbol(st, ":varargs"));
+        lb.add(st->core.true_or_false(true));
     }
 
     return lb.build();
@@ -962,34 +928,34 @@ bool ReaderObject::is_eof() const {
     return !ts || !ts->text_remains();
 }
 
-Object ArgumentSpec::to_object() const {
-    ListBuilder lb{};
+Object ArgumentSpec::to_object(SymbolTable* st) const {
+    ListBuilder lb(st);
 
     // 1. Позиционные аргументы
     for (const auto &arg : unnamed) {
-        lb.push_back(Object::make_symbol(arg.name.c_str()));
+        lb.push_back(Object::make_symbol(st, arg.name.c_str()));
     }
 
     // 2. Именованные аргументы (Keyword arguments)
     if (!named.empty()) {
-        lb.push_back(Object::make_keyword("key")); // Маркер &key
+        lb.push_back(Object::make_keyword(st, "key")); // Маркер &key
         for (const auto &[name, spec] : named) {
             if (spec.has_default) {
                 // Если есть дефолт: (name default)
-                ListBuilder entry{};
-                entry.push_back(Object::make_symbol(name.c_str()));
+                ListBuilder entry(st);
+                entry.push_back(Object::make_symbol(st, name.c_str()));
                 entry.push_back(spec.default_value);
                 lb.push_back(entry.build());
             } else {
-                lb.push_back(Object::make_symbol(name.c_str()));
+                lb.push_back(Object::make_symbol(st, name.c_str()));
             }
         }
     }
 
     // 3. Rest аргумент (вариативность)
     if (!rest.empty()) {
-        lb.push_back(Object::make_symbol("rest")); // Маркер &rest
-        lb.push_back(Object::make_symbol(rest.c_str()));
+        lb.push_back(Object::make_symbol(st, "rest")); // Маркер &rest
+        lb.push_back(Object::make_symbol(st, rest.c_str()));
     }
 
     return lb.build();
@@ -1049,13 +1015,14 @@ static size_t get_primitive_size(const std::string &type) {
     return 0;
 }
 
-Object Pointer::inspect() const {
-    ListBuilder lb{};
+Object Pointer::inspect(SymbolTable* st) const {
+    (void)st;
+    ListBuilder lb(st);
     // Используем символ 'pointer' для идентификации в инспекции
     lb.add(type_name_obj());
 
-    lb.push_kv("address", Object::make_integer((uintptr_t)m_ptr));
-    lb.push_kv("type", Object::make_string(m_type));
+    lb.push_key_value("address", Object::make_integer((uintptr_t)m_ptr));
+    lb.push_key_value("type", Object::make_string(m_type));
 
     return lb.build();
 }
@@ -1402,209 +1369,196 @@ std::string PairObject::print() const {
 //   INSPECTORS
 // ============================================================================
 
-std::string Object::inspect_short() const {
-    const int max_len = 64;
-    // 1. Получаем S-expression инспекта
-    Object info = this->inspect();
-
-    // 2. Превращаем структуру в строку для отображения
-    std::string str = info.print();
-
-    if (str.size() <= max_len)
-        return str;
-    return str.substr(0, max_len - 3) + "...";
-}
-
-Object Object::inspect() const {
+Object Object::inspect(SymbolTable* st) const {
     switch (type) {
     case ObjectType::EMPTY_LIST:
-        return Object::make_symbol("null");
+        return Object::make_symbol(st, "null");
 
     case ObjectType::INT: {
-        ListBuilder lb{};
-        lb.push_back(Object::make_symbol("integer"));
-        lb.push_kv("value", *this);
+        ListBuilder lb(st);
+        lb.push_back(Object::make_symbol(st, "integer"));
+        lb.push_key_value("value", *this);
         return lb.build();
     }
 
     case ObjectType::FLOAT: {
-        ListBuilder lb{};
-        lb.push_back(Object::make_symbol("float"));
-        lb.push_kv("value", *this);
+        ListBuilder lb(st);
+        lb.push_back(Object::make_symbol(st, "float"));
+        lb.push_key_value("value", *this);
         return lb.build();
     }
 
     case ObjectType::SYMBOL: {
-        ListBuilder lb{};
-        lb.push_back(Object::make_symbol("symbol"));
-        lb.push_kv("name", *this);
+        ListBuilder lb(st);
+        lb.push_back(Object::make_symbol(st, "symbol"));
+        lb.push_key_value("name", *this);
         return lb.build();
     }
 
     case ObjectType::NONE: {
-        ListBuilder lb{};
-        lb.push_back(Object::make_symbol("none"));
+        ListBuilder lb(st);
+        lb.push_back(Object::make_symbol(st, "none"));
         return lb.build();
     }
 
     default:
         if (is_heap_object() && heap_obj) {
-            return heap_obj->inspect();
+            return heap_obj->inspect(st);
         }
-        return Object::make_symbol("error-unknown");
+        return Object::make_symbol(st, "error-unknown");
     }
 }
 
-Object PairObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("pair"));
-    lb.push_kv("car", this->car);
-    lb.push_kv("cdr", this->cdr);
+Object PairObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "pair"));
+    lb.push_key_value("car", this->car);
+    lb.push_key_value("cdr", this->cdr);
     return lb.build();
 }
 
-Object StringObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("string"));
-    lb.push_kv("value", Object::make_string(print().c_str()));
-    lb.push_kv("length", Object::make_integer(data.length()));
+Object StringObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "string"));
+    lb.push_key_value("value", Object::make_string(print().c_str()));
+    lb.push_key_value("length", Object::make_integer(data.length()));
     return lb.build();
 }
 
-template <typename T> Object FixedObject<T>::inspect() const {
-    ListBuilder lb{};
+template <typename T> Object FixedObject<T>::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
     lb.push_back(Object::make_symbol(type_as_string().c_str()));
-    lb.push_kv("value", Object(value)); // Убрали & перед symbols
+    lb.push_key_value("value", Object(value)); // Убрали & перед symbols
     return lb.build();
 }
 
-Object ArrayObject::inspect() const {
-    ListBuilder lb{};
+Object ArrayObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
 
     // 1. Имя типа
-    lb.push_back(Object::make_symbol("array"));
+    lb.push_back(Object::make_symbol(st, "array"));
 
     // 2. Метаданные
-    lb.push_kv("length", Object::make_integer(data.size()));
-    lb.push_kv("address", Object::make_integer((int64_t)this));
+    lb.push_key_value("length", Object::make_integer(data.size()));
+    lb.push_key_value("address", Object::make_integer((int64_t)this));
 
     // 3. Содержимое (опционально, выводим первые 10 элементов, чтобы не заспамить консоль)
-    ListBuilder elements_lb{};
+    ListBuilder elements_lb(st);
     size_t      limit = std::min(data.size(), (size_t)10);
     for (size_t i = 0; i < limit; ++i) {
         elements_lb.push_back(data[i]);
     }
 
     if (data.size() > 10) {
-        elements_lb.push_back(Object::make_symbol("..."));
+        elements_lb.push_back(Object::make_symbol(st, "..."));
     }
 
-    lb.push_kv("data", elements_lb.build());
+    lb.push_key_value("data", elements_lb.build());
 
     return lb.build();
 }
 
 // Удалено дублирующееся определение HashTableObject::inspect. Оставили одно:
-Object HashTableObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("hash-table"));
-    lb.push_kv("size", Object::make_integer(data.size()));
+Object HashTableObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "hash-table"));
+    lb.push_key_value("size", Object::make_integer(data.size()));
 
-    ListBuilder entries_lb{};
+    ListBuilder entries_lb(st);
     for (const auto &[key, val] : data) {
-        ListBuilder pair_lb{};
+        ListBuilder pair_lb(st);
         pair_lb.push_back(Object::make_string(key.c_str()));
         pair_lb.push_back(val);
         entries_lb.push_back(pair_lb.build());
     }
-    lb.push_kv("entries", entries_lb.build());
+    lb.push_key_value("entries", entries_lb.build());
     return lb.build();
 }
 
-Object EnvironmentObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("environment"));
-    lb.push_kv("name",
-               name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
+Object EnvironmentObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "environment"));
+    lb.push_key_value("name",
+               name.empty() ? Object::make_symbol(st, "anonymous") : Object::make_string(name.c_str()));
 
     if (parent_env) {
-        lb.push_kv("parent", Object::make_string(parent_env->print().c_str()));
+        lb.push_key_value("parent", Object::make_string(parent_env->print().c_str()));
     }
 
     // Если InternedPtrMap не поддерживает итераторы, выводим только количество
-    lb.push_kv("bindings-count", Object::make_integer(size()));
-    lb.push_kv("address", Object::make_integer((int64_t)this));
+    lb.push_key_value("bindings-count", Object::make_integer(size()));
+    lb.push_key_value("address", Object::make_integer((int64_t)this));
     return lb.build();
 }
 
-Object FunctionObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("lambda"));
-    lb.push_kv("name",
-               name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
-    lb.push_kv("args", args.to_object());
-    lb.push_kv("body", body);
+Object FunctionObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "lambda"));
+    lb.push_key_value("name",
+               name.empty() ? Object::make_symbol(st, "anonymous") : Object::make_string(name.c_str()));
+    lb.push_key_value("args", args.to_object(st));
+    lb.push_key_value("body", body);
     return lb.build();
 }
 
-Object MacroObject::inspect() const {
-    ListBuilder lb{};
+Object MacroObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
 
     // 1. Заголовок типа
-    lb.push_back(Object::make_symbol("macro"));
+    lb.push_back(Object::make_symbol(st, "macro"));
 
     // 2. Имя макроса (если есть)
-    lb.push_kv("name",
-               name.empty() ? Object::make_symbol("anonymous") : Object::make_string(name.c_str()));
+    lb.push_key_value("name",
+               name.empty() ? Object::make_symbol(st, "anonymous") : Object::make_string(name.c_str()));
 
     // 3. Спецификация аргументов
     // Вызываем to_object, который возвращает структуру аргументов (списки имён и т.д.)
-    lb.push_kv("args", args.to_object());
+    lb.push_key_value("args", args.to_object(st));
 
     // 4. Тело макроса (исходный код)
-    lb.push_kv("body", body);
+    lb.push_key_value("body", body);
 
     // 5. Адрес в памяти для отладки
-    lb.push_kv("address", Object::make_integer((int64_t)this));
+    lb.push_key_value("address", Object::make_integer((int64_t)this));
 
     return lb.build();
 }
 
-Object ReaderObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("reader"));
-    lb.push_kv("line", Object::make_integer(ts ? ts->line_count : 0));
+Object ReaderObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "reader"));
+    lb.push_key_value("line", Object::make_integer(ts ? ts->line_count : 0));
     return lb.build();
 }
 
-Object WriterObject::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("writer"));
+Object WriterObject::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "writer"));
     return lb.build();
 }
 
-Object ArgumentSpec::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("argument-spec"));
-    lb.push_kv("has-rest", rest.empty() ? Object::make_null() : Object::make_symbol("#t"));
-    lb.push_kv("structure", this->to_object());
+Object ArgumentSpec::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "argument-spec"));
+    lb.push_key_value("has-rest", rest.empty() ? Object::make_null() : Object::make_symbol(st, "#t"));
+    lb.push_key_value("structure", this->to_object(st));
     return lb.build();
 }
 
-Object Arguments::inspect() const {
-    ListBuilder lb{};
-    lb.push_back(Object::make_symbol("arguments-instance"));
+Object Arguments::inspect(SymbolTable* st) const {
+    ListBuilder lb(st);
+    lb.push_back(Object::make_symbol(st, "arguments-instance"));
 
-    ListBuilder u_list{};
+    ListBuilder u_list(st);
     for (const auto &obj : unnamed)
         u_list.push_back(obj);
-    lb.push_kv("unnamed", u_list.build());
+    lb.push_key_value("unnamed", u_list.build());
 
-    ListBuilder n_list{};
+    ListBuilder n_list(st);
     for (const auto &[name, obj] : named) {
-        n_list.push_kv(name.c_str(), obj); // Убрали & перед symbols
+        n_list.push_key_value(name.c_str(), obj); // Убрали & перед symbols
     }
-    lb.push_kv("named", n_list.build());
+    lb.push_key_value("named", n_list.build());
 
     return lb.build();
 }

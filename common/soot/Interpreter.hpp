@@ -94,12 +94,12 @@ class Interpreter {
     // --- Predicates -----------------------
     // Check if value is true
     bool is_true(const Object &o) const {
-        return o.truthy();
+        return !(o.is_symbol() && o.as_symbol().name_ptr == m_symbol_false);
     }
 
     void   define_var_in_env(const Object &env, const Object &var, const char *name);
     void   define_global(const char *name, const Object value) { define_var_in_env(m_global_environment, value, name); }
-    Object get_global(const char *name) { auto val = m_global_environment.as_env()->find(Object::intern(name)); return val ? *val : m_obj_none; }
+    Object get_global(const char *name) { auto val = m_global_environment.as_env()->find(Object::intern(&symbol_table(), name)); return val ? *val : m_obj_none; }
 
   private:
     // Помощники для чисел

@@ -4,7 +4,6 @@
 #include "common/util/PrintFloat.hpp"
 #include <unordered_set>
 
-#include <cmath>
 #include <mutex>
 
 #include "fmt/format.h"
@@ -43,9 +42,9 @@ soot::Object float_representation(float value) {
 
 std::mutex pretty_printer_reader_mutex;
 
-soot::Object to_symbol(const std::string &str) {
+soot::Object to_symbol(SymbolTable* st, const std::string &str) {
     std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
-    return Object::make_symbol(str.c_str());
+    return Object::make_symbol(st, str.c_str());
 }
 
 soot::Object new_string(const std::string &str) {

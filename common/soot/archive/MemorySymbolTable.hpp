@@ -70,8 +70,11 @@ class MemorySymbolTable : public NativeObject {
     std::vector<SymbolEntry>             m_symbols;
     std::string                          m_string_pool;
     std::unordered_map<uint32_t, size_t> m_crc_to_index;
-
+    SymbolTable*                         m_st;
   public:
+
+    MemorySymbolTable(SymbolTable* st) : m_st(st) {}
+    
     // ============================================================
     // MativeObject implementation
     // ============================================================
@@ -83,15 +86,11 @@ class MemorySymbolTable : public NativeObject {
         return "memory-symbol-table";
     }
 
-    std::string full_class_name() const override {
-        return "MemorySymbolTable";
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
-    }
-
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == MemorySymbolTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -99,11 +98,11 @@ class MemorySymbolTable : public NativeObject {
         return fmt::format("#<memory-symbol-table {} symbols>", m_symbols.size());
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_symbol(":type"),
+            pretty_print::build_list(Object::make_symbol(st, ":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":count"),
+            pretty_print::build_list(Object::make_symbol(st, ":count"),
                                      Object::make_integer(m_symbols.size())));
     }
 

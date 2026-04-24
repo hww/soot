@@ -3,6 +3,7 @@
 
 #include "MemoryRegion.hpp"
 #include "common/soot/Archive.hpp"
+#include "soot/Object.hpp"
 #include <stack>
 
 namespace soot {
@@ -61,15 +62,11 @@ class MemoryArchive : public Archive {
         return "memory-archive";
     }
 
-    std::string full_class_name() const override {
-        return "MemoryArchive";
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
-    }
-
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == MemoryArchive::type_name_obj() || Archive::is_class_name(name);
     }
 
@@ -77,9 +74,9 @@ class MemoryArchive : public Archive {
         return fmt::format("#<memory-archive>");
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(pretty_print::build_list(
-            Object::make_symbol(":type"), Object::make_string(class_name())));
+            Object::make_symbol(st, ":type"), Object::make_string(class_name())));
     }
 
     // ------------------------------------------------------------

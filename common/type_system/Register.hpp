@@ -15,25 +15,22 @@ struct Register : NativeObject {
 
     Register() : name(Object::make_none()), reg(Object::make_none()), offset(0) {}
 
-    std::string full_class_name() const override {
-        return "Register";
-    }
     std::string class_name() const override {
         return "register";
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == Register::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     Object get_at(const Object &key) override;
 
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 };
 
 } // namespace soot

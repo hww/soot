@@ -59,9 +59,7 @@ Compiler::Compiler(SootPlatform platform,
     setup_soot_forms();
 }
 
-
 Compiler::~Compiler() = default;
-
 
 // В Compiler.cpp или в setup_goos_forms()
 void Compiler::setup_goos_forms() {
@@ -77,6 +75,7 @@ void Compiler::setup_goos_forms() {
         &spec
     );
 }
+
 /*! 
  * The method will be invoked for each enum form
  */
@@ -133,6 +132,7 @@ soot::Object Compiler::builtin_get_enum_vals(const soot::Object& form,
     
     return soot::build_list(enum_vals);
 }
+
 /*!
  * Parse arguments into a soot::Arguments format.
  */
@@ -196,8 +196,7 @@ void Compiler::for_each_in_list(const soot::Object& list,
 std::expected<std::unique_ptr<BinaryFile>, std::string> 
 Compiler::compile_file(const std::filesystem::path& path) {
     std::string content = read_file_content(path.string());
-    soot::Reader reader;
-    auto forms = reader.read_from_string(content, false, path.string());
+    auto forms = m_soot.get_reader().read_from_string(content, false, path.string());
     if (forms.is_null()) {
         return std::unexpected("Failed to read or parse file: " + path.string());
     }
@@ -354,8 +353,8 @@ std::string Compiler::get_repl_input() {
 }
 
 // Вспомогательные методы
-ReplStatus Compiler::interpret_and_print(const std::string& code) {
-    auto result = interpret(code);
+ReplStatus Compiler::interpret_and_print(const std::string& script) {
+    auto result = interpret(script);
     if (m_config.debug_print_ast) {
         lg::info("=> {}", result.print());
     }
@@ -397,18 +396,21 @@ soot::Object Compiler::interpret(const soot::Object& forms) {
         lg::info("AST: {}", forms.print());
     }
 
-    soot::Object resutl = soot::Object::make_none();
+    soot::Object result = soot::Object::make_none();
     try {
+        // Получаем глобальное окружение из m_soot
+        auto env = m_soot.get_global_environment();
+        
         if (forms.is_pair()) {
             for_each_in_list(forms, [&](const soot::Object& o) {
-                resutl = m_soot.eval_form(o);
+                result = m_soot.eval_form(o, env.as_env_ptr());  // Передаем окружение
             });
         } else {
-             resutl = m_soot.eval_form(forms);
+            result = m_soot.eval_form(forms, env.as_env_ptr());  // Передаем окружение
         }
-        // print
-        printf("%s\n", resutl.print().c_str());
-        return resutl;
+        
+        printf("%s\n", result.print().c_str());
+        return result;
         
     } catch (soot::ExitException &e) {
         fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
@@ -419,7 +421,7 @@ soot::Object Compiler::interpret(const soot::Object& forms) {
     } catch (const std::exception &e) {
         fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError: {}\n", e.what());
     }
-    return resutl;
+    return result;
 }
 
 // ========== Управление окружением ==========

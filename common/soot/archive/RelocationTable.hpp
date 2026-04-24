@@ -54,7 +54,7 @@ class RelocationTable : public NativeObject {
         }
     };
 
-    RelocationTable() = default;
+    RelocationTable(SymbolTable* st) : m_st(st) {};
 
     // ============================================================
     // HeapObject implementation
@@ -67,15 +67,11 @@ class RelocationTable : public NativeObject {
         return "relocation-table";
     }
 
-    std::string full_class_name() const override {
-        return "RelocationTable";
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
-    }
-
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == RelocationTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -83,11 +79,11 @@ class RelocationTable : public NativeObject {
         return fmt::format("#<relocation-table {} relocs>", m_relocations.size());
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_symbol(":type"),
+            pretty_print::build_list(Object::make_symbol(st, ":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":count"),
+            pretty_print::build_list(Object::make_symbol(st, ":count"),
                                      Object::make_integer(m_relocations.size())));
     }
 
@@ -156,6 +152,7 @@ class RelocationTable : public NativeObject {
 
   private:
     std::vector<Relocation> m_relocations;
+    SymbolTable* m_st;
 };
 
 } // namespace soot

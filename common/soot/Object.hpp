@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common/CommonTypes.hpp"
 #include "common/util/Assert.hpp"
 #include "common/util/StringIdHash.hpp"
 #include <algorithm>
@@ -160,7 +159,7 @@ template <typename T> class FixedObject {
         return fixed_to_string(value);
     }
 
-    Object inspect() const;
+    Object inspect(SymbolTable* st) const;
 
     bool operator==(const FixedObject<T> &other) const {
         return value == other.value;
@@ -209,21 +208,14 @@ class Object {
 
     std::string    full_class_name() const;
     std::string    class_name() const;
-    virtual Object type_name_obj() const;
-    virtual bool   is_class_name(const Object &name) const;
+    virtual std::string type_name_obj() const;
+    virtual bool   is_class_name(const std::string &name) const;
 
     virtual void serialize(Archive &ar) {
         (void)ar;
     }
 
-    // Тот самый делегат который сообщает о текущей таблицк
-    static void set_symbol_table(SymbolTable *table) {
-        s_table = table;
-    }
-
-    static SymbolTable      *get_symbol_table();
-    static SymbolTable      &symbol_table();
-    static InternedSymbolPtr intern(const char *name);
+    static InternedSymbolPtr intern(SymbolTable* st, const char *name);
 
     // адресация к объекту -> key
     Object step(const Object &key) const;
@@ -237,16 +229,16 @@ class Object {
     static Object make_list(const std::vector<Object> &elements);
     static Object make_array(const std::vector<Object> &elements);
     static Object make_vector(const std::vector<Object> &elements);
-    static Object make_symbol(const char *name);
-    static Object make_keyword(const char *name);
-    static Object make_symbol(std::string name) {
-        return make_symbol(name.c_str());
+    static Object make_symbol(SymbolTable* table, const char *name);
+    static Object make_keyword(SymbolTable* table, const char *name);
+    static Object make_symbol(SymbolTable* table, std::string name) {
+        return make_symbol(table, name.c_str());
     }
-    static Object make_keyword(std::string name) {
-        return make_keyword(name.c_str());
+    static Object make_keyword(SymbolTable* table, std::string name) {
+        return make_keyword(table, name.c_str());
     }
-    static Object make_boolean(bool v) {
-        return v ? make_symbol("#t") : make_symbol("#f");
+    static Object make_boolean(SymbolTable* table, bool v) {
+        return v ? make_symbol(table, "#t") : make_symbol(table, "#f");
     };
     static Object make_string(const std::string &text);
     static Object make_pair(const Object &car, const Object &cdr);
@@ -268,8 +260,7 @@ class Object {
     // String representation
     std::string print() const;
     std::string printc() const;
-    std::string inspect_short() const;
-    Object      inspect() const;
+    Object      inspect(SymbolTable* st) const;
 
     // Type checking
     bool is_type(ObjectType atype) const {
@@ -386,17 +377,6 @@ class Object {
             return false;
         return !(is_symbol() && as_symbol() == "#f");
     }
-    /**
-     * @brief Evaluates the truthiness of an object in accordance with Common Lisp semantics.
-     * * This method implements the core logical branching rule: an object is considered
-     * "false" (NIL) if it is either an empty list or the specific '#f' symbol.
-     * All other objects (including zero, empty strings, etc.) evaluate to "true".
-     * * Optimization: Uses direct pointer comparison for the false symbol,
-     * leveraging the fact that symbols are interned.
-     * * @param false_symbol A reference to the pre-interned symbol used for 'false' (e.g., "#f").
-     * @return true if the object is truthy, false if it is an empty list or matches false_symbol.
-     */
-    bool truthy() const;
 
     bool is_true() const {
         return is_symbol() && (as_symbol() == "#t" || as_symbol() == "#f");
@@ -729,21 +709,18 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
     virtual uint32_t as_crc32() {
         return 0;
     };
-    virtual Object      inspect() const = 0;
+    virtual Object      inspect(SymbolTable* st) const = 0;
     virtual std::string print() const = 0;
     virtual std::string printc() const {
         return print();
-    }
-    virtual std::string full_class_name() const {
-        return "HeapObject";
     }
     virtual std::string class_name() const {
         return "heap-object";
     }
 
-    virtual Object type_name_obj() const = 0;
+    virtual std::string type_name_obj() const = 0;
 
-    virtual bool is_class_name(const Object &name) const = 0;
+    virtual bool is_class_name(const std::string &name) const = 0;
     virtual void serialize(Archive &ar) {
         (void)ar;
     }
@@ -751,16 +728,13 @@ class HeapObject : public std::enable_shared_from_this<HeapObject> {
 
 class NativeObject : public HeapObject {
   public:
-    std::string full_class_name() const override {
-        return "NativeObject";
-    }
     std::string class_name() const override {
         return "native-object";
     }
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::NATIVE_OBJECT);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::NATIVE_OBJECT);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == NativeObject::type_name_obj();
     }
 
@@ -782,7 +756,7 @@ class PairObject : public HeapObject {
     ~PairObject() override = default;
 
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
     int lenght() {
         int  count = 1;
@@ -818,17 +792,14 @@ class PairObject : public HeapObject {
         return Object::make_none();
     }
 
-    std::string full_class_name() const override {
-        return "PairObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::PAIR);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::PAIR);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::PAIR);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == PairObject::type_name_obj();
     }
 
@@ -940,20 +911,17 @@ class StringObject : public HeapObject {
         return data;
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "StringObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::STRING);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::STRING);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::STRING);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == StringObject::type_name_obj();
     }
 
@@ -1004,7 +972,7 @@ class ArrayObject : public HeapObject {
         return result + ")";
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
     bool is_table() const override {
         return true;
@@ -1028,18 +996,16 @@ class ArrayObject : public HeapObject {
             }
         }
     }
-    std::string full_class_name() const override {
-        return "ArrayObject";
-    }
+ 
     std::string class_name() const override {
         return object_type_to_string(ObjectType::ARRAY);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::ARRAY);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::ARRAY);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == ArrayObject::type_name_obj();
     }
 };
@@ -1080,10 +1046,8 @@ class HashTableObject : public HeapObject {
         return result;
     }
 
-    Object      inspect() const override;
-    std::string full_class_name() const override {
-        return "HashTableObject";
-    }
+    Object      inspect(SymbolTable* st) const override;
+
     std::string class_name() const override {
         if (!type.is_none()) {
             return fmt::format("{}::{}>", object_type_to_string(ObjectType::HASH_TABLE),
@@ -1092,11 +1056,11 @@ class HashTableObject : public HeapObject {
         return object_type_to_string(ObjectType::HASH_TABLE);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::HASH_TABLE);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::HASH_TABLE);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == HashTableObject::type_name_obj();
     }
 
@@ -1156,7 +1120,7 @@ struct Arguments {
     std::map<std::string, Object> named;
     Object                        rest;
 
-    Object inspect() const;
+    Object inspect(SymbolTable* st) const;
 
     Object get_named(const std::string &name, const Object &default_value) {
         auto it = named.find(name);
@@ -1288,8 +1252,8 @@ struct ArgumentSpec {
         return unnamed.empty() && named.empty();
     }
 
-    Object to_object() const;
-    Object inspect() const;
+    Object to_object(SymbolTable* st) const;
+    Object inspect(SymbolTable* st) const;
 
     const PositionalArg &operator[](size_t index) const {
         if (index >= unnamed.size())
@@ -1396,20 +1360,17 @@ class EnvironmentObject : public HeapObject {
                            parent_env ? parent_env->name : "none", (void *)this);
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "EnvironmentObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::ENVIRONMENT);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::ENVIRONMENT);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::ENVIRONMENT);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == EnvironmentObject::type_name_obj();
     }
 
@@ -1496,21 +1457,17 @@ class FunctionObject : public HeapObject {
         return str;
     }
 
-    Object inspect() const override;
-
-    std::string full_class_name() const override {
-        return "FunctionObject";
-    }
+    Object inspect(SymbolTable* st) const override;
 
     std::string class_name() const override {
         return object_type_to_string(ObjectType::FUNCTION);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::FUNCTION);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::FUNCTION);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == FunctionObject::type_name_obj();
     }
 };
@@ -1536,19 +1493,16 @@ class MacroObject : public HeapObject {
         return name.empty() ? "#<unnamed macro>" : "#<macro " + name + ">";
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "MacroObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::MACRO);
     }
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::MACRO);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::MACRO);
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == MacroObject::type_name_obj();
     }
 };
@@ -1573,18 +1527,15 @@ class ReaderObject : public HeapObject {
     // Проверка на конец файла
     bool        is_eof() const;
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "ReaderObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::READER);
     }
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::READER);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::READER);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == ReaderObject::type_name_obj();
     }
 };
@@ -1604,18 +1555,15 @@ class WriterObject : public HeapObject {
 
     // Проверка на конец файла
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "WriterObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::READER);
     }
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::READER);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::READER);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == WriterObject::type_name_obj();
     }
 };
@@ -1659,19 +1607,16 @@ struct SpecialFormObject : public CallableObject {
         return fmt::format("#<special-form {}>", name);
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "SpecialFormObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::SPECIAL_FORM);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::SPECIAL_FORM);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::SPECIAL_FORM);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == SpecialFormObject::type_name_obj();
     }
 };
@@ -1696,19 +1641,16 @@ struct BuiltinFunctionObject : public CallableObject {
         return fmt::format("#<primitive-procedure {}>", name);
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "BuiltinFunctionObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::PRIMITIVE);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::PRIMITIVE);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::PRIMITIVE);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == BuiltinFunctionObject::type_name_obj();
     }
 };
@@ -1733,19 +1675,16 @@ struct CustomFunctionObject : public CallableObject {
         return fmt::format("#<primitive-procedure {}>", name);
     }
 
-    Object inspect() const override;
+    Object inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "CustomFormObject";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::PRIMITIVE);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::PRIMITIVE);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::PRIMITIVE);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == CustomFunctionObject::type_name_obj();
     }
 };
@@ -1775,19 +1714,16 @@ class Pointer : public HeapObject {
     }
 
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "Pointer";
-    }
     std::string class_name() const override {
         return object_type_to_string(ObjectType::POINTER);
     }
 
-    Object type_name_obj() const override {
-        return Object::symbol_table().object_type_to_symbol(ObjectType::POINTER);
+    std::string type_name_obj() const override {
+        return object_type_to_string(ObjectType::POINTER);
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == Pointer::type_name_obj();
     }
 };

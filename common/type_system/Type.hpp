@@ -97,30 +97,27 @@ class MethodInfo : public NativeObject {
         return "#<method-info>";
     }
 
-    std::string full_class_name() const override {
-        return "MethodInfo";
-    }
     std::string class_name() const override {
         return "method-info";
     }
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == MethodInfo::type_name_obj() || NativeObject::is_class_name(name);
     }
 
-    Object inspect() const override {
-        ListBuilder builder;
+    Object inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_key_value("id", Object::make_integer(id));
         builder.add_key_value("name", Object::make_string(name));
-        builder.add_key_value("type", type.inspect());
+        builder.add_key_value("type", type.inspect(st));
         builder.add_key_value("defined-in-type", Object::make_string(defined_in_type));
         builder.add_key_value("type-name", Object::make_string(type_name));
-        builder.add_key_value("no-virtual", Object::make_boolean(no_virtual));
-        builder.add_key_value("overrides-parent", Object::make_boolean(overrides_parent));
+        builder.add_key_value("no-virtual", Object::make_boolean(st, no_virtual));
+        builder.add_key_value("overrides-parent", Object::make_boolean(st, overrides_parent));
         builder.add_key_value("only-overrides-docstring",
-                              Object::make_boolean(only_overrides_docstring));
+                              Object::make_boolean(st, only_overrides_docstring));
         builder.add_key_value("docstring", Object::make_string(docstring.value_or("")));
         builder.add_key_value("overlay-name", Object::make_string(overlay_name.value_or("")));
         return builder.build();
@@ -146,20 +143,17 @@ class Field : public NativeObject {
     void mark_as_user_placed();
 
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
-    std::string full_class_name() const override {
-        return "Field";
-    }
     std::string class_name() const override {
         return "field";
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == Field::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -267,17 +261,14 @@ class BitField : public NativeObject {
     BitField() {};
     BitField(TypeSpec type, std::string name, int offset, int size, bool skip_in_decomp);
 
-    std::string full_class_name() const override {
-        return "BitField";
-    }
     std::string class_name() const override {
         return "bit-field";
     }
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == BitField::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -300,13 +291,13 @@ class BitField : public NativeObject {
     bool        operator==(const BitField &other) const;
     bool        operator!=(const BitField &other) const;
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_key_value("name", Object::make_string(name()));
-        builder.add_key_value("type", type().inspect());
+        builder.add_key_value("type", type().inspect(st));
         builder.add_key_value("offset", Object::make_integer(offset()));
         builder.add_key_value("size", Object::make_integer(size()));
-        builder.add_key_value("skip-in-decomp", Object::make_boolean(skip_in_decomp()));
+        builder.add_key_value("skip-in-decomp", Object::make_boolean(st, skip_in_decomp()));
         return builder.build();
     }
     std::string diff(const BitField &other) const;
@@ -333,17 +324,14 @@ class Type : public NativeObject {
     Type(std::string parent, std::string name, bool is_boxed, int heap_base);
     virtual ~Type() = default;
 
-    std::string full_class_name() const override {
-        return "Type";
-    }
     std::string class_name() const override {
         return "type";
     }
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == Type::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -372,8 +360,8 @@ class Type : public NativeObject {
     virtual std::string print() const override {
         return "#<" + class_name() + " " + get_name() + ">";
     }
-    virtual Object inspect() const override {
-        ListBuilder builder;
+    virtual Object inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol(class_name());
         builder.add_key_value("name", Object::make_string(get_name()));
         return builder.build();
@@ -504,13 +492,10 @@ class NullType : public Type {
   public:
     NullType(std::string name);
 
-    std::string full_class_name() const override {
-        return "NullType";
-    }
     std::string class_name() const override {
         return "null-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == NullType::type_name_obj() || Type::is_class_name(name);
     }
 
@@ -525,8 +510,8 @@ class NullType : public Type {
     int      get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder lb;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder lb(st);
         lb.add_symbol("null-type");
         lb.add_symbol("null");
         return lb.build();
@@ -554,13 +539,10 @@ class ValueType : public Type {
     ValueType(std::string parent, std::string name, bool is_boxed, int size, bool sign_extend,
               RegClass reg);
 
-    std::string full_class_name() const override {
-        return "ValueType";
-    }
     std::string class_name() const override {
         return "value-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == ValueType::type_name_obj() || Type::is_class_name(name);
     }
 
@@ -575,13 +557,13 @@ class ValueType : public Type {
     int      get_inline_array_start_alignment() const override;
 
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol("value-type");
         builder.add_key_value("size", Object::make_integer(m_size));
         builder.add_key_value("offset", Object::make_integer(m_offset));
-        builder.add_key_value("sign-extend", Object::make_boolean(m_sign_extend));
-        builder.add_key_value("reg-kind", Object::make_symbol(reg_kind_to_string(m_reg_kind)));
+        builder.add_key_value("sign-extend", Object::make_boolean(st, m_sign_extend));
+        builder.add_key_value("reg-kind", Object::make_symbol(st, reg_kind_to_string(m_reg_kind)));
         return builder.build();
     }
     bool operator==(const Type &other) const override;
@@ -613,13 +595,10 @@ class ReferenceType : public Type {
   public:
     ReferenceType(std::string parent, std::string name, bool is_boxed, int heap_base);
 
-    std::string full_class_name() const override {
-        return "ReferenceType";
-    }
     std::string class_name() const override {
         return "reference-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == ReferenceType::type_name_obj() || Type::is_class_name(name);
     }
     bool is_reference() const override {
@@ -636,8 +615,8 @@ class ReferenceType : public Type {
     }
 
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol("reference-type");
         return builder.build();
     }
@@ -663,18 +642,15 @@ class StructureType : public ReferenceType {
     StructureType(std::string parent, std::string name, bool boxed, bool dynamic, bool pack,
                   int heap_base);
 
-    std::string full_class_name() const override {
-        return "StructureType";
-    }
     std::string class_name() const override {
         return "structure-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == StructureType::type_name_obj() || ReferenceType::is_class_name(name);
     }
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol("structure-type");
         return builder.build();
     }
@@ -783,13 +759,10 @@ class BasicType : public StructureType {
   public:
     BasicType(std::string parent, std::string name, bool dynamic, int heap_base);
 
-    std::string full_class_name() const override {
-        return "BasicType";
-    }
     std::string class_name() const override {
         return "basic-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == BasicType::type_name_obj() || StructureType::is_class_name(name);
     }
     int get_offset() const override {
@@ -799,8 +772,8 @@ class BasicType : public StructureType {
         return TypeConfig::basic_array_start_alignment;
     }
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder lb;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder lb(st);
         lb.add_symbol("basic-type");
         lb.add_string(get_name());
         return lb.build();
@@ -832,19 +805,16 @@ class BitFieldType : public ValueType {
   public:
     BitFieldType(std::string parent, std::string name, int size, bool sign_extend);
 
-    std::string full_class_name() const override {
-        return "BitFieldType";
-    }
     std::string class_name() const override {
         return "bit-field-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == BitFieldType::type_name_obj() || ValueType::is_class_name(name);
     }
     bool        lookup_field(const std::string &name, BitField *out) const;
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol("bitfield-type");
         builder.add_string(get_name());
         return builder.build();
@@ -878,18 +848,15 @@ class EnumType : public ValueType {
     EnumType(const ValueType *parent, std::string name, bool is_bitfield,
              const std::unordered_map<std::string, int64_t> &entries);
 
-    std::string full_class_name() const override {
-        return "EnumType";
-    }
     std::string class_name() const override {
         return "enum-type";
     }
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == EnumType::type_name_obj() || ValueType::is_class_name(name);
     }
     std::string print() const override;
-    Object      inspect() const override {
-        ListBuilder builder;
+    Object      inspect(SymbolTable* st) const override {
+        ListBuilder builder(st);
         builder.add_symbol("enum-type");
         builder.add_string(get_name());
         builder.add_key_value("size", Object::make_integer(m_entries.size()));

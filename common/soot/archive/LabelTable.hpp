@@ -20,19 +20,15 @@ struct MemoryLabel : public NativeObject {
     MemoryLabel(std::string n, size_t a, Object seg, Object i)
         : name(n), offset(a), segment(seg), info(i) {}
 
-    std::string full_class_name() const override {
-        return "MemoryLabel";
-    }
-
     std::string class_name() const override {
         return "memory-label";
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == MemoryLabel::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -40,10 +36,10 @@ struct MemoryLabel : public NativeObject {
         return fmt::format("#<memory-label {:08X} {} {}>", offset, segment.print(), info.print());
     };
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         // Создаем Map или список пар для отображения внутреннего состояния
         // Предполагаю, у тебя есть метод создания словаря/карты
-        ListBuilder builder{};
+        ListBuilder builder(st);
         builder.add_symbol(name);
         builder.add_key_value("address", Object::make_integer(offset));
         builder.add_key_value("segment", segment);
@@ -55,7 +51,7 @@ struct MemoryLabel : public NativeObject {
         if (key.is_symbol() || key.is_string()) {
             std::string key_str = key.to_std_string();
             if (key_str == ":name") {
-                return Object::make_symbol(name);
+                return Object::make_string(name);
             }
 
             // Позволяем доставать адрес
@@ -141,9 +137,9 @@ struct MemoryLabel : public NativeObject {
 class LabelTable : public NativeObject {
   private:
     std::unordered_map<std::string, std::shared_ptr<MemoryLabel>> m_labels;
-
+    SymbolTable* m_st;
   public:
-    LabelTable() = default;
+    LabelTable(SymbolTable* st) : m_st(st) {}
     ~LabelTable() {}
 
     // ============================================================
@@ -157,15 +153,11 @@ class LabelTable : public NativeObject {
         return "label-table";
     }
 
-    std::string full_class_name() const override {
-        return "LabelTable";
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
-    }
-
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == LabelTable::type_name_obj() || NativeObject::is_class_name(name);
     }
 
@@ -173,11 +165,11 @@ class LabelTable : public NativeObject {
         return fmt::format("#<label-table {} labels>", m_labels.size());
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_symbol(":type"),
+            pretty_print::build_list(Object::make_symbol(st, ":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":count"),
+            pretty_print::build_list(Object::make_symbol(st, ":count"),
                                      Object::make_integer(m_labels.size())));
     }
 

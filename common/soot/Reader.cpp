@@ -214,7 +214,7 @@ Object Reader::read_single_form(TextStream &ts, EvalCallback eval_callback) {
             // Читаем ТО, ЧТО ИДЕТ СЛЕДОМ за макросом (рекурсивно)
             Object inner_obj = read_single_form(ts, eval_callback);
 
-            Object sym = Object::make_symbol(macro.replacement.c_str());
+            Object sym = Object::make_symbol(&m_symbols, macro.replacement.c_str());
             // Возвращаем либо (quote объект), либо просто символ замены
             return macro.list ? soot::build_list({sym, inner_obj}) : sym;
         }
@@ -284,7 +284,7 @@ Object Reader::internal_read(std::shared_ptr<SourceText> text, bool check_encodi
     ts.seek_past_whitespace_and_comments();
 
     // read list!
-    ListBuilder full_program_builder;
+    ListBuilder full_program_builder(&m_symbols);
     auto        empty_list = Object::make_null();
     Object      eval_result = empty_list;
 
@@ -322,7 +322,7 @@ Object Reader::internal_read(std::shared_ptr<SourceText> text, bool check_encodi
     auto result = full_program_builder.build();
 
     if (add_top_level) {
-        return Object::make_pair(Object::make_symbol("top-level"), result);
+        return Object::make_pair(Object::make_symbol(&m_symbols, "top-level"), result);
     }
     return result;
 }
@@ -574,7 +574,7 @@ bool Reader::try_token_as_symbol(const Token &tok, Object &obj) {
         }
 
         // Создаем ключевое слово (убираем ведущий ':')
-        obj = Object::make_keyword(tok.text.c_str());
+        obj = Object::make_keyword(&m_symbols, tok.text.c_str());
         return true;
     }
 
@@ -590,7 +590,7 @@ bool Reader::try_token_as_symbol(const Token &tok, Object &obj) {
         }
     }
 
-    obj = Object::make_symbol(tok.text.c_str());
+    obj = Object::make_symbol(&m_symbols, tok.text.c_str());
     return true;
 }
 // ==================== List Reading ====================

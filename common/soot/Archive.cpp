@@ -56,18 +56,18 @@ std::string Archive::print() const {
                         : (m_is_writing ? "#<archive writing>" : "#<archive>");
 }
 
-Object Archive::inspect() const {
+Object Archive::inspect(SymbolTable* st) const {
     return pretty_print::build_list(
-        pretty_print::build_list(Object::make_symbol(":type"), Object::make_string(class_name())),
-        pretty_print::build_list(Object::make_symbol(":version"), Object::make_integer(m_version)),
-        pretty_print::build_list(Object::make_symbol(":is-reading"),
-                                 Object::make_boolean(m_is_reading)),
-        pretty_print::build_list(Object::make_symbol(":is-writing"),
-                                 Object::make_boolean(m_is_writing)),
-        pretty_print::build_list(Object::make_symbol(":is-error"),
-                                 Object::make_boolean(m_is_error)),
-        pretty_print::build_list(Object::make_symbol(":is-big-endian"),
-                                 Object::make_boolean(is_big_endian)));
+        pretty_print::build_list(Object::make_symbol(st, ":type"), Object::make_string(class_name())),
+        pretty_print::build_list(Object::make_symbol(st, ":version"), Object::make_integer(m_version)),
+        pretty_print::build_list(Object::make_symbol(st, ":is-reading"),
+                                 Object::make_boolean(st, m_is_reading)),
+        pretty_print::build_list(Object::make_symbol(st, ":is-writing"),
+                                 Object::make_boolean(st, m_is_writing)),
+        pretty_print::build_list(Object::make_symbol(st, ":is-error"),
+                                 Object::make_boolean(st, m_is_error)),
+        pretty_print::build_list(Object::make_symbol(st, ":is-big-endian"),
+                                 Object::make_boolean(st, is_big_endian)));
 }
 
 // ============================================================

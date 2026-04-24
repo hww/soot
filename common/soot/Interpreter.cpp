@@ -38,12 +38,11 @@ namespace soot {
 
 Interpreter::Interpreter(const std::string &username, bool load_libs)
     : m_setter_map(), m_reader(), m_symbol_table() {
-    soot::Object::set_symbol_table(&m_symbol_table);
 
     // Инициализируем boolean объекты как символы
     m_obj_null = Object::make_null();
     m_obj_none = Object::make_none();
-    m_sym_continue_error = Object::make_symbol(":continue");
+    m_sym_continue_error = Object::make_symbol(&m_symbol_table, ":continue");
     m_sym_true = m_symbol_table.core.sym_true;
     m_sym_false = m_symbol_table.core.sym_false;
     m_symbol_true = m_sym_true.as_symbol().name_ptr;
@@ -1209,7 +1208,7 @@ Object Interpreter::eval_env(const Object &form, Arguments &args,
 Object Interpreter::eval_env_name_get(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args, {}, {});
-    return Object::make_symbol(env->name); // Твой #f / NIL
+    return Object::make_symbol(&m_symbol_table, env->name); // Твой #f / NIL
 }
 
 /*!
@@ -1881,7 +1880,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
         });
         // Регистрируем окружение в родительском
         if (!env_name.empty())
-            env->vars.set(Object::intern(env_name.c_str()),
+            env->vars.set(Object::intern(&m_symbol_table, env_name.c_str()),
                           Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
 
         auto res = eval_list_return_last(body, body, new_env);
@@ -2588,7 +2587,7 @@ Object Interpreter::eval_inspect(const Object &form, Arguments &args,
 
     // Вызываем метод inspect, который теперь (благодаря нашим правкам)
     // возвращает структуру данных (List/Pair), а не строку.
-    return target.inspect();
+    return target.inspect(&m_symbol_table);
 }
 
 /*!
@@ -3662,7 +3661,7 @@ Object Interpreter::eval_type_of(const Object &form, Arguments &args,
             return table->type;
     }
 
-    return args.unnamed[0].type_name_obj();
+    return Object::make_symbol(&m_symbol_table, args.unnamed[0].type_name_obj());
 }
 
 Object Interpreter::eval_type_p(const Object &form, Arguments &args,
@@ -3674,7 +3673,7 @@ Object Interpreter::eval_type_p(const Object &form, Arguments &args,
     auto value = args.unnamed[1];    // Объект для проверки
 
     // Единый метод проверки
-    return Object::make_boolean(value.is_class_name(type_sym));
+    return value.is_class_name(type_sym.to_std_string()) ? get_true() : get_false();
 }
 
 Object Interpreter::eval_null_p(const Object &form, Arguments &args,
@@ -5481,7 +5480,7 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
         reg->type_name = second;
     else if (second.is_native_obj<Type>())
         reg->type_name =
-            Object::make_symbol(second.as_heap_obj<Type>()->get_name()); // Используй get_name()
+            Object::make_symbol(&m_symbol_table, second.as_heap_obj<Type>()->get_name()); // Используй get_name()
 
     // 2. Привязываем регистр
     if (args.has_named("reg"))
@@ -5563,7 +5562,7 @@ bool Interpreter::init_types(const std::string &variant) {
 
         auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
         auto type_obj = Object::make_heap_obj(shared_type);
-        env->vars.set(Object::intern(name.c_str()), type_obj);
+        env->vars.set(Object::intern(&m_symbol_table, name.c_str()), type_obj);
     }
 
     // 5. Обновляем ссылку на TypeSystem
@@ -5601,7 +5600,7 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
         });
         auto name = result.type_info->get_name();
 
-        m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+        m_global_environment.as_env()->vars.set(Object::intern(&m_symbol_table, name.c_str()),
                                                 Object::make_heap_obj(type_shared));
         return Object::make_heap_obj(type_shared);
     } catch (std::runtime_error &ex) {
@@ -5623,7 +5622,7 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
 
     auto name = enum_ptr->get_name();
 
-    m_global_environment.as_env()->vars.set(Object::intern(name.c_str()),
+    m_global_environment.as_env()->vars.set(Object::intern(&m_symbol_table, name.c_str()),
                                             Object::make_heap_obj(enum_shared));
     return Object::make_heap_obj(enum_shared);
 }
@@ -5667,7 +5666,7 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
             // Предположим, у тебя есть метод проверки типа в рантайме
             if (type) {
                 // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
-                return Object::make_symbol(type->get_name());
+                return Object::make_symbol(&m_symbol_table, type->get_name());
             }
 
             throw_eval_error(
@@ -6061,7 +6060,7 @@ Object Interpreter::eval_define_method(const Object &form, Arguments &args,
         throw_eval_error(form, e.what());
     }
 
-    return Object::make_boolean(success);
+    return success ? get_true() : get_false();
 }
 
 /*!
@@ -6678,7 +6677,7 @@ Object Interpreter::eval_declarations(const Object &form, Arguments &args,
     auto  func = fe->owner_function.as_function();
     auto &settings = func->declarations;
     // Make result
-    ListBuilder lb;
+    ListBuilder lb(&m_symbol_table);
     lb.add_keyword("declarations");
     lb.add_key_value("is-set",
                      true_or_false(settings.is_set)); // has the user set these with a (declare)?
@@ -6869,7 +6868,7 @@ Object Interpreter::eval_function_name_get(const Object &form, Arguments &args,
     Object implementation = args.unnamed[0];
     auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
 
-    return Object::make_symbol(lambda_ptr->name);
+    return Object::make_symbol(&m_symbol_table, lambda_ptr->name);
 }
 
 /*!
@@ -7014,7 +7013,7 @@ Object Interpreter::eval_make_memory_region(const Object &form, Arguments &args,
     if (args.has_named("base"))
         region_base = is_true(args.named["base"]);
 
-    auto memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
+    auto memory_region = std::make_shared<MemoryRegion>(&m_symbol_table, region_size, region_base);
     return Object::make_heap_obj(memory_region, ObjectType::NATIVE_OBJECT);
 }
 
@@ -7060,7 +7059,7 @@ Object Interpreter::eval_memory_region_export_hex(const Object &form, Arguments 
     // 4. Экспортируем
     bool result = region->export_intel_hex_file(path, start, end, 0, append);
 
-    return Object::make_boolean(result);
+    return result ? get_true() : get_false();
 }
 
 /*!
@@ -7093,10 +7092,10 @@ Object Interpreter::eval_make_memory_buffer(const Object &form, Arguments &args,
 
         if (region_size == 0)
             throw_eval_error(form, "make memory buffer required a :region or :size");
-        memory_region = std::make_shared<MemoryRegion>(region_size, region_base);
+        memory_region = std::make_shared<MemoryRegion>(&m_symbol_table, region_size, region_base);
     }
 
-    auto memory_buffer = std::make_shared<MemoryBuffer>(memory_region);
+    auto memory_buffer = std::make_shared<MemoryBuffer>(&m_symbol_table, memory_region);
     return Object::make_heap_obj(memory_buffer, ObjectType::NATIVE_OBJECT);
 }
 
@@ -7171,7 +7170,7 @@ Object Interpreter::eval_memory_buffer_label_set(const Object &form, Arguments &
     // Добавляем метку
     buffer->labels()->add_label(name, offset, segment, info);
 
-    return Object::make_boolean(true);
+    return get_true();
 }
 
 /*!
@@ -7251,11 +7250,11 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
         if (idx) {
             // Возвращаем информацию о символе
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword("name"),
+                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"name"),
                                          Object::make_string(buffer->symbols()->get_name(*idx))),
-                pretty_print::build_list(Object::make_keyword("crc32"),
+                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"crc32"),
                                          Object::make_integer(buffer->symbols()->get_crc32(*idx))),
-                pretty_print::build_list(Object::make_keyword("index"),
+                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
                                          Object::make_integer(*idx)));
         }
     } else if (args.unnamed[1].is_integer()) {
@@ -7269,12 +7268,12 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
             if (idx) {
                 return pretty_print::build_list(
                     pretty_print::build_list(
-                        Object::make_keyword("name"),
+                        Object::make_keyword(&m_symbol_table, "name"),
                         Object::make_string(buffer->symbols()->get_name(*idx))),
                     pretty_print::build_list(
-                        Object::make_keyword("crc32"),
+                        Object::make_keyword(&m_symbol_table,"crc32"),
                         Object::make_integer(buffer->symbols()->get_crc32(*idx))),
-                    pretty_print::build_list(Object::make_keyword("index"),
+                    pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
                                              Object::make_integer(*idx)));
             }
         } else {
@@ -7282,12 +7281,12 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
             if (value < buffer->symbols()->size()) {
                 return pretty_print::build_list(
                     pretty_print::build_list(
-                        Object::make_keyword("name"),
+                        Object::make_keyword(&m_symbol_table,"name"),
                         Object::make_string(buffer->symbols()->get_name(value))),
                     pretty_print::build_list(
-                        Object::make_keyword("crc32"),
+                        Object::make_keyword(&m_symbol_table,"crc32"),
                         Object::make_integer(buffer->symbols()->get_crc32(value))),
-                    pretty_print::build_list(Object::make_keyword("index"),
+                    pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
                                              Object::make_integer(value)));
             }
         }
@@ -7336,7 +7335,7 @@ Object Interpreter::eval_memory_buffer_reloc_set(const Object &form, Arguments &
     }
 
     buffer->relocs()->add(offset, type, target);
-    return Object::make_boolean(true);
+    return get_true();
 }
 
 /*!
@@ -7371,10 +7370,10 @@ Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &
         std::string type_str = relocation_type_to_string(reloc.type);
 
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_keyword("offset"),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
                                      Object::make_integer(reloc.offset)),
-            pretty_print::build_list(Object::make_keyword("type"), Object::make_symbol(type_str)),
-            pretty_print::build_list(Object::make_keyword("target"),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"), Object::make_symbol(&m_symbol_table, type_str)),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
                                      Object::make_string(reloc.target_name)));
     }
 
@@ -7390,11 +7389,11 @@ Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &
                 std::string type_str = relocation_type_to_string(reloc.type);
 
                 found.push_back(pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword("offset"),
+                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
                                              Object::make_integer(reloc.offset)),
-                    pretty_print::build_list(Object::make_keyword("type"),
-                                             Object::make_symbol(type_str)),
-                    pretty_print::build_list(Object::make_keyword("target"),
+                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"),
+                                             Object::make_symbol(&m_symbol_table, type_str)),
+                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
                                              Object::make_string(reloc.target_name))));
             }
         }
@@ -7461,10 +7460,10 @@ Object Interpreter::eval_memory_buffer_reloc_list(const Object &form, Arguments 
         }
 
         reloc_list.push_back(pretty_print::build_list(
-            pretty_print::build_list(Object::make_keyword("offset"),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
                                      Object::make_integer(reloc.offset)),
-            pretty_print::build_list(Object::make_keyword("type"), Object::make_symbol(type_str)),
-            pretty_print::build_list(Object::make_keyword("target"),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"), Object::make_symbol(&m_symbol_table, type_str)),
+            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
                                      Object::make_string(reloc.target_name))));
     }
 
@@ -7601,7 +7600,7 @@ Object Interpreter::eval_archive_at_end(const Object &form, Arguments &args,
         throw_eval_error(form, "Argument must be archive");
     }
 
-    return Object::make_boolean(archive->at_end());
+    return archive->at_end() ? get_true() : get_false();
 }
 
 /*!

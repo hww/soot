@@ -55,17 +55,14 @@ class TypeSpec : public NativeObject {
     TypeSpec &operator=(TypeSpec &&other) noexcept;
     ~TypeSpec() = default;
 
-    std::string full_class_name() const override {
-        return "TypeSpec";
-    }
     std::string class_name() const override {
         return "type-spec";
     }
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
+    std::string type_name_obj() const override {
+        return class_name();
     }
 
-    bool is_class_name(const Object &name) const override {
+    bool is_class_name(const std::string &name) const override {
         return name == TypeSpec::type_name_obj() || NativeObject::is_class_name(name);
     }
     // Comparison
@@ -78,7 +75,7 @@ class TypeSpec : public NativeObject {
 
     // Printing
     std::string print() const override;
-    Object      inspect() const override;
+    Object      inspect(SymbolTable* st) const override;
 
     // Argument management
     void add_arg(const TypeSpec &ts);

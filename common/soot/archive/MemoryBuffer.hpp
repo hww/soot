@@ -7,6 +7,7 @@
 #include "RelocationTable.hpp"
 #include "common/soot/Archive.hpp"
 #include "common/type_system/Type.hpp"
+#include "soot/Object.hpp"
 #include <unordered_map>
 #include <vector>
 
@@ -33,14 +34,15 @@ class MemoryBuffer : public NativeObject {
     std::shared_ptr<MemorySymbolTable> m_symbols; // если нужны
     std::shared_ptr<RelocationTable>   m_relocs;  // если нужны
     std::shared_ptr<LabelTable>        m_labels;  // если нужны
+    SymbolTable* m_st;
 
   public:
-    MemoryBuffer() {}
-    MemoryBuffer(std::shared_ptr<MemoryRegion> region) : m_region(region) {
+    MemoryBuffer(SymbolTable* st) :  m_st(st) {}
+    MemoryBuffer(SymbolTable* st, std::shared_ptr<MemoryRegion> region) : m_region(region), m_st(st) {
 
-        m_symbols = std::make_shared<MemorySymbolTable>();
-        m_relocs = std::make_shared<RelocationTable>();
-        m_labels = std::make_shared<LabelTable>();
+        m_symbols = std::make_shared<MemorySymbolTable>(st);
+        m_relocs = std::make_shared<RelocationTable>(st);
+        m_labels = std::make_shared<LabelTable>(st);
     }
     ~MemoryBuffer() {}
     // Только геттеры и сеттеры компонентов
@@ -69,10 +71,10 @@ class MemoryBuffer : public NativeObject {
 
     void serialize(Archive &ar) override {
         if (ar.is_reading()) {
-            m_region = std::make_shared<MemoryRegion>();
-            m_symbols = std::make_shared<MemorySymbolTable>();
-            m_relocs = std::make_shared<RelocationTable>();
-            m_labels = std::make_shared<LabelTable>();
+            m_region = std::make_shared<MemoryRegion>(m_st);
+            m_symbols = std::make_shared<MemorySymbolTable>(m_st);
+            m_relocs = std::make_shared<RelocationTable>(m_st);
+            m_labels = std::make_shared<LabelTable>(m_st);
         }
 
         m_region->serialize(ar);
@@ -95,22 +97,19 @@ class MemoryBuffer : public NativeObject {
     std::string class_name() const override {
         return "memory-buffer";
     }
-    std::string full_class_name() const override {
-        return "MemoryBuffer";
-    }
 
     std::string print() const override {
         return fmt::format("#<memory-buffer {:04x}-{:04x} size={}>", m_region->base(),
                            m_region->base() + m_region->size(), m_region->size());
     }
 
-    Object inspect() const override {
+    Object inspect(SymbolTable* st) const override {
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_symbol(":type"),
+            pretty_print::build_list(Object::make_symbol(st, ":type"),
                                      Object::make_string(class_name())),
-            pretty_print::build_list(Object::make_symbol(":base"),
+            pretty_print::build_list(Object::make_symbol(st, ":base"),
                                      Object::make_integer(m_region->base())),
-            pretty_print::build_list(Object::make_symbol(":size"),
+            pretty_print::build_list(Object::make_symbol(st, ":size"),
                                      Object::make_integer(m_region->size())));
     }
 };
