@@ -11,6 +11,7 @@
 #include "fmt/core.h"
 #include "fmt/color.h"
 #include "type_system/TypeSystem.hpp"
+#include "third_party/replxx/include/replxx.hxx"
 
 namespace sootc {
 
@@ -44,14 +45,38 @@ Compiler::Compiler(SootPlatform platform,
     if (m_repl) {
         m_repl->load_history();
         m_repl->print_welcome_message(m_make.get_loaded_projects());
+        
+        // Инициализируем examples и regex_colors в m_repl
+        m_repl->examples = {
+            "(define ", "(defun ", "(defmacro ", "(if ", "(when ", 
+            "(unless ", "(cond ", "(let ", "(lambda ", "(set! ", 
+            "(quote ", "(load \"", "(compile \"", "(deftype ", "(defenum "
+        };
+        // Инициализируем examples и regex_colors
+        m_repl->regex_colors = {
+            {";[^\n]*", replxx::Replxx::Color::BRIGHTCYAN},
+            {"\"[^\"]*\"", replxx::Replxx::Color::GREEN},
+            {"\\b[0-9]+\\b", replxx::Replxx::Color::YELLOW},
+            {"\\b(defun|defmacro|if|when|unless|cond|let|lambda|set!|define|quote|deftype|defenum)\\b",
+            replxx::Replxx::Color::BRIGHTMAGENTA},
+            {"\\b#t\\b|\\b#f\\b", replxx::Replxx::Color::BRIGHTMAGENTA},
+            {"[\\(\\)]", replxx::Replxx::Color::BRIGHTBLUE},
+        };
+            
         m_repl->init_settings();
         using namespace std::placeholders;
-        //m_repl->get_repl().set_completion_callback(std::bind(
-        //    &Compiler::find_symbols_or_object_file_by_prefix, this, _1, _2, std::cref(examples)));
-        //m_repl->get_repl().set_hint_callback(
-        //    std::bind(&Compiler::find_hints_by_prefix, this, _1, _2, _3, std::cref(examples)));
-        //m_repl->get_repl().set_highlighter_callback(
-        //    std::bind(&Compiler::repl_coloring, this, _1, _2, std::cref(regex_colors)));
+        // Completion callback
+        m_repl->get_repl().set_completion_callback(
+            std::bind(&Compiler::find_symbols_or_object_file_by_prefix, 
+                    this, _1, _2, std::cref(m_repl->examples)));
+        
+        m_repl->get_repl().set_hint_callback(
+            std::bind(&Compiler::find_hints_by_prefix, 
+                    this, _1, _2, _3, std::cref(m_repl->examples)));
+        
+        m_repl->get_repl().set_highlighter_callback(
+            std::bind(&Compiler::repl_coloring, 
+                    this, _1, _2));
     }
 
     // add soot forms that get info from the compiler
@@ -568,4 +593,125 @@ void Compiler::print_warning(const std::string& warning) {
     fmt::print(fg(fmt::color::yellow), "Warning: {}\n", warning);
 }
 
+
+// ===============================================================
+//  REPL Callbacks 
+// ===============================================================
+replxx::Replxx::completions_t Compiler::find_symbols_or_object_file_by_prefix(
+    const std::string& context,
+    int& context_len,
+    const std::vector<std::string>& examples) {
+    
+    replxx::Replxx::completions_t matches;
+    
+    if (context.empty()) {
+        context_len = 0;
+        return matches;
+    }
+    
+    context_len = static_cast<int>(context.length());
+    
+    // Add matching examples
+    for (const auto& ex : examples) {
+        if (ex.find(context) == 0) {
+            matches.emplace_back(ex);
+        }
+    }
+    
+    // Add matching symbols from interpreter
+    auto symbols = m_soot.get_all_symbols_matching(context);
+    for (const auto& sym : symbols) {
+        matches.emplace_back(sym);
+    }
+    
+    return matches;
+}
+
+replxx::Replxx::hints_t Compiler::find_hints_by_prefix(
+    const std::string& context,
+    int& context_len,
+    replxx::Replxx::Color& color,
+    const std::vector<std::string>& examples) {
+    
+    replxx::Replxx::hints_t hints;
+    
+    if (context.empty()) {
+        context_len = 0;
+        return hints;
+    }
+    
+    context_len = static_cast<int>(context.length());
+    color = replxx::Replxx::Color::BRIGHTCYAN;
+    
+    // Function signatures as hints
+    if (context == "defun" || context == "defmacro") {
+        hints.push_back(" (name args body...)");
+    } else if (context == "if") {
+        hints.push_back(" (test then else)");
+    } else if (context == "when") {
+        hints.push_back(" (test body...)");
+    } else if (context == "cond") {
+        hints.push_back(" (clause...)");
+    } else if (context == "let" || context == "let*") {
+        hints.push_back(" ((var val)...) body...");
+    } else if (context == "lambda") {
+        hints.push_back(" (args body...)");
+    } else if (context == "define") {
+        hints.push_back(" (name value)");
+    } else if (context == "set!") {
+        hints.push_back(" (var value)");
+    } else if (context == "quote") {
+        hints.push_back(" (expr)");
+    } else if (context == "load" || context == "compile") {
+        hints.push_back(" \"filename\"");
+    } else if (context == "deftype") {
+        hints.push_back(" (name parent (field...))");
+    } else if (context == "defenum") {
+        hints.push_back(" (name values...)");
+    }
+    
+    // If no specific hints, try to complete from examples
+    if (hints.empty()) {
+        for (const auto& ex : examples) {
+            if (ex.find(context) == 0 && ex != context) {
+                hints.push_back(ex.substr(context.length()));
+            }
+        }
+    }
+    
+    return hints;
+}
+
+void Compiler::repl_coloring(
+    const std::string& input,
+    replxx::Replxx::colors_t& colors) {
+    
+    // Ручной парсинг строки и установка цветов для каждого символа
+    bool in_string = false;
+    bool in_comment = false;
+    
+    for (size_t i = 0; i < input.size(); i++) {
+        char c = input[i];
+        
+        if (c == '"' && !in_comment) {
+            in_string = !in_string;
+            colors[i] = replxx::Replxx::Color::GREEN;
+        } else if (c == ';' && !in_string) {
+            in_comment = true;
+            colors[i] = replxx::Replxx::Color::BRIGHTCYAN;
+        } else if (in_comment) {
+            colors[i] = replxx::Replxx::Color::BRIGHTCYAN;
+        } else if (in_string) {
+            colors[i] = replxx::Replxx::Color::GREEN;
+        } else if (c == '(' || c == ')') {
+            colors[i] = replxx::Replxx::Color::BRIGHTBLUE;
+        } else if (std::isdigit(c) || (c == '-' && std::isdigit(input[i+1]))) {
+            // цифры
+            colors[i] = replxx::Replxx::Color::YELLOW;
+        } else {
+            // Проверка ключевых слов
+            // (сложная логика для определения границ слов)
+        }
+    }
+}
 } // namespace sootc

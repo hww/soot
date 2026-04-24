@@ -99,6 +99,7 @@ public:
     TypeSystem& ts() { return m_ts; }
     CompilationOptions& config() { return m_config; }
     
+
 private:
     // Компиляция в байт-код/бинарник
     std::expected<std::unique_ptr<BinaryFile>, std::string> 
@@ -186,6 +187,25 @@ private:
         lg::print(str + '\n', std::forward<Args>(args)...);
         }
     }
+
+    // ===============================================================
+    //  REPL Callbacks 
+    // ===============================================================
+    // Completion callback - ожидает возвращать vector<Replxx::Completion>
+    replxx::Replxx::completions_t find_symbols_or_object_file_by_prefix(
+        const std::string& context,
+        int& context_len,
+        const std::vector<std::string>& examples);
+
+    replxx::Replxx::hints_t find_hints_by_prefix(
+        const std::string& context,
+        int& context_len,
+        replxx::Replxx::Color& color,
+        const std::vector<std::string>& examples);
+
+    void repl_coloring(
+        const std::string& input,
+        replxx::Replxx::colors_t& colors);
 
     // ===============================================================
     // Fields

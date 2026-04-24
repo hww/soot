@@ -73,7 +73,7 @@ class Interpreter {
     }
 
     // --- Для REPL и LSP -------------------
-    std::string get_all_symbols_matching(const std::string &prefix);
+    std::vector<std::string> get_all_symbols_matching(const std::string &prefix);
 
     // --- Константы ------------------------
 

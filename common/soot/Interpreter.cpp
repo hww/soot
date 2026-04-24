@@ -5225,7 +5225,7 @@ Object Interpreter::eval_read_delimited_list(const Object &form, Arguments &args
     return m_reader.read_list(*(reader_obj->ts), false, terminator);
 }
 
-std::string Interpreter::get_all_symbols_matching(const std::string &prefix) {
+std::vector<std::string> Interpreter::get_all_symbols_matching(const std::string &prefix) {
     std::set<std::string> matches;
 
     // 1. Лямбда для глубокого обхода EnvironmentObject
@@ -5233,7 +5233,6 @@ std::string Interpreter::get_all_symbols_matching(const std::string &prefix) {
         if (!env_obj.is_env())
             return;
 
-        // Явно указываем shared_ptr, чтобы типы совпали с parent_env
         std::shared_ptr<EnvironmentObject> current = env_obj.as_env_ptr();
 
         while (current) {
@@ -5247,7 +5246,6 @@ std::string Interpreter::get_all_symbols_matching(const std::string &prefix) {
                     }
                 }
             }
-            // Теперь здесь не будет ошибки, так как оба типа shared_ptr
             current = current->parent_env;
         }
     };
@@ -5255,14 +5253,8 @@ std::string Interpreter::get_all_symbols_matching(const std::string &prefix) {
     // 2. Собираем из обоих окружений
     collect_from_env(m_global_environment);
 
-    // 3. Склеиваем в строку для отправки по сети
-    std::string result;
-    for (const auto &s : matches) {
-        if (!result.empty())
-            result += " ";
-        result += s;
-    }
-    return result;
+    // 3. Возвращаем как вектор строк
+    return std::vector<std::string>(matches.begin(), matches.end());
 }
 
 // ============================================================
