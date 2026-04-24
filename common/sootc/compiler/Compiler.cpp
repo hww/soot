@@ -21,7 +21,7 @@ Compiler::Compiler(SootPlatform platform,
                    std::unique_ptr<REPL::Wrapper> repl) 
     : m_ts(TypeSystem::instance()),
       m_platform(platform),
-      m_soot(user_profile, false),
+      m_soot(user_profile, false, true, platform),
       m_make(repl_config, user_profile),
       m_repl(std::move(repl))
 {
@@ -455,7 +455,6 @@ void Compiler::set_global(const std::string& name, const soot::Object& value) {
 soot::Object Compiler::get_global(const std::string& name) {
     return m_soot.get_global(Object::intern(&m_soot.symbol_table(), name.c_str()));
 }
-
 
 void Compiler::reload_environment() {
     lg::info("Reloading environment...");

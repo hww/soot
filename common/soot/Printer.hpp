@@ -43,7 +43,6 @@ namespace soot::pretty_print {
 		return Object::make_pair(car, build_list(rest...));
 	}
 
-	Reader& get_pretty_printer_reader();
 
 	Object float_representation(float value);
 

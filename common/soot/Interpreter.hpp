@@ -1,4 +1,5 @@
 #pragma once
+#include "CommonTypes.hpp"
 #include "common/soot/Errors.hpp"
 #include "common/soot/Object.hpp"
 #include "common/soot/Reader.hpp"
@@ -18,7 +19,7 @@ class Interpreter {
     friend class SootTypeSystem;
 
   public:
-    Interpreter(const std::string &username = "user", bool load_libs = false);
+    Interpreter(const std::string &username = "user", bool load_libs = false, bool init_type_system = false, SootPlatform platfor = SootPlatform::Default);
 
     void Terminate() {
         m_profiler.dump("profiler_dump.json");
@@ -66,7 +67,7 @@ class Interpreter {
         return m_reader.get_db();
     }
     SymbolTable &symbol_table() {
-        return m_symbol_table;
+        return m_reader.symbol_table();
     }
 
     // --- Для REPL и LSP -------------------
@@ -622,7 +623,7 @@ class Interpreter {
     Object eval_types_match_p(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
 
-    bool     init_types(const std::string &variant);
+    bool     init_types(SootPlatform platform);
     TypeSpec parse_typespec_helper(const Object &obj);
     TypeSpec deduct_type_for_constant_helper(const Object &val);
 
@@ -725,7 +726,6 @@ class Interpreter {
     Object                                          m_global_environment;
     bool                                            m_disable_printing = false;
     Reader                                          m_reader;
-    SymbolTable                                     m_symbol_table;
     std::vector<std::shared_ptr<EnvironmentObject>> m_dynamic_stack;
     SimpleProfiler                                  m_profiler;
 };

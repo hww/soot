@@ -26,6 +26,7 @@
 
 #include "common/CommonTypes.hpp"
 #include "common/versions/revision.h"
+#include "repl/config.h"
 #include "soot/archive/MemoryArchive.hpp"
 #include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
@@ -37,15 +38,15 @@
 
 namespace soot {
 
-Interpreter::Interpreter(const std::string &username, bool load_libs)
-    : m_setter_map(), m_reader(), m_symbol_table() {
+Interpreter::Interpreter(const std::string &username, bool load_libs, bool init_type_system, SootPlatform platform)
+    : m_setter_map(), m_reader() {
 
     // Инициализируем boolean объекты как символы
     m_obj_null = Object::make_null();
     m_obj_none = Object::make_none();
-    m_sym_continue_error = Object::make_symbol(&m_symbol_table, ":continue");
-    m_sym_true = m_symbol_table.core.sym_true;
-    m_sym_false = m_symbol_table.core.sym_false;
+    m_sym_continue_error = Object::make_symbol(&symbol_table(), ":continue");
+    m_sym_true = symbol_table().core.sym_true;
+    m_sym_false = symbol_table().core.sym_false;
     m_symbol_true = m_sym_true.as_symbol().name_ptr;
     m_symbol_false = m_sym_false.as_symbol().name_ptr;
 
@@ -363,7 +364,8 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
     });
 
     // Type system
-    init_types("default");
+    if (init_type_system)
+        init_types(platform);
 
     // load the standard library
     if (load_libs)
@@ -529,18 +531,18 @@ void Interpreter::define_var_in_env(const Object &env, const Object &var, const 
 // ============================================================
 
 Object Interpreter::intern(const char *name) {
-    return m_symbol_table.make_symbol(name);
+    return symbol_table().make_symbol(name);
 }
 
 /*!
  * Get a symbol with the given name, creating one if none exist.
  */
 Object Interpreter::intern(const std::string &name) {
-    return m_symbol_table.make_symbol(name.c_str());
+    return symbol_table().make_symbol(name.c_str());
 }
 
 InternedSymbolPtr Interpreter::intern_ptr(const std::string &name) {
-    return m_symbol_table.intern(name.c_str());
+    return symbol_table().intern(name.c_str());
 }
 
 // ============================================================
@@ -808,7 +810,7 @@ Object Interpreter::call_lambda_internal(const Object &form, const Object &lambd
     ASSERT(lam_env->owner_function.is_function());
 
     //  4. Биндим аргументы
-    Object dummy_form = m_symbol_table.make_symbol("call-lambda");
+    Object dummy_form = symbol_table().make_symbol("call-lambda");
     set_args_in_env(dummy_form, func_args, lam->args, lam_env);
 
     // 5. Выполняем тело
@@ -1209,7 +1211,7 @@ Object Interpreter::eval_env(const Object &form, Arguments &args,
 Object Interpreter::eval_env_name_get(const Object &form, Arguments &args,
                                       const std::shared_ptr<EnvironmentObject> &env) {
     vararg_check(form, args, {}, {});
-    return Object::make_symbol(&m_symbol_table, env->name); // Твой #f / NIL
+    return Object::make_symbol(&symbol_table(), env->name); // Твой #f / NIL
 }
 
 /*!
@@ -1881,7 +1883,7 @@ Object Interpreter::eval_rlet_special(const Object &form, const Object &rest,
         });
         // Регистрируем окружение в родительском
         if (!env_name.empty())
-            env->vars.set(Object::intern(&m_symbol_table, env_name.c_str()),
+            env->vars.set(Object::intern(&symbol_table(), env_name.c_str()),
                           Object::make_heap_obj(new_env, ObjectType::ENVIRONMENT));
 
         auto res = eval_list_return_last(body, body, new_env);
@@ -2588,7 +2590,7 @@ Object Interpreter::eval_inspect(const Object &form, Arguments &args,
 
     // Вызываем метод inspect, который теперь (благодаря нашим правкам)
     // возвращает структуру данных (List/Pair), а не строку.
-    return target.inspect(&m_symbol_table);
+    return target.inspect(&symbol_table());
 }
 
 /*!
@@ -3662,7 +3664,7 @@ Object Interpreter::eval_type_of(const Object &form, Arguments &args,
             return table->type;
     }
 
-    return Object::make_symbol(&m_symbol_table, args.unnamed[0].type_name_obj());
+    return Object::make_symbol(&symbol_table(), args.unnamed[0].type_name_obj());
 }
 
 Object Interpreter::eval_type_p(const Object &form, Arguments &args,
@@ -4337,7 +4339,7 @@ Object Interpreter::eval_get_at(const Object &form, Arguments &args,
     }
 
     // Вызываем виртуальный метод объекта
-    Object result = target.as_heap_obj()->get_at(&m_symbol_table, key);
+    Object result = target.as_heap_obj()->get_at(&symbol_table(), key);
 
     // Если ключ не найден (объект вернул undefined)
     if (result.is_none()) {
@@ -4368,7 +4370,7 @@ Object Interpreter::eval_set_at(const Object &form, Arguments &args,
         // Вызываем виртуальный метод.
         // Если это StaticBuffer — запишется в память.
         // Если HashTable — запишется в мапу.
-        target.as_heap_obj()->set_at(&m_symbol_table, key, value);
+        target.as_heap_obj()->set_at(&symbol_table(), key, value);
     } else {
         throw_eval_error(form, "set-at!: target must be a heap object (buffer, table, etc)");
     }
@@ -5481,7 +5483,7 @@ Object Interpreter::eval_reg_alias(const Object &form, Arguments &args,
         reg->type_name = second;
     else if (second.is_native_obj<Type>())
         reg->type_name =
-            Object::make_symbol(&m_symbol_table, second.as_heap_obj<Type>()->get_name()); // Используй get_name()
+            Object::make_symbol(&symbol_table(), second.as_heap_obj<Type>()->get_name()); // Используй get_name()
 
     // 2. Привязываем регистр
     if (args.has_named("reg"))
@@ -5515,7 +5517,12 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
     TypeSystem::instance().clear();
-    if (init_types(args.unnamed[0].as_symbol())) {
+    auto platform = args.unnamed[0].as_symbol();
+    if (platform == "default") {
+        init_types(SootPlatform::Default);
+        return get_true();
+    } else if (platform == "z80") {
+        init_types(SootPlatform::Default);
         return get_true();
     } else {
         throw_eval_error(form,
@@ -5527,7 +5534,7 @@ Object Interpreter::eval_init_types(const Object &form, Arguments &args,
 /*!
  * Helper Initialize the type system
  */
-bool Interpreter::init_types(const std::string &variant) {
+bool Interpreter::init_types(SootPlatform platform) {
     auto &ts = TypeSystem::instance();
     auto  env = m_global_environment.as_env();
 
@@ -5547,14 +5554,8 @@ bool Interpreter::init_types(const std::string &variant) {
     ts.clear();
 
     // 3. СОЗДАЁМ новые типы
-    if (variant == "z80") {
-        ts.add_builtin_types(SootPlatform::Z80);
-    } else if (variant == "default") {
-        ts.add_builtin_types(SootPlatform::Default);
-    } else {
-        return false;
-    }
-
+    ts.add_builtin_types(platform);
+ 
     // 4. ЭКСПОРТИРУЕМ новые типы
     const auto &all_types = ts.get_types(); // теперь константная ссылка!
     for (const auto &pair : all_types) {    // pair, а не [name, type_ptr]
@@ -5563,7 +5564,7 @@ bool Interpreter::init_types(const std::string &variant) {
 
         auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
         auto type_obj = Object::make_heap_obj(shared_type);
-        env->vars.set(Object::intern(&m_symbol_table, name.c_str()), type_obj);
+        env->vars.set(Object::intern(&symbol_table(), name.c_str()), type_obj);
     }
 
     // 5. Обновляем ссылку на TypeSystem
@@ -5601,7 +5602,7 @@ Object Interpreter::eval_deftype_special(const Object &form, const Object &rest,
         });
         auto name = result.type_info->get_name();
 
-        m_global_environment.as_env()->vars.set(Object::intern(&m_symbol_table, name.c_str()),
+        m_global_environment.as_env()->vars.set(Object::intern(&symbol_table(), name.c_str()),
                                                 Object::make_heap_obj(type_shared));
         return Object::make_heap_obj(type_shared);
     } catch (std::runtime_error &ex) {
@@ -5623,7 +5624,7 @@ Object Interpreter::eval_defenum_special(const Object &, const Object &rest,
 
     auto name = enum_ptr->get_name();
 
-    m_global_environment.as_env()->vars.set(Object::intern(&m_symbol_table, name.c_str()),
+    m_global_environment.as_env()->vars.set(Object::intern(&symbol_table(), name.c_str()),
                                             Object::make_heap_obj(enum_shared));
     return Object::make_heap_obj(enum_shared);
 }
@@ -5667,7 +5668,7 @@ Object Interpreter::eval_typespec(const Object &form, Arguments &args,
             // Предположим, у тебя есть метод проверки типа в рантайме
             if (type) {
                 // Возвращаем СИМВОЛ типа (например, 'int'), который поймет parse_typespec
-                return Object::make_symbol(&m_symbol_table, type->get_name());
+                return Object::make_symbol(&symbol_table(), type->get_name());
             }
 
             throw_eval_error(
@@ -5790,7 +5791,7 @@ Object Interpreter::eval_deref(const Object &form, Arguments &args,
         try {
             // Метод step теперь полиморфен: он знает, как работать
             // и с TypeObject, и с HeapObject/Pointer.
-            Object next = current.step(&m_symbol_table, key);
+            Object next = current.step(&symbol_table(), key);
 
             if (next.is_none()) {
                 throw_eval_error(form, fmt::format("Access error: field or property '{}' "
@@ -5859,7 +5860,7 @@ Object Interpreter::eval_deref_special(const Object &form, const Object &rest,
         // Если current - это Type, он вернет метаданные.
         // Если current - это экземпляр, он вернет данные.
         try {
-            current = current.step(&m_symbol_table, key);
+            current = current.step(&symbol_table(), key);
         } catch (std::runtime_error &e) {
             throw_eval_error(form, e.what());
         }
@@ -6678,7 +6679,7 @@ Object Interpreter::eval_declarations(const Object &form, Arguments &args,
     auto  func = fe->owner_function.as_function();
     auto &settings = func->declarations;
     // Make result
-    ListBuilder lb(&m_symbol_table);
+    ListBuilder lb(&symbol_table());
     lb.add_keyword("declarations");
     lb.add_key_value("is-set",
                      true_or_false(settings.is_set)); // has the user set these with a (declare)?
@@ -6799,7 +6800,7 @@ Object Interpreter::eval_function_type_make(const Object &form, Arguments &args,
     // 3. Сборка финального TypeSpec
     // build_typespec_from_env соберет (function <return_type> (<arg1-type> <arg2-type> ...))
     settings.typespec =
-        TypeSystem::instance().build_typespec_from_env(&m_symbol_table, rlet_env, settings.return_type);
+        TypeSystem::instance().build_typespec_from_env(&symbol_table(), rlet_env, settings.return_type);
 
     return settings.typespec;
 }
@@ -6869,7 +6870,7 @@ Object Interpreter::eval_function_name_get(const Object &form, Arguments &args,
     Object implementation = args.unnamed[0];
     auto   lambda_ptr = implementation.as_heap_obj<FunctionObject>();
 
-    return Object::make_symbol(&m_symbol_table, lambda_ptr->name);
+    return Object::make_symbol(&symbol_table(), lambda_ptr->name);
 }
 
 /*!
@@ -6996,7 +6997,7 @@ Object Interpreter::eval_make_memory_archive(const Object &form, Arguments &args
     auto memory_region = args.unnamed[0].as_native_obj<MemoryRegion>();
 
     auto memory_archive =
-        std::make_shared<MemoryArchive>(&m_symbol_table, memory_region, reading, writing, persistant);
+        std::make_shared<MemoryArchive>(&symbol_table(), memory_region, reading, writing, persistant);
     return Object::make_heap_obj(memory_archive, ObjectType::NATIVE_OBJECT);
 }
 
@@ -7251,11 +7252,11 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
         if (idx) {
             // Возвращаем информацию о символе
             return pretty_print::build_list(
-                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"name"),
+                pretty_print::build_list(Object::make_keyword(&symbol_table(),"name"),
                                          Object::make_string(buffer->symbols()->get_name(*idx))),
-                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"crc32"),
+                pretty_print::build_list(Object::make_keyword(&symbol_table(),"crc32"),
                                          Object::make_integer(buffer->symbols()->get_crc32(*idx))),
-                pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
+                pretty_print::build_list(Object::make_keyword(&symbol_table(),"index"),
                                          Object::make_integer(*idx)));
         }
     } else if (args.unnamed[1].is_integer()) {
@@ -7269,12 +7270,12 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
             if (idx) {
                 return pretty_print::build_list(
                     pretty_print::build_list(
-                        Object::make_keyword(&m_symbol_table, "name"),
+                        Object::make_keyword(&symbol_table(), "name"),
                         Object::make_string(buffer->symbols()->get_name(*idx))),
                     pretty_print::build_list(
-                        Object::make_keyword(&m_symbol_table,"crc32"),
+                        Object::make_keyword(&symbol_table(),"crc32"),
                         Object::make_integer(buffer->symbols()->get_crc32(*idx))),
-                    pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
+                    pretty_print::build_list(Object::make_keyword(&symbol_table(),"index"),
                                              Object::make_integer(*idx)));
             }
         } else {
@@ -7282,12 +7283,12 @@ Object Interpreter::eval_memory_buffer_symbol_ref(const Object &form, Arguments 
             if (value < buffer->symbols()->size()) {
                 return pretty_print::build_list(
                     pretty_print::build_list(
-                        Object::make_keyword(&m_symbol_table,"name"),
+                        Object::make_keyword(&symbol_table(),"name"),
                         Object::make_string(buffer->symbols()->get_name(value))),
                     pretty_print::build_list(
-                        Object::make_keyword(&m_symbol_table,"crc32"),
+                        Object::make_keyword(&symbol_table(),"crc32"),
                         Object::make_integer(buffer->symbols()->get_crc32(value))),
-                    pretty_print::build_list(Object::make_keyword(&m_symbol_table,"index"),
+                    pretty_print::build_list(Object::make_keyword(&symbol_table(),"index"),
                                              Object::make_integer(value)));
             }
         }
@@ -7371,10 +7372,10 @@ Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &
         std::string type_str = relocation_type_to_string(reloc.type);
 
         return pretty_print::build_list(
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "offset"),
                                      Object::make_integer(reloc.offset)),
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"), Object::make_symbol(&m_symbol_table, type_str)),
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "type"), Object::make_symbol(&symbol_table(), type_str)),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "target"),
                                      Object::make_string(reloc.target_name)));
     }
 
@@ -7390,11 +7391,11 @@ Object Interpreter::eval_memory_buffer_reloc_ref(const Object &form, Arguments &
                 std::string type_str = relocation_type_to_string(reloc.type);
 
                 found.push_back(pretty_print::build_list(
-                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
+                    pretty_print::build_list(Object::make_keyword(&symbol_table(), "offset"),
                                              Object::make_integer(reloc.offset)),
-                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"),
-                                             Object::make_symbol(&m_symbol_table, type_str)),
-                    pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
+                    pretty_print::build_list(Object::make_keyword(&symbol_table(), "type"),
+                                             Object::make_symbol(&symbol_table(), type_str)),
+                    pretty_print::build_list(Object::make_keyword(&symbol_table(), "target"),
                                              Object::make_string(reloc.target_name))));
             }
         }
@@ -7461,10 +7462,10 @@ Object Interpreter::eval_memory_buffer_reloc_list(const Object &form, Arguments 
         }
 
         reloc_list.push_back(pretty_print::build_list(
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "offset"),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "offset"),
                                      Object::make_integer(reloc.offset)),
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "type"), Object::make_symbol(&m_symbol_table, type_str)),
-            pretty_print::build_list(Object::make_keyword(&m_symbol_table, "target"),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "type"), Object::make_symbol(&symbol_table(), type_str)),
+            pretty_print::build_list(Object::make_keyword(&symbol_table(), "target"),
                                      Object::make_string(reloc.target_name))));
     }
 
