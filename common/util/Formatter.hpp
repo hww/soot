@@ -1,14 +1,11 @@
 #pragma once
 
 #include <fmt/format.h>
+#include <fmt/core.h>
 #include <string>
 #include <string_view>
 
 namespace util {
-#include <string>
-#include <string_view>
-#include <fmt/core.h>
-#include <fmt/format.h>
 
 // ==================== Базовый интерфейс ====================
 
@@ -23,7 +20,7 @@ public:
     
     virtual std::string indent() const = 0;
     
-    // Форматирование с отступом
+    // format - возвращает строку (не печатает)
     virtual std::string format(std::string_view msg) const = 0;
     
     template<typename... Args>
@@ -35,29 +32,32 @@ public:
     std::string format_inline(std::string_view fmt_str, Args... args) const {
         return fmt::vformat(fmt_str, fmt::make_format_args(args...));
     }
-
-    // Основные методы вывода/накопления
-    virtual void output(std::string_view msg) = 0;
     
+    // print - печатает/накапливает
     template<typename... Args>
-    void output(std::string_view fmt_str, Args&&... args) {
-        output(indent());
-        std::string formatted = fmt::vformat(fmt_str, fmt::make_format_args(args...));
-        output(formatted);
+    void print(std::string_view fmt_str, Args... args) {
+        do_print(indent() + fmt::vformat(fmt_str, fmt::make_format_args(args...)));
     }
     
     template<typename... Args>
-    void output_inline(std::string_view fmt_str, Args&&... args) {
-        std::string formatted = fmt::vformat(fmt_str, fmt::make_format_args(args...));
-        output(formatted);
+    void print_inline(std::string_view fmt_str, Args... args) {
+        do_print(fmt::vformat(fmt_str, fmt::make_format_args(args...)));
     }
-
-    virtual void output_runtime(std::string_view msg) = 0;
     
-    // RAII блок для изменения отступа
+    void print_raw(std::string_view msg) {
+        do_print(std::string(msg));
+    }
+    
+    template<typename... Args>
+    void println(std::string_view fmt_str, Args... args) {
+        print(fmt_str, args...);
+        print_raw("\n");
+    }
+    
+    // RAII блок
     class Block {
     public:
-        Block(IFormatter& f, int indent_delta = 2) : m_formatter(f), m_delta(indent_delta) {
+        Block(IFormatter& f, int delta = 2) : m_formatter(f), m_delta(delta) {
             m_formatter.inc_column(m_delta);
         }
         ~Block() {
@@ -69,14 +69,15 @@ public:
         IFormatter& m_formatter;
         int m_delta;
     };
+    
+protected:
+    virtual void do_print(const std::string& msg) = 0;
 };
 
-// ==================== Класс для печати ====================
+// ==================== Печать в консоль ====================
 
 class OutputFormatter : public IFormatter {
 public:
-    OutputFormatter() {}
-
     int get_column() const override { return m_column; }
     void set_column(int col) override { m_column = col; }
     void inc_column(int delta) override { m_column += delta; }
@@ -90,37 +91,19 @@ public:
         return indent() + std::string(msg);
     }
     
-    // Вывод на печать
-    void output(std::string_view msg) override {
+protected:
+    void do_print(const std::string& msg) override {
         fmt::print("{}", msg);
-    }
-    
-    void output_runtime(std::string_view msg) override {
-        fmt::print("{}{}", indent(), msg);
-    }
-    
-    // Дополнительный метод для печати с автоматическим переводом строки
-    void output_line(std::string_view msg) {
-        output(msg);
-        output("\n");
-    }
-    
-    template<typename... Args>
-    void output_line(std::string_view fmt_str, Args&&... args) {
-        output(fmt_str, std::forward<Args>(args)...);
-        output("\n");
     }
     
 private:
     int m_column = 0;
 };
 
-// ==================== Класс для накопления в строке ====================
+// ==================== Накопление в строку ====================
 
 class StringBuilderFormatter : public IFormatter {
 public:
-    StringBuilderFormatter() {}
-
     int get_column() const override { return m_column; }
     void set_column(int col) override { m_column = col; }
     void inc_column(int delta) override { m_column += delta; }
@@ -134,36 +117,12 @@ public:
         return indent() + std::string(msg);
     }
     
-    // Накопление в буфер
-    void output(std::string_view msg) override {
-        m_buffer.append(msg);
-    }
+    std::string get_result() const { return m_buffer; }
+    void clear() { m_buffer.clear(); reset_column(); }
     
-    void output_runtime(std::string_view msg) override {
-        m_buffer.append(indent());
-        m_buffer.append(msg);
-    }
-    
-    // Дополнительный метод для добавления с переводом строки
-    void output_line(std::string_view msg) {
-        output(msg);
-        output("\n");
-    }
-    
-    template<typename... Args>
-    void output_line(std::string_view fmt_str, Args&&... args) {
-        output(fmt_str, std::forward<Args>(args)...);
-        output("\n");
-    }
-    
-    // Получение результата
-    std::string get_result() const {
-        return m_buffer;
-    }
-    
-    void clear() {
-        m_buffer.clear();
-        reset_column();
+protected:
+    void do_print(const std::string& msg) override {
+        m_buffer += msg;
     }
     
 private:

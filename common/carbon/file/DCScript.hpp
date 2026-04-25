@@ -43,6 +43,7 @@ namespace carbon {
     /// @example (state-script npc-ai (initial idle) ...)
     struct StateScript //0x50
     {
+        sid64               m_type;
         sid64               m_stateScriptId;     ///< <c>0x00</c>: StringId64 of the script name
         SsDeclarationList*  m_pSsDeclList;       ///< <c>0x08</c>: ptr to the declaration list
         sid64               m_initialStateId;    ///< <c>0x10</c>: StringId64 of the initial state
@@ -220,26 +221,29 @@ namespace carbon {
     // ИСПОЛНЯЕМАЯ ФУНКЦИЯ (LAMBDA)
     // ============================================================================
 
-
+    using lambda_symbol_entry = u64;
 
     /// @brief Скомпилированная функция (лямбда)
     /// @example (lambda (x) (+ x 1))    
     struct ScriptLambda //0x50
     {
+        sid64  m_type;
         u64*   m_pInstruction;    // instruction ptr
-        u64*   m_pSymbols;        // symbol table ptr
+        u64*   m_pSymbols;        // symbol table ptr lambda_symbol_entry
         sid64  m_typeId;          // SID("function")
-        u64    m_sum;             // 12 + (4 * number of instructions) + (4 * number of symbol table entries)
+        u64    m_sum;             // sizeof(ScriptLambda) + (sizeof(Instruction) * number of instructions) + (sizeof(Symbol) * number of symbol table entries)
         sid64  m_funcName;        // can be 0
         u64    m_instructionFlag; // 0xDEADBEEF1337FOOD
         u32    m_always0_2;
         u32    m_numInstructions; // number of instructions
-        i64    m_neg1;
+        u32    m_numSymbols;      // 
+        i32    m_neg;             // -1
         u64    m_sidGlobal;       // either SID("global") if in global scope or something else if inside state-script
         u64    m_always0_3;
 
         Instruction* get_code_ptr() const { return (Instruction*)m_pInstruction;}
         u64* get_symbols_ptr() const { return m_pSymbols;}
+
     };
     
     inline SsOnBlock* SsState::lookup(BlockType type) {

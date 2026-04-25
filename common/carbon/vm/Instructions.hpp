@@ -31,12 +31,29 @@ enum class OperandType : u8 {
     IMM_U16,      // 16-bit unsigned (индекс ST, аргументы)
 };
 
+enum class StaticType {
+    NONE,
+    POINTER,
+    I8,
+    U8,
+    I16,
+    U16,
+    I32,
+    U32,
+    I64,
+    U64,
+    FLOAT,
+    DOUBLE,
+    SID
+};
+
 struct InstructionInfo {
     Opcode opcode;
     const char* name;
     OperandType a_type;  // тип первого операнда
     OperandType b_type;  // тип второго операнда
     OperandType c_type;  // тип третьего операнда
+    StaticType  static_type; // тип константы в таблице
     
     size_t oprands_count() const { 
         size_t cnt = 0;
@@ -73,7 +90,7 @@ struct UP_Instruction {
         struct {
             u8 : 8;        // padding for opcode  
             u8 a_k;        // Destination register
-            u16 k;         // 16-bit unsigned immediate
+            u16 uim16;     // 16-bit unsigned immediate
         };
 
         
@@ -112,10 +129,36 @@ struct UP_Instruction {
 
 template<>
 struct UP_Instruction<0> {
-    Opcode opcode;
-    u8 destination;
-    u8 operand1;
-    u8 operand2;
+    union {
+        u32 as_u32;
+
+        struct {
+            Opcode opcode : 8;
+            u8 a;          // Destination register / condition register
+            u8 b;          // Source register 1
+            u8 c;          // Source register 2
+        };
+
+        struct {
+            u8 : 8;        // padding for opcode
+            u8 a_imm;      // Destination register for immediate
+            i16 imm16;     // 16-bit immediate value
+        };
+
+        struct {
+            u8 : 8;        // padding for opcode  
+            u8 a_k;        // Destination register
+            u16 uim16;     // 16-bit unsigned immediate
+        };
+
+        
+        struct {
+            u8 : 8;        // padding for opcode  
+            u8 destination;
+            u8 operand1;
+            u8 operand2;
+        };
+    };
 
     [[nodiscard]] bool operator==(const UP_Instruction<0>& rhs) const noexcept = default;
 
@@ -380,131 +423,131 @@ public:
 // Таблица ВСЕХ инструкций
 static const InstructionInfo INSTRUCTION_INFO[] = {
     // opcode,          name,                    a_type,       b_type,       c_type
-    { Opcode::Return,   "Return",               OperandType::REG, OperandType::NONE, OperandType::NONE },
-    { Opcode::IAdd,     "IAdd",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::ISub,     "ISub",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IMul,     "IMul",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IDiv,     "IDiv",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IMod,     "IMod",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IAbs,     "IAbs",                 OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::INeg,     "INeg",                 OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::IntAsh,   "IntAsh",               OperandType::REG, OperandType::REG, OperandType::REG },
+    { Opcode::Return,   "Return",               OperandType::REG, OperandType::NONE, OperandType::NONE, StaticType::NONE },
+    { Opcode::IAdd,     "IAdd",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::ISub,     "ISub",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IMul,     "IMul",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IDiv,     "IDiv",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IMod,     "IMod",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IAbs,     "IAbs",                 OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::INeg,     "INeg",                 OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::IntAsh,   "IntAsh",               OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
     
-    { Opcode::FAdd,     "FAdd",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FSub,     "FSub",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FMul,     "FMul",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FDiv,     "FDiv",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FMod,     "FMod",                 OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FAbs,     "FAbs",                 OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::FNeg,     "FNeg",                 OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::FAdd,     "FAdd",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FSub,     "FSub",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FMul,     "FMul",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FDiv,     "FDiv",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FMod,     "FMod",                 OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FAbs,     "FAbs",                 OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::FNeg,     "FNeg",                 OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
     
-    { Opcode::Move,     "Move",                 OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::MoveInt,  "MoveInt",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::MoveFloat,"MoveFloat",            OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::MovePointer,"MovePointer",        OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::Move,     "Move",                 OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::MoveInt,  "MoveInt",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::MoveFloat,"MoveFloat",            OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::MovePointer,"MovePointer",        OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
     
-    { Opcode::CastInteger,"CastInteger",        OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::CastFloat,"CastFloat",            OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::CastInteger,"CastInteger",        OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::CastFloat,"CastFloat",            OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
     
     // Static Load (индекс в регистре)
-    { Opcode::LoadStaticInt,    "LoadStaticInt",    OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadStaticFloat,  "LoadStaticFloat",  OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadStaticPointer,"LoadStaticPointer",OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::LoadStaticInt,    "LoadStaticInt",    OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::I32 },
+    { Opcode::LoadStaticFloat,  "LoadStaticFloat",  OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::FLOAT },
+    { Opcode::LoadStaticPointer,"LoadStaticPointer",OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::POINTER },
     
     // Static Load Immediate (индекс = operand1)
-    { Opcode::LoadStaticI32Imm, "LoadStaticI32Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticI8Imm,  "LoadStaticI8Imm",  OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticU8Imm,  "LoadStaticU8Imm",  OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticI16Imm, "LoadStaticI16Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticU16Imm, "LoadStaticU16Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticU32Imm, "LoadStaticU32Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticI64Imm, "LoadStaticI64Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticU64Imm, "LoadStaticU64Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticFloatImm,"LoadStaticFloatImm",OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LoadStaticPointerImm,"LoadStaticPointerImm",OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
+    { Opcode::LoadStaticI8Imm,  "LoadStaticI8Imm",  OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::I8 },
+    { Opcode::LoadStaticU8Imm,  "LoadStaticU8Imm",  OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::U8 },
+    { Opcode::LoadStaticI16Imm, "LoadStaticI16Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::I16 },
+    { Opcode::LoadStaticU16Imm, "LoadStaticU16Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::U16 },
+    { Opcode::LoadStaticI32Imm, "LoadStaticI32Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::I32 },
+    { Opcode::LoadStaticU32Imm, "LoadStaticU32Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::U32 },
+    { Opcode::LoadStaticI64Imm, "LoadStaticI64Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::I64 },
+    { Opcode::LoadStaticU64Imm, "LoadStaticU64Imm", OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::U64 },
+    { Opcode::LoadStaticFloatImm,"LoadStaticFloatImm",OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::FLOAT },
+    { Opcode::LoadStaticPointerImm,"LoadStaticPointerImm",OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::POINTER },
     
     // Indirect Load (через указатель)
-    { Opcode::LoadI8,   "LoadI8",               OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadU8,   "LoadU8",               OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadI16,  "LoadI16",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadU16,  "LoadU16",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadI32,  "LoadI32",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadInt,  "LoadU32",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadI64,  "LoadI64",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadU64,  "LoadU64",              OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadFloat,"LoadFloat",            OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadPointer,"LoadPointer",        OperandType::REG, OperandType::REG, OperandType::NONE },
-    { Opcode::LoadU16Imm,"LoadU16Imm",          OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
+    { Opcode::LoadI8,   "LoadI8",               OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadU8,   "LoadU8",               OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadI16,  "LoadI16",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadU16,  "LoadU16",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadI32,  "LoadI32",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadInt,  "LoadU32",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadI64,  "LoadI64",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadU64,  "LoadU64",              OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadFloat,"LoadFloat",            OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadPointer,"LoadPointer",        OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
+    { Opcode::LoadU16Imm,"LoadU16Imm",          OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::NONE },
     
     // Indirect Store (через указатель)
-    { Opcode::StoreI8,  "StoreI8",              OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreU8,  "StoreU8",              OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreI16, "StoreI16",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreU16, "StoreU16",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreI32, "StoreI32",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreU32, "StoreU32",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreI64, "StoreI64",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreU64, "StoreU64",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreInt, "StoreInt",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreFloat,"StoreFloat",          OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StorePointer,"StorePointer",      OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::StoreArray,"StoreArray",          OperandType::REG, OperandType::REG, OperandType::REG },
+    { Opcode::StoreI8,  "StoreI8",              OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreU8,  "StoreU8",              OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreI16, "StoreI16",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreU16, "StoreU16",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreI32, "StoreI32",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreU32, "StoreU32",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreI64, "StoreI64",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreU64, "StoreU64",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreInt, "StoreInt",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreFloat,"StoreFloat",          OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StorePointer,"StorePointer",      OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::StoreArray,"StoreArray",          OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
     
     // Lookup
-    { Opcode::LookupInt,    "LookupInt",        OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LookupFloat,  "LookupFloat",      OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
-    { Opcode::LookupPointer,"LookupPointer",    OperandType::REG, OperandType::IMM_U16, OperandType::NONE },
+    { Opcode::LookupInt,    "LookupInt",        OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::SID },
+    { Opcode::LookupFloat,  "LookupFloat",      OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::SID },
+    { Opcode::LookupPointer,"LookupPointer",    OperandType::REG, OperandType::IMM_U16, OperandType::NONE, StaticType::SID },
     
     // Comparisons
-    { Opcode::IEqual,       "IEqual",           OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::INotEqual,    "INotEqual",        OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IGreaterThan, "IGreaterThan",     OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::IGreaterThanEqual,"IGreaterThanEqual",OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::ILessThan,    "ILessThan",        OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::ILessThanEqual,"ILessThanEqual",  OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FEqual,       "FEqual",           OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FNotEqual,    "FNotEqual",        OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FGreaterThan, "FGreaterThan",     OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FGreaterThanEqual,"FGreaterThanEqual",OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FLessThan,    "FLessThan",        OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::FLessThanEqual,"FLessThanEqual",  OperandType::REG, OperandType::REG, OperandType::REG },
+    { Opcode::IEqual,       "IEqual",           OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::INotEqual,    "INotEqual",        OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IGreaterThan, "IGreaterThan",     OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::IGreaterThanEqual,"IGreaterThanEqual",OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::ILessThan,    "ILessThan",        OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::ILessThanEqual,"ILessThanEqual",  OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FEqual,       "FEqual",           OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FNotEqual,    "FNotEqual",        OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FGreaterThan, "FGreaterThan",     OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FGreaterThanEqual,"FGreaterThanEqual",OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FLessThan,    "FLessThan",        OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::FLessThanEqual,"FLessThanEqual",  OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
     
     // Logical
-    { Opcode::OpLogAnd, "OpLogAnd",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpLogOr,  "OpLogOr",              OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpLogNot, "OpLogNot",             OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::OpLogAnd, "OpLogAnd",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::OpLogOr,  "OpLogOr",              OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::OpLogNot, "OpLogNot",             OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
     
     // Bitwise
-    { Opcode::OpBitAnd, "OpBitAnd",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpBitOr,  "OpBitOr",              OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpBitXor, "OpBitXor",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpBitNor, "OpBitNor",             OperandType::REG, OperandType::REG, OperandType::REG },
-    { Opcode::OpBitNot, "OpBitNot",             OperandType::REG, OperandType::REG, OperandType::NONE },
+    { Opcode::OpBitAnd, "OpBitAnd",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE},
+    { Opcode::OpBitOr,  "OpBitOr",              OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::OpBitXor, "OpBitXor",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::OpBitNor, "OpBitNor",             OperandType::REG, OperandType::REG, OperandType::REG, StaticType::NONE },
+    { Opcode::OpBitNot, "OpBitNot",             OperandType::REG, OperandType::REG, OperandType::NONE, StaticType::NONE },
     
     // Immediate arithmetic
-    { Opcode::IAddImm,  "IAddImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16 },
-    { Opcode::ISubImm,  "ISubImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16 },
-    { Opcode::IMulImm,  "IMulImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16 },
-    { Opcode::IDivImm,  "IDivImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16 },
+    { Opcode::IAddImm,  "IAddImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16, StaticType::NONE },
+    { Opcode::ISubImm,  "ISubImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16, StaticType::NONE },
+    { Opcode::IMulImm,  "IMulImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16, StaticType::NONE },
+    { Opcode::IDivImm,  "IDivImm",              OperandType::REG, OperandType::REG, OperandType::IMM_I16, StaticType::NONE },
     
     // Branches
-    { Opcode::Branch,       "Branch",           OperandType::NONE, OperandType::IMM_I16, OperandType::NONE }, // imm16
-    { Opcode::BranchIf,     "BranchIf",         OperandType::REG, OperandType::IMM_I16, OperandType::NONE },  // + imm16
-    { Opcode::BranchIfNot,  "BranchIfNot",      OperandType::REG, OperandType::IMM_I16, OperandType::NONE },  // + imm16
-    { Opcode::GoTo,         "GoTo",             OperandType::NONE, OperandType::NONE, OperandType::NONE },
-    { Opcode::Label,        "Label",            OperandType::NONE, OperandType::NONE, OperandType::NONE },
+    { Opcode::Branch,       "Branch",           OperandType::NONE, OperandType::IMM_I16, OperandType::NONE, StaticType::NONE }, // imm16
+    { Opcode::BranchIf,     "BranchIf",         OperandType::REG, OperandType::IMM_I16, OperandType::NONE, StaticType::NONE },  // + imm16
+    { Opcode::BranchIfNot,  "BranchIfNot",      OperandType::REG, OperandType::IMM_I16, OperandType::NONE, StaticType::NONE },  // + imm16
+    { Opcode::GoTo,         "GoTo",             OperandType::NONE, OperandType::NONE, OperandType::NONE, StaticType::NONE },
+    { Opcode::Label,        "Label",            OperandType::NONE, OperandType::NONE, OperandType::NONE, StaticType::NONE },
     
     // Calls
-    { Opcode::Call,         "Call",             OperandType::REG, OperandType::REG, OperandType::IMM_U8 },
-    { Opcode::CallFf,       "CallFf",           OperandType::REG, OperandType::REG, OperandType::IMM_U8 },
+    { Opcode::Call,         "Call",             OperandType::REG, OperandType::REG, OperandType::IMM_U8, StaticType::NONE },
+    { Opcode::CallFf,       "CallFf",           OperandType::REG, OperandType::REG, OperandType::IMM_U8, StaticType::NONE },
     
     // Misc
-    { Opcode::LoadParamCnt, "LoadParamCnt",     OperandType::REG, OperandType::NONE, OperandType::NONE },
+    { Opcode::LoadParamCnt, "LoadParamCnt",     OperandType::REG, OperandType::NONE, OperandType::NONE, StaticType::NONE },
     
     // Debug
-    { Opcode::AssertPointer,"AssertPointer",    OperandType::REG, OperandType::NONE, OperandType::NONE },
-    { Opcode::BreakFlag,    "BreakFlag",        OperandType::NONE, OperandType::NONE, OperandType::NONE },
-    { Opcode::Breakpoint,   "Breakpoint",       OperandType::NONE, OperandType::NONE, OperandType::NONE },
+    { Opcode::AssertPointer,"AssertPointer",    OperandType::REG, OperandType::NONE, OperandType::NONE, StaticType::NONE },
+    { Opcode::BreakFlag,    "BreakFlag",        OperandType::NONE, OperandType::NONE, OperandType::NONE, StaticType::NONE },
+    { Opcode::Breakpoint,   "Breakpoint",       OperandType::NONE, OperandType::NONE, OperandType::NONE, StaticType::NONE },
 };
 
 inline const InstructionInfo* get_instruction_info(Opcode op) {

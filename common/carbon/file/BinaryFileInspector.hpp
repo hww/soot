@@ -35,7 +35,9 @@ namespace carbon {
         std::string format_instruction(const Instruction& ins, const ScriptLambda* lambda);
         std::string resolve_symbol(u16 index, const ScriptLambda* lambda);
         std::string resolve_float(u16 index, const ScriptLambda* lambda);
-        
+        std::string symbol_str(const symbol* sym);
+        std::string static_str(StaticType type, u64 value);
+
         // Inspection methods
         void inspect_header();
         void inspect_entry(const DCEntry* entry);
@@ -51,7 +53,7 @@ namespace carbon {
         void inspect_track(const SsTrack* track);
         void inspect_lambda(const SsLambda* lambda);
         void inspect_script_lambda(const ScriptLambda* lambda, const std::string& name = "");
-        void inspect_symbol(const symbol* sym);
+        void inspect_symbol(const symbol* sym, int idx);
         
         // Disassembly
         void disassemble(const ScriptLambda* lambda, const std::string& name);
@@ -70,18 +72,21 @@ namespace carbon {
         template<typename T>
         const T* safe_get_ptr(const T* ptr, const char* name) const {
             if (!ptr) {
-                m_formatter->output("WARNING: {} is NULL\n", name);
+                m_formatter->format("WARNING: {} is NULL\n", name);
                 return nullptr;
             }
             
             if (!is_valid_ptr(ptr, sizeof(T))) {
-                m_formatter->output("WARNING: {} points outside file bounds (ptr=0x{:X})\n", 
+                m_formatter->format("WARNING: {} points outside file bounds (ptr=0x{:X})\n", 
                                 name, reinterpret_cast<uintptr_t>(ptr));
                 return nullptr;
             }
             
             return ptr;
         }
+
+        std::string format_instruction(const Instruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
+        std::string format_instruction(const ShortInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
     };
 
 } // namespace carbon

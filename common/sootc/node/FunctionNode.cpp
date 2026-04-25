@@ -2,11 +2,14 @@
 #include "ExpressionNode.hpp"  
 #include "Log.hpp"
 #include "common/carbon/file/ProgramBinaryElement.hpp"
+#include "file/BinaryFile.hpp"
+#include "file/DCScript.hpp"
 #include "lib/StringId.hpp"
 #include "lib/StringIdManager.hpp"
 #include "sootc/node/Node.hpp"
 #include "sootc/node/ExpressionNode.hpp"
 #include "sootc/libs/CompareOp.hpp"
+#include "vm/Instructions.hpp"
 
 namespace sootc {
 
@@ -218,22 +221,23 @@ ProgramBinaryElement FunctionNode::build_binary(const std::string& module_name, 
     };
     lg::info("FunctionNode::build_binary for entry {}", element.m_entry.to_string());
     // Данные функции
-    element.push_bytes(StringId("script-lambda").value, 0b0);
     
     ScriptLambda lambda = {
+        StringId("script-lambda").value,
         reinterpret_cast<u64*>(sizeof(ScriptLambda)),
         reinterpret_cast<u64*>(sizeof(ScriptLambda) + m_instructions.size() * sizeof(Instruction)),
         StringId("function").value,
-        12 + 4 * (m_instructions.size() + m_constants.size()),
+         (sizeof(ScriptLambda)+sizeof(Instruction)*m_instructions.size() + sizeof(lambda_symbol_entry)*m_constants.size()),
         0x0,
         DEADBEEF,
         0x0,
         static_cast<u32>(m_instructions.size()),
+        static_cast<u32>(m_constants.size()),
         -1,
         StringId("global").value,
         0x0
     };
-    element.push_bytes(lambda, 0b0000'0011, 0b00);
+    element.push_bytes(lambda, 0b0000'0110, 0b00);
     
     for (const Instruction& instr : m_instructions) {
         element.push_bytes(instr, 0b0);

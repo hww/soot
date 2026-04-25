@@ -1,6 +1,9 @@
 ﻿;(require "../common/sootc/src/lib/builtins.sot")
 
-(define add (function ((a int) (b int)) (+ a b)))
+;(define add (function () 100000))
+;
+(define add (function ((a int)) (+ a 100000)))
+;(define add (function ((a int) (b int)) (+ a b)))
 ;(define sub (function ((a int) (b int)) (- a b)))
 ;(define get-name (function () "Test String"))
 ;(define get-scale (function () 0.1))
