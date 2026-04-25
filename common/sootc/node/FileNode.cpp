@@ -121,7 +121,7 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         reinterpret_cast<DCEntry*>(first_entry_offset)
     };
     // header имеет 7 полей, последнее (индекс 6) - указатель, требует релокации
-    element.push_bytes(header, 0,0,0,0,0,0,1);
+    element.push_bytes(header, 0b1000);
     element.push_bytes(ARRAY_SID, 0b0);
     
     // ========================================
@@ -135,7 +135,7 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         entry.m_entryPtr = reinterpret_cast<void*>(first_function_start + prev_entry_size);
         // Entry имеет 3 поля: nameID (0), typeId (1), entryPtr (2)
         // Только entryPtr требует релокации
-        element.push_bytes(entry, 0, 0, 1);
+        element.push_bytes(entry, 0b100);
         prev_entry_size += fn.m_rawData.size();
         lg::info("FileNode::make_binary entry {}", entry.to_string());
     }
@@ -181,11 +181,11 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     // 5. Padding
     size_t padding = (4 - (stringtable.size() % 4)) % 4;
     element.m_rawData.insert(element.m_rawData.end(), padding, std::byte{0});
-    
+
     // 6. Размер reloc table
     uint32_t reloc_size = static_cast<uint32_t>((data_size + stringtable_size + 63) / 64);
     element.push_bytes(reloc_size, 0);
-    
+    lg::info("Constuct reloc table with size {}", reloc_size);
     // 7. Relocation table (битовая карта)
     size_t reloc_bytes = (element.m_relocTable.size() + 7) / 8;
     for (size_t i = 0; i < reloc_bytes; ++i) {
@@ -198,8 +198,7 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         }
         element.push_bytes(byte, 0);
     }
-    
-    element.dump();
+
     return element;
 }
 

@@ -1,5 +1,6 @@
 // sootc/compiler/Compiler.cpp
 #include "sootc/compiler/Compiler.hpp"
+#include "file/BinaryFileInspector.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -235,6 +236,8 @@ Compiler::compile_file(soot::Object& forms, const std::string& filename) {
     if (result && m_config.debug_print_ir) {
         // Печать IR если нужно
         lg::info("Compilation successful for: {}", filename);
+        BinaryFileInspector inspector(result->get());
+        inspector.inspect();
     }
     
     return result;
@@ -259,7 +262,10 @@ Compiler::compile_internal(soot::Object& forms, const std::string& filename) {
         // Генерация бинарника
         GlobalState state;
         auto element = file_node->generate(state);
-        
+        if (m_config.debug_print_ir) {
+            element.dump();
+        }
+
         auto bytes = make_aligned_buffer(element.m_rawData.size());
         std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
         

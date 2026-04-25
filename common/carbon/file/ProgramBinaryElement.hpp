@@ -5,6 +5,7 @@
 #include "DCScript.hpp"
 #include "lib/ByteUtils.hpp"
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 
 namespace carbon {
@@ -57,19 +58,25 @@ namespace carbon {
          */
         template<typename T, typename ... bits>
         void push_bytes(const T& data, bits... b) noexcept {
+            check_size();
+
             const std::byte* p = reinterpret_cast<const std::byte*>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
             const std::vector<u8> bits_list = {static_cast<u8>(b)...};
             
-            if (bits_list.empty()) return;  // ← добавить проверку!
+            ///if (bits_list.empty()) return;  // ← добавить проверку!
             
             for (u32 i = 0; i < bits_list.size() - 1; ++i) {
                 insert_into_reloctable(bits_list[i], 8);
             }
             insert_into_reloctable(bits_list.back(), (sizeof(T) / 8) % 8);
+
+            check_size();
         }
 
         void push_blob(const void* data, size_t size, u8 relocation_bit = 0) noexcept {
+            check_size();            
+            
             const std::byte* p = reinterpret_cast<const std::byte*>(data);
             
             // 1. Копируем данные
@@ -83,6 +90,15 @@ namespace carbon {
             for (size_t i = 0; i < num_slots; ++i) {
                 insert_into_reloctable(relocation_bit, 8); 
             }
+            check_size();
+        }
+
+        void check_size() {
+            auto data_size = m_rawData.size() / 8;
+            auto reloc_size = m_relocTable.size();
+            if (data_size != reloc_size) {
+                throw std::runtime_error(fmt::format("ProgramBinaryElement raw_data {} not equal with reloc table size {}", data_size, reloc_size));
+            }
         }
 
         void insert_into_reloctable(const u8 bits, const u64 num_bits) noexcept;
@@ -95,7 +111,7 @@ namespace carbon {
         size_t size() { return m_rawData.size(); }
         bool is_empty() { return m_rawData.size() == 0;}
 
-        void dump(const std::string& title = "");
+        void dump(const std::string& title = "", size_t max_len = 256);
 
         byte_uptr to_byte_uptr() const;
 

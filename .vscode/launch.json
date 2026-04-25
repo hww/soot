@@ -67,7 +67,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/build/bin/sootc",
       "args": [
-        "--no-repl",
+        "--no-repl", "--debug-ast", "--debug-ir", "--debug-asm",
         "--source-root",
         "${workspaceFolder}/common/sootc/src",
         "--target",

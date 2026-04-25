@@ -1,5 +1,4 @@
 #include "ProgramBinaryElement.hpp"
-#include "carbon/lib/StringId.hpp"
 #include "lib/StringIdManager.hpp"
 #include "lib/Variant.hpp"
 
@@ -61,15 +60,16 @@ byte_uptr ProgramBinaryElement::to_byte_uptr() const {
         return byte_uptr(bytes.release());
     }
 }
-void ProgramBinaryElement::dump(const std::string& title) {
+
+void ProgramBinaryElement::dump(const std::string& title, size_t max_len) {
     if (!title.empty()) {
         printf("=== %s ===\n", title.c_str());
     } else {
         printf("=== ProgramBinaryElement Dump ===\n");
     }
     
-    printf("  Raw Data: %zu bytes\n", m_rawData.size());
-    printf("  Reloc Table: %zu bits\n", m_relocTable.size());
+    printf("  Raw Data:       %zu bytes\n", m_rawData.size());
+    printf("  Reloc Table:    %zu bits\n", m_relocTable.size());
     printf("  String Offsets: %zu\n", m_stringOffsets.size());
     
     // Entry - выводим числовые значения
@@ -83,15 +83,22 @@ void ProgramBinaryElement::dump(const std::string& title) {
     
     // Raw data hex dump
     printf("  Raw Data (hex):\n");
-    size_t dump_size = std::min(m_rawData.size(), size_t(128));
+
+    size_t dump_size = std::min(m_rawData.size(), max_len);
     for (size_t i = 0; i < dump_size; i++) {
         if (i % 16 == 0) printf("    %04zx: ", i);
-        printf("%02X ", static_cast<unsigned char>(m_rawData[i]));
+        if (i % 8 == 0) {
+            if (m_relocTable[i/8])
+                printf("+%02X", static_cast<unsigned char>(m_rawData[i])); // relocatable
+            else
+                printf(" %02X", static_cast<unsigned char>(m_rawData[i])); // not relocatable
+        } else
+            printf(" %02X", static_cast<unsigned char>(m_rawData[i]));
         if ((i + 1) % 8 == 0 && (i + 1) % 16 != 0) printf(" ");
         if ((i + 1) % 16 == 0) printf("\n");
     }
     if (dump_size % 16 != 0) printf("\n");
-    if (m_rawData.size() > 128) printf("    ... (%zu more bytes)\n", m_rawData.size() - 128);
+    if (m_rawData.size() > max_len) printf("    ... (%zu more bytes)\n", m_rawData.size() - max_len);
     
     // Relocation table summary
     size_t reloc_count = 0;
@@ -99,6 +106,11 @@ void ProgramBinaryElement::dump(const std::string& title) {
     printf("  Relocations: %zu / %zu bits (%.1f%%)\n", 
            reloc_count, m_relocTable.size(), 
            m_relocTable.empty() ? 0 : 100.0 * reloc_count / m_relocTable.size());
-    
-    printf("=== End Dump ===\n");
+    for (size_t i = 0; i < m_relocTable.size(); i++) {
+        if (i % 16 == 0) printf("    %04zx: ", i);
+        printf("%01X ", static_cast<unsigned char>(m_relocTable[i]));
+        if ((i + 1) % 8 == 0 && (i + 1) % 16 != 0) printf(" ");
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n=== End Dump ===\n");
 }

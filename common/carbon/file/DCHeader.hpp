@@ -27,8 +27,9 @@ namespace carbon {
 
         uint32_t				field_10;				///< <c>0x10</c>: always 1
         uint32_t				m_numEntries;			///< <c>0x14</c>: num of entries
-        DCEntry*                  m_pStartOfData;			///< <c>0x18</c>: ptr to the start of data/state script(s)
+        DCEntry*                m_pStartOfData;			///< <c>0x18</c>: ptr to the start of data/state script(s)
     };
+    
     #undef DC_VERSION
     static constexpr u32 DC_MAGIC = 0x44433030;
     static constexpr u32 DC_VERSION = 0x1;

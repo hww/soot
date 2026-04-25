@@ -235,9 +235,9 @@ int main(int argc, char* argv[]) {
         // Создание компилятора
         sootc::Compiler::CompilationOptions comp_options;
         comp_options.mode = sootc::CompilerMode::HYBRID;
-        comp_options.debug_print_ir = false;
-        comp_options.debug_print_ast = false;
-        comp_options.debug_print_asm = false;
+        comp_options.debug_print_ir = opts.debug_ir;
+        comp_options.debug_print_ast = opts.debug_ast;
+        comp_options.debug_print_asm = opts.debug_asm;
         comp_options.user_profile = opts.user_profile;
         comp_options.search_paths = {".", "scripts", "src", "examples"};
         comp_options.mode = opts.mode;
