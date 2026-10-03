@@ -88,6 +88,13 @@ soot --version
 
 ## 📚 Usage Guide
 
+### OS Setup
+
+- [Windows](/docs/setup/system/windows.md)
+- [Linux](/docs/setup/system/linux.md)
+- [MacOS](/docs/setup/system/macos.md)
+- [Docker](/docs/setup/system/docker.md)
+
 SOOT provides a unified interface for scripting, project management, and interactive debugging.
 
 ### Command Line Interface
