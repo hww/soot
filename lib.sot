@@ -18,9 +18,7 @@
 ;; @doc (defun name args &rest body)
 ;; Определяет функцию (обертка над lambda).
 (defmacro defun (name args &rest body)
-  `(begin
-    (define ,name (lambda ,args ,@body))
-    (function-name! ,name ',name)))
+  `(define ,name (lambda ,args ,@body)))
 
 ;; Определяет переменную и присваивает ей значение.
 ;; Использует &rest для имитации опционального значения и документации.
@@ -111,7 +109,7 @@
 ;; Сonstants
 ;; ===========================================================================
 
-(defconstant pi 3.141592653589793)
+(define pi 3.141592653589793)
 
 ;; ===========================================================================
 ;; Hash Table 
@@ -628,6 +626,10 @@
                      )
     (reverse res)))
 
+(defun string-upcase (s) (string-to-upper s))
+(defun string-downcase (s) (string-to-lower s))
+(defun string-capitalize (s) (string-titelize s))
+
 ;; ===========================================================================
 ;; Лог
 ;; ===========================================================================
@@ -753,7 +755,8 @@
                       `(defun ,setter-name (instance value)
                          (hash-table-set! instance ,key value))                   
                       `(defsetf ',getter-name ',setter-name))))
-                normalized))))
+                normalized)
+  ',struct-name-sym)))
 
 (defun build-struct-from-plist (fields args)
   "Превращает (:key1 val1 :key2 val2) в ((key1 . val1) (key2 . val2))"
