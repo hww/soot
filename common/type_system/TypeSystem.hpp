@@ -5,9 +5,12 @@
  * The GOAL Type System.
  * Stores types, symbol types, methods, etc, and does typechecking,
  * lowest-common-ancestor, field access types, and reverse type lookups.
+ *
+ * NOTE: This is a pure C++ subsystem. The TypeSystem does NOT inherit from
+ * NativeObject and is not a Lisp object. All Lisp-facing functionality
+ * (get_at navigation, inspect-as-sexpr, to_alias) has been removed.
  */
 
-#include "common/sooti/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 
@@ -17,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
 
 // ============================================================================
 // Forward Declarations and Common Structures
@@ -146,37 +150,19 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public NativeObject {
-    TypeSystem() = default; // Закрытый конструктор
+class TypeSystem {
+    TypeSystem() = default;
+
   public:
-    // Запрещаем копирование и присваивание
     TypeSystem(const TypeSystem &) = delete;
     TypeSystem &operator=(const TypeSystem &) = delete;
-
-    // Разрешаем перемещение (если нужно)
     TypeSystem(TypeSystem &&) = default;
     TypeSystem &operator=(TypeSystem &&) = default;
-
     ~TypeSystem() = default;
 
-    // Точка доступа к единственному экземпляру
     static TypeSystem &instance() {
         static std::shared_ptr<TypeSystem> inst = std::shared_ptr<TypeSystem>(new TypeSystem());
         return *inst;
-    }
-    std::string full_class_name() const override {
-        return "TypeSystem";
-    }
-    std::string class_name() const override {
-        return "type-system";
-    }
-
-    Object type_name_obj() const override {
-        return Object::make_symbol(class_name());
-    }
-
-    bool is_class_name(const Object &name) const override {
-        return name == TypeSystem::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     // ========================================================================
@@ -234,13 +220,9 @@ class TypeSystem : public NativeObject {
         return false;
     }
 
-    int get_array_data_offset() const {
-        return TypeConfig::array_data_offset;
-    }
+    int get_array_data_offset() const { return TypeConfig::array_data_offset; }
+    int get_pointer_size() const { return TypeConfig::pointer_size; }
 
-    int get_pointer_size() const {
-        return TypeConfig::pointer_size;
-    }
     // ========================================================================
     // Method System
     // ========================================================================
@@ -364,18 +346,16 @@ class TypeSystem : public NativeObject {
         m_old_types.clear();
         m_types_allowed_to_be_redefined.clear();
         m_allow_redefinition = false;
+        m_variant = "default";
     }
 
     // ========================================================================
-    // Debugging and Inspection
+    // Debugging / Inspection
     // ========================================================================
 
-    std::string print() const override {
-        return fmt::format("#<type-system {}>", m_variant.print());
-    }
-    script::Object           inspect() const override;
+    std::string              print() const;
+    std::string              inspect() const;
     std::string              print_all_type_information() const;
-    script::Object           get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string &type) const;
     int                      get_next_method_id(const Type *type) const;
 
@@ -387,8 +367,8 @@ class TypeSystem : public NativeObject {
         m_types_allowed_to_be_redefined.push_back(type_name);
     }
 
-    script::Object           get_all_type_names_as_objects() const;
     std::vector<std::string> get_all_type_names();
+
     std::vector<std::string> search_types_by_parent_type(
         const std::string                             &parent_type,
         const std::optional<std::vector<std::string>> &existing_matches = {});
@@ -412,8 +392,8 @@ class TypeSystem : public NativeObject {
     // ========================================================================
 
     template <typename T> T *get_type_of_type(const std::string &type_name) const {
-        auto type = lookup_type(type_name);
-        auto result = dynamic_cast<T *>(type);
+        auto  type = lookup_type(type_name);
+        auto  result = dynamic_cast<T *>(type);
         if (!result) {
             throw std::runtime_error("Type " + type_name + " is not of expected kind");
         }
@@ -423,9 +403,7 @@ class TypeSystem : public NativeObject {
     EnumType *try_enum_lookup(const std::string &type_name) const;
     EnumType *try_enum_lookup(const TypeSpec &type) const;
 
-    int get_types_count() {
-        return m_types.size();
-    }
+    int get_types_count() { return m_types.size(); }
     const std::unordered_map<std::string, std::unique_ptr<Type>> &get_types() const {
         return m_types;
     }
@@ -442,29 +420,10 @@ class TypeSystem : public NativeObject {
                                       int size, bool boxed = false, bool sign_extend = false,
                                       RegClass reg = RegClass::GPR_64);
 
-    // Built-in type factories
     StructureType *add_builtin_structure(const std::string &parent, const std::string &type_name,
                                          bool boxed = false);
 
     Field lookup_field(const std::string &type_name, const std::string &field_name) const;
-
-    // ========================================================================
-    // Aliases Functions
-    // ========================================================================
-
-    // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
-    Object get_at(const Object &key) override;
-
-    Object to_alias() {
-        return Object::make_heap_obj(shared_from_this());
-    }
-
-    // ========================================================================
-    // Check Arguments
-    // ========================================================================
-  public:
-    Object build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
-                                   const Object                             &ret_type_name);
 
   private:
     // ========================================================================
@@ -491,7 +450,7 @@ class TypeSystem : public NativeObject {
     std::vector<std::string>           m_types_allowed_to_be_redefined;
     bool                               m_allow_redefinition = false;
 
-    Object m_variant;
+    std::string m_variant = "default";
 
   public:
     static int verbose;

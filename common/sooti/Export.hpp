@@ -8,3 +8,4 @@
 #include "common/sooti/Printer.hpp"
 #include "common/sooti/PrinterEnv.hpp"
 #include "common/sooti/Reader.hpp"
+#include "common/sooti/Errors.hpp"

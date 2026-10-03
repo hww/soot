@@ -1,16 +1,13 @@
 #include "common/type_system/TypeSystem.hpp"
-#include "common/sooti/ListBuilder.hpp"
-#include "common/sooti/Printer.hpp"
-#include "common/type_system/Deftype.hpp"
-#include "common/type_system/Register.hpp"
 
 #include "common/util/Assert.hpp"
-
+#include "common/util/Crc32.hpp"
 #include "fmt/format.h"
 
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+
 
 namespace {
 
@@ -19,12 +16,15 @@ template <typename... Args>
     throw std::runtime_error(
         fmt::format("Type Error: {}", fmt::format(fmt::runtime(str), std::forward<Args>(args)...)));
 }
+
 std::vector<FieldReverseLookupOutput::Token> parent_to_vector(const ReverseLookupNode *parent) {
     if (!parent) {
         return {};
     }
     return parent->to_vector();
 }
+
+
 } // namespace
 
 // ============================================================================
@@ -32,7 +32,6 @@ std::vector<FieldReverseLookupOutput::Token> parent_to_vector(const ReverseLooku
 // ============================================================================
 
 Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) {
-    // Check forward declared method counts
     auto method_kv = m_forward_declared_method_counts.find(name);
     if (method_kv != m_forward_declared_method_counts.end()) {
         int method_count = get_next_method_id(type.get());
@@ -55,9 +54,10 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 return kv->second.get();
             }
 
-            if (m_allow_redefinition || std::find(m_types_allowed_to_be_redefined.begin(),
-                                                  m_types_allowed_to_be_redefined.end(),
-                                                  name) != m_types_allowed_to_be_redefined.end()) {
+            if (m_allow_redefinition ||
+                std::find(m_types_allowed_to_be_redefined.begin(),
+                          m_types_allowed_to_be_redefined.end(),
+                          name) != m_types_allowed_to_be_redefined.end()) {
 
                 // Keep old type for reference
                 m_old_types.push_back(std::move(m_types[name]));
@@ -66,10 +66,10 @@ Type *TypeSystem::add_type(const std::string &name, std::unique_ptr<Type> type) 
                 m_types_by_crc[crc] = type.get();
                 m_types[name] = std::move(type);
             } else {
-                throw_typesystem_error("Inconsistent type definition. Type {} was originally:\n{}\n"
-                                       "and is redefined as:\n{}\nDiff:\n{}",
-                                       name, kv->second->print(), type->print(),
-                                       kv->second->diff(*type));
+                throw_typesystem_error(
+                    "Inconsistent type definition. Type {} was originally:\n{}\n"
+                    "and is redefined as:\n{}\nDiff:\n{}",
+                    name, kv->second->print(), type->print(), kv->second->diff(*type));
             }
         } else {
             // Types are identical, return existing
@@ -226,7 +226,7 @@ TypeSpec TypeSystem::make_typespec(const std::string &name) const {
         m_forward_declared_types.find(name) != m_forward_declared_types.end()) {
         return TypeSpec(name);
     } else {
-        throw_typesystem_error("Can't make typespec for unknow type `{}`", name);
+        throw_typesystem_error("Can't make typespec for unknown type `{}`", name);
     }
 }
 
@@ -397,7 +397,7 @@ bool TypeSystem::typecheck_base_types(const std::string &expected, const std::st
 }
 
 // ============================================================================
-// Method System: Поиск и Навигация
+// Method System
 // ============================================================================
 /**
  * Внутренний хелпер. Вычисляет ID для нового метода, анализируя иерархию.
@@ -855,13 +855,6 @@ std::string TypeSystem::print_all_type_information() const {
     return result;
 }
 
-script::Object TypeSystem::get_all_type_information() const {
-    script::Object result = script::Object::make_null();
-    for (const auto &kv : m_types) {
-        result = script::Object::make_pair(script::Object::make_string(kv.second->print()), result);
-    }
-    return result;
-}
 
 // ============================================================================
 // Built-in Type Factories (Simplified)
@@ -928,7 +921,6 @@ void TypeSystem::add_builtin_types() {
     TypeConfig::struct_array_stride_alignment = 16;
     TypeConfig::struct_array_start_alignment = 16;
     TypeConfig::basic_array_start_alignment = 16;
-    m_variant = Object::make_symbol("default");
 
     // Проверяем что базовые типы еще не инициализированы
     if (!m_types.empty() && m_types.find("object") != m_types.end()) {
@@ -1526,14 +1518,6 @@ std::vector<std::string> TypeSystem::get_all_type_names() {
     return results;
 }
 
-script::Object TypeSystem::get_all_type_names_as_objects() const {
-    script::Object result = script::Object::make_null();
-    for (const auto &kv : m_types) {
-        result = script::Object::make_pair(script::Object::make_string(kv.first.c_str()), result);
-    }
-    return result;
-}
-
 std::vector<std::string> TypeSystem::search_types_by_parent_type(
     const std::string                             &parent_type,
     const std::optional<std::vector<std::string>> &existing_matches) {
@@ -1942,60 +1926,6 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 }
 
 // ============================================================================
-// Aliases
-// ============================================================================
-
-Object TypeSystem::get_at(const Object &key) {
-    // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = HeapObject::get_at(key);
-
-    if (!base_attempt.is_none())
-        return base_attempt;
-
-    // 2. Трактуем ключ как имя типа
-    std::string name;
-    if (key.is_symbol()) {
-        name = key.to_std_string();
-    } else if (key.is_string()) {
-        name = key.to_std_string();
-    } else {
-        return Object::make_none(); // Или бросай ошибку, если хочешь строгости
-    }
-
-    if (name == ":variant") {
-        return m_variant;
-    }
-
-    if (name == ":types-count") {
-        return Object::make_integer(get_types_count());
-    }
-
-    if (name == ":pointer-size") {
-        return Object::make_integer(get_pointer_size());
-    }
-
-    if (name == ":types") {
-        ListBuilder lb{};
-        for (auto &kv : m_types) {
-            lb.push_back(Object::make_symbol(kv.first));
-        }
-        return lb.build();
-    }
-
-    // 3. Ищем тип
-    // Предполагаем, что lookup_type возвращает какой-то указатель или shared_ptr
-    auto type_ptr = lookup_type_no_throw(name);
-
-    if (type_ptr) {
-        // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
-        // Если как unique_ptr, то возвращай HeapObject с пустым делетером (но помни о рисках!)
-        return Object::make_heap_obj(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
-    }
-
-    return Object::make_none();
-}
-
-// ============================================================================
 // Reverse field lookup (упрощенные заглушки)
 // ============================================================================
 
@@ -2263,64 +2193,6 @@ std::string FieldReverseLookupOutput::Token::print() const {
     }
 }
 
-script::Object TypeSystem::inspect() const {
-    return script::pretty_print::build_list(Object::make_symbol("type-system"),
-                                            Object::make_symbol(":size"),
-                                            Object::make_integer(m_types.size()));
+std::string TypeSystem::inspect() const {
+    return fmt::format("type-system:\n  types-count: {}", m_types.size());
 }
-
-// ============================================================================
-// argument Checket
-// ============================================================================
-
-Object TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
-                                           const Object                             &ret_type) {
-    auto entries = env->vars.get_all_entries();
-
-    // 1. Сначала считаем, сколько у нас РЕАЛЬНЫХ аргументов
-    int max_idx = -1;
-    for (const auto &entry : entries) {
-        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
-            int idx = entry.value.as_heap_obj<Register>()->arg_index;
-            if (idx > max_idx)
-                max_idx = idx;
-        }
-    }
-
-    // 2. Создаем временный массив нужного размера
-    // Используем Object(), чтобы инициализировать пустышками
-    std::vector<Object> ordered_args(max_idx + 1);
-
-    for (const auto &entry : entries) {
-        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
-            auto reg = entry.value.as_heap_obj<Register>();
-            if (reg->arg_index >= 0) {
-                // Кладем в массив САМ объект или его имя типа
-                // Раз typespec~> x работает, положим имя типа
-                ordered_args[reg->arg_index] = reg->type_name;
-            }
-        }
-    }
-
-    // 3. Собираем список для (function ...)
-    // Начинаем с возвращаемого типа
-    Object args_list = Object::make_pair(ret_type, Object::make_null());
-
-    // Добавляем аргументы в обратном порядке (для cons)
-    for (int i = max_idx; i >= 0; --i) {
-        Object t = ordered_args[i];
-        if (t.is_none())
-            t = Object::make_symbol("object");
-        args_list = Object::make_pair(t, args_list);
-    }
-
-    Object func_spec_form = Object::make_pair(Object::make_symbol("function"), args_list);
-
-    // 4. Парсим
-    TypeSpec ts = parse_typespec(this, func_spec_form);
-    return Object::make_heap_obj(std::make_shared<TypeSpec>(ts));
-}
-
-// ============================================================================
-//
-// ============================================================================

@@ -9,7 +9,6 @@
 
 #include "common/type_system/Defenum.hpp"
 #include "common/type_system/Deftype.hpp"
-#include "common/type_system/Register.hpp"
 
 #include "common/type_system/TypeSystem.hpp"
 
@@ -76,8 +75,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"macro", &Interpreter::eval_macro_special, nullptr},
         {"quasiquote", &Interpreter::eval_quasiquote_special, nullptr},
         {"while", &Interpreter::eval_while_special, nullptr},
-        // Define new constant
-        {"defconstant", &Interpreter::eval_define_constant, nullptr},
         // Exception handling
         {"with-error-handler", &Interpreter::eval_with_error_handler_special, nullptr},
         {"eval-args", &Interpreter::eval_eval_args_special, nullptr},
@@ -94,7 +91,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"env", &Interpreter::eval_env, nullptr},
         {"defined?", &Interpreter::eval_defined_p, nullptr},
         {"lookup", &Interpreter::eval_lookup, nullptr},
-        {"lookup-type", &Interpreter::eval_lookup_type, nullptr},
         {"current-function", &Interpreter::eval_current_function, nullptr},
         {"gensym", &Interpreter::eval_gensym, nullptr},
         {"env-name", &Interpreter::eval_env_name_get, nullptr},
@@ -265,9 +261,6 @@ Interpreter::Interpreter(const std::string &username, bool load_libs)
         {"get-setter", &Interpreter::eval_get_setter, nullptr},
     });
 
-    // Type system
-    init_types("default");
-
     // load the standard library
     if (load_libs)
         load_library();
@@ -358,18 +351,7 @@ bool Interpreter::try_symbol_lookup(const Object                             &sy
             return true;
         }
     }
-    {
-        auto type_ptr = m_symbol_types.lookup(sym.as_symbol()); // Получаем указатель из мапы
-        if (type_ptr) {
-            // 1. Разыменовываем указатель, получаем std::shared_ptr<TypeSpec>
-            // 2. static_pointer_cast приводит его к std::shared_ptr<HeapObject>
-            auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr);
 
-            // Теперь вызываем создание объекта
-            *dest = Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
-            return true;
-        }
-    }
     return false;
 }
 
@@ -1173,49 +1155,6 @@ Object Interpreter::eval_lookup(const Object &form, Arguments &args,
     return get_none();
 }
 
-/*!
- * Check if symbol is defined
- */
-Object Interpreter::eval_lookup_type(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env) {
-    (void)env;
-    vararg_check(
-        form, args, {{ObjectType::SYMBOL}},
-        {{"types", {false, {ObjectType::SYMBOL}}}, {"extern", {false, {ObjectType::SYMBOL}}}});
-
-    auto type_name = args.unnamed[0].as_symbol();
-
-    bool lookup_types = true;
-    bool lookup_extern = true;
-    if (args.has_named("types"))
-        lookup_types = is_true(args.named["types"]);
-    if (args.has_named("extern"))
-        lookup_extern = is_true(args.named["extern"]);
-
-    if (lookup_extern) {
-        // 1. Сначала ищем в m_symbol_types
-        auto type_ptr_ptr = m_symbol_types.lookup(type_name);
-        if (type_ptr_ptr) {
-            // *type_ptr_ptr - это shared_ptr<TypeSpec>
-            auto heap_ptr = std::static_pointer_cast<script::HeapObject>(*type_ptr_ptr);
-            return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
-        }
-    }
-
-    if (lookup_types) {
-        // 2. Если не нашли, ищем в TypeSystem
-        // ПРЕДПОЛОЖИМ: lookup_type возвращает std::shared_ptr<Type>
-        Type *type = TypeSystem::instance().lookup_type(type_name.as_string());
-        if (type) {
-            // Создаем shared_ptr с no-op deleter, потому что TypeSystem управляет памятью
-            auto heap_ptr =
-                std::shared_ptr<HeapObject>(static_cast<HeapObject *>(type), [](HeapObject *) {});
-            return Object::make_heap_obj(heap_ptr, ObjectType::NATIVE_OBJECT);
-        }
-    }
-    return get_none();
-}
-
 Object Interpreter::eval_current_function(const Object &form, Arguments &args,
                                           const std::shared_ptr<EnvironmentObject> &env) {
     (void)env;
@@ -1274,63 +1213,6 @@ Object Interpreter::eval_define_special(const Object &form, const Object &rest,
     Object value = eval_with_rewind(args.unnamed[1], env);
     define_env->vars.set(name.as_symbol(), value);
     return value;
-}
-
-/*!
- * Define constant
- */
-Object Interpreter::eval_define_constant(const Object &form, const Object &rest,
-                                         const std::shared_ptr<EnvironmentObject> &env) {
-    auto args = get_args(form, rest, ArgumentSpec(true, true));
-    vararg_check(form, args, {{ObjectType::SYMBOL}, {}}, {{"env", {false, {}}}});
-    auto name = args.unnamed[0].as_symbol();
-
-    // Проверка: нельзя объявлять константу, если уже есть переменная с таким именем
-    if (m_symbol_types.lookup(name))
-        throw_eval_error(form, "Cannot define constant: symbol already has a type definition");
-
-    Object value = eval_with_rewind(args.unnamed[1], env);
-
-    // Определяем тип константы автоматически
-    // Например, если это число < 256, тип может быть uint8 и т.д.
-    TypeSpec ts = deduct_type_for_constant_helper(value);
-
-    m_global_constants.set(name, value);
-    // Оборачиваем TypeSpec в shared_ptr для таблицы типов
-    m_symbol_types.set(name, std::make_shared<TypeSpec>(ts));
-
-    return get_none();
-}
-
-/*!
- * Convert the lisp object to the type systems type
- */
-TypeSpec Interpreter::deduct_type_for_constant_helper(const Object &val) {
-    if (val.is_integer()) {
-        int64_t v = val.as_integer();
-
-        // Маленькое положительное число -> uint8
-        if (v >= 0 && v <= 255) {
-            return TypeSystem::instance().make_typespec("uint8");
-        }
-        // Маленькое отрицательное число -> int8
-        if (v >= -128 && v < 0) {
-            return TypeSystem::instance().make_typespec("int8");
-        }
-        // Всё остальное, что влезает в 16 бит
-        return TypeSystem::instance().make_typespec("int16");
-    }
-
-    if (val.is_string()) {
-        return TypeSystem::instance().make_typespec("string");
-    }
-
-    if (val.is_symbol()) {
-        return TypeSystem::instance().make_typespec("symbol");
-    }
-
-    // По умолчанию, если не знаем что это
-    return TypeSystem::instance().make_typespec("object");
 }
 
 /*!
@@ -5088,85 +4970,6 @@ Object Interpreter::eval_get_setter(const Object &form, Arguments &args,
 
     // Если ничего не нашли, возвращаем пустой список (nil)
     return Object::make_null();
-}
-
-// ============================================================
-// Type System
-// ============================================================
-
-/*!
- * Initialize the type system
- */
-Object Interpreter::eval_init_types(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env) {
-    (void)form;
-    (void)env;
-    vararg_check(form, args, {{ObjectType::SYMBOL}}, {});
-    TypeSystem::instance().clear();
-    if (init_types(args.unnamed[0].as_symbol())) {
-        return get_true();
-    } else {
-        throw_eval_error(form,
-                         fmt::format("Expected 'default or 'z80, got {}", args.unnamed[0].print()));
-        return get_null();
-    }
-}
-
-/*!
- * Helper Initialize the type system
- */
-bool Interpreter::init_types(const std::string &variant) {
-    auto &ts = TypeSystem::instance();
-    auto  env = m_global_environment.as_env();
-
-    // 1. УДАЛЯЕМ старые типы из окружения
-    std::vector<const char *> to_remove;
-    const auto               &entries = env->vars.get_all_entries();
-    for (const auto &entry : entries) {
-        if (entry.value.is_native_obj()) {
-            to_remove.push_back(entry.key);
-        }
-    }
-    for (const auto &key : to_remove) {
-        env->vars.remove(key);
-    }
-
-    // 2. ОЧИЩАЕМ TypeSystem
-    ts.clear();
-
-    // 3. СОЗДАЁМ новые типы
-    if (variant == "default") {
-        ts.add_builtin_types();
-    } else {
-        return false;
-    }
-
-    // 4. ЭКСПОРТИРУЕМ новые типы
-    const auto &all_types = ts.get_types(); // теперь константная ссылка!
-    for (const auto &pair : all_types) {    // pair, а не [name, type_ptr]
-        const auto &name = pair.first;
-        auto       *type_ptr = pair.second.get();
-
-        auto shared_type = std::shared_ptr<Type>(type_ptr, [](Type *) {});
-        auto type_obj = Object::make_heap_obj(shared_type);
-        env->vars.set(Object::intern(name.c_str()), type_obj);
-    }
-
-    // 5. Обновляем ссылку на TypeSystem
-    define_var_in_env(get_global_environment(), ts.to_alias(), "*type-system*");
-
-    return true;
-}
-
-/*!
- * Get all types to the script language
- */
-Object Interpreter::eval_types_to_lisp(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env) {
-    (void)form;
-    (void)args;
-    (void)env;
-    return TypeSystem::instance().get_all_type_names_as_objects();
 }
 
 } // namespace script

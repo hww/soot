@@ -950,6 +950,6 @@ DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
         }
         return result;
     } catch (std::runtime_error &e) {
-        throw EvalException(deftype, e.what());
+        throw std::runtime_error("invalid typespec: " + deftype.print() + " exception: " + e.what());
     }
 }

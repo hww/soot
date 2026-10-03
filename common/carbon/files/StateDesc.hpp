@@ -88,7 +88,7 @@ struct StateDesc : public Descriptor {
     * @return Pointer to FunctionDesc or nullptr if not found
     */
     Definition* get_definition(uint idx) const {
-        if (idx < 0 || idx >= count) {
+        if (idx >= count) {
             return nullptr;
         }
         

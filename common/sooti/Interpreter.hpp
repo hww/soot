@@ -257,8 +257,6 @@ class Interpreter {
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lookup(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_lookup_type(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
 
@@ -563,21 +561,12 @@ class Interpreter {
         const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>> &named);
 
     // Типы (минимально нужны для init_types / defconstant)
-    Object eval_define_constant(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_types_to_lisp(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_init_types(const Object &form, Arguments &args,
-                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_current_function(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_getf(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_assoc(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
-
-    bool     init_types(const std::string &variant);
-    TypeSpec deduct_type_for_constant_helper(const Object &val);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);
