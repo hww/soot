@@ -2,7 +2,6 @@
 #include "common/sooti/Errors.hpp"
 #include "common/sooti/Object.hpp"
 #include "common/sooti/Reader.hpp"
-#include "common/sooti/archive/RelocationTable.hpp"
 #include "common/type_system/TypeSpec.hpp"
 #include "common/util/SimpleProfiler.hpp"
 #include "fmt/color.h"
@@ -350,6 +349,7 @@ class Interpreter {
                              const std::shared_ptr<EnvironmentObject> &env);
     Object eval_string_ltrim(const Object &form, Arguments &args,
                              const std::shared_ptr<EnvironmentObject> &env);
+
     // Векторы
     Object eval_make_array(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
@@ -380,12 +380,6 @@ class Interpreter {
     Object eval_hash_table_containsp(const Object &form, Arguments &args,
                                      const std::shared_ptr<EnvironmentObject> &env);
 
-    // Universal method working with hash tables
-    Object eval_get_at(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_set_at(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-
     // Итераторы
     Object eval_string_for_each(const Object &form, Arguments &args,
                                 const std::shared_ptr<EnvironmentObject> &env);
@@ -397,10 +391,7 @@ class Interpreter {
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_list_for_each_pair(const Object &form, Arguments &args,
                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_type_for_each_field(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_type_for_each_method(const Object &form, Arguments &args,
-                                     const std::shared_ptr<EnvironmentObject> &env);
+
     // Системные и ввод-вывод
     Object eval_print(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
@@ -417,7 +408,7 @@ class Interpreter {
     Object eval_log(const Object &form, Arguments &args,
                     const std::shared_ptr<EnvironmentObject> &env);
 
-    // файлы
+    // Файлы
     Object eval_file_exists_p(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_read_str(const Object &form, Arguments &args,
@@ -454,6 +445,7 @@ class Interpreter {
                                const std::shared_ptr<EnvironmentObject> &env);
     Object eval_primitive_p(const Object &form, Arguments &args,
                             const std::shared_ptr<EnvironmentObject> &env);
+
     // Система
     Object eval_system(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -476,6 +468,7 @@ class Interpreter {
 
     Object eval_crc32(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
+
     // Прочие
     Object eval_gensym(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
@@ -568,131 +561,23 @@ class Interpreter {
         const Object &form, const Arguments &args,
         const std::vector<std::vector<ObjectType>>                                      &unnamed,
         const std::unordered_map<std::string, std::pair<bool, std::vector<ObjectType>>> &named);
-    Object eval_rlet_special(const Object &form, const Object &rest,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_defenum_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_deftype_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_deftypespec_special(const Object &form, const Object &rest,
-                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_typespec(const Object &form, Arguments &args,
-                         const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_type(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
+
+    // Типы (минимально нужны для init_types / defconstant)
     Object eval_define_constant(const Object &form, const Object &rest,
                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_special(const Object &form, const Object &rest,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declare_external(const Object &form, Arguments &args,
-                                 const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_declarations(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_define_method(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_define_function(const Object &form, Arguments &args,
-                                const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_reg_alias(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
     Object eval_types_to_lisp(const Object &form, Arguments &args,
                               const std::shared_ptr<EnvironmentObject> &env);
     Object eval_init_types(const Object &form, Arguments &args,
                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_type_get(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_type_set(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_type_make(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_name_get(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_function_name_set(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
     Object eval_current_function(const Object &form, Arguments &args,
                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_types_match_p(const Object &form, Arguments &args,
-                              const std::shared_ptr<EnvironmentObject> &env);
-
-    bool     init_types(const std::string &variant);
-    TypeSpec parse_typespec_helper(const Object &obj);
-    TypeSpec deduct_type_for_constant_helper(const Object &val);
-
-    Object eval_source_info(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_get_context(const Object &form, Arguments &args,
-                            const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_deref_special(const Object &form, const Object &rest,
-                              const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_deref(const Object &form, Arguments &args,
-                      const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_addr_of(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_addr_plus(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_the(const Object &form, Arguments &args,
-                    const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_the_as(const Object &form, Arguments &args,
-                       const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_offset_of(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_size_of(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-
-    Object eval_method_id_of(const Object &form, Arguments &args,
-                             const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_method_of(const Object &form, Arguments &args,
-                          const std::shared_ptr<EnvironmentObject> &env);
-
-    Object eval_mem_get(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-    Object eval_mem_set(const Object &form, Arguments &args,
-                        const std::shared_ptr<EnvironmentObject> &env);
-
     Object eval_getf(const Object &form, Arguments &args,
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_assoc(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
 
-    // Archiving and buffering
-    Object      eval_make_memory_archive(const Object &form, Arguments &args,
-                                         const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_make_memory_region(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_make_memory_buffer(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_region_export_hex(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_region_dump(const Object &form, Arguments &args,
-                                        const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_reloc_set(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_reloc_ref(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_reloc_list(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_symbol_set(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_symbol_ref(const Object &form, Arguments &args,
-                                              const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_label_set(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_memory_buffer_label_ref(const Object &form, Arguments &args,
-                                             const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_archive_serialize(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_archive_tell(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_archive_seek(const Object &form, Arguments &args,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_archive_at_end(const Object &form, Arguments &args,
-                                    const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_archive_close(const Object &form, Arguments &args,
-                                   const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_region_read_byte(const Object &form, Arguments &args,
-                                      const std::shared_ptr<EnvironmentObject> &env);
-    Object      eval_region_write_byte(const Object &form, Arguments &args,
-                                       const std::shared_ptr<EnvironmentObject> &env);
-    std::string relocation_type_to_string(RelocationTable::RelocType type);
+    bool     init_types(const std::string &variant);
+    TypeSpec deduct_type_for_constant_helper(const Object &val);
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

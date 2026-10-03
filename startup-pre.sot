@@ -3,9 +3,4 @@
 (define debug-mode #t)
 (define version "1.0.0")
 (fmt #t "✓ Startup Pre : Network services initialized\n" :color 'gray)
-;(load "common/xiff/soot/tests/test-reader.sot")
-;(load "common/xiff/soot/tests/test-all.sot")
-;(load "common/xiff/soot/zasm/test.sot")
-;(load "common/xiff/soot/tests/test-memory-buffer.sot")
-(load "common/xiff/soot/xialeste/xifw.sot")
 

@@ -27,12 +27,6 @@ target_link_libraries(libsoticore PRIVATE
 # 2. Архивные модули
 add_library(libsoti
     common/sooti/Interpreter.cpp
-    common/sooti/archive/MemoryArchive.cpp
-    common/sooti/archive/RelocationTable.cpp
-    common/sooti/archive/MemorySymbolTable.cpp
-    common/sooti/archive/MemoryRegion.cpp
-    common/sooti/archive/MemoryBuffer.cpp
-    common/sooti/archive/LabelTable.cpp
 )
 
 target_include_directories(libsoti PUBLIC
