@@ -355,8 +355,6 @@ class TypeSystem : public NativeObject {
 
     void add_builtin_types();
     void verify_type_sizes();
-    void add_builtin_types_z80();
-    void verify_type_sizes_z80();
 
     void clear() {
         m_types_by_crc.clear();

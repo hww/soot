@@ -5528,9 +5528,7 @@ bool Interpreter::init_types(const std::string &variant) {
     ts.clear();
 
     // 3. СОЗДАЁМ новые типы
-    if (variant == "z80") {
-        ts.add_builtin_types_z80();
-    } else if (variant == "default") {
+    if (variant == "default") {
         ts.add_builtin_types();
     } else {
         return false;
