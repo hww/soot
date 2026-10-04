@@ -84,6 +84,12 @@ sudo make install
 soot --version
 ```
 
+More details
+
+[Windows](./docs/setup/system/windows.md)
+[Linus](./docs/setup/system/linux.md)
+[MacOS](./docs/setup/system/macos.md)
+
 ---
 
 ## 📚 Usage Guide

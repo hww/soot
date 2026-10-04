@@ -28,6 +28,8 @@ Here is the English translation:
 
 - **C++ CMake tools for Windows** —  keep it.
 
+![Visual Studia Packages](./windows_vs_packages.png)
+
 ---
 
 ## Building in Command Line

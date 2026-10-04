@@ -138,7 +138,6 @@ include(common/soot/CMakeLists.txt)
 include(common/sootc/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
-include(common/xiff/CMakeLists.txt)
 include(common/util/CMakeLists.txt)
 
 set_target_properties(sootc PROPERTIES
