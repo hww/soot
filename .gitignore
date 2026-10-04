@@ -19,3 +19,5 @@ add.bin
 add.dci
 .gitignore
 common/carbon/main.cpp
+*.udb
+soot_understand.udb
