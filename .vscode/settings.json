@@ -1,68 +1,56 @@
 {
+    "security.workspace.trust.enabled": false,
     "C_Cpp.intelliSenseEngine": "disabled",
-    "C_Cpp.errorSquiggles": "disabled",
-    "editor.inlayHints.enabled": "on",
-
     "clangd.path": "/usr/bin/clangd",
     "clangd.arguments": [
         "--background-index",
         "--clang-tidy",
-        "--compile-commands-dir=${workspaceFolder}/build",
-        "--completion-style=detailed",
         "--header-insertion=iwyu",
-        "--log=verbose",
-        "--pretty",
-        "--query-driver=/usr/bin/clang++,/usr/bin/g++",
-        "--malloc-trim"
+        "--query-driver=/usr/bin/*clang*,/usr/bin/*g++*"
     ],
-    "clangd.fallbackFlags": ["-std=c++23"],
-    "clangd.restartAfterCrash": true,
 
-    "editor.formatOnSave": false,
-    "[cpp]": {
-        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
-    },
-    "[c]": {
-        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
-    },
-
-    "cmake.useCMakePresets": "never",
-    "cmake.buildDirectory": "${workspaceFolder}/build",
     "cmake.sourceDirectory": "${workspaceFolder}",
-    "cmake.configureOnOpen": false,
-    "cmake.configureOnEdit": false,
-    "cmake.configureArgs": [
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        "-DCMAKE_C_COMPILER=clang",
-        "-DCMAKE_CXX_COMPILER=clang++",
-        "-DBUILD_TESTS=ON",
-        "-DCMAKE_BUILD_TYPE=Debug"
-    ],
-    "cmake.debugConfig": {
-        "cwd": "${workspaceFolder}"
-    },
-
-    "testMate.cpp.test.advancedExecutables": [
-        {
-            "pattern": "${workspaceFolder}/build/bin/*{test,tests}",
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "pattern": "${workspaceFolder}/build/*{test,tests}",
-            "cwd": "${workspaceFolder}"
-        }
-    ],
-    "testMate.cpp.discovery.loadOnStartup": true,
-    "testMate.cpp.log.logpanel": true,
+    "cmake.useCMakePresets": "always",
+    "cmake.configurePreset": "Debug-linux-clang",
+    "cmake.buildPreset": "Debug-linux-clang",
+    "cmake.configureOnOpen": true,
+    "cmake.options.statusBarVisibility": "visible",
+    "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
 
     "files.encoding": "utf8",
     "files.eol": "\n",
-    "files.watcherExclude": {
-        "**/build/**": true,
-        "**/.git/objects/**": true,
-        "**/.git/subtree-cache/**": true
+    "testExplorer.adapters.catch2.advancedExecutables": [
+        {
+            "pattern": "${workspaceFolder}/build/bin/*{test,tests}",
+            "cwd": "${workspaceFolder}"
+        }
+    ],
+    "testMate.cpp.test.executables": "{build,Build,out,Out}/**/*{test,Test,TEST}*",
+    "testMate.cpp.discovery.loadOnStartup": true,
+    "testMate.cpp.test.parallelExecutionLimit": 4,
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "googletest.failed",
+                "settings": {
+                    "foreground": "#f00"
+                }
+            },
+            {
+                "scope": "googletest.passed",
+                "settings": {
+                    "foreground": "#0f0"
+                }
+            },
+            {
+                "scope": "googletest.run",
+                "settings": {
+                    "foreground": "#0f0"
+                }
+            }
+        ]
     },
-
-    "problems.decorations.enabled": true,
-    "problems.autoReveal": true
+    "gtest-adapter.debugConfig": [
+        "SOOT"
+    ]
 }

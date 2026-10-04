@@ -15,7 +15,8 @@
         "STATICALLY_LINK": "OFF",
         "ZYDIS_BUILD_SHARED_LIB": "ON",
         "CODE_COVERAGE": "OFF",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
       }
     },
     {
@@ -32,7 +33,7 @@
       "name": "base-windows-relwithdeb",
       "hidden": true,
       "inherits": "base",
-      "binaryDir": "${sourceDir}/out/build/Release",
+      "binaryDir": "${sourceDir}/out/build/RelWithDebInfo",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
@@ -52,7 +53,7 @@
       "name": "base-linux-release",
       "hidden": true,
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build/Release/bin",
+      "binaryDir": "${sourceDir}/build/Release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
@@ -62,7 +63,7 @@
       "name": "base-linux-debug",
       "hidden": true,
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build/Release/bin",
+      "binaryDir": "${sourceDir}/build/Debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
@@ -72,7 +73,7 @@
       "name": "base-macos-release",
       "hidden": true,
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build/Release/bin",
+      "binaryDir": "${sourceDir}/build/Release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
@@ -177,38 +178,32 @@
       "inherits": [ "base-windows-release", "base-msvc" ]
     },
     {
+      "name": "Debug-linux-clang",
+      "displayName": "Linux Debug (clang)",
+      "description": "Build with Clang as Debug on Linux",
+      "inherits": [ "base-linux-debug", "base-clang" ]
+    },
+    {
       "name": "Release-linux-clang",
       "displayName": "Linux Release (clang)",
       "description": "Build with Clang as Release without Debug Symbols",
       "inherits": [ "base-linux-release", "base-clang" ]
     },
     {
-      "name": "Release-macos-arm64-clang",
-      "displayName": "MacOS ARM64 Release (clang)",
-      "description": "Build for ARM64 with Clang as Release without Debug Symbols",
-      "inherits": [ "base-macos-release", "base-macos-arm64", "base-clang" ]
-    },
-    {
-      "name": "Release-macos-x86_64-clang",
-      "displayName": "MacOS x86_64 Release (clang)",
-      "description": "Build for x86_64 with Clang as Release without Debug Symbols",
-      "inherits": [ "base-macos-release", "base-macos-x86_64", "base-clang" ]
-    },
-    {
-      "name": "Release-macos-arm64-clang-static",
-      "displayName": "MacOS ARM64 Static Release (clang)",
-      "description": "Build for ARM64 with Clang as Release without Debug Symbols but statically linked",
-      "inherits": [ "base-macos-release", "base-macos-arm64", "base-clang" ],
+      "name": "Debug-linux-clang-static",
+      "displayName": "Linux Static Debug (clang)",
+      "description": "Build with Clang as Debug, statically linked",
+      "inherits": [ "base-linux-debug", "base-clang" ],
       "cacheVariables": {
         "STATICALLY_LINK": "true",
         "ZYDIS_BUILD_SHARED_LIB": "OFF"
       }
     },
     {
-      "name": "Release-macos-x86_64-clang-static",
-      "displayName": "MacOS x86_64 Static Release (clang)",
-      "description": "Build for x86_64 with Clang as Release without Debug Symbols but statically linked, requires MacOS Sequoia",
-      "inherits": [ "base-macos-release", "base-macos-x86_64", "base-clang" ],
+      "name": "Release-linux-clang-static",
+      "displayName": "Linux Static Release (clang)",
+      "description": "Build with Clang as Release but statically linked",
+      "inherits": [ "base-linux-release", "base-clang" ],
       "cacheVariables": {
         "STATICALLY_LINK": "true",
         "ZYDIS_BUILD_SHARED_LIB": "OFF"
@@ -217,30 +212,10 @@
     {
       "name": "Release-linux-clang-asan",
       "displayName": "Linux Release (clang-asan)",
-      "description": "Build with Clang as Release without Debug Symbols and ASAN Fuzzing",
+      "description": "Build with Clang as Release with ASAN",
       "inherits": [ "base-linux-release", "base-clang" ],
       "cacheVariables": {
-        "ASAN_BUILD": "OFF"
-      }
-    },
-    {
-      "name": "Release-linux-clang-static",
-      "displayName": "Linux Static Release (clang)",
-      "description": "Build with Clang as Release without Debug Symbols but statically linked",
-      "inherits": [ "base-linux-release", "base-clang" ],
-      "cacheVariables": {
-        "STATICALLY_LINK": "true",
-        "ZYDIS_BUILD_SHARED_LIB": "OFF"
-      }
-    },
-    {
-      "name": "Debug-linux-clang-static",
-      "displayName": "Linux Static Release (clang)",
-      "description": "Build with Clang as Release without Debug Symbols but statically linked",
-      "inherits": [ "base-linux-debug", "base-clang" ],
-      "cacheVariables": {
-        "STATICALLY_LINK": "true",
-        "ZYDIS_BUILD_SHARED_LIB": "OFF"
+        "ASAN_BUILD": "ON"
       }
     },
     {
@@ -248,6 +223,18 @@
       "displayName": "Linux Release (gcc)",
       "description": "Build with GCC as Release without Debug Symbols",
       "inherits": [ "base-linux-release", "base-gcc" ]
+    },
+    {
+      "name": "Release-macos-arm64-clang",
+      "displayName": "MacOS ARM64 Release (clang)",
+      "description": "Build for ARM64 with Clang as Release",
+      "inherits": [ "base-macos-release", "base-macos-arm64", "base-clang" ]
+    },
+    {
+      "name": "Release-macos-x86_64-clang",
+      "displayName": "MacOS x86_64 Release (clang)",
+      "description": "Build for x86_64 with Clang as Release",
+      "inherits": [ "base-macos-release", "base-macos-x86_64", "base-clang" ]
     }
   ]
 }

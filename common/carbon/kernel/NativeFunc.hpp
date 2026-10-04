@@ -8,6 +8,30 @@ using namespace carbon;
 
 namespace carbon {
 
+
+// ============================================================================
+// RuntimeType mapping for SC_ARG
+// ============================================================================
+    template<typename T> struct RuntimeTypeOf {
+        static constexpr RuntimeType value = RuntimeType::Pointer;
+    };
+
+    template<> struct RuntimeTypeOf<i32>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<i64>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<u32>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<u64>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<i16>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<u16>  { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<i8>   { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<u8>   { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<bool> { static constexpr RuntimeType value = RuntimeType::Int; };
+
+    template<> struct RuntimeTypeOf<f32>  { static constexpr RuntimeType value = RuntimeType::Float; };
+    template<> struct RuntimeTypeOf<f64>  { static constexpr RuntimeType value = RuntimeType::Float; };
+
+    template<> struct RuntimeTypeOf<StringId>    { static constexpr RuntimeType value = RuntimeType::Int; };
+    template<> struct RuntimeTypeOf<std::string> { static constexpr RuntimeType value = RuntimeType::Pointer; };
+
     /**
      * @brief Safe argument access for native functions
      * @example
@@ -15,7 +39,7 @@ namespace carbon {
      *   i32 value = SC_ARG(1, get_as_s32, 0);
      */
     #define SC_ARG(arg_num, T, default_val) \
-        sc_arg_convert<T>(arg_num, argc, argv, SID(#T), (default_val))
+    sc_arg_convert<T>(arg_num, argc, argv, RuntimeTypeOf<T>::value, (default_val))
 
     template<typename T>
     T sc_arg_convert(u32 arg_num, u32 argc, const Variant* argv,

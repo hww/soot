@@ -51,6 +51,18 @@ else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
+    if(WIN32)
+        # Принудительно зашиваем рантайм внутрь .exe, чтобы бинарники были самодостаточны
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+        # Заставляем clang++ форматировать ошибки как: file(line): error
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-format=msvc")
+        # Если используется чистый LLVM (libc++ вместо libstdc++):
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+        endif()
+    endif()
+
     # libc++ — только для clang/gcc на Linux/macOS, НЕ для Windows
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT WIN32)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
@@ -148,6 +160,8 @@ set_target_properties(sootc PROPERTIES
 # ============================================================
 if(BUILD_TESTS)
     # enable_testing должен быть вызван в корневом файле обязательно
+#    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
+    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE POST_BUILD)
     enable_testing()
     
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -155,8 +169,8 @@ if(BUILD_TESTS)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
     
     # Подключаем тесты
-    #include(tests/soot/CMakeLists.txt)
-    #include(tests/carbon/CMakeLists.txt)
+    include(tests/soot/CMakeLists.txt)
+    include(tests/carbon/CMakeLists.txt)
     #include(tests/engine/CMakeLists.txt)
     include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
 endif()
@@ -165,8 +179,8 @@ endif()
 add_custom_target(tests
     COMMENT "Building all tests"
     DEPENDS 
-        #soot_test
+        soot_test
         typesys_tests  # ИСПРАВЛЕНО: было type_system_test
-        #carbon_test
+        carbon_test
         #engine_test
 )

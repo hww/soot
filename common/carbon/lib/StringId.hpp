@@ -11,10 +11,10 @@ public:
     sid64 value;
 
     constexpr StringId() : value(0) {}
-    constexpr explicit StringId(u64 val) : value(val) {}
-    constexpr explicit StringId(i64 val) : value(static_cast<u64>(val)) {}
-    constexpr explicit StringId(u32 val) : value(val) {}
-    constexpr explicit StringId(i32 val) : value(static_cast<u64>(val)) {}
+    constexpr StringId(u64 val) : value(val) {}
+    constexpr StringId(i64 val) : value(static_cast<u64>(val)) {}
+    constexpr StringId(u32 val) : value(val) {}
+    constexpr StringId(i32 val) : value(static_cast<u64>(val)) {}
 
     StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
     StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}
@@ -34,7 +34,7 @@ public:
 
 
  struct StringIds {
-    inline static const StringId none   = StringId("none");
+    inline static const StringId none      = StringId("none");
     inline static const StringId unknown   = StringId("unknown");
     inline static const StringId unnamed   = StringId("unnamed");
     inline static const StringId enter     = StringId("enter");
@@ -58,8 +58,8 @@ public:
  */
 #include "common/util/StringIdHash.hpp"
 
-#define SID(str) (static_cast<sid64>(util::ToStringId64_Const(str)))
-#define SID32(str) (static_cast<sid64>(util::ToStringId32_Const(str)))
+#define SID(str)   (::carbon::StringId(static_cast<::sid64>(util::ToStringId64_Const(str))))
+#define SID32(str) (::carbon::StringId(static_cast<::sid64>(util::ToStringId32_Const(str))))
 
 // 3. РАСШИРЕНИЕ СТАНДАРТНОЙ БИБЛИОТЕКИ
 #include <functional> // Обязательно для std::hash

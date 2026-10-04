@@ -41,7 +41,6 @@ add_library(libcarbon
 )
 
 
-
 # Исполняемый файл для тестирования VM
 add_executable(carbon common/carbon/Main.cpp)
 
@@ -54,6 +53,14 @@ target_link_libraries(carbon PRIVATE
     fmt 
     libcarbon
 )
+
+set_source_files_properties(
+    common/carbon/vm/Instructions.cpp
+    common/carbon/vm/StackFrame.cpp
+    PROPERTIES COMPILE_OPTIONS "-Wno-pedantic"
+)
+
+
 if(WIN32)
     target_link_libraries(carbon PRIVATE ws2_32)
 else()

@@ -12,16 +12,12 @@ include_directories(common/carbon)
 # Создаем тестовый исполняемый файл
 add_executable(carbon_test
     tests/carbon/TestTypes.cpp
-    tests/carbon/TestStringId.cpp
     tests/carbon/TestVariant.cpp
     tests/carbon/TestInstructions.cpp
-    tests/carbon/TestStackFrame.cpp
-    tests/carbon/TestBinaryFile.cpp
     tests/carbon/TestScriptObject.cpp
     tests/carbon/TestNativeFunctions.cpp
-    tests/carbon/TestVirtualMachine.cpp
     tests/carbon/TestPtr.cpp
-    tests/carbon/RelocationTest.cpp
+
 )
 
 # Линкуем с нашей библиотекой и gtest

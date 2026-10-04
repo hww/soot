@@ -19,12 +19,14 @@ namespace carbon {
 
     inline const char* value_type_to_string(RuntimeType type) {
         switch (type) {
-            case  RuntimeType::Null: return "null";
-            case  RuntimeType::Int: return "int";
-            case  RuntimeType::Float: return "float";
-            case  RuntimeType::Pointer: return "pointer";
+            case RuntimeType::Null:    return "null";
+            case RuntimeType::Int:     return "int";
+            case RuntimeType::Float:   return "float";
+            case RuntimeType::Pointer: return "pointer";
         }
+        return "unknown";
     }
+
     // =========================================================================
     // EXCEPTION CLASSES
     // =========================================================================
@@ -350,12 +352,12 @@ namespace carbon {
         }
 
         void set_f64(f64 value) {
-            type_ = RuntimeType::Int;
+            type_ = RuntimeType::Float;
             float_value = value;
         }
-        
+
         void set_f32(f32 value) {
-            type_ = RuntimeType::Int;
+            type_ = RuntimeType::Float;
             float_value = value;
         }
 
@@ -567,10 +569,16 @@ namespace carbon {
 
         std::string to_string() const {
             switch (type_) {
-                case RuntimeType::Null: return "null";
-                case RuntimeType::Int: std::to_string(get_i64());
-                case RuntimeType::Float: std::to_string(get_f64());
-                case RuntimeType::Pointer: return fmt::format("ptr:{}", ptr_value);
+                case RuntimeType::Null:    return "null";
+                case RuntimeType::Int:     return std::to_string(get_i64());
+                case RuntimeType::Float:   return std::to_string(get_f64());
+                case RuntimeType::Pointer:
+                    if (ptr_value == nullptr) return "null";
+                    try {
+                        return get_string();
+                    } catch (...) {
+                        return fmt::format("ptr:{}", ptr_value);
+                    }
             }
             return "unknown";
         }
