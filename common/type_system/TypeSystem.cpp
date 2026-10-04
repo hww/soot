@@ -1,19 +1,13 @@
 #include "common/type_system/TypeSystem.hpp"
-#include "CommonTypes.hpp"
-#include "soot/Object.hpp"
-#include "util/StringIdHash.hpp"
-#include "common/soot/ListBuilder.hpp"
-#include "common/soot/Printer.hpp"
-#include "common/type_system/Deftype.hpp"
-#include "common/type_system/Register.hpp"
 
 #include "common/util/Assert.hpp"
-
+#include "common/util/StringIdHash.hpp"
 #include "fmt/format.h"
 
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+
 
 namespace {
 
@@ -22,12 +16,15 @@ template <typename... Args>
     throw std::runtime_error(
         fmt::format("Type Error: {}", fmt::format(fmt::runtime(str), std::forward<Args>(args)...)));
 }
+
 std::vector<FieldReverseLookupOutput::Token> parent_to_vector(const ReverseLookupNode *parent) {
     if (!parent) {
         return {};
     }
     return parent->to_vector();
 }
+
+
 } // namespace
 
 // ============================================================================
@@ -229,7 +226,7 @@ TypeSpec TypeSystem::make_typespec(const std::string &name) const {
         m_forward_declared_types.find(name) != m_forward_declared_types.end()) {
         return TypeSpec(name);
     } else {
-        throw_typesystem_error("Can't make typespec for unknow type `{}`", name);
+        throw_typesystem_error("Can't make typespec for unknown type `{}`", name);
     }
 }
 
@@ -955,21 +952,13 @@ bool TypeSystem::partially_defined_type_exists(const std::string &name) const {
 }
 
 std::string TypeSystem::get_runtime_type(const TypeSpec &ts) {
-    return lookup_type(ts)->runtime_name();
+    return lookup_type(ts)->get_runtime_name();
 }
 
 std::string TypeSystem::print_all_type_information() const {
     std::string result;
     for (const auto &kv : m_types) {
         result += kv.second->print() + "\n";
-    }
-    return result;
-}
-
-soot::Object TypeSystem::get_all_type_information() const {
-    soot::Object result = soot::Object::make_null();
-    for (const auto &kv : m_types) {
-        result = soot::Object::make_pair(soot::Object::make_string(kv.second->print()), result);
     }
     return result;
 }
@@ -1013,17 +1002,6 @@ ValueType *TypeSystem::add_builtin_value_type(const std::string &parent,
 }
 
 
-void TypeSystem::add_builtin_types(SootPlatform plarform) {
-    switch (plarform) {
-        case SootPlatform::Default:
-            add_builtin_types_pc();
-            break;
-        case SootPlatform::Z80:
-            add_builtin_types_z80();
-            break;
-    }
-}
-
 // ============================================================================
 // Builting Types Tree
 // object
@@ -1046,7 +1024,7 @@ void TypeSystem::add_builtin_types(SootPlatform plarform) {
 // ├── basic
 // └── ...
 // ============================================================================
-void TypeSystem::add_builtin_types_pc() {
+void TypeSystem::add_builtin_types() {
     TypeConfig::pointer_reg_class = RegClass::GPR_64;
     TypeConfig::pointer_size = 4;
     TypeConfig::array_data_offset = 12;
@@ -1056,7 +1034,7 @@ void TypeSystem::add_builtin_types_pc() {
     TypeConfig::struct_array_stride_alignment = 16;
     TypeConfig::struct_array_start_alignment = 16;
     TypeConfig::basic_array_start_alignment = 16;
-    m_platform = SootPlatform::Default;
+
 
     // Проверяем что базовые типы еще не инициализированы
     if (!m_types.empty() && m_types.find("object") != m_types.end()) {
@@ -1177,10 +1155,10 @@ void TypeSystem::add_builtin_types_pc() {
 
     if (Type::verbose)
         fmt::print("DEBUG: Builtin types initialized successfully\n");
-    verify_type_sizes_pc();
+    verify_type_sizes();
 }
 
-void TypeSystem::verify_type_sizes_pc() {
+void TypeSystem::verify_type_sizes() {
     // Проверяем критические размеры
     auto check_size = [&](const std::string &name, size_t expected) {
         Type *type = lookup_type(name);
@@ -1201,200 +1179,6 @@ void TypeSystem::verify_type_sizes_pc() {
     check_size("symbol", 8);
     check_size("string", 12);
     check_size("type", 20);
-}
-
-// ============================================================================
-// Builtin Types Tree (Z80 Optimized)
-// object [2 bytes: pointer/offset]
-// ├── number
-// │   └── integer
-// │       ├── sinteger
-// │       │   ├── int8    [1 byte]
-// │       │   ├── int16   [2 bytes, default 'int']
-// │       │   └── int32   [4 bytes, compound]
-// │       └── uinteger
-// │           ├── uint8   [1 byte]
-// │           ├── uint16  [2 bytes, default 'uint']
-// │           └── uint32  [4 bytes, compound]
-// ├── structure         [base for all structs]
-// ├── basic             [base for 'tagged' objects]
-// │   ├── symbol
-// │   ├── string
-// │   ├── type
-// │   └── function
-// └── bitfield          [for hardware registers/flags]
-// ============================================================================
-void TypeSystem::add_builtin_types_z80() {
-    TypeConfig::pointer_reg_class = RegClass::GPR_16;
-    TypeConfig::pointer_size = 2;
-    TypeConfig::array_data_offset = 2;
-    TypeConfig::default_alignment = 1;
-    TypeConfig::crc_value_size = 2;
-    TypeConfig::struct_alignment = 2;
-    TypeConfig::struct_array_stride_alignment = 2;
-    TypeConfig::struct_array_start_alignment = 2;
-    TypeConfig::basic_array_start_alignment = 2;
-    m_platform = SootPlatform::Z80;
-
-    // 1. Технические типы
-    add_type("none", std::make_unique<NullType>("none"));
-    add_type("_type_", std::make_unique<NullType>("_type_"));
-
-    // 2. Указатель (object) - фундамент
-    auto obj_type = add_type("object", std::make_unique<ValueType>("object", "object", false, 2,
-                                                                   true, RegClass::GPR_16));
-    add_builtin_value_type("object", "pointer", 2);
-
-    // 3. Числа
-    add_builtin_value_type("object", "number", 2);
-    add_builtin_value_type("number", "integer", 2);
-
-    // signed integers
-    add_builtin_value_type("integer", "int8", 1, false, true, RegClass::GPR_8);
-    add_builtin_value_type("integer", "int16", 2, false, true, RegClass::GPR_16);
-    add_builtin_value_type("integer", "int", 2, false, true, RegClass::GPR_16);
-
-    // unsigned integers
-    add_builtin_value_type("integer", "uint8", 1, false, false, RegClass::GPR_8);
-    add_builtin_value_type("integer", "uint16", 2, false, false, RegClass::GPR_16);
-    add_builtin_value_type("integer", "uint", 2, false, false, RegClass::GPR_16);
-
-    add_builtin_value_type("integer", "bool", 1, false, false, RegClass::GPR_8);
-
-    // Костыль для парсера
-    auto i64 = add_builtin_value_type("integer", "int64", 8);
-    i64->disallow_in_runtime();
-
-    // 4. Структуры
-    auto structure_type = add_builtin_structure("object", "structure");
-    auto basic_type = add_builtin_basic("structure", "basic");
-
-    // 5. Basic типы
-    auto symbol_type = add_builtin_basic("basic", "symbol");
-    auto string_type = add_builtin_basic("basic", "string");
-    auto type_type = add_builtin_basic("basic", "type");
-    auto function_type = add_builtin_basic("basic", "function");
-    string_type->set_final(); // string не имеет виртуальных методов в Z80
-
-    // ============================================================================
-    // КРИТИЧЕСКИ ВАЖНЫЕ ПОЛЯ ДЛЯ BASIC ТИПОВ
-    // ============================================================================
-
-    // BASIC: первые 2 байта - type tag (тип объекта)
-    add_field_to_type(basic_type, "type", make_typespec("type"));
-
-    // SYMBOL для Z80 (упрощенная версия)
-    // symbol имеет: type (2), value (2) = всего 4 байта
-    builtin_structure_inherit(symbol_type);
-    add_field_to_type(symbol_type, "value", make_typespec("object"), 2); // offset 2
-
-    // STRING для Z80 (упрощенная версия)
-    // string имеет: type (2), length (2), data (указатель или inline) = 4+ байта
-    builtin_structure_inherit(string_type);
-    add_field_to_type(string_type, "length", make_typespec("uint16"), 2); // offset 2
-    add_field_to_type(string_type, "data", make_pointer_typespec("uint8"), 4, false,
-                      true); // offset 4, dynamic
-
-    // TYPE для Z80
-    builtin_structure_inherit(type_type);
-    add_field_to_type(type_type, "parent", make_typespec("type"), 0);         // Было 2
-    add_field_to_type(type_type, "name", make_typespec("pointer"), 2);        // Было 4
-    add_field_to_type(type_type, "size", make_typespec("uint16"), 4);         // Было 6
-    add_field_to_type(type_type, "methods-count", make_typespec("uint8"), 6); // Было 8
-    add_field_to_type(type_type, "class", make_typespec("uint8"), 7);         // Было 9
-
-    // FUNCTION для Z80
-    builtin_structure_inherit(function_type);
-    // function в Z80 может быть просто указателем на код
-
-    // ============================================================================
-    // КРИТИЧЕСКИ ВАЖНЫЕ МЕТОДЫ
-    // ============================================================================
-
-    // OBJECT методы
-    declare_method(obj_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type", "int"}, "_type_"), false);
-    declare_method(obj_type, "delete", {}, false, make_function_typespec({"_type_"}, "none"),
-                   false);
-    declare_method(obj_type, "print", {}, false, make_function_typespec({"_type_"}, "_type_"),
-                   false);
-
-    // STRUCTURE методы
-    declare_method(structure_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type"}, "_type_"), false);
-
-    // BASIC методы (наследует от structure)
-    declare_method(basic_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type"}, "_type_"), false);
-
-    // SYMBOL методы (нельзя создавать new)
-    declare_method(symbol_type, "new", {}, false, make_function_typespec({}, "none"), false);
-
-    // STRING методы (специальный конструктор)
-    declare_method(string_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type", "int", "string"}, "_type_"), false);
-
-    // TYPE методы
-    declare_method(type_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type", "int"}, "_type_"), false);
-
-    // ============================================================================
-    // ДОПОЛНИТЕЛЬНЫЕ ТИПЫ ДЛЯ Z80
-    // ============================================================================
-
-    // pair для cons-ячеек
-    auto pair_type = add_builtin_structure("object", "pair", true);
-    pair_type->override_offset(2); // специальное смещение для pair
-    add_field_to_type(pair_type, "car", make_typespec("object"), 0);
-    add_field_to_type(pair_type, "cdr", make_typespec("object"), 2);
-    declare_method(pair_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type", "object", "object"}, "_type_"), false);
-
-    // array для массивов
-    auto array_type = add_builtin_basic("basic", "array");
-    builtin_structure_inherit(array_type);
-    add_field_to_type(array_type, "length", make_typespec("int16"), 2);
-    add_field_to_type(array_type, "data", make_typespec("uint8"), 4, false, true);
-    declare_method(array_type, "new", {}, false,
-                   make_function_typespec({"symbol", "type", "type", "int"}, "_type_"), false);
-
-    // bitfield для аппаратных регистров
-    add_builtin_value_type("object", "bitfield", 2);
-
-    // enum для перечислений (наследует от соответствующих integer типов)
-    // Определяются динамически через defenum
-
-    // ============================================================================
-    // ПРОВЕРКА РАЗМЕРОВ
-    // ============================================================================
-
-    // Проверяем что размеры типов правильные для Z80
-    verify_type_sizes_z80();
-}
-
-void TypeSystem::verify_type_sizes_z80() {
-    // Проверяем критические размеры
-    auto check_size = [&](const std::string &name, size_t expected) {
-        Type *type = lookup_type(name);
-        if (type && type->get_size_in_memory() != expected) {
-            fmt::print("[WARNING] Type '{}' has size {} but expected {}\n", name,
-                       type->get_size_in_memory(), expected);
-        }
-    };
-
-    check_size("object", 2);
-    check_size("bool", 1);
-    check_size("int8", 1);
-    check_size("int16", 2);
-    check_size("int", 2);
-    check_size("uint8", 1);
-    check_size("uint16", 2);
-    check_size("uint", 2);
-    check_size("basic", 2);  // только type tag
-    check_size("symbol", 4); // type (2) + value (2)
-    check_size("string", 6); // type (2) + length (2), data отдельно
-    check_size("type", 10);  // type (2) + поля
-    check_size("pair", 4);   // car (2) + cdr (2)
 }
 
 // ============================================================================
@@ -1848,14 +1632,6 @@ std::vector<std::string> TypeSystem::get_all_type_names() {
     return results;
 }
 
-soot::Object TypeSystem::get_all_type_names_as_objects() const {
-    soot::Object result = soot::Object::make_null();
-    for (const auto &kv : m_types) {
-        result = soot::Object::make_pair(soot::Object::make_string(kv.first.c_str()), result);
-    }
-    return result;
-}
-
 std::vector<std::string> TypeSystem::search_types_by_parent_type(
     const std::string                             &parent_type,
     const std::optional<std::vector<std::string>> &existing_matches) {
@@ -2264,60 +2040,6 @@ void TypeSystem::builtin_structure_inherit(StructureType *st) {
 }
 
 // ============================================================================
-// Aliases
-// ============================================================================
-
-Object TypeSystem::get_at(SymbolTable* st, const Object &key) {
-    // 1. Сначала свойства (мета-данные системы типов)
-    Object base_attempt = HeapObject::get_at(st, key);
-
-    if (!base_attempt.is_none())
-        return base_attempt;
-
-    // 2. Трактуем ключ как имя типа
-    std::string name;
-    if (key.is_symbol()) {
-        name = key.to_std_string();
-    } else if (key.is_string()) {
-        name = key.to_std_string();
-    } else {
-        return Object::make_none(); // Или бросай ошибку, если хочешь строгости
-    }
-
-    if (name == ":variant") {
-        return Object::make_string(soot_plaform_to_game_name(m_platform));
-    }
-
-    if (name == ":types-count") {
-        return Object::make_integer(get_types_count());
-    }
-
-    if (name == ":pointer-size") {
-        return Object::make_integer(get_pointer_size());
-    }
-
-    if (name == ":types") {
-        ListBuilder lb(st);
-        for (auto &kv : m_types) {
-            lb.push_back(Object::make_symbol(st, kv.first));
-        }
-        return lb.build();
-    }
-
-    // 3. Ищем тип
-    // Предполагаем, что lookup_type возвращает какой-то указатель или shared_ptr
-    auto type_ptr = lookup_type_no_throw(name);
-
-    if (type_ptr) {
-        // Если твои типы хранятся как shared_ptr в TypeSystem, просто отдавай его.
-        // Если как unique_ptr, то возвращай HeapObject с пустым делетером (но помни о рисках!)
-        return Object::make_heap_obj(std::shared_ptr<Type>(type_ptr, [](Type *) {}));
-    }
-
-    return Object::make_none();
-}
-
-// ============================================================================
 // Reverse field lookup (упрощенные заглушки)
 // ============================================================================
 
@@ -2587,63 +2309,8 @@ std::string FieldReverseLookupOutput::Token::print() const {
     }
 }
 
-soot::Object TypeSystem::inspect(SymbolTable* st) const {
-    return soot::pretty_print::build_list(Object::make_symbol(st, "type-system"),
-                                            Object::make_symbol(st, ":size"),
-                                            Object::make_integer(m_types.size()));
-}
-
-// ============================================================================
-// argument Checket
-// ============================================================================
-
-Object TypeSystem::build_typespec_from_env(SymbolTable* st,
-                                           const std::shared_ptr<EnvironmentObject> &env,
-                                           const Object                             &ret_type) {
-    auto entries = env->vars.get_all_entries();
-
-    // 1. Сначала считаем, сколько у нас РЕАЛЬНЫХ аргументов
-    int max_idx = -1;
-    for (const auto &entry : entries) {
-        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
-            int idx = entry.value.as_heap_obj<Register>()->arg_index;
-            if (idx > max_idx)
-                max_idx = idx;
-        }
-    }
-
-    // 2. Создаем временный массив нужного размера
-    // Используем Object(), чтобы инициализировать пустышками
-    std::vector<Object> ordered_args(max_idx + 1);
-
-    for (const auto &entry : entries) {
-        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
-            auto reg = entry.value.as_heap_obj<Register>();
-            if (reg->arg_index >= 0) {
-                // Кладем в массив САМ объект или его имя типа
-                // Раз typespec~> x работает, положим имя типа
-                ordered_args[reg->arg_index] = reg->type_name;
-            }
-        }
-    }
-
-    // 3. Собираем список для (function ...)
-    // Начинаем с возвращаемого типа
-    Object args_list = Object::make_pair(ret_type, Object::make_null());
-
-    // Добавляем аргументы в обратном порядке (для cons)
-    for (int i = max_idx; i >= 0; --i) {
-        Object t = ordered_args[i];
-        if (t.is_none())
-            t = Object::make_symbol(st, "object");
-        args_list = Object::make_pair(t, args_list);
-    }
-
-    Object func_spec_form = Object::make_pair(Object::make_symbol(st, "function"), args_list);
-
-    // 4. Парсим
-    TypeSpec ts = parse_typespec(this, func_spec_form);
-    return Object::make_heap_obj(std::make_shared<TypeSpec>(ts));
+std::string TypeSystem::inspect() const {
+    return fmt::format("type-system:\n  types-count: {}", m_types.size());
 }
 
 // ============================================================================

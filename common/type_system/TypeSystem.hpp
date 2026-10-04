@@ -5,10 +5,12 @@
  * The GOAL Type System.
  * Stores types, symbol types, methods, etc, and does typechecking,
  * lowest-common-ancestor, field access types, and reverse type lookups.
+ *
+ * NOTE: This is a pure C++ subsystem. The TypeSystem does NOT inherit from
+ * NativeObject and is not a Lisp object. All Lisp-facing functionality
+ * (get_at navigation, inspect-as-sexpr, to_alias) has been removed.
  */
 
-#include "CommonTypes.hpp"
-#include "common/soot/Object.hpp"
 #include "common/type_system/Type.hpp"
 #include "common/type_system/TypeSpec.hpp"
 
@@ -18,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
 
 // ============================================================================
 // Forward Declarations and Common Structures
@@ -147,8 +150,9 @@ struct TypeSearchFieldInput {
 // Main TypeSystem Class
 // ============================================================================
 
-class TypeSystem : public NativeObject {
-    TypeSystem() = default; // Закрытый конструктор
+class TypeSystem {
+    TypeSystem() = default;
+
   public:
     // Запрещаем копирование и присваивание
     TypeSystem(const TypeSystem &) = delete;
@@ -164,17 +168,6 @@ class TypeSystem : public NativeObject {
     static TypeSystem &instance() {
         static std::shared_ptr<TypeSystem> inst = std::shared_ptr<TypeSystem>(new TypeSystem());
         return *inst;
-    }
-    std::string class_name() const override {
-        return "type-system";
-    }
-
-    std::string type_name_obj() const override {
-        return class_name();
-    }
-
-    bool is_class_name(const std::string &name) const override {
-        return name == TypeSystem::type_name_obj() || NativeObject::is_class_name(name);
     }
 
     // ========================================================================
@@ -201,7 +194,8 @@ class TypeSystem : public NativeObject {
 
     TypeSpec make_typespec(const std::string &name) const;
     TypeSpec make_array_typespec(const std::string &array_type, const TypeSpec &element_type) const;
-    TypeSpec make_function_typespec(const std::vector<std::string> &arg_types, const std::string &return_type) const;
+    TypeSpec make_function_typespec(const std::vector<std::string> &arg_types,
+                                    const std::string              &return_type) const;
 
     TypeSpec make_pointer_typespec(const std::string &type) const;
     TypeSpec make_pointer_typespec(const TypeSpec &type) const;
@@ -231,13 +225,9 @@ class TypeSystem : public NativeObject {
         return false;
     }
 
-    int get_array_data_offset() const {
-        return TypeConfig::array_data_offset;
-    }
+    int get_array_data_offset() const { return TypeConfig::array_data_offset; }
+    int get_pointer_size() const { return TypeConfig::pointer_size; }
 
-    int get_pointer_size() const {
-        return TypeConfig::pointer_size;
-    }
     // ========================================================================
     // Method System
     // ========================================================================
@@ -364,11 +354,9 @@ class TypeSystem : public NativeObject {
     // Built-in Types
     // ========================================================================
 
-    void add_builtin_types(SootPlatform plarform);
-    void add_builtin_types_pc();
-    void verify_type_sizes_pc();    
-    void add_builtin_types_z80();
-    void verify_type_sizes_z80();
+    void add_builtin_types();
+    void verify_type_sizes();    
+
 
     void clear() {
         m_types_by_crc.clear();
@@ -384,12 +372,9 @@ class TypeSystem : public NativeObject {
     // Debugging and Inspection
     // ========================================================================
 
-    std::string print() const override {
-        return fmt::format("#<type-system {}>", soot_plaform_to_game_name(m_platform));
-    }
-    soot::Object             inspect(SymbolTable* st) const override;
+    std::string              print() const;
+    std::string              inspect() const;
     std::string              print_all_type_information() const;
-    soot::Object             get_all_type_information() const;
     std::vector<std::string> get_path_up_tree(const std::string &type) const;
     int                      get_next_method_id(const Type *type) const;
 
@@ -401,8 +386,8 @@ class TypeSystem : public NativeObject {
         m_types_allowed_to_be_redefined.push_back(type_name);
     }
 
-    soot::Object           get_all_type_names_as_objects() const;
     std::vector<std::string> get_all_type_names();
+
     std::vector<std::string> search_types_by_parent_type(
         const std::string                             &parent_type,
         const std::optional<std::vector<std::string>> &existing_matches = {});
@@ -437,9 +422,7 @@ class TypeSystem : public NativeObject {
     EnumType *try_enum_lookup(const std::string &type_name) const;
     EnumType *try_enum_lookup(const TypeSpec &type) const;
 
-    int get_types_count() {
-        return m_types.size();
-    }
+    int get_types_count() { return m_types.size(); }
     const std::unordered_map<std::string, std::unique_ptr<Type>> &get_types() const {
         return m_types;
     }
@@ -461,25 +444,6 @@ class TypeSystem : public NativeObject {
                                          bool boxed = false);
 
     Field lookup_field(const std::string &type_name, const std::string &field_name) const;
-
-    // ========================================================================
-    // Aliases Functions
-    // ========================================================================
-
-    // Переопределяем шаг, чтобы искать типы по их именам прямо в корне!
-    Object get_at(SymbolTable* st, const Object &key) override;
-
-    Object to_alias() {
-        return Object::make_heap_obj(shared_from_this());
-    }
-
-    // ========================================================================
-    // Check Arguments
-    // ========================================================================
-  public:
-    Object build_typespec_from_env(SymbolTable* st,
-                                   const std::shared_ptr<EnvironmentObject> &env,
-                                   const Object                             &ret_type_name);
 
   private:
     // ========================================================================
@@ -506,7 +470,7 @@ class TypeSystem : public NativeObject {
     std::vector<std::string>           m_types_allowed_to_be_redefined;
     bool                               m_allow_redefinition = false;
 
-    SootPlatform m_platform;
+    std::string m_variant = "default";
 
   public:
     static int verbose;

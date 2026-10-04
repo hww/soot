@@ -228,7 +228,7 @@ EnumType* parse_defenum(const soot::Object& defenum,
             if (maybe_docstring) {
                 new_type->m_metadata.docstring = *maybe_docstring;
             }
-            new_type->set_runtime_name(parent_value->runtime_name());
+            new_type->set_runtime_name(parent_value->get_runtime_name());
             return dynamic_cast<EnumType*>(ts->add_type(name, std::move(new_type)));
         }
         else {

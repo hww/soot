@@ -931,7 +931,7 @@ DeftypeResult parse_deftype(const soot::Object &deftype, TypeSystem *ts,
             auto parent_value = dynamic_cast<ValueType *>(pto);
             ASSERT(parent_value);
             new_type->inherit(parent_value);
-            new_type->set_runtime_type(pto->runtime_name());
+            new_type->set_runtime_type(pto->get_runtime_name());
             auto sr = parse_bitfield_type_def(new_type.get(), ts, field_list_obj, options_obj);
             result.flags = sr.flags;
             result.create_runtime_type = sr.generate_runtime_type;
@@ -951,6 +951,6 @@ DeftypeResult parse_deftype(const soot::Object &deftype, TypeSystem *ts,
         }
         return result;
     } catch (std::runtime_error &e) {
-        throw EvalException(deftype, e.what());
+        throw std::runtime_error("invalid typespec: " + deftype.print() + " exception: " + e.what());
     }
 }

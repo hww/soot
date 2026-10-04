@@ -30,7 +30,7 @@ Compiler::Compiler(SootPlatform platform,
     // Инициализация m_config
     m_config = comp_options;
     
-    m_ts.add_builtin_types(m_platform);
+    m_ts.add_builtin_types();
     m_global_env = std::make_unique<GlobalNode>();
     m_none = std::make_unique<NoneNode>();
 
