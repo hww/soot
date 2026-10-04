@@ -17,7 +17,11 @@ endif()
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+if (MSVC)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+else()
+    set(CMAKE_CXX_EXTENSIONS ON)
+endif()
 
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
@@ -64,6 +68,9 @@ file(GLOB replxx-sources ${replxx-source-patterns})
 
 add_library(replxx ${replxx-sources})
 add_library(replxx::replxx ALIAS replxx)
+if (MSVC)
+    target_compile_options(replxx PRIVATE /EHsc)
+endif()
 
 target_include_directories(
 	replxx

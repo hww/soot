@@ -1,0 +1,1580 @@
+[0/2] Re-checking globbed directories...
+[1/110] Building CXX object CMakeFiles/xsockets_lib.dir/common/cross_sockets/XSocket.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocket.cpp:7:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[2/110] Building CXX object CMakeFiles/xsockets_lib.dir/common/cross_sockets/XSocketClient.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketClient.hpp:7,
+                 from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketClient.cpp:4:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[3/110] Building CXX object CMakeFiles/xsockets_lib.dir/common/cross_sockets/XSocketServer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketServer.hpp:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketServer.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[4/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/SourceText.cpp.o
+[5/110] Building CXX object CMakeFiles/librepl.dir/common/repl/nrepl/ReplClient.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketServer.hpp:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplServer.h:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplClient.h:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplClient.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[6/110] Building CXX object CMakeFiles/librepl.dir/common/repl/nrepl/ReplServer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketServer.hpp:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplServer.h:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplServer.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[7/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/ParseHelpers.cpp.o
+[8/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/TextDb.cpp.o
+[9/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/PrinterEnv.cpp.o
+[10/110] Linking CXX static library lib/libxsockets_lib.a
+[11/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Printer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Printer.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[12/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Archive.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Config.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Archive.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[13/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryArchive.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+  121 |         if (pos < 0 || pos > m_region->size()) {
+      |             ~~~~^~~
+[14/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/RelocationTable.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[15/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemorySymbolTable.cpp.o
+[16/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Reader.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[17/110] Building CXX object CMakeFiles/librepl.dir/common/repl/config.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/repl/config.cpp: In member function ‘std::string REPL::KeyBind::string() const’:
+/home/valery/projects/hww/_c/soot.git/common/repl/config.cpp:83:1: warning: control reaches end of non-void function [-Wreturn-type]
+   83 | }
+      | ^
+[18/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Object.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Object.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[19/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/PrettyPrinter.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/PrettyPrinter.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/PrettyPrinter.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[20/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Errors.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[21/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryRegion.cpp.o
+[22/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryBuffer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryBuffer.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryBuffer.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[23/110] Building CXX object CMakeFiles/librepl.dir/common/repl/repl_wrapper.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[24/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/LabelTable.cpp.o
+[25/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/node/Node.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[26/110] Building CXX object CMakeFiles/soot.dir/common/soot/Main.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Main.cpp:5:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[27/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/node/FunctionNode.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/FunctionNode.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/FunctionNode.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[28/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/TypeSpec.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSpec.cpp:5:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[29/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/Defenum.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp: In function ‘bool {anonymous}::local_integer_fits(int64_t, int, bool)’:
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:59:34: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘long long unsigned int’ [-Wsign-compare]
+   59 |             case 8: return value <= 18446744073709551615ULL;
+      |                            ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp: In function ‘EnumType* parse_defenum(const soot::Object&, TypeSystem*, DefinitionMetadata*)’:
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:238:1: warning: control reaches end of non-void function [-Wreturn-type]
+  238 | }
+      | ^
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:43:10: warning: ‘bool {anonymous}::local_integer_fits(int64_t, int, bool)’ defined but not used [-Wunused-function]
+   43 |     bool local_integer_fits(int64_t value, int size, bool is_signed) {
+      |          ^~~~~~~~~~~~~~~~~~
+[30/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/node/FileNode.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/FileNode.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/FileNode.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[31/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/Type.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Config.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Type.hpp:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Type.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Type.cpp:4:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[32/110] Building CXX object CMakeFiles/libcarbon.dir/common/util/StringIdHash.cpp.o
+[33/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/TypeSystem.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp: In member function ‘void TypeSystem::add_builtin_types_pc()’:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1078:10: warning: unused variable ‘structure_type’ [-Wunused-variable]
+ 1078 |     auto structure_type = add_builtin_structure("object", "structure");
+      |          ^~~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1083:10: warning: unused variable ‘bitfield_type’ [-Wunused-variable]
+ 1083 |     auto bitfield_type =
+      |          ^~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1091:10: warning: unused variable ‘function_type’ [-Wunused-variable]
+ 1091 |     auto function_type = add_builtin_basic("basic", "function");
+      |          ^~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1094:10: warning: unused variable ‘matrix_type’ [-Wunused-variable]
+ 1094 |     auto matrix_type = add_builtin_structure("structure", "matrix");
+      |          ^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1098:10: warning: unused variable ‘number_type’ [-Wunused-variable]
+ 1098 |     auto number_type =
+      |          ^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1102:10: warning: unused variable ‘float_type’ [-Wunused-variable]
+ 1102 |     auto float_type = add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
+      |          ^~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1105:10: warning: unused variable ‘integer_type’ [-Wunused-variable]
+ 1105 |     auto integer_type =
+      |          ^~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1109:10: warning: unused variable ‘sinteger_type’ [-Wunused-variable]
+ 1109 |     auto sinteger_type =
+      |          ^~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1111:10: warning: unused variable ‘int8_type’ [-Wunused-variable]
+ 1111 |     auto int8_type = add_builtin_value_type("sinteger", "int8", 1, false, true);
+      |          ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1112:10: warning: unused variable ‘int16_type’ [-Wunused-variable]
+ 1112 |     auto int16_type = add_builtin_value_type("sinteger", "int16", 2, false, true);
+      |          ^~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1113:10: warning: unused variable ‘int32_type’ [-Wunused-variable]
+ 1113 |     auto int32_type = add_builtin_value_type("sinteger", "int32", 4, false, true);
+      |          ^~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1114:10: warning: unused variable ‘int64_type’ [-Wunused-variable]
+ 1114 |     auto int64_type = add_builtin_value_type("sinteger", "int64", 8, false, true);
+      |          ^~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1117:10: warning: unused variable ‘uinteger_type’ [-Wunused-variable]
+ 1117 |     auto uinteger_type =
+      |          ^~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1119:10: warning: unused variable ‘uint8_type’ [-Wunused-variable]
+ 1119 |     auto uint8_type = add_builtin_value_type("uinteger", "uint8", 1, false, false);
+      |          ^~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1120:10: warning: unused variable ‘uint16_type’ [-Wunused-variable]
+ 1120 |     auto uint16_type = add_builtin_value_type("uinteger", "uint16", 2, false, false);
+      |          ^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1121:10: warning: unused variable ‘uint32_type’ [-Wunused-variable]
+ 1121 |     auto uint32_type = add_builtin_value_type("uinteger", "uint32", 4, false, false);
+      |          ^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1122:10: warning: unused variable ‘uint64_type’ [-Wunused-variable]
+ 1122 |     auto uint64_type = add_builtin_value_type("uinteger", "uint64", 8, false, false);
+      |          ^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1124:10: warning: unused variable ‘bool_type’ [-Wunused-variable]
+ 1124 |     auto bool_type = add_builtin_value_type("integer", "bool", 1, false, false, RegClass::GPR_8);
+      |          ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp: In lambda function:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1187:48: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1187 |         if (type && type->get_size_in_memory() != expected) {
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp: In lambda function:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:1379:48: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1379 |         if (type && type->get_size_in_memory() != expected) {
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp: In member function ‘FieldReverseMultiLookupOutput TypeSystem::reverse_field_multi_lookup(const FieldReverseLookupInput&, int) const’:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:2564:35: warning: comparison of integer expressions of different signedness: ‘std::vector<FieldReverseLookupOutput>::size_type’ {aka ‘long unsigned int’} and ‘int’ [-Wsign-compare]
+ 2564 |         if (result.results.size() > max_count) {
+      |             ~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.cpp:25:46: warning: ‘std::vector<FieldReverseLookupOutput::Token> {anonymous}::parent_to_vector(const ReverseLookupNode*)’ defined but not used [-Wunused-function]
+   25 | std::vector<FieldReverseLookupOutput::Token> parent_to_vector(const ReverseLookupNode *parent) {
+      |                                              ^~~~~~~~~~~~~~~~
+[34/110] Building CXX object CMakeFiles/libcarbon.dir/common/util/Assert.cpp.o
+[35/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/compiler/FunctionCompiler.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/FunctionCompiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/FunctionCompiler.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/NodeBuilder.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/FunctionCompiler.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[36/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/compiler/FileCompiler.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/NodeBuilder.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/FileCompiler.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:7:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[37/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/Deftype.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/State.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp: In lambda function:
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:393:38: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  393 |                 if (keyword.name_ptr == ":no-virtual") {
+      |                     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:395:45: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  395 |                 } else if (keyword.name_ptr == ":replace") {
+      |                            ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:397:45: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  397 |                 } else if (keyword.name_ptr == ":state") {
+      |                            ~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:423:45: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  423 |                 } else if (keyword.name_ptr == ":behavior") {
+      |                            ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/type_system/Deftype.cpp:433:45: warning: comparison with string literal results in unspecified behavior [-Waddress]
+  433 |                 } else if (keyword.name_ptr == ":overlay-at") {
+      |                            ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+[38/110] Building CXX object CMakeFiles/libcarbon.dir/common/util/PrintFloat.cpp.o
+[39/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/compiler/NodeBuilder.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/NodeBuilder.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/NodeBuilder.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:7:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[40/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/State.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/State.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/State.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[41/110] Building CXX object CMakeFiles/sootc.dir/common/sootc/Main.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/sootc/Main.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/Main.cpp:4:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:7:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[42/110] Building CXX object CMakeFiles/typesys.dir/common/type_system/Main.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Config.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Type.hpp:8,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Main.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Main.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[43/110] Building CXX object CMakeFiles/libtypesys.dir/common/type_system/Register.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/type_system/Register.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+[44/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/lib/Ptr.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Ptr.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Ptr.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[45/110] Building CXX object CMakeFiles/libcarbon.dir/common/util/FileUtil.cpp.o
+[46/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/compiler/Compiler.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.hpp:7:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.cpp: In member function ‘std::vector<unsigned char> sootc::Compiler::codegen_binary(carbon::BinaryFile*)’:
+/home/valery/projects/hww/_c/soot.git/common/sootc/compiler/Compiler.cpp:540:59: warning: unused parameter ‘binary’ [-Wunused-parameter]
+  540 | std::vector<uint8_t> Compiler::codegen_binary(BinaryFile* binary) {
+      |                                               ~~~~~~~~~~~~^~~~~~
+[47/110] Building CXX object CMakeFiles/libcarbon.dir/common/util/Log.cpp.o
+[48/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/lib/SIDBase.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/SIDBase.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/SIDBase.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[49/110] Building CXX object CMakeFiles/libsot.dir/common/soot/Interpreter.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:12:
+/home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   31 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:29:
+/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+  121 |         if (pos < 0 || pos > m_region->size()) {
+      |             ~~~~^~~
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_get_context(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:5307:15: warning: comparison of unsigned expression in ‘>= 0’ is always true [-Wtype-limits]
+ 5307 |     if (index >= 0)
+      |         ~~~~~~^~~~
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_read_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:7631:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+ 7631 |     if (index < 0 || index >= region->size()) {
+      |         ~~~~~~^~~
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_write_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:7660:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+ 7660 |     if (index < 0 || index >= region->size()) {
+      |         ~~~~~~^~~
+[50/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/lib/StringIdManager.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringIdManager.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringIdManager.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringIdManager.cpp:108:20: warning: ‘std::string carbon::trim(const std::string&)’ defined but not used [-Wunused-function]
+  108 | static std::string trim(const std::string& str) {
+      |                    ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringIdManager.cpp:100:12: warning: ‘u64 carbon::parse_hex(const std::string&)’ defined but not used [-Wunused-function]
+  100 | static u64 parse_hex(const std::string& hex_str) {
+      |            ^~~~~~~~~
+[51/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/vm/Instructions.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[52/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/file/BinaryFileInspector.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:2,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp: In member function ‘void carbon::BinaryFileInspector::inspect_symbol(const carbon::symbol*, int)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp:661:65: warning: unused parameter ‘idx’ [-Wunused-parameter]
+  661 | void BinaryFileInspector::inspect_symbol(const symbol* sym, int idx) {
+      |                                                             ~~~~^~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp: In member function ‘std::string carbon::BinaryFileInspector::format_instruction(const carbon::Instruction&, const carbon::InstructionInfo*, const carbon::ScriptLambda*)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp:693:126: warning: unused parameter ‘lambda’ [-Wunused-parameter]
+  693 | std::string BinaryFileInspector::format_instruction(const Instruction& ins, const InstructionInfo* info, const ScriptLambda* lambda) {
+      |                                                                                                          ~~~~~~~~~~~~~~~~~~~~^~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp: In member function ‘std::string carbon::BinaryFileInspector::format_instruction(const carbon::ShortInstruction&, const carbon::InstructionInfo*, const carbon::ScriptLambda*)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFileInspector.cpp:733:131: warning: unused parameter ‘lambda’ [-Wunused-parameter]
+  733 | std::string BinaryFileInspector::format_instruction(const ShortInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda) {
+      |                                                                                                               ~~~~~~~~~~~~~~~~~~~~^~~~~~
+[53/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/file/ProgramBinaryElement.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+[54/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/file/BinaryFile.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:2,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/DCScript.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/file/BinaryFile.hpp:4:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[55/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/EventMessage.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:2,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/EventMessage.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/EventMessage.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/EventMessage.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:54: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                        ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:17: note: here
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                 ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:56: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                          ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:573:17: note: here
+  573 |                 case RuntimeType::Pointer: return fmt::format("ptr:{}", ptr_value);
+      |                 ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In function ‘const char* carbon::value_type_to_string(RuntimeType)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:27:5: warning: control reaches end of non-void function [-Wreturn-type]
+   27 |     }
+      |     ^
+[56/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/NativeFunc.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:2,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:54: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                        ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:17: note: here
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                 ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:56: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                          ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:573:17: note: here
+  573 |                 case RuntimeType::Pointer: return fmt::format("ptr:{}", ptr_value);
+      |                 ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In function ‘const char* carbon::value_type_to_string(RuntimeType)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:27:5: warning: control reaches end of non-void function [-Wreturn-type]
+   27 |     }
+      |     ^
+[57/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Connection.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringId.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Engine.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Connection.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Connection.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[58/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Connectable.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Connectable.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Connectable.cpp: In member function ‘const char* carbon::Connectable::ToString() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Connectable.cpp:33:33: warning: format ‘%p’ expects argument of type ‘void*’, but argument 4 has type ‘const carbon::Connectable*’ [-Wformat=]
+   33 |             "<Connectable hash=%p owner='%s' next0='%s' prev0='%s' next1='%s' prev1='%s'>",
+      |                                ~^
+      |                                 |
+      |                                 void*
+   34 |             this,
+      |             ~~~~                 
+      |             |
+      |             const carbon::Connectable*
+[59/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Engine.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/StringId.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Engine.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Engine.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Engine.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[60/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/StringIdHash.cpp.o
+[61/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/vm/StackFrame.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[62/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Kernel.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Types.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:11:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[63/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/Assert.cpp.o
+[64/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/BitUtils.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/util/BitUtils.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/util/BitUtils.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[65/110] Building CXX object CMakeFiles/libxiff.dir/common/xiff/src/XiffInjector.cpp.o
+[66/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/vm/VirtualMachine.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/VirtualMachine.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/VirtualMachine.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/VirtualMachine.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/VirtualMachine.hpp:6:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In function ‘const char* carbon::value_type_to_string(RuntimeType)’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:27:5: warning: control reaches end of non-void function [-Wreturn-type]
+   27 |     }
+      |     ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:54: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                        ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:17: note: here
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                 ^~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:56: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                          ~~~~~~~~~~~~~~^~~~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:573:17: note: here
+  573 |                 case RuntimeType::Pointer: return fmt::format("ptr:{}", ptr_value);
+      |                 ^~~~
+[67/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/ImageResize.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/util/ImageResize.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/util/ImageResize.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[68/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/ProcessRunner.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Types.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/ProcessRunner.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/ProcessRunner.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:11:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[69/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Scheduler.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Types.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Scheduler.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Scheduler.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Scheduler.hpp:11:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[70/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/PrintFloat.cpp.o
+[71/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/Diff.cpp.o
+[72/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/Log.cpp.o
+[73/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/math/Geometry.cpp.o
+[74/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/ConvertUTF.cpp.o
+[75/110] Building CXX object third_party/fmt/CMakeFiles/fmt.dir/src/os.cc.o
+[76/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/FileUtil.cpp.o
+[77/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/Process.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[78/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/UnicodeUtil.cpp.o
+[79/110] Building CXX object CMakeFiles/carbon.dir/common/carbon/Main.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Types.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/Main.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Process.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/Kernel.hpp:11:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[80/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/StateFrame.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/StateFrame.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/StateFrame.cpp:3:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:4:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp: In member function ‘std::string carbon::Variant::to_string() const’:
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:571:65: warning: ignoring return value of ‘std::string std::__cxx11::to_string(long int)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  571 |                 case RuntimeType::Int: std::to_string(get_i64());
+      |                                                                 ^
+In file included from /usr/include/c++/13/string:54,
+                 from /usr/include/c++/13/stdexcept:39,
+                 from /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:37:
+/usr/include/c++/13/bits/basic_string.h:4189:3: note: declared here
+ 4189 |   to_string(long __val)
+      |   ^~~~~~~~~
+/home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:572:67: warning: ignoring return value of ‘std::string std::__cxx11::to_string(double)’, declared with attribute ‘nodiscard’ [-Wunused-result]
+  572 |                 case RuntimeType::Float: std::to_string(get_f64());
+      |                                                                   ^
+/usr/include/c++/13/bits/basic_string.h:4251:3: note: declared here
+ 4251 |   to_string(double __val)
+      |   ^~~~~~~~~
+In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/StackFrame.hpp:5:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp: At global scope:
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:77:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   77 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:84:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   84 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:90:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   90 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:97:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+   97 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:135:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  135 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:142:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  142 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:148:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  148 |         struct {
+      |                ^
+/home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
+  155 |         struct {
+      |                ^
+[81/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/conversion.cxx.o
+[82/110] Building CXX object third_party/fmt/CMakeFiles/fmt.dir/src/format.cc.o
+[83/110] Building CXX object CMakeFiles/libxiff.dir/common/xiff/src/XiffCompiler.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/xiff/include/xiff/XiffCompiler.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffCompiler.cpp:5:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+[84/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/escape.cxx.o
+[85/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/windows.cxx.o
+[86/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/prompt.cxx.o
+[87/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/terminal.cxx.o
+[88/110] Building CXX object CMakeFiles/xiff.dir/common/xiff/src/XiffMain.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/soot/Export.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffMain.cpp:2:
+/home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
+  217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
+      |                                                                                                     
+/home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffMain.cpp: In function ‘int main(int, char**)’:
+/home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffMain.cpp:38:10: warning: variable ‘verbose’ set but not used [-Wunused-but-set-variable]
+   38 |     bool verbose = false;
+      |          ^~~~~~~
+[89/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/wcwidth.cpp.o
+[90/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/StringUtil.cpp.o
+[91/110] Building CXX object CMakeFiles/libsootutils.dir/common/util/JsonUtil.cpp.o
+[92/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/history.cxx.o
+[93/110] Linking CXX static library lib/libfmtd.a
+[94/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/util.cxx.o
+[95/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/replxx.cxx.o
+[96/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/replxx_impl.cxx.o
+[97/110] Linking CXX static library lib/liblibsootutils.a
+[98/110] Linking CXX static library lib/libreplxx-d.a
+[99/110] Linking CXX static library lib/liblibrepl.a
+[100/110] Linking CXX static library lib/liblibcarbon.a
+[101/110] Linking CXX static library lib/liblibsotcore.a
+[102/110] Linking CXX static library lib/liblibtypesys.a
+[103/110] Linking CXX static library lib/liblibsot.a
+[104/110] Linking CXX executable bin/typesys
+[105/110] Linking CXX static library lib/liblibxiff.a
+[106/110] Linking CXX executable bin/carbon
+[107/110] Linking CXX static library lib/liblibsootc.a
+[108/110] Linking CXX executable bin/soot
+[109/110] Linking CXX executable bin/xiff
+[110/110] Linking CXX executable bin/sootc

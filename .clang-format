@@ -1,8 +1,6 @@
 BasedOnStyle: LLVM
 IndentWidth: 4
 ColumnLimit: 100
-AllowShortFunctionsOnASingleLine: Empty
-BreakBeforeBraces: Attach
 
 # КЛЮЧЕВОЕ: Добавляем отступы внутри namespace
 NamespaceIndentation: All
@@ -68,6 +66,6 @@ BraceWrapping:
 
 # Остальные однострочные настройки
 AllowShortBlocksOnASingleLine: Always
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: All      # <-- оставили только здесь
 AllowShortIfStatementsOnASingleLine: Always
 AllowShortLoopsOnASingleLine: true

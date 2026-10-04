@@ -542,29 +542,19 @@ std::vector<uint8_t> Compiler::codegen_binary(BinaryFile* binary) {
     return {}; 
 }
 
-std::string Compiler::find_file(const std::string& filename) {
+std::string Compiler::find_file(const std::string &filename) {
     namespace fs = std::filesystem;
-    
-    if (fs::exists(filename)) {
-        return filename;
-    }
-    
-    // Используем asm_file_search_dirs из REPL конфигурации
-    for (const auto& dir : m_config.search_paths) {
-        std::string candidate = fs::path(dir) / filename;
+
+    if (fs::exists(filename)) { return filename; }
+
+    // Ищем по путям из конфигурации
+    for (const auto &dir : m_config.search_paths) {
+        fs::path candidate = fs::path(dir) / filename; // <-- fs::path, не std::string
         if (fs::exists(candidate)) {
-            return candidate;
+            return candidate.string(); // <-- .string() при возврате
         }
     }
-    
-    // Также проверяем наши пути поиска
-    for (const auto& dir : m_config.search_paths) {
-        std::string candidate = fs::path(dir) / filename;
-        if (fs::exists(candidate)) {
-            return candidate;
-        }
-    }
-    
+
     return filename;
 }
 

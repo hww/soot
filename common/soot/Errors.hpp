@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/soot/Object.hpp"
+#include "common/CommonTypes.hpp"   
 
 namespace soot {
 
