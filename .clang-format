@@ -30,7 +30,7 @@ BreakConstructorInitializers: BeforeColon
 BreakInheritanceList: BeforeColon
 
 # Не переносить return type на новую строку
-BreakAfterReturnType: None
+#BreakAfterReturnType: None
 
 # Не выравнивать тернарные операторы
 AlignAfterOpenBracket: Align

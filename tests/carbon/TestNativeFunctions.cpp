@@ -70,20 +70,21 @@ TEST_F(NativeFunctionsTest, SC_ARGSafeAccess) {
     Variant argv[] = {
         Variant(100),
         Variant(3.14f),
-        Variant(SID("test_string"))
+        Variant(StringId("test_string"))
     };
+       
 
     u32 argc = 3;
 
     // Корректный доступ к существующим аргументам
     EXPECT_EQ(SC_ARG(0, i32, -1), 100);
     EXPECT_FLOAT_EQ(SC_ARG(1, float, -1.0f), 3.14f);
-    EXPECT_EQ(SC_ARG(2, StringId, SID("default")), SID("test_string"));
+    EXPECT_EQ(SC_ARG(2, StringId, StringId("default")), StringId("test_string"));
 
     // Безопасный доступ к несуществующим аргументам
     EXPECT_EQ(SC_ARG(5, i32, 999), 999);
     EXPECT_FLOAT_EQ(SC_ARG(10, float, 2.71f), 2.71f);
-    EXPECT_EQ(SC_ARG(15, StringId, SID("fallback")), SID("fallback"));
+    EXPECT_EQ(SC_ARG(15, StringId, StringId("fallback")), StringId("fallback"));
 }
 
 // ============================================================================

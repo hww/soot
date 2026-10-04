@@ -211,8 +211,7 @@ namespace carbon {
         }
 
         Variant(StringId sid)
-            : type_(RuntimeType::Int)
-            , int_value(static_cast<i32>(sid))
+            : type_(RuntimeType::Int), int_value(static_cast<u64>(sid))
         {
         }
 
@@ -388,7 +387,7 @@ namespace carbon {
         
         void set_sid32(StringId sid) {
             type_ = RuntimeType::Int;
-            int_value = static_cast<u32>(sid);
+            int_value = static_cast<u64>(sid);
         }
 
         void set_string(const std::string& str) {

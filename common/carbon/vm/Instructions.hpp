@@ -117,7 +117,7 @@ struct UP_Instruction {
     [[nodiscard]] bool op2_is_reg() const noexcept;
 
     void set_lo_hi(const u16 value) noexcept {
-        destination = value & 0xFF;
+        operand1 = value & 0xFF;
         operand2 = (value >> 8) & 0xFF;
     }
 
