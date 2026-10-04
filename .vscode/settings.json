@@ -1,9 +1,8 @@
 {
-    // Отключаем C++ IntelliSense
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.errorSquiggles": "disabled",
     "editor.inlayHints.enabled": "on",
-    // Настройки clangd
+
     "clangd.path": "/usr/bin/clangd",
     "clangd.arguments": [
         "--background-index",
@@ -13,15 +12,12 @@
         "--header-insertion=iwyu",
         "--log=verbose",
         "--pretty",
-        // Добавляем для лучшей работы в WSL
         "--query-driver=/usr/bin/clang++,/usr/bin/g++",
         "--malloc-trim"
     ],
-    "clangd.fallbackFlags": [
-        "-std=c++23"
-    ],
+    "clangd.fallbackFlags": ["-std=c++23"],
     "clangd.restartAfterCrash": true,
-    // Форматирование
+
     "editor.formatOnSave": false,
     "[cpp]": {
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
@@ -29,15 +25,36 @@
     "[c]": {
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
     },
-    // CMake настройки
+
+    "cmake.useCMakePresets": "never",
     "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
     "cmake.configureArgs": [
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DCMAKE_C_COMPILER=clang",
-        "-DCMAKE_CXX_COMPILER=clang++"
+        "-DCMAKE_CXX_COMPILER=clang++",
+        "-DBUILD_TESTS=ON",
+        "-DCMAKE_BUILD_TYPE=Debug"
     ],
-    "cmake.sourceDirectory": "${workspaceFolder}",
-    // КЛЮЧЕВЫЕ НАСТРОЙКИ для WSL:
+    "cmake.debugConfig": {
+        "cwd": "${workspaceFolder}"
+    },
+
+    "testMate.cpp.test.advancedExecutables": [
+        {
+            "pattern": "${workspaceFolder}/build/bin/*{test,tests}",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "pattern": "${workspaceFolder}/build/*{test,tests}",
+            "cwd": "${workspaceFolder}"
+        }
+    ],
+    "testMate.cpp.discovery.loadOnStartup": true,
+    "testMate.cpp.log.logpanel": true,
+
     "files.encoding": "utf8",
     "files.eol": "\n",
     "files.watcherExclude": {
@@ -45,11 +62,7 @@
         "**/.git/objects/**": true,
         "**/.git/subtree-cache/**": true
     },
-    // Для отладки
-    "cmake.debugConfig": {
-        "cwd": "${workspaceFolder}"
-    },
-    // Исправление путей для ошибок
+
     "problems.decorations.enabled": true,
     "problems.autoReveal": true
 }

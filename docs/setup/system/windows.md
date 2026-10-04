@@ -18,6 +18,8 @@ Here is the English translation:
 
 ## Visual Studio Packages
 
+![Visual Studio Packages](./windows_vs_main.png)
+
 - **MSVC v143 — VS 2022 C++ x64/x86 build tools** — this is critical. Without it, you won't have the Windows SDK, `kernel32.lib`, or `user32.lib`. This is the component that provides the paths in `%LIB%`.
 
 - **MSBuild support for LLVM (clang-cl) toolset** — keep it. This is MSBuild support for the clang-cl toolset. If you ever want to build via MSBuild (not through CMake), this will be useful. And without it, VS may not recognize clang-cl as a compiler.
@@ -28,7 +30,9 @@ Here is the English translation:
 
 - **C++ CMake tools for Windows** —  keep it.
 
-![Visual Studia Packages](./windows_vs_packages.png)
+- **Test Adapter for Google Test** -- keep it.
+
+![Visual Studio Packages](./windows_vs_packages.png)
 
 ---
 

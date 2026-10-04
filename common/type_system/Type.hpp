@@ -92,6 +92,9 @@ class MethodInfo {
     bool                       only_overrides_docstring = false;
     std::optional<std::string> docstring;
     std::optional<std::string> overlay_name;
+    
+    // ---- Accessors ----
+  const std::string &get_name() const { return name; }
 
     // ---- Comparison ----
     bool operator==(const MethodInfo &other) const;

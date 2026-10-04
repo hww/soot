@@ -38,21 +38,21 @@ endif()
 # ============================================================
 # Compiler flags
 # ============================================================
+# ============================================================
+# Compiler flags
+# ============================================================
 if(MSVC)
-    # MSVC и clang-cl — оба попадают сюда, потому что MSVC=true и для clang-cl.
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /utf-8 /W4")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi /Od")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2")
     add_compile_options(/diagnostics:caret)
 else()
-    # Только GCC/Clang на Linux/macOS.
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wunused-function")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
-    # libc++ — только для настоящего clang/gcc на Linux/macOS,
-    # НЕ для clang-cl на Windows.
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # libc++ — только для clang/gcc на Linux/macOS, НЕ для Windows
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT WIN32)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++")
     endif()
@@ -62,7 +62,6 @@ else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
     endif()
 
-    # Debug-специфичные флаги для GCC/Clang (Linux/macOS).
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_compile_options(-O0 -g3 -ggdb -fno-omit-frame-pointer -fno-inline)
         add_compile_options(-fno-eliminate-unused-debug-types)
@@ -148,17 +147,26 @@ set_target_properties(sootc PROPERTIES
 # Tests
 # ============================================================
 if(BUILD_TESTS)
+    # enable_testing должен быть вызван в корневом файле обязательно
     enable_testing()
+    
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
     add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
+    
+    # Подключаем тесты
+    #include(tests/soot/CMakeLists.txt)
+    #include(tests/carbon/CMakeLists.txt)
+    #include(tests/engine/CMakeLists.txt)
+    include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
 endif()
 
-# Собираем общую цель tests только если её цели реально определены.
-# Иначе add_custom_target упадёт при конфигурации (это и было в WSL).
-if(TARGET sooti_test AND TARGET typesys_tests AND TARGET carbon_test AND TARGET engine_test)
-    add_custom_target(tests
-        COMMENT "Building all tests"
-        DEPENDS sooti_test typesys_tests carbon_test engine_test
-    )
-endif()
+# Создать общую цель для сборки всех тестов
+add_custom_target(tests
+    COMMENT "Building all tests"
+    DEPENDS 
+        #soot_test
+        typesys_tests  # ИСПРАВЛЕНО: было type_system_test
+        #carbon_test
+        #engine_test
+)

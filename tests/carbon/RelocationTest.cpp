@@ -1,7 +1,7 @@
 // test_relocation.cpp
 #include "gtest/gtest.h"
 #include "carbon/Export.hpp"
-#include "files/RelocatableBuffer.hpp"
+#include "file/RelocatableBuffer.hpp"
 #include "fmt/base.h"
 #include "fmt/format.h"
 #include "lib/Variant.hpp"
