@@ -70,26 +70,3 @@
 ;(define-extern entity type)
 ;(define-extern drawable type)
 
-
-;; ----------------------------------------------------------------------------
-;; Macro definitions
-;; ----------------------------------------------------------------------------
-(define defun
-  (macro (name bindings &rest body)
-    `(define ,name (lambda ,bindings ,@body))))
-
-(define defmacro
-  (macro (name args &rest body)
-    `(define ,name (macro ,args ,@body))))
-
-(define when
-  (macro (test &rest body)
-    `(if ,test (begin ,@body) #f)))
-
-(define unless
-  (macro (test &rest body)
-    `(if ,test #f (begin ,@body))))
-
-(define not
-  (macro (x)
-    `(if ,x #f #t)))

@@ -18,6 +18,31 @@ namespace sootc {
 
 class ExpressionNode;
 
+/*
+ * ALLOW_SIMPLE_ARGUMENT_SYNTAX
+ * ----------------------------
+ * a - параметр без типа
+ * Это макрос(#if), не определён — значит,
+ * по                                  умолчанию false
+ *     .Компилятор требует типы у всех параметров :
+ *
+ * ((x int)(y int)) — работает
+ *     .
+ *
+ * (x y) — ошибка Invalid argument definition x.
+ *
+ * Если определить ALLOW_SIMPLE_ARGUMENT_SYNTAX как 1 — параметры без типа будут
+ *                     приниматься,
+ * и тип будет взят из builder.parse_type(arg, ...).Но parse_type от символа
+ *     x — что вернёт
+ * ? Скорее всего — nullptr или object
+ * .Потом add_parameter(name, type) с nullptr — упадёт или даст мусор.
+ */
+
+//#define ALLOW_SIMPLE_ARGUMENT_SYNTAX 1
+
+
+
 class FunctionNode : public Node {
     std::string m_name;
     

@@ -57,7 +57,7 @@ std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
         return build_while(form, node);
     }
     
-    if (keyword == "+" || keyword == "-" || keyword == "*" || keyword == "/") {
+    if (keyword == "+" || keyword == "-" || keyword == "*" || keyword == "/" || keyword == "%") {
         return build_binary(form, node);
     }
     
@@ -197,9 +197,19 @@ std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const soot::Object& form, 
     
     BinaryNode::Op op;
     if (head == "+") op = BinaryNode::Op::ADD;
-    else if (head == "-") op = BinaryNode::Op::SUB;
-    else if (head == "*") op = BinaryNode::Op::MUL;
-    else op = BinaryNode::Op::DIV;
+    else if (head == "-")
+        op = BinaryNode::Op::SUB;
+    else if (head == "*")
+        op = BinaryNode::Op::MUL;
+    else if (head == "/")
+        op = BinaryNode::Op::DIV;
+    else if (head == "%")
+        op = BinaryNode::Op::MOD;
+    else
+        throw CompilerError("NodeBuilder::build_binary")
+            .where(fmt::format("op '{}'", std::string(head)))
+            .expected("one of: +, -, *, /, %")
+            .got(fmt::format("'{}'", std::string(head)));
     
     auto left = build_expression(rest.as_pair()->car, node);
     auto right = build_expression(rest.as_pair()->cdr.as_pair()->car, node);
@@ -287,12 +297,18 @@ std::vector<std::unique_ptr<ExpressionNode>> NodeBuilder::parse_args(const soot:
     return args;
 }
 
-Type* NodeBuilder::parse_type(const soot::Object& type_form, Node* node) {
+Type *NodeBuilder::parse_type(const soot::Object &type_form, Node *node) {
     (void)node;
     if (type_form.is_symbol()) {
-        return m_ts.lookup_type(type_form.as_symbol());
+        Type *t = m_ts.lookup_type(type_form.as_symbol());
+        if (t) return t;
+        // Если типа нет — ошибка с понятным сообщением
+        throw CompilerError("NodeBuilder::parse_type")
+            .where(fmt::format("type '{}'", type_form.as_symbol().c_str()))
+            .expected("known type (int, float, ...)")
+            .got("unknown type");
     }
-    // TODO: сложные типы
+    // Сложные типы: пока object
     return m_ts.lookup_type("object");
 }
 

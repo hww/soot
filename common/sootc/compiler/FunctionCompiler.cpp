@@ -56,7 +56,7 @@ void parse_arguments(
             Type* type = builder.parse_type(type_name, func_node);
             func_node->add_parameter(name, type);  // ← ДОЛЖНО БЫТЬ
         } else if (arg.is_symbol()) {
-            // a - параметр без типа
+
 #if ALLOW_SIMPLE_ARGUMENT_SYNTAX            
             Type* type = builder.parse_type(arg, func_node);
             func_node->add_parameter(arg.as_symbol(), type);  // ← ДОЛЖНО БЫТЬ

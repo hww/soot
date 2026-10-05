@@ -35,6 +35,16 @@ public:
     Globals& operator=(const Globals&) = delete;
 
     // ========================================================================
+    // Inspection
+    // ========================================================================
+
+    std::vector<StringId> all_symbols() const {
+        std::vector<StringId> result;
+        for (auto &[k, v] : m_symbols) result.push_back(k);
+        return result;
+    }
+
+    // ========================================================================
     // load_module: загрузка из файла
     // ========================================================================
     bool     load_module(const std::filesystem::path &path) {

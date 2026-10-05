@@ -16,6 +16,7 @@
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "util/FileUtil.hpp"
+#include "util/Log.hpp"
 #include "type_system/TypeSystem.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/compiler/CompilerError.hpp"
@@ -382,6 +383,25 @@ ReplStatus Compiler::handle_repl_command(const std::string &input) {
                 lg::error("Failed to load: {}", load_result.error());
             }
         } catch (const std::exception &e) { print_error("Load error", e); }
+        return ReplStatus::OK;
+    }
+    if (input.size() >= 5 && input.substr(0, 5) == ":soot") {
+        std::string expr = input.size() > 6 ? input.substr(6) : "";
+        if (expr.empty()) {
+            fmt::print("; usage: :soot <expression>\n");
+            return ReplStatus::OK;
+        }
+        try {
+            auto result = m_soot.eval_string(expr, "<repl>");
+            fmt::print(fg(fmt::color::green), "{}\n", result.print());
+        } catch (const std::exception &e) {
+            fmt::print(fg(fmt::color::crimson), "SOOT error: {}\n", e.what());
+        }
+        return ReplStatus::OK;
+    }
+    if (input == ":list") {
+        auto symbols = carbon::Globals::inst().all_symbols();
+        for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
         return ReplStatus::OK;
     }
 
@@ -869,20 +889,48 @@ soot::Object Compiler::expand_soot_macro(const soot::Object &form) {
 // ===============================================================
 void Compiler::load_soot_prelude() {
     namespace fs = std::filesystem;
+    // Множество уже загруженных путей (нормализованных)
+    static std::set<fs::path> used_paths;
 
     std::vector<fs::path> candidates = {
-        file_util::get_path(file_util::PathType::PROJECT) / "builtins.sot",
-        file_util::get_path(file_util::PathType::PROJECT) / "src" / "lib" / "builtins.sot",
-        file_util::get_path(file_util::PathType::PROJECT) / "common" / "sootc" / "src" / "lib" /
-            "builtins.sot",
+        file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.sot",
+        file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.sot",
+        file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.sot",
     };
 
     for (const auto &p : candidates) {
         if (fs::exists(p)) {
             try {
+
+                // Нормализуем путь — чтобы "a/b/c" и "./a/b/c" считались одним и тем же
+                std::error_code ec;
+                fs::path        normalized = fs::weakly_canonical(p, ec);
+                if (ec) {
+                    normalized = p; // если не получилось — используем как есть
+                }
+
+                // Пропускаем, если уже загружали
+                if (used_paths.contains(normalized)) {
+                    lg::info("Skipping already loaded SOOTC library {}", p.string());
+                    continue;
+                }
+                used_paths.insert(normalized);
+
+                lg::info("Loading SOOT library {}", p.string());
+
                 std::string content = file_util::read_text(p);
+
+                // ─── Убрать UTF-8 BOM ───
+                if (content.size() >= 3 && static_cast<uint8_t>(content[0]) == 0xEF &&
+                    static_cast<uint8_t>(content[1]) == 0xBB &&
+                    static_cast<uint8_t>(content[2]) == 0xBF) {
+                    content = content.substr(3);
+                }
+
                 m_soot.eval_string(content, p.string());
-                lg::info("Loaded SOOT prelude from {}", p.string());
+       
+
+                lg::info("Loaded SOOT library {}", p.string());
                 return;
             } catch (const std::exception &e) {
                 lg::error("Failed to evaluate {}: {}", p.string(), e.what());
@@ -891,7 +939,7 @@ void Compiler::load_soot_prelude() {
         }
     }
 
-    lg::warn("builtins.sot not found; 'defun' will be undefined");
+    lg::warn("lib.sot not found");
 }
 
 } // namespace sootc

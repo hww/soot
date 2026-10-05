@@ -17,7 +17,7 @@ class FunctionNode;
 
 class BinaryNode : public ExpressionNode {
 public:
-    enum class Op { ADD, SUB, MUL, DIV };
+    enum class Op { ADD, SUB, MUL, DIV, MOD };
     
 private:
     Op m_op;
@@ -47,6 +47,7 @@ public:
             case Op::SUB: opcode = Opcode::ISub; break;
             case Op::MUL: opcode = Opcode::IMul; break;
             case Op::DIV: opcode = Opcode::IDiv; break;
+            case Op::MOD: opcode = Opcode::IMod; break;
         }
         
         fn.add_instruction(opcode, dest_reg, left_reg, right_reg);
@@ -60,7 +61,8 @@ public:
             case Op::SUB: op_str = "-"; break;
             case Op::MUL: op_str = "*"; break;
             case Op::DIV: op_str = "/"; break;
-        }
+            case Op::MOD: op_str = "%"; break;
+            }
         return "(" + m_left->to_string() + " " + op_str + " " + m_right->to_string() + ")";
     }
 };
