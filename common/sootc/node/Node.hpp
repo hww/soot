@@ -22,6 +22,7 @@ enum class NodeType {
     ConstNode,
     ControlNode,
     ExpressionNode,
+    SequenceNode,
     FileNode,
     FunctionNode,
     GlobalNode,
@@ -29,7 +30,8 @@ enum class NodeType {
     ReturnNode,
     VariableInfo,
     VariableNode,
-    WhileNode
+    WhileNode,
+    StoreGlobalNode
 };
 
 inline const char* node_type_to_string(NodeType type) {
@@ -41,6 +43,7 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::ConstNode:      return "ConstNode";
         case NodeType::ControlNode:    return "ControlNode";
         case NodeType::ExpressionNode: return "ExpressionNode";
+        case NodeType::SequenceNode:   return "SequenceNode";
         case NodeType::FileNode:       return "FileNode";
         case NodeType::FunctionNode:   return "FunctionNode";
         case NodeType::GlobalNode:     return "GlobalNode";
@@ -49,8 +52,10 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::VariableInfo:   return "VariableInfo";
         case NodeType::VariableNode:   return "VariableNode";
         case NodeType::WhileNode:      return "WhileNode";
-        default:                       return "UnknownNode";
+        case NodeType::StoreGlobalNode: return "StoreGlobalNode";
     }
+    // Если добавили NodeType, а case не написали — сюда не попадём, компилятор предупредит.
+    return "UnknownNode";
 }
 
 class Node {
@@ -61,7 +66,7 @@ protected:
     GlobalNode * m_cached_global = nullptr;
     FileNode* m_cached_file = nullptr;
     FunctionNode* m_cached_function = nullptr;
-    NodeType m_node_type;
+    NodeType m_node_type = NodeType::Node;
     
 protected:
 

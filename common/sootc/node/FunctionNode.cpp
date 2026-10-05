@@ -123,7 +123,8 @@ void FunctionNode::add_instruction_imm_u16(Opcode op, u8 dest, u16 imm) {
     Instruction instr;
     instr.opcode = op;
     instr.a = dest;
-    instr.imm16 = imm;
+    instr.b = imm & 0xFF;
+    instr.c = (imm >> 8) & 0xFF;
     m_instructions.push_back(instr);
 }
 
@@ -184,15 +185,52 @@ void FunctionNode::set_body(std::unique_ptr<ExpressionNode> body) {
     m_body = std::move(body);
 }
 
-void FunctionNode::emit_body(ExpressionNode* body) {
-    if (!body) return;
-    
+void FunctionNode::emit_body(ExpressionNode *body) {
+    if (!body) {
+        lg::warn("emit_body: null body for function '{}'", m_name);
+        return;
+    }
+    lg::info("emit_body: function '{}', body type = {}", m_name, body->node_type());
+
     m_instructions.clear();
     m_constants.clear();
     m_temp_regs.clear();
     m_next_temp_reg = 0;
-    
+
+    // ─── Пролог: копирование аргументов из r24+ в локальные r0+ ───
+    //
+    // По соглашению DC:
+    //   - аргументы передаются через r24, r25, r26, ...
+    //   - локальные переменные (включая параметры) — r0, r1, r2, ...
+    //
+    // Поэтому каждая функция должна начать с:
+    //   Move r0, r24
+    //   Move r1, r25
+    //   ...
+    //
+    // m_variables хранит параметры ПЕРВЫМИ (add_parameter),
+    // затем локальные (add_local_variable). Значит, первые
+    // m_param_count элементов — это параметры, у них reg() = 0, 1, 2, ...
+    for (size_t i = 0; i < m_param_count; ++i) {
+        const VariableInfo &info = m_variables[i];
+        u8                  local_reg = info.reg();
+        u8                  arg_reg = static_cast<u8>(ARG_REGISTERS_OFFSET + i);
+
+        add_instruction(Opcode::Move, local_reg, arg_reg, 0);
+    }
+
+    // ─── Тело функции ───
     body->emit(*this);
+
+    // ─── Если последняя инструкция не Return — добавить Return ───
+    if (m_instructions.empty() || m_instructions.back().opcode != Opcode::Return) {
+
+        u8   result_reg = 0;
+        auto it = m_temp_regs.find(body);
+        if (it != m_temp_regs.end()) { result_reg = it->second; }
+        add_instruction(Opcode::Return, result_reg, 0, 0);
+    }
+
     resolve_branches();
 }
 

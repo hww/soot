@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstring>
 #include <numeric>
+#include <sootc/compiler/CompilerError.hpp>
 
 using namespace carbon;
 
@@ -27,14 +28,22 @@ std::string FileNode::to_string() const {
 // ============================================================================
 // generate - главный метод генерации бинарника (интерфейс Node)
 // ============================================================================
-ProgramBinaryElement FileNode::generate(GlobalState& state) {
-    // 1. Собираем все функции
+ProgramBinaryElement FileNode::generate(GlobalState &state) {
     auto functions = collect_functions(state);
     if (functions.empty()) {
-        throw std::runtime_error("No functions found in file");
+        std::string types;
+        for (auto &child : m_children) {
+            if (!types.empty()) types += ", ";
+            types += child->get_node_type_string();
+        }
+        throw CompilerError("FileNode::generate")
+            .where(fmt::format("file '{}'", m_name))
+            .expected("at least one FunctionNode among children")
+            .got(fmt::format("{} children: [{}]", m_children.size(),
+                             types.empty() ? "<none>" : types))
+            .note("top-level 'define' of a variable is not yet implemented; "
+                  "for now only functions are compiled");
     }
-    
-    // 2. Собираем финальный бинарник
     return make_binary(std::move(functions), state);
 }
 
@@ -169,6 +178,8 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
                 element.m_relocTable.push_back(false);
             }
         }
+
+        element.check_size(); // ← один раз здесь
     }
     
     // ========================================

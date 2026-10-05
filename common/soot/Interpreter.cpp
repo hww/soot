@@ -5150,5 +5150,16 @@ Object Interpreter::eval_function_name_set(const Object &form, Arguments &args,
     lambda_ptr->name = args.unnamed[1].to_std_string();
     return get_none();
 }
+/*!
+ * Раскрыть макрос (если form — вызов макроса), не вычисляя результат.
+ */
+Object Interpreter::macroexpand(const Object &form) {
+    // Прямой вызов внутренней реализации
+    auto      env = m_global_environment.as_env_ptr();
+    // Нам нужен минимальный Arguments
+    Arguments args;
+    args.unnamed.push_back(form);
+    return eval_macroexpand(form, args, env);
+}
 
 } // namespace soot

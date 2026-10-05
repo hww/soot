@@ -104,6 +104,9 @@ class Interpreter {
     void   define_global(const char *name, const Object value) { define_var_in_env(m_global_environment, value, name); }
     Object get_global(const char *name) { auto val = m_global_environment.as_env()->find(Object::intern(&symbol_table(), name)); return val ? *val : m_obj_none; }
 
+    // Раскрыть макрос (если form — вызов макроса), не вычисляя результат.
+    Object macroexpand(const Object &form);
+
   private:
     // Помощники для чисел
     int64_t number_to_integer(const Object &obj);
@@ -270,6 +273,7 @@ class Interpreter {
                           const std::shared_ptr<EnvironmentObject> &env);
     Object eval_lookup(const Object &form, Arguments &args,
                        const std::shared_ptr<EnvironmentObject> &env);
+
 
     // === ВСТРОЕННЫЕ ФУНКЦИИ (вычисляют аргументы) ===
 
@@ -594,6 +598,7 @@ class Interpreter {
                      const std::shared_ptr<EnvironmentObject> &env);
     Object eval_assoc(const Object &form, Arguments &args,
                       const std::shared_ptr<EnvironmentObject> &env);
+
 
     // --- Инициализация Хранилища ---
     void init_special_forms(const std::initializer_list<SpecialEntryConfig> forms);

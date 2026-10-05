@@ -15,6 +15,7 @@
 #ifndef FMT_CONSTEVAL
 #define FMT_CONSTEVAL
 #endif
+#include <util/Log.hpp>
 
 using namespace file_util;
 
@@ -108,25 +109,32 @@ void Wrapper::save_history() {
     path = file_util::get_path(PathType::CACHE) / soot_plaform_to_game_name(repl_config.game_version) /
            ".opengoal.repl.history";
   } else {
-    path = file_util::get_path(PathType::CONFIG) / ".opengoal.repl.history";
+    path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
   }
   file_util::create_dirs_for_file(path.string());
   repl.history_save(path.string());
 }
 
 void Wrapper::load_history() {
-  fs::path path;
-  if (repl_config.per_game_history) {
-    path = file_util::get_path(PathType::CACHE) / soot_plaform_to_game_name(repl_config.game_version) /
-           ".opengoal.repl.history";
-  } else {
-    path = file_util::get_path(PathType::CONFIG) / ".opengoal.repl.history";
-  }
-  if (fs::exists(path)) {
-    repl.history_load(path.string());
-  } else {
-    fmt::print("Couldn't locate REPL history file at '{}'\n", path.string());
-  }
+    fs::path path;
+    if (repl_config.per_game_history) {
+        path = file_util::get_path(PathType::CACHE) /
+               soot_plaform_to_game_name(repl_config.game_version) / ".opengoal.repl.history";
+    } else {
+        path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
+    }
+
+    // Создать директорию, если её нет
+    file_util::create_dirs_for_file(path.string());
+
+    if (fs::exists(path)) {
+        repl.history_load(path.string());
+        lg::debug("Loaded REPL history from {}", path.string());
+    } else {
+        // Файла нет. Это нормально при первом запуске.
+        // Логируем в файл (debug), чтобы не шуметь в консоли.
+        lg::debug("No REPL history at {} (first run?)", path.string());
+    }
 }
 
 std::pair<std::string, bool> Wrapper::get_current_repl_token(std::string const& context) {

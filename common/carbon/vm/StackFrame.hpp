@@ -276,18 +276,20 @@ namespace carbon {
 
         i64 get_static_int(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            // Data is stored as Variants, so we need to extract i32
-            return *((i32*)(data_ptr + offset));
+            return static_cast<i64>(data_ptr[offset]); // ← читать u64-элемент целиком
         }
 
         f64 get_static_float(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return *((float*)(data_ptr + offset));
+            u64 raw = data_ptr[offset];
+            f32 f;
+            std::memcpy(&f, &raw, sizeof(f32)); // ← младшие 32 бита как f32
+            return static_cast<f64>(f);
         }
 
-        void* get_static_pointer(u32 offset) const {
+        void *get_static_pointer(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return (void*)(data_ptr + offset);
+            return reinterpret_cast<void *>(data_ptr[offset]);
         }
 
         // ------------------------------------------------------------------------

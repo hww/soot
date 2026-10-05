@@ -73,6 +73,29 @@ public:
      */
     void on_throw() override;
 
+    // ============================================================================
+    // Accessors
+    // ============================================================================
+
+    i64 get_static_int(u32 offset) const {
+        ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
+        return static_cast<i64>(data_ptr[offset]);
+    }
+
+    f64 get_static_float(u32 offset) const {
+        ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
+        u64 raw = data_ptr[offset];
+        f32 f;
+        std::memcpy(&f, &raw, sizeof(f32));
+        return static_cast<f64>(f);
+    }
+
+    void *get_static_pointer(u32 offset) const {
+        ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
+        return reinterpret_cast<void *>(data_ptr[offset]);
+    }
+
+
 private:
     /**
      * @brief Выполнить exit-обработчик

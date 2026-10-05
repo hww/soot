@@ -144,12 +144,12 @@ endif()
 
 # main subdirectories
 include(common/cross_sockets/CMakeLists.txt)
+include(common/util/CMakeLists.txt)
 include(common/repl/CMakeLists.txt)
 include(common/soot/CMakeLists.txt)
-include(common/sootc/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
-include(common/util/CMakeLists.txt)
+include(common/sootc/CMakeLists.txt)
 
 set_target_properties(sootc PROPERTIES
     VS_DEBUGGER_COMMAND_ARGUMENTS   "--script test.sot"
@@ -171,8 +171,8 @@ if(BUILD_TESTS)
     # Подключаем тесты
     include(tests/soot/CMakeLists.txt)
     include(tests/carbon/CMakeLists.txt)
-    #include(tests/engine/CMakeLists.txt)
-    include(tests/type_system/CMakeLists.txt) # Убедитесь, что таргет там typesys_tests
+    include(tests/engine/CMakeLists.txt)
+    include(tests/type_system/CMakeLists.txt) 
 endif()
 
 # Создать общую цель для сборки всех тестов
@@ -182,5 +182,5 @@ add_custom_target(tests
         soot_test
         typesys_tests  # ИСПРАВЛЕНО: было type_system_test
         carbon_test
-        #engine_test
+        engine_test
 )

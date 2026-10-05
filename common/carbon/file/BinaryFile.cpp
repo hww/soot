@@ -1,4 +1,5 @@
-#include "BinaryFile.hpp"
+﻿#include "BinaryFile.hpp"
+#include "util/Log.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -70,9 +71,30 @@ namespace carbon {
         return file;
     }
 
-    [[nodiscard]] bool BinaryFile::save(const std::filesystem::path& path) noexcept {
-        (void)path;
-        return false;
+    [[nodiscard]] bool BinaryFile::save(const std::filesystem::path &path) noexcept {
+        try {
+            std::ofstream out(path, std::ios::binary);
+            if (!out.is_open()) { return false; }
+
+            // get_unmapped() возвращает копию байтов, в которой все
+            // релоцированные указатели приведены обратно к оффсетам
+            // относительно начала файла (то есть — как они лежат на диске).
+            byte_uptr unmapped = get_unmapped();
+
+            out.write(reinterpret_cast<const char *>(unmapped.get()),
+                      static_cast<std::streamsize>(m_size));
+
+            if (!out.good()) { return false; }
+
+            out.close();
+            return true;
+        } catch (const std::ios_base::failure &e) {
+            lg::error("BinaryFile::save: ios failure for '{}': {}", path.string(), e.what());
+            return false;
+        } catch (const std::exception &e) {
+            lg::error("BinaryFile::save: exception for '{}': {}", path.string(), e.what());
+            return false;
+        }
     }
 
     // Replace new line characters to the spaces inside the text buffer

@@ -6,6 +6,8 @@
 #include <expected>
 #include <vector>
 #include <iostream>
+#include <filesystem>
+
 #include "common/carbon/lib/StringId.hpp"
 #include "file/BinaryFile.hpp"
 #include "file/DCHeader.hpp"
@@ -32,47 +34,39 @@ public:
     Globals(const Globals&) = delete;
     Globals& operator=(const Globals&) = delete;
 
-    /**
-     * @brief Загрузка бинарного модуля и регистрация его символов
-     * Максимально быстрая загрузка в глобальную область.
-     */
-    bool load_module(const std::string& path) {
-        StringId modulePathId(path);
+    // ========================================================================
+    // load_module: загрузка из файла
+    // ========================================================================
+    bool     load_module(const std::filesystem::path &path) {
+        const StringId module_path_id(path.string());
 
-        // 1. Проверяем, не загружен ли уже модуль
-        if (m_modules.contains(modulePathId)) {
-            return true; 
-        }
+        if (m_modules.contains(module_path_id)) { return true; }
 
-        // 2. Читаем файл (используем ваш метод BinaryFile::from_path)
         auto result = BinaryFile::from_path(path);
         if (!result.has_value()) {
-            std::cerr << "[Globals] Failed to load: " << result.error() << std::endl;
+            std::cerr << "[Globals] load_module: failed to read '" << path.string()
+                      << "': " << result.error() << "\n";
             return false;
         }
 
-        // Перемещаем файл во владение Globals
-        BinaryFile& file = m_modules.emplace(modulePathId, std::move(*result)).first->second;
+        BinaryFile &file = m_modules.emplace(module_path_id, std::move(*result)).first->second;
 
-        // 3. Регистрация экспортируемых символов
-        // Предполагаем, что BinaryFile предоставляет доступ к таблице экспорта через заголовок
-        const DC_Header* header = file.m_dcheader;
-        if (header) {
-            // Проходим по записям (Entry) в файле
-            // В реальной системе m_pStartOfData — это смещение внутри m_bytes
-            for (u32 i = 0; i < header->m_numEntries; ++i) {
-                const auto& entry = header->m_pStartOfData[i];
-                
-                // Регистрируем символ. Если такой ID уже был, он ПЕРЕЗАПИСЫВАЕТСЯ (Shadowing)
-                // Это обеспечивает максимальную скорость: мы всегда берем последнее определение.
-                m_symbols[StringId(entry.m_nameID)] = Symbol {
-                    const_cast<void*>(entry.m_entryPtr),
-                    StringId(entry.m_typeId),
-                    modulePathId
-                };
-            }
-        }
+        return register_symbols_from_file(file, module_path_id);
+    }
 
+    // ========================================================================
+    // load_module: загрузка из готового BinaryFile (без диска)
+    // ========================================================================
+    bool load_module(carbon::BinaryFile &&file) {
+        // Синтетическое имя модуля: "module_0", "module_1", ...
+        const std::string module_name = fmt::format("module_{}", m_modules.size());
+        const StringId    module_path_id(module_name);
+
+        // Регистрируем символы ДО перемещения file,
+        // чтобы entry.m_entryPtr (указатели внутрь file.m_bytes) были валидны.
+        if (!register_symbols_from_file(file, module_path_id)) { return false; }
+
+        m_modules.emplace(module_path_id, std::move(file));
         return true;
     }
 
@@ -138,6 +132,31 @@ public:
         if (throw_error)
             throw std::runtime_error(fmt::format("Undefined global {}", name.to_cstring()));
         return nullptr;
+    }
+
+private:
+    bool register_symbols_from_file(const BinaryFile &file, const StringId &module_path_id) {
+        const DC_Header *header = file.m_dcheader;
+        if (header == nullptr) {
+            std::cerr << "[Globals] register_symbols: null header\n";
+            return false;
+        }
+
+        if (header->m_pStartOfData == nullptr) {
+            std::cerr << "[Globals] register_symbols: null m_pStartOfData\n";
+            return false;
+        }
+
+        for (u32 i = 0; i < header->m_numEntries; ++i) {
+            const DCEntry &entry = header->m_pStartOfData[i];
+
+            if (entry.m_nameID == 0) { continue; }
+
+            m_symbols[StringId(entry.m_nameID)] = Symbol{const_cast<void *>(entry.m_entryPtr),
+                                                         StringId(entry.m_typeId), module_path_id};
+        }
+
+        return true;
     }
 
 private:

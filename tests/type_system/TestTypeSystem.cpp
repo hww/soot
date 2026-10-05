@@ -527,15 +527,15 @@ TEST_F(TypeSystemTest, MultiReverseLookup) {
 }
 
 TEST_F(TypeSystemTest, ReverseFieldLookupNotFound) {
-    StructureType* simple_struct = ts->add_builtin_structure("structure", "simple");
+    StructureType *simple_struct =
+        ts->add_builtin_structure("structure", "simple_struct_for_notfound_test");
 
     TypeSpec int_spec = ts->make_typespec("int32");
     ts->add_field_to_type(simple_struct, "data", int_spec, false, false, -1, 0);
 
-    // Ищем по несуществующему смещению
     FieldReverseLookupInput input;
-    input.base_type = ts->make_typespec("simple");
-    input.offset = 100;  // За пределами структуры
+    input.base_type = ts->make_typespec("simple_struct_for_notfound_test");
+    input.offset = 100;
 
     FieldReverseLookupOutput result = ts->reverse_field_lookup(input);
 

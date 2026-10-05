@@ -1,21 +1,23 @@
 // sootc/compiler/Compiler.hpp
 #pragma once
 
-#include "Log.hpp"
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <vector>
+
+#include "common/util/Log.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "common/soot/Object.hpp"
 #include "common/carbon/file/BinaryFile.hpp"
-#include "repl/config.h"
-#include "repl/repl_wrapper.h"
+#include "common/repl/config.h"
+#include "common/repl/repl_wrapper.h"
 #include "sootc/compiler/MakeSystem.hpp"
 #include "sootc/libs/CompilerException.hpp"
 #include "sootc/node/GlobalNode.hpp"
 #include "sootc/node/NoneNode.hpp"
-#include <filesystem>
-#include <memory>
-#include <expected>
-#include <optional>
-#include <vector>
+
 
 namespace sootc {
 
@@ -25,8 +27,8 @@ enum class CompilerMode;
 
 // Статус выполнения REPL
 enum class ReplStatus {
-    OK,
-    ERROR,
+    OK, 
+    ERR,
     WANT_EXIT,
     WANT_RELOAD
 };
@@ -98,7 +100,15 @@ public:
     // ========== Настройки ==========
     TypeSystem& ts() { return m_ts; }
     CompilationOptions& config() { return m_config; }
-    
+
+    // ========== Печать / сохранение ==========
+    void print_listing(const BinaryFile &file);
+    bool save_binary(const BinaryFile &file, const std::filesystem::path &target_dir);
+    bool save_listing(const BinaryFile &file, const std::filesystem::path &target_dir);
+
+    // ========== Macroses ==========
+    bool         is_soot_macro(const std::string &name);
+    soot::Object expand_soot_macro(const soot::Object &form);
 
 private:
     // Компиляция в байт-код/бинарник
@@ -141,6 +151,7 @@ private:
         const std::vector<std::optional<soot::ObjectType>>& unnamed,
         const std::unordered_map<std::string, std::pair<bool, std::optional<soot::ObjectType>>>& named);
     void for_each_in_list(const soot::Object& list, const std::function<void(const soot::Object&)>& f);   
+
 
     // ===============================================================
     // Errors and Warnings
@@ -187,6 +198,10 @@ private:
         lg::print(str + '\n', std::forward<Args>(args)...);
         }
     }
+    // ===============================================================
+    // Load default files
+    // ===============================================================
+    void Compiler::load_soot_prelude();
 
     // ===============================================================
     //  REPL Callbacks 

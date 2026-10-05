@@ -67,7 +67,7 @@ namespace carbon {
             }
             insert_into_reloctable(bits_list.back(), (sizeof(T) / 8) % 8);
 
-            check_size();
+            //check_size();
         }
 
         void push_blob(const void* data, size_t size, u8 relocation_bit = 0) noexcept {

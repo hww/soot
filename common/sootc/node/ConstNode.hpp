@@ -19,16 +19,17 @@ class ConstNode : public ExpressionNode {
     bool m_is_float;
     bool m_is_string = false;
 
-    ConstNode(i64 val) : m_int_value(val), m_is_float(false) {
+    ConstNode(i64 val) : ExpressionNode(NodeType::ConstNode), m_int_value(val), m_is_float(false) {
         m_type = TypeSystem::instance().lookup_type("int");
     }
-    
-    ConstNode(f64 val) : m_float_value(val), m_is_float(true) {
+
+    ConstNode(f64 val) : ExpressionNode(NodeType::ConstNode), m_float_value(val), m_is_float(true) {
         m_type = TypeSystem::instance().lookup_type("float");
     }
-    
-    ConstNode(const std::string& str) : m_is_float(false) {
-        (void)str;
+
+    ConstNode(const std::string &str) : ExpressionNode(NodeType::ConstNode), m_is_float(false) {
+        m_string_value = str;
+        m_is_string = true;
         m_type = TypeSystem::instance().lookup_type("string");
     }
     

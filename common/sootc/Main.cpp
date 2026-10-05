@@ -271,14 +271,27 @@ int main(int argc, char* argv[]) {
         }
         
         // Компиляция файлов из командной строки
-        for (const auto& input_file : opts.input_files) {
-            lg::info("Processing: {}", input_file);
-            auto result = compiler->compile_file(input_file);
-            if (result) {
+        if (!opts.input_files.empty()) {
+            for (const auto &input_file : opts.input_files) {
+                lg::info("Processing: {}", input_file);
+                auto result = compiler->compile_file(input_file);
+                if (!result) {
+                    lg::error("Failed: {} - {}", input_file, result.error());
+                    continue;
+                }
+
+                compiler->print_listing(**result);
+
+                namespace fs = std::filesystem;
+                fs::path target = opts.target_dir;
+                compiler->save_binary(**result, target);
+                compiler->save_listing(**result, target);
+
                 lg::info("Compiled: {}", input_file);
-            } else {
-                lg::error("Failed: {} - {}", input_file, result.error());
             }
+
+            // Если пользователь не просил REPL — выходим.
+            if (!opts.interactive) { return 0; }
         }
 
         // Главный REPL цикл
@@ -286,7 +299,7 @@ int main(int argc, char* argv[]) {
             if (status == sootc::ReplStatus::WANT_RELOAD) {
                 lg::info("Reloading compiler...");
                 std::lock_guard<std::mutex> lock(compiler_mutex);
-                compiler->save_repl_history();
+                //compiler->save_repl_history();
                 compiler = std::make_unique<sootc::Compiler>(
                     opts.platform, comp_options, repl_config, opts.user_profile,
                     std::make_unique<REPL::Wrapper>(opts.user_profile, repl_config, startup_file, nrepl_ok)
@@ -298,9 +311,13 @@ int main(int argc, char* argv[]) {
             if (!input.empty()) {
                 std::lock_guard<std::mutex> lock(compiler_mutex);
                 status = compiler->handle_repl_string(input);
+                compiler->save_repl_history(); 
             }
         }
-        
+
+        // === Сохранить историю REPL перед выходом ===
+        //if (compiler) { compiler->save_repl_history(); }
+
         // Очистка
         if (nrepl_ok) {
             repl_server.shutdown_server();

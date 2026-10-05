@@ -1,6 +1,9 @@
 // sootc/compiler/Compiler.cpp
+#include "fmt/core.h"
+#include "fmt/color.h"
+#include "third_party/replxx/include/replxx.hxx"
+
 #include "sootc/compiler/Compiler.hpp"
-#include "file/BinaryFileInspector.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -9,10 +12,13 @@
 #include "common/soot/Interpreter.hpp"
 #include "common/soot/ParseHelpers.hpp"
 #include "common/util/Log.hpp"
-#include "fmt/core.h"
-#include "fmt/color.h"
+#include "carbon/file/BinaryFileInspector.hpp"
+#include "carbon/file/Globals.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
+#include "util/FileUtil.hpp"
 #include "type_system/TypeSystem.hpp"
-#include "third_party/replxx/include/replxx.hxx"
+#include "sootc/node/SequenceNode.hpp"
+#include "sootc/compiler/CompilerError.hpp"
 
 namespace sootc {
 
@@ -33,6 +39,9 @@ Compiler::Compiler(SootPlatform platform,
     m_ts.add_builtin_types();
     m_global_env = std::make_unique<GlobalNode>();
     m_none = std::make_unique<NoneNode>();
+
+    // --- Загрузка SOOT-прелюдии (builtins.sot) ---
+    load_soot_prelude();
 
     if (m_config.mode != CompilerMode::COMPILE_ONLY) {
         setup_repl();
@@ -243,47 +252,65 @@ Compiler::compile_file(soot::Object& forms, const std::string& filename) {
     return result;
 }
 
-std::expected<std::unique_ptr<BinaryFile>, std::string> 
-Compiler::compile_internal(soot::Object& forms, const std::string& filename) {
+std::expected<std::unique_ptr<BinaryFile>, std::string>
+Compiler::compile_internal(soot::Object &forms, const std::string &filename) {
     try {
         NodeBuilder builder(m_ts, this);
-        auto file_node = std::make_unique<FileNode>(filename);
-        
-        // Обход всех форм
+        auto        file_node = std::make_unique<FileNode>(filename);
+
+        // --- top-level: последовательность выражений верхнего уровня ---
+        auto top_level_body = std::make_unique<SequenceNode>();
+        auto top_level = std::make_unique<FunctionNode>("top-level");
+        bool top_level_used = false;
+
         auto current = forms;
         while (current.is_pair()) {
             auto node = builder.build(current.as_pair()->car, file_node.get());
             if (node) {
-                file_node->add_child(std::move(node));
+                if (dynamic_cast<FunctionNode *>(node.get())) {
+                    // Функция верхнего уровня — отдельный ребёнок FileNode
+                    file_node->add_child(std::move(node));
+                } else {
+                    // Всё остальное — в тело top-level
+                    auto *expr = dynamic_cast<ExpressionNode *>(node.release());
+                    if (!expr) {
+                        throw CompilerError("Compiler::compile_internal")
+                            .where(fmt::format("file '{}'", filename))
+                            .expected("top-level form to be ExpressionNode")
+                            .got(node->get_node_type_string());
+                    }
+                    top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
+                    top_level_used = true;
+                }
             }
             current = current.as_pair()->cdr;
         }
-        
-        // Генерация бинарника
-        GlobalState state;
-        auto element = file_node->generate(state);
-        if (m_config.debug_print_ir) {
-            element.dump();
+
+        if (top_level_used) {
+            top_level->set_body(std::move(top_level_body));
+            file_node->add_child(std::move(top_level));
         }
+
+        // --- Генерация бинарника ---
+        GlobalState state;
+        auto        element = file_node->generate(state);
+
+        if (m_config.debug_print_ir) { element.dump(); }
 
         auto bytes = make_aligned_buffer(element.m_rawData.size());
         std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
-        
-        auto binary_result = BinaryFile::from_buffer(filename, std::move(bytes), element.m_rawData.size());
-        if (!binary_result) {
-            return std::unexpected("Failed to create binary from buffer");
-        }
-        
+
+        auto binary_result =
+            BinaryFile::from_buffer(filename, std::move(bytes), element.m_rawData.size());
+        if (!binary_result) { return std::unexpected("Failed to create binary from buffer"); }
+
         auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
-        
-        // Color pass (регистровая аллокация если нужно)
-        if (m_config.debug_print_asm) {
-            color_binary_file(binary);
-        }
-        
+
+        if (m_config.debug_print_asm) { color_binary_file(binary); }
+
         return binary;
-        
-    } catch (const std::exception& e) {
+
+    } catch (const std::exception &e) {
         return std::unexpected(std::string("Compilation error: ") + e.what());
     }
 }
@@ -291,72 +318,90 @@ Compiler::compile_internal(soot::Object& forms, const std::string& filename) {
 // ========== Интерпретация ==========
 
 
-ReplStatus Compiler::handle_repl_command(const std::string& input) {
-    if (input == ":exit" || input == ":quit") {
-        return ReplStatus::WANT_EXIT;
+ReplStatus Compiler::handle_repl_command(const std::string &input) {
+    if (input == ":exit" || input == ":quit") { return ReplStatus::WANT_EXIT; }
+
+    if (input == ":reload") { return ReplStatus::WANT_RELOAD; }
+
+    // === :run <name> — выполнить загруженную функцию в VM ===
+    if (input.size() >= 5 && input.substr(0, 5) == ":run ") {
+        std::string name = input.substr(5);
+
+        // trim пробелов слева и справа
+        const auto first = name.find_first_not_of(" \t");
+        if (first == std::string::npos) {
+            fmt::print(fg(fmt::color::yellow), "; ERROR: :run requires a function name\n");
+            return ReplStatus::OK;
+        }
+        const auto last = name.find_last_not_of(" \t");
+        name = name.substr(first, last - first + 1);
+
+        auto &globals = carbon::Globals::inst();
+        void *fn_ptr = globals.find_symbol_ptr(carbon::StringId(name));
+
+        if (fn_ptr == nullptr) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: '{}' not found in Globals\n", name);
+            return ReplStatus::OK;
+        }
+
+        auto *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
+
+        carbon::VirtualMachine vm;
+        carbon::Variant        result = vm.execute_function(lambda, carbon::RunMode::Run);
+
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", name,
+                   result.to_string());
+        return ReplStatus::OK;
     }
-    
-    if (input == ":reload") {
-        return ReplStatus::WANT_RELOAD;
-    }
-    
+
+    // === :help, :clear, :load — как было ===
     if (input == ":help") {
         m_repl->print_help_message();
         return ReplStatus::OK;
     }
-    
+
     if (input == ":clear") {
         m_repl->clear_screen();
         return ReplStatus::OK;
     }
-    
+
     if (input.substr(0, 5) == ":load") {
         std::string filename = input.substr(6);
         filename.erase(0, filename.find_first_not_of(" \t"));
         filename.erase(filename.find_last_not_of(" \t") + 1);
-        
+
         try {
-            auto result = compile_file(filename);
-            if (result) {
+            auto load_result = compile_file(filename);
+            if (load_result) {
                 lg::info("Loaded and compiled: {}", filename);
+                // Компиляция также регистрирует функции в Globals
+                // через compile_and_report; но :load использует compile_file
+                // напрямую, поэтому регистрируем вручную:
+                carbon::Globals::inst().load_module(std::move(**load_result));
             } else {
-                lg::error("Failed to load: {}", result.error());
+                lg::error("Failed to load: {}", load_result.error());
             }
-        } catch (const std::exception& e) {
-            print_error("Load error", e);
-        }
+        } catch (const std::exception &e) { print_error("Load error", e); }
         return ReplStatus::OK;
     }
-    
+
     lg::warn("Unknown command: {}", input);
     return ReplStatus::OK;
 }
 
-ReplStatus Compiler::handle_repl_string(const std::string& input) {
+ReplStatus Compiler::handle_repl_string(const std::string &input) {
     if (input.empty()) return ReplStatus::OK;
-    
-    // Специальные команды
-    if (input[0] == ':') {
-        return handle_repl_command(input);
+
+    // REPL-команды (:exit, :load, ...)
+    if (input[0] == ':') { return handle_repl_command(input); }
+
+    switch (m_config.mode) {
+    case CompilerMode::INTERPRET_ONLY: return interpret_and_print(input);
+
+    case CompilerMode::COMPILE_ONLY:
+    case CompilerMode::HYBRID:
+    default: return compile_and_report(input);
     }
-    
-    try {
-        switch (m_config.mode) {
-            case CompilerMode::INTERPRET_ONLY:
-                return interpret_and_print(input);
-                
-            case CompilerMode::COMPILE_ONLY:
-                return compile_and_report(input);
-                
-            case CompilerMode::HYBRID:
-                return try_interpret_then_compile(input);
-        }
-    } catch (const std::exception& e) {
-        print_error("Evaluation error", e);
-        return ReplStatus::ERROR;
-    }
-    
-    return ReplStatus::OK;
 }
 
 void Compiler::save_repl_history() {
@@ -402,17 +447,40 @@ ReplStatus Compiler::interpret_and_print(const std::string& script) {
     }
     return ReplStatus::OK;
 }
+ReplStatus Compiler::compile_and_report(const std::string &code) {
+    try {
+        auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
+        if (forms.is_null()) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                       "; ERROR: failed to read input\n");
+            return ReplStatus::ERR;
+        }
 
-ReplStatus Compiler::compile_and_report(const std::string& code) {
-    auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
-    auto binary = compile_file(forms, "<repl>");
-    if (!binary) {
-        throw std::runtime_error("Compilation failed");
+        auto result = compile_file(forms, "<repl>");
+        if (!result) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                       result.error());
+            return ReplStatus::ERR;
+        }
+
+        // Печатаем листинг (BinaryFileInspector::inspect внутри).
+        print_listing(**result);
+
+        // Передаём владение BinaryFile в Globals.
+        // ВАЖНО: std::move(**result) — это BinaryFile&&.
+        // После этого **result нельзя использовать.
+        bool loaded = carbon::Globals::inst().load_module(std::move(**result));
+        if (!loaded) {
+            fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,
+                       "; WARN: failed to register module in Globals\n");
+        }
+
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK\n");
+        return ReplStatus::OK;
+    } catch (const std::exception &e) {
+        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; EXCEPTION: {}\n", e.what());
+        return ReplStatus::ERR;
     }
-    if (m_config.debug_print_asm) {
-        lg::info("Compilation successful");
-    }
-    return ReplStatus::OK;
 }
 
 ReplStatus Compiler::try_interpret_then_compile(const std::string& code) {
@@ -710,4 +778,100 @@ void Compiler::repl_coloring(
         }
     }
 }
+// ===============================================================
+// Печать / сохранение
+// ===============================================================
+
+
+void Compiler::print_listing(const BinaryFile &file) {
+    // BinaryFileInspector принимает BinaryFile* (не const), поэтому const_cast.
+    // Если inspector реально не меняет file — можно сделать конструктор const.
+    carbon::BinaryFileInspector inspector(const_cast<BinaryFile *>(&file));
+    inspector.inspect();
+}
+
+bool Compiler::save_binary(const BinaryFile &file, const std::filesystem::path &target_dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(target_dir, ec);
+    if (ec) {
+        fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n",
+                   target_dir.string(), ec.message());
+        return false;
+    }
+
+    fs::path out = target_dir / (file.m_path.stem().string() + ".bin");
+    // const_cast — потому что save не const, но file не меняется логически
+    if (!const_cast<BinaryFile &>(file).save(out)) {
+        fmt::print(fg(fmt::color::crimson), "; ERROR: cannot save {}\n", out.string());
+        return false;
+    }
+
+    fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
+    return true;
+}
+
+bool Compiler::save_listing(const BinaryFile &file, const std::filesystem::path &target_dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(target_dir, ec);
+
+    fs::path      out = target_dir / "out.lst";
+    std::ofstream ofs(out);
+    if (!ofs) {
+        fmt::print(fg(fmt::color::crimson), "; ERROR: cannot open {}\n", out.string());
+        return false;
+    }
+
+    // TODO(check API): при наличии BinaryFileInspector с выводом в поток —
+    // перенаправьте его сюда. Пока — минимальный листинг.
+    ofs << "; SOOT listing\n";
+    ofs << "; (not yet wired to BinaryFile API)\n";
+    (void)file;
+
+    fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+    return true;
+}
+// ===============================================================
+// Печать / сохранение
+// ===============================================================
+bool Compiler::is_soot_macro(const std::string &name)  {
+    auto sym = m_soot.get_global(name.c_str());
+    return sym.is_macro();
+}
+
+soot::Object Compiler::expand_soot_macro(const soot::Object &form) {
+    return m_soot.macroexpand(form);
+}
+
+// ===============================================================
+// Загрузка файлов
+// ===============================================================
+void Compiler::load_soot_prelude() {
+    namespace fs = std::filesystem;
+
+    std::vector<fs::path> candidates = {
+        file_util::get_path(file_util::PathType::PROJECT) / "builtins.sot",
+        file_util::get_path(file_util::PathType::PROJECT) / "src" / "lib" / "builtins.sot",
+        file_util::get_path(file_util::PathType::PROJECT) / "common" / "sootc" / "src" / "lib" /
+            "builtins.sot",
+    };
+
+    for (const auto &p : candidates) {
+        if (fs::exists(p)) {
+            try {
+                std::string content = file_util::read_text(p);
+                m_soot.eval_string(content, p.string());
+                lg::info("Loaded SOOT prelude from {}", p.string());
+                return;
+            } catch (const std::exception &e) {
+                lg::error("Failed to evaluate {}: {}", p.string(), e.what());
+                return;
+            }
+        }
+    }
+
+    lg::warn("builtins.sot not found; 'defun' will be undefined");
+}
+
 } // namespace sootc

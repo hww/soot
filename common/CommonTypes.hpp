@@ -122,11 +122,7 @@ static_assert(sizeof(u128) == 16, "u128 must be 16 bytes");
 // ============================================================================
 
 constexpr i32 INVALID_INDEX = -1;
-constexpr u32 MAX_REGISTERS = 34;
-constexpr u32 ARG_REGISTERS_OFFSET = 24;                                  // r24-r33: arguments
-constexpr u32 LOCAL_REGISTERS_OFFSET = 0;                                 // r0-r23: local variables
-constexpr u32 MAX_LOCALS = ARG_REGISTERS_OFFSET - LOCAL_REGISTERS_OFFSET; // 24
-constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET;            // 10
+
 
 // ============================================================================
 // Versioning

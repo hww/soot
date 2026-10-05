@@ -3,7 +3,9 @@
 #include "sootc/compiler/FunctionCompiler.hpp"
 #include "common/sootc/node/FileNode.hpp"      
 #include "common/sootc/node/FunctionNode.hpp"  
-#include "sootc/node/Node.hpp"
+#include "common/sootc/node/StoreGlobalNode.hpp" 
+#include "common/sootc/compiler/CompilerError.hpp"
+#include "common/sootc/node/FileNode.hpp"      
 #include <stdexcept>
 
 namespace sootc {
@@ -29,6 +31,14 @@ std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
     
     std::string keyword = head.as_symbol();
     
+    // === SOOT-макросы ===
+    if (m_compiler && m_compiler->is_soot_macro(keyword)) {
+        auto expanded = m_compiler->expand_soot_macro(form);
+        return build(expanded, node); // рекурсивно компилируем результат
+    }
+
+    // === Встроенные формы компилятора ===
+
     if (keyword == "define") {
         return build_define(form, node);
     }
@@ -205,27 +215,36 @@ Type* NodeBuilder::parse_type(const soot::Object& type_form, Node* node) {
     return m_ts.lookup_type("object");
 }
 
-std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object& form, Node* context) {
+std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context) {
     auto rest = form.as_pair()->cdr;
+    if (!rest.is_pair()) { throw std::runtime_error("define: missing name"); }
     auto def_form = rest.as_pair()->car;
     auto value_form = rest.as_pair()->cdr.as_pair()->car;
-    
+
     if (!def_form.is_symbol()) {
         throw std::runtime_error("define: first argument must be a symbol");
     }
-    
+
     std::string name = def_form.to_std_string();
-    auto value = build(value_form, context);
-    
-    if (!value) {
-        throw std::runtime_error(fmt::format("define: cannot compile value: {}", value_form.print()));
+    auto        value_node = build(value_form, context);
+    if (!value_node) {
+        throw std::runtime_error(
+            fmt::format("define: cannot compile value: {}", value_form.print()));
     }
-    
-    // Биндим значение напрямую (без обертки в VariableNode)
-    auto file_node = context->file();
-    file_node->bind(name, value.get());
-    
-    return value;
+
+    // Если значение — функция, регистрируем её под именем define и возвращаем её.
+    if (auto *fn = dynamic_cast<FunctionNode *>(value_node.get())) {
+        fn->set_name(name);
+        if (auto *file = context->file()) { file->bind(name, fn); }
+        return value_node; // ← FunctionNode как ребёнок FileNode
+    }
+
+    // Иначе пока не поддерживаем — отдельный патч 4b.
+    throw CompilerError("NodeBuilder::build_define")
+        .where(fmt::format("define '{}'", name))
+        .expected("value form 'lambda' (function definition)")
+        .got(fmt::format("value form of type '{}'", value_form.class_name()))
+        .note("top-level 'define' of non-function values is not yet implemented");
 }
 
 } // namespace sootc
