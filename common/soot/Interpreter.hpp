@@ -178,11 +178,11 @@ class Interpreter {
 
     // Обработка ошибок
     [[noreturn]] void throw_eval_error(const Object &o, const std::string &err);
-    void throw_arity_mismatch(const Object &form, const Arguments &args, uint expected_min,
-                              uint expected_max, size_t got);
-    void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+    void throw_arity_mismatch(const Object &form, const Arguments &args, u32 expected_min,
+                              u32 expected_max, size_t got);
+    void throw_type_mismatch(const Object &form, const Arguments &args, u32 index,
                              const std::vector<ObjectType> &expected, ObjectType got);
-    void throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+    void              throw_type_mismatch(const Object &form, const Arguments &args, u32 index,
                              std::initializer_list<const char *> expected, std::string got);
     void throw_missing_named_arg(const Object &form, const Arguments &args,
                                  const std::string &name);

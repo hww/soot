@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <file/SizeAssertions.hpp>
 
 struct CommandLineOptions {
     std::vector<std::string> input_files;
@@ -205,6 +206,7 @@ int main(int argc, char* argv[]) {
         if (opts.help) { print_help(argv[0]); return 0; }
         if (opts.version) { fmt::print("SOOT Compiler v1.0\n"); return 0; }
         
+
         // Настройка логирования
         lg::set_file_level(lg::level::info);
         lg::set_stdout_level(lg::level::info);

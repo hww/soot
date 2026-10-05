@@ -2,6 +2,9 @@
 #pragma once
 
 #include "Node.hpp"
+#include <file/ProgramBinaryElement.hpp>
+
+using namespace carbon;
 
 namespace sootc {
 

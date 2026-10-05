@@ -483,8 +483,8 @@ void Interpreter::throw_eval_error(const Object &o, const std::string &err) {
     throw EvalException(o, err);
 }
 
-void Interpreter::throw_arity_mismatch(const Object &form, const Arguments &args, uint expected_min,
-                                       uint expected_max, size_t got) {
+void Interpreter::throw_arity_mismatch(const Object &form, const Arguments &args, u32 expected_min,
+                                       u32 expected_max, size_t got) {
     if (expected_min == expected_max) {
         throw_eval_error(form,
                          fmt::format("arity mismatch: expected {} arguments, but got {} in: {}",
@@ -496,7 +496,7 @@ void Interpreter::throw_arity_mismatch(const Object &form, const Arguments &args
     }
 }
 
-void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, u32 index,
                                       const std::vector<ObjectType> &expected, ObjectType got) {
     std::string expected_str;
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -507,7 +507,7 @@ void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args,
                           index, expected_str, object_type_to_string(got), args.print_full()));
 }
 
-void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, uint index,
+void Interpreter::throw_type_mismatch(const Object &form, const Arguments &args, u32 index,
                                       std::initializer_list<const char *> expected,
                                       std::string                         got) {
     std::string expected_str;

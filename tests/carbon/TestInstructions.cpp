@@ -50,7 +50,7 @@ TEST(Instructions, InstructionTable) {
     
     // Проверяем количество операндов
     // (метод зависит от вашей реализации)
-    EXPECT_EQ(info->oprands_count(), 2);
+    EXPECT_EQ(info->operands_count(), 2);
 }
 
 TEST(Instructions, StringConversion) {

@@ -1,212 +1,90 @@
 ﻿#pragma once
 
 #include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringIdManager.hpp"
 #include "common/carbon/lib/StringId.hpp"
+#include "common/carbon/lib/StringIdManager.hpp"
 #include "common/soot/Reader.hpp"
 #include "util/FileUtil.hpp"
-#include <fstream> 
 
-using namespace carbon;
+#include <fstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace carbon {
 
+    /// @brief Parsed representation of a .dci module descriptor.
+    /// @details A .dci file is a S-expression that lists the module's logical path,
+    ///          binary size, imports, and exports:
+    ///            ((math/random (324386)
+    ///              (import ...)
+    ///              (export ...)))
+    ///          The binary_size field is informational; the actual bytecode lives
+    ///          in the sibling .dc file.
     struct DCIFile {
-        std::string logical_path;       // "math/random" - ПОЛНЫЙ логический путь
-        std::string module_name;        // "random" - только имя модуля
-        u32 binary_size;
-        std::vector<StringId> imports;  // логические пути импортов
-        std::vector<StringId> exports;  // имена экспортируемых функций
+        std::string           logical_path; ///< full logical path, e.g. "math/random"
+        std::string           module_name;  ///< last path segment, e.g. "random"
+        u32                   binary_size;  ///< reported size of the sibling .dc file
+        std::vector<StringId> imports;      ///< logical paths this module depends on
+        std::vector<StringId> exports;      ///< function names this module exports
 
+        /// @return true if the descriptor has the mandatory fields set.
         bool is_valid() const {
             return !logical_path.empty() && !module_name.empty() && binary_size > 0;
         }
 
-        // Извлекаем имя модуля из логического пути
-        static std::string extract_module_name(const std::string& logical_path) {
-            size_t last_slash = logical_path.find_last_of('/');
-            if (last_slash != std::string::npos) {
-                return logical_path.substr(last_slash + 1);
-            }
-            return logical_path; // если нет слэша, то весь путь это имя
+        /// @brief Extract the module name from a logical path (last '/' segment).
+        static std::string extract_module_name(const std::string &logical_path) {
+            const size_t last_slash = logical_path.find_last_of('/');
+            return last_slash != std::string::npos ? logical_path.substr(last_slash + 1)
+                                                   : logical_path;
         }
 
-        static DCIFile parse(const std::string& filename) {
+        /// @brief Parse a .dci file from disk.
+        static DCIFile parse(const std::string &filename) {
             soot::Reader reader;
-
-            // Парсим без top-level обёртки
-            auto obj = reader.read_from_file({ filename }, true, false);
-
+            auto         obj = reader.read_from_file({filename}, true, false);
             return parse_from_object(obj);
         }
 
-        // common/carbon/files/DciFile.cpp - добавить:
-        bool save(const std::string& filename) const {
+        /// @brief Serialise this descriptor and write it to disk (UTF-8 with BOM).
+        /// @return true on success.
+        bool save(const std::string &filename) const {
             file_util::create_dirs_for_file(filename);
             std::ofstream file(filename);
-            if (!file) return false;
+            if (!file) { return false; }
             fmt::print("DciFile save {}\n", filename);
-            // UTF-8 BOM
-            file << "\xEF\xBB\xBF";
+            file << "\xEF\xBB\xBF"; // UTF-8 BOM
             file << to_string();
             return true;
         }
 
+        /// @brief Serialise this descriptor to an S-expression string.
         std::string to_string() const {
             std::string result;
             result += "(" + logical_path + " (" + std::to_string(binary_size) + ")\n";
+
             result += "  (import";
-            for (auto imp : imports) {
-                result += " " + imp.to_string();
-            }
+            for (const auto &imp : imports) { result += " " + imp.to_string(); }
             result += ")\n";
+
             result += "  (export";
-            for (auto exp : exports) {
-                result += " " + exp.to_string();
-            }
+            for (const auto &exp : exports) { result += " " + exp.to_string(); }
             result += ")\n";
+
             result += "  (strings";
-            for (auto exp : StringIdManager::instance()) {
-                result += " " + exp.second;
-            }
+            for (const auto &[id, str] : StringIdManager::instance()) { result += " " + str; }
             result += ")\n";
+
             result += ")\n";
             return result;
         }
 
     private:
-        static DCIFile parse_from_object(const soot::Object& obj) {
-            DCIFile result;
-
-            // obj должен быть списком: ((math/random (324386) ...))
-            if (!obj.is_pair()) {
-                throw std::runtime_error("DCI file should contain a single non-empty list");
-            }
-
-            // Получаем внутренний список: (math/random (324386) ...)
-            auto iterator = obj.as_pair()->car;
-
-            if (!iterator.is_pair()) {
-                throw std::runtime_error("Expected non-empty module definition list");
-            }
-
-            // 1. Logical path: math/random
-            auto logical_path_obj = iterator.as_pair()->car;
-            if (!logical_path_obj.is_symbol()) {
-                throw std::runtime_error("Expected symbol for module logical path");
-            }
-
-            result.logical_path = logical_path_obj.as_symbol().c_str();
-            result.module_name = extract_module_name(result.logical_path);
-
-            iterator = iterator.as_pair()->cdr;
-
-            // 2. Binary size: (324386)
-            if (!iterator.is_pair()) {
-                throw std::runtime_error("Expected binary size list");
-            }
-
-            auto size_list_obj = iterator.as_pair()->car;
-            result.binary_size = parse_binary_size(size_list_obj);
-
-            iterator = iterator.as_pair()->cdr;
-
-            // 3. Process remaining elements (import/export)
-            while (iterator.is_pair()) {
-                auto element = iterator.as_pair()->car;
-                parse_import_export(element, result);
-                iterator = iterator.as_pair()->cdr;
-            }
-
-            // Проверяем правильное завершение
-            if (!iterator.is_null()) {
-                throw std::runtime_error("Malformed DCI file - improper list termination");
-            }
-
-            return result;
-        }
-
-        static u32 parse_binary_size(const soot::Object& obj) {
-            // Ожидаем: (324386) - список с одним integer
-            if (!obj.is_pair()) {
-                throw std::runtime_error("Expected list for binary size");
-            }
-
-            auto size_list = obj;
-            auto first_element = size_list.as_pair()->car;
-
-            // Проверяем что это число
-            if (!first_element.is_integer()) {
-                throw std::runtime_error("Binary size should be an integer");
-            }
-
-            // Проверяем что список содержит только один элемент
-            auto rest = size_list.as_pair()->cdr;
-            if (!rest.is_null()) {
-                throw std::runtime_error("Binary size list should contain exactly one integer");
-            }
-
-            return static_cast<u32>(first_element.as_integer());
-        }
-
-        static void parse_import_export(const soot::Object& obj, DCIFile& result) {
-            if (!obj.is_pair()) {
-                throw std::runtime_error("Expected non-empty list for import/export");
-            }
-
-            auto list = obj;
-            auto keyword_obj = list.as_pair()->car;
-
-            if (!keyword_obj.is_symbol()) {
-                throw std::runtime_error("Expected symbol as import/export keyword");
-            }
-
-            auto keyword = StringId(keyword_obj.as_symbol().c_str());
-            list = list.as_pair()->cdr;
-
-            if (keyword == StringId("import")) {
-                while (list.is_pair()) {
-                    auto import_name_obj = list.as_pair()->car;
-                    if (!import_name_obj.is_symbol()) {
-                        throw std::runtime_error("Expected symbol in import list");
-                    }
-                    // Импорты - это логические пути других модулей
-                    result.imports.push_back(StringId(import_name_obj.as_symbol().c_str()));
-                    list = list.as_pair()->cdr;
-                }
-            }
-            else if (keyword == StringId("export")) {
-                while (list.is_pair()) {
-                    auto export_name_obj = list.as_pair()->car;
-                    if (!export_name_obj.is_symbol()) {
-                        throw std::runtime_error("Expected symbol in export list");
-                    }
-                    // Экспорты - это имена функций внутри модуля
-                    result.exports.push_back(StringId(export_name_obj.as_symbol().c_str()));
-                    list = list.as_pair()->cdr;
-                }
-            }
-            else if (keyword == StringId("strings")) {
-                while (list.is_pair()) {
-                    auto export_name_obj = list.as_pair()->car;
-                    if (!export_name_obj.is_symbol()) {
-                        throw std::runtime_error("Expected symbol in export list");
-                    }
-                    // Экспорты - это имена функций внутри модуля
-                    StringId(export_name_obj.as_symbol().c_str());
-                    list = list.as_pair()->cdr;
-                }
-            }
-            else {
-                throw std::runtime_error("Expected 'import' or 'export' keyword, got: " +
-                    std::string(keyword_obj.as_symbol().c_str()));
-            }
-
-            // Проверяем правильное завершение списка
-            if (!list.is_null()) {
-                throw std::runtime_error("Malformed import/export list");
-            }
-        }
+        /// @brief Convert a parsed soot::Object tree into a DCIFile.
+        static DCIFile parse_from_object(const soot::Object &obj);
+        static u32     parse_binary_size(const soot::Object &obj);
+        static void    parse_import_export(const soot::Object &obj, DCIFile &result);
     };
 
-} // namespace vm
+} // namespace carbon

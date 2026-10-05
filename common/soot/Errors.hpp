@@ -20,7 +20,7 @@ class EvalException : public std::exception {
     std::string                        message; // Первичное сообщение ("Not a pair")
     std::shared_ptr<EnvironmentObject> env;
     bool                               already_printed = false;
-    uint                               stack_counter;
+    u32                                stack_counter;
     // Цепочка контекстов (от глубокого к верхнему)
     std::vector<ErrorFrame> trace;
 

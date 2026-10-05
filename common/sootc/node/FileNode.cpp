@@ -120,9 +120,8 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     // ========================================
     // 1. ЗАГОЛОВОК
     // ========================================
-    DC_Header header{
-        DC_MAGIC,
-        DC_VERSION,
+    DC_Header header{DC_FILE_MAGIC,
+                     DC_FILE_VERSION,
         static_cast<uint32_t>(data_size + stringtable_size),
         static_cast<uint32_t>(data_size),
         0x1,

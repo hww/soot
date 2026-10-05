@@ -4,124 +4,122 @@
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringIdManager.hpp"
 
+#include <cstdint>
+#include <functional>
+#include <string>
+
 namespace carbon {
 
-class StringId {
-public:
-    sid64 value;
+    /// @brief Lightweight wrapper around a SID64 value with automatic registration.
+    /// @details Constructing from a string registers it in the global StringIdManager
+    ///          so that the string can be recovered later (for disassembly, logging,
+    ///          and debug output). Constructing from an integer does NOT register.
+    class StringId {
+    public:
+        sid64 value; ///< raw SID64
 
-    constexpr StringId() : value(0) {}
-    constexpr StringId(u64 val) : value(val) {}
-    constexpr StringId(i64 val) : value(static_cast<u64>(val)) {}
-    constexpr StringId(u32 val) : value(val) {}
-    constexpr StringId(i32 val) : value(static_cast<u64>(val)) {}
+        constexpr StringId() : value(0) {}
+        constexpr StringId(u64 val) : value(val) {}
+        constexpr StringId(i64 val) : value(static_cast<u64>(val)) {}
+        constexpr StringId(u32 val) : value(val) {}
+        constexpr StringId(i32 val) : value(static_cast<u64>(val)) {}
 
-    StringId(const char* str) : value(StringIdManager::instance().register_string(str)) {}
-    StringId(const std::string& str) : value(StringIdManager::instance().register_string(str)) {}
+        StringId(const char *str) : value(StringIdManager::instance().register_string(str)) {}
+        StringId(const std::string &str)
+            : value(StringIdManager::instance().register_string(str)) {}
 
-    constexpr operator u64() const { return value; }
-    constexpr bool operator==(const StringId& other) const { return value == other.value; }
-    constexpr bool operator!=(const StringId& other) const { return value != other.value; }
+        constexpr operator u64() const { return value; }
 
-    std::string to_string() const { return StringIdManager::instance().get_string(value); }
-    const char* to_cstring() const { return StringIdManager::instance().get_cstring(value); }
+        constexpr bool operator==(const StringId &other) const { return value == other.value; }
+        constexpr bool operator!=(const StringId &other) const { return value != other.value; }
 
-    const char* debug_str() const;
+        /// @return the registered string for this SID, or "<unknown:0x...>" if not registered.
+        std::string to_string() const { return StringIdManager::instance().get_string(value); }
 
-    static const StringId None;
-    static const StringId Null;
-};
+        /// @return a thread-local C-string for this SID.
+        const char *to_cstring() const { return StringIdManager::instance().get_cstring(value); }
 
+        /// @return a short debug representation (used by logging).
+        const char *debug_str() const;
 
- struct StringIds {
-    inline static const StringId none      = StringId("none");
-    inline static const StringId unknown   = StringId("unknown");
-    inline static const StringId unnamed   = StringId("unnamed");
-    inline static const StringId enter     = StringId("enter");
-    inline static const StringId exit      = StringId("exit");
-    inline static const StringId trans     = StringId("trans");
-    inline static const StringId event     = StringId("event");
-    inline static const StringId post      = StringId("post");
-    inline static const StringId code      = StringId("code");
-    inline static const StringId script_lambda      = StringId("script-lambda");
+        static const StringId None;
+        static const StringId Null;
+    };
 
- };
-
+    /// @brief Pre-registered StringId constants used across the codebase.
+    struct StringIds {
+        inline static const StringId none = StringId("none");
+        inline static const StringId unknown = StringId("unknown");
+        inline static const StringId unnamed = StringId("unnamed");
+        inline static const StringId enter = StringId("enter");
+        inline static const StringId exit = StringId("exit");
+        inline static const StringId trans = StringId("trans");
+        inline static const StringId event = StringId("event");
+        inline static const StringId post = StringId("post");
+        inline static const StringId code = StringId("code");
+        inline static const StringId script_lambda = StringId("script-lambda");
+    };
 
 } // namespace carbon
 
 
-/**
- * Main macro for creating StringId from string literals
- * Used in code, generator tool finds these calls
- * Example: SID("player") -> CRC32 of "player"
- */
+// ===========================================================================
+// SID() macros
+// ===========================================================================
+
 #include "common/util/StringIdHash.hpp"
 
+/// @brief Build a StringId from a string literal without runtime registration.
+/// @details The hash is computed at compile time; the resulting StringId is
+///          NOT registered in StringIdManager. Use only for comparison against
+///          constants that are registered elsewhere.
 #define SID(str)   (::carbon::StringId(static_cast<::sid64>(util::ToStringId64_Const(str))))
 #define SID32(str) (::carbon::StringId(static_cast<::sid64>(util::ToStringId32_Const(str))))
 
-// 3. РАСШИРЕНИЕ СТАНДАРТНОЙ БИБЛИОТЕКИ
-#include <functional> // Обязательно для std::hash
+
+// ===========================================================================
+// std::hash specialization
+// ===========================================================================
 
 namespace std {
-    template <>
-    struct hash<carbon::StringId> {
-        size_t operator()(const carbon::StringId& sid) const noexcept {
-            // Используем u64, чтобы не терять биты хеша
+    template <> struct hash<carbon::StringId> {
+        size_t operator()(const carbon::StringId &sid) const noexcept {
             return std::hash<uint64_t>{}(sid.value);
         }
     };
-}
+} // namespace std
 
-// 4. РАСШИРЕНИЕ FMT
-// Make string ID supportable by formatter
+
+// ===========================================================================
+// fmt::formatter specialization
+// ===========================================================================
+
 #include "fmt/format.h"
 
-template <>
-struct fmt::formatter<carbon::StringId> {
-    // Парсим формат (например, {:x} для hex или {:s} для строки)
-    // По умолчанию будем выводить строку, если она есть
-    constexpr auto parse(format_parse_context& ctx) {
-        return ctx.begin();
-    }
+template <> struct fmt::formatter<carbon::StringId> {
+    constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
 
     template <typename FormatContext>
-    auto format(const carbon::StringId& sid, FormatContext& ctx) const {
-        // Пытаемся получить имя из глобальной таблицы
-        const char* name = sid.to_cstring();
-        
-        if (std::string(name) == "<unknown>") {
-            // Если имени нет, выводим HEX-значение для дебага
-            return fmt::format_to(ctx.out(), "ID(0x{:08X})", (u32)sid);
-        }
-        
-        // Если имя есть, выводим его
+    auto format(const carbon::StringId &sid, FormatContext &ctx) const {
+        const std::string name = sid.to_string();
         return fmt::format_to(ctx.out(), "{}", name);
     }
 };
 
-// 4. РАСШИРЕНИЕ FORMAT
-#include <format> // Для std::formatter
+
+// ===========================================================================
+// std::formatter specialization
+// ===========================================================================
+
+#include <format>
 
 namespace std {
-    template <>
-    struct formatter<carbon::StringId> {
-        // Парсим формат
-        constexpr auto parse(format_parse_context& ctx) {
-            return ctx.begin();
-        }
+    template <> struct formatter<carbon::StringId> {
+        constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
 
-        // Форматируем
-        auto format(const carbon::StringId& sid, format_context& ctx) const {
-            const char* name = sid.to_cstring();
-            
-            if (std::string(name) == "<unknown>") {
-                // Выводим HEX, если строка не зарегистрирована
-                return std::format_to(ctx.out(), "ID(0x{:08x})", static_cast<u32>(sid));
-            }
-            
+        auto format(const carbon::StringId &sid, format_context &ctx) const {
+            const std::string name = sid.to_string();
             return std::format_to(ctx.out(), "{}", name);
         }
     };
-}
+} // namespace std

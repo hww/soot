@@ -20,6 +20,7 @@
 #include "type_system/TypeSystem.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/compiler/CompilerError.hpp"
+#include <file/SizeAssertions.hpp>
 
 namespace sootc {
 
@@ -363,6 +364,11 @@ ReplStatus Compiler::handle_repl_command(const std::string &input) {
 
     if (input == ":clear") {
         m_repl->clear_screen();
+        return ReplStatus::OK;
+    }
+
+    if (input == ":sizes") { 
+        carbon::print_all_struct_sizes();
         return ReplStatus::OK;
     }
 

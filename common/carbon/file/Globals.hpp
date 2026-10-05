@@ -1,182 +1,162 @@
-// Globals.hpp
 #pragma once
-#include <stdexcept>
-#include <unordered_map>
-#include <string>
-#include <expected>
-#include <vector>
-#include <iostream>
-#include <filesystem>
 
 #include "common/carbon/lib/StringId.hpp"
 #include "file/BinaryFile.hpp"
 #include "file/DCHeader.hpp"
-#include "file/BinaryFile.hpp"
+
 #include "fmt/format.h"
+
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace carbon {
 
-struct Symbol {
-    void* ptr = nullptr;       // Указатель на данные/функцию в памяти
-    StringId typeId;           // Тип (для проверки рантаймом)
-    StringId ownerModulePath;  // Путь модуля, который владеет этим символом
-};
+    /// @brief One exported symbol registered in the global symbol table.
+    /// @details Created by Globals::register_symbols_from_file for each DCEntry
+    ///          whose m_nameID is non-zero. The pointer points into the owning
+    ///          BinaryFile's mapped bytes and is invalidated on unload.
+    struct Symbol {
+        void    *ptr = nullptr;   ///< pointer to the symbol payload inside the owning module
+        StringId typeId;          ///< SID of the symbol type (validated at call sites)
+        StringId ownerModulePath; ///< module that owns this symbol; used for unload cleanup
+    };
 
-class Globals {
-public:
-    // Синглтон для доступа из любой точки движка
-    static Globals& inst() {
-        static Globals instance;
-        return instance;
-    }
-
-    // Запрещаем копирование
-    Globals(const Globals&) = delete;
-    Globals& operator=(const Globals&) = delete;
-
-    // ========================================================================
-    // Inspection
-    // ========================================================================
-
-    std::vector<StringId> all_symbols() const {
-        std::vector<StringId> result;
-        for (auto &[k, v] : m_symbols) result.push_back(k);
-        return result;
-    }
-
-    // ========================================================================
-    // load_module: загрузка из файла
-    // ========================================================================
-    bool     load_module(const std::filesystem::path &path) {
-        const StringId module_path_id(path.string());
-
-        if (m_modules.contains(module_path_id)) { return true; }
-
-        auto result = BinaryFile::from_path(path);
-        if (!result.has_value()) {
-            std::cerr << "[Globals] load_module: failed to read '" << path.string()
-                      << "': " << result.error() << "\n";
-            return false;
+    /// @brief Process-wide symbol registry and module cache.
+    /// @details Owns every loaded BinaryFile and exposes a flat name -> Symbol map
+    ///          for O(1) lookup. Thread-safety: none; callers must synchronise.
+    class Globals {
+    public:
+        /// @return the process-wide singleton instance.
+        static Globals &inst() {
+            static Globals instance;
+            return instance;
         }
 
-        BinaryFile &file = m_modules.emplace(module_path_id, std::move(*result)).first->second;
+        Globals(const Globals &) = delete;
+        Globals &operator=(const Globals &) = delete;
 
-        return register_symbols_from_file(file, module_path_id);
-    }
-
-    // ========================================================================
-    // load_module: загрузка из готового BinaryFile (без диска)
-    // ========================================================================
-    bool load_module(carbon::BinaryFile &&file) {
-        // Синтетическое имя модуля: "module_0", "module_1", ...
-        const std::string module_name = fmt::format("module_{}", m_modules.size());
-        const StringId    module_path_id(module_name);
-
-        // Регистрируем символы ДО перемещения file,
-        // чтобы entry.m_entryPtr (указатели внутрь file.m_bytes) были валидны.
-        if (!register_symbols_from_file(file, module_path_id)) { return false; }
-
-        m_modules.emplace(module_path_id, std::move(file));
-        return true;
-    }
-
-    /**
-     * @brief Выгрузка модуля и очистка его символов
-     */
-    void unload_module(const std::string& path) {
-        StringId modulePathId(path);
-        if (!m_modules.contains(modulePathId)) return;
-
-        // 1. Удаляем все символы, принадлежащие этому модулю
-        // std::erase_if доступен в C++20 и выше
-        std::erase_if(m_symbols, [modulePathId](const auto& item) {
-            return item.second.ownerModulePath == modulePathId;
-        });
-
-        // 2. Удаляем сам объект BinaryFile (сработает деструктор и unique_ptr очистит память)
-        m_modules.erase(modulePathId);
-        
-        std::cout << "[Globals] Module " << path << " unloaded." << std::endl;
-    }
-
-    /**
-     * @brief Самый быстрый поиск символа (Runtime Hot Path)
-     * @return Указатель на данные или nullptr
-     */
-    [[nodiscard]] inline void* find_symbol_ptr(StringId name) const noexcept {
-        auto it = m_symbols.find(name);
-        if (it != m_symbols.end()) {
-            return it->second.ptr;
-        }
-        return nullptr;
-    }
-
-    /**
-     * @brief Поиск символа с проверкой типа
-     */
-    template<typename T>
-    [[nodiscard]] T* get_as(StringId name, StringId expectedType) const noexcept {
-        auto it = m_symbols.find(name);
-        if (it != m_symbols.end() && it->second.typeId == expectedType) {
-            return static_cast<T*>(it->second.ptr);
-        }
-        return nullptr;
-    }
-
-    void clear_all() {
-        m_symbols.clear();
-        m_modules.clear(); // Полная очистка памяти всех модулей
-    }
-
-
-    // Возвращает дефиницию определенного типа
-    void* lookup(StringId name, StringId type_id, bool throw_error = false) {
-        auto it = m_symbols.find(name);
-        if (it != m_symbols.end()) {
-                if (it->second.typeId == type_id) 
-                    return  it->second.ptr;
-            if (throw_error)
-                throw std::runtime_error(fmt::format("Expected global {} with type {}, found {}",  
-                    name.to_cstring(), type_id.to_cstring(),  it->second.typeId.to_cstring()));
-        }
-        if (throw_error)
-            throw std::runtime_error(fmt::format("Undefined global {}", name.to_cstring()));
-        return nullptr;
-    }
-
-private:
-    bool register_symbols_from_file(const BinaryFile &file, const StringId &module_path_id) {
-        const DC_Header *header = file.m_dcheader;
-        if (header == nullptr) {
-            std::cerr << "[Globals] register_symbols: null header\n";
-            return false;
+        /// @return a snapshot of all currently registered symbol names.
+        std::vector<StringId> all_symbols() const {
+            std::vector<StringId> result;
+            result.reserve(m_symbols.size());
+            for (const auto &[k, v] : m_symbols) { result.push_back(k); }
+            return result;
         }
 
-        if (header->m_pStartOfData == nullptr) {
-            std::cerr << "[Globals] register_symbols: null m_pStartOfData\n";
-            return false;
+        /// @brief Load a DC module from disk and register its symbols.
+        /// @return true on success, false on I/O or parse failure.
+        bool load_module(const std::filesystem::path &path) {
+            const StringId module_path_id(path.string());
+            if (m_modules.contains(module_path_id)) { return true; }
+
+            auto result = BinaryFile::from_path(path);
+            if (!result.has_value()) {
+                std::cerr << "[Globals] load_module: failed to read '" << path.string()
+                          << "': " << result.error() << "\n";
+                return false;
+            }
+
+            BinaryFile &file = m_modules.emplace(module_path_id, std::move(*result)).first->second;
+            return register_symbols_from_file(file, module_path_id);
         }
 
-        for (u32 i = 0; i < header->m_numEntries; ++i) {
-            const DCEntry &entry = header->m_pStartOfData[i];
+        /// @brief Register a BinaryFile that was already loaded into memory.
+        /// @details The caller transfers ownership. Symbols are registered before
+        ///          the move so that entry pointers remain valid.
+        /// @return true on success, false if symbol registration failed.
+        bool load_module(BinaryFile &&file) {
+            const std::string module_name = fmt::format("module_{}", m_modules.size());
+            const StringId    module_path_id(module_name);
 
-            if (entry.m_nameID == 0) { continue; }
+            if (!register_symbols_from_file(file, module_path_id)) { return false; }
 
-            m_symbols[StringId(entry.m_nameID)] = Symbol{const_cast<void *>(entry.m_entryPtr),
-                                                         StringId(entry.m_typeId), module_path_id};
+            m_modules.emplace(module_path_id, std::move(file));
+            return true;
         }
 
-        return true;
-    }
+        /// @brief Remove a module and drop all symbols owned by it.
+        void unload_module(const std::string &path) {
+            const StringId module_path_id(path);
+            if (!m_modules.contains(module_path_id)) { return; }
 
-private:
-    Globals() = default;
+            std::erase_if(m_symbols, [module_path_id](const auto &item) {
+                return item.second.ownerModulePath == module_path_id;
+            });
 
-    // Плоская таблица для O(1) доступа
-    std::unordered_map<StringId, Symbol> m_symbols;
+            m_modules.erase(module_path_id);
+            std::cout << "[Globals] Module " << path << " unloaded." << std::endl;
+        }
 
-    // Контейнер модулей, владеющий их памятью (RAII)
-    std::unordered_map<StringId, BinaryFile> m_modules;
-};
+        /// @brief Fast-path lookup; returns nullptr if the symbol is missing.
+        [[nodiscard]] inline void *find_symbol_ptr(StringId name) const noexcept {
+            const auto it = m_symbols.find(name);
+            return it != m_symbols.end() ? it->second.ptr : nullptr;
+        }
+
+        /// @brief Look up a symbol and verify its type.
+        /// @return the pointer cast to T*, or nullptr if missing or wrong type.
+        template <typename T>
+        [[nodiscard]] T *get_as(StringId name, StringId expectedType) const noexcept {
+            const auto it = m_symbols.find(name);
+            if (it == m_symbols.end() || it->second.typeId != expectedType) { return nullptr; }
+            return static_cast<T *>(it->second.ptr);
+        }
+
+        /// @brief Drop all symbols and unload all modules.
+        void clear_all() {
+            m_symbols.clear();
+            m_modules.clear();
+        }
+
+        /// @brief Typed lookup with optional exception on failure.
+        /// @return the symbol pointer, or nullptr if not found / wrong type (when !throw_error).
+        void *lookup(StringId name, StringId type_id, bool throw_error = false) {
+            const auto it = m_symbols.find(name);
+            if (it != m_symbols.end()) {
+                if (it->second.typeId == type_id) { return it->second.ptr; }
+                if (throw_error) {
+                    throw std::runtime_error(
+                        fmt::format("Expected global {} with type {}, found {}", name.to_cstring(),
+                                    type_id.to_cstring(), it->second.typeId.to_cstring()));
+                }
+            }
+            if (throw_error) {
+                throw std::runtime_error(fmt::format("Undefined global {}", name.to_cstring()));
+            }
+            return nullptr;
+        }
+
+    private:
+        Globals() = default;
+
+        /// @brief Walk DCEntry[] in the given file and register every named entry.
+        /// @return true on success, false if the header or entry table is missing.
+        bool register_symbols_from_file(const BinaryFile &file, const StringId &module_path_id) {
+            const DC_Header *header = file.m_dcheader;
+            if (!header) {
+                std::cerr << "[Globals] register_symbols: null header\n";
+                return false;
+            }
+            if (!header->m_pStartOfData) {
+                std::cerr << "[Globals] register_symbols: null m_pStartOfData\n";
+                return false;
+            }
+
+            for (u32 i = 0; i < header->m_numEntries; ++i) {
+                const DCEntry &entry = header->m_pStartOfData[i];
+                if (entry.m_nameID == 0) { continue; }
+                m_symbols[StringId(entry.m_nameID)] = Symbol{
+                    const_cast<void *>(entry.m_entryPtr), StringId(entry.m_typeId), module_path_id};
+            }
+            return true;
+        }
+
+        std::unordered_map<StringId, Symbol>     m_symbols; ///< flat name -> symbol map
+        std::unordered_map<StringId, BinaryFile> m_modules; ///< owning module cache (RAII)
+    };
 
 } // namespace carbon

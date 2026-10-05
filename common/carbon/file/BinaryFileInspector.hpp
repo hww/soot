@@ -22,9 +22,6 @@ namespace carbon {
         int               m_indent;
         std::unique_ptr<IFormatter> m_formatter;
         
-        // Helper methods
-        void ident()   { m_formatter->inc_column(m_indent); }
-        void unident() { m_formatter->inc_column(-static_cast<int>(m_indent)); }
         
         std::string ptr_str(const void* ptr);
         std::string sid_str(sid64 id);
@@ -32,28 +29,27 @@ namespace carbon {
         
         // Disassembly helpers
         std::string reg_name(u8 reg);
-        std::string format_instruction(const Instruction& ins, const ScriptLambda* lambda);
-        std::string resolve_symbol(u16 index, const ScriptLambda* lambda);
-        std::string resolve_float(u16 index, const ScriptLambda* lambda);
-        std::string symbol_str(const symbol* sym);
+        std::string resolve_symbol(u16 index, const ScriptLambda *lambda);
+        std::string resolve_float(u16 index, const ScriptLambda *lambda);
         std::string static_str(StaticType type, u64 value);
+        std::string format_instruction(const Instruction &ins, const ScriptLambda *lambda);
 
         // Inspection methods
         void inspect_header();
-        void inspect_entry(const DCEntry* entry);
-        void inspect_relocations(u32 limit_lines = 0);
-        void inspect_state_script(const StateScript* ss);
+        void inspect_relocations(u32 limit_lines = 64);
+        void inspect_entry(const DCEntry *entry);
+        void inspect_state_script(const StateScript *ss);
         void inspect_declaration_list(const SsDeclarationList* list);
         void inspect_declaration(const SsDeclaration* decl);
         void inspect_options(const SsOptions* opts);
         void inspect_symbol_array(const SymbolArray* arr, const std::string& name);
-        void inspect_state(const SsState* state);
-        void inspect_on_block(const SsOnBlock* block);
-        void inspect_track_group(const SsTrackGroup* group);
-        void inspect_track(const SsTrack* track);
-        void inspect_lambda(const SsLambda* lambda);
-        void inspect_script_lambda(const ScriptLambda* lambda, const std::string& name = "");
-        void inspect_symbol(const symbol* sym, int idx);
+        void inspect_state(const SsState *state);
+        void inspect_on_block(const SsOnBlock *block);
+        void inspect_track_group(const SsTrackGroup *group);
+        void inspect_track(const SsTrack *track);
+        void inspect_lambda(const SsLambda *lambda);
+        void inspect_script_lambda(const ScriptLambda *lambda, const std::string &name = "");
+        void inspect_symbol(const symbol *sym);
         
         // Disassembly
         void disassemble(const ScriptLambda* lambda, const std::string& name);
