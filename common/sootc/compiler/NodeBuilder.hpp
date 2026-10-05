@@ -9,6 +9,8 @@
 #include "sootc/node/IfNode.hpp"
 #include "sootc/node/VariableNode.hpp"
 #include "sootc/node/WhileNode.hpp"
+#include "sootc/node/LetNode.hpp"
+#include "sootc/node/SetNode.hpp"
 #include "type_system/TypeSystem.hpp"
 #include <memory>
 
@@ -34,11 +36,14 @@ public:
     std::unique_ptr<VariableNode> build_variable(const soot::Object& form, Node* node);
     std::unique_ptr<ConstNode> build_const(const soot::Object& form, Node* node);
     std::unique_ptr<Node> build_define(const soot::Object& form, Node* context);
+    std::unique_ptr<LetNode> build_let(const soot::Object &form, Node *node);
+    std::unique_ptr<SetNode> build_set(const soot::Object &form, Node *node);
+
 
     // Вспомогательные методы
     Type* parse_type(const soot::Object& type_form, Node* node);
     std::vector<std::unique_ptr<ExpressionNode>> parse_args(const soot::Object& args_form, Node* node);
-    
+    std::unique_ptr<ExpressionNode> build_body_as_sequence(const soot::Object &body_forms, Node *node);
     TypeSystem& m_ts;
     Compiler* m_compiler;
 };

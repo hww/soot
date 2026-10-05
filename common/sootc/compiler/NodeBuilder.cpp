@@ -1,11 +1,13 @@
-#include "sootc/compiler/NodeBuilder.hpp"
 #include "fmt/format.h"
-#include "sootc/compiler/FunctionCompiler.hpp"
 #include "common/sootc/node/FileNode.hpp"      
 #include "common/sootc/node/FunctionNode.hpp"  
 #include "common/sootc/node/StoreGlobalNode.hpp" 
-#include "common/sootc/compiler/CompilerError.hpp"
 #include "common/sootc/node/FileNode.hpp"      
+#include "common/sootc/node/SequenceNode.hpp"      
+#include "common/sootc/compiler/NodeBuilder.hpp"
+#include "common/sootc/compiler/FunctionCompiler.hpp"
+#include "common/sootc/compiler/CompilerError.hpp"
+
 #include <stdexcept>
 
 namespace sootc {
@@ -64,6 +66,10 @@ std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
         return build_compare(form, node);
     }
     
+    if (keyword == "let") { return build_let(form, node); }
+
+    if (keyword == "set!") { return build_set(form, node); }
+
     // Обычный вызов функции
     return build_call(form, node);
 }
@@ -89,14 +95,99 @@ std::unique_ptr<IfNode> NodeBuilder::build_if(const soot::Object& form, Node* no
     );
 }
 
-std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object& form, Node* node) {
+std::unique_ptr<LetNode> NodeBuilder::build_let(const soot::Object &form, Node *node) {
+    // (let ((a 1) (b 2)) body...)
     auto rest = form.as_pair()->cdr;
+
+    if (!rest.is_pair()) { throw std::runtime_error("let: missing bindings list"); }
+
+    auto bindings_form = rest.as_pair()->car;
+    auto body_forms = rest.as_pair()->cdr;
+
+    if (!bindings_form.is_null() && !bindings_form.is_pair()) {
+        throw std::runtime_error("let: bindings must be a list or null");
+    }
+
+    auto let_node = std::make_unique<LetNode>();
+
+    // Парсим bindings
+    auto cur = bindings_form;
+    while (cur.is_pair()) {
+        auto binding = cur.as_pair()->car;
+        if (!binding.is_pair()) {
+            throw std::runtime_error("let: each binding must be (name value)");
+        }
+
+        auto name_obj = binding.as_pair()->car;
+        auto value_obj = binding.as_pair()->cdr;
+
+        if (!name_obj.is_symbol()) {
+            throw std::runtime_error("let: binding name must be a symbol");
+        }
+        if (!value_obj.is_pair()) { throw std::runtime_error("let: binding must have value"); }
+
+        std::string name = name_obj.as_symbol();
+        auto        value = build_expression(value_obj.as_pair()->car, node);
+
+        let_node->add_binding(name, std::move(value));
+        cur = cur.as_pair()->cdr;
+    }
+
+    // Парсим тело — SequenceNode, если форм несколько
+    auto body = build_body_as_sequence(body_forms, node);
+    if (!body) { throw std::runtime_error("let: missing body"); }
+    let_node->set_body(std::move(body));
+
+    return let_node;
+}
+
+std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
+    // (set! name value)
+    auto rest = form.as_pair()->cdr;
+
+    if (!rest.is_pair()) { throw std::runtime_error("set!: missing name"); }
+    auto name_obj = rest.as_pair()->car;
+    if (!name_obj.is_symbol()) { throw std::runtime_error("set!: name must be a symbol"); }
+
+    if (!rest.as_pair()->cdr.is_pair()) { throw std::runtime_error("set!: missing value"); }
+    auto value_obj = rest.as_pair()->cdr.as_pair()->car;
+
+    std::string name = name_obj.as_symbol();
+    auto        value = build_expression(value_obj, node);
+
+    return std::make_unique<SetNode>(name, std::move(value));
+}
+
+std::unique_ptr<ExpressionNode> NodeBuilder::build_body_as_sequence(const soot::Object &body_forms,
+                                                                    Node               *node) {
+    // Одна форма — вернуть её напрямую
+    if (body_forms.is_pair() && body_forms.as_pair()->cdr.is_null()) {
+        return build_expression(body_forms.as_pair()->car, node);
+    }
+
+    // Несколько форм — SequenceNode
+    auto seq = std::make_unique<SequenceNode>();
+    auto cur = body_forms;
+    while (cur.is_pair()) {
+        auto expr = build_expression(cur.as_pair()->car, node);
+        seq->add(std::move(expr));
+        cur = cur.as_pair()->cdr;
+    }
+    return seq;
+}
+
+std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object &form, Node *node) {
+    auto rest = form.as_pair()->cdr;
+    if (!rest.is_pair()) { throw std::runtime_error("while: missing condition"); }
+
     auto cond_form = rest.as_pair()->car;
-    auto body_form = rest.as_pair()->cdr.as_pair()->car;
-    
+    auto body_forms = rest.as_pair()->cdr; // ← ВСЁ тело, а не только первая форма
+
+    if (!body_forms.is_pair()) { throw std::runtime_error("while: missing body"); }
+
     auto cond = build_expression(cond_form, node);
-    auto body = build_expression(body_form, node);
-    
+    auto body = build_body_as_sequence(body_forms, node); // ← SequenceNode для всех форм
+
     return std::make_unique<WhileNode>(std::move(cond), std::move(body));
 }
 
@@ -150,23 +241,13 @@ std::unique_ptr<CallNode> NodeBuilder::build_call(const soot::Object& form, Node
     return call;
 }
 
-std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object& form, Node* context) {
+std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object &form, Node *node) {
+    (void)node; // контекст не нужен — VariableNode сам разрешит при emit
+
+    if (!form.is_symbol()) { throw std::runtime_error("build_variable: form is not a symbol"); }
+
     std::string name = form.as_symbol();
-    
-    Node* current = context;
-    while (current) {
-        if (auto* fn = dynamic_cast<FunctionNode*>(current)) {
-            if (auto* info = fn->lookup_variable(name)) {
-                // Создаем VariableNode с фиксированным регистром
-                return std::make_unique<VariableNode>(name, info->type(), info->reg());
-            }
-        }
-        current = current->parent();
-    }
-    
-    // Глобальная переменная - регистр будет выделен при использовании
-    // TODO: поддержка глобальных переменных
-    throw std::runtime_error(fmt::format("Undefined symbol {}",form.to_std_string()));
+    return std::make_unique<VariableNode>(name, /* type */ nullptr);
 }
 
 std::unique_ptr<ConstNode> NodeBuilder::build_const(const soot::Object& form, Node* node) {

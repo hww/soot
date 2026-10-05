@@ -27,6 +27,8 @@ enum class NodeType {
     FunctionNode,
     GlobalNode,
     IfNode,
+    LetNode, 
+    SetNode, 
     ReturnNode,
     VariableInfo,
     VariableNode,
@@ -48,6 +50,8 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::FunctionNode:   return "FunctionNode";
         case NodeType::GlobalNode:     return "GlobalNode";
         case NodeType::IfNode:         return "IfNode";
+        case NodeType::LetNode:        return "LetNode";
+        case NodeType::SetNode:        return "SetNode";
         case NodeType::ReturnNode:     return "ReturnNode";
         case NodeType::VariableInfo:   return "VariableInfo";
         case NodeType::VariableNode:   return "VariableNode";

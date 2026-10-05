@@ -78,8 +78,14 @@ void FunctionNode::set_temp_reg(const Node* node, u8 reg) {
     m_temp_regs[node] = reg;
 }
 
-u8 FunctionNode::get_temp_reg(const Node* node) const {
-    return m_temp_regs.at(node);
+u8 FunctionNode::get_temp_reg(const Node *node) const {
+    auto it = m_temp_regs.find(node);
+    if (it == m_temp_regs.end()) {
+        throw std::runtime_error(fmt::format("get_temp_reg: node '{}' ({}) has no temp reg",
+                                             node ? node->to_string() : "nullptr",
+                                             node ? node->node_type() : "nullptr"));
+    }
+    return it->second;
 }
 
 // ========================================================================
@@ -139,18 +145,31 @@ std::string FunctionNode::create_unique_label(const std::string& prefix) {
     return prefix + "_" + std::to_string(m_label_counter++); 
 }
 
-void FunctionNode::add_branch_reference(const std::string& label) {
-    m_unresolved_branches.emplace_back(label, static_cast<u32>(m_instructions.size()));
-    add_instruction(Opcode::Branch, 0, 0, 0);
+void FunctionNode::add_branch_reference(const std::string &label) {
+    // Патчим ПОСЛЕДНЮЮ инструкцию (Branch/BranchIf/BranchIfNot).
+    if (m_instructions.empty()) {
+        throw std::runtime_error("add_branch_reference: no instruction to patch");
+    }
+    u32 pos = static_cast<u32>(m_instructions.size()) - 1;
+    m_unresolved_branches.emplace_back(label, pos);
 }
 
 void FunctionNode::resolve_branches() {
-    for (auto& [label, pos] : m_unresolved_branches) {
+    for (auto &[label, pos] : m_unresolved_branches) {
         auto it = m_labels.find(label);
-        if (it != m_labels.end()) {
-            i32 offset = static_cast<i32>(it->second) - static_cast<i32>(pos);
-            m_instructions[pos].imm16 = static_cast<i16>(offset);
+        if (it == m_labels.end()) {
+            // Метка не найдена — оставляем как есть (или throw)
+            continue;
         }
+
+        // По соглашению DC: Branch/BranchIf/BranchIfNot хранят
+        // АБСОЛЮТНЫЙ индекс инструкции-цели внутри текущей функции,
+        // а НЕ относительное смещение.
+        u32 target = it->second;
+
+        // imm16 — это union-поле, занимающее байты b (младший) и c (старший).
+        // VM читает instr.imm16 и делает pc = imm16.
+        m_instructions[pos].imm16 = static_cast<i16>(target);
     }
     m_unresolved_branches.clear();
 }

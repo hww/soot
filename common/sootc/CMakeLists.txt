@@ -5,24 +5,12 @@ add_library(libsootc
     common/sootc/node/Node.cpp
     common/sootc/node/FunctionNode.cpp
     common/sootc/node/FileNode.cpp
+    common/sootc/node/LetNode.cpp
 
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
     common/sootc/compiler/FunctionCompiler.cpp
     common/sootc/compiler/FileCompiler.cpp
-    #common/sootc/Main.cpp
-    #common/sootc/Compiler/Compiler.cpp
-    #common/sootc/Env/Env.cpp
-    #common/sootc/Env/GlobalEnv.cpp
-    #common/sootc/Env/FileEnv.cpp
-    #common/sootc/Env/FunctionEnv.cpp
-    #common/sootc/Env/TypeEnv.cpp
-
-    #common/sootc/IR/IR_Value.cpp
-    #common/sootc/IR/IR_FunctionValue.cpp
-    #common/sootc/IR/IR_Expression.cpp    
-
-    #common/sootc/IR/StaticObject.cpp
 )
 
 # Пути для include

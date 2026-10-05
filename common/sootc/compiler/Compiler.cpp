@@ -389,18 +389,18 @@ ReplStatus Compiler::handle_repl_command(const std::string &input) {
     return ReplStatus::OK;
 }
 
-ReplStatus Compiler::handle_repl_string(const std::string &input) {
+ReplStatus Compiler::handle_repl_string(const std::string& input) {
     if (input.empty()) return ReplStatus::OK;
 
-    // REPL-команды (:exit, :load, ...)
-    if (input[0] == ':') { return handle_repl_command(input); }
+    if (input[0] == ':') return handle_repl_command(input);
 
     switch (m_config.mode) {
-    case CompilerMode::INTERPRET_ONLY: return interpret_and_print(input);
-
-    case CompilerMode::COMPILE_ONLY:
-    case CompilerMode::HYBRID:
-    default: return compile_and_report(input);
+        case CompilerMode::INTERPRET_ONLY:
+            return interpret_and_print(input);
+        case CompilerMode::COMPILE_ONLY:
+        case CompilerMode::HYBRID:
+        default:
+            return compile_and_report(input);
     }
 }
 
@@ -430,13 +430,33 @@ std::string Compiler::get_prompt() {
 }
 
 std::string Compiler::get_repl_input() {
-  auto str = m_repl->readline(get_prompt());
-  if (str) {
-    m_repl->add_to_history(str);
-    return str;
-  } else {
-    return "";
-  }
+    std::string result;
+    bool        first_line = true;
+
+    while (true) {
+        const char *input;
+        if (first_line) {
+            input = m_repl->readline(get_prompt()); // "sci> "
+            first_line = false;
+        } else {
+            input = m_repl->readline("      "); // 6 пробелов
+        }
+
+        if (!input) return "";
+
+        std::string line(input);
+
+        if (!result.empty()) { result += "\n"; }
+        result += line;
+
+        // Проверяем завершённость
+        if (m_soot.get_reader().is_expression_complete(result)) {
+            m_repl->add_to_history(result);
+            return result;
+        }
+
+        // Пустая строка + незавершено = продолжаем
+    }
 }
 
 // Вспомогательные методы

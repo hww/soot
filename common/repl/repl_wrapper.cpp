@@ -217,7 +217,7 @@ void Wrapper::init_settings() {
   // - https://github.com/ClickHouse/ClickHouse/blob/master/base/base/ReplxxLineReader.cpp#L366
   repl.set_word_break_characters(" \t");
   repl.set_complete_on_empty(false);
-  repl.set_indent_multiline(false);
+  repl.set_indent_multiline(true);
   repl.enable_bracketed_paste();
   // Setup default keybinds
   for (const auto& bind : repl_config.keybinds) {
