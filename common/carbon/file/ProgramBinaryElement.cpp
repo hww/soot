@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <util/Log.hpp>
 
 namespace carbon {
 
@@ -30,17 +31,17 @@ namespace carbon {
 
         // One relocation bit per 8-byte slot, rounded up.
         const size_t num_slots = (size + 7) / 8;
-        for (size_t i = 0; i < num_slots; ++i) { insert_into_reloctable(relocation_bit, 8); }
+        for (size_t i = 0; i < num_slots; ++i) { insert_into_reloctable(relocation_bit, 1); }
 
         check_size();
     }
 
     void ProgramBinaryElement::check_size() const {
-        const size_t data_slots = m_rawData.size() / 8;
+        const size_t data_slots = (m_rawData.size() + 7) / 8;
         const size_t reloc_slots = m_relocTable.size();
         if (data_slots != reloc_slots) {
             throw std::runtime_error(
-                fmt::format("ProgramBinaryElement: raw_data {} slots != reloc table {} slots",
+                fmt::format("ProgramBinaryElement: raw_data has {} slots, reloc table has {} bits",
                             data_slots, reloc_slots));
         }
     }

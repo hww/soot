@@ -150,6 +150,13 @@ include(common/soot/CMakeLists.txt)
 include(common/type_system/CMakeLists.txt)
 include(common/carbon/CMakeLists.txt)
 include(common/sootc/CMakeLists.txt)
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+include(tools/sidbase/CMakeLists.txt)
+include(tools/dcinspect/CMakeLists.txt)
+include(tools/dcsize/CMakeLists.txt)
+
 
 set_target_properties(sootc PROPERTIES
     VS_DEBUGGER_COMMAND_ARGUMENTS   "--script test.sot"

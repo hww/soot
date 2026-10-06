@@ -21,6 +21,9 @@
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include <file/SizeAssertions.hpp>
+#include <sootc/node/EnumDeclarationNode.hpp>
+#include <sootc/node/TypeDeclarationNode.hpp>
+#include <sootc/node/DataDeclarationNode.hpp>
 
 namespace sootc {
 
@@ -269,20 +272,34 @@ Compiler::compile_internal(soot::Object &forms, const std::string &filename) {
         while (current.is_pair()) {
             auto node = builder.build(current.as_pair()->car, file_node.get());
             if (node) {
-                if (dynamic_cast<FunctionNode *>(node.get())) {
-                    // Функция верхнего уровня — отдельный ребёнок FileNode
+                if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
+                    // Top-level function — separate child of FileNode.
                     file_node->add_child(std::move(node));
-                } else {
-                    // Всё остальное — в тело top-level
-                    auto *expr = dynamic_cast<ExpressionNode *>(node.release());
-                    if (!expr) {
-                        throw CompilerError("Compiler::compile_internal")
-                            .where(fmt::format("file '{}'", filename))
-                            .expected("top-level form to be ExpressionNode")
-                            .got(node->get_node_type_string());
-                    }
+                } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
+                           dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr) {
+                    // Type/enum declaration — compile-time only, no code.
+                    file_node->add_child(std::move(node));
+                } else if (dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
+                    // Top-level data declaration: (define name (new Type ...))
+                    file_node->add_child(std::move(node));
+                } else if (dynamic_cast<NewNode *>(node.get()) != nullptr) {
+                    // Bare (new ...) at top level is not allowed.
+                    // It should be wrapped in (define ...).
+                    throw CompilerError("Compiler::compile_internal")
+                        .where(fmt::format("file '{}'", filename))
+                        .expected("top-level 'new' to be wrapped in 'define'")
+                        .got("bare (new ...)");
+                } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
+                    // Regular expression — goes into the top-level body.
+                    node.release(); // ownership transfers to top_level_body
                     top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
                     top_level_used = true;
+                } else {
+                    throw CompilerError("Compiler::compile_internal")
+                        .where(fmt::format("file '{}'", filename))
+                        .expected("top-level form to be FunctionNode, TypeDeclarationNode, "
+                                  "EnumDeclarationNode, or ExpressionNode")
+                        .got(node->get_node_type_string());
                 }
             }
             current = current.as_pair()->cdr;
@@ -296,6 +313,14 @@ Compiler::compile_internal(soot::Object &forms, const std::string &filename) {
         // --- Генерация бинарника ---
         GlobalState state;
         auto        element = file_node->generate(state);
+
+        // Nothing to emit — the file contained only compile-time declarations
+        // (deftype / defenum). The types are already registered in TypeSystem,
+        // so there is nothing to write to a .bin file.
+        if (element.m_rawData.empty()) {
+            lg::info("No binary output (only type/enum declarations)");
+            return std::unique_ptr<BinaryFile>(nullptr);
+        }
 
         if (m_config.debug_print_ir) { element.dump(); }
 
@@ -493,6 +518,7 @@ ReplStatus Compiler::interpret_and_print(const std::string& script) {
     }
     return ReplStatus::OK;
 }
+
 ReplStatus Compiler::compile_and_report(const std::string &code) {
     try {
         auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
@@ -509,12 +535,18 @@ ReplStatus Compiler::compile_and_report(const std::string &code) {
             return ReplStatus::ERR;
         }
 
+        // ---- ПРОВЕРКА: только type/enum declarations? ----
+        if (!*result) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                       "; OK (types/enums registered)\n");
+            return ReplStatus::OK;
+        }
+        // --------------------------------------------------
+
         // Печатаем листинг (BinaryFileInspector::inspect внутри).
         print_listing(**result);
 
         // Передаём владение BinaryFile в Globals.
-        // ВАЖНО: std::move(**result) — это BinaryFile&&.
-        // После этого **result нельзя использовать.
         bool loaded = carbon::Globals::inst().load_module(std::move(**result));
         if (!loaded) {
             fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,

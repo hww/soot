@@ -13,6 +13,7 @@
 #include "sootc/node/SetNode.hpp"
 #include "type_system/TypeSystem.hpp"
 #include <memory>
+#include <sootc/node/NewNode.hpp>
 
 namespace sootc {
 
@@ -35,10 +36,15 @@ public:
     std::unique_ptr<CallNode> build_call(const soot::Object& form, Node* node);
     std::unique_ptr<VariableNode> build_variable(const soot::Object& form, Node* node);
     std::unique_ptr<ConstNode> build_const(const soot::Object& form, Node* node);
-    std::unique_ptr<Node> build_define(const soot::Object& form, Node* context);
+    std::unique_ptr<Node>           build_define(const soot::Object &form, Node *context,
+                                                 bool exported = false);
     std::unique_ptr<LetNode> build_let(const soot::Object &form, Node *node);
     std::unique_ptr<SetNode> build_set(const soot::Object &form, Node *node);
-
+    // Data instances:
+    std::unique_ptr<NewNode>        build_new(const soot::Object &form, Node *node);
+    // Types 
+    std::unique_ptr<Node>           build_deftype(const soot::Object &form, Node *node);
+    std::unique_ptr<Node>           build_defenum(const soot::Object &form, Node *node);
 
     // Вспомогательные методы
     Type* parse_type(const soot::Object& type_form, Node* node);

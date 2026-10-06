@@ -1,14 +1,19 @@
 ﻿#include "BinaryFile.hpp"
 
+#include "common/carbon/lib/StringIdManager.hpp"
 #include "fmt/format.h"
 #include "util/Log.hpp"
 
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <expected>
 #include <filesystem>
 #include <fstream>
 #include <immintrin.h>
+#include <iostream>
+#include <vector>
+#include "BinaryFileInspector.hpp"
 
 namespace carbon {
 
@@ -191,5 +196,166 @@ namespace carbon {
         }
 
         return unmapped_bytes;
+    }
+
+    // ===========================================================================
+    // Entry table access
+    // ===========================================================================
+
+    const DCEntry *BinaryFile::entries() const noexcept {
+        if (!m_dcheader) { return nullptr; }
+        return m_dcheader->m_pStartOfData;
+    }
+
+    u32 BinaryFile::entry_count() const noexcept {
+        return m_dcheader ? m_dcheader->m_numEntries : 0;
+    }
+
+    const DCEntry *BinaryFile::find_entry_by_name(sid64 name) const noexcept {
+        const DCEntry *table = entries();
+        if (!table) { return nullptr; }
+        for (u32 i = 0; i < m_dcheader->m_numEntries; ++i) {
+            if (table[i].m_nameID == name) { return &table[i]; }
+        }
+        return nullptr;
+    }
+
+    // ===========================================================================
+    // Entry payload
+    // ===========================================================================
+
+    BinaryFile::EntryKind BinaryFile::entry_kind(const DCEntry &entry) noexcept {
+        if (entry.m_typeId == SID("script-lambda")) { return EntryKind::ScriptLambda; }
+        if (entry.m_typeId == SID("state-script")) { return EntryKind::StateScript; }
+        if (entry.m_typeId == SID("map") || entry.m_typeId == SID("map-32")) {
+            return EntryKind::Map;
+        }
+        if (entry.m_typeId != 0) {
+            // Any other non-zero typeId is treated as an opaque data structure.
+            return EntryKind::DataStruct;
+        }
+        return EntryKind::Unknown;
+    }
+
+    const ScriptLambda *BinaryFile::entry_as_lambda(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::ScriptLambda) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(ScriptLambda))) { return nullptr; }
+        return reinterpret_cast<const ScriptLambda *>(entry.m_entryPtr);
+    }
+
+    const StateScript *BinaryFile::entry_as_state_script(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::StateScript) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(StateScript))) { return nullptr; }
+        return reinterpret_cast<const StateScript *>(entry.m_entryPtr);
+    }
+
+    // ===========================================================================
+    // SID and string helpers
+    // ===========================================================================
+
+    std::string BinaryFile::resolve_sid(sid64 id) const {
+        if (id == 0) { return ""; }
+        // Try the file-local cache first.
+        const auto it = m_sidCache.find(id);
+        if (it != m_sidCache.end()) { return it->second; }
+        // Fall back to the global manager.
+        return StringIdManager::instance().get_string(id);
+    }
+
+    std::string BinaryFile::read_string_at(location loc) const {
+        if (loc.m_ptr == nullptr) { return ""; }
+        if (loc.num() < reinterpret_cast<p64>(m_bytes.get()) ||
+            loc.num() >= reinterpret_cast<p64>(m_bytes.get()) + m_size) {
+            return "";
+        }
+        return std::string(loc.as<const char>());
+    }
+
+    // ===========================================================================
+    // Debug
+    // ===========================================================================
+
+    std::vector<std::string> BinaryFile::validate() const {
+        std::vector<std::string> violations;
+
+        if (!m_dcheader) {
+            violations.emplace_back("header is null");
+            return violations;
+        }
+
+        const auto *hdr = m_dcheader;
+
+        if (hdr->m_magic != DC_FILE_MAGIC) {
+            violations.emplace_back(
+                fmt::format("bad magic: 0x{:08X}, expected 0x{:08X}", hdr->m_magic, DC_FILE_MAGIC));
+        }
+        if (hdr->m_versionNumber != DC_FILE_VERSION) {
+            violations.emplace_back(
+                fmt::format("bad version: {}, expected {}", hdr->m_versionNumber, DC_FILE_VERSION));
+        }
+        if (hdr->m_textSize < sizeof(DC_Header)) {
+            violations.emplace_back(fmt::format("m_textSize too small: 0x{:X}, expected >= 0x{:X}",
+                                                hdr->m_textSize, sizeof(DC_Header)));
+        }
+        if (hdr->m_textSize > m_size) {
+            violations.emplace_back(fmt::format(
+                "m_textSize out of bounds: 0x{:X}, file size 0x{:X}", hdr->m_textSize, m_size));
+        }
+        if (hdr->m_stringsOffset >= hdr->m_textSize) {
+            violations.emplace_back(fmt::format("m_stringsOffset >= m_textSize: 0x{:X} >= 0x{:X}",
+                                                hdr->m_stringsOffset, hdr->m_textSize));
+        }
+        if (hdr->m_numEntries > 100000) {
+            violations.emplace_back(
+                fmt::format("m_numEntries suspiciously large: {}", hdr->m_numEntries));
+        }
+
+        const DCEntry *table = entries();
+        if (table) {
+            for (u32 i = 0; i < hdr->m_numEntries; ++i) {
+                const DCEntry &e = table[i];
+                if (e.m_entryPtr == nullptr) { continue; }
+                if (!is_valid_ptr(e.m_entryPtr, 1)) {
+                    violations.emplace_back(fmt::format("entry[{}].m_entryPtr outside file: 0x{:X}",
+                                                        i,
+                                                        reinterpret_cast<uintptr_t>(e.m_entryPtr)));
+                }
+            }
+        } else {
+            violations.emplace_back("entry table pointer is null");
+        }
+
+        return violations;
+    }
+
+    void BinaryFile::dump_entries(std::ostream &os) const {
+        const DCEntry *table = entries();
+        if (!table) {
+            os << "(no entries)\n";
+            return;
+        }
+        const u32 n = entry_count();
+        os << fmt::format("{:>4}  {:>18}  {:>18}  {:>18}  {}\n", "idx", "name", "type", "ptr",
+                          "kind");
+        for (u32 i = 0; i < n; ++i) {
+            const DCEntry &e = table[i];
+            const auto     kind = entry_kind(e);
+            const char    *kind_str = "unknown";
+            switch (kind) {
+            case EntryKind::ScriptLambda: kind_str = "script-lambda"; break;
+            case EntryKind::StateScript: kind_str = "state-script"; break;
+            case EntryKind::Unknown: kind_str = "unknown"; break;
+            }
+            os << fmt::format("{:>4}  {:>18}  {:>18}  {:>18}  {}\n", i, resolve_sid(e.m_nameID),
+                              resolve_sid(e.m_typeId), fmt::format("{:p}", e.m_entryPtr), kind_str);
+        }
+    }
+
+    bool BinaryFile::is_valid_ptr(const void *ptr, size_t size) const noexcept {
+        if (!ptr) return false;
+        const auto addr = reinterpret_cast<uintptr_t>(ptr);
+        const auto base = reinterpret_cast<uintptr_t>(m_bytes.get());
+        const auto end = base + m_size;
+        return addr >= base && addr + size <= end;
     }
 }

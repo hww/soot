@@ -4,9 +4,15 @@
 #include "common/sootc/node/StoreGlobalNode.hpp" 
 #include "common/sootc/node/FileNode.hpp"      
 #include "common/sootc/node/SequenceNode.hpp"      
+#include "common/sootc/node/DataDeclarationNode.hpp"
 #include "common/sootc/compiler/NodeBuilder.hpp"
 #include "common/sootc/compiler/FunctionCompiler.hpp"
 #include "common/sootc/compiler/CompilerError.hpp"
+#include "common/sootc/node/TypeDeclarationNode.hpp"
+#include "common/sootc/node/EnumDeclarationNode.hpp"
+#include "common/type_system/Deftype.hpp"
+#include "common/type_system/Defenum.hpp"
+#include "common/carbon/lib/StringIdManager.hpp"
 
 #include <stdexcept>
 
@@ -41,9 +47,9 @@ std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
 
     // === Встроенные формы компилятора ===
 
-    if (keyword == "define") {
-        return build_define(form, node);
-    }
+    if (keyword == "define") { return build_define(form, node, /*exported=*/false); }
+
+    if (keyword == "define-export") { return build_define(form, node, /*exported=*/true); }
     
     if (keyword == "lambda" || keyword == "function") {
         return build_lambda(form, node);
@@ -69,6 +75,10 @@ std::unique_ptr<Node> NodeBuilder::build(const soot::Object& form, Node* node) {
     if (keyword == "let") { return build_let(form, node); }
 
     if (keyword == "set!") { return build_set(form, node); }
+    if (keyword == "new") { return build_new(form, node); }
+
+    if (keyword == "deftype") return build_deftype(form, node);
+    if (keyword == "defenum") return build_defenum(form, node);
 
     // Обычный вызов функции
     return build_call(form, node);
@@ -156,6 +166,72 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
     auto        value = build_expression(value_obj, node);
 
     return std::make_unique<SetNode>(name, std::move(value));
+}
+
+std::unique_ptr<NewNode> NodeBuilder::build_new(const soot::Object &form, Node *node) {
+    auto rest = form.as_pair()->cdr;
+
+    // ---- Type name ----
+    if (!rest.is_pair()) {
+        throw CompilerError("NodeBuilder::build_new")
+            .where("new")
+            .expected("type name as the first argument")
+            .got("empty form");
+    }
+
+    const auto &type_name_obj = rest.as_pair()->car;
+    if (!type_name_obj.is_symbol()) {
+        throw CompilerError("NodeBuilder::build_new")
+            .where("new")
+            .expected("symbol as type name")
+            .got(type_name_obj.print());
+    }
+
+    const std::string type_name = type_name_obj.as_symbol();
+
+    // ---- Look up the type in TypeSystem ----
+    Type *type = m_ts.lookup_type_no_throw(type_name);
+    if (!type) {
+        throw CompilerError("NodeBuilder::build_new")
+            .where(fmt::format("new {}", type_name))
+            .expected("a known type")
+            .got("unknown type");
+    }
+
+    auto new_node = std::make_unique<NewNode>(TypeSpec(type_name));
+
+    // ---- Parse :field value pairs ----
+    auto fields = rest.as_pair()->cdr;
+    while (fields.is_pair()) {
+        const auto &field_name_obj = fields.as_pair()->car;
+
+        if (!field_name_obj.is_keyword()) {
+            throw CompilerError("NodeBuilder::build_new")
+                .where(fmt::format("new {}", type_name))
+                .expected(":field-name as a keyword")
+                .got(field_name_obj.print());
+        }
+
+        std::string field_name = field_name_obj.as_symbol().name_ptr;
+        if (!field_name.empty() && field_name[0] == ':') {
+            field_name = field_name.substr(1); // strip the ':'
+        }
+
+        fields = fields.as_pair()->cdr;
+        if (!fields.is_pair()) {
+            throw CompilerError("NodeBuilder::build_new")
+                .where(fmt::format("new {} :{}", type_name, field_name))
+                .expected("value after the field name")
+                .got("end of form");
+        }
+
+        auto value_node = build_expression(fields.as_pair()->car, node);
+        new_node->add_field(field_name, std::move(value_node));
+
+        fields = fields.as_pair()->cdr;
+    }
+
+    return new_node;
 }
 
 std::unique_ptr<ExpressionNode> NodeBuilder::build_body_as_sequence(const soot::Object &body_forms,
@@ -312,7 +388,8 @@ Type *NodeBuilder::parse_type(const soot::Object &type_form, Node *node) {
     return m_ts.lookup_type("object");
 }
 
-std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context) {
+std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context,
+                                                bool exported) {
     auto rest = form.as_pair()->cdr;
     if (!rest.is_pair()) { throw std::runtime_error("define: missing name"); }
     auto def_form = rest.as_pair()->car;
@@ -329,19 +406,61 @@ std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *
             fmt::format("define: cannot compile value: {}", value_form.print()));
     }
 
-    // Если значение — функция, регистрируем её под именем define и возвращаем её.
+    // Value is a function — register it under `name` and return it.
     if (auto *fn = dynamic_cast<FunctionNode *>(value_node.get())) {
         fn->set_name(name);
+        fn->set_exported(exported);
         if (auto *file = context->file()) { file->bind(name, fn); }
-        return value_node; // ← FunctionNode как ребёнок FileNode
+        return value_node;
     }
 
-    // Иначе пока не поддерживаем — отдельный патч 4b.
+    // Value is (new Type ...) — a data instance.
+    if (auto *new_node = dynamic_cast<NewNode *>(value_node.get())) {
+        value_node.release(); // ownership transfers to DataDeclarationNode
+        auto data_decl = std::make_unique<DataDeclarationNode>(
+            name, std::unique_ptr<NewNode>(new_node), exported);
+        return data_decl;
+    }
+
+    // Anything else — not supported yet.
     throw CompilerError("NodeBuilder::build_define")
         .where(fmt::format("define '{}'", name))
-        .expected("value form 'lambda' (function definition)")
+        .expected("value form 'lambda' (function) or 'new' (data instance)")
         .got(fmt::format("value form of type '{}'", value_form.class_name()))
-        .note("top-level 'define' of non-function values is not yet implemented");
+        .note("top-level 'define' of arbitrary expressions is not yet implemented");
 }
 
+std::unique_ptr<Node> NodeBuilder::build_deftype(const soot::Object &form, Node *node) {
+    (void)node;
+    auto rest = form.as_pair()->cdr;
+    try {
+        DeftypeResult result = parse_deftype(rest, &m_ts);
+        // Register the type name so that sid_str(SID("vec4")) resolves to "vec4".
+        StringIdManager::instance().register_string(result.type.base_type());
+        lg::info("Registered type: {}", result.type.print());
+        return std::make_unique<TypeDeclarationNode>(result.type);
+    } catch (const std::exception &e) {
+        throw CompilerError("NodeBuilder::build_deftype")
+            .where("deftype")
+            .expected("valid deftype form")
+            .got(e.what());
+    }
+}
+
+std::unique_ptr<Node> NodeBuilder::build_defenum(const soot::Object &form, Node *node) {
+    (void)node;
+
+    auto rest = form.as_pair()->cdr;
+
+    try {
+        EnumType *enum_type = parse_defenum(rest, &m_ts);
+        lg::info("Registered enum: {}", enum_type->get_name());
+        return std::make_unique<EnumDeclarationNode>(enum_type->get_name());
+    } catch (const std::exception &e) {
+        throw CompilerError("NodeBuilder::build_defenum")
+            .where("defenum")
+            .expected("valid defenum form")
+            .got(e.what());
+    }
+}
 } // namespace sootc

@@ -35,8 +35,14 @@ enum class NodeType {
     VariableInfo,
     VariableNode,
     WhileNode,
-    StoreGlobalNode
-};
+    StoreGlobalNode,
+    // Compile-time-only declarations:
+    TypeDeclarationNode,
+    EnumDeclarationNode,
+    // Data instances:
+    NewNode,
+    DataDeclarationNode,
+    };
 
 inline const char* node_type_to_string(NodeType type) {
     switch (type) {
@@ -59,6 +65,10 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::VariableNode:   return "VariableNode";
         case NodeType::WhileNode:      return "WhileNode";
         case NodeType::StoreGlobalNode: return "StoreGlobalNode";
+        case NodeType::TypeDeclarationNode: return "TypeDeclarationNode";
+        case NodeType::EnumDeclarationNode: return "EnumDeclarationNode";
+        case NodeType::NewNode: return "NewNode";
+        case NodeType::DataDeclarationNode: return "DataDeclarationNode";
     }
     // Если добавили NodeType, а case не написали — сюда не попадём, компилятор предупредит.
     return "UnknownNode";

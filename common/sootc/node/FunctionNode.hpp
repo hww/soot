@@ -45,7 +45,8 @@ class ExpressionNode;
 
 class FunctionNode : public Node {
     std::string m_name;
-    
+    bool                                m_exported = false;
+
     // Параметры
     std::vector<Parameter*> m_params;
     std::unordered_map<std::string, u8> m_param_map;
@@ -90,8 +91,10 @@ public:
     // ========================================================================
     // Имя
     // ========================================================================
-    const std::string& name() const { return m_name; }
-    void set_name(std::string name) { m_name = name; }
+    const std::string &name() const { return m_name; }
+    void               set_name(std::string name) { m_name = name; }
+    void               set_exported(bool e) { m_exported = e; }
+    bool               is_exported() const { return m_exported; }
     
     // ========================================================================
     // Параметры

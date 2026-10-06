@@ -63,6 +63,23 @@ namespace carbon {
 } // namespace carbon
 
 
+/// @brief Free-function overloads for mixed StringId / sid64 comparisons.
+/// @details Without these, `sid64 == StringId(...)` is ambiguous because
+///          StringId has an implicit conversion to u64.
+inline constexpr bool operator==(const carbon::StringId &lhs, sid64 rhs) noexcept {
+    return lhs.value == rhs;
+}
+inline constexpr bool operator==(sid64 lhs, const carbon::StringId &rhs) noexcept {
+    return lhs == rhs.value;
+}
+inline constexpr bool operator!=(const carbon::StringId &lhs, sid64 rhs) noexcept {
+    return lhs.value != rhs;
+}
+inline constexpr bool operator!=(sid64 lhs, const carbon::StringId &rhs) noexcept {
+    return lhs != rhs.value;
+}
+
+
 // ===========================================================================
 // SID() macros
 // ===========================================================================

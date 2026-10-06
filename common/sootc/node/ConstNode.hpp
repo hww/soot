@@ -48,6 +48,15 @@ public:
         return std::unique_ptr<ConstNode>(new ConstNode(val));
     }
     
+    // ---- Value accessors ----
+    [[nodiscard]] bool is_int() const noexcept { return !m_is_float && !m_is_string; }
+    [[nodiscard]] bool is_float() const noexcept { return m_is_float && !m_is_string; }
+    [[nodiscard]] bool is_string() const noexcept { return m_is_string; }
+
+    [[nodiscard]] i64                int_value() const noexcept { return m_int_value; }
+    [[nodiscard]] f64                float_value() const noexcept { return m_float_value; }
+    [[nodiscard]] const std::string &string_value() const noexcept { return m_string_value; }
+
     void emit(FunctionNode& fn) override {
         if (m_is_string) {
             // Для строк - особый тип константы

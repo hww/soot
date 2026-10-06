@@ -11,6 +11,7 @@
 #include <string>
 #include <map>
 #include <set>
+#include <iostream>
 
 namespace carbon {
 
@@ -96,29 +97,84 @@ namespace carbon {
     class BinaryFile
     {
     public:
+        /// @brief Classification of an entry payload, based on its m_typeId.
+        enum class EntryKind {
+            Unknown,      ///< unrecognised typeId
+            ScriptLambda, ///< m_typeId == SID("script-lambda")
+            StateScript,  ///< m_typeId == SID("state-script")
+            Map,          ///< m_typeId == SID("map") or SID("map-32")
+            DataStruct,   ///< any other non-zero typeId (raw payload)
+        };
+
         BinaryFile() = default;
 
-        BinaryFile(std::filesystem::path path, const u64 size, byte_uptr&& bytes, DC_Header* dcheader) noexcept
-            : m_path(std::move(path))
-            , m_dcheader(dcheader)
-            , m_size(size)
-            , m_bytes(std::move(bytes))
-        {}
+        BinaryFile(std::filesystem::path path, const u64 size, byte_uptr &&bytes,
+                   DC_Header *dcheader) noexcept
+            : m_path(std::move(path)), m_dcheader(dcheader), m_size(size),
+              m_bytes(std::move(bytes)) {}
 
-        BinaryFile(const BinaryFile&)            = delete;
-        BinaryFile& operator=(const BinaryFile&) = delete;
-        BinaryFile(BinaryFile&&) noexcept            = default;
-        BinaryFile& operator=(BinaryFile&&) noexcept = default;
+        BinaryFile(const BinaryFile &) = delete;
+        BinaryFile &operator=(const BinaryFile &) = delete;
+        BinaryFile(BinaryFile &&) noexcept = default;
+        BinaryFile &operator=(BinaryFile &&) noexcept = default;
         ~BinaryFile() = default;
 
         [[nodiscard]] static std::expected<BinaryFile, std::string>
-            from_path(const std::filesystem::path& path) noexcept;
+        from_path(const std::filesystem::path &path) noexcept;
 
         [[nodiscard]] static std::expected<BinaryFile, std::string>
-            from_buffer(const std::filesystem::path& path, byte_uptr bytes, size_t size) noexcept;
+        from_buffer(const std::filesystem::path &path, byte_uptr bytes, size_t size) noexcept;
 
         /// Re-serialise to disk, mapping relocation pointers back to file offsets.
-        [[nodiscard]] bool save(const std::filesystem::path& path) noexcept;
+        [[nodiscard]] bool save(const std::filesystem::path &path) noexcept;
+
+        // -------------------------------------------------------------------
+        // Entry table access
+        // -------------------------------------------------------------------
+
+        /// @return pointer to Entry[0], or nullptr if the header is missing.
+        [[nodiscard]] const DCEntry *entries() const noexcept;
+
+        /// @return number of entries, or 0 if the header is missing.
+        [[nodiscard]] u32 entry_count() const noexcept;
+
+        /// @brief Find the first entry with m_nameID == name.
+        /// @return pointer to the entry, or nullptr if not found.
+        [[nodiscard]] const DCEntry *find_entry_by_name(sid64 name) const noexcept;
+
+        // -------------------------------------------------------------------
+        // Entry payload
+        // -------------------------------------------------------------------
+
+        /// @brief Classify an entry by its typeId.
+        [[nodiscard]] static EntryKind entry_kind(const DCEntry &entry) noexcept;
+
+        /// @return the entry payload as ScriptLambda*, or nullptr if kind != ScriptLambda.
+        [[nodiscard]] const ScriptLambda *entry_as_lambda(const DCEntry &entry) const noexcept;
+
+        /// @return the entry payload as StateScript*, or nullptr if kind != StateScript.
+        [[nodiscard]] const StateScript *entry_as_state_script(const DCEntry &entry) const noexcept;
+
+        // -------------------------------------------------------------------
+        // SID and string helpers
+        // -------------------------------------------------------------------
+
+        /// @brief Resolve a SID64 to a string via m_sidCache, then StringIdManager.
+        [[nodiscard]] std::string resolve_sid(sid64 id) const;
+
+        /// @brief Read a null-terminated string at an absolute file location.
+        /// @return the string, or "" if the location is outside the string table.
+        [[nodiscard]] std::string read_string_at(location loc) const;
+
+        // -------------------------------------------------------------------
+        // Debug
+        // -------------------------------------------------------------------
+
+        /// @brief Verify structural invariants. Returns a list of violations.
+        [[nodiscard]] std::vector<std::string> validate() const;
+
+        /// @brief Print the entry table (name, type, ptr, kind) to `os`.
+        void dump_entries(std::ostream &os = std::cout) const;
 
         std::filesystem::path               m_path;           ///< source path (for diagnostics)
         const DC_Header*                    m_dcheader = nullptr; ///< pointer into m_bytes
@@ -149,6 +205,9 @@ namespace carbon {
 
         /// Replace '\n' with ' ' inside the string table (the game does this too).
         void replace_newlines_in_stringtable() noexcept;
+
+        /// @return true if [ptr, ptr + size) lies within the mapped file buffer.
+        [[nodiscard]] bool is_valid_ptr(const void *ptr, size_t size) const noexcept;
     };
 
 }

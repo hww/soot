@@ -70,19 +70,34 @@ namespace carbon {
 
     /// @brief One variable declared in a state script.
     /// @example (define health 100)  →  health: int32 = 100
+    /// @details m_declTypeId selects how to interpret m_pDeclValue. Known types:
+    ///            "boolean"      1 byte   (u8, printed as true/false)
+    ///            "int32"        4 bytes  (i32)
+    ///            "uint64"       8 bytes  (u64)
+    ///            "float"        4 bytes  (f32)
+    ///            "timer"        4 bytes  (f32)
+    ///            "bound-frame"  4 bytes  (f32)
+    ///            "symbol"       8 bytes  (sid64)
+    ///            "string"       8 bytes  (const char*, relocated)
+    ///            "vector"      16 bytes  (4 x f32)
+    ///            "quat"        16 bytes  (4 x f32)
+    ///            "point"       12 bytes  (3 x f32)
+    ///          Unknown types must be inspected manually — the inspector prints
+    ///          the first 16 bytes as raw hex when the type is not recognised.
+    ///          See common/carbon/file/DeclarationTypes.hpp for the authoritative list.
     struct SsDeclaration // 0x30
     {
-        sid64 m_declId;             ///< <c>0x00</c>: SID64 of the variable name (e.g. SID("#health"))
-        const char *m_declIdString; ///< <c>0x08</c>: source-string of the variable name (debug), or null
-        sid64 m_declTypeId;         ///< <c>0x10</c>: SID64 of the type ("boolean", "int32", "float",
-                                    ///< "symbol", "string", ...)
-        u16   m_varSizeSum;         ///< <c>0x18</c>: cumulative size in bytes of all declarations up to and
-                                    ///< including this one
-        u16   m_isVar;              ///< <c>0x1A</c>: 1 if this is a variable, 0 otherwise
-        u32   m_always0;            ///< <c>0x1C</c>: reserved, always 0
-        void *m_pDeclValue;         ///< <c>0x20</c>: pointer to the initial value in the data segment, or
-                                    ///< null
-        u64   m_always0x80;         ///< <c>0x28</c>: reserved; observed as 0x80 in practice
+        sid64 m_declId;         ///< <c>0x00</c>: SID64 of the variable name (e.g. SID("#health"))
+        const char
+             *m_declIdString;   ///< <c>0x08</c>: source-string of the variable name (debug), or null
+        sid64 m_declTypeId;     ///< <c>0x10</c>: SID64 of the type; see the type table above
+        u16   m_varSizeSum;     ///< <c>0x18</c>: cumulative size in bytes of all declarations up to and
+                                ///< including this one
+        u16   m_isVar;          ///< <c>0x1A</c>: 1 if this is a variable, 0 otherwise
+        u32   m_always0;        ///< <c>0x1C</c>: reserved, always 0
+        void *m_pDeclValue;     ///< <c>0x20</c>: pointer to the initial value in the data segment, or
+                                ///< null
+        u64   m_always0x80;     ///< <c>0x28</c>: reserved; observed as 0x80 in practice
     };
 
     // ---------------------------------------------------------------------------

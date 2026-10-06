@@ -6,6 +6,8 @@ add_library(libsootc
     common/sootc/node/FunctionNode.cpp
     common/sootc/node/FileNode.cpp
     common/sootc/node/LetNode.cpp
+    common/sootc/node/DataDeclarationNode.cpp
+
 
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp

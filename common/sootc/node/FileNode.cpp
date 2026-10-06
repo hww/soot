@@ -3,10 +3,15 @@
 #include "common/sootc/node/FunctionNode.hpp"
 #include "common/carbon/file/DCHeader.hpp"
 #include "common/util/Log.hpp"
+#include "sootc/node/DataDeclarationNode.hpp"
+#include "sootc/compiler/CompilerError.hpp"
+#include "TypeDeclarationNode.hpp"
+#include "EnumDeclarationNode.hpp"
+#include "DataDeclarationNode.hpp"
+
 #include <cassert>
 #include <cstring>
 #include <numeric>
-#include <sootc/compiler/CompilerError.hpp>
 
 using namespace carbon;
 
@@ -29,8 +34,23 @@ std::string FileNode::to_string() const {
 // generate - главный метод генерации бинарника (интерфейс Node)
 // ============================================================================
 ProgramBinaryElement FileNode::generate(GlobalState &state) {
-    auto functions = collect_functions(state);
-    if (functions.empty()) {
+    auto entries = collect_all(state);
+
+    size_t type_decls = 0;
+    for (auto &child : m_children) {
+        if (dynamic_cast<TypeDeclarationNode *>(child.get()) != nullptr ||
+            dynamic_cast<EnumDeclarationNode *>(child.get()) != nullptr) {
+            ++type_decls;
+        }
+    }
+
+    if (entries.empty() && type_decls > 0) {
+        lg::info("FileNode::generate: {} type/enum declaration(s), no emittable entries",
+                 type_decls);
+        return ProgramBinaryElement(0);
+    }
+
+    if (entries.empty()) {
         std::string types;
         for (auto &child : m_children) {
             if (!types.empty()) types += ", ";
@@ -38,33 +58,40 @@ ProgramBinaryElement FileNode::generate(GlobalState &state) {
         }
         throw CompilerError("FileNode::generate")
             .where(fmt::format("file '{}'", m_name))
-            .expected("at least one FunctionNode among children")
+            .expected("at least one FunctionNode or DataDeclarationNode")
             .got(fmt::format("{} children: [{}]", m_children.size(),
-                             types.empty() ? "<none>" : types))
-            .note("top-level 'define' of a variable is not yet implemented; "
-                  "for now only functions are compiled");
+                             types.empty() ? "<none>" : types));
     }
-    return make_binary(std::move(functions), state);
+
+    return make_binary(std::move(entries), state);
 }
 
 // ============================================================================
 // collect_functions - собирает ProgramBinaryElement для всех функций
 // ============================================================================
-std::vector<ProgramBinaryElement> FileNode::collect_functions(GlobalState& state) {
-    std::vector<ProgramBinaryElement> functions;
-    
-    for (auto& child : m_children) {
-        if (auto* fn = dynamic_cast<FunctionNode*>(child.get())) {
+std::vector<ProgramBinaryElement> FileNode::collect_all(GlobalState &state) {
+    std::vector<ProgramBinaryElement> entries;
+
+    for (auto &child : m_children) {
+        if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
             fn->emit_body();
-            functions.push_back(fn->generate(state));
-            lg::info("Function '{}': {} instructions, {} constants", 
-                     fn->name(), 
-                     fn->instructions().size(),
-                     fn->constants().size());
+            entries.push_back(fn->generate(state));
+            lg::info("Function '{}': {} instructions, {} constants", fn->name(),
+                     fn->instructions().size(), fn->constants().size());
+        } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
+            ProgramBinaryElement element = decl->generate(state);
+            const size_t         payload_size = element.m_rawData.size();
+            if (payload_size > 0) {
+                entries.push_back(std::move(element));
+                lg::info("Data declaration '{}': {} bytes", decl->name(), payload_size);
+            } else {
+                lg::warn("Data declaration '{}' produced empty element", decl->name());
+            }
         }
+        // TypeDeclarationNode / EnumDeclarationNode — no binary output.
     }
-    
-    return functions;
+
+    return entries;
 }
 
 // ============================================================================
