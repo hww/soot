@@ -22,7 +22,7 @@ public:
     void  set_target(Node *t) { m_target = t; }
     Node *target() const { return m_target; }
 
-    void CallNode::emit(FunctionNode &fn) override {
+    void emit(FunctionNode &fn) override {
         // 1. Вычислить аргументы (они окажутся во временных регистрах)
         for (auto &arg : m_args) { arg->emit(fn); }
 
