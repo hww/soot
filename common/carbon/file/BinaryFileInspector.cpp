@@ -229,8 +229,22 @@ namespace carbon {
         return fmt::format("0x{:016X}", reinterpret_cast<uintptr_t>(ptr));
     }
 
+    /// @brief Resolve a SID64 to a human-readable string.
+    /// @details First checks the well-known SIDs (which may be interned per
+    ///          translation unit and therefore not present in the global
+    ///          StringIdManager), then falls back to StringIdManager, then
+    ///          to a hex representation.
     std::string BinaryFileInspector::sid_str(sid64 id) {
         if (id == 0) return "(null)";
+
+        // --- Well-known SIDs, matched by identity.
+        //     This matters because SID("...") is not guaranteed to be the same
+        //     integer across translation units.
+        if (id == SS_TYPE_SID) return "ss-type";
+        if (id == SCRIPT_LAMBDA_SID) return "script-lambda";
+        if (id == ARRAY_SID) return "array";
+        if (id == GLOBAL_SID) return "global";
+        if (id == FUNCTION_SID) return "function";
 
         try {
             const char *cstr = StringIdManager::instance().get_cstring(id);

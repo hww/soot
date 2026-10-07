@@ -89,16 +89,20 @@ std::vector<ProgramBinaryElement> FileNode::collect_all(GlobalState &state) {
         } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
             ProgramBinaryElement element = decl->generate(state);
             const size_t         payload_size = element.m_rawData.size();
-            lg::info("collect_all: DataDeclarationNode '{}', m_structLayout = {}", decl->name(),
-                     element.m_structLayout.has_value());
             if (payload_size > 0) {
                 entries.push_back(std::move(element));
                 lg::info("Data declaration '{}': {} bytes", decl->name(), payload_size);
             } else {
                 lg::warn("Data declaration '{}' produced empty element", decl->name());
             }
+        } else if (auto *type_decl = dynamic_cast<TypeDeclarationNode *>(child.get())) {
+            // deftype now emits a self-describing SsType entry (see
+            // TypeDeclarationNode::generate). Skip if it returned nothing
+            // (e.g. for non-structure types that don't have an SsType form yet).
+            ProgramBinaryElement element = type_decl->generate(state);
+            if (!element.m_rawData.empty()) { entries.push_back(std::move(element)); }
         }
-        // TypeDeclarationNode / EnumDeclarationNode — no binary output.
+        // EnumDeclarationNode — no binary output yet.
     }
 
     return entries;
