@@ -24,18 +24,29 @@ namespace carbon {
         for (u64 i = 0; i < num_bits; ++i) { m_relocTable.push_back((bits >> i) & 0x1); }
     }
 
+    /// @brief Append a raw byte blob and one relocation bit per new 8-byte slot.
+    /// @details The number of new bits is the difference between the slot count
+    ///          before and after the append. This is required when rawData.size()
+    ///          is not a multiple of 8 — the previous partial slot is shared.
     void ProgramBinaryElement::push_blob(const void *data, size_t size,
                                          u8 relocation_bit) noexcept {
+        const size_t slots_before = (m_rawData.size() + 7) / 8;
+
         const auto *p = reinterpret_cast<const std::byte *>(data);
         m_rawData.insert(m_rawData.end(), p, p + size);
 
-        // One relocation bit per 8-byte slot, rounded up.
-        const size_t num_slots = (size + 7) / 8;
-        for (size_t i = 0; i < num_slots; ++i) { insert_into_reloctable(relocation_bit, 1); }
+        const size_t slots_after = (m_rawData.size() + 7) / 8;
+        const size_t new_slots = slots_after - slots_before;
+
+        for (size_t i = 0; i < new_slots; ++i) { insert_into_reloctable(relocation_bit, 1); }
 
         check_size();
     }
 
+    /// @brief Verify the invariant: one relocation bit per 8-byte slot.
+    /// @details This is the single source of truth for the rawData / relocTable
+    ///          relationship. If it ever fires, a caller has added data without
+    ///          a matching relocation bit (or vice versa).
     void ProgramBinaryElement::check_size() const {
         const size_t data_slots = (m_rawData.size() + 7) / 8;
         const size_t reloc_slots = m_relocTable.size();

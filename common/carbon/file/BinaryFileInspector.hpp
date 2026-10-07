@@ -21,7 +21,7 @@ namespace carbon {
         };
 
     explicit BinaryFileInspector(BinaryFile *file, int indent = 2,
-                                     InspectMode mode = InspectMode::Summary);
+                                     InspectMode mode = InspectMode::Full);
 
         void inspect();
 

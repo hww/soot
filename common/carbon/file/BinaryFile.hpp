@@ -206,6 +206,14 @@ namespace carbon {
     private:
         /// Parse the relocation bitmap at m_dcheader->m_textSize and apply relocations.
         void read_reloc_table() noexcept;
+        
+        /// @brief After relocations have been applied, make sure the header's
+        ///        m_pStartOfData is an absolute pointer. If it still looks like a
+        ///        file offset, patch it in-place and log a warning.
+        /// @details This is a defensive fixup for a missing relocation bit on the
+        ///          header field in the emitter. Once the emitter is fixed, this
+        ///          method becomes a no-op (it only fires when ptr < base).
+        void fixup_header_pointers() noexcept;
 
         /// Replace '\n' with ' ' inside the string table (the game does this too).
         void replace_newlines_in_stringtable() noexcept;

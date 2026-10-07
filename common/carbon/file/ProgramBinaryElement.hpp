@@ -17,6 +17,9 @@ namespace carbon {
     /// @brief Serialised representation of one entry (function / struct / ...) in a DC file.
     /// @details Holds raw bytes, a parallel relocation bitmap (one bit per 8-byte slot),
     ///          and the DCEntry header that will be written into the entry table.
+    ///
+    ///          Invariant: m_relocTable.size() == (m_rawData.size() + 7) / 8.
+    ///          This is checked by check_size() and MUST hold after every mutation.
     struct ProgramBinaryElement {
 
         explicit ProgramBinaryElement(const u64 size) noexcept;
@@ -33,33 +36,55 @@ namespace carbon {
             other.m_byteOffset = 0;
             other.m_bitOffset = 0;
         }
-
         /// @brief Append a POD value and its relocation bits.
         /// @details Copies the raw bytes of `data` into m_rawData, then appends
-        ///          the relocation bits. The last bit in `b` covers
-        ///          (sizeof(T) / 8) % 8 slots; all preceding bits cover 8 slots each.
-        /// @example push_bytes(header, 0, 1, 1) — first 8-byte slot is not relocated,
-        ///          second and third are.
-        template <typename T, typename... bits> void push_bytes(const T &data, bits... b) noexcept {
+        ///          one relocation bit per newly-introduced 8-byte slot.
+        ///
+        ///          `bits` is an initializer list of 0/1 values — one per slot,
+        ///          left to right. If fewer bits than slots are supplied, the
+        ///          remaining slots default to 0 (not relocatable).
+        ///
+        ///          Using an initializer list (rather than a variadic template)
+        ///          makes the API impossible to misuse: passing a single integer
+        ///          like 0b1000 is a compile error, not a silent "one bit" call.
+        ///
+        /// @example push_bytes(header, {0, 0, 0, 1});  // only slot 3 relocates
+        template <typename T>
+        void push_bytes(const T &data, std::initializer_list<u8> bits) noexcept {
             static_assert(std::is_trivially_copyable_v<T>,
                           "push_bytes requires a trivially-copyable T");
+
+            // Snapshot the slot count BEFORE adding data, so we know how many
+            // new slots this push actually introduces.
+            const size_t slots_before = (m_rawData.size() + 7) / 8;
 
             const std::byte *p = reinterpret_cast<const std::byte *>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
 
-            const std::vector<u8> bits_list = {static_cast<u8>(b)...};
-            for (u32 i = 0; i + 1 < bits_list.size(); ++i) {
-                insert_into_reloctable(bits_list[i], 8);
+            const size_t slots_after = (m_rawData.size() + 7) / 8;
+            const size_t new_slots = slots_after - slots_before;
+
+            size_t i = 0;
+            for (u8 bit : bits) {
+                if (i >= new_slots) { break; }
+                insert_into_reloctable(bit, 1);
+                ++i;
             }
-            if (!bits_list.empty()) {
-                insert_into_reloctable(bits_list.back(), (sizeof(T) / 8) % 8);
-            }
+            for (; i < new_slots; ++i) { insert_into_reloctable(0, 1); }
+
+            check_size();
         }
 
-        /// @brief Append a raw byte blob and a single relocation bit applied to every slot.
+        /// @brief Append a POD value with no relocation bits (all slots = 0).
+        /// @details Convenience overload for the common case of plain data.
+        template <typename T> void push_bytes(const T &data) noexcept { push_bytes(data, {}); }
+
+        /// @brief Append a raw byte blob and a single relocation bit applied to every new slot.
+        /// @details Same slot-count logic as push_bytes: only the *new* slots get bits.
         void push_blob(const void *data, size_t size, u8 relocation_bit = 0) noexcept;
 
-        /// @brief Sanity check: raw bytes / 8 must equal the number of relocation bits.
+        /// @brief Sanity check: (raw bytes + 7) / 8 must equal the number of relocation bits.
+        /// @throws std::runtime_error if the invariant is broken.
         void check_size() const;
 
         /// @brief Append `num_bits` relocation bits, all set to `bits` (0 or 1).

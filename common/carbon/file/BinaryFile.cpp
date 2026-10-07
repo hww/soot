@@ -45,6 +45,7 @@ namespace carbon {
 
         BinaryFile file(path, size, std::move(bytes), dcheader);
         file.read_reloc_table();
+        file.fixup_header_pointers(); // <-- add this
         file.replace_newlines_in_stringtable();
         return file;
     }
@@ -68,6 +69,7 @@ namespace carbon {
 
         BinaryFile file(path, size, std::move(bytes), dcheader);
         file.read_reloc_table();
+        file.fixup_header_pointers(); // <-- add this
         file.replace_newlines_in_stringtable();
         return file;
     }
@@ -177,6 +179,31 @@ namespace carbon {
         m_strings = location(m_bytes.get() + m_dcheader->m_stringsOffset);
     }
 
+    /// @brief Ensure the header's m_pStartOfData is an absolute pointer.
+    /// @details The pointer is expected to have been relocated by read_reloc_table().
+    ///          If it still looks like a file offset (smaller than the base address
+    ///          of m_bytes), we assume the emitter forgot to set the relocation bit
+    ///          for this header field and patch it here.
+    ///
+    ///          A warning is logged every time this happens, so the underlying
+    ///          emitter bug can be tracked down and fixed.
+    void BinaryFile::fixup_header_pointers() noexcept {
+        if (!m_dcheader) { return; }
+
+        auto      *hdr = const_cast<DC_Header *>(m_dcheader);
+        const auto ptr = reinterpret_cast<uintptr_t>(hdr->m_pStartOfData);
+        const auto base = reinterpret_cast<uintptr_t>(m_bytes.get());
+
+        // A relocated pointer is always >= base. Anything smaller is an offset.
+        if (ptr != 0 && ptr < base) {
+            hdr->m_pStartOfData = reinterpret_cast<DCEntry *>(base + ptr);
+            lg::warn("BinaryFile::fixup_header_pointers: m_pStartOfData was not relocated "
+                     "(offset 0x{:X}); patched on the fly. "
+                     "Fix the emitter to set the relocation bit for the header field.",
+                     ptr);
+        }
+    }
+
     /// @return a copy of the file bytes with all relocated pointers converted
     ///         back to file-relative offsets (i.e. exactly as on disk).
     [[nodiscard]] byte_uptr BinaryFile::get_unmapped() const {
@@ -204,7 +231,20 @@ namespace carbon {
 
     const DCEntry *BinaryFile::entries() const noexcept {
         if (!m_dcheader) { return nullptr; }
-        return m_dcheader->m_pStartOfData;
+
+        const auto ptr = m_dcheader->m_pStartOfData;
+        const auto base = reinterpret_cast<uintptr_t>(m_bytes.get());
+
+        if (reinterpret_cast<uintptr_t>(ptr) < base) {
+            // Похоже, релокация не применилась: ptr остался offset'ом.
+            lg::error("BinaryFile::entries: m_pStartOfData = 0x{:X} is NOT relocated "
+                      "(base = 0x{:X}, offset = 0x{:X}). "
+                      "Likely a missing relocation bit for the header field.",
+                      reinterpret_cast<uintptr_t>(ptr), base, reinterpret_cast<uintptr_t>(ptr));
+            return nullptr;
+        }
+
+        return ptr;
     }
 
     u32 BinaryFile::entry_count() const noexcept {

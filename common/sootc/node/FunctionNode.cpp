@@ -214,6 +214,20 @@ namespace sootc {
     // ========================================================================
     // Serialization
     // ========================================================================
+    // ========================================================================
+    // Serialization
+    // ========================================================================
+    /// @brief Serialise this function into a ProgramBinaryElement.
+    /// @details Layout:
+    ///            - ScriptLambda header (fixed fields + pointers to symbols
+    ///              and constants),
+    ///            - instruction stream (one Instruction per element),
+    ///            - constant pool (one u64 per element).
+    ///
+    ///          Relocation policy:
+    ///            - ScriptLambda: the two pointer fields (m_pSymbols, m_pConstants)
+    ///              must be relocated. They live at 8-byte slots 1 and 2.
+    ///            - Instructions and constants: no relocations.
     ProgramBinaryElement FunctionNode::build_binary(const std::string &module_name,
                                                     GlobalState       &state) {
         (void)state;
@@ -246,11 +260,18 @@ namespace sootc {
                                -1,
                                StringId("global").value,
                                0x0};
-        element.push_bytes(lambda, 0b0000'0110, 0b00);
 
-        for (const Instruction &instr : m_instructions) { element.push_bytes(instr, 0b0); }
+        // Diagnostic: print the exact size so we can craft the relocation mask.
+        lg::info("sizeof(ScriptLambda) = {}", sizeof(ScriptLambda));
 
-        for (size_t i = 0; i < m_constants.size(); ++i) { element.push_bytes(m_constants[i], 0b0); }
+        // TODO: verify ScriptLambda layout. For now, mark only slots 1 and 2
+        // as relocatable (the two pointer fields m_pSymbols and m_pConstants).
+        // If sizeof(ScriptLambda) is not 88 bytes, adjust the list length.
+        element.push_bytes(lambda, {0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0});
+
+        for (const Instruction &instr : m_instructions) { element.push_bytes(instr, {0}); }
+
+        for (size_t i = 0; i < m_constants.size(); ++i) { element.push_bytes(m_constants[i], {0}); }
 
         return element;
     }

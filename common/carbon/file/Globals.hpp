@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "common/carbon/lib/StringId.hpp"
 #include "file/BinaryFile.hpp"
@@ -133,21 +133,31 @@ namespace carbon {
     private:
         Globals() = default;
 
-        /// @brief Walk DCEntry[] in the given file and register every named entry.
-        /// @return true on success, false if the header or entry table is missing.
+        /// @brief Register all named entries from a loaded module into the global
+        ///        symbol table.
+        /// @details Iterates the entry table via BinaryFile::entries() rather than
+        ///          poking m_pStartOfData directly. This guarantees that any
+        ///          defensive fixups performed by BinaryFile (e.g. header pointer
+        ///          relocation) are honoured here as well.
+        ///
+        ///          Entries with nameID == 0 are skipped (unnamed / anonymous).
         bool register_symbols_from_file(const BinaryFile &file, const StringId &module_path_id) {
             const DC_Header *header = file.m_dcheader;
             if (!header) {
                 std::cerr << "[Globals] register_symbols: null header\n";
                 return false;
             }
-            if (!header->m_pStartOfData) {
-                std::cerr << "[Globals] register_symbols: null m_pStartOfData\n";
+
+            // Route through BinaryFile::entries() so that header pointer fixups
+            // and any future relocation logic are applied consistently.
+            const DCEntry *table = file.entries();
+            if (!table) {
+                std::cerr << "[Globals] register_symbols: null entry table\n";
                 return false;
             }
 
             for (u32 i = 0; i < header->m_numEntries; ++i) {
-                const DCEntry &entry = header->m_pStartOfData[i];
+                const DCEntry &entry = table[i];
                 if (entry.m_nameID == 0) { continue; }
                 m_symbols[StringId(entry.m_nameID)] = Symbol{
                     const_cast<void *>(entry.m_entryPtr), StringId(entry.m_typeId), module_path_id};
