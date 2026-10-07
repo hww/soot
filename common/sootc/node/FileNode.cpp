@@ -134,12 +134,18 @@ namespace sootc {
         for (u32 id = 0; id < num_methods; ++id) {
             MethodInfo info;
             if (!ts.try_lookup_method(type_name, static_cast<int>(id), &info)) {
-                ss_methods[id] = {0, nullptr};
+                ss_methods[id] = {0, 0, nullptr};
                 continue;
             }
 
             SsMethod &sm = ss_methods[id];
             sm.m_name = StringId(info.name).value;
+
+            // Full name is "<type>-<method>" — this is the name under which
+            // the method's ScriptLambda is registered in Globals. It is used
+            // for runtime lookup and for introspection.
+            const std::string full_name = fmt::format("{}-{}", type_name, info.name);
+            sm.m_fullName = StringId(full_name).value;
 
             auto it = type_lambdas.find(info.name);
             if (it != type_lambdas.end()) {

@@ -320,11 +320,12 @@ namespace carbon {
     struct SsMethod // 0x10
     {
         sid64         m_name;    ///< <c>0x00</c>: SID of the method name (e.g. SID("len"))
+        sid64         m_fullName;///< <c>0x08</c>: SID of the full method name (e.g. SID("vec3-len"))
         ScriptLambda *m_pLambda; ///< <c>0x08</c>: pointer to the implementation (relocated),
                                  ///< or null for built-in / unimplemented methods
     };
 
-    static_assert(sizeof(SsMethod) == 0x10, "SsMethod must be 0x10 bytes");
+    static_assert(sizeof(SsMethod) == 0x18, "SsMethod must be 0x18 bytes");
 
     // ---------------------------------------------------------------------------
     // Executable function (lambda)

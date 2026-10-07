@@ -794,13 +794,11 @@ namespace carbon {
             m_formatter->print("\nMethods ({}):\n", st->m_numMethods);
             IFormatter::Block method_block(*m_formatter, m_indent);
 
-            m_formatter->print("{:>4}  {:<24}  {}\n", "id", "name", "lambda");
+            m_formatter->print("{:>4}  {:<24}  {:<24}  {}\n", "id", "name", "full-name", "lambda");
 
             for (u32 i = 0; i < st->m_numMethods; ++i) {
                 const SsMethod &m = methods[i];
 
-                // m_pLambda is an absolute pointer. Print its file offset if it
-                // points inside the file, otherwise the raw pointer.
                 std::string lambda_str = "(null)";
                 if (m.m_pLambda != nullptr) {
                     const auto base = reinterpret_cast<uintptr_t>(m_file->m_bytes.get());
@@ -812,7 +810,8 @@ namespace carbon {
                     }
                 }
 
-                m_formatter->print("{:>4}  {:<24}  {}\n", i, sid_str(m.m_name), lambda_str);
+                m_formatter->print("{:>4}  {:<24}  {:<24}  {}\n", i, sid_str(m.m_name),
+                                   sid_str(m.m_fullName), lambda_str);
             }
         }
     }

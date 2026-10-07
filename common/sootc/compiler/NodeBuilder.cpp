@@ -14,6 +14,7 @@
 #include "fmt/format.h"
 
 #include <stdexcept>
+#include <sootc/node/MethodCallNode.hpp>
 
 namespace sootc {
 
@@ -67,7 +68,7 @@ namespace sootc {
         if (keyword == "deftype") return build_deftype(form, node);
         if (keyword == "defenum") return build_defenum(form, node);
         if (keyword == "defmethod") return build_defmethod(form, node);
-
+        if (keyword == "->") { return build_deref(form, node); }
         if (keyword == "begin") {
             auto body_forms = form.as_pair()->cdr;
 
@@ -189,6 +190,100 @@ namespace sootc {
         auto        value = build_expression(value_obj, node);
 
         return std::make_unique<SetNode>(name, std::move(value));
+    }
+    /// @brief Parse (-> expr field-or-method [args...]).
+    /// @details First tries to resolve the name as a field of the base expression's
+    ///          static type. If found, this is a plain DerefNode. Otherwise, tries
+    ///          to resolve it as a method and produces a MethodCallNode.
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const soot::Object &form, Node *node) {
+        auto rest = form.as_pair()->cdr;
+
+        if (!rest.is_pair()) {
+            throw CompilerError("NodeBuilder::build_deref")
+                .where("->")
+                .expected("expression and field/method name")
+                .got("empty form");
+        }
+
+        auto expr_form = rest.as_pair()->car;
+        auto field_form = rest.as_pair()->cdr.as_pair()->car;
+
+        if (!field_form.is_symbol()) {
+            throw CompilerError("NodeBuilder::build_deref")
+                .where("->")
+                .expected("field or method name as a symbol")
+                .got(field_form.print());
+        }
+
+        std::string name = field_form.as_symbol();
+
+        // Build the base expression.
+        auto expr = build_expression(expr_form, node);
+
+        // Resolve the static type of the base expression.
+        Type *expr_type = expr->get_type();
+        if (!expr_type) {
+            throw CompilerError("NodeBuilder::build_deref")
+                .where(fmt::format("(-> ... {})", name))
+                .expected("base expression with a known type")
+                .got("unknown");
+        }
+
+        // If the base is a pointer, dereference to get the structure type.
+        Type *struct_type = expr_type;
+        {
+            DerefInfo di = m_ts.get_deref_info(TypeSpec(expr_type->get_name()));
+            if (di.can_deref && di.result_type.get()) { struct_type = di.result_type.get(); }
+        }
+
+        auto *st = dynamic_cast<StructureType *>(struct_type);
+        if (!st) {
+            throw CompilerError("NodeBuilder::build_deref")
+                .where(fmt::format("(-> ... {})", name))
+                .expected("structure type")
+                .got(struct_type ? struct_type->get_name() : "unknown");
+        }
+
+        // --- Try field first. ---
+        Field field;
+        if (st->lookup_field(name, &field)) {
+            Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
+            if (!field_type) {
+                throw CompilerError("NodeBuilder::build_deref")
+                    .where(fmt::format("(-> ... {})", name))
+                    .expected("known field type")
+                    .got(field.type().print());
+            }
+            return std::make_unique<DerefNode>(std::move(expr), name,
+                                               static_cast<u32>(field.offset()), field_type);
+        }
+
+        // --- Try method. ---
+        MethodInfo method_info;
+        if (m_ts.try_lookup_method(struct_type->get_name(), name, &method_info)) {
+            // Collect any remaining forms as arguments.
+            std::vector<std::unique_ptr<ExpressionNode>> args;
+            auto arg_forms = rest.as_pair()->cdr.as_pair()->cdr;
+            while (arg_forms.is_pair()) {
+                args.push_back(build_expression(arg_forms.as_pair()->car, node));
+                arg_forms = arg_forms.as_pair()->cdr;
+            }
+
+            // The return type is the last argument of the method's typespec.
+            Type *return_type = nullptr;
+            if (!method_info.type.empty()) {
+                return_type = m_ts.lookup_type_no_throw(method_info.type.last_arg().base_type());
+            }
+
+            const std::string full_name = fmt::format("{}-{}", struct_type->get_name(), name);
+            return std::make_unique<MethodCallNode>(std::move(expr), full_name, std::move(args),
+                                                    return_type);
+        }
+
+        throw CompilerError("NodeBuilder::build_deref")
+            .where(fmt::format("(-> {} {})", struct_type->get_name(), name))
+            .expected("a known field or method")
+            .got("unknown");
     }
 
     std::unique_ptr<NewNode> NodeBuilder::build_new(const soot::Object &form, Node *node) {
@@ -355,12 +450,19 @@ namespace sootc {
 
     std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object &form,
                                                               Node               *node) {
-        (void)node; // контекст не нужен — VariableNode сам разрешит при emit
-
         if (!form.is_symbol()) { throw std::runtime_error("build_variable: form is not a symbol"); }
 
         std::string name = form.as_symbol();
-        return std::make_unique<VariableNode>(name, /* type */ nullptr);
+
+        // Try to resolve the type right away from the enclosing function, so that
+        // forms like (-> v len) can look up the field/method at compile time.
+        // The actual register is still resolved lazily in VariableNode::emit.
+        Type *type = nullptr;
+        if (auto *fn = node->function()) {
+            if (auto *info = fn->lookup_variable(name)) { type = info->type(); }
+        }
+
+        return std::make_unique<VariableNode>(name, type);
     }
 
     std::unique_ptr<ConstNode> NodeBuilder::build_const(const soot::Object &form, Node *node) {

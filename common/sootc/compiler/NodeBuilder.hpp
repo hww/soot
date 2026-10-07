@@ -14,6 +14,7 @@
 #include "type_system/TypeSystem.hpp"
 #include <memory>
 #include <sootc/node/NewNode.hpp>
+#include <sootc/node/DerefNode.hpp>
 
 namespace sootc {
 
@@ -40,6 +41,7 @@ namespace sootc {
                                                      bool exported = false);
         std::unique_ptr<LetNode>        build_let(const soot::Object &form, Node *node);
         std::unique_ptr<SetNode>        build_set(const soot::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode> build_deref(const soot::Object &form, Node *node);
 
         // Data instances
         std::unique_ptr<NewNode> build_new(const soot::Object &form, Node *node);

@@ -8,7 +8,8 @@ add_library(libsootc
     common/sootc/node/LetNode.cpp
     common/sootc/node/DataDeclarationNode.cpp
     common/sootc/node/TypeDeclarationNode.cpp
-
+    common/sootc/node/DerefNode.cpp
+    common/sootc/node/MethodCallNode.cpp
 
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
