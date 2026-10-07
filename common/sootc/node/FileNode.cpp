@@ -63,7 +63,15 @@ ProgramBinaryElement FileNode::generate(GlobalState &state) {
                              types.empty() ? "<none>" : types));
     }
 
-    return make_binary(std::move(entries), state);
+    // Layouts of data-struct entries are collected here and passed back to the
+    // caller via out_data_structs. The caller (Compiler) stores them in the
+    // resulting BinaryFile so that BinaryFileInspector can decode payloads
+    // without TypeSystem.
+    std::vector<DataStructEntry> data_structs;
+    auto                         element = make_binary(std::move(entries), state, data_structs);
+    // Stash on the FileNode — Compiler will pick them up after generate().
+    m_dataStructs = std::move(data_structs);
+    return element;
 }
 
 // ============================================================================
@@ -81,6 +89,8 @@ std::vector<ProgramBinaryElement> FileNode::collect_all(GlobalState &state) {
         } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
             ProgramBinaryElement element = decl->generate(state);
             const size_t         payload_size = element.m_rawData.size();
+            lg::info("collect_all: DataDeclarationNode '{}', m_structLayout = {}", decl->name(),
+                     element.m_structLayout.has_value());
             if (payload_size > 0) {
                 entries.push_back(std::move(element));
                 lg::info("Data declaration '{}': {} bytes", decl->name(), payload_size);
@@ -98,7 +108,8 @@ std::vector<ProgramBinaryElement> FileNode::collect_all(GlobalState &state) {
 // make_binary - сборка финального бинарника
 // ============================================================================
 ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
-                                           GlobalState                      &state) {
+                                           GlobalState                      &state,
+                                           std::vector<DataStructEntry>     &out_data_structs) {
     printf("=== make_binary DEBUG ===\n");
     printf("program_elements.size() = %zu\n", program_elements.size());
 
@@ -139,12 +150,6 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
     // ========================================
     // 1. HEADER
     // ========================================
-    // DC_Header has 7 fields. The last one (m_pStartOfData) is a pointer and
-    // must be relocated. In 8-byte slot terms the header is 4 slots wide:
-    //   slot 0: m_magic       (4) + m_versionNumber (4)
-    //   slot 1: m_textSize    (4) + m_stringsOffset (4)
-    //   slot 2: m_always1     (4) + m_numEntries    (4)
-    //   slot 3: m_pStartOfData (8)                        ← relocatable
     DC_Header header{DC_FILE_MAGIC,
                      DC_FILE_VERSION,
                      static_cast<uint32_t>(data_size + stringtable_size),
@@ -152,20 +157,24 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
                      0x1,
                      static_cast<uint32_t>(num_entries),
                      reinterpret_cast<DCEntry *>(first_entry_offset)};
-    element.push_bytes(header, {0, 0, 0, 1}); // slot 3 is a relocated pointer
+    element.push_bytes(header, {0, 0, 0, 1});
 
-    // ARRAY_SID is a plain SID64 value — no relocations.
     element.push_bytes(ARRAY_SID, {0});
+
+
+        lg::info("make_binary: {} elements, {} with layout", program_elements.size(),
+             std::count_if(program_elements.begin(), program_elements.end(),
+                           [](const auto &e) { return e.m_structLayout.has_value(); }));
 
     // ========================================
     // 2. ENTRY TABLE
     // ========================================
-    // DCEntry has 3 fields, each 8 bytes:
-    //   slot 0: m_nameID  (8)   — no relocation
-    //   slot 1: m_typeId  (8)   — no relocation
-    //   slot 2: m_entryPtr (8)  — relocatable
     const u64 first_function_start = header_size + num_entries * sizeof(DCEntry);
     u64       prev_entry_size = 0;
+
+    // Reserve slots in out_data_structs for data-struct elements, so their
+    // order matches the entry table order.
+    out_data_structs.clear();
 
     for (auto &fn : program_elements) {
         DCEntry entry = fn.m_entry;
@@ -173,6 +182,17 @@ ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> pro
         element.push_bytes(entry, {0, 0, 1});
         prev_entry_size += fn.m_rawData.size();
         lg::info("FileNode::make_binary entry {}", entry.to_string());
+
+        // If this element carries a layout, record it together with its
+        // eventual file offset (the entry pointer).
+        if (fn.m_structLayout) {
+            DataStructEntry ds;
+            ds.name = StringIdManager::instance().get_string(entry.m_nameID);
+            ds.type_name = fn.m_structLayout->type_name;
+            ds.offset = reinterpret_cast<u64>(entry.m_entryPtr);
+            ds.layout = *fn.m_structLayout;
+            out_data_structs.push_back(std::move(ds));
+        }
     }
 
     // ========================================

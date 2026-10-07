@@ -8,7 +8,12 @@
 #include <string>
 
 
-using  namespace util;
+using namespace util;
+
+// Forward declaration for the structure layout used by inspect_struct_fields.
+// Defined in common/type_system/Type.hpp, which we don't want to pull into
+// every translation unit that includes the inspector.
+class StructureType;
 
 namespace carbon {
 
@@ -20,22 +25,22 @@ namespace carbon {
             Full,    ///< summary tables + detailed per-declaration / per-state dump
         };
 
-    explicit BinaryFileInspector(BinaryFile *file, int indent = 2,
+        explicit BinaryFileInspector(BinaryFile *file, int indent = 2,
                                      InspectMode mode = InspectMode::Full);
 
         void inspect();
 
     private:
-        BinaryFile*                 m_file;
+        BinaryFile                 *m_file;
         int                         m_indent;
         InspectMode                 m_mode;
         std::unique_ptr<IFormatter> m_formatter;
-        
-        
-        std::string ptr_str(const void* ptr);
+
+
+        std::string ptr_str(const void *ptr);
         std::string sid_str(sid64 id);
         std::string type_name(symbol_type type);
-        
+
         // Disassembly helpers
         std::string reg_name(u8 reg);
         std::string resolve_symbol(u16 index, const ScriptLambda *lambda);
@@ -70,14 +75,14 @@ namespace carbon {
         /// @details Produces a machine-readable dump: header, entries, violations.
         ///          Not a full AST dump — only metadata. Used by `dcinspect --json`.
         void inspect_json(std::ostream &os);
-        void BinaryFileInspector::inspect_ss_type(const SsType *st);
+        void inspect_ss_type(const SsType *st);
         void inspect_state_script(const StateScript *ss);
         /// @brief Print a compact one-line summary of a state script.
         /// @details Columns: id, initial state, num declarations, num states,
         ///          num options, options list.
         void inspect_state_script_summary(const StateScript *ss);
-        void inspect_declaration_list(const SsDeclarationList* list);
-        void inspect_declaration(const SsDeclaration* decl);
+        void inspect_declaration_list(const SsDeclarationList *list);
+        void inspect_declaration(const SsDeclaration *decl);
         /// @brief Print a compact one-line-per-declaration summary table.
         /// @details Columns: index, name, type, size, value (or ??? for unknown types).
         void inspect_declaration_summary(const SsDeclarationList *list);
@@ -86,8 +91,8 @@ namespace carbon {
         ///          declaration tables, and skips everything else (headers, entries,
         ///          relocations). Used by `dcinspect --decls-only`.
         void inspect_declarations_only();
-        void inspect_options(const SsOptions* opts);
-        void inspect_symbol_array(const SymbolArray* arr, const std::string& name);
+        void inspect_options(const SsOptions *opts);
+        void inspect_symbol_array(const SymbolArray *arr, const std::string &name);
         void inspect_state(const SsState *state);
         void inspect_on_block(const SsOnBlock *block);
         /// @brief Print a compact one-line-per-state summary table.
@@ -105,41 +110,53 @@ namespace carbon {
         void inspect_lambda_summary(const SsTrack *track);
         void inspect_script_lambda(const ScriptLambda *lambda, const std::string &name = "");
         void inspect_symbol(const symbol *sym);
-        
+
         // Disassembly
-        void disassemble(const ScriptLambda* lambda, const std::string& name);
+        void disassemble(const ScriptLambda *lambda, const std::string &name);
+
+        /// @brief Print the contents of every data-struct entry in the file.
+        /// @details For each entry with kind == DataStruct:
+        ///            1. Resolve the type name from m_typeId (e.g. "vec").
+        ///            2. Look up the structure layout in TypeSystem.
+        ///            3. Read the payload bytes from m_bytes at the entry offset.
+        ///            4. Decompose into fields and print a table.
+        ///
+        ///          Uses TypeSystem::instance() because types are registered
+        ///          globally when (deftype ...) is processed.
+        void inspect_data_structs();
+
 
     protected:
         // Safe pointer conversion method
-        bool is_valid_ptr(const void* ptr, size_t size = 1) const {
+        bool is_valid_ptr(const void *ptr, size_t size = 1) const {
             if (!ptr) return false;
-            
+
             uintptr_t ptr_val = reinterpret_cast<uintptr_t>(ptr);
             uintptr_t base_val = reinterpret_cast<uintptr_t>(m_file->m_bytes.get());
             uintptr_t max_val = base_val + m_file->m_dcheader->m_textSize + sizeof(DC_Header);
-            
+
             return (ptr_val >= base_val && ptr_val + size <= max_val);
         }
-        
-        template<typename T>
-        const T* safe_get_ptr(const T* ptr, const char* name) const {
+
+        template <typename T> const T *safe_get_ptr(const T *ptr, const char *name) const {
             if (!ptr) {
                 m_formatter->format("WARNING: {} is NULL\n", name);
                 return nullptr;
             }
-            
+
             if (!is_valid_ptr(ptr, sizeof(T))) {
-                m_formatter->format("WARNING: {} points outside file bounds (ptr=0x{:X})\n", 
-                                name, reinterpret_cast<uintptr_t>(ptr));
+                m_formatter->format("WARNING: {} points outside file bounds (ptr=0x{:X})\n", name,
+                                    reinterpret_cast<uintptr_t>(ptr));
                 return nullptr;
             }
-            
+
             return ptr;
         }
 
-        std::string format_instruction(const LongInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
-        std::string format_instruction(const ShortInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
+        std::string format_instruction(const LongInstruction &ins, const InstructionInfo *info,
+                                       const ScriptLambda *lambda);
+        std::string format_instruction(const ShortInstruction &ins, const InstructionInfo *info,
+                                       const ScriptLambda *lambda);
     };
 
 } // namespace carbon
-

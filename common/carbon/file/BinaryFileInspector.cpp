@@ -3,10 +3,10 @@
 #include "common/carbon/file/DeclarationTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/lib/StringIdManager.hpp"
-#include "file/DCScript.hpp"
+#include "common/carbon/file/DCScript.hpp"
+#include "common/carbon/lib/StringIdManager.hpp"
 #include "fmt/base.h"
 #include "fmt/format.h"
-#include "lib/StringIdManager.hpp"
 #include "util/Formatter.hpp"
 #include "vm/Instructions.hpp"
 #include <bitset>
@@ -165,6 +165,8 @@ namespace carbon {
 
         m_formatter->print("\n--- Entries ({} total) ---\n", n);
         inspect_entry_summary();
+        // Printed after the entry table so the reader sees metadata first.
+        inspect_data_structs();
 
         if (m_mode == InspectMode::Full) {
             const DCEntry *table = m_file->entries();
@@ -1478,5 +1480,105 @@ namespace carbon {
 
         return result;
     }
+    /// @brief Print the contents of every data-struct entry in the file.
+    /// @details Uses the layout information serialised into BinaryFile::m_dataStructs.
+    ///          Does NOT consult TypeSystem — libcarbon is independent of it.
+    ///
+    ///          NOTE: ds.offset is a *file offset*, not an absolute pointer. It is
+    ///          set in FileNode::make_binary from the entry table (before relocation)
+    ///          and is relative to the start of m_bytes. So the payload starts at
+    ///          m_bytes.get() + ds.offset.
+    void BinaryFileInspector::inspect_data_structs() {
+        if (m_file->m_dataStructs.empty()) { return; }
 
+        m_formatter->print("\n--- Data Structs Content ---\n");
+
+        for (const auto &ds : m_file->m_dataStructs) {
+            const auto &layout = ds.layout;
+
+            // ds.offset is a file offset (relative to m_bytes), NOT an absolute
+            // pointer. Use it directly.
+            const u64 file_offset = ds.offset;
+
+            // Bounds check: the payload must fit entirely inside the file.
+            if (file_offset + layout.total_size > m_file->m_size) {
+                m_formatter->print("\n  {} (type {}, offset 0x{:X}): out of bounds\n", ds.name,
+                                   layout.type_name, file_offset);
+                continue;
+            }
+
+            m_formatter->print("\n  {} (type {}, offset 0x{:X}, size {}):\n", ds.name,
+                               layout.type_name, file_offset, layout.total_size);
+            m_formatter->print("    {:<8} {:<20} {:<12} {:<10} {}\n", "Offset", "Bytes", "Field",
+                               "Type", "Value");
+
+            const u8 *base = reinterpret_cast<const u8 *>(m_file->m_bytes.get()) + file_offset;
+
+            for (const auto &f : layout.fields) {
+                m_formatter->print("    {:<8} ", fmt::format("0x{:04X}", file_offset + f.offset));
+
+                const u32 dump_size = std::min<u32>(f.size, 8);
+                for (u32 i = 0; i < dump_size; ++i) {
+                    m_formatter->print("{:02X} ", base[f.offset + i]);
+                }
+                for (u32 i = dump_size; i < 8; ++i) { m_formatter->print("   "); }
+
+                m_formatter->print("  {:<12} {:<12} ", f.name, f.type_name);
+
+                // Interpret the value based on the serialised type name.
+                if (f.is_array) {
+                    m_formatter->print("[{}]", f.array_size);
+                } else if (f.is_inline) {
+                    m_formatter->print("(inline)");
+                } else if (f.type_name == "int" || f.type_name == "int32") {
+                    i32 v;
+                    std::memcpy(&v, base + f.offset, sizeof(i32));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "int8") {
+                    i8 v;
+                    std::memcpy(&v, base + f.offset, sizeof(i8));
+                    m_formatter->print("{}", static_cast<int>(v));
+                } else if (f.type_name == "int16") {
+                    i16 v;
+                    std::memcpy(&v, base + f.offset, sizeof(i16));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "int64") {
+                    i64 v;
+                    std::memcpy(&v, base + f.offset, sizeof(i64));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "uint8") {
+                    u8 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u8));
+                    m_formatter->print("{}", static_cast<unsigned>(v));
+                } else if (f.type_name == "uint16") {
+                    u16 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u16));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "uint32") {
+                    u32 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u32));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "uint64") {
+                    u64 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u64));
+                    m_formatter->print("{}", v);
+                } else if (f.type_name == "float") {
+                    f32 v;
+                    std::memcpy(&v, base + f.offset, sizeof(f32));
+                    m_formatter->print("{:.6f}", v);
+                } else if (f.type_name == "symbol") {
+                    u64 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u64));
+                    m_formatter->print("{}", sid_str(v));
+                } else if (f.type_name == "string" || f.type_name.starts_with("pointer")) {
+                    u64 v;
+                    std::memcpy(&v, base + f.offset, sizeof(u64));
+                    m_formatter->print("0x{:X}", v);
+                } else {
+                    m_formatter->print("?");
+                }
+                m_formatter->print("\n");
+            }
+        }
+    }
 } // namespace carbon

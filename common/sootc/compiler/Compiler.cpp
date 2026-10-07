@@ -331,7 +331,15 @@ Compiler::compile_internal(soot::Object &forms, const std::string &filename) {
             BinaryFile::from_buffer(filename, std::move(bytes), element.m_rawData.size());
         if (!binary_result) { return std::unexpected("Failed to create binary from buffer"); }
 
+        // --- Populate m_dataStructs from the layout info attached to each
+        //     ProgramBinaryElement at generation time. ---
+        // (element.m_rawData still holds the merged payload; the layouts
+        // were collected into a parallel vector during make_binary.)
         auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
+
+        // Copy data-struct layouts collected by FileNode into the BinaryFile,
+        // so that BinaryFileInspector can decode payloads without TypeSystem.
+        for (const auto &ds : file_node->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
         if (m_config.debug_print_asm) { color_binary_file(binary); }
 

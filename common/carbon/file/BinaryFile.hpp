@@ -12,6 +12,7 @@
 #include <map>
 #include <set>
 #include <iostream>
+#include "ProgramBinaryElement.hpp"
 
 namespace carbon {
 
@@ -89,6 +90,18 @@ namespace carbon {
             uint64_t     *hash_ptr;   ///< valid when type == HASH
             DCEntry       raw_entry;  ///< raw entry for debugging / round-trip
         };
+    };
+
+    /// @brief One data-struct entry with its serialised layout.
+    /// @details Populated at load time from the entry table. The layout comes
+    ///          from ProgramBinaryElement::m_structLayout (attached at generation
+    ///          time by DataDeclarationNode), so BinaryFileInspector can decode
+    ///          the payload WITHOUT consulting TypeSystem.
+    struct DataStructEntry {
+        std::string      name;      ///< entry name, e.g. "foo"
+        std::string      type_name; ///< type name, e.g. "vec"
+        u64              offset;    ///< file offset of the payload
+        StructLayoutInfo layout;    ///< field layout
     };
 
     /// @brief In-memory representation of a loaded DC file.
@@ -190,6 +203,7 @@ namespace carbon {
         location                            m_relocTable;     ///< start of the relocation bitmap (after its u32 size)
         std::map<sid64, const std::string>  m_sidCache;       ///< SID -> resolved name
         std::set<p64>                       m_emittedStructs; ///< used by emit-once mode
+        std::vector<DataStructEntry>        m_dataStructs;    ///< populated at load time
 
         /// @return true if the given location is a relocated pointer (not a raw value).
         [[nodiscard]] bool is_file_ptr(location loc) const noexcept;

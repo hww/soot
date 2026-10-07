@@ -1,3 +1,5 @@
+// FunctionNode.cpp
+
 #pragma once
 
 #include "CommonTypes.hpp"
@@ -6,13 +8,39 @@
 #include "lib/ByteUtils.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace carbon {
 
     struct function;
     struct global_state;
+    // =========================================================================
+    // Struct layout metadata
+    // =========================================================================
+    // Serialised alongside a data-struct payload so that tools (like
+    // BinaryFileInspector) can decode the payload WITHOUT consulting TypeSystem.
+    // TypeSystem is a compiler-side concept; libcarbon must not depend on it.
+
+    /// @brief One field of a structure.
+    struct StructFieldInfo {
+        std::string name;       ///< field name, e.g. "x"
+        std::string type_name;  ///< type as written, e.g. "int"
+        u32         offset;     ///< byte offset within the struct
+        u32         size;       ///< size in bytes (arrays: total size)
+        bool        is_inline;  ///< true if this field is an inline struct
+        bool        is_array;   ///< true if this field is an array
+        int         array_size; ///< number of elements (0 if not an array)
+    };
+
+    /// @brief Layout of one data-struct, attached to its ProgramBinaryElement.
+    struct StructLayoutInfo {
+        std::string                  type_name;  ///< e.g. "vec"
+        u32                          total_size; ///< total size in bytes
+        std::vector<StructFieldInfo> fields;
+    };
 
     /// @brief Serialised representation of one entry (function / struct / ...) in a DC file.
     /// @details Holds raw bytes, a parallel relocation bitmap (one bit per 8-byte slot),
@@ -30,8 +58,9 @@ namespace carbon {
         ProgramBinaryElement(ProgramBinaryElement &&other) noexcept
             : m_entry(std::move(other.m_entry)), m_rawData(std::move(other.m_rawData)),
               m_stringOffsets(std::move(other.m_stringOffsets)),
-              m_relocTable(std::move(other.m_relocTable)), m_byteOffset(other.m_byteOffset),
-              m_bitOffset(other.m_bitOffset) {
+              m_relocTable(std::move(other.m_relocTable)),
+              m_structLayout(std::move(other.m_structLayout)), // <-- ADD THIS
+              m_byteOffset(other.m_byteOffset), m_bitOffset(other.m_bitOffset) {
             other.m_entry.m_entryPtr = nullptr;
             other.m_byteOffset = 0;
             other.m_bitOffset = 0;
@@ -115,6 +144,10 @@ namespace carbon {
         std::vector<std::byte> m_rawData;  ///< serialised payload
         std::vector<u64>  m_stringOffsets; ///< offsets in m_rawData that hold string-table indices
         std::vector<bool> m_relocTable;    ///< one bit per 8-byte slot in m_rawData
+        
+        /// @brief Layout of the payload if this element is a data-struct.
+        /// @details Empty for functions and other element kinds.
+        std::optional<StructLayoutInfo> m_structLayout; 
 
         u64 m_byteOffset = 0; ///< running byte cursor (used by insert_into_reloctable)
         u8  m_bitOffset = 0;  ///< running bit cursor within m_byteOffset

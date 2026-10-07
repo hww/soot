@@ -54,7 +54,6 @@ namespace sootc {
             const std::string &field_name = field.name();
             const int          field_offset = field.offset();
 
-            // Find matching init.
             const NewNode::FieldInit *init = nullptr;
             for (const auto &f : m_instance->fields()) {
                 if (f.name == field_name) {
@@ -63,10 +62,8 @@ namespace sootc {
                 }
             }
 
-            // No init → leave as zero (default).
             if (!init || !init->value) { continue; }
 
-            // Only ConstNode for now.
             const auto *cn = dynamic_cast<const ConstNode *>(init->value.get());
             if (!cn) {
                 lg::warn("DataDeclarationNode '{}': field '{}' has non-const init ({}), skipped",
@@ -74,40 +71,33 @@ namespace sootc {
                 continue;
             }
 
-            // Determine field type and write value.
             const std::string &ft = field.type().base_type();
             const size_t       off = static_cast<size_t>(field_offset);
 
             if (ft == "float" || ft == "f32") {
                 const f32 v = static_cast<f32>(cn->float_value());
-                if (off + sizeof(f32) <= payload.size()) {
+                if (off + sizeof(f32) <= payload.size())
                     std::memcpy(payload.data() + off, &v, sizeof(f32));
-                }
             } else if (ft == "int" || ft == "int32") {
                 const i32 v = static_cast<i32>(cn->int_value());
-                if (off + sizeof(i32) <= payload.size()) {
+                if (off + sizeof(i32) <= payload.size())
                     std::memcpy(payload.data() + off, &v, sizeof(i32));
-                }
             } else if (ft == "int64") {
                 const i64 v = cn->int_value();
-                if (off + sizeof(i64) <= payload.size()) {
+                if (off + sizeof(i64) <= payload.size())
                     std::memcpy(payload.data() + off, &v, sizeof(i64));
-                }
             } else if (ft == "uint8") {
                 const u8 v = static_cast<u8>(cn->int_value());
-                if (off + sizeof(u8) <= payload.size()) {
+                if (off + sizeof(u8) <= payload.size())
                     std::memcpy(payload.data() + off, &v, sizeof(u8));
-                }
             } else if (ft == "bool" || ft == "boolean") {
                 const u8 v = cn->int_value() ? 1 : 0;
-                if (off + 1 <= payload.size()) { payload[off] = static_cast<std::byte>(v); }
+                if (off + 1 <= payload.size()) payload[off] = static_cast<std::byte>(v);
             } else if (ft == "uint64") {
                 const u64 v = static_cast<u64>(cn->int_value());
-                if (off + sizeof(u64) <= payload.size()) {
+                if (off + sizeof(u64) <= payload.size())
                     std::memcpy(payload.data() + off, &v, sizeof(u64));
-                }
             } else if (ft == "symbol" || ft == "sid64") {
-                // SID — либо из string_value, либо из int_value
                 const sid64 v = StringId(cn->string_value()).value;
                 std::memcpy(payload.data() + off, &v, sizeof(sid64));
             } else {
@@ -123,12 +113,30 @@ namespace sootc {
                            .m_typeId = StringId(type_name).value,
                            .m_entryPtr = nullptr};
 
+        // 6. Attach the struct layout so downstream tools (BinaryFileInspector)
+        //    can decode the payload WITHOUT knowing about TypeSystem.
+        //    This mirrors how SsType entries are self-describing in the file.
+        StructLayoutInfo layout;
+        layout.type_name = type_name;
+        layout.total_size = static_cast<u32>(size_bytes);
+        for (const auto &field : st->fields()) {
+            StructFieldInfo fi;
+            fi.name = field.name();
+            fi.type_name = field.type().print();
+            fi.offset = static_cast<u32>(field.offset());
+            fi.size = static_cast<u32>(ts.get_size_in_type(field));
+            fi.is_inline = field.is_inline();
+            fi.is_array = field.is_array();
+            fi.array_size = field.array_size();
+            layout.fields.push_back(std::move(fi));
+        }
+        element.m_structLayout = std::move(layout);
+
         // Push payload — no relocations yet.
         element.push_blob(payload.data(), payload.size(), /*relocation_bit=*/0);
 
-        lg::info("DataDeclarationNode '{}': {} bytes, type '{}', exported={}", m_name, size_bytes,
-                 type_name, m_exported);
-
+        lg::info("DataDeclarationNode '{}': {} bytes, type '{}', exported={} m_structLayout has {} fields", m_name, size_bytes,
+                 type_name, m_exported, element.m_structLayout ? element.m_structLayout->fields.size() : 0);
         return element;
     }
 

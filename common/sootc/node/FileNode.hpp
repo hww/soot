@@ -19,7 +19,9 @@ namespace sootc {
         std::unordered_map<std::string, Node *> m_symbols;
         std::vector<Node *>                     m_ordered_symbols;
         std::vector<FileNode *>                 m_imports;
-
+        /// @brief Layouts of data-struct entries produced by make_binary.
+        /// @details Read by Compiler after generate() to populate the BinaryFile.
+        std::vector<DataStructEntry>            m_dataStructs;
     protected:
         void update_self_cache() override { m_cached_file = this; }
 
@@ -45,14 +47,22 @@ namespace sootc {
 
         static void insert_into_reloctable(u8 *reloc_table, u64 &byte_offset, u64 &bit_offset,
                                            u8 bits, u64 num_bits) noexcept;
+        
+        const std::vector<DataStructEntry> &data_structs() const { return m_dataStructs; }
 
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.
         std::vector<ProgramBinaryElement> collect_all(GlobalState &state);
-        /// @brief Assemble the final binary from a list of pre-serialized entries.
-        ProgramBinaryElement make_binary(std::vector<ProgramBinaryElement> entries,
-                                         GlobalState                      &state);
+        /// @brief Assemble the final binary from per-element payloads.
+        /// @param program_elements  Payloads (functions, data-structs, ...).
+        /// @param state             Global compilation state (strings, etc).
+        /// @param out_data_structs  [out] Layouts of data-struct entries, in the
+        ///                          order they appear in the entry table. The caller
+        ///                          (Compiler) stores them in the resulting BinaryFile.
+        ProgramBinaryElement make_binary(std::vector<ProgramBinaryElement> program_elements,
+                                         GlobalState                      &state,
+                                         std::vector<DataStructEntry>     &out_data_structs);
     };
 
 } // namespace sootc

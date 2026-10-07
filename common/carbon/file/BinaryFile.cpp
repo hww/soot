@@ -1,4 +1,6 @@
-﻿#include "BinaryFile.hpp"
+﻿// BinaryFile.cpp
+
+#include "BinaryFile.hpp"
 
 #include "common/carbon/lib/StringIdManager.hpp"
 #include "fmt/format.h"

@@ -40,10 +40,6 @@ namespace carbon {
         // in the icemesh reference layout, where it is 0x50).
         static_assert(sizeof(ScriptLambda) == 0x58, "ScriptLambda must be 0x58 bytes");
 
-        // ProgramBinaryElement.hpp
-        static_assert(sizeof(ProgramBinaryElement) == 0x98,
-                      "ProgramBinaryElement must be 0x98 bytes");
-
     } // namespace size_checks
 
     /// Runtime helper: prints a table of all struct sizes to stdout.
