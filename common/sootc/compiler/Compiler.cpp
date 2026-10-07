@@ -832,17 +832,21 @@ replxx::Replxx::hints_t Compiler::find_hints_by_prefix(
     return hints;
 }
 
-void Compiler::repl_coloring(
-    const std::string& input,
-    replxx::Replxx::colors_t& colors) {
-    
-    // Ручной парсинг строки и установка цветов для каждого символа
+void Compiler::repl_coloring(const std::string &input, replxx::Replxx::colors_t &colors) {
+
+    // Defensive: make sure `colors` covers the whole input. Some replxx
+    // builds pass a buffer that is exactly input.size() wide; others may
+    // pass one that is shorter (or empty) on the very first call.
+    if (colors.size() < input.size()) {
+        colors.resize(input.size(), replxx::Replxx::Color::DEFAULT);
+    }
+
     bool in_string = false;
     bool in_comment = false;
-    
+
     for (size_t i = 0; i < input.size(); i++) {
-        char c = input[i];
-        
+        const char c = input[i];
+
         if (c == '"' && !in_comment) {
             in_string = !in_string;
             colors[i] = replxx::Replxx::Color::GREEN;
@@ -855,15 +859,17 @@ void Compiler::repl_coloring(
             colors[i] = replxx::Replxx::Color::GREEN;
         } else if (c == '(' || c == ')') {
             colors[i] = replxx::Replxx::Color::BRIGHTBLUE;
-        } else if (std::isdigit(c) || (c == '-' && std::isdigit(input[i+1]))) {
-            // цифры
+        } else if (std::isdigit(static_cast<unsigned char>(c)) ||
+                   (c == '-' && i + 1 < input.size() &&
+                    std::isdigit(static_cast<unsigned char>(input[i + 1])))) {
             colors[i] = replxx::Replxx::Color::YELLOW;
         } else {
-            // Проверка ключевых слов
-            // (сложная логика для определения границ слов)
+            // Default: leave the slot alone (replxx will draw it with the
+            // default terminal color).
         }
     }
 }
+
 // ===============================================================
 // Печать / сохранение
 // ===============================================================

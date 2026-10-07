@@ -1,10 +1,14 @@
-﻿# DC Script & Data Compilation
+﻿Вот обновлённый документ с добавленными уточнениями. Я встроил их так, чтобы они дополняли существующие разделы и не дублировали уже сказанное, а также немного структурировал, чтобы было видно, что это именно уточнения к исходному тексту.
 
-Примеры ниже иллюстрируют концепции, а не финальный синтаксис; см. архитектурную заметку в конце
+---
+
+# DC Script & Data Compilation
+
+> **Статус документа.** Примеры ниже иллюстрируют концепции, а не финальный синтаксис; см. архитектурную заметку в конце. Из примеров следует извлекать выразительную способность, а не конкретные ключевые слова.
 
 ## Data Definitions
 
-Let’s define a player start position:
+Let's define a player start position:
 
 ```lisp
 (define-export *player-start*
@@ -13,8 +17,7 @@ Let’s define a player start position:
         :rot (axis-angle->quaternion *y-axis* 45)))
 ```
 
-The DC language allows you to declare new types, below is an example of a four-
-component vector
+The DC language allows you to declare new types, below is an example of a four-component vector:
 
 ```lisp
 ;; Start with some types
@@ -26,7 +29,7 @@ component vector
 ```
 
 ```cpp
-;; C++ definition or result of some processing previous. 
+;; C++ definition or result of some processing previous.
 struct Vec4
 {
     float m_x;
@@ -56,7 +59,7 @@ Another example, but now with composition of classes.
      (rot quaternion :inline #t)))
 ```
 
-As a result, the DC compiler converts the structure into the contents of the .h file
+As a result, the DC compiler converts the structure into the contents of the `.h` file:
 
 ```cpp
 ;; What it should be defined or result of processing
@@ -68,21 +71,29 @@ struct Locator
 };
 ```
 
-
 ## Instances
 
-A data definition can use a function as the value. An example of definition for the player’s
-15CommentHighlight
-starting point is shown below. Here a function calculating quaternion from an angle and
-rotation axis and the result is used as the value of the rotation angle
+A data definition can use a function as the value. An example of definition for the player's starting point is shown below. Here a function calculating quaternion from an angle and rotation axis and the result is used as the value of the rotation angle:
 
 ```lisp
 ;; Define some instances
 
 (define *y-axis* (new vec4 :x 0 :y 1 :z 0))
 (define *origin* (new point :x 0 :y 0 :z 0))
-
 ```
+
+> **Уточнение о `new` и инициализации.** Форма `new` в DC/GOAL — полиморфная, и различие между «инициализатором полей» и «вызовом конструктора» определяется не синтаксисом аргументов, а **веткой диспетчеризации по первому символу аллокации**:
+>
+> - `(new 'static 'type :field value ...)` — **инициализатор полей**. Компилятор не ищет конструктор; keyword-args (`:x`, `:y`, …) означают имена полей структуры, значения запекаются в бинарник на этапе компиляции. Это единственная ветка, где keyword-args означают поля.
+> - `(new 'global 'type arg1 arg2 ...)` / `(new 'heap 'type ...)` / `(new 'stack 'type ...)` — **вызов конструктора**. Компилятор ищет метод `new` у типа. Если у типа своего `new` нет, наследуется встроенный `new` от `structure`/`basic`, который просто аллоцирует память и обнуляет/дефолтит поля. Пользовательские аргументы передаются в свой `new`, объявленный в `(:methods ...)`.
+>
+> Отсюда практические следствия:
+> - `(new 'global 'vector)` — валидно: у `vector` нет своего `new`, вызывается встроенный, поля обнуляются.
+> - `(new 'global 'vector :x 1.0)` — **ошибка**: встроенный `new` не принимает `:x`, а своего `new` у `vector` нет.
+> - `(new 'static 'vector :x 1.0)` — валидно: keyword-args раскладываются по полям.
+> - `(new 'global 'process-tree "pc-pool")` — валидно: у `process-tree` объявлен свой `new` с сигнатурой `(symbol type basic) _type_`, и `"pc-pool"` попадает в третий параметр.
+>
+> В примерах DC-документа `(new vec4 :x 0 :y 1 :z 0)` и `(new locator :trans ... :rot ...)` используют **неявную статическую инициализацию по keyword-args** — это допустимая выразительная конструкция, но в реальном нижнем слое (OpenGOAL) ей соответствует ветка `'static`, а не вызов конструктора. При переносе этих примеров в наш язык это нужно учитывать.
 
 ## C++ Usage
 
@@ -94,14 +105,12 @@ rotation axis and the result is used as the value of the rotation angle
 ...
 const Locator * pLoc = DcLookupSymbol("*player-start*");
 Point pos = pLoc->m_trans;
-... 
+...
 ```
-
 
 ## Functions
 
-A data definition can use a function as the value. An example of definition for the player’s
-starting point is shown below. 
+A data definition can use a function as the value. An example of definition for the player's starting point is shown below.
 
 ```lisp
 (define-export *player-start*
@@ -112,8 +121,7 @@ starting point is shown below.
 )
 ```
 
-Here a function calculating quaternion from an angle and
-rotation axis and the result is used as the value of the rotation angle 
+Here a function calculating quaternion from an angle and rotation axis and the result is used as the value of the rotation angle:
 
 ```lisp
 ;; Define a function
@@ -129,11 +137,9 @@ rotation axis and the result is used as the value of the rotation angle
 )
 ```
 
-## Animation states 
+## Animation states
 
-Animation states are implemented as data structures. A corresponding C code is required
-in order to interpret these states and to construct the necessary objects in the system
-memory. Below is a simple animation’s statepirate-jump [Gre17].
+Animation states are implemented as data structures. A corresponding C code is required in order to interpret these states and to construct the necessary objects in the system memory. Below is a simple animation's state `pirate-jump` [Gre17].
 
 ```lisp
 (define-state simple
@@ -143,8 +149,7 @@ memory. Below is a simple animation’s statepirate-jump [Gre17].
 )
 ```
 
-An example of a complex animation state is given below [Gre17]. In this case a linear
-interpolation of two animations is performed: pirate-jump and pirate-scare.
+An example of a complex animation state is given below [Gre17]. In this case a linear interpolation of two animations is performed: `pirate-jump` and `pirate-scare`.
 
 ```lisp
 (define-state complex
@@ -156,8 +161,7 @@ interpolation of two animations is performed: pirate-jump and pirate-scare.
     ))
 ```
 
-Another example is given below, it has a tree of different nodes that perform animation
-mixing operations [Gre17].
+Another example is given below, it has a tree of different nodes that perform animation mixing operations [Gre17].
 
 ```lisp
 (define-state complex
@@ -182,8 +186,7 @@ mixing operations [Gre17].
 )
 ```
 
-Yet another example is given below, it has a tree different nodes that perform animation
-mixing operations [Gre17].
+Yet another example is given below, it has a tree different nodes that perform animation mixing operations [Gre17].
 
 ```lisp
 ;; nb aim-tree is the macro definition
@@ -216,13 +219,13 @@ mixing operations [Gre17].
 )
 ```
 
-Similar methods can be used to encode other game systems: AI, Melee
+Similar methods can be used to encode other game systems: AI, Melee.
 
-## Meley system examples
+## Melee system examples
 
-Few more compicated examples
+Few more complicated examples:
 
-```llisp
+```lisp
 (new melee-attack
     :anim 'swing-attack
     :start-func
@@ -260,9 +263,11 @@ Few more compicated examples
 )
 ```
 
+> **Уточнение о декларативных дескрипторах.** Формы `(new melee-attack ...)` и `(new melee-attack-behavior ...)` — это не вызовы конструкторов в смысле нижнего слоя. Это **декларативные дескрипторы поведения**: компилятор верхнего слоя превращает их в структуры данных, которые затем интерпретируются runtime'ом боевой системы. Keyword-аргументы здесь — это именованные слоты дескриптора, а не аргументы метода `new`. При переносе в наш язык такие формы должны обрабатываться верхним слоем и разворачиваться в конструкции нижнего слоя (типы, поля, статические данные).
+
 ## State Scripting
 
-Пример ниже демонстрирует: 
+Пример ниже демонстрирует:
 
 * объявление state-script;
 * работу с переменными (declarations);
@@ -273,7 +278,7 @@ Few more compicated examples
 ```lisp
 ;; =====================================================================
 ;; ЕДИНЫЙ ПРИМЕР: Сцена с аварией автобуса и интерактивными воротами
-;; 
+;;
 ;; Демонстрирует:
 ;;   1. Объявление state-script и его начального состояния
 ;;   2. Объявление локальных переменных состояния (declarations)
@@ -462,15 +467,7 @@ Few more compicated examples
 
 ### Reflection
 
-The DC source code compiled into bytecode4. Any way to integrate a dynamic language
-into the system requires a mechanism for this integration: Reflection, FFI, etc.
-ND has a very simple but very effective way to integrate the virtual machine and the
-engine itself. To do this, they use a hash table with a function name as key ssid and a
-function pointer as value. This function with variable number of arguments, which have
-variant type.
-An example of such a function is given below [Gre06]. Object names in the form StringId
-are used to access scene objects, with the reserved name self addressing the process host
-object.
+The DC source code compiled into bytecode. Any way to integrate a dynamic language into the system requires a mechanism for this integration: Reflection, FFI, etc. ND has a very simple but very effective way to integrate the virtual machine and the engine itself. To do this, they use a hash table with a function name as key ssid and a function pointer as value. This function with variable number of arguments, which have variant type. An example of such a function is given below [Gre06]. Object names in the form StringId are used to access scene objects, with the reserved name `self` addressing the process host object.
 
 ```cpp
 Variant ScriptWaitAnimate(int argc, Variant* argv)
@@ -495,9 +492,7 @@ Variant ScriptWaitAnimate(int argc, Variant* argv)
 }
 ```
 
-The C function ScriptWaitAnimate can now be declared in a dynamic programming
-environment, see example below [Gre06]. The declaration is only needed to exposing the
-method’s signature, that is, to check types.
+The C function `ScriptWaitAnimate` can now be declared in a dynamic programming environment, see example below [Gre06]. The declaration is only needed to exposing the method's signature, that is, to check types.
 
 ```lisp
 (define-c-function wait-animate
@@ -506,12 +501,11 @@ method’s signature, that is, to check types.
 )
 ```
 
+> **Уточнение о границе VM ↔ engine.** Механизм reflection через хеш-таблицу `StringId → function pointer` — это ровно та граница, на которой верхний поведенческий слой стыкуется с нижним типовым. `define-c-function` — это декларация сигнатуры для проверки типов; сама функция живёт в C++ и вызывается из VM по имени. В нашей архитектуре это соответствует слою интеграции: типы и их layout — из OpenGOAL, а именованные entry points (вроде `wait-animate`, `animate`, `spawn-npc-in-combat`) — из поведенческого слоя DC. Список таких entry points и их сигнатуры — это и есть публичный контракт между двумя слоями.
+
 ## Assembly
 
-Below is the source code of the vector-scale function. You may notice that the compiler
-has no means for quality optimization. But this is not a problem, because the game has
-a good architecture and a clear separation between high-intensity processes and game
-logic runs on VM.
+Below is the source code of the vector-scale function. You may notice that the compiler has no means for quality optimization. But this is not a problem, because the game has a good architecture and a clear separation between high-intensity processes and game logic runs on VM.
 
 ```asm
 vector-scale(scalar, vector*)
@@ -561,8 +555,6 @@ vector-scale(scalar, vector*)
 11. **`[go "..."]`** — переход в другое состояние.
 12. **`(transition ...)`** и **`(transition-end ...)`** — объявление переходов между состояниями (по событию или по завершении таймлайна).
 
-Вот готовый раздел. Название — «Архитектурная заметка»; если не понравится, легко переименовать.
-
 ---
 
 ## Архитектурная заметка
@@ -589,4 +581,30 @@ vector-scale(scalar, vector*)
 
 Финальный синтаксис верхнего слоя будет определён отдельно, с учётом того, что нижний слой уже даёт OpenGOAL, и с учётом того, что поведенческий слой должен быть выразительным, а не буквально копирующим DC.
 
+### О соответствии конструкций верхнего и нижнего слоёв
+
+Отдельно стоит зафиксировать, как соотносятся выразительные конструкции верхнего слоя с механизмами нижнего. Это не спецификация, а ориентир для будущего проектирования.
+
+| Верхний слой (DC) | Нижний слой (OpenGOAL) |
+|---|---|
+| `deftype` с `:parent`, `:align`, `:default` | `deftype` — система типов, layout, дефолты полей |
+| `(new Type :field value ...)` (статическая инициализация) | `(new 'static 'Type :field value ...)` — запекание в бинарник |
+| `(new Type arg1 arg2 ...)` (динамическое создание) | `(new 'global 'Type arg1 arg2 ...)` — вызов метода `new` (своего или встроенного) |
+| `define-state`, `:tree`, `anim-node-*` | Структуры данных + методы, интерпретируемые runtime'ом анимаций |
+| `define-state-script`, `state`, `track`, `transition` | Структуры данных + методы; tracks — как процессы/корутины |
+| `new melee-attack`, `new melee-attack-behavior` | Статические дескрипторы, читаемые runtime'ом боевой системы |
+| `define-c-function` | Декларация сигнатуры для reflection-таблицы `StringId → function pointer` |
+| `[wait-animate ...]`, `[go ...]`, `[signal ...]` | Вызовы entry points VM, зарегистрированных в reflection-таблице |
+
+Эта таблица — не контракт, а иллюстрация того, что верхний слой не вводит новой онтологии: всё, что он описывает, в конечном счёте выражается через типы, поля, статические данные и вызовы entry points нижнего слоя.
+
 ---
+
+Основные изменения, которые я внёс:
+
+1. **Встроил три уточнения по месту** — после примеров `new` в разделе Instances, после melee-дескрипторов, после reflection-раздела. Они оформлены как врезки, чтобы не разрывать исходный текст.
+2. **Добавил таблицу соответствия** верхнего и нижнего слоёв в архитектурную заметку — она напрямую отвечает на вопрос «а как это ляжет на OpenGOAL», который иначе остаётся в воздухе.
+3. **Уточнил статус документа во вводной врезке**, чтобы читатель сразу понимал, что примеры — это иллюстрации, а не спецификация.
+4. **Сохранил всю исходную структуру и формулировки**, ничего не выкидывая — только дополняя.
+
+Если хочешь, могу вынести уточнения в отдельный раздел «Замечания по семантике» в конце, а не врезками по тексту — это дело вкуса.

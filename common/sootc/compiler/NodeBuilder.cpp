@@ -80,9 +80,9 @@ namespace sootc {
                 if (child.is_pair() && child.as_pair()->car.is_symbol()) {
                     const std::string kw = child.as_pair()->car.as_symbol();
 
-                    // Declarations are hoisted out of the sequence: they are not
-                    // expressions, but they must be compiled so TypeSystem is
-                    // updated and so the FileNode can emit them later.
+                    // Top-level declarations inside (begin ...) are hoisted onto
+                    // the FileNode. They are not expressions, so they cannot go
+                    // into the sequence.
                     if (kw == "deftype" || kw == "defenum") {
                         auto decl = build(child, node);
                         if (auto *file = node->file()) { file->add_child(std::move(decl)); }
@@ -95,6 +95,26 @@ namespace sootc {
                             FunctionNode *raw = fn.get();
                             file->add_child(std::move(fn));
                             file->bind(raw->name(), raw);
+                        }
+                        cur = cur.as_pair()->cdr;
+                        continue;
+                    }
+                    // define / define-export at any level produce a FunctionNode
+                    // or DataDeclarationNode. Both are hoisted onto the FileNode:
+                    // they are named declarations, not expressions.
+                    if (kw == "define" || kw == "define-export") {
+                        const bool exported = (kw == "define-export");
+                        auto       decl = build_define(child, node, exported);
+                        if (auto *file = node->file()) {
+                            if (auto *fn = dynamic_cast<FunctionNode *>(decl.get())) {
+                                FunctionNode *raw = fn;
+                                file->add_child(std::move(decl));
+                                file->bind(raw->name(), raw);
+                            } else if (dynamic_cast<DataDeclarationNode *>(decl.get()) != nullptr) {
+                                file->add_child(std::move(decl));
+                            } else {
+                                file->add_child(std::move(decl));
+                            }
                         }
                         cur = cur.as_pair()->cdr;
                         continue;
@@ -289,64 +309,111 @@ namespace sootc {
     std::unique_ptr<NewNode> NodeBuilder::build_new(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
-        // ---- Type name ----
         if (!rest.is_pair()) {
             throw CompilerError("NodeBuilder::build_new")
                 .where("new")
-                .expected("type name as the first argument")
+                .expected("type name (optionally preceded by an allocation symbol)")
                 .got("empty form");
         }
 
-        const auto &type_name_obj = rest.as_pair()->car;
-        if (!type_name_obj.is_symbol()) {
+        // ---- Allocation and type name ----
+        //
+        // Two forms are accepted:
+        //    (new Type ...)              — allocation defaults to 'static'
+        //    (new alloc Type ...)        — alloc is one of static/global/heap/stack
+        //
+        // The first symbol is examined: if it is a known allocation keyword, it
+        // is consumed and the next symbol is the type. Otherwise it is the type
+        // and allocation stays at its default.
+        std::string allocation = "static";
+        std::string type_name;
+
+        const auto &first = rest.as_pair()->car;
+        if (!first.is_symbol()) {
             throw CompilerError("NodeBuilder::build_new")
                 .where("new")
-                .expected("symbol as type name")
-                .got(type_name_obj.print());
+                .expected("symbol as type name (or allocation)")
+                .got(first.print());
         }
 
-        const std::string type_name = type_name_obj.as_symbol();
+        std::string first_str = first.as_symbol();
 
-        // ---- Look up the type in TypeSystem ----
+        if (first_str == "static" || first_str == "global" || first_str == "heap" ||
+            first_str == "stack") {
+            allocation = first_str;
+            rest = rest.as_pair()->cdr;
+
+            if (!rest.is_pair()) {
+                throw CompilerError("NodeBuilder::build_new")
+                    .where(fmt::format("new {}", allocation))
+                    .expected("type name after allocation")
+                    .got("end of form");
+            }
+
+            const auto &type_obj = rest.as_pair()->car;
+            if (!type_obj.is_symbol()) {
+                throw CompilerError("NodeBuilder::build_new")
+                    .where(fmt::format("new {}", allocation))
+                    .expected("symbol as type name")
+                    .got(type_obj.print());
+            }
+            type_name = type_obj.to_std_string();
+        } else {
+            type_name = first_str;
+        }
+
+        // ---- Look up the type ----
         Type *type = m_ts.lookup_type_no_throw(type_name);
         if (!type) {
             throw CompilerError("NodeBuilder::build_new")
-                .where(fmt::format("new {}", type_name))
+                .where(fmt::format("new {} {}", allocation, type_name))
                 .expected("a known type")
                 .got("unknown type");
         }
 
         auto new_node = std::make_unique<NewNode>(TypeSpec(type_name));
+        new_node->set_allocation(allocation);
 
-        // ---- Parse :field value pairs ----
+        // ---- Parse the rest ----
         auto fields = rest.as_pair()->cdr;
-        while (fields.is_pair()) {
-            const auto &field_name_obj = fields.as_pair()->car;
 
-            if (!field_name_obj.is_keyword()) {
-                throw CompilerError("NodeBuilder::build_new")
-                    .where(fmt::format("new {}", type_name))
-                    .expected(":field-name as a keyword")
-                    .got(field_name_obj.print());
+        if (allocation == "static") {
+            // Static initialization: keyword-args are field names.
+            while (fields.is_pair()) {
+                const auto &field_name_obj = fields.as_pair()->car;
+
+                if (!field_name_obj.is_keyword()) {
+                    throw CompilerError("NodeBuilder::build_new")
+                        .where(fmt::format("new static {} ...", type_name))
+                        .expected(":field-name as a keyword")
+                        .got(field_name_obj.print());
+                }
+
+                std::string field_name = field_name_obj.as_symbol().name_ptr;
+                if (!field_name.empty() && field_name[0] == ':') {
+                    field_name = field_name.substr(1);
+                }
+
+                fields = fields.as_pair()->cdr;
+                if (!fields.is_pair()) {
+                    throw CompilerError("NodeBuilder::build_new")
+                        .where(fmt::format("new static {} :{}", type_name, field_name))
+                        .expected("value after the field name")
+                        .got("end of form");
+                }
+
+                auto value_node = build_expression(fields.as_pair()->car, node);
+                new_node->add_field(field_name, std::move(value_node));
+
+                fields = fields.as_pair()->cdr;
             }
-
-            std::string field_name = field_name_obj.as_symbol().name_ptr;
-            if (!field_name.empty() && field_name[0] == ':') {
-                field_name = field_name.substr(1); // strip the ':'
+        } else {
+            // Constructor call: positional arguments.
+            while (fields.is_pair()) {
+                auto arg = build_expression(fields.as_pair()->car, node);
+                new_node->add_argument(std::move(arg));
+                fields = fields.as_pair()->cdr;
             }
-
-            fields = fields.as_pair()->cdr;
-            if (!fields.is_pair()) {
-                throw CompilerError("NodeBuilder::build_new")
-                    .where(fmt::format("new {} :{}", type_name, field_name))
-                    .expected("value after the field name")
-                    .got("end of form");
-            }
-
-            auto value_node = build_expression(fields.as_pair()->car, node);
-            new_node->add_field(field_name, std::move(value_node));
-
-            fields = fields.as_pair()->cdr;
         }
 
         return new_node;
