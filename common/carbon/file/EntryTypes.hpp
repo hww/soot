@@ -22,6 +22,8 @@ namespace carbon {
         // Fully parsed:
         {SID("script-lambda"), "script-lambda", true},
         {SID("state-script"), "state-script", true},
+        {SID("ss-type"), "ss-type", true},
+
 
         // Known by name but payload is opaque to the inspector:
         {SID("map"), "map", false},

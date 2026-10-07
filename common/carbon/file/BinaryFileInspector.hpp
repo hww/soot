@@ -70,7 +70,7 @@ namespace carbon {
         /// @details Produces a machine-readable dump: header, entries, violations.
         ///          Not a full AST dump — only metadata. Used by `dcinspect --json`.
         void inspect_json(std::ostream &os);
-
+        void BinaryFileInspector::inspect_ss_type(const SsType *st);
         void inspect_state_script(const StateScript *ss);
         /// @brief Print a compact one-line summary of a state script.
         /// @details Columns: id, initial state, num declarations, num states,
@@ -137,7 +137,7 @@ namespace carbon {
             return ptr;
         }
 
-        std::string format_instruction(const Instruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
+        std::string format_instruction(const LongInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
         std::string format_instruction(const ShortInstruction& ins, const InstructionInfo* info, const ScriptLambda* lambda);
     };
 

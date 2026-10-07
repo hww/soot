@@ -106,6 +106,10 @@ namespace sootc {
                 if (off + sizeof(u64) <= payload.size()) {
                     std::memcpy(payload.data() + off, &v, sizeof(u64));
                 }
+            } else if (ft == "symbol" || ft == "sid64") {
+                // SID — либо из string_value, либо из int_value
+                const sid64 v = StringId(cn->string_value()).value;
+                std::memcpy(payload.data() + off, &v, sizeof(sid64));
             } else {
                 lg::warn("DataDeclarationNode '{}': field '{}' type '{}' not yet supported", m_name,
                          field_name, ft);

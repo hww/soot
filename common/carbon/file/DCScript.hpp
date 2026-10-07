@@ -17,6 +17,7 @@ namespace carbon {
     constexpr sid64 ARRAY_SID = SID("array");
     constexpr sid64 GLOBAL_SID = SID("global");
     constexpr sid64 FUNCTION_SID = SID("function");
+    constexpr sid64 SS_TYPE_SID = SID("ss-type");
     constexpr u64   DEADBEEF = 0xDEAD'BEEF'1337'F00D;
 
     struct SsDeclarationList;
@@ -248,6 +249,55 @@ namespace carbon {
         u64 m_someSortOfCounter; ///< <c>0x08</c>: monotonically increasing counter across the file;
                                  ///< may have gaps
     };
+
+    // ---------------------------------------------------------------------------
+    // SsType — self-describing type information stored inside the .bin file.
+    // ---------------------------------------------------------------------------
+    //
+    // A SsType entry carries the full layout of a user-defined type so that
+    // the loader can interpret data-instance entries without a C++ header.
+    // It is emitted by TypeDeclarationNode::generate and is referenced by
+    // name from data-instance entries (via DCEntry::m_typeId).
+    //
+    // Layout:
+    //   0x00  m_name        SID64 of the type name (e.g. SID("vec4"))
+    //   0x08  m_parent      SID64 of the parent type (0 if none)
+    //   0x10  m_size        size of an instance in bytes
+    //   0x14  m_align       alignment of an instance in bytes
+    //   0x18  m_numFields   number of entries in m_pFields
+    //   0x1C  m_numMethods  number of entries in m_pMethods (0 for now)
+    //   0x20  m_pFields     pointer to SsField[m_numFields]  (relocated)
+    //   0x28  m_pMethods    pointer to SsMethod[m_numMethods] (relocated, may be null)
+    //   0x30  m_flags       bit 0: is_basic (has runtime type info)
+    //                       bit 1: is_structure (no runtime type info)
+    //   0x38  m_reserved    reserved, always 0
+
+    struct SsField // 0x20
+    {
+        sid64 m_name;   ///< <c>0x00</c>: SID64 of the field name (e.g. SID("x"))
+        sid64 m_type;   ///< <c>0x08</c>: SID64 of the field type (e.g. SID("float"))
+        u32   m_offset; ///< <c>0x10</c>: byte offset of the field within the struct
+        u32   m_size;   ///< <c>0x14</c>: size of the field in bytes
+        u32   m_flags;  ///< <c>0x18</c>: bit 0: inline, bit 1: dynamic, bit 2: array
+        u32   m_count;  ///< <c>0x1C</c>: number of elements if array, 0 otherwise
+    };
+
+    struct SsType // 0x40
+    {
+        sid64    m_name;       ///< <c>0x00</c>: SID64 of the type name
+        sid64    m_parent;     ///< <c>0x08</c>: SID64 of the parent type, 0 if none
+        u32      m_size;       ///< <c>0x10</c>: size of an instance in bytes
+        u32      m_align;      ///< <c>0x14</c>: alignment of an instance in bytes
+        u32      m_numFields;  ///< <c>0x18</c>: number of fields
+        u32      m_numMethods; ///< <c>0x1C</c>: number of methods (0 for now)
+        SsField *m_pFields;    ///< <c>0x20</c>: pointer to SsField[m_numFields] (relocated)
+        void    *m_pMethods;   ///< <c>0x28</c>: reserved for SsMethod[] (relocated, may be null)
+        u64      m_flags;      ///< <c>0x30</c>: bit 0: is_basic, bit 1: is_structure
+        u64      m_reserved;   ///< <c>0x38</c>: reserved, always 0
+    };
+
+    static_assert(sizeof(SsField) == 0x20, "SsField must be 0x20 bytes");
+    static_assert(sizeof(SsType)  == 0x40, "SsType must be 0x40 bytes");
 
     // ---------------------------------------------------------------------------
     // Executable function (lambda)

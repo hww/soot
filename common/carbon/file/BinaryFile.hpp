@@ -102,6 +102,7 @@ namespace carbon {
             Unknown,      ///< unrecognised typeId
             ScriptLambda, ///< m_typeId == SID("script-lambda")
             StateScript,  ///< m_typeId == SID("state-script")
+            SsType,       ///< m_typeId == SID("ss-type")
             Map,          ///< m_typeId == SID("map") or SID("map-32")
             DataStruct,   ///< any other non-zero typeId (raw payload)
         };
@@ -154,6 +155,9 @@ namespace carbon {
 
         /// @return the entry payload as StateScript*, or nullptr if kind != StateScript.
         [[nodiscard]] const StateScript *entry_as_state_script(const DCEntry &entry) const noexcept;
+
+        /// @return the entry payload as SsType*, or nullptr if kind != SsType.
+        [[nodiscard]] const SsType *entry_as_ss_type(const DCEntry &entry) const noexcept;
 
         // -------------------------------------------------------------------
         // SID and string helpers

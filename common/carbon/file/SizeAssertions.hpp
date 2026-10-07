@@ -32,6 +32,10 @@ namespace carbon {
         static_assert(sizeof(SsTrack) == 0x18, "SsTrack must be 0x18 bytes");
         static_assert(sizeof(SsLambda) == 0x10, "SsLambda must be 0x10 bytes");
 
+        // SsType — self-describing type information stored in the .bin file.
+        static_assert(sizeof(SsField) == 0x20, "SsField must be 0x20 bytes");
+        static_assert(sizeof(SsType) == 0x40, "SsType must be 0x40 bytes");
+
         // ScriptLambda is 0x58 in the carbon format (two extra fields not present
         // in the icemesh reference layout, where it is 0x50).
         static_assert(sizeof(ScriptLambda) == 0x58, "ScriptLambda must be 0x58 bytes");
@@ -63,6 +67,8 @@ namespace carbon {
             {"SsTrack", sizeof(SsTrack)},
             {"SsLambda", sizeof(SsLambda)},
             {"ScriptLambda", sizeof(ScriptLambda)},
+            {"SsField", sizeof(SsField)},
+            {"SsType", sizeof(SsType)},
             {"ProgramBinaryElement", sizeof(ProgramBinaryElement)},
         };
 

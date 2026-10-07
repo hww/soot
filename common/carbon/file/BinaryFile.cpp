@@ -227,6 +227,7 @@ namespace carbon {
     BinaryFile::EntryKind BinaryFile::entry_kind(const DCEntry &entry) noexcept {
         if (entry.m_typeId == SID("script-lambda")) { return EntryKind::ScriptLambda; }
         if (entry.m_typeId == SID("state-script")) { return EntryKind::StateScript; }
+        if (entry.m_typeId == SS_TYPE_SID) { return EntryKind::SsType; }
         if (entry.m_typeId == SID("map") || entry.m_typeId == SID("map-32")) {
             return EntryKind::Map;
         }
@@ -247,6 +248,12 @@ namespace carbon {
         if (entry_kind(entry) != EntryKind::StateScript) { return nullptr; }
         if (!is_valid_ptr(entry.m_entryPtr, sizeof(StateScript))) { return nullptr; }
         return reinterpret_cast<const StateScript *>(entry.m_entryPtr);
+    }
+
+    const SsType *BinaryFile::entry_as_ss_type(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::SsType) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(SsType))) { return nullptr; }
+        return reinterpret_cast<const SsType *>(entry.m_entryPtr);
     }
 
     // ===========================================================================
@@ -319,6 +326,14 @@ namespace carbon {
                     violations.emplace_back(fmt::format("entry[{}].m_entryPtr outside file: 0x{:X}",
                                                         i,
                                                         reinterpret_cast<uintptr_t>(e.m_entryPtr)));
+                    continue;
+                }
+                // SsType entries must be fully contained in the file.
+                if (entry_kind(e) == EntryKind::SsType) {
+                    if (!is_valid_ptr(e.m_entryPtr, sizeof(SsType))) {
+                        violations.emplace_back(fmt::format(
+                            "entry[{}] is SsType but payload is smaller than sizeof(SsType)", i));
+                    }
                 }
             }
         } else {
@@ -344,6 +359,9 @@ namespace carbon {
             switch (kind) {
             case EntryKind::ScriptLambda: kind_str = "script-lambda"; break;
             case EntryKind::StateScript: kind_str = "state-script"; break;
+            case EntryKind::SsType: kind_str = "ss-type"; break;
+            case EntryKind::Map: kind_str = "map"; break;
+            case EntryKind::DataStruct: kind_str = "data-struct"; break;
             case EntryKind::Unknown: kind_str = "unknown"; break;
             }
             os << fmt::format("{:>4}  {:>18}  {:>18}  {:>18}  {}\n", i, resolve_sid(e.m_nameID),

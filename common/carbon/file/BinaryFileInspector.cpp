@@ -125,6 +125,7 @@ namespace {
         switch (kind) {
         case BinaryFile::EntryKind::ScriptLambda: return "script-lambda";
         case BinaryFile::EntryKind::StateScript: return "state-script";
+        case BinaryFile::EntryKind::SsType: return "ss-type";
         case BinaryFile::EntryKind::Map: return "map";
         case BinaryFile::EntryKind::DataStruct: return "data-struct";
         case BinaryFile::EntryKind::Unknown: return "unknown";
@@ -402,6 +403,10 @@ namespace carbon {
                 if (const auto *sl = m_file->entry_as_lambda(*entry)) { inspect_script_lambda(sl); }
                 break;
             }
+            case BinaryFile::EntryKind::SsType: {
+                if (const auto *st = m_file->entry_as_ss_type(*entry)) { inspect_ss_type(st); }
+                break;
+            }
             case BinaryFile::EntryKind::Map:
             case BinaryFile::EntryKind::DataStruct: {
                 // Opaque payload: print the first 64 bytes as raw hex.
@@ -485,6 +490,7 @@ namespace carbon {
             switch (BinaryFile::entry_kind(e)) {
             case BinaryFile::EntryKind::ScriptLambda: kind_str = "script-lambda"; break;
             case BinaryFile::EntryKind::StateScript: kind_str = "state-script"; break;
+            case BinaryFile::EntryKind::SsType: kind_str = "ss-type"; break;
             case BinaryFile::EntryKind::Map: kind_str = "map"; break;
             case BinaryFile::EntryKind::DataStruct: kind_str = "data-struct"; break;
             case BinaryFile::EntryKind::Unknown: kind_str = "unknown"; break;
@@ -515,6 +521,7 @@ namespace carbon {
         // Count entries by kind.
         u32 n_lambdas = 0;
         u32 n_states = 0;
+        u32 n_types = 0;
         u32 n_maps = 0;
         u32 n_data = 0;
         u32 n_unknown = 0;
@@ -523,6 +530,7 @@ namespace carbon {
             switch (BinaryFile::entry_kind(table[i])) {
             case BinaryFile::EntryKind::ScriptLambda: ++n_lambdas; break;
             case BinaryFile::EntryKind::StateScript: ++n_states; break;
+            case BinaryFile::EntryKind::SsType: ++n_types; break;
             case BinaryFile::EntryKind::Map: ++n_maps; break;
             case BinaryFile::EntryKind::DataStruct: ++n_data; break;
             case BinaryFile::EntryKind::Unknown: ++n_unknown; break;
@@ -533,6 +541,7 @@ namespace carbon {
         m_formatter->print("  total entries:    {}\n", n);
         m_formatter->print("  script-lambdas:   {}\n", n_lambdas);
         m_formatter->print("  state-scripts:    {}\n", n_states);
+        m_formatter->print("  ss-types:         {}\n", n_types);
         m_formatter->print("  maps:             {}\n", n_maps);
         m_formatter->print("  data structs:     {}\n", n_data);
         m_formatter->print("  unknown:          {}\n", n_unknown);
@@ -552,6 +561,7 @@ namespace carbon {
 
         print_group("script-lambdas", BinaryFile::EntryKind::ScriptLambda);
         print_group("state-scripts", BinaryFile::EntryKind::StateScript);
+        print_group("ss-types", BinaryFile::EntryKind::SsType);
         print_group("maps", BinaryFile::EntryKind::Map);
         print_group("data-structs", BinaryFile::EntryKind::DataStruct);
         print_group("unknown", BinaryFile::EntryKind::Unknown);
@@ -714,6 +724,53 @@ namespace carbon {
         os << "  ]\n";
 
         os << "}\n";
+    }
+
+    void BinaryFileInspector::inspect_ss_type(const SsType *st) {
+        if (!st) {
+            m_formatter->print("SsType: NULL\n");
+            return;
+        }
+
+        m_formatter->print("SsType:\n");
+        IFormatter::Block block(*m_formatter, m_indent);
+
+        m_formatter->print("Name:       {}\n", sid_str(st->m_name));
+        m_formatter->print("Parent:     {}\n", st->m_parent ? sid_str(st->m_parent) : "(none)");
+        m_formatter->print("Size:       {} bytes\n", st->m_size);
+        m_formatter->print("Align:      {} bytes\n", st->m_align);
+        m_formatter->print("NumFields:  {}\n", st->m_numFields);
+        m_formatter->print("NumMethods: {}\n", st->m_numMethods);
+
+        // Flags.
+        std::string flags;
+        if (st->m_flags & 0x1) { flags += "basic "; }
+        if (st->m_flags & 0x2) { flags += "structure "; }
+        if (flags.empty()) { flags = "(none)"; }
+        m_formatter->print("Flags:      0x{:X} ({})\n", st->m_flags, flags);
+
+        // Fields.
+        if (st->m_pFields && st->m_numFields > 0) {
+            m_formatter->print("\nFields ({}):\n", st->m_numFields);
+            IFormatter::Block field_block(*m_formatter, m_indent);
+
+            m_formatter->print("{:>4}  {:<24}  {:<16}  {:>8}  {:>6}  {}\n", "idx", "name", "type",
+                               "offset", "size", "flags");
+
+            for (u32 i = 0; i < st->m_numFields; ++i) {
+                const SsField &f = st->m_pFields[i];
+
+                std::string fflags;
+                if (f.m_flags & 0x1) { fflags += "inline "; }
+                if (f.m_flags & 0x2) { fflags += "dynamic "; }
+                if (f.m_flags & 0x4) { fflags += "array[" + std::to_string(f.m_count) + "] "; }
+                if (fflags.empty()) { fflags = "-"; }
+
+                m_formatter->print("{:>4}  {:<24}  {:<16}  {:>8}  {:>6}  {}\n", i,
+                                   sid_str(f.m_name), sid_str(f.m_type), f.m_offset, f.m_size,
+                                   fflags);
+            }
+        }
     }
 
     void BinaryFileInspector::inspect_state_script(const StateScript *ss) {
@@ -1320,7 +1377,7 @@ namespace carbon {
         }
     }
 
-    std::string BinaryFileInspector::format_instruction(const Instruction     &ins,
+    std::string BinaryFileInspector::format_instruction(const LongInstruction     &ins,
                                                         const InstructionInfo *info,
                                                         const ScriptLambda    *lambda) {
         std::string result = info->name;

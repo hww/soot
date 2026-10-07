@@ -74,6 +74,110 @@ namespace carbon {
     /// @brief Look up instruction metadata by opcode.
     [[nodiscard]] inline const InstructionInfo *get_instruction_info(Opcode op);
 
+    /// @brief Convert an opcode to its human-readable mnemonic.
+    [[nodiscard]] inline const char *opcode_mnemonic(Opcode opcode) noexcept {
+        switch (opcode) {
+        case Opcode::Return: return "Return";
+        case Opcode::IAdd: return "IAdd";
+        case Opcode::ISub: return "ISub";
+        case Opcode::IMul: return "IMul";
+        case Opcode::IDiv: return "IDiv";
+        case Opcode::FAdd: return "FAdd";
+        case Opcode::FSub: return "FSub";
+        case Opcode::FMul: return "FMul";
+        case Opcode::FDiv: return "FDiv";
+        case Opcode::LoadStaticInt: return "LoadStaticInt";
+        case Opcode::LoadStaticFloat: return "LoadStaticFloat";
+        case Opcode::LoadStaticPointer: return "LoadStaticPointer";
+        case Opcode::LoadU16Imm: return "LoadU16Imm";
+        case Opcode::LoadInt: return "LoadU32";
+        case Opcode::LoadFloat: return "LoadFloat";
+        case Opcode::LoadPointer: return "LoadPointer";
+        case Opcode::StoreInt: return "StoreInt";
+        case Opcode::StoreFloat: return "StoreFloat";
+        case Opcode::StorePointer: return "StorePointer";
+        case Opcode::LookupInt: return "LookupInt";
+        case Opcode::LookupFloat: return "LookupFloat";
+        case Opcode::LookupPointer: return "LookupPointer";
+        case Opcode::MoveInt: return "MoveInt";
+        case Opcode::MoveFloat: return "MoveFloat";
+        case Opcode::MovePointer: return "MovePointer";
+        case Opcode::CastInteger: return "CastInteger";
+        case Opcode::CastFloat: return "CastFloat";
+        case Opcode::Call: return "Call";
+        case Opcode::CallFf: return "CallFf";
+        case Opcode::IEqual: return "IEqual";
+        case Opcode::IGreaterThan: return "IGreaterThan";
+        case Opcode::IGreaterThanEqual: return "IGreaterThanEqual";
+        case Opcode::ILessThan: return "ILessThan";
+        case Opcode::ILessThanEqual: return "ILessThanEqual";
+        case Opcode::FEqual: return "FEqual";
+        case Opcode::FGreaterThan: return "FGreaterThan";
+        case Opcode::FGreaterThanEqual: return "FGreaterThanEqual";
+        case Opcode::FLessThan: return "FLessThan";
+        case Opcode::FLessThanEqual: return "FLessThanEqual";
+        case Opcode::IMod: return "IMod";
+        case Opcode::FMod: return "FMod";
+        case Opcode::IAbs: return "IAbs";
+        case Opcode::FAbs: return "FAbs";
+        case Opcode::GoTo: return "GoTo";
+        case Opcode::Label: return "Label";
+        case Opcode::Branch: return "Branch";
+        case Opcode::BranchIf: return "BranchIf";
+        case Opcode::BranchIfNot: return "BranchIfNot";
+        case Opcode::OpLogNot: return "OpLogNot";
+        case Opcode::OpBitAnd: return "OpBitAnd";
+        case Opcode::OpBitNot: return "OpBitNot";
+        case Opcode::OpBitOr: return "OpBitOr";
+        case Opcode::OpBitXor: return "OpBitXor";
+        case Opcode::OpBitNor: return "OpBitNor";
+        case Opcode::OpLogAnd: return "OpLogAnd";
+        case Opcode::OpLogOr: return "OpLogOr";
+        case Opcode::INeg: return "INeg";
+        case Opcode::FNeg: return "FNeg";
+        case Opcode::LoadParamCnt: return "LoadParamCnt";
+        case Opcode::IAddImm: return "IAddImm";
+        case Opcode::ISubImm: return "ISubImm";
+        case Opcode::IMulImm: return "IMulImm";
+        case Opcode::IDivImm: return "IDivImm";
+        case Opcode::LoadStaticI32Imm: return "LoadStaticI32Imm";
+        case Opcode::LoadStaticFloatImm: return "LoadStaticFloatImm";
+        case Opcode::LoadStaticPointerImm: return "LoadStaticPointerImm";
+        case Opcode::IntAsh: return "IntAsh";
+        case Opcode::Move: return "Move";
+        case Opcode::LoadStaticU32Imm: return "LoadStaticU32Imm";
+        case Opcode::LoadStaticI8Imm: return "LoadStaticI8Imm";
+        case Opcode::LoadStaticU8Imm: return "LoadStaticU8Imm";
+        case Opcode::LoadStaticI16Imm: return "LoadStaticI16Imm";
+        case Opcode::LoadStaticU16Imm: return "LoadStaticU16Imm";
+        case Opcode::LoadStaticI64Imm: return "LoadStaticI64Imm";
+        case Opcode::LoadStaticU64Imm: return "LoadStaticU64Imm";
+        case Opcode::LoadI8: return "LoadI8";
+        case Opcode::LoadU8: return "LoadU8";
+        case Opcode::LoadI16: return "LoadI16";
+        case Opcode::LoadU16: return "LoadU16";
+        case Opcode::LoadI32: return "LoadI32";
+        case Opcode::LoadU32: return "LoadU32";
+        case Opcode::LoadI64: return "LoadI64";
+        case Opcode::LoadU64: return "LoadU64";
+        case Opcode::StoreI8: return "StoreI8";
+        case Opcode::StoreU8: return "StoreU8";
+        case Opcode::StoreI16: return "StoreI16";
+        case Opcode::StoreU16: return "StoreU16";
+        case Opcode::StoreI32: return "StoreI32";
+        case Opcode::StoreU32: return "StoreU32";
+        case Opcode::StoreI64: return "StoreI64";
+        case Opcode::StoreU64: return "StoreU64";
+        case Opcode::INotEqual: return "INotEqual";
+        case Opcode::FNotEqual: return "FNotEqual";
+        case Opcode::StoreArray: return "StoreArray";
+        case Opcode::AssertPointer: return "AssertPointer";
+        case Opcode::BreakFlag: return "BreakFlag";
+        case Opcode::Breakpoint: return "Breakpoint";
+        default: return "Unknown Opcode";
+        }
+    }
+
     /// @brief One VM instruction. `padding` is the number of trailing alignment bytes
     ///        (4 for the T2R/T1X format, 0 for the compact UC4 format).
     /// @details The first 4 bytes are a union that can be viewed as:
@@ -179,107 +283,13 @@ namespace carbon {
         [[nodiscard]] std::string to_string() const { return opcode_to_string(); }
     };
 
-    template <u8 padding> const char *UP_Instruction<padding>::opcode_to_string() const noexcept {
-        switch (opcode) {
-        case Opcode::Return: return "Return";
-        case Opcode::IAdd: return "IAdd";
-        case Opcode::ISub: return "ISub";
-        case Opcode::IMul: return "IMul";
-        case Opcode::IDiv: return "IDiv";
-        case Opcode::FAdd: return "FAdd";
-        case Opcode::FSub: return "FSub";
-        case Opcode::FMul: return "FMul";
-        case Opcode::FDiv: return "FDiv";
-        case Opcode::LoadStaticInt: return "LoadStaticInt";
-        case Opcode::LoadStaticFloat: return "LoadStaticFloat";
-        case Opcode::LoadStaticPointer: return "LoadStaticPointer";
-        case Opcode::LoadU16Imm: return "LoadU16Imm";
-        case Opcode::LoadInt: return "LoadU32";
-        case Opcode::LoadFloat: return "LoadFloat";
-        case Opcode::LoadPointer: return "LoadPointer";
-        case Opcode::StoreInt: return "StoreInt";
-        case Opcode::StoreFloat: return "StoreFloat";
-        case Opcode::StorePointer: return "StorePointer";
-        case Opcode::LookupInt: return "LookupInt";
-        case Opcode::LookupFloat: return "LookupFloat";
-        case Opcode::LookupPointer: return "LookupPointer";
-        case Opcode::MoveInt: return "MoveInt";
-        case Opcode::MoveFloat: return "MoveFloat";
-        case Opcode::MovePointer: return "MovePointer";
-        case Opcode::CastInteger: return "CastInteger";
-        case Opcode::CastFloat: return "CastFloat";
-        case Opcode::Call: return "Call";
-        case Opcode::CallFf: return "CallFf";
-        case Opcode::IEqual: return "IEqual";
-        case Opcode::IGreaterThan: return "IGreaterThan";
-        case Opcode::IGreaterThanEqual: return "IGreaterThanEqual";
-        case Opcode::ILessThan: return "ILessThan";
-        case Opcode::ILessThanEqual: return "ILessThanEqual";
-        case Opcode::FEqual: return "FEqual";
-        case Opcode::FGreaterThan: return "FGreaterThan";
-        case Opcode::FGreaterThanEqual: return "FGreaterThanEqual";
-        case Opcode::FLessThan: return "FLessThan";
-        case Opcode::FLessThanEqual: return "FLessThanEqual";
-        case Opcode::IMod: return "IMod";
-        case Opcode::FMod: return "FMod";
-        case Opcode::IAbs: return "IAbs";
-        case Opcode::FAbs: return "FAbs";
-        case Opcode::GoTo: return "GoTo";
-        case Opcode::Label: return "Label";
-        case Opcode::Branch: return "Branch";
-        case Opcode::BranchIf: return "BranchIf";
-        case Opcode::BranchIfNot: return "BranchIfNot";
-        case Opcode::OpLogNot: return "OpLogNot";
-        case Opcode::OpBitAnd: return "OpBitAnd";
-        case Opcode::OpBitNot: return "OpBitNot";
-        case Opcode::OpBitOr: return "OpBitOr";
-        case Opcode::OpBitXor: return "OpBitXor";
-        case Opcode::OpBitNor: return "OpBitNor";
-        case Opcode::OpLogAnd: return "OpLogAnd";
-        case Opcode::OpLogOr: return "OpLogOr";
-        case Opcode::INeg: return "INeg";
-        case Opcode::FNeg: return "FNeg";
-        case Opcode::LoadParamCnt: return "LoadParamCnt";
-        case Opcode::IAddImm: return "IAddImm";
-        case Opcode::ISubImm: return "ISubImm";
-        case Opcode::IMulImm: return "IMulImm";
-        case Opcode::IDivImm: return "IDivImm";
-        case Opcode::LoadStaticI32Imm: return "LoadStaticI32Imm";
-        case Opcode::LoadStaticFloatImm: return "LoadStaticFloatImm";
-        case Opcode::LoadStaticPointerImm: return "LoadStaticPointerImm";
-        case Opcode::IntAsh: return "IntAsh";
-        case Opcode::Move: return "Move";
-        case Opcode::LoadStaticU32Imm: return "LoadStaticU32Imm";
-        case Opcode::LoadStaticI8Imm: return "LoadStaticI8Imm";
-        case Opcode::LoadStaticU8Imm: return "LoadStaticU8Imm";
-        case Opcode::LoadStaticI16Imm: return "LoadStaticI16Imm";
-        case Opcode::LoadStaticU16Imm: return "LoadStaticU16Imm";
-        case Opcode::LoadStaticI64Imm: return "LoadStaticI64Imm";
-        case Opcode::LoadStaticU64Imm: return "LoadStaticU64Imm";
-        case Opcode::LoadI8: return "LoadI8";
-        case Opcode::LoadU8: return "LoadU8";
-        case Opcode::LoadI16: return "LoadI16";
-        case Opcode::LoadU16: return "LoadU16";
-        case Opcode::LoadI32: return "LoadI32";
-        case Opcode::LoadU32: return "LoadU32";
-        case Opcode::LoadI64: return "LoadI64";
-        case Opcode::LoadU64: return "LoadU64";
-        case Opcode::StoreI8: return "StoreI8";
-        case Opcode::StoreU8: return "StoreU8";
-        case Opcode::StoreI16: return "StoreI16";
-        case Opcode::StoreU16: return "StoreU16";
-        case Opcode::StoreI32: return "StoreI32";
-        case Opcode::StoreU32: return "StoreU32";
-        case Opcode::StoreI64: return "StoreI64";
-        case Opcode::StoreU64: return "StoreU64";
-        case Opcode::INotEqual: return "INotEqual";
-        case Opcode::FNotEqual: return "FNotEqual";
-        case Opcode::StoreArray: return "StoreArray";
-        case Opcode::AssertPointer: return "AssertPointer";
-        case Opcode::BreakFlag: return "BreakFlag";
-        case Opcode::Breakpoint: return "Breakpoint";
-        default: return "Unknown Opcode";
-        }
+    template <u8 padding>
+    [[nodiscard]] const char *UP_Instruction<padding>::opcode_to_string() const noexcept {
+        return opcode_mnemonic(opcode);
+    }
+
+    [[nodiscard]] inline const char *UP_Instruction<0>::opcode_to_string() const noexcept {
+        return opcode_mnemonic(opcode);
     }
 
     /// @brief Return true if the opcode writes to memory through a pointer.
@@ -370,23 +380,43 @@ namespace carbon {
     // ---------------------------------------------------------------------------
     // Aliases and helpers
     // ---------------------------------------------------------------------------
+    /*
+     * ## Что означают эти сокращения
+     *
+     * | Код     | Игра                           | Год  | Платформа   | Формат инструкций |
+     * |---------|--------------------------------|------|-------------|----------------------------|
+     * | **UC1** | Uncharted: Drake's Fortune     | 2007 | PS3         | **другой** формат (не DC?)
+     * | | **UC2** | Uncharted 2: Among Thieves     | 2009 | PS3         | **ввелись StateScript'ы**
+     * | | **UC3** | Uncharted 3: Drake's Deception | 2011 | PS3         | близок к UC2 | | **UC4**
+     * | Uncharted 4: A Thief's End     | 2016 | PS4         | **4-байтовые**             | |
+     * **T1X** | Uncharted: The Lost Legacy     | 2017 | PS4         | **4-байтовые**             |
+     * | **T2R** | The Last of Us Part II         | 2020 | PS4/PS5/ PC | **4-байтовые** |
+     *
+     * **Все три** (`UC4`, `T1X`, `T2R`) — **4-байтовые** инструкции. Это **единый формат**
+     * DC-файлов, введённый в UC4 и используемый дальше.
+     *
+     * **`LogInstruction`** (8 байт) — **не используется** в реальных играх. Это **артефакт** нашего
+     * кода: кто-то (или я) определил его как «T2R/T1X format», но это **неверно**.
+     */
+    using LongInstruction = UP_Instruction<4>; ///< 8-byte instruction (unused in practice)
+    using ShortInstruction =
+        UP_Instruction<0>;                ///< 4-byte instruction (canonical UC4/T1X/T2R format)
+    using Instruction = ShortInstruction; ///< alias: canonical 4-byte instruction
 
-    using Instruction = UP_Instruction<4>;      ///< 8-byte instruction (T2R/T1X format)
-    using ShortInstruction = UP_Instruction<0>; ///< 4-byte instruction (UC4 format)
+    static_assert(sizeof(ShortInstruction) == 4, "ShortInstruction must be 4 bytes");
+    static_assert(sizeof(LongInstruction) == 8, "LogInstruction must be 8 bytes");
+    static_assert(sizeof(Instruction) == 4, "Instruction must be 4 bytes");
 
     /// @brief Expand a compact 4-byte instruction into the 8-byte form.
-    [[nodiscard]] static constexpr Instruction
+    [[nodiscard]] static constexpr LongInstruction
     from_short(const ShortInstruction &short_ins) noexcept {
-        Instruction ins{};
+        LongInstruction ins{};
         ins.opcode = short_ins.opcode;
         ins.destination = short_ins.destination;
         ins.operand1 = short_ins.operand1;
         ins.operand2 = short_ins.operand2;
         return ins;
     }
-
-    static_assert(sizeof(Instruction) == 8, "Instruction must be 8 bytes");
-    static_assert(sizeof(ShortInstruction) == 4, "ShortInstruction must be 4 bytes");
 
     template <u8 padding>
     inline std::ostream &operator<<(std::ostream &os, const UP_Instruction<padding> &ins) noexcept {
@@ -403,7 +433,7 @@ namespace carbon {
 
     /// @brief One decoded instruction line inside a disassembled function.
     struct function_disassembly_line {
-        Instruction        m_instruction;             ///< decoded instruction
+        Instruction        m_instruction;             ///< decoded instruction (4 bytes)
         istr_line          m_location;                ///< instruction index within the function
         std::string        m_text;                    ///< formatted disassembly text
         const Instruction *m_globalPointer = nullptr; ///< start of the function's instruction array
@@ -413,12 +443,8 @@ namespace carbon {
 
         function_disassembly_line() noexcept = default;
 
-        function_disassembly_line(u64 idx, const Instruction *ptr,
-                                  bool is_64_bit_instruction = true) noexcept
-            : m_instruction(is_64_bit_instruction
-                                ? ptr[idx]
-                                : from_short(reinterpret_cast<const ShortInstruction *>(ptr)[idx])),
-              m_location(idx), m_globalPointer(ptr) {}
+        function_disassembly_line(u64 idx, const Instruction *ptr) noexcept
+            : m_instruction(ptr[idx]), m_location(idx), m_globalPointer(ptr) {}
     };
 
     // ---------------------------------------------------------------------------

@@ -35,28 +35,28 @@ def clean_csharp_code(content):
     return "\n".join(cleaned_lines)
 
 def main():
-    # Текущая рабочая директория (PWD)
     pwd = os.getcwd()
     
     with open(OUTPUT_FILE, "w", encoding="utf-8") as outfile:
-        # Рекурсивный обход от PWD
-        for root, _, files in os.walk(pwd):
+        for root, dirs, files in os.walk(pwd):
+            
+            # Эффективный пропуск: os.walk не будет даже заходить в папки с именем "kernel"
+            # Модифицируем dirs на месте, чтобы сэкономить время работы скрипта
+            dirs[:] = [d for d in dirs if d.lower() != "kernel"]
+            
             for file in files:
-                if file.endswith(".cpp") or file.endswith(".hpp") or file.endswith(".sot"):
-                    full_path = os.path.join(root, file)
-                    
-                    # Получаем относительный путь от PWD
+                # На всякий случай проверяем отсутствие "kernel" и в имени файла
+                if "kernel" not in file.lower() and file.endswith((".cpp", ".hpp", ".sot")):
+
+                    full_path = os.path.join(root, file) 
                     rel_path = os.path.relpath(full_path, pwd)
                     
                     try:
                         with open(full_path, "r", encoding="utf-8") as infile:
                             content = infile.read()
                         
-                        # Сжимаем код
-                        #compressed_content = clean_csharp_code(content)
                         compressed_content = content
                         
-                        # Записываем заголовок с путем и очищенный код
                         outfile.write(f"\n// === FILE: {rel_path} ===\n")
                         outfile.write(compressed_content)
                         outfile.write("\n")
@@ -67,6 +67,7 @@ def main():
                         print(f"Ошибка при чтении {rel_path}: {e}")
 
     print(f"\nГотово! Все файлы собраны и сжаты в: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()
