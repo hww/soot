@@ -5,6 +5,7 @@
 #include "common/carbon/file/BinaryFile.hpp"
 #include "common/carbon/file/ProgramBinaryElement.hpp"
 #include "common/sootc/libs/GlobalState.hpp"
+#include "common/sootc/node/TypeDeclarationNode.hpp"
 #include <expected>
 #include <string>
 #include <unordered_map>
@@ -50,6 +51,10 @@ namespace sootc {
         
         const std::vector<DataStructEntry> &data_structs() const { return m_dataStructs; }
 
+        /// @brief Append a child node. Used by NodeBuilder when hoisting
+        ///        declarations out of a (begin ...) form.
+        void add_child(std::unique_ptr<Node> child) { m_children.push_back(std::move(child)); }
+
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.
@@ -63,6 +68,19 @@ namespace sootc {
         ProgramBinaryElement make_binary(std::vector<ProgramBinaryElement> program_elements,
                                          GlobalState                      &state,
                                          std::vector<DataStructEntry>     &out_data_structs);
+
+
+        /// @brief Build an SsType ProgramBinaryElement for one type.
+        /// @details Called by make_binary *after* all function/struct entries have
+        ///          been laid out, so that method lambdas can be referenced by
+        ///          their absolute file offsets.
+        ///
+        /// @param type_decl       The deftype node for this type.
+        /// @param type_lambdas    Map (method_name -> absolute file offset of its
+        ///                        ScriptLambda) for methods of this type that
+        ///                        were implemented by defmethod.
+        ProgramBinaryElement build_ss_type(const TypeDeclarationNode                  *type_decl,
+                      const std::unordered_map<std::string, u64> &type_lambdas);
     };
 
 } // namespace sootc

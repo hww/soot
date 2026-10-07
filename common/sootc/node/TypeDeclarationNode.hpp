@@ -5,11 +5,12 @@
 
 namespace sootc {
 
-    /// @brief Node for a (deftype ...) form.
+    /// @brief Marker node for a (deftype ...) form.
     /// @details The type itself is registered in TypeSystem during parsing.
-    ///          This node is responsible for emitting the *self-describing*
-    ///          SsType entry into the binary, so that loaders and inspectors
-    ///          can interpret data-instance entries without a C++ header.
+    ///          Emitting the SsType entry is deferred to FileNode::make_binary,
+    ///          which is the only place that sees *all* methods of the type
+    ///          (including those defined later via defmethod). This node carries
+    ///          no binary output on its own.
     class TypeDeclarationNode : public Node {
         TypeSpec m_type;
 
@@ -21,17 +22,9 @@ namespace sootc {
         std::string     to_string() const override { return "(deftype " + m_type.print() + ")"; }
         const TypeSpec &type() const { return m_type; }
 
-        /// @brief Emit an SsType entry (plus its SsField[] payload) for this type.
-        /// @details Layout of the emitted element:
-        ///            - SsType header (8 slots),
-        ///            - SsField[numFields] (4 slots per field),
-        ///          followed by the relocation bits: slots 4 and 5 of SsType
-        ///          (m_pFields and m_pMethods) are relocated.
-        ///
-        ///          Only StructureType is supported for now. Enums, value-types,
-        ///          and basic types return an empty element (no emission) until
-        ///          the format for them is defined.
-        ProgramBinaryElement generate(GlobalState &state) override;
+        ProgramBinaryElement generate(GlobalState &) override {
+            return ProgramBinaryElement(0); // deferred to FileNode::make_binary
+        }
     };
 
 } // namespace sootc

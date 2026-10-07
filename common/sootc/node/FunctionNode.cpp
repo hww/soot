@@ -214,9 +214,6 @@ namespace sootc {
     // ========================================================================
     // Serialization
     // ========================================================================
-    // ========================================================================
-    // Serialization
-    // ========================================================================
     /// @brief Serialise this function into a ProgramBinaryElement.
     /// @details Layout:
     ///            - ScriptLambda header (fixed fields + pointers to symbols
@@ -267,11 +264,12 @@ namespace sootc {
         // TODO: verify ScriptLambda layout. For now, mark only slots 1 and 2
         // as relocatable (the two pointer fields m_pSymbols and m_pConstants).
         // If sizeof(ScriptLambda) is not 88 bytes, adjust the list length.
-        element.push_bytes(lambda, {0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0});
+        element.push_value_with_ptr(lambda, PTR_FIELD(ScriptLambda, m_pInstruction),
+                                    PTR_FIELD(ScriptLambda, m_pSymbols));
 
-        for (const Instruction &instr : m_instructions) { element.push_bytes(instr, {0}); }
+        for (const Instruction &instr : m_instructions) { element.push_value(instr); }
 
-        for (size_t i = 0; i < m_constants.size(); ++i) { element.push_bytes(m_constants[i], {0}); }
+        for (size_t i = 0; i < m_constants.size(); ++i) { element.push_value(m_constants[i]); }
 
         return element;
     }

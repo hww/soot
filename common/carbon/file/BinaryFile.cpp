@@ -51,21 +51,67 @@ namespace carbon {
         return file;
     }
     
-    [[nodiscard]] std::expected<BinaryFile, std::string>
+     [[nodiscard]] std::expected<BinaryFile, std::string>
     BinaryFile::from_buffer(const std::filesystem::path &path, byte_uptr bytes,
                             size_t size) noexcept {
+        if (!bytes) { return std::unexpected{"from_buffer: bytes is null"}; }
+        if (size < sizeof(DC_Header)) {
+            return std::unexpected{fmt::format(
+                "from_buffer: buffer is too small ({} bytes) for a DC_Header ({} bytes)", size,
+                sizeof(DC_Header))};
+        }
+
         auto *dcheader = reinterpret_cast<DC_Header *>(bytes.get());
 
         if (dcheader->m_magic != DC_FILE_MAGIC) {
-            return std::unexpected{"not a DC-file: magic is 0x" +
-                                   fmt::format("{:08X}", dcheader->m_magic) +
-                                   ", expected 0x44433030"};
+            return std::unexpected{
+                fmt::format("not a DC-file: magic is 0x{:08X}, expected 0x{:08X}",
+                            dcheader->m_magic, DC_FILE_MAGIC)};
         }
 
         if (dcheader->m_versionNumber != DC_FILE_VERSION) {
-            return std::unexpected{"not a DC-file: version is " +
-                                   std::to_string(dcheader->m_versionNumber) + ", expected " +
-                                   std::to_string(DC_FILE_VERSION)};
+            return std::unexpected{fmt::format("not a DC-file: version is {}, expected {}",
+                                               dcheader->m_versionNumber, DC_FILE_VERSION)};
+        }
+
+        // ------------------------------------------------------------------
+        // Sanity-check the header before we start touching memory.
+        // ------------------------------------------------------------------
+        if (dcheader->m_textSize < sizeof(DC_Header)) {
+            return std::unexpected{
+                fmt::format("header m_textSize = 0x{:X} is smaller than sizeof(DC_Header) = 0x{:X}",
+                            dcheader->m_textSize, sizeof(DC_Header))};
+        }
+        if (dcheader->m_textSize > size) {
+            return std::unexpected{
+                fmt::format("header m_textSize = 0x{:X} exceeds buffer size 0x{:X}",
+                            dcheader->m_textSize, size)};
+        }
+        if (dcheader->m_stringsOffset > dcheader->m_textSize) {
+            return std::unexpected{
+                fmt::format("header m_stringsOffset = 0x{:X} exceeds m_textSize = 0x{:X}",
+                            dcheader->m_stringsOffset, dcheader->m_textSize)};
+        }
+        if (dcheader->m_numEntries > 1000000) {
+            return std::unexpected{fmt::format(
+                "header m_numEntries = {} looks bogus (limit 1000000)", dcheader->m_numEntries)};
+        }
+
+        // The relocation table (size prefix + bitmap) must fit in the buffer.
+        if (dcheader->m_textSize + sizeof(u32) > size) {
+            return std::unexpected{fmt::format(
+                "no room for relocation table size prefix: m_textSize = 0x{:X}, size = 0x{:X}",
+                dcheader->m_textSize, size)};
+        }
+        const u32 table_size = *reinterpret_cast<const u32 *>(bytes.get() + dcheader->m_textSize);
+        if (table_size == 0) {
+            return std::unexpected{"relocation table size prefix is zero; the file is malformed"};
+        }
+        if (dcheader->m_textSize + sizeof(u32) + table_size > size) {
+            return std::unexpected{
+                fmt::format("relocation table does not fit: m_textSize + 4 + table_size = 0x{:X}, "
+                            "buffer size = 0x{:X}",
+                            dcheader->m_textSize + sizeof(u32) + table_size, size)};
         }
 
         BinaryFile file(path, size, std::move(bytes), dcheader);
@@ -131,51 +177,107 @@ namespace carbon {
     [[nodiscard]] bool BinaryFile::is_string(const location loc) const noexcept {
         return loc >= m_strings;
     }
+    /// @brief Parse the relocation bitmap and apply relocations in-place.
+    /// @details Every memory access is bounds-checked. If anything is off, the
+    ///          function throws with a precise message that names the offending
+    ///          offset, the size, and the buffer limit. No silent corruption.
+    void BinaryFile::read_reloc_table()  {
+        if (!m_dcheader) { throw std::runtime_error("[BinaryFile] read_reloc_table: null header"); }
 
-    /// Parse the relocation bitmap and apply relocations in-place.
-    /// Each set bit N in the bitmap means the 8-byte slot at file offset N*8
-    /// holds a file-relative pointer that must be turned into an absolute one.
-    /// Also builds m_pointedAtTable (bitmap of "some pointer points here")
-    /// and initialises m_strings from m_dcheader->m_stringsOffset.
-    void BinaryFile::read_reloc_table() noexcept {
-        std::byte *reloc_data = m_bytes.get() + m_dcheader->m_textSize;
+        // ------------------------------------------------------------------
+        // 1. Locate the relocation table.
+        // ------------------------------------------------------------------
+        const u64 text_size = m_dcheader->m_textSize;
+        if (text_size + sizeof(u32) > m_size) {
+            throw std::runtime_error(
+                fmt::format("[BinaryFile] read_reloc_table: m_textSize = 0x{:X} leaves no room "
+                            "for the u32 size prefix (buffer size = 0x{:X}).",
+                            text_size, m_size));
+        }
 
-        const u32 table_size = *reinterpret_cast<u32 *>(reloc_data);
+        std::byte *reloc_data = m_bytes.get() + text_size;
+        const u32  table_size = *reinterpret_cast<const u32 *>(reloc_data);
+
+        if (table_size == 0) {
+            throw std::runtime_error("[BinaryFile] read_reloc_table: table_size is zero");
+        }
+        if (text_size + sizeof(u32) + table_size > m_size) {
+            throw std::runtime_error(
+                fmt::format("[BinaryFile] read_reloc_table: table_size = {} (bytes) does not fit: "
+                            "m_textSize + 4 + table_size = 0x{:X}, buffer size = 0x{:X}.",
+                            table_size, text_size + sizeof(u32) + table_size, m_size));
+        }
+
+        // m_pointedAtTable is the same size as the bitmap itself. Allocate a
+        // 64-byte-aligned buffer for it (matching the rest of the file).
         m_pointedAtTable =
             byte_uptr(static_cast<std::byte *>(::operator new[](table_size, std::align_val_t(64))));
         std::memset(m_pointedAtTable.get(), 0, table_size);
 
-        m_relocTable = location(reloc_data + 4);
+        m_relocTable = location(reloc_data + sizeof(u32));
 
-#ifdef AVX512
-        const __m512i one = _mm512_set1_epi64(0x1);
-        const __m512i base = _mm512_set1_epi64(reinterpret_cast<p64>(m_bytes.get()));
+        // ------------------------------------------------------------------
+        // 2. Apply relocations.
+        // ------------------------------------------------------------------
+        // For each set bit N, the 8-byte slot at offset N*8 in the text section
+        // holds a file-relative pointer that must be turned into an absolute one.
+        // We also mark the target offset in m_pointedAtTable.
+        const u64 total_slots = static_cast<u64>(table_size) * 8;
+        const u64 text_slots = text_size / 8; // number of 8-byte slots in the text section
 
-        std::byte *data_segment_ptr = m_bytes.get();
-        for (u64 i = 0; i < table_size; ++i) {
-            const __mmask8 reloc_byte = m_relocTable.get<__mmask8>(i);
+        for (u64 slot = 0; slot < total_slots; ++slot) {
+            const u8   byte = m_relocTable.get<u8>(slot / 8);
+            const bool is_set = (byte & (1u << (slot % 8))) != 0;
+            if (!is_set) { continue; }
 
-            __m512i data_segment = _mm512_load_epi64(data_segment_ptr);
-            __m512i data_segment_masked = _mm512_maskz_mov_epi64(reloc_byte, base);
-            data_segment_masked = _mm512_add_epi64(data_segment_masked, data_segment);
-            _mm512_store_epi64(data_segment_ptr, data_segment_masked);
-            _mm512_mask_i64scatter_epi64(m_pointedAtTable.get(), reloc_byte, data_segment, one,
-                                         sizeof(std::byte));
-
-            data_segment_ptr += 64;
-        }
-#else
-        for (u64 slot = 0; slot < static_cast<u64>(table_size) * 8; ++slot) {
-            if (m_relocTable.get<u8>(slot / 8) & (1u << (slot % 8))) {
-                u64      *entry = reinterpret_cast<u64 *>(m_bytes.get() + slot * 8);
-                const u64 offset = *entry;
-                *entry = reinterpret_cast<u64>(m_bytes.get() + offset);
-
-                reinterpret_cast<u8 *>(m_pointedAtTable.get())[offset / 64] |=
-                    static_cast<u8>(1u << ((offset / 8) % 8));
+            // The slot must lie inside the text section.
+            const u64 slot_offset = slot * 8;
+            if (slot_offset + 8 > text_size) {
+                throw std::runtime_error(
+                    fmt::format("[BinaryFile] read_reloc_table: relocation bit {} refers to "
+                                "byte offset 0x{:X}, which is past the end of the text section "
+                                "(m_textSize = 0x{:X}).",
+                                slot, slot_offset, text_size));
             }
+
+            auto     *entry = reinterpret_cast<u64 *>(m_bytes.get() + slot_offset);
+            const u64 offset = *entry;
+
+            // The stored offset must point inside the buffer.
+            if (offset >= m_size) {
+                throw std::runtime_error(
+                    fmt::format("[BinaryFile] read_reloc_table: relocation bit {} at byte offset "
+                                "0x{:X} stores target offset 0x{:X}, which is outside the buffer "
+                                "(size = 0x{:X}).",
+                                slot, slot_offset, offset, m_size));
+            }
+
+            *entry = reinterpret_cast<u64>(m_bytes.get() + offset);
+
+            // Mark the target in m_pointedAtTable. The target offset must be
+            // inside the table (which is table_size bytes wide, one bit per
+            // 8-byte slot of the text section).
+            const u64 target_slot = offset / 8;
+            if (target_slot >= total_slots) {
+                throw std::runtime_error(
+                    fmt::format("[BinaryFile] read_reloc_table: relocation bit {} points at "
+                                "offset 0x{:X} (slot {}), which is outside the bitmap "
+                                "({} slots).",
+                                slot, offset, target_slot, total_slots));
+            }
+            reinterpret_cast<u8 *>(m_pointedAtTable.get())[target_slot / 8] |=
+                static_cast<u8>(1u << (target_slot % 8));
         }
-#endif
+
+        // ------------------------------------------------------------------
+        // 3. Locate the string table.
+        // ------------------------------------------------------------------
+        if (m_dcheader->m_stringsOffset > m_size) {
+            throw std::runtime_error(
+                fmt::format("[BinaryFile] read_reloc_table: m_stringsOffset = 0x{:X} is past "
+                            "the buffer end (size = 0x{:X}).",
+                            m_dcheader->m_stringsOffset, m_size));
+        }
         m_strings = location(m_bytes.get() + m_dcheader->m_stringsOffset);
     }
 

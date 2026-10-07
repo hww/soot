@@ -300,6 +300,33 @@ namespace carbon {
     static_assert(sizeof(SsType)  == 0x40, "SsType must be 0x40 bytes");
 
     // ---------------------------------------------------------------------------
+    // SsMethod — one entry in an SsType's method VTable.
+    // ---------------------------------------------------------------------------
+    //
+    // The method ID is the index of this entry in the SsMethod[] array. Slots are
+    // ordered by ascending method ID:
+    //   - The first N slots correspond to built-in methods (object::new, delete,
+    //     print, ...). They are always present with m_pLambda == nullptr; their
+    //     implementations live in C++ (TypeSystem::add_builtin_types).
+    //   - User-defined methods (from deftype :methods and defmethod) follow, in
+    //     the order they were declared. Each carries a pointer to its ScriptLambda.
+    //
+    // The array is sized to (highest method ID + 1), so a call-by-id can index
+    // it directly. Unimplemented methods keep their slot with m_pLambda == nullptr.
+    //
+    // Methods may be overridden and may change signature: the slot is looked up
+    // by ID through TypeSystem, so a child type's method simply replaces the
+    // parent's in its own VTable.
+    struct SsMethod // 0x10
+    {
+        sid64         m_name;    ///< <c>0x00</c>: SID of the method name (e.g. SID("len"))
+        ScriptLambda *m_pLambda; ///< <c>0x08</c>: pointer to the implementation (relocated),
+                                 ///< or null for built-in / unimplemented methods
+    };
+
+    static_assert(sizeof(SsMethod) == 0x10, "SsMethod must be 0x10 bytes");
+
+    // ---------------------------------------------------------------------------
     // Executable function (lambda)
     // ---------------------------------------------------------------------------
 

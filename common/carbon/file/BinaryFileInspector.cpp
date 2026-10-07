@@ -758,7 +758,6 @@ namespace carbon {
         m_formatter->print("NumFields:  {}\n", st->m_numFields);
         m_formatter->print("NumMethods: {}\n", st->m_numMethods);
 
-        // Flags.
         std::string flags;
         if (st->m_flags & 0x1) { flags += "basic "; }
         if (st->m_flags & 0x2) { flags += "structure "; }
@@ -785,6 +784,35 @@ namespace carbon {
                 m_formatter->print("{:>4}  {:<24}  {:<16}  {:>8}  {:>6}  {}\n", i,
                                    sid_str(f.m_name), sid_str(f.m_type), f.m_offset, f.m_size,
                                    fflags);
+            }
+        }
+
+        // Methods (VTable).
+        if (st->m_pMethods && st->m_numMethods > 0) {
+            const auto *methods = reinterpret_cast<const SsMethod *>(st->m_pMethods);
+
+            m_formatter->print("\nMethods ({}):\n", st->m_numMethods);
+            IFormatter::Block method_block(*m_formatter, m_indent);
+
+            m_formatter->print("{:>4}  {:<24}  {}\n", "id", "name", "lambda");
+
+            for (u32 i = 0; i < st->m_numMethods; ++i) {
+                const SsMethod &m = methods[i];
+
+                // m_pLambda is an absolute pointer. Print its file offset if it
+                // points inside the file, otherwise the raw pointer.
+                std::string lambda_str = "(null)";
+                if (m.m_pLambda != nullptr) {
+                    const auto base = reinterpret_cast<uintptr_t>(m_file->m_bytes.get());
+                    const auto addr = reinterpret_cast<uintptr_t>(m.m_pLambda);
+                    if (addr >= base && addr < base + m_file->m_size) {
+                        lambda_str = fmt::format("0x{:04X}", addr - base);
+                    } else {
+                        lambda_str = fmt::format("{}", ptr_str(m.m_pLambda));
+                    }
+                }
+
+                m_formatter->print("{:>4}  {:<24}  {}\n", i, sid_str(m.m_name), lambda_str);
             }
         }
     }

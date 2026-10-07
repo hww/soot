@@ -20,14 +20,20 @@ namespace sootc {
 
         size_t size() const { return m_exprs.size(); }
 
-        void emit(FunctionNode &fn) override {
-            for (auto &e : m_exprs) { e->emit(fn); }
-            if (!m_exprs.empty()) {
-                // Прокинуть temp_reg последнего выражения
-                u8 last_reg = fn.get_temp_reg(m_exprs.back().get());
-                fn.set_temp_reg(this, last_reg);
-                m_type = m_exprs.back()->get_type();
+        void SequenceNode::emit(FunctionNode &func) {
+            if (m_exprs.empty()) {
+                // Empty sequence: no value. Leave the caller to handle it.
+                return;
             }
+
+            // Emit each expression. Only the last one carries the sequence's value.
+            for (size_t i = 0; i < m_exprs.size(); ++i) { m_exprs[i]->emit(func); }
+
+            // The sequence's value is the value of the last expression. Forward the
+            // temp register so that the caller (e.g. FunctionNode::emit_body) can use
+            // it for the implicit return.
+            const Node *last = m_exprs.back().get();
+            if (func.has_temp_reg(last)) { func.set_temp_reg(this, func.get_temp_reg(last)); }
         }
 
         std::string to_string() const override {

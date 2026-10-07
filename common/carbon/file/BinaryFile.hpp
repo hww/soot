@@ -219,7 +219,7 @@ namespace carbon {
 
     private:
         /// Parse the relocation bitmap at m_dcheader->m_textSize and apply relocations.
-        void read_reloc_table() noexcept;
+        void read_reloc_table() ;
 
         /// Replace '\n' with ' ' inside the string table (the game does this too).
         void replace_newlines_in_stringtable() noexcept;

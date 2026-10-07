@@ -1,5 +1,3 @@
-// FunctionNode.cpp.cpp
-
 #include "ProgramBinaryElement.hpp"
 
 #include "lib/StringIdManager.hpp"
@@ -14,7 +12,7 @@ namespace carbon {
 
     ProgramBinaryElement::ProgramBinaryElement(const u64 size) noexcept {
         m_rawData.reserve(size);
-        m_relocTable.reserve(size / 64);
+        m_relocTable.reserve(size / 8);
         m_byteOffset = 0;
         m_bitOffset = 0;
         m_entry.m_entryPtr = nullptr;
@@ -26,12 +24,11 @@ namespace carbon {
         for (u64 i = 0; i < num_bits; ++i) { m_relocTable.push_back((bits >> i) & 0x1); }
     }
 
-    /// @brief Append a raw byte blob and one relocation bit per new 8-byte slot.
-    /// @details The number of new bits is the difference between the slot count
-    ///          before and after the append. This is required when rawData.size()
-    ///          is not a multiple of 8 — the previous partial slot is shared.
-    void ProgramBinaryElement::push_blob(const void *data, size_t size,
-                                         u8 relocation_bit) noexcept {
+    void ProgramBinaryElement::push_blob(const void *data, size_t size, u8 relocation_bit) {
+        if (data == nullptr && size > 0) {
+            throw std::runtime_error("[ProgramBinaryElement] push_blob: data is null but size > 0");
+        }
+
         const size_t slots_before = (m_rawData.size() + 7) / 8;
 
         const auto *p = reinterpret_cast<const std::byte *>(data);
@@ -45,17 +42,20 @@ namespace carbon {
         check_size();
     }
 
-    /// @brief Verify the invariant: one relocation bit per 8-byte slot.
-    /// @details This is the single source of truth for the rawData / relocTable
-    ///          relationship. If it ever fires, a caller has added data without
-    ///          a matching relocation bit (or vice versa).
+    /// @brief Verify the invariant: relocTable.size() == (rawData.size() + 7) / 8.
+    /// @throws std::runtime_error with precise coordinates if broken.
     void ProgramBinaryElement::check_size() const {
         const size_t data_slots = (m_rawData.size() + 7) / 8;
         const size_t reloc_slots = m_relocTable.size();
+
         if (data_slots != reloc_slots) {
             throw std::runtime_error(
-                fmt::format("ProgramBinaryElement: raw_data has {} slots, reloc table has {} bits",
-                            data_slots, reloc_slots));
+                fmt::format("[ProgramBinaryElement] invariant broken: rawData has {} bytes "
+                            "({} slots, ceil), relocTable has {} bits. "
+                            "Entry name: '{}', type: '{}'.",
+                            m_rawData.size(), data_slots, reloc_slots,
+                            StringIdManager::instance().get_string(m_entry.m_nameID),
+                            StringIdManager::instance().get_string(m_entry.m_typeId)));
         }
     }
 
@@ -67,13 +67,20 @@ namespace carbon {
         m_stringOffsets.emplace_back(m_rawData.size() + offset);
     }
 
-    void ProgramBinaryElement::adjust_offsets(const u64 offset) noexcept {
+    void ProgramBinaryElement::adjust_offsets(const u64 offset) {
         const u64 chunks = m_rawData.size() / sizeof(u64);
         const u64 reloc_size = m_relocTable.size();
 
         for (u64 i = 0; i < chunks && i < reloc_size; ++i) {
             if (m_relocTable[i]) {
-                auto *ptr = reinterpret_cast<u64 *>(m_rawData.data() + i * sizeof(u64));
+                const u64 byte_offset = i * sizeof(u64);
+                if (byte_offset + sizeof(u64) > m_rawData.size()) {
+                    throw std::runtime_error(
+                        fmt::format("[ProgramBinaryElement] adjust_offsets: slot {} is out of "
+                                    "range (rawData.size() = {}).",
+                                    i, m_rawData.size()));
+                }
+                auto *ptr = reinterpret_cast<u64 *>(m_rawData.data() + byte_offset);
                 if (*ptr != 0) { *ptr += offset; }
             }
         }
@@ -103,7 +110,6 @@ namespace carbon {
                     static_cast<unsigned long long>(m_entry.m_typeId), typeStr.c_str());
         std::printf("    ptr:    %p\n", m_entry.m_entryPtr);
 
-        // Raw-data hex dump with a '+' mark on relocatable slots.
         std::printf("  Raw Data (hex, '+' = relocatable):\n");
         const size_t dump_size = std::min(m_rawData.size(), max_len);
         for (size_t i = 0; i < dump_size; ++i) {
