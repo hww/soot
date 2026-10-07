@@ -58,4 +58,19 @@ namespace sootc {
         fn.set_temp_reg(this, dest_reg);
     }
 
+    /// @brief Emit code that computes the field's address (an lvalue).
+    /// @details Same as emit(), but without the load. The resulting address
+    ///          register is assigned to this node so SetNode can use it.
+    u8 DerefNode::emit_lvalue(FunctionNode &fn) {
+        // 1. Evaluate the base pointer expression.
+        m_expr->emit(fn);
+        u8 base_reg = fn.get_temp_reg(m_expr.get());
+
+        // 2. Compute the field address: r_addr = base_reg + offset.
+        u8 addr_reg = fn.alloc_temp_reg(m_type);
+        fn.add_instruction_imm_u16(Opcode::IAddImm, addr_reg, static_cast<u16>(m_offset));
+
+        fn.set_temp_reg(this, addr_reg);
+        return addr_reg;
+    }
 } // namespace sootc

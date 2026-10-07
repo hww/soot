@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "DerefNode.hpp"
 #include "ExpressionNode.hpp"
 #include "sootc/node/Node.hpp"
 #include <memory>
@@ -7,42 +8,31 @@
 
 namespace sootc {
 
-    // (set! name value)
+    /// @brief (set! target value)
+    /// @details Two forms of target are supported:
+    ///            - a variable name:  (set! x 42)
+    ///            - a field access:   (set! (-> obj field) 42)
+    ///
+    ///          The result of set! is the value that was stored.
     class SetNode : public ExpressionNode {
+        // Either m_name is set (variable) or m_lvalue is set (field), not both.
         std::string                     m_name;
+        std::unique_ptr<DerefNode>      m_lvalue;
         std::unique_ptr<ExpressionNode> m_value;
 
     public:
+        /// @brief (set! variable value)
         SetNode(const std::string &name, std::unique_ptr<ExpressionNode> value)
             : ExpressionNode(NodeType::SetNode), m_name(name), m_value(std::move(value)) {}
 
-        void emit(FunctionNode &fn) override {
-            if (!m_value) { throw std::runtime_error("SetNode::emit: no value"); }
+        /// @brief (set! (-> obj field) value)
+        SetNode(std::unique_ptr<DerefNode> lvalue, std::unique_ptr<ExpressionNode> value)
+            : ExpressionNode(NodeType::SetNode), m_lvalue(std::move(lvalue)),
+              m_value(std::move(value)) {}
 
-            // 1. Вычислить значение
-            m_value->emit(fn);
-            u8 value_reg = fn.get_temp_reg(m_value.get());
+        void emit(FunctionNode &fn) override;
 
-            // 2. Найти регистр переменной
-            auto *info = fn.lookup_variable(m_name);
-            if (!info) {
-                throw std::runtime_error("SetNode::emit: undefined variable '" + m_name + "'");
-            }
-            u8 local_reg = info->reg();
-
-            // 3. Move local_reg, value_reg
-            if (local_reg != value_reg) {
-                fn.add_instruction(Opcode::Move, local_reg, value_reg, 0);
-            }
-
-            // 4. Результат set! = значение
-            fn.set_temp_reg(this, value_reg);
-            m_type = m_value->get_type();
-        }
-
-        std::string to_string() const override {
-            return "(set! " + m_name + " " + m_value->to_string() + ")";
-        }
+        std::string to_string() const override;
     };
 
 } // namespace sootc

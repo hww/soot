@@ -99,6 +99,17 @@ namespace sootc {
                         cur = cur.as_pair()->cdr;
                         continue;
                     }
+                    if (kw == "defun") {
+                        auto fn = build(child, node);
+                        if (auto *file = node->file()) {
+                            auto *raw = dynamic_cast<FunctionNode *>(fn.get());
+                            if (!raw) throw std::runtime_error("defun didn't return FunctionNode");
+                            file->add_child(std::move(fn));
+                            file->bind(raw->name(), raw);
+                        }
+                        cur = cur.as_pair()->cdr;
+                        continue;
+                    }
                     // define / define-export at any level produce a FunctionNode
                     // or DataDeclarationNode. Both are hoisted onto the FileNode:
                     // they are named declarations, not expressions.
@@ -195,21 +206,60 @@ namespace sootc {
         return let_node;
     }
 
-    std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
-        // (set! name value)
+std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
+        // (set! target value)
         auto rest = form.as_pair()->cdr;
 
-        if (!rest.is_pair()) { throw std::runtime_error("set!: missing name"); }
-        auto name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol()) { throw std::runtime_error("set!: name must be a symbol"); }
+        if (!rest.is_pair()) {
+            throw CompilerError("NodeBuilder::build_set")
+                .where("set!")
+                .expected("target and value")
+                .got("empty form");
+        }
 
-        if (!rest.as_pair()->cdr.is_pair()) { throw std::runtime_error("set!: missing value"); }
-        auto value_obj = rest.as_pair()->cdr.as_pair()->car;
+        auto target_form = rest.as_pair()->car;
 
-        std::string name = name_obj.as_symbol();
-        auto        value = build_expression(value_obj, node);
+        if (!rest.as_pair()->cdr.is_pair()) {
+            throw CompilerError("NodeBuilder::build_set")
+                .where("set!")
+                .expected("value after target")
+                .got("end of form");
+        }
+        auto value_form = rest.as_pair()->cdr.as_pair()->car;
 
-        return std::make_unique<SetNode>(name, std::move(value));
+        // ---- Value is always an expression. ----
+        auto value = build_expression(value_form, node);
+
+        // ---- Target: variable or (-> obj field). ----
+        if (target_form.is_symbol()) {
+            // (set! x value)
+            std::string name = target_form.as_symbol();
+            return std::make_unique<SetNode>(name, std::move(value));
+        }
+
+        if (target_form.is_pair() && target_form.as_pair()->car.is_symbol() &&
+            target_form.as_pair()->car.as_symbol() == "->") {
+            // (set! (-> obj field) value)
+            auto deref_expr = build_deref(target_form, node);
+
+            // build_deref returns an ExpressionNode; for a (-> ...) form it is a
+            // DerefNode. Any other kind would be a bug.
+            auto *deref_raw = dynamic_cast<DerefNode *>(deref_expr.release());
+            if (!deref_raw) {
+                throw CompilerError("NodeBuilder::build_set")
+                    .where("set! (-> ...)")
+                    .expected("DerefNode as lvalue")
+                    .got("non-DerefNode");
+            }
+
+            return std::make_unique<SetNode>(std::unique_ptr<DerefNode>(deref_raw),
+                                             std::move(value));
+        }
+
+        throw CompilerError("NodeBuilder::build_set")
+            .where("set!")
+            .expected("variable name or (-> obj field) as target")
+            .got(target_form.print());
     }
     /// @brief Parse (-> expr field-or-method [args...]).
     /// @details First tries to resolve the name as a field of the base expression's

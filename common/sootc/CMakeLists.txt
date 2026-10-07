@@ -11,6 +11,8 @@ add_library(libsootc
     common/sootc/node/DerefNode.cpp
     common/sootc/node/MethodCallNode.cpp
     common/sootc/node/NewNode.cpp
+    common/sootc/node/SetNode.cpp
+
 
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
