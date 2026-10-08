@@ -714,6 +714,12 @@ namespace sootc {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
 
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_binary")
+                .expected("at least one argument")
+                .got("empty form");
+        }
+
         BinaryNode::Op op;
         if (head == "+") op = BinaryNode::Op::ADD;
         else if (head == "-")
@@ -730,6 +736,21 @@ namespace sootc {
                 .got(fmt::format("'{}'", std::string(head)));
         }
 
+        // ---- Unary minus: (- x) → (0 - x) ----
+        //
+        // Only `-` is allowed as unary. Other ops require two operands.
+        if (rest.as_pair()->cdr.is_null()) {
+            if (op != BinaryNode::Op::SUB) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_binary")
+                    .expected(fmt::format("two arguments for '{}'", std::string(head)))
+                    .got("one argument");
+            }
+            auto zero = ConstNode::make_int(0);
+            auto operand = build_expression(rest.as_pair()->car, node);
+            return std::make_unique<BinaryNode>(op, std::move(zero), std::move(operand));
+        }
+
+        // ---- Binary operator ----
         auto left = build_expression(rest.as_pair()->car, node);
         auto right = build_expression(rest.as_pair()->cdr.as_pair()->car, node);
 
