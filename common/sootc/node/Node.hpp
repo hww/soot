@@ -20,6 +20,7 @@ enum class NodeType {
     Node,
     BinaryNode,
     CallNode,
+    CastNode,
     CompareNode,
     ConstNode,
     ControlNode,
@@ -42,6 +43,7 @@ enum class NodeType {
     // Data instances:
     NewNode,
     DataDeclarationNode,
+    
     };
 
 inline const char* node_type_to_string(NodeType type) {
@@ -49,6 +51,7 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::Node:           return "Node";
         case NodeType::BinaryNode:     return "BinaryNode";
         case NodeType::CallNode:       return "CallNode";
+        case NodeType::CastNode:       return "CastNode";
         case NodeType::CompareNode:    return "CompareNode";
         case NodeType::ConstNode:      return "ConstNode";
         case NodeType::ControlNode:    return "ControlNode";

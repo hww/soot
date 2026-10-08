@@ -9,6 +9,7 @@
 #include "common/sootc/node/SequenceNode.hpp"
 #include "common/sootc/node/StoreGlobalNode.hpp"
 #include "common/sootc/node/TypeDeclarationNode.hpp"
+#include "common/sootc/node/CastNode.hpp"
 #include "common/type_system/Defenum.hpp"
 #include "common/type_system/Deftype.hpp"
 #include "fmt/format.h"
@@ -29,6 +30,7 @@ namespace sootc {
         // Basic / declarations
         m_form_table["define"] = &NodeBuilder::build_define_wrap;
         m_form_table["define-export"] = &NodeBuilder::build_define_wrap;
+        m_form_table["define-extern"] = &NodeBuilder::build_define_extern;
         m_form_table["lambda"] = &NodeBuilder::build_lambda_wrap;
         m_form_table["function"] = &NodeBuilder::build_lambda_wrap;
         m_form_table["begin"] = &NodeBuilder::build_begin_wrap;
@@ -62,6 +64,8 @@ namespace sootc {
         m_form_table["defenum"] = &NodeBuilder::build_defenum_wrap;
         m_form_table["defmethod"] = &NodeBuilder::build_defmethod_wrap;
         m_form_table["seval"] = &NodeBuilder::build_seval_wrap;
+        m_form_table["update-macro-metadata"] = &NodeBuilder::build_update_macro_metadata;
+        m_form_table["defconstant"] = &NodeBuilder::build_defconstant;
     }
 
     // ============================================================================
@@ -190,6 +194,61 @@ namespace sootc {
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_lambda(const soot::Object &form, Node *node) {
         return FunctionCompiler::compile_function(form, node, *this);
+    }
+
+    // ============================================================================
+    // update-macro-metadata
+    // ============================================================================
+
+    std::unique_ptr<Node> NodeBuilder::build_update_macro_metadata(const soot::Object &form,
+                                                                   Node               *node) {
+        (void)form;
+        (void)node;
+        // No-op: metadata for tooling, not runtime code.
+        return std::make_unique<SequenceNode>();
+    }
+
+    // ============================================================================
+    // defconstant
+    // ============================================================================
+
+    std::unique_ptr<Node> NodeBuilder::build_defconstant(const soot::Object &form, Node *node) {
+        (void)node;
+
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defconstant")
+                .expected("(defconstant name value)")
+                .got("empty form");
+        }
+
+        auto name_form = rest.as_pair()->car;
+        if (!name_form.is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defconstant")
+                .expected("symbol as constant name")
+                .got(name_form.print());
+        }
+
+        auto after_name = rest.as_pair()->cdr;
+        if (!after_name.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defconstant")
+                .expected("value after name")
+                .got("end of form");
+        }
+
+        auto value_form = after_name.as_pair()->car;
+
+        // Parse the value (must be a literal — number, string, symbol).
+        soot::Object value = value_form;
+
+        // Register the constant in the compiler's constant pool.
+        //
+        // Mirrors GOAL's compile_defconstant:
+        //   m_global_constants.set(sym, value);
+        m_compiler->define_constant(name_form.to_std_string(), value);
+        lg::info("Registered constant: {} = {}", name_form.to_std_string(), value.print());
+
+        return std::make_unique<SequenceNode>();
     }
 
     // ============================================================================
@@ -578,6 +637,26 @@ namespace sootc {
     }
 
     // ============================================================================
+    // function_signature
+    // ============================================================================
+    TypeSpec NodeBuilder::build_function_signature(FunctionNode *fn, const std::string &name) {
+        (void)name;
+        std::vector<TypeSpec> args;
+
+        // Параметры функции
+        for (const auto *var_info : fn->parameters()) {
+            Type *type = var_info->type();
+            args.push_back(type ? TypeSpec(type->get_name()) : TypeSpec("object"));
+        }
+
+        // Возвращаемый тип
+        Type *return_type = fn->get_return_type();
+        args.push_back(return_type ? TypeSpec(return_type->get_name()) : TypeSpec("object"));
+
+        return TypeSpec("function", std::move(args));
+    }
+
+    // ============================================================================
     // while
     // ============================================================================
     std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object &form, Node *node) {
@@ -676,6 +755,60 @@ namespace sootc {
 
         std::string func_name = head.to_std_string();
         auto        args = parse_args(rest, node);
+
+         // ---- Typecheck against known signature (if any) ----
+        if (auto sig = m_compiler->lookup_function_signature(func_name)) {
+            const size_t expected_args = sig->get_args_count() - 1;
+            if (args.size() != expected_args) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                    .expected(fmt::format("{} arguments for '{}'", expected_args, func_name))
+                    .got(fmt::format("{} arguments", args.size()))
+                    .note(fmt::format("Signature: {}", sig->print()));
+            }
+
+            // ---- Typecheck each argument (with implicit int->float coercion) ----
+            for (size_t i = 0; i < args.size(); ++i) {
+                auto *expr = dynamic_cast<ExpressionNode *>(args[i].get());
+                if (!expr) continue;
+
+                Type *actual_type = expr->get_type();
+                if (!actual_type) continue;
+
+                TypeSpec expected_ts = sig->get_arg(i);
+                TypeSpec actual_ts(actual_type->get_name());
+
+                // 1. Direct or subtype match — OK.
+                if (m_ts.tc(expected_ts, actual_ts)) { continue; }
+
+                // 2. int -> float coercion.
+                if (m_ts.tc(TypeSpec("float"), expected_ts) &&
+                    m_ts.tc(TypeSpec("int"), actual_ts)) {
+                    Type *target = m_ts.lookup_type("float");
+                    auto *raw_expr = dynamic_cast<ExpressionNode *>(args[i].release());
+                    args[i] = std::make_unique<CastNode>(std::unique_ptr<ExpressionNode>(raw_expr),
+                                                         target);
+                    continue;
+                }
+
+                // 3. float -> int coercion (allowed with warning).
+                if (m_ts.tc(TypeSpec("int"), expected_ts) &&
+                    m_ts.tc(TypeSpec("float"), actual_ts)) {
+                    Type *target = m_ts.lookup_type("int");
+                    auto *raw_expr = dynamic_cast<ExpressionNode *>(args[i].release());
+                    args[i] = std::make_unique<CastNode>(std::unique_ptr<ExpressionNode>(raw_expr),
+                                                         target);
+                    lg::warn("implicit float->int coercion in call to '{}'", func_name);
+                    continue;
+                }
+
+                // 4. Anything else — hard error.
+                throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                    .expected(fmt::format("argument {} of '{}' to be '{}'", i, func_name,
+                                          expected_ts.print()))
+                    .got(fmt::format("'{}' (type: {})", expr->node_type(), actual_ts.print()))
+                    .note(fmt::format("Signature: {}", sig->print()));
+            }
+        }
 
         auto call = std::make_unique<CallNode>(func_name, nullptr);
         for (auto &arg : args) {
@@ -938,6 +1071,12 @@ namespace sootc {
         if (auto *fn = dynamic_cast<FunctionNode *>(value_node.get())) {
             fn->set_name(name);
             fn->set_exported(exported);
+
+            // ---- Register the function's signature ----
+            TypeSpec sig = build_function_signature(fn, name);
+            m_compiler->define_function_signature(name, sig);
+            lg::info("Registered function: {} : {}", name, sig.print());
+
             if (auto *file = context->file()) { file->bind(name, fn); }
             return value_node;
         }
@@ -962,6 +1101,39 @@ namespace sootc {
                               name, name, name));
     }
 
+    std::unique_ptr<Node> NodeBuilder::build_define_extern(const soot::Object &form, Node *node) {
+        (void)node;
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define_extern")
+                .expected("(define-extern name (function arg-types... return-type))")
+                .got("empty form");
+        }
+
+        auto name_form = rest.as_pair()->car;
+        if (!name_form.is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define_extern")
+                .expected("symbol as function name")
+                .got(name_form.print());
+        }
+
+        auto after_name = rest.as_pair()->cdr;
+        if (!after_name.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define_extern")
+                .expected("function type after name")
+                .got("end of form");
+        }
+
+        auto type_form = after_name.as_pair()->car;
+
+        // Parse (function arg1 ... return-type) into a TypeSpec.
+        TypeSpec sig = m_compiler->parse_typespec(type_form);
+
+        m_compiler->define_function_signature(name_form.to_std_string(), sig);
+        lg::info("Registered extern: {} : {}", name_form.to_std_string(), sig.print());
+
+        return std::make_unique<SequenceNode>();
+    }
     // ============================================================================
     // deftype
     // ============================================================================

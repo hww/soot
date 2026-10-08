@@ -445,6 +445,9 @@ class TypeSystem {
 
     Field lookup_field(const std::string &type_name, const std::string &field_name) const;
 
+    // Function signature creator
+    TypeSpec build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+                                   const Object &ret_type);
   private:
     // ========================================================================
     // Private Implementation

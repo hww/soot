@@ -140,11 +140,15 @@ namespace carbon {
         // Main Execution Engine
         // ------------------------------------------------------------------------
 
-        Variant execute_function(Module* module, StringId function, RunMode mode = RunMode::Run);
-        Variant execute_function(ScriptLambda* script_lambda, RunMode mode = RunMode::Run);
+        /// @brief Execute a script lambda with the given positional arguments.
+        ///
+        /// @details The first argument goes into r24, the second into r25, etc.
+        ///          See ARG_REGISTERS_OFFSET in your VM for the exact offset.
+        Variant execute_function(ScriptLambda *script_lambda, RunMode mode,
+                                 const std::vector<Variant> &args);
+        Variant execute_function(ScriptLambda *script_lambda, RunMode mode = RunMode::Run);
         Variant execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode = RunMode::Run);
         Variant execute(RunMode mode = RunMode::Run);
-
 
 
     private:

@@ -115,6 +115,13 @@ namespace sootc {
         // ========================================================================
         void   add_parameter(const std::string &name, Type *type);
         size_t param_count() const { return m_param_count; }
+        // Параметры хранятся в m_variables — первые m_param_count элементов.
+        std::vector<const VariableInfo *> parameters() const {
+            std::vector<const VariableInfo *> result;
+            result.reserve(m_param_count);
+            for (size_t i = 0; i < m_param_count; ++i) { result.push_back(&m_variables[i]); }
+            return result;
+        }
 
         // ========================================================================
         // Локальные переменные

@@ -25,6 +25,7 @@
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "type_system/TypeSystem.hpp"
+#include "type_system/Deftype.hpp"
 
 namespace sootc {
 
@@ -88,6 +89,18 @@ namespace sootc {
         TypeSystem       &ts() { return m_ts; }
         const TypeSystem &ts() const { return m_ts; }
 
+        TypeSpec parse_typespec(const soot::Object &form) { return ::parse_typespec(&m_ts, form); };
+
+        // --- Functions declarations ---
+        void define_function_signature(const std::string &name, const TypeSpec &sig) {
+            m_function_signatures[name] = sig;
+        }
+
+        std::optional<TypeSpec> lookup_function_signature(const std::string &name) const {
+            auto it = m_function_signatures.find(name);
+            return it != m_function_signatures.end() ? std::optional(it->second) : std::nullopt;
+        }
+
         // --- Environment management ---
         void         set_global(const std::string &name, const soot::Object &value);
         soot::Object get_global(const std::string &name);
@@ -95,6 +108,16 @@ namespace sootc {
 
         soot::Interpreter &get_soot_interpreter() { return m_soot; }
         soot::Object       get_soot_environment() { return m_soot.get_soot_environment(); }
+
+        // --- Constants ---
+        void define_constant(const std::string &name, const soot::Object &value) {
+            m_constants[name] = value;
+        }
+
+        std::optional<soot::Object> lookup_constant(const std::string &name) const {
+            auto it = m_constants.find(name);
+            return it != m_constants.end() ? std::optional(it->second) : std::nullopt;
+        }
 
         // --- Printing / saving ---
         void print_listing(const BinaryFile &file);
@@ -200,6 +223,10 @@ namespace sootc {
         std::unique_ptr<NoneNode>   m_none;
 
         std::string m_current_file;
+        std::unordered_map<std::string, TypeSpec> m_function_signatures;
+        std::unordered_map<std::string, soot::Object> m_constants;
+
+
     };
 
 } // namespace sootc

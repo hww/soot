@@ -282,9 +282,10 @@ namespace carbon {
         f64 get_static_float(u32 offset) const {
             ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
             u64 raw = data_ptr[offset];
-            f32 f;
-            std::memcpy(&f, &raw, sizeof(f32)); // ← младшие 32 бита как f32
-            return static_cast<f64>(f);
+            // Constants are stored as full 64-bit doubles — read all 8 bytes.
+            f64 f;
+            std::memcpy(&f, &raw, sizeof(f64));
+            return f;
         }
 
         void *get_static_pointer(u32 offset) const {

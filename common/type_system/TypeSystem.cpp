@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include "Register.hpp"
 
 
 namespace {
@@ -2314,5 +2315,46 @@ std::string TypeSystem::inspect() const {
 }
 
 // ============================================================================
-//
+// Make function signature
 // ============================================================================
+TypeSpec TypeSystem::build_typespec_from_env(const std::shared_ptr<EnvironmentObject> &env,
+                                             const Object                             &ret_type) {
+    auto entries = env->vars.get_all_entries();
+
+    // 1. Считаем максимум arg_index
+    int max_idx = -1;
+    for (const auto &entry : entries) {
+        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
+            int idx = entry.value.as_heap_obj<Register>()->arg_index;
+            if (idx > max_idx) max_idx = idx;
+        }
+    }
+
+    // 2. Создаём массив в порядке arg_index
+    std::vector<Object> ordered_args(max_idx + 1);
+    for (const auto &entry : entries) {
+        if (entry.key != nullptr && entry.value.is_native_obj<Register>()) {
+            auto reg = entry.value.as_heap_obj<Register>();
+            if (reg->arg_index >= 0) { ordered_args[reg->arg_index] = reg->type_name; }
+        }
+    }
+
+    // 3. Строим список типов аргументов
+    std::vector<std::string> arg_type_names;
+    for (int i = 0; i <= max_idx; ++i) {
+        if (ordered_args[i].is_none()) {
+            arg_type_names.push_back("object");
+        } else if (ordered_args[i].is_symbol()) {
+            arg_type_names.push_back(ordered_args[i].as_symbol().name_ptr);
+        } else {
+            arg_type_names.push_back(ordered_args[i].to_std_string());
+        }
+    }
+
+    // 4. Имя возвращаемого типа
+    std::string ret_name =
+        ret_type.is_symbol() ? ret_type.as_symbol().name_ptr : ret_type.to_std_string();
+
+    // 5. Строим и возвращаем TypeSpec
+    return make_function_typespec(arg_type_names, ret_name);
+}

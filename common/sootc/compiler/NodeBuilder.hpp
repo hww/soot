@@ -39,12 +39,15 @@ namespace sootc {
         // Declarations — return unique_ptr<Node>.
         std::unique_ptr<Node> build_begin(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_define(const soot::Object &form, Node *context);
+        std::unique_ptr<Node> build_define_extern(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_defmacro(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_seval(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_deftype(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_defenum(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_defmethod(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_lambda(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_update_macro_metadata(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_defconstant(const soot::Object &form, Node *node);
 
         // Expressions — native types.
         std::unique_ptr<ExpressionNode> build_expression(const soot::Object &form, Node *node);
@@ -65,6 +68,7 @@ namespace sootc {
         Type                              *parse_type(const soot::Object &type_form, Node *node);
         std::vector<std::unique_ptr<Node>> parse_args(const soot::Object &args_form, Node *node);
         std::unique_ptr<Node> build_body_as_sequence(const soot::Object &body_forms, Node *node);
+        TypeSpec              build_function_signature(FunctionNode *fn, const std::string &name);
 
         TypeSystem &m_ts;
         Compiler   *m_compiler;

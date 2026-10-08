@@ -350,17 +350,23 @@ namespace sootc {
 
         if (input == ":reload") { return ReplStatus::WANT_RELOAD; }
 
-        // === :run <name> -- execute a loaded function in the VM ===
+        // === :run <name> [args...] -- execute a loaded function in the VM ===
         if (input.size() >= 5 && input.substr(0, 5) == ":run ") {
-            std::string name = input.substr(5);
+            std::string rest = input.substr(5);
 
-            const auto first = name.find_first_not_of(" \t");
+            // Trim whitespace
+            const auto first = rest.find_first_not_of(" \t");
             if (first == std::string::npos) {
                 fmt::print(fg(fmt::color::yellow), "; ERROR: :run requires a function name\n");
                 return ReplStatus::OK;
             }
-            const auto last = name.find_last_not_of(" \t");
-            name = name.substr(first, last - first + 1);
+            const auto last = rest.find_last_not_of(" \t");
+            rest = rest.substr(first, last - first + 1);
+
+            // Split into name and args by first space
+            const auto  space = rest.find_first_of(" \t");
+            std::string name = (space == std::string::npos) ? rest : rest.substr(0, space);
+            std::string args_str = (space == std::string::npos) ? "" : rest.substr(space + 1);
 
             auto &globals = carbon::Globals::inst();
             void *fn_ptr = globals.find_symbol_ptr(carbon::StringId(name));
@@ -372,10 +378,30 @@ namespace sootc {
 
             auto *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
 
-            carbon::VirtualMachine vm;
-            carbon::Variant        result = vm.execute_function(lambda, carbon::RunMode::Run);
+            // Parse arguments — int (no dot) or float (with dot).
+            std::vector<carbon::Variant> vm_args;
+            if (!args_str.empty()) {
+                std::istringstream iss(args_str);
+                std::string        token;
+                while (iss >> token) {
+                    try {
+                        if (token.find('.') != std::string::npos) {
+                            vm_args.push_back(carbon::Variant(std::stod(token)));
+                        } else {
+                            vm_args.push_back(
+                                carbon::Variant(static_cast<int64_t>(std::stoll(token))));
+                        }
+                    } catch (const std::exception &e) {
+                        fmt::print(fg(fmt::color::yellow),
+                                   "; WARN: skipping bad argument '{}': {}\n", token, e.what());
+                    }
+                }
+            }
 
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", name,
+            carbon::VirtualMachine vm;
+            carbon::Variant result = vm.execute_function(lambda, carbon::RunMode::Run, vm_args);
+
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", rest,
                        result.to_string());
             return ReplStatus::OK;
         }

@@ -132,6 +132,29 @@ namespace carbon {
         return execute(current_frame, mode);
     }
 
+    Variant VirtualMachine::execute_function(ScriptLambda *script_lambda, RunMode mode,
+                                             const std::vector<Variant> &args) {
+        if (!script_lambda) {
+            lg::error("Cannot execute null FunctionDesc");
+            return Variant();
+        }
+
+        auto current_frame = create_stack_frame(script_lambda->get_code_ptr(),
+                                                script_lambda->get_symbols_ptr(), nullptr);
+
+        // ---- Install arguments into r24, r25, ... ----
+        //
+        // Mirrors the calling convention used by Opcode::Call: arguments live
+        // in registers ARG_REGISTERS_OFFSET + 0, +1, ... and argc is set on the
+        // frame. Prologue then copies them into local registers.
+        current_frame->argc = static_cast<u32>(args.size());
+        for (size_t i = 0; i < args.size(); ++i) {
+            current_frame->get_register(ARG_REGISTERS_OFFSET + i) = args[i];
+        }
+
+        return execute(current_frame, mode);
+    }
+
     Variant VirtualMachine::execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode) {
         current_frame = stack_frame;
         return execute(mode);
