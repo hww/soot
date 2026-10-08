@@ -18,6 +18,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <sootc/node/UnaryNode.hpp>
 
 namespace sootc {
 
@@ -63,6 +64,10 @@ namespace sootc {
         std::unique_ptr<CallNode>       build_call(const soot::Object &form, Node *node);
         std::unique_ptr<VariableNode>   build_variable(const soot::Object &form, Node *node);
         std::unique_ptr<ConstNode>      build_const(const soot::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode>    build_abs(const soot::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode>    build_neg(const soot::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode>    build_not(const soot::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode>    build_lognot(const soot::Object &form, Node *node);
 
         // ---- Helpers ----
         Type                              *parse_type(const soot::Object &type_form, Node *node);
@@ -104,6 +109,15 @@ namespace sootc {
         std::unique_ptr<Node> build_new_wrap(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_binary_wrap(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_compare_wrap(const soot::Object &form, Node *node);
+
+
+        std::unique_ptr<ExpressionNode> build_unary_common(const soot::Object &form, Node *node,
+                                                           UnaryNode::Op op, const char *op_name);
+
+        std::unique_ptr<Node> build_abs_wrap(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_neg_wrap(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_not_wrap(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_lognot_wrap(const soot::Object &form, Node *node);
 
         // Table of built-in form handlers.
         std::unordered_map<std::string, BuildMethod> m_form_table;

@@ -346,13 +346,18 @@ namespace sootc {
     // Handle REPL commands that start with ':'. Unknown commands produce a
     // warning and are otherwise ignored.
     ReplStatus Compiler::handle_repl_command(const std::string &input) {
-        if (input == ":exit" || input == ":quit") { return ReplStatus::WANT_EXIT; }
+        // The input is already trimmed by handle_repl_string, but be defensive.
+        std::string trimmed = input;
+        const auto  first_ws = trimmed.find_first_not_of(" \t");
+        if (first_ws != std::string::npos && first_ws > 0) { trimmed = trimmed.substr(first_ws); }
 
-        if (input == ":reload") { return ReplStatus::WANT_RELOAD; }
+        if (trimmed == ":exit" || trimmed == ":quit") { return ReplStatus::WANT_EXIT; }
+
+        if (trimmed == ":reload") { return ReplStatus::WANT_RELOAD; }
 
         // === :run <name> [args...] -- execute a loaded function in the VM ===
-        if (input.size() >= 5 && input.substr(0, 5) == ":run ") {
-            std::string rest = input.substr(5);
+        if (trimmed.size() >= 5 && trimmed.substr(0, 5) == ":run ") {
+            std::string rest = trimmed.substr(5);
 
             // Trim whitespace
             const auto first = rest.find_first_not_of(" \t");
@@ -406,24 +411,24 @@ namespace sootc {
             return ReplStatus::OK;
         }
 
-        if (input == ":help") {
+        if (trimmed == ":help") {
             m_repl->print_help_message();
             return ReplStatus::OK;
         }
 
-        if (input == ":clear") {
+        if (trimmed == ":clear") {
             m_repl->clear_screen();
             return ReplStatus::OK;
         }
 
-        if (input == ":sizes") {
+        if (trimmed == ":sizes") {
             carbon::print_all_struct_sizes();
             return ReplStatus::OK;
         }
 
         // === :load <file> -- compile and register a module ===
-        if (input.substr(0, 5) == ":load") {
-            std::string filename = input.substr(6);
+        if (trimmed.substr(0, 5) == ":load") {
+            std::string filename = trimmed.substr(6);
             filename.erase(0, filename.find_first_not_of(" \t"));
             filename.erase(filename.find_last_not_of(" \t") + 1);
 
@@ -431,7 +436,6 @@ namespace sootc {
                 auto load_result = compile_file(filename);
                 if (load_result) {
                     lg::info("Loaded and compiled: {}", filename);
-                    // Register the loaded module in Globals.
                     carbon::Globals::inst().load_module(std::move(**load_result));
                 } else {
                     lg::error("Failed to load: {}", load_result.error());
@@ -441,8 +445,8 @@ namespace sootc {
         }
 
         // === :soot <expr> -- evaluate a SOOT expression in the interpreter ===
-        if (input.size() >= 5 && input.substr(0, 5) == ":soot") {
-            std::string expr = input.size() > 6 ? input.substr(6) : "";
+        if (trimmed.size() >= 5 && trimmed.substr(0, 5) == ":soot") {
+            std::string expr = trimmed.size() > 6 ? trimmed.substr(6) : "";
             if (expr.empty()) {
                 fmt::print("; usage: :soot <expression>\n");
                 return ReplStatus::OK;
@@ -457,28 +461,32 @@ namespace sootc {
         }
 
         // === :list -- list symbols registered in Globals ===
-        if (input == ":list") {
+        if (trimmed == ":list") {
             auto symbols = carbon::Globals::inst().all_symbols();
             for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
             return ReplStatus::OK;
         }
 
-        lg::warn("Unknown command: {}", input);
+        lg::warn("Unknown command: {}", trimmed);
         return ReplStatus::OK;
     }
 
     // Dispatch a REPL line: commands go to handle_repl_command, everything
     // else is interpreted or compiled depending on the mode.
     ReplStatus Compiler::handle_repl_string(const std::string &input) {
-        if (input.empty()) return ReplStatus::OK;
+        // Trim leading whitespace — the user may press space before typing.
+        const auto first = input.find_first_not_of(" \t");
+        if (first == std::string::npos) return ReplStatus::OK; // all whitespace
 
-        if (input[0] == ':') return handle_repl_command(input);
+        std::string trimmed = input.substr(first);
+
+        if (trimmed[0] == ':') return handle_repl_command(trimmed);
 
         switch (m_config.mode) {
-        case CompilerMode::INTERPRET_ONLY: return interpret_and_print(input);
+        case CompilerMode::INTERPRET_ONLY: return interpret_and_print(trimmed);
         case CompilerMode::COMPILE_ONLY:
         case CompilerMode::HYBRID:
-        default: return compile_and_report(input);
+        default: return compile_and_report(trimmed);
         }
     }
 

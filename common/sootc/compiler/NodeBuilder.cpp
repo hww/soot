@@ -58,6 +58,12 @@ namespace sootc {
         m_form_table["=="] = &NodeBuilder::build_compare_wrap;
         m_form_table["!="] = &NodeBuilder::build_compare_wrap;
 
+        // Unary
+        m_form_table["abs"] = &NodeBuilder::build_abs_wrap;
+        m_form_table["neg"] = &NodeBuilder::build_neg_wrap;
+        m_form_table["not"] = &NodeBuilder::build_not_wrap;
+        m_form_table["lognot"] = &NodeBuilder::build_lognot_wrap;
+
         // Declarations (compiler-only)
         m_form_table["defmacro"] = &NodeBuilder::build_defmacro_wrap;
         m_form_table["deftype"] = &NodeBuilder::build_deftype_wrap;
@@ -72,7 +78,19 @@ namespace sootc {
     // build — single dispatch
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build(const soot::Object &form, Node *node) {
-        if (form.is_symbol()) return build_variable(form, node);
+        if (form.is_symbol()) {
+            // ---- Soot literals: #t / #f ----
+            //
+            // The reader parses `#t` and `#f` as ordinary symbols, but
+            // semantically they are boolean constants. GOAL's VM treats any
+            // non-zero int as true, so we map them to 1 and 0.
+            const std::string name = form.as_symbol();
+            if (name == "#t") return ConstNode::make_int(1);
+            if (name == "#f") return ConstNode::make_int(0);
+
+            return build_variable(form, node);
+        }
+
         if (!form.is_pair()) return build_const(form, node);
 
         auto head = form.as_pair()->car;
@@ -122,6 +140,11 @@ namespace sootc {
     WRAP_FORWARD(build_new_wrap, build_new)
     WRAP_FORWARD(build_binary_wrap, build_binary)
     WRAP_FORWARD(build_compare_wrap, build_compare)
+    
+    WRAP_FORWARD(build_abs_wrap, build_abs)
+    WRAP_FORWARD(build_neg_wrap, build_neg)
+    WRAP_FORWARD(build_not_wrap, build_not)
+    WRAP_FORWARD(build_lognot_wrap, build_lognot)
 
 #undef WRAP_FORWARD
 
@@ -1264,4 +1287,38 @@ namespace sootc {
         return fn;
     }
 
+    // ============================================================================
+    // unary
+    // ============================================================================
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_unary_common(const soot::Object &form,
+                                                                    Node *node, UnaryNode::Op op,
+                                                                    const char *op_name) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_unary")
+                .expected(fmt::format("({} x)", op_name))
+                .got("empty form");
+        }
+        if (!rest.as_pair()->cdr.is_null()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_unary")
+                .expected(fmt::format("({} x)", op_name))
+                .got("more than one argument");
+        }
+        auto operand = build_expression(rest.as_pair()->car, node);
+        return std::make_unique<UnaryNode>(op, std::move(operand));
+    }
+
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_abs(const soot::Object &form, Node *node) {
+        return build_unary_common(form, node, UnaryNode::Op::ABS, "abs");
+    }
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_neg(const soot::Object &form, Node *node) {
+        return build_unary_common(form, node, UnaryNode::Op::NEG, "neg");
+    }
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_not(const soot::Object &form, Node *node) {
+        return build_unary_common(form, node, UnaryNode::Op::NOT, "not");
+    }
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_lognot(const soot::Object &form,
+                                                              Node               *node) {
+        return build_unary_common(form, node, UnaryNode::Op::BITNOT, "lognot");
+    }
 } // namespace sootc
