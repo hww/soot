@@ -52,25 +52,50 @@ class Interpreter {
 
     Object eval_form(const Object &obj, const std::shared_ptr<EnvironmentObject> &env);
     Object eval_form(const Object &obj);
+    Object eval_list_return_last(const Object &form, Object rest,
+                                 const std::shared_ptr<EnvironmentObject> &env);
+
+    std::vector<Object> eval_list(const Object &list,
+                                  const std::shared_ptr<EnvironmentObject> &env);
 
     // --- Доступ к приватным членам -------
     // Запуск REPL
     void execute_repl(REPL::Wrapper& repl) ;
+
     // Лоступ к Reader
-    Reader &get_reader() {
-        return m_reader;
-    }
+    Reader &get_reader() { return m_reader; }
+    const Reader &get_reader() const { return m_reader; } 
+
+    // Создание символов
+    Object intern(const char *name);
+    Object intern(const std::string &name);
+    InternedSymbolPtr intern_ptr(const std::string &name);
+    bool   try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
+                             Object *dest);
+    Object eval_symbol(const Object &sym, const std::shared_ptr<EnvironmentObject> &env);
+
 
     // Лоступ к окружению
-    Object get_global_environment() {
-        return m_global_environment;
-    }
+    Object get_global_environment() { return m_global_environment; }
+    Object get_soot_environment() { return m_soot_environment; }
+
+    void set_global_environment(const Object &env) { m_global_environment = env; }
+    void set_soot_environment(const Object &env) { m_soot_environment = env; }
+
     TextDb &get_db() {
         return m_reader.get_db();
     }
     SymbolTable &symbol_table() {
         return m_reader.symbol_table();
     }
+
+    // --- Arguments -------------------
+    Arguments get_args(const Object &form, const Object &rest, const ArgumentSpec &spec);
+    Arguments get_args_with_spec(const Object &form, const Object &rest, const ArgumentSpec &spec);
+    Arguments get_args_no_named(const Object &form, const Object &rest, const ArgumentSpec &spec);
+    
+    void set_args_in_env(const Object &form, const Arguments &args, const ArgumentSpec &arg_spec,
+                         const std::shared_ptr<EnvironmentObject> &env);
 
     // --- Для REPL и LSP -------------------
     std::vector<std::string> get_all_symbols_matching(const std::string &prefix);
@@ -154,27 +179,9 @@ class Interpreter {
 
     void print_stack_frame(EvalException &e, const Object &obj);
 
-
     void load_library();
 
-    // Символы и окружение
-    Object            intern(const char *name);
-    Object            intern(const std::string &name);
-    InternedSymbolPtr intern_ptr(const std::string &name);
-    bool   try_symbol_lookup(const Object &sym, const std::shared_ptr<EnvironmentObject> &env,
-                             Object *dest);
-    Object eval_symbol(const Object &sym, const std::shared_ptr<EnvironmentObject> &env);
 
-
-    // Вспомогательные методы
-    Arguments get_args(const Object &form, const Object &rest, const ArgumentSpec &spec);
-    Arguments get_args_with_spec(const Object &form, const Object &rest, const ArgumentSpec &spec);
-    Arguments get_args_no_named(const Object &form, const Object &rest, const ArgumentSpec &spec);
-
-    std::vector<Object> eval_list(const Object                             &list,
-                                  const std::shared_ptr<EnvironmentObject> &env);
-    Object              eval_list_return_last(const Object &form, Object rest,
-                                              const std::shared_ptr<EnvironmentObject> &env);
 
     // Обработка ошибок
     [[noreturn]] void throw_eval_error(const Object &o, const std::string &err);
@@ -576,8 +583,7 @@ class Interpreter {
 
     // Улучшенная обработка аргументов
     ArgumentSpec parse_arg_spec(const Object &form, Object &rest);
-    void set_args_in_env(const Object &form, const Arguments &args, const ArgumentSpec &arg_spec,
-                         const std::shared_ptr<EnvironmentObject> &env);
+
     void vararg_check(
         const Object &form, const Arguments &args,
         const std::vector<std::vector<ObjectType>>                                      &unnamed,
@@ -620,6 +626,7 @@ class Interpreter {
     Object                                          m_obj_none;
     int                                             m_gensym_id = 0;
     Object                                          m_global_environment;
+    Object                                          m_soot_environment;
     bool                                            m_disable_printing = false;
     Reader                                          m_reader;
     std::vector<std::shared_ptr<EnvironmentObject>> m_dynamic_stack;

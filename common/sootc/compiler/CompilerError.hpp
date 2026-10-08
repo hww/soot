@@ -52,6 +52,28 @@ namespace sootc {
             return *this;
         }
 
+        CompilerError &at(std::string location) {
+            m_details.emplace_back("at", std::move(location));
+            return *this;
+        }
+
+        CompilerError &caused_by(std::string inner) {
+            m_details.emplace_back("caused by", std::move(inner));
+            return *this;
+        }
+
+        void render() const {
+            build_message();
+            fmt::print(fg(fmt::color::indian_red) | fmt::emphasis::bold,
+                       "\n─── COMPILER ERROR ─────────────────────────\n");
+            if (!m_where.empty()) { // ← не печатать пустой where
+                fmt::print(fg(fmt::color::indian_red), "{}\n", m_where);
+            }
+            for (const auto &[k, v] : m_details) {
+                fmt::print(fg(fmt::color::dim_gray), "  {:<10}{}\n", k + ':', v);
+            }
+        }
+
         const char *what() const noexcept override {
             build_message();
             return m_message.c_str();

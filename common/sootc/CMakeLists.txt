@@ -13,11 +13,11 @@ add_library(libsootc
     common/sootc/node/NewNode.cpp
     common/sootc/node/SetNode.cpp
 
-
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
     common/sootc/compiler/FunctionCompiler.cpp
     common/sootc/compiler/FileCompiler.cpp
+    common/sootc/compiler/Macro.cpp
 )
 
 # Пути для include

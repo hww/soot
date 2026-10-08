@@ -228,7 +228,23 @@ Object Reader::read_single_form(TextStream &ts, EvalCallback eval_callback) {
         if (read_object(tok, ts, result)) {
             return result;
         }
-        throw_reader_error(ts, "Invalid token: " + tok.text, -int(tok.text.size()));
+
+        // Build a descriptive error message. Empty tok.text usually means
+        // we hit end-of-input right after skipping whitespace/comments —
+        // this is a different problem from "we read a token but could not
+        // parse it", so we call it out explicitly.
+        //if (tok.text.empty()) {
+        //    throw_reader_error(ts,
+        //                       fmt::format("Invalid token: <empty> at EOF (seek={}, line={})",
+        //                                   ts.seek, ts.line_count),
+        //                       -1);
+        //} else {
+        //    throw_reader_error(ts,
+        //                       fmt::format("Invalid token: '{}' (size={}, line={}, offset={})",
+        //                                   tok.text, tok.text.size(), tok.source_line,
+        //                                   tok.source_offset),
+        //                       -int(tok.text.size()));
+        //}
     }
     return Object::make_null();
 }
@@ -538,7 +554,8 @@ bool Reader::read_array(TextStream &stream, Object &o) {
                 stream.seek_past_whitespace_and_comments();
                 objects.push_back(next_obj);
             } else {
-                throw_reader_error(stream, "invalid token encountered in array reader: " + tok.text,
+                throw_reader_error(stream,
+                                   "Invalid token encountered in array reader: '" + tok.text + "'",
                                    -int(tok.text.size()));
             }
         }

@@ -46,13 +46,21 @@ Interpreter::Interpreter(const std::string &username, bool load_libs, bool init_
     m_symbol_false = m_sym_false.as_symbol().name_ptr;
 
     // Создаем глобальное окружение
-    m_global_environment = EnvironmentObject::make_new("global");
+    m_global_environment = EnvironmentObject::make_new("global-env");
+    m_soot_environment   = EnvironmentObject::make_new("soot-env");
+    m_soot_environment.as_env()->parent_env = m_global_environment.as_env_ptr(); 
+
     m_global_environment.as_env()->is_global = true;
+    m_soot_environment.as_env()->is_global = true;
+
+    define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
+    define_var_in_env(m_soot_environment,   m_global_environment, "*global-env*");
+    define_var_in_env(m_global_environment, m_soot_environment,   "*soot-env*");
+    define_var_in_env(m_soot_environment,   m_soot_environment,   "*soot-env*");
 
     define_var_in_env(m_global_environment, m_obj_null, "null");
     define_var_in_env(m_global_environment, m_obj_none, "none");
     define_var_in_env(m_global_environment, m_sym_true, "else");
-    define_var_in_env(m_global_environment, m_global_environment, "*global-env*");
 
     auto user = intern(username.c_str());
     define_var_in_env(m_global_environment, user, "*user*");

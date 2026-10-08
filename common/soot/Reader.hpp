@@ -97,12 +97,13 @@ class Reader {
     Object read_from_file(const std::vector<std::string> &file_path, bool check_encoding = true,
                           bool add_top_level = true, EvalCallback eval_callback = nullptr);
     Object read_one(TextStream &ts);
+
     // REPL метод (если нужен):
     std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
 
-    TextDb &get_db() {
-        return m_db;
-    }
+    // Source database
+    TextDb &get_db() { return m_db; }
+    const TextDb &get_db() const { return m_db; } 
 
     // Проверка завершения
     bool is_expression_complete(const std::string &code);

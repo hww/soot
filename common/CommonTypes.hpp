@@ -115,12 +115,11 @@ constexpr i32 INVALID_INDEX = -1;
 // Platform enum
 // ===========================================================================
 
-enum class SootPlatform { Default, Z80 };
+enum class SootPlatform { Default };
 
 inline const char *soot_plaform_to_game_name(SootPlatform v) {
     switch (v) {
     case SootPlatform::Default: return "default";
-    case SootPlatform::Z80: return "z80";
     }
     throw std::runtime_error("unknown platform");
 }

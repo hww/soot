@@ -13,139 +13,188 @@
 #include "common/type_system/Deftype.hpp"
 #include "fmt/format.h"
 
-#include <stdexcept>
 #include <sootc/node/MethodCallNode.hpp>
+#include <stdexcept>
 
 namespace sootc {
 
-    NodeBuilder::NodeBuilder(TypeSystem &ts, Compiler *compiler) : m_ts(ts), m_compiler(compiler) {}
+    // ============================================================================
+    // Constructor / form table
+    // ============================================================================
+    NodeBuilder::NodeBuilder(TypeSystem &ts, Compiler *compiler) : m_ts(ts), m_compiler(compiler) {
+        init_form_table();
+    }
 
+    void NodeBuilder::init_form_table() {
+        // Basic / declarations
+        m_form_table["define"] = &NodeBuilder::build_define_wrap;
+        m_form_table["define-export"] = &NodeBuilder::build_define_wrap;
+        m_form_table["lambda"] = &NodeBuilder::build_lambda_wrap;
+        m_form_table["function"] = &NodeBuilder::build_lambda_wrap;
+        m_form_table["begin"] = &NodeBuilder::build_begin_wrap;
+
+        // Control flow
+        m_form_table["if"] = &NodeBuilder::build_if_wrap;
+        m_form_table["cond"] = &NodeBuilder::build_cond_wrap;
+        m_form_table["while"] = &NodeBuilder::build_while_wrap;
+        m_form_table["let"] = &NodeBuilder::build_let_wrap;
+        m_form_table["set!"] = &NodeBuilder::build_set_wrap;
+        m_form_table["new"] = &NodeBuilder::build_new_wrap;
+        m_form_table["->"] = &NodeBuilder::build_deref_wrap;
+
+        // Arithmetic
+        m_form_table["+"] = &NodeBuilder::build_binary_wrap;
+        m_form_table["-"] = &NodeBuilder::build_binary_wrap;
+        m_form_table["*"] = &NodeBuilder::build_binary_wrap;
+        m_form_table["/"] = &NodeBuilder::build_binary_wrap;
+        m_form_table["%"] = &NodeBuilder::build_binary_wrap;
+
+        m_form_table[">"] = &NodeBuilder::build_compare_wrap;
+        m_form_table["<"] = &NodeBuilder::build_compare_wrap;
+        m_form_table[">="] = &NodeBuilder::build_compare_wrap;
+        m_form_table["<="] = &NodeBuilder::build_compare_wrap;
+        m_form_table["=="] = &NodeBuilder::build_compare_wrap;
+        m_form_table["!="] = &NodeBuilder::build_compare_wrap;
+
+        // Declarations (compiler-only)
+        m_form_table["defmacro"] = &NodeBuilder::build_defmacro_wrap;
+        m_form_table["deftype"] = &NodeBuilder::build_deftype_wrap;
+        m_form_table["defenum"] = &NodeBuilder::build_defenum_wrap;
+        m_form_table["defmethod"] = &NodeBuilder::build_defmethod_wrap;
+        m_form_table["seval"] = &NodeBuilder::build_seval_wrap;
+    }
+
+    // ============================================================================
+    // build — single dispatch
+    // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build(const soot::Object &form, Node *node) {
-        if (form.is_symbol()) { return build_variable(form, node); }
-
-        if (!form.is_pair()) { return build_const(form, node); }
+        if (form.is_symbol()) return build_variable(form, node);
+        if (!form.is_pair()) return build_const(form, node);
 
         auto head = form.as_pair()->car;
         auto rest = form.as_pair()->cdr;
 
-        if (!head.is_symbol()) { return build_call(form, node); }
+        if (!head.is_symbol()) return build_call(form, node);
 
         std::string keyword = head.as_symbol();
 
-        // === SOOT-макросы ===
+        // 1. SOOT macros — expand first.
         if (m_compiler && m_compiler->is_soot_macro(keyword)) {
             auto expanded = m_compiler->expand_soot_macro(form);
-            return build(expanded, node); // рекурсивно компилируем результат
+            return build(expanded, node);
         }
 
-        // === Встроенные формы компилятора ===
+        // 2. Built-in forms — single lookup.
+        auto it = m_form_table.find(keyword);
+        if (it != m_form_table.end()) { return (this->*(it->second))(form, node); }
 
-        if (keyword == "define") { return build_define(form, node, /*exported=*/false); }
-
-        if (keyword == "define-export") { return build_define(form, node, /*exported=*/true); }
-
-        if (keyword == "lambda" || keyword == "function") { return build_lambda(form, node); }
-
-        if (keyword == "if") { return build_if(form, node); }
-
-        if (keyword == "while") { return build_while(form, node); }
-
-        if (keyword == "+" || keyword == "-" || keyword == "*" || keyword == "/" ||
-            keyword == "%") {
-            return build_binary(form, node);
-        }
-
-        if (keyword == ">" || keyword == "<" || keyword == ">=" || keyword == "<=" ||
-            keyword == "==" || keyword == "!=") {
-            return build_compare(form, node);
-        }
-
-        if (keyword == "let") { return build_let(form, node); }
-
-        if (keyword == "set!") { return build_set(form, node); }
-        if (keyword == "new") { return build_new(form, node); }
-
-        if (keyword == "deftype") return build_deftype(form, node);
-        if (keyword == "defenum") return build_defenum(form, node);
-        if (keyword == "defmethod") return build_defmethod(form, node);
-        if (keyword == "->") { return build_deref(form, node); }
-        if (keyword == "begin") {
-            auto body_forms = form.as_pair()->cdr;
-
-            auto seq = std::make_unique<SequenceNode>();
-            auto cur = body_forms;
-            while (cur.is_pair()) {
-                auto &child = cur.as_pair()->car;
-
-                if (child.is_pair() && child.as_pair()->car.is_symbol()) {
-                    const std::string kw = child.as_pair()->car.as_symbol();
-
-                    // Top-level declarations inside (begin ...) are hoisted onto
-                    // the FileNode. They are not expressions, so they cannot go
-                    // into the sequence.
-                    if (kw == "deftype" || kw == "defenum") {
-                        auto decl = build(child, node);
-                        if (auto *file = node->file()) { file->add_child(std::move(decl)); }
-                        cur = cur.as_pair()->cdr;
-                        continue;
-                    }
-                    if (kw == "defmethod") {
-                        auto fn = build_defmethod(child, node);
-                        if (auto *file = node->file()) {
-                            FunctionNode *raw = fn.get();
-                            file->add_child(std::move(fn));
-                            file->bind(raw->name(), raw);
-                        }
-                        cur = cur.as_pair()->cdr;
-                        continue;
-                    }
-                    if (kw == "defun") {
-                        auto fn = build(child, node);
-                        if (auto *file = node->file()) {
-                            auto *raw = dynamic_cast<FunctionNode *>(fn.get());
-                            if (!raw) throw std::runtime_error("defun didn't return FunctionNode");
-                            file->add_child(std::move(fn));
-                            file->bind(raw->name(), raw);
-                        }
-                        cur = cur.as_pair()->cdr;
-                        continue;
-                    }
-                    // define / define-export at any level produce a FunctionNode
-                    // or DataDeclarationNode. Both are hoisted onto the FileNode:
-                    // they are named declarations, not expressions.
-                    if (kw == "define" || kw == "define-export") {
-                        const bool exported = (kw == "define-export");
-                        auto       decl = build_define(child, node, exported);
-                        if (auto *file = node->file()) {
-                            if (auto *fn = dynamic_cast<FunctionNode *>(decl.get())) {
-                                FunctionNode *raw = fn;
-                                file->add_child(std::move(decl));
-                                file->bind(raw->name(), raw);
-                            } else if (dynamic_cast<DataDeclarationNode *>(decl.get()) != nullptr) {
-                                file->add_child(std::move(decl));
-                            } else {
-                                file->add_child(std::move(decl));
-                            }
-                        }
-                        cur = cur.as_pair()->cdr;
-                        continue;
-                    }
-                }
-
-                seq->add(build_expression(child, node));
-                cur = cur.as_pair()->cdr;
-            }
-            return seq;
-        }
-
-        // Обычный вызов функции
+        // 3. Regular function call.
         return build_call(form, node);
     }
 
-    std::unique_ptr<FunctionNode> NodeBuilder::build_lambda(const soot::Object &form, Node *node) {
+// ============================================================================
+// Wrap forwarders — uniform signature for the dispatch table.
+// ============================================================================
+#define WRAP_FORWARD(wrap_name, target)                                                            \
+    std::unique_ptr<Node> NodeBuilder::wrap_name(const soot::Object &form, Node *node) {           \
+        return target(form, node);                                                                 \
+    }
+
+    WRAP_FORWARD(build_begin_wrap, build_begin)
+    WRAP_FORWARD(build_define_wrap, build_define)
+    WRAP_FORWARD(build_defmacro_wrap, build_defmacro)
+    WRAP_FORWARD(build_seval_wrap, build_seval)
+    WRAP_FORWARD(build_deftype_wrap, build_deftype)
+    WRAP_FORWARD(build_defenum_wrap, build_defenum)
+    WRAP_FORWARD(build_defmethod_wrap, build_defmethod)
+    WRAP_FORWARD(build_lambda_wrap, build_lambda)
+
+    WRAP_FORWARD(build_if_wrap, build_if)
+    WRAP_FORWARD(build_cond_wrap, build_cond)
+    WRAP_FORWARD(build_while_wrap, build_while)
+    WRAP_FORWARD(build_let_wrap, build_let)
+    WRAP_FORWARD(build_set_wrap, build_set)
+    WRAP_FORWARD(build_deref_wrap, build_deref)
+    WRAP_FORWARD(build_new_wrap, build_new)
+    WRAP_FORWARD(build_binary_wrap, build_binary)
+    WRAP_FORWARD(build_compare_wrap, build_compare)
+
+#undef WRAP_FORWARD
+
+    // ============================================================================
+    // begin
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_begin(const soot::Object &form, Node *node) {
+        auto body_forms = form.as_pair()->cdr;
+        auto seq = std::make_unique<SequenceNode>();
+        auto cur = body_forms;
+        while (cur.is_pair()) {
+            auto &child = cur.as_pair()->car;
+
+            // Top-level declarations inside begin are hoisted onto the FileNode.
+            if (child.is_pair() && child.as_pair()->car.is_symbol()) {
+                const std::string kw = child.as_pair()->car.as_symbol();
+
+                if (kw == "deftype" || kw == "defenum") {
+                    auto decl = build(child, node);
+                    if (auto *file = node->file()) file->add_child(std::move(decl));
+                    cur = cur.as_pair()->cdr;
+                    continue;
+                }
+                if (kw == "defmethod") {
+                    auto fn = build_defmethod(child, node);
+                    if (auto *file = node->file()) {
+                        FunctionNode *raw = dynamic_cast<FunctionNode *>(fn.get());
+                        if (!raw) throw std::runtime_error("defmethod didn't return FunctionNode");
+                        file->add_child(std::move(fn));
+                        file->bind(raw->name(), raw);
+                    }
+                    cur = cur.as_pair()->cdr;
+                    continue;
+                }
+                if (kw == "defun") {
+                    auto fn = build(child, node);
+                    if (auto *file = node->file()) {
+                        auto *raw = dynamic_cast<FunctionNode *>(fn.get());
+                        if (!raw) throw std::runtime_error("defun didn't return FunctionNode");
+                        file->add_child(std::move(fn));
+                        file->bind(raw->name(), raw);
+                    }
+                    cur = cur.as_pair()->cdr;
+                    continue;
+                }
+                if (kw == "define" || kw == "define-export") {
+                    auto decl = build_define(child, node);
+                    if (auto *file = node->file()) {
+                        if (auto *fn = dynamic_cast<FunctionNode *>(decl.get())) {
+                            FunctionNode *raw = fn;
+                            file->add_child(std::move(decl));
+                            file->bind(raw->name(), raw);
+                        } else {
+                            file->add_child(std::move(decl));
+                        }
+                    }
+                    cur = cur.as_pair()->cdr;
+                    continue;
+                }
+            }
+
+            seq->add(build_expression(child, node));
+            cur = cur.as_pair()->cdr;
+        }
+        return seq;
+    }
+
+    // ============================================================================
+    // lambda
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_lambda(const soot::Object &form, Node *node) {
         return FunctionCompiler::compile_function(form, node, *this);
     }
 
+    // ============================================================================
+    // if
+    // ============================================================================
     std::unique_ptr<IfNode> NodeBuilder::build_if(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
         auto cond_form = rest.as_pair()->car;
@@ -160,36 +209,108 @@ namespace sootc {
                                         std::move(else_branch));
     }
 
-    std::unique_ptr<LetNode> NodeBuilder::build_let(const soot::Object &form, Node *node) {
-        // (let ((a 1) (b 2)) body...)
+    // ============================================================================
+    // cond
+    // ============================================================================
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_cond(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
-        if (!rest.is_pair()) { throw std::runtime_error("let: missing bindings list"); }
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_cond")
+                .expected("at least one cond clause")
+                .got("empty cond");
+        }
+
+        struct Clause {
+            soot::Object test;
+            soot::Object body;
+        };
+        std::vector<Clause> clauses;
+
+        auto current = rest;
+        while (current.is_pair()) {
+            auto clause = current.as_pair()->car;
+            if (!clause.is_pair()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_cond")
+                    .expected("each cond clause to be (test body...)")
+                    .got(clause.print());
+            }
+            clauses.push_back({clause.as_pair()->car, clause.as_pair()->cdr});
+            current = current.as_pair()->cdr;
+        }
+
+        std::unique_ptr<ExpressionNode> result;
+
+        for (auto it = clauses.rbegin(); it != clauses.rend(); ++it) {
+            bool is_else = it->test.is_symbol() && it->test.as_symbol() == "else";
+            auto body_expr = build_body_as_sequence(it->body, node);
+
+            if (is_else) {
+                if (result) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_cond")
+                        .expected("'else' clause to be the last one")
+                        .got("'else' before other clauses");
+                }
+                result = std::unique_ptr<ExpressionNode>(
+                    dynamic_cast<ExpressionNode *>(body_expr.release()));
+            } else {
+                auto cond_expr = build_expression(it->test, node);
+                result = std::make_unique<IfNode>(
+                    std::move(cond_expr),
+                    std::unique_ptr<ExpressionNode>(
+                        dynamic_cast<ExpressionNode *>(body_expr.release())),
+                    std::move(result));
+            }
+        }
+
+        return result;
+    }
+
+    // ============================================================================
+    // let
+    // ============================================================================
+    std::unique_ptr<LetNode> NodeBuilder::build_let(const soot::Object &form, Node *node) {
+        auto rest = form.as_pair()->cdr;
+
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                .expected("(let ((name value) ...) body...)")
+                .got("missing bindings list");
+        }
 
         auto bindings_form = rest.as_pair()->car;
         auto body_forms = rest.as_pair()->cdr;
 
         if (!bindings_form.is_null() && !bindings_form.is_pair()) {
-            throw std::runtime_error("let: bindings must be a list or null");
+            throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                .expected("bindings must be a list or null")
+                .got(bindings_form.print());
         }
 
         auto let_node = std::make_unique<LetNode>();
 
-        // Парсим bindings
         auto cur = bindings_form;
         while (cur.is_pair()) {
             auto binding = cur.as_pair()->car;
             if (!binding.is_pair()) {
-                throw std::runtime_error("let: each binding must be (name value)");
+                throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                    .expected("(name value) binding")
+                    .got(binding.print());
             }
 
             auto name_obj = binding.as_pair()->car;
             auto value_obj = binding.as_pair()->cdr;
 
             if (!name_obj.is_symbol()) {
-                throw std::runtime_error("let: binding name must be a symbol");
+                throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                    .expected("symbol as binding name")
+                    .got(name_obj.print());
             }
-            if (!value_obj.is_pair()) { throw std::runtime_error("let: binding must have value"); }
+            if (!value_obj.is_pair()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                    .expected("value after binding name")
+                    .got("end of form");
+            }
 
             std::string name = name_obj.as_symbol();
             auto        value = build_expression(value_obj.as_pair()->car, node);
@@ -198,56 +319,53 @@ namespace sootc {
             cur = cur.as_pair()->cdr;
         }
 
-        // Парсим тело — SequenceNode, если форм несколько
         auto body = build_body_as_sequence(body_forms, node);
-        if (!body) { throw std::runtime_error("let: missing body"); }
-        let_node->set_body(std::move(body));
+        if (!body) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                .expected("non-empty body")
+                .got("empty body");
+        }
+        let_node->set_body(
+            std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(body.release())));
 
         return let_node;
     }
 
-std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
-        // (set! target value)
+    // ============================================================================
+    // set!
+    // ============================================================================
+    std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
-            throw CompilerError("NodeBuilder::build_set")
-                .where("set!")
-                .expected("target and value")
+            throw m_compiler->make_error(form, "NodeBuilder::build_set")
+                .expected("(set! target value)")
                 .got("empty form");
         }
 
         auto target_form = rest.as_pair()->car;
 
         if (!rest.as_pair()->cdr.is_pair()) {
-            throw CompilerError("NodeBuilder::build_set")
-                .where("set!")
+            throw m_compiler->make_error(form, "NodeBuilder::build_set")
                 .expected("value after target")
                 .got("end of form");
         }
         auto value_form = rest.as_pair()->cdr.as_pair()->car;
 
-        // ---- Value is always an expression. ----
         auto value = build_expression(value_form, node);
 
-        // ---- Target: variable or (-> obj field). ----
         if (target_form.is_symbol()) {
-            // (set! x value)
             std::string name = target_form.as_symbol();
             return std::make_unique<SetNode>(name, std::move(value));
         }
 
         if (target_form.is_pair() && target_form.as_pair()->car.is_symbol() &&
             target_form.as_pair()->car.as_symbol() == "->") {
-            // (set! (-> obj field) value)
             auto deref_expr = build_deref(target_form, node);
 
-            // build_deref returns an ExpressionNode; for a (-> ...) form it is a
-            // DerefNode. Any other kind would be a bug.
             auto *deref_raw = dynamic_cast<DerefNode *>(deref_expr.release());
             if (!deref_raw) {
-                throw CompilerError("NodeBuilder::build_set")
-                    .where("set! (-> ...)")
+                throw m_compiler->make_error(form, "NodeBuilder::build_set")
                     .expected("DerefNode as lvalue")
                     .got("non-DerefNode");
             }
@@ -256,22 +374,20 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
                                              std::move(value));
         }
 
-        throw CompilerError("NodeBuilder::build_set")
-            .where("set!")
+        throw m_compiler->make_error(form, "NodeBuilder::build_set")
             .expected("variable name or (-> obj field) as target")
             .got(target_form.print());
     }
-    /// @brief Parse (-> expr field-or-method [args...]).
-    /// @details First tries to resolve the name as a field of the base expression's
-    ///          static type. If found, this is a plain DerefNode. Otherwise, tries
-    ///          to resolve it as a method and produces a MethodCallNode.
+
+    // ============================================================================
+    // ->
+    // ============================================================================
     std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
-            throw CompilerError("NodeBuilder::build_deref")
-                .where("->")
-                .expected("expression and field/method name")
+            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                .expected("(-> expr field/method [args...])")
                 .got("empty form");
         }
 
@@ -279,48 +395,41 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         auto field_form = rest.as_pair()->cdr.as_pair()->car;
 
         if (!field_form.is_symbol()) {
-            throw CompilerError("NodeBuilder::build_deref")
-                .where("->")
+            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
                 .expected("field or method name as a symbol")
                 .got(field_form.print());
         }
 
         std::string name = field_form.as_symbol();
 
-        // Build the base expression.
         auto expr = build_expression(expr_form, node);
 
-        // Resolve the static type of the base expression.
         Type *expr_type = expr->get_type();
         if (!expr_type) {
-            throw CompilerError("NodeBuilder::build_deref")
-                .where(fmt::format("(-> ... {})", name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
                 .expected("base expression with a known type")
                 .got("unknown");
         }
 
-        // If the base is a pointer, dereference to get the structure type.
         Type *struct_type = expr_type;
         {
             DerefInfo di = m_ts.get_deref_info(TypeSpec(expr_type->get_name()));
-            if (di.can_deref && di.result_type.get()) { struct_type = di.result_type.get(); }
+            if (di.can_deref && di.result_type.get()) struct_type = di.result_type.get();
         }
 
         auto *st = dynamic_cast<StructureType *>(struct_type);
         if (!st) {
-            throw CompilerError("NodeBuilder::build_deref")
-                .where(fmt::format("(-> ... {})", name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
                 .expected("structure type")
                 .got(struct_type ? struct_type->get_name() : "unknown");
         }
 
-        // --- Try field first. ---
+        // Field?
         Field field;
         if (st->lookup_field(name, &field)) {
             Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
             if (!field_type) {
-                throw CompilerError("NodeBuilder::build_deref")
-                    .where(fmt::format("(-> ... {})", name))
+                throw m_compiler->make_error(form, "NodeBuilder::build_deref")
                     .expected("known field type")
                     .got(field.type().print());
             }
@@ -328,10 +437,9 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
                                                static_cast<u32>(field.offset()), field_type);
         }
 
-        // --- Try method. ---
+        // Method?
         MethodInfo method_info;
         if (m_ts.try_lookup_method(struct_type->get_name(), name, &method_info)) {
-            // Collect any remaining forms as arguments.
             std::vector<std::unique_ptr<ExpressionNode>> args;
             auto arg_forms = rest.as_pair()->cdr.as_pair()->cdr;
             while (arg_forms.is_pair()) {
@@ -339,7 +447,6 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
                 arg_forms = arg_forms.as_pair()->cdr;
             }
 
-            // The return type is the last argument of the method's typespec.
             Type *return_type = nullptr;
             if (!method_info.type.empty()) {
                 return_type = m_ts.lookup_type_no_throw(method_info.type.last_arg().base_type());
@@ -350,38 +457,29 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
                                                     return_type);
         }
 
-        throw CompilerError("NodeBuilder::build_deref")
-            .where(fmt::format("(-> {} {})", struct_type->get_name(), name))
+        throw m_compiler->make_error(form, "NodeBuilder::build_deref")
             .expected("a known field or method")
-            .got("unknown");
+            .got(fmt::format("(-> {} {})", struct_type->get_name(), name));
     }
 
+    // ============================================================================
+    // new
+    // ============================================================================
     std::unique_ptr<NewNode> NodeBuilder::build_new(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
-            throw CompilerError("NodeBuilder::build_new")
-                .where("new")
-                .expected("type name (optionally preceded by an allocation symbol)")
+            throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                .expected("(new [alloc] Type ...)")
                 .got("empty form");
         }
 
-        // ---- Allocation and type name ----
-        //
-        // Two forms are accepted:
-        //    (new Type ...)              — allocation defaults to 'static'
-        //    (new alloc Type ...)        — alloc is one of static/global/heap/stack
-        //
-        // The first symbol is examined: if it is a known allocation keyword, it
-        // is consumed and the next symbol is the type. Otherwise it is the type
-        // and allocation stays at its default.
         std::string allocation = "static";
         std::string type_name;
 
         const auto &first = rest.as_pair()->car;
         if (!first.is_symbol()) {
-            throw CompilerError("NodeBuilder::build_new")
-                .where("new")
+            throw m_compiler->make_error(form, "NodeBuilder::build_new")
                 .expected("symbol as type name (or allocation)")
                 .got(first.print());
         }
@@ -394,16 +492,14 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
             rest = rest.as_pair()->cdr;
 
             if (!rest.is_pair()) {
-                throw CompilerError("NodeBuilder::build_new")
-                    .where(fmt::format("new {}", allocation))
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
                     .expected("type name after allocation")
                     .got("end of form");
             }
 
             const auto &type_obj = rest.as_pair()->car;
             if (!type_obj.is_symbol()) {
-                throw CompilerError("NodeBuilder::build_new")
-                    .where(fmt::format("new {}", allocation))
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
                     .expected("symbol as type name")
                     .got(type_obj.print());
             }
@@ -412,29 +508,24 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
             type_name = first_str;
         }
 
-        // ---- Look up the type ----
         Type *type = m_ts.lookup_type_no_throw(type_name);
         if (!type) {
-            throw CompilerError("NodeBuilder::build_new")
-                .where(fmt::format("new {} {}", allocation, type_name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_new")
                 .expected("a known type")
-                .got("unknown type");
+                .got(fmt::format("new {} {}", allocation, type_name));
         }
 
         auto new_node = std::make_unique<NewNode>(TypeSpec(type_name));
         new_node->set_allocation(allocation);
 
-        // ---- Parse the rest ----
         auto fields = rest.as_pair()->cdr;
 
         if (allocation == "static") {
-            // Static initialization: keyword-args are field names.
             while (fields.is_pair()) {
                 const auto &field_name_obj = fields.as_pair()->car;
 
                 if (!field_name_obj.is_keyword()) {
-                    throw CompilerError("NodeBuilder::build_new")
-                        .where(fmt::format("new static {} ...", type_name))
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
                         .expected(":field-name as a keyword")
                         .got(field_name_obj.print());
                 }
@@ -446,9 +537,8 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
 
                 fields = fields.as_pair()->cdr;
                 if (!fields.is_pair()) {
-                    throw CompilerError("NodeBuilder::build_new")
-                        .where(fmt::format("new static {} :{}", type_name, field_name))
-                        .expected("value after the field name")
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected("value after field name")
                         .got("end of form");
                 }
 
@@ -458,7 +548,6 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
                 fields = fields.as_pair()->cdr;
             }
         } else {
-            // Constructor call: positional arguments.
             while (fields.is_pair()) {
                 auto arg = build_expression(fields.as_pair()->car, node);
                 new_node->add_argument(std::move(arg));
@@ -469,14 +558,15 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         return new_node;
     }
 
-    std::unique_ptr<ExpressionNode>
-    NodeBuilder::build_body_as_sequence(const soot::Object &body_forms, Node *node) {
-        // Одна форма — вернуть её напрямую
+    // ============================================================================
+    // body-as-sequence
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_body_as_sequence(const soot::Object &body_forms,
+                                                              Node               *node) {
         if (body_forms.is_pair() && body_forms.as_pair()->cdr.is_null()) {
             return build_expression(body_forms.as_pair()->car, node);
         }
 
-        // Несколько форм — SequenceNode
         auto seq = std::make_unique<SequenceNode>();
         auto cur = body_forms;
         while (cur.is_pair()) {
@@ -487,21 +577,37 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         return seq;
     }
 
+    // ============================================================================
+    // while
+    // ============================================================================
     std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) { throw std::runtime_error("while: missing condition"); }
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_while")
+                .expected("(while test body...)")
+                .got("missing condition");
+        }
 
         auto cond_form = rest.as_pair()->car;
-        auto body_forms = rest.as_pair()->cdr; // ← ВСЁ тело, а не только первая форма
+        auto body_forms = rest.as_pair()->cdr;
 
-        if (!body_forms.is_pair()) { throw std::runtime_error("while: missing body"); }
+        if (!body_forms.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_while")
+                .expected("non-empty body")
+                .got("missing body");
+        }
 
         auto cond = build_expression(cond_form, node);
-        auto body = build_body_as_sequence(body_forms, node); // ← SequenceNode для всех форм
+        auto body = build_body_as_sequence(body_forms, node);
 
-        return std::make_unique<WhileNode>(std::move(cond), std::move(body));
+        return std::make_unique<WhileNode>(
+            std::move(cond),
+            std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(body.release())));
     }
 
+    // ============================================================================
+    // arithmetic
+    // ============================================================================
     std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const soot::Object &form, Node *node) {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
@@ -516,11 +622,11 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
             op = BinaryNode::Op::DIV;
         else if (head == "%")
             op = BinaryNode::Op::MOD;
-        else
-            throw CompilerError("NodeBuilder::build_binary")
-                .where(fmt::format("op '{}'", std::string(head)))
+        else {
+            throw m_compiler->make_error(form, "NodeBuilder::build_binary")
                 .expected("one of: +, -, *, /, %")
                 .got(fmt::format("'{}'", std::string(head)));
+        }
 
         auto left = build_expression(rest.as_pair()->car, node);
         auto right = build_expression(rest.as_pair()->cdr.as_pair()->car, node);
@@ -528,6 +634,9 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         return std::make_unique<BinaryNode>(op, std::move(left), std::move(right));
     }
 
+    // ============================================================================
+    // comparison
+    // ============================================================================
     std::unique_ptr<CompareNode> NodeBuilder::build_compare(const soot::Object &form, Node *node) {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
@@ -551,107 +660,281 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         return std::make_unique<CompareNode>(op, std::move(left), std::move(right));
     }
 
+    // ============================================================================
+    // call
+    // ============================================================================
     std::unique_ptr<CallNode> NodeBuilder::build_call(const soot::Object &form, Node *node) {
         auto head = form.as_pair()->car;
         auto rest = form.as_pair()->cdr;
 
+        if (!head.is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                .expected("symbol as the function name")
+                .got(fmt::format("'{}' (type: {})", head.print(), head.class_name()))
+                .note("The first element of a function call must be a symbol.");
+        }
+
         std::string func_name = head.to_std_string();
         auto        args = parse_args(rest, node);
 
-        // Пока не знаем возвращаемый тип - будет разрешен позже
         auto call = std::make_unique<CallNode>(func_name, nullptr);
-        for (auto &arg : args) { call->add_argument(std::move(arg)); }
-
+        for (auto &arg : args) {
+            call->add_argument(
+                std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(arg.release())));
+        }
         return call;
     }
 
+    // ============================================================================
+    // variable
+    // ============================================================================
     std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object &form,
                                                               Node               *node) {
-        if (!form.is_symbol()) { throw std::runtime_error("build_variable: form is not a symbol"); }
+        if (!form.is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_variable")
+                .expected("symbol")
+                .got(form.print());
+        }
 
         std::string name = form.as_symbol();
 
-        // Try to resolve the type right away from the enclosing function, so that
-        // forms like (-> v len) can look up the field/method at compile time.
-        // The actual register is still resolved lazily in VariableNode::emit.
         Type *type = nullptr;
         if (auto *fn = node->function()) {
-            if (auto *info = fn->lookup_variable(name)) { type = info->type(); }
+            if (auto *info = fn->lookup_variable(name)) type = info->type();
         }
 
         return std::make_unique<VariableNode>(name, type);
     }
 
+    // ============================================================================
+    // const
+    // ============================================================================
     std::unique_ptr<ConstNode> NodeBuilder::build_const(const soot::Object &form, Node *node) {
-        (void)form;
         (void)node;
-        if (form.is_integer()) { return ConstNode::make_int(form.as_integer()); }
-        if (form.is_float()) { return ConstNode::make_float(form.as_float()); }
-        if (form.is_string()) { return ConstNode::make_string(form.to_std_string()); }
-
+        if (form.is_integer()) return ConstNode::make_int(form.as_integer());
+        if (form.is_float()) return ConstNode::make_float(form.as_float());
+        if (form.is_string()) return ConstNode::make_string(form.to_std_string());
         return nullptr;
     }
 
+    // ============================================================================
+    // expression
+    // ============================================================================
     std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const soot::Object &form,
                                                                   Node               *node) {
         auto child_node = build(form, node);
-        auto child_node_type = child_node->get_node_type_string();
 
+        if (!child_node) {
+            // Form produced no node (e.g. seval, defmacro).
+            // Treat as a no-op.
+            return std::make_unique<SequenceNode>();
+        }
+
+        auto child_node_type = child_node->get_node_type_string();
         auto result =
             std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(child_node.release()));
-        if (result.get() == nullptr)
-            throw std::runtime_error(
-                fmt::format("build_expression can't cast {} to ExpressionNode", child_node_type));
+        if (result.get() == nullptr) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_expression")
+                .expected("an ExpressionNode")
+                .got(child_node_type);
+        }
         return result;
     }
 
-    std::vector<std::unique_ptr<ExpressionNode>>
-    NodeBuilder::parse_args(const soot::Object &args_form, Node *node) {
-        std::vector<std::unique_ptr<ExpressionNode>> args;
-        auto                                         current = args_form;
+    // ============================================================================
+    // parse_args
+    // ============================================================================
+    std::vector<std::unique_ptr<Node>> NodeBuilder::parse_args(const soot::Object &args_form,
+                                                               Node               *node) {
+        std::vector<std::unique_ptr<Node>> args;
+        auto                               current = args_form;
 
         while (current.is_pair()) {
             args.push_back(build_expression(current.as_pair()->car, node));
             current = current.as_pair()->cdr;
         }
-
         return args;
     }
 
+    // ============================================================================
+    // parse_type
+    // ============================================================================
     Type *NodeBuilder::parse_type(const soot::Object &type_form, Node *node) {
         (void)node;
         if (type_form.is_symbol()) {
             Type *t = m_ts.lookup_type(type_form.as_symbol());
             if (t) return t;
-            // Если типа нет — ошибка с понятным сообщением
-            throw CompilerError("NodeBuilder::parse_type")
-                .where(fmt::format("type '{}'", type_form.as_symbol().c_str()))
+            throw m_compiler->make_error(type_form, "NodeBuilder::parse_type")
                 .expected("known type (int, float, ...)")
-                .got("unknown type");
+                .got(fmt::format("type '{}'", type_form.as_symbol().c_str()));
         }
-        // Сложные типы: пока object
         return m_ts.lookup_type("object");
     }
 
-    std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context,
-                                                    bool exported) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) { throw std::runtime_error("define: missing name"); }
-        auto def_form = rest.as_pair()->car;
-        auto value_form = rest.as_pair()->cdr.as_pair()->car;
+    // ============================================================================
+    // seval
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_seval(const soot::Object &form, Node *node) {
+        (void)node;
 
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_seval")
+                .expected("(seval <form> ...)")
+                .got("no arguments");
+        }
+
+        // Mirrors GOAL's Compiler::compile_seval.
+        auto &soot = m_compiler->get_soot_interpreter();
+        auto  env = soot.get_global_environment();
+
+        try {
+            soot::Object current = rest;
+            while (current.is_pair()) {
+                soot.eval_form(current.as_pair()->car, env.as_env_ptr());
+                current = current.as_pair()->cdr;
+            }
+            if (!current.is_null()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_seval")
+                    .expected("proper list of forms")
+                    .got(current.print());
+            }
+        } catch (const std::exception &e) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_seval")
+                .expected("successful seval")
+                .got(e.what());
+        }
+
+        return std::make_unique<SequenceNode>();
+    }
+
+    // ============================================================================
+    // defmacro
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_defmacro(const soot::Object &form, Node *node) {
+        (void)node;
+
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmacro")
+                .expected("(defmacro name args body...)")
+                .got("empty form");
+        }
+
+        auto name_form = rest.as_pair()->car;
+        if (!name_form.is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmacro")
+                .expected("symbol as macro name")
+                .got(name_form.print());
+        }
+
+        auto after_name = rest.as_pair()->cdr;
+        if (!after_name.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmacro")
+                .expected("args list after name")
+                .got("end of form");
+        }
+        auto args_form = after_name.as_pair()->car;
+        auto body_form = after_name.as_pair()->cdr;
+
+        auto macro_form =
+            soot::Object::make_pair(m_compiler->get_soot_interpreter().intern("macro"),
+                                    soot::Object::make_pair(args_form, body_form));
+
+        auto define_form = soot::Object::make_pair(
+            m_compiler->get_soot_interpreter().intern("define"),
+            soot::Object::make_pair(
+                name_form, soot::Object::make_pair(macro_form, soot::Object::make_null())));
+
+        auto env = m_compiler->get_soot_environment();
+        m_compiler->get_soot_interpreter().eval_form(define_form, env.as_env_ptr());
+
+        lg::info("Registered macro: {}", name_form.to_std_string());
+        return std::make_unique<SequenceNode>();
+    }
+
+    // ============================================================================
+    // define / define-export
+    // ============================================================================
+    std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context) {
+        const bool exported = form.as_pair()->car.is_symbol("define-export");
+
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                .expected("(define name value) or (define :env env name value)")
+                .got("empty form");
+        }
+
+        // ---- Optional :env keyword ----
+        soot::Object env_form = soot::Object::make_none();
+        {
+            auto first = rest.as_pair()->car;
+            if (first.is_symbol() && first.is_keyword() && first.is_symbol(":env")) {
+                auto after_kw = rest.as_pair()->cdr;
+                if (!after_kw.is_pair()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                        .expected("environment expression after :env")
+                        .got("end of form");
+                }
+                env_form = after_kw.as_pair()->car;
+                rest = after_kw.as_pair()->cdr;
+                if (!rest.is_pair()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                        .expected("name after (define :env <env>")
+                        .got("end of form");
+                }
+            }
+        }
+
+        // ---- Name ----
+        auto def_form = rest.as_pair()->car;
         if (!def_form.is_symbol()) {
-            throw std::runtime_error("define: first argument must be a symbol");
+            throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                .expected("symbol as name")
+                .got(def_form.print());
+        }
+
+        // ---- Value (with optional docstring) ----
+        auto after_name = rest.as_pair()->cdr;
+        if (!after_name.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                .expected("value after name")
+                .got("end of form");
+        }
+
+        soot::Object value_form = after_name.as_pair()->car;
+
+        if (value_form.is_string()) {
+            auto after_doc = after_name.as_pair()->cdr;
+            if (!after_doc.is_pair()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                    .expected("value after docstring")
+                    .got("end of form");
+            }
+            value_form = after_doc.as_pair()->car;
         }
 
         std::string name = def_form.to_std_string();
-        auto        value_node = build(value_form, context);
-        if (!value_node) {
-            throw std::runtime_error(
-                fmt::format("define: cannot compile value: {}", value_form.print()));
+
+        // ---- Special case: (macro ...) ----
+        if (value_form.is_pair() && value_form.as_pair()->car.is_symbol() &&
+            value_form.as_pair()->car.as_symbol() == "macro") {
+            auto env = m_compiler->get_soot_environment();
+            m_compiler->get_soot_interpreter().eval_form(form, env.as_env_ptr());
+            lg::info("Registered macro: {}", name);
+            return std::make_unique<SequenceNode>();
         }
 
-        // Value is a function — register it under `name` and return it.
+        // ---- Compile the value ----
+        auto value_node = build(value_form, context);
+        if (!value_node) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                .expected("compilable value")
+                .got(value_form.print());
+        }
+
+        // ---- Value is a function ----
         if (auto *fn = dynamic_cast<FunctionNode *>(value_node.get())) {
             fn->set_name(name);
             fn->set_exported(exported);
@@ -659,51 +942,56 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
             return value_node;
         }
 
-        // Value is (new Type ...) — a data instance.
+        // ---- Value is (new Type ...) ----
         if (auto *new_node = dynamic_cast<NewNode *>(value_node.get())) {
-            value_node.release(); // ownership transfers to DataDeclarationNode
-            auto data_decl = std::make_unique<DataDeclarationNode>(
-                name, std::unique_ptr<NewNode>(new_node), exported);
-            return data_decl;
+            value_node.release();
+            return std::make_unique<DataDeclarationNode>(name, std::unique_ptr<NewNode>(new_node),
+                                                         exported);
         }
 
-        // Anything else — not supported yet.
-        throw CompilerError("NodeBuilder::build_define")
-            .where(fmt::format("define '{}'", name))
-            .expected("value form 'lambda' (function) or 'new' (data instance)")
-            .got(fmt::format("value form of type '{}'", value_form.class_name()))
-            .note("top-level 'define' of arbitrary expressions is not yet implemented");
+        // ---- Anything else ----
+        throw m_compiler->make_error(form, "NodeBuilder::build_define")
+            .expected("(define name (lambda ...)), (define name (new Type ...)), "
+                      "or (define name (macro ...))")
+            .got(fmt::format("{} (type: {})", value_form.print(), value_form.class_name()))
+            .note(fmt::format("Top-level 'define' creates a global symbol in the compiled binary.\n"
+                              "  Only these forms are supported:\n"
+                              "    (1) functions      — (define {} (lambda ...))\n"
+                              "    (2) data instances — (define {} (new Type ...))\n"
+                              "    (3) macros         — (define {} (macro ...))",
+                              name, name, name));
     }
 
+    // ============================================================================
+    // deftype
+    // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_deftype(const soot::Object &form, Node *node) {
         (void)node;
         auto rest = form.as_pair()->cdr;
         try {
             DeftypeResult result = parse_deftype(rest, &m_ts);
-            // Register the type name so that sid_str(SID("vec4")) resolves to "vec4".
             StringIdManager::instance().register_string(result.type.base_type());
             lg::info("Registered type: {}", result.type.print());
             return std::make_unique<TypeDeclarationNode>(result.type);
         } catch (const std::exception &e) {
-            throw CompilerError("NodeBuilder::build_deftype")
-                .where("deftype")
+            throw m_compiler->make_error(form, "NodeBuilder::build_deftype")
                 .expected("valid deftype form")
                 .got(e.what());
         }
     }
 
+    // ============================================================================
+    // defenum
+    // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_defenum(const soot::Object &form, Node *node) {
         (void)node;
-
         auto rest = form.as_pair()->cdr;
-
         try {
             EnumType *enum_type = parse_defenum(rest, &m_ts);
             lg::info("Registered enum: {}", enum_type->get_name());
             return std::make_unique<EnumDeclarationNode>(enum_type->get_name());
         } catch (const std::exception &e) {
-            throw CompilerError("NodeBuilder::build_defenum")
-                .where("defenum")
+            throw m_compiler->make_error(form, "NodeBuilder::build_defenum")
                 .expected("valid defenum form")
                 .got(e.what());
         }
@@ -712,35 +1000,18 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
     // ============================================================================
     // defmethod
     // ============================================================================
-    /// @brief Compile a (defmethod ...) form.
-    /// @details Syntax (same as GOAL):
-    ///            (defmethod <method-name> [<type-name>] <args> <body>...)
-    ///
-    ///          If <type-name> is omitted, it is inferred from the first
-    ///          argument's type. The first argument is conventionally named
-    ///          "this" for non-new methods.
-    ///
-    ///          The result is a FunctionNode named "<type>-<method>". Its
-    ///          method_of_type() is set to <type-name>, so FileNode can emit it as
-    ///          a ScriptLambda and later tools can find the method in TypeSystem.
-    ///
-    ///          The signature MUST already be declared in the corresponding
-    ///          deftype's :methods section. define_method verifies compatibility.
-    std::unique_ptr<FunctionNode> NodeBuilder::build_defmethod(const soot::Object &form,
-                                                               Node               *node) {
+    std::unique_ptr<Node> NodeBuilder::build_defmethod(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         // ---- 1. Method name ----
         if (!rest.is_pair()) {
-            throw CompilerError("NodeBuilder::build_defmethod")
-                .where("defmethod")
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("method name as the first argument")
                 .got("empty form");
         }
         const auto &method_name_obj = rest.as_pair()->car;
         if (!method_name_obj.is_symbol()) {
-            throw CompilerError("NodeBuilder::build_defmethod")
-                .where("defmethod")
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("symbol as method name")
                 .got(method_name_obj.print());
         }
@@ -748,8 +1019,6 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         rest = rest.as_pair()->cdr;
 
         // ---- 2. Optional explicit type name ----
-        // If the next form is a symbol (not a list), it is the type name. Otherwise
-        // the type is inferred from the first argument.
         std::string type_name;
         if (rest.is_pair() && rest.as_pair()->car.is_symbol()) {
             type_name = rest.as_pair()->car.to_std_string();
@@ -758,57 +1027,42 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
 
         // ---- 3. Argument list ----
         if (!rest.is_pair()) {
-            throw CompilerError("NodeBuilder::build_defmethod")
-                .where(fmt::format("defmethod {}", method_name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("argument list")
                 .got("end of form");
         }
         const auto &arg_list = rest.as_pair()->car;
         auto        body_forms = rest.as_pair()->cdr;
 
-        // ---- 4. Build a FunctionNode for the method body ----
-        // The name is set after we know the type.
+        // ---- 4. Build a FunctionNode ----
         auto fn = std::make_unique<FunctionNode>("<pending>");
-
-        // Parse arguments. The first argument's type determines the method's type
-        // if type_name is empty.
         FunctionCompiler::parse_arguments(arg_list, fn.get(), node, *this);
 
         if (type_name.empty()) {
-            // Infer from the first parameter's type.
             if (!arg_list.is_pair()) {
-                throw CompilerError("NodeBuilder::build_defmethod")
-                    .where(fmt::format("defmethod {}", method_name))
+                throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                     .expected("at least one argument to infer the type from")
                     .got("empty argument list");
             }
             const auto &first_arg = arg_list.as_pair()->car;
             if (!first_arg.is_pair()) {
-                throw CompilerError("NodeBuilder::build_defmethod")
-                    .where(fmt::format("defmethod {}", method_name))
+                throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                     .expected("(name type) pair as the first argument")
                     .got(first_arg.print());
             }
-            // (name type) — take the type (cdr of the arg pair, first element)
             const auto &type_obj = first_arg.as_pair()->cdr;
             if (!type_obj.is_pair() || !type_obj.as_pair()->car.is_symbol()) {
-                throw CompilerError("NodeBuilder::build_defmethod")
-                    .where(fmt::format("defmethod {}", method_name))
+                throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                     .expected("symbol as type in the first argument")
                     .got(type_obj.print());
             }
             type_name = type_obj.as_pair()->car.to_std_string();
         }
 
-        // Set the composite name and mark the function as a method.
         fn->set_name(fmt::format("{}-{}", type_name, method_name));
         fn->set_method_of_type(type_name);
 
         // ---- 5. Parse the body ----
-        // Reuse the same logic as compile_function: build each form; the last one
-        // is the return value. We don't wrap in a ReturnNode here because the
-        // FunctionNode::emit_body already appends a Return if the body doesn't end
-        // with one.
         auto                            current = body_forms;
         std::unique_ptr<ExpressionNode> last_expr;
         while (current.is_pair()) {
@@ -818,24 +1072,19 @@ std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *
         if (last_expr) {
             fn->set_body(std::move(last_expr));
         } else {
-            throw CompilerError("NodeBuilder::build_defmethod")
-                .where(fmt::format("defmethod {}-{}", type_name, method_name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("non-empty body")
                 .got("empty body");
         }
 
-        // ---- 6. Register the method in TypeSystem ----
-        // The signature was already declared in deftype's :methods section. We
-        // only bind the implementation. define_method verifies compatibility and
-        // throws if the method was never declared.
+        // ---- 6. Register in TypeSystem ----
         try {
             MethodInfo info = m_ts.lookup_method(type_name, method_name);
             m_ts.define_method(type_name, method_name, info.type, std::nullopt);
             lg::info("defmethod {}-{}: registered (id {}, sig {})", type_name, method_name, info.id,
                      info.type.print());
         } catch (const std::exception &e) {
-            throw CompilerError("NodeBuilder::build_defmethod")
-                .where(fmt::format("defmethod {}-{}", type_name, method_name))
+            throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("method declared in deftype :methods")
                 .got(e.what());
         }
