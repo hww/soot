@@ -355,9 +355,9 @@
 },
 {
   "directory": "/home/valery/projects/hww/_c/soot.git/build/Debug",
-  "command": "/usr/bin/clang++ -I/home/valery/projects/hww/_c/soot.git -I/home/valery/projects/hww/_c/soot.git/common -I/home/valery/projects/hww/_c/soot.git/third_party -I/home/valery/projects/hww/_c/soot.git/third_party/fmt/include -I/home/valery/projects/hww/_c/soot.git/third_party/fmt -I/home/valery/projects/hww/_c/soot.git/third_party/replxx/include -I/home/valery/projects/hww/_c/soot.git/common/carbon -I/home/valery/projects/hww/_c/soot.git/common/script -I/home/valery/projects/hww/_c/soot.git/common/engine -I/home/valery/projects/hww/_c/soot.git/common/soot  -Wall -Wextra -Wpedantic -Wunused-function -stdlib=libc++ -g3 -ggdb -g -g -O0 -std=c++23 -O0 -g3 -ggdb -fno-omit-frame-pointer -fno-inline -fno-eliminate-unused-debug-types -o CMakeFiles/libcarbon.dir/common/carbon/kernel/NativeFunc.cpp.o -c /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.cpp",
-  "file": "/home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.cpp",
-  "output": "CMakeFiles/libcarbon.dir/common/carbon/kernel/NativeFunc.cpp.o"
+  "command": "/usr/bin/clang++ -I/home/valery/projects/hww/_c/soot.git -I/home/valery/projects/hww/_c/soot.git/common -I/home/valery/projects/hww/_c/soot.git/third_party -I/home/valery/projects/hww/_c/soot.git/third_party/fmt/include -I/home/valery/projects/hww/_c/soot.git/third_party/fmt -I/home/valery/projects/hww/_c/soot.git/third_party/replxx/include -I/home/valery/projects/hww/_c/soot.git/common/carbon -I/home/valery/projects/hww/_c/soot.git/common/script -I/home/valery/projects/hww/_c/soot.git/common/engine -I/home/valery/projects/hww/_c/soot.git/common/soot  -Wall -Wextra -Wpedantic -Wunused-function -stdlib=libc++ -g3 -ggdb -g -g -O0 -std=c++23 -O0 -g3 -ggdb -fno-omit-frame-pointer -fno-inline -fno-eliminate-unused-debug-types -o CMakeFiles/libcarbon.dir/common/carbon/vm/NativeFunc.cpp.o -c /home/valery/projects/hww/_c/soot.git/common/carbon/vm/NativeFunc.cpp",
+  "file": "/home/valery/projects/hww/_c/soot.git/common/carbon/vm/NativeFunc.cpp",
+  "output": "CMakeFiles/libcarbon.dir/common/carbon/vm/NativeFunc.cpp.o"
 },
 {
   "directory": "/home/valery/projects/hww/_c/soot.git/build/Debug",

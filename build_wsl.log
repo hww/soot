@@ -882,10 +882,10 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/Sta
 /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:27:5: warning: control reaches end of non-void function [-Wreturn-type]
    27 |     }
       |     ^
-[56/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/kernel/NativeFunc.cpp.o
+[56/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/vm/NativeFunc.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/Variant.hpp:2,
-                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.hpp:4,
-                 from /home/valery/projects/hww/_c/soot.git/common/carbon/kernel/NativeFunc.cpp:1:
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/NativeFunc.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/NativeFunc.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     

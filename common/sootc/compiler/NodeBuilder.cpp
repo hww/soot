@@ -89,6 +89,13 @@ namespace sootc {
             if (name == "#t") return ConstNode::make_int(1);
             if (name == "#f") return ConstNode::make_int(0);
 
+            // ---- Compile-time constants ----
+            if (m_compiler) {
+                if (auto constant = m_compiler->lookup_constant(name)) {
+                    return build(*constant, node);
+                }
+            }
+
             return build_variable(form, node);
         }
 
@@ -564,16 +571,33 @@ namespace sootc {
         std::string type_name;
 
         const auto &first = rest.as_pair()->car;
-        if (!first.is_symbol()) {
-            throw m_compiler->make_error(form, "NodeBuilder::build_new")
-                .expected("symbol as type name (or allocation)")
-                .got(first.print());
+
+        // Unwrap (quote x) -> x. In Lisp, 'x is (quote x), and the reader
+        // does not collapse it, so we must handle it here.
+        const soot::Object *first_ptr = &first;
+        if (first.is_pair() && first.as_pair()->car.is_symbol() &&
+            first.as_pair()->car.as_symbol() == "quote") {
+            const auto &quoted = first.as_pair()->cdr;
+            if (!quoted.is_pair() || !quoted.as_pair()->car.is_symbol()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("symbol after quote")
+                    .got(first.print());
+            }
+            first_ptr = &quoted.as_pair()->car;
         }
 
-        std::string first_str = first.as_symbol();
+        if (!first_ptr->is_symbol()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                .expected("symbol as type name (or allocation)")
+                .got(first_ptr->print());
+        }
+
+        std::string first_str = first_ptr->as_symbol();
 
         if (first_str == "static" || first_str == "global" || first_str == "heap" ||
-            first_str == "stack") {
+            first_str == "stack" || first_str == "stack-no-clear" || first_str == "process" ||
+            first_str == "debug") 
+            {
             allocation = first_str;
             rest = rest.as_pair()->cdr;
 
@@ -583,13 +607,24 @@ namespace sootc {
                     .got("end of form");
             }
 
-            const auto &type_obj = rest.as_pair()->car;
-            if (!type_obj.is_symbol()) {
+            const auto         &type_obj = rest.as_pair()->car;
+            const soot::Object *type_ptr = &type_obj;
+            if (type_obj.is_pair() && type_obj.as_pair()->car.is_symbol() &&
+                type_obj.as_pair()->car.as_symbol() == "quote") {
+                const auto &quoted = type_obj.as_pair()->cdr;
+                if (!quoted.is_pair() || !quoted.as_pair()->car.is_symbol()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected("symbol after quote")
+                        .got(type_obj.print());
+                }
+                type_ptr = &quoted.as_pair()->car;
+            }
+            if (!type_ptr->is_symbol()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_new")
                     .expected("symbol as type name")
-                    .got(type_obj.print());
+                    .got(type_ptr->print());
             }
-            type_name = type_obj.to_std_string();
+            type_name = type_ptr->to_std_string();
         } else {
             type_name = first_str;
         }
@@ -604,34 +639,56 @@ namespace sootc {
         auto new_node = std::make_unique<NewNode>(TypeSpec(type_name));
         new_node->set_allocation(allocation);
 
+        // Set the expression type to the constructed type. This lets `->`
+        // (build_deref) resolve fields and methods on the result of `(new ...)`.
+        {
+            Type *constructed_type = m_ts.lookup_type_no_throw(type_name);
+            if (constructed_type) { new_node->set_type(constructed_type); }
+        }
+
         auto fields = rest.as_pair()->cdr;
 
-        // All allocations use :field-name value pairs. The difference is
-        // only in HOW the value is materialised (static → compile-time
-        // data; stack/heap/global → runtime allocation).
-        while (fields.is_pair()) {
-            const auto &field_name_obj = fields.as_pair()->car;
+        // Two syntaxes:
+        //
+        //   (new 'static 'vec3 :x 1 :y 2)     — :field value pairs
+        //   (new 'process 'vec3 1 2 3 4)      — positional args
+        //
+        // For 'static we always use :field value. For non-static we use
+        // positional args because they map 1:1 to the constructor's
+        // parameters.
+        if (allocation == "static") {
+            while (fields.is_pair()) {
+                const auto &field_name_obj = fields.as_pair()->car;
 
-            if (!field_name_obj.is_keyword()) {
-                throw m_compiler->make_error(form, "NodeBuilder::build_new")
-                    .expected(":field-name as a keyword")
-                    .got(field_name_obj.print());
+                if (!field_name_obj.is_keyword()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected(":field-name as a keyword")
+                        .got(field_name_obj.print());
+                }
+
+                std::string field_name = field_name_obj.as_symbol().name_ptr;
+                if (!field_name.empty() && field_name[0] == ':') {
+                    field_name = field_name.substr(1);
+                }
+
+                fields = fields.as_pair()->cdr;
+                if (!fields.is_pair()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected("value after field name")
+                        .got("end of form");
+                }
+
+                auto value_node = build_expression(fields.as_pair()->car, node);
+                new_node->add_field(field_name, std::move(value_node));
+
+                fields = fields.as_pair()->cdr;
             }
-
-            std::string field_name = field_name_obj.as_symbol().name_ptr;
-            if (!field_name.empty() && field_name[0] == ':') { field_name = field_name.substr(1); }
-
-            fields = fields.as_pair()->cdr;
-            if (!fields.is_pair()) {
-                throw m_compiler->make_error(form, "NodeBuilder::build_new")
-                    .expected("value after field name")
-                    .got("end of form");
+        } else {
+            while (fields.is_pair()) {
+                auto arg_node = build_expression(fields.as_pair()->car, node);
+                new_node->add_argument(std::move(arg_node));
+                fields = fields.as_pair()->cdr;
             }
-
-            auto value_node = build_expression(fields.as_pair()->car, node);
-            new_node->add_field(field_name, std::move(value_node));
-
-            fields = fields.as_pair()->cdr;
         }
 
         return new_node;
@@ -1115,6 +1172,21 @@ namespace sootc {
                                                          exported);
         }
 
+        // ---- Value is a compile-time constant ----
+        //
+        // (define x 1) — treat the value as a constant known to the
+        // compiler. The name is registered in the constant pool and
+        // resolved wherever it appears. Nothing is emitted to the binary.
+        //
+        // This covers literals (numbers, strings, symbols) and, more
+        // generally, any ConstNode the builder produced. Complex
+        // expressions are not folded here; if you want a runtime value,
+        // wrap it in (new ...).
+        if (dynamic_cast<ConstNode *>(value_node.get()) != nullptr) {
+            m_compiler->define_constant(name, value_form);
+            lg::info("Registered constant: {} = {}", name, value_form.print());
+            return std::make_unique<SequenceNode>();
+        }
         // ---- Anything else ----
         throw m_compiler->make_error(form, "NodeBuilder::build_define")
             .expected("(define name (lambda ...)), (define name (new Type ...)), "
@@ -1284,6 +1356,11 @@ namespace sootc {
         rest = rest.as_pair()->cdr;
 
         // ---- 2. Optional explicit type name ----
+        //
+        // Only `new` uses this form:
+        //     (defmethod new vector ((allocation symbol) ...) ...)
+        // For all other methods the list of arguments comes right away:
+        //     (defmethod len ((this vector)) ...)
         std::string type_name;
         if (rest.is_pair() && rest.as_pair()->car.is_symbol()) {
             type_name = rest.as_pair()->car.to_std_string();
@@ -1303,6 +1380,10 @@ namespace sootc {
         auto fn = std::make_unique<FunctionNode>("<pending>");
         FunctionCompiler::parse_arguments(arg_list, fn.get(), node, *this);
 
+        // ---- 5. Infer type_name for non-new methods ----
+        //
+        // For ordinary methods the owning type comes from the first argument,
+        // which is `(this-name type-name)`.
         if (type_name.empty()) {
             if (!arg_list.is_pair()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
@@ -1324,25 +1405,56 @@ namespace sootc {
             type_name = type_obj.as_pair()->car.to_std_string();
         }
 
+        // ---- 6. For `new`, insert `this` as the SECOND parameter ----
+        //
+        // The VM calling convention for constructors is:
+        //
+        //     <type>-new(allocation, this, ...user_args)
+        //
+        // The user writes only `(allocation symbol)` at the front; `this` is
+        // inserted by the compiler right after it. This is why `new` has the
+        // owning type written explicitly after the method name, while ordinary
+        // methods get it from their first argument.
+        //
+        // If the user actually wrote `this` in the argument list (some code
+        // does that for clarity), we skip the insertion.
+        if (method_name == "new") {
+            const bool user_wrote_this = (fn->lookup_variable("this") != nullptr);
+            if (!user_wrote_this) {
+                Type *this_type = m_ts.lookup_type_no_throw(type_name);
+                if (!this_type) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
+                        .expected("known type for 'new' method")
+                        .got(type_name);
+                }
+                fn->insert_parameter_at(1, "this", this_type);
+            }
+        }
+
         fn->set_name(fmt::format("{}-{}", type_name, method_name));
         fn->set_method_of_type(type_name);
 
-        // ---- 5. Parse the body ----
-        auto                            current = body_forms;
-        std::unique_ptr<ExpressionNode> last_expr;
-        while (current.is_pair()) {
-            last_expr = build_expression(current.as_pair()->car, fn.get());
-            current = current.as_pair()->cdr;
-        }
-        if (last_expr) {
-            fn->set_body(std::move(last_expr));
-        } else {
+        // ---- 7. Parse the body ----
+        //
+        // A method body is a sequence of forms. The value of the method is the
+        // value of the last form. We wrap everything in a SequenceNode so that
+        // side-effecting statements (set!, calls, ...) are not dropped.
+        if (!body_forms.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("non-empty body")
                 .got("empty body");
         }
 
-        // ---- 6. Register in TypeSystem ----
+        auto body_seq = std::make_unique<SequenceNode>();
+        auto current = body_forms;
+        while (current.is_pair()) {
+            auto expr = build_expression(current.as_pair()->car, fn.get());
+            body_seq->add(std::move(expr));
+            current = current.as_pair()->cdr;
+        }
+        fn->set_body(std::move(body_seq));
+
+        // ---- 8. Register in TypeSystem ----
         try {
             MethodInfo info = m_ts.lookup_method(type_name, method_name);
             m_ts.define_method(type_name, method_name, info.type, std::nullopt);

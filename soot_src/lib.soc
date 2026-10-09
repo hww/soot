@@ -372,6 +372,46 @@
 (define-native _to_float (function object object))
 
 ;; ----------------------------------------------------------------------------
+;; Native types
+;; ----------------------------------------------------------------------------
+
+(deftype vector (structure)
+  ((x    float   :offset 0)
+   (y    float   :offset 4)
+   (z    float   :offset 8)
+   (w    float   :offset 12)
+   ;(data float 4 :overlay-at x)
+   ;(quad uint128 :overlay-at x)
+   )
+(:methods
+    (len (vector) float)))
+
+(defmethod len ((this vector))
+   (+ (-> this x) (-> this y) (-> this z) (-> this w))))))
+
+(deftype cvector (structure)
+  ((x    float   :offset 0)
+   (y    float   :offset 4)
+   (z    float   :offset 8)
+   (w    float   :offset 12)
+   ;(data float 4 :overlay-at x)
+   ;(quad uint128 :overlay-at x)
+   )
+(:methods
+    (new (symbol float float float float) _type_)
+    (len (cvector) float)))
+
+(defmethod new cvector ((allocation symbol) (x float) (y float) (z float) (w float))
+  (set! (-> this x) x)
+  (set! (-> this y) y)
+  (set! (-> this z) z)
+  (set! (-> this w) w)
+  this)
+
+(defmethod len ((this cvector))
+        (+ (-> this x) (-> this y) (-> this z) (-> this w))))))
+
+;; ----------------------------------------------------------------------------
 ;; Load marker
 ;; ----------------------------------------------------------------------------
 ;(define *soc-lib-loaded* #t)

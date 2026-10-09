@@ -43,6 +43,25 @@ namespace sootc {
         m_param_map[name] = reg;
     }
 
+    void FunctionNode::insert_parameter_at(size_t index, const std::string &name, Type *type) {
+        if (index > m_variables.size()) { index = m_variables.size(); }
+
+        m_variables.insert(m_variables.begin() + index,
+                           VariableInfo(name, type, static_cast<u8>(index), /*is_param=*/true));
+
+        // Renumber every entry so that register indices match their positions.
+        for (size_t i = 0; i < m_variables.size(); ++i) {
+            m_variables[i] = VariableInfo(m_variables[i].name(), m_variables[i].type(),
+                                          static_cast<u8>(i), m_variables[i].is_parameter());
+        }
+
+        m_variable_index.clear();
+        for (size_t i = 0; i < m_variables.size(); ++i) {
+            m_variable_index[m_variables[i].name()] = i;
+        }
+
+        ++m_param_count;
+    }
     // ========================================================================
     // Local variables
     // ========================================================================
@@ -125,6 +144,15 @@ namespace sootc {
         instr.opcode = op;
         instr.destination = dest;
         instr.set_lo_hi(imm);
+        m_instructions.push_back(instr);
+    }
+
+    void FunctionNode::add_instruction_imm_reg(Opcode op, u8 dest, u8 base, u8 imm) {
+        Instruction instr;
+        instr.opcode = op;
+        instr.destination = dest;
+        instr.operand1 = base;
+        instr.operand2 = imm;
         m_instructions.push_back(instr);
     }
 

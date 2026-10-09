@@ -27,10 +27,11 @@ add_library(libcarbon
     common/carbon/vm/Instructions.cpp
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
+    common/carbon/vm/NativeFunc.cpp   
+    common/carbon/vm/NativeAllocators.cpp   
 
     ## Kernel
     common/carbon/kernel/EventMessage.cpp   
-    common/carbon/kernel/NativeFunc.cpp   
     common/carbon/kernel/Connection.cpp
     common/carbon/kernel/Connectable.cpp
     common/carbon/kernel/Engine.cpp

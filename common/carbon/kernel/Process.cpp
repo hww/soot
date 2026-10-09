@@ -116,7 +116,7 @@ namespace carbon {
             return false;
         }
 
-        auto vm = Kernel::instance().virtual_machine();
+        auto &vm = Kernel::instance().virtual_machine();
 
         // Если уже есть текущее состояние, нужно выйти из него
         if (current_state) {

@@ -411,6 +411,11 @@ namespace sootc {
 
             fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", rest,
                        result.to_string());
+
+            // Release every object allocated during this expression. Objects created
+            // by script code are only valid until the next purge.
+            vm.purge();
+
             return ReplStatus::OK;
         }
 
@@ -596,17 +601,21 @@ namespace sootc {
                 }
             }
 
-            auto result = compile_file(forms, "<repl>");
+             auto result = compile_file(forms, "<repl>");
 
-            if (forms.is_null()) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: failed to read input\n");
+            // `result` is std::expected<unique_ptr<BinaryFile>, string>.
+            // `!result` is true when the expected holds an error, NOT when
+            // the pointer inside is null. We must check both separately.
+            if (!result) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                           result.error());
                 return ReplStatus::ERR;
             }
 
-
-            // If the input contained only type/enum declarations, there is
-            // no binary to register.
+            // `*result` is the unique_ptr<BinaryFile> itself. It is empty
+            // when the input contained only compile-time declarations
+            // (deftype, defenum, defmethod, defconstant, ...), which produce
+            // no binary payload. That is a normal outcome, not a crash.
             if (!*result) {
                 fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
                            "; OK (types/enums registered)\n");

@@ -1,5 +1,5 @@
 ﻿
-#include "common/carbon/kernel/NativeFunc.hpp"
+#include "common/carbon/vm/NativeFunc.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/util/Log.hpp"
 #include "lib/StringId.hpp"

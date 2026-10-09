@@ -28,8 +28,14 @@ namespace sootc {
         u8 base_reg = fn.get_temp_reg(m_expr.get());
 
         // 2. Compute the field address: r_addr = base_reg + offset.
+        //
+        // IAddImm is decoded by the VM as
+        //     a = dest, b = base register, c = 8-bit immediate
+        // so we must use the three-operand form, not the 16-bit
+        // immediate form.
         u8 addr_reg = fn.alloc_temp_reg(m_type);
-        fn.add_instruction_imm_u16(Opcode::IAddImm, addr_reg, static_cast<u16>(m_offset));
+        fn.add_instruction_imm_reg(Opcode::IAddImm, addr_reg, base_reg,
+                                   static_cast<u8>(m_offset & 0xFF));
 
         // 3. Choose the load opcode based on the field's load size and signedness.
         u8 dest_reg = fn.alloc_temp_reg(m_type);
@@ -67,8 +73,12 @@ namespace sootc {
         u8 base_reg = fn.get_temp_reg(m_expr.get());
 
         // 2. Compute the field address: r_addr = base_reg + offset.
+        //
+        // Same reasoning as in DerefNode::emit — use the three-operand
+        // form so the base register actually reaches the VM.
         u8 addr_reg = fn.alloc_temp_reg(m_type);
-        fn.add_instruction_imm_u16(Opcode::IAddImm, addr_reg, static_cast<u16>(m_offset));
+        fn.add_instruction_imm_reg(Opcode::IAddImm, addr_reg, base_reg,
+                                   static_cast<u8>(m_offset & 0xFF));
 
         fn.set_temp_reg(this, addr_reg);
         return addr_reg;

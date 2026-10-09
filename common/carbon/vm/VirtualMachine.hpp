@@ -5,14 +5,9 @@
 #include "common/carbon/lib/Variant.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/kernel/NativeFunc.hpp"
+#include "common/carbon/vm/NativeFunc.hpp"
+#include "common/carbon/vm/NativeAllocators.hpp"
 #include <memory>
-
-
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
 
 namespace carbon {
 
@@ -97,6 +92,7 @@ namespace carbon {
         bool is_error;
         std::string break_reason;
         std::shared_ptr<StackFrame> current_frame;
+        NativeAllocators            m_allocators;
 
         VirtualMachine() {
             enable_debug_log = true;
@@ -106,10 +102,18 @@ namespace carbon {
             break_reason = "";
             current_frame = nullptr; 
             NativeFunctionRegistry::get_instance().initialize_builtins();
+            // Register allocators before anything else can call them.
+            m_allocators.initialize_builtins();
         }
 
-        ~VirtualMachine() {
+        ~VirtualMachine() { 
+            purge();
         }
+
+        /// @brief Clear every frame-lifetime allocator. Call once per frame,
+        ///        or after each REPL expression, depending on the desired
+        ///        lifetime model.
+        void VirtualMachine::purge() { m_allocators.clear_all(); }
 
         // ------------------------------------------------------------------------
         // Properties

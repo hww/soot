@@ -115,8 +115,9 @@ namespace sootc {
         // ========================================================================
         // Параметры
         // ========================================================================
-        void   add_parameter(const std::string &name, Type *type);
-        size_t param_count() const { return m_param_count; }
+        size_t                            param_count() const { return m_param_count; }
+        void                              add_parameter(const std::string &name, Type *type);
+
         // Параметры хранятся в m_variables — первые m_param_count элементов.
         std::vector<const VariableInfo *> parameters() const {
             std::vector<const VariableInfo *> result;
@@ -124,6 +125,11 @@ namespace sootc {
             for (size_t i = 0; i < m_param_count; ++i) { result.push_back(&m_variables[i]); }
             return result;
         }
+        /// @brief Insert a parameter at the given position.
+        /// @details Used by defmethod new to insert the hidden `this` parameter
+        ///          right after `allocation`. All subsequent parameters are
+        ///          shifted up by one register.
+        void                insert_parameter_at(size_t index, const std::string &name, Type *type);
 
         // ========================================================================
         // Локальные переменные
@@ -170,7 +176,16 @@ namespace sootc {
         // ========================================================================
         void add_instruction(Opcode op, u8 dest, u8 src1 = 0, u8 src2 = 0);
         void add_instruction_imm_u16(Opcode op, u8 dest, u16 imm);
-
+        /// @brief Emit `IAddImm dest, base, imm` — the three-operand form of
+        ///        IAddImm, where the immediate is a single byte.
+        /// @details The VM decodes IAddImm as:
+        ///            a = destination register
+        ///            b = base register
+        ///            c = 8-bit immediate
+        ///          The 16-bit immediate form (add_instruction_imm_u16) is NOT
+        ///          compatible with IAddImm, because there the bytes after the
+        ///          opcode are interpreted as the immediate, not as a register.
+        void        add_instruction_imm_reg(Opcode op, u8 dest, u8 base, u8 imm);
         // ========================================================================
         // Метки
         // ========================================================================
