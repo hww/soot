@@ -16,7 +16,7 @@ namespace sootc {
         std::string        to_string() const override { return "(defenum " + m_name + ")"; }
         const std::string &name() const { return m_name; }
 
-        ProgramBinaryElement generate(GlobalState &) override { return ProgramBinaryElement(0); }
+        ProgramBinaryElement generate(StringsTable &) override { return ProgramBinaryElement(0); }
     };
 
 } // namespace sootc

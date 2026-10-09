@@ -4,6 +4,7 @@
 #include "common/carbon/lib/ScriptObject.hpp"
 #include "type_system/Type.hpp"
 #include <cstddef>
+#include "fmt/format.h"
 
 namespace carbon {
 
@@ -681,5 +682,44 @@ namespace carbon {
             void*    ptr_value;    ///< Storage for pointer types (external data)
         };
     };
-
+ 
 } // namespace vm
+
+// ============================================================================
+// fmt::formatter<Variant> — минимальный форматтер
+// ============================================================================
+//
+// Поддерживает: int, float, null, pointer (C-string).
+// SID пока выводится как int (числом) — чтобы отличить SID от обычного int,
+// нужно поле subtype в Variant (следующий шаг).
+//
+// Использование:
+//   fmt::print("{}\n", some_variant);
+//   fmt::format("fps: {}, name: {}", fps_variant, name_variant);
+
+
+template <> struct fmt::formatter<carbon::Variant> {
+    constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
+
+    template <typename FormatContext>
+    auto format(const carbon::Variant &v, FormatContext &ctx) const {
+        using carbon::RuntimeType;
+
+        switch (v.get_type()) {
+        case RuntimeType::Null: return fmt::format_to(ctx.out(), "null");
+
+        case RuntimeType::Int: return fmt::format_to(ctx.out(), "{}", v.get_i64());
+
+        case RuntimeType::Float: return fmt::format_to(ctx.out(), "{}", v.get_f64());
+
+        case RuntimeType::Pointer: {
+            const void *raw = v.get_ptr();
+            if (raw == nullptr) { return fmt::format_to(ctx.out(), "null"); }
+            // Соглашение: Pointer в print — это C-string.
+            const char *cstr = static_cast<const char *>(raw);
+            return fmt::format_to(ctx.out(), "{}", cstr);
+        }
+        }
+        return fmt::format_to(ctx.out(), "<unknown>");
+    }
+};

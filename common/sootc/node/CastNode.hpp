@@ -1,10 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include "sootc/node/ExpressionNode.hpp"
 #include <memory>
 #include <string>
 
 namespace sootc {
+    
 
     /// @brief Implicit numeric coercion: int -> float, float -> int, etc.
     ///

@@ -6,6 +6,8 @@
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
 #include "common/type_system/TypeSystem.hpp"
+#include "common/sootc/libs/StringsTable.hpp"
+#include <stdexcept>
 
 namespace sootc {
 
@@ -59,9 +61,18 @@ public:
 
     void emit(FunctionNode& fn) override {
         if (m_is_string) {
-            // Для строк - особый тип константы
-            u16 idx = fn.add_constant(reinterpret_cast<u64>(m_string_value.c_str()), 
-                                       FunctionNode::ConstKind::STRING);
+            // Кладём в m_constants НЕ указатель на c_str(), а индекс строки
+            // в глобальной string table. При финальной сборке бинарника
+            // (FileNode::make_binary) этот индекс превратится в относительное
+            // смещение в секции строк.
+            if (!fn.global_state()) {
+                throw std::runtime_error(
+                    "ConstNode::emit: FunctionNode has no GlobalState; "
+                    "call FunctionNode::set_global_state() before emit_body().");
+            }
+            u32 str_offset = fn.global_state()->lookup_or_add(m_string_value);
+            u16 idx =
+                fn.add_constant(static_cast<u64>(str_offset), FunctionNode::ConstKind::STRING);
             u8 reg = fn.alloc_temp_reg(m_type);
             fn.add_instruction_imm_u16(Opcode::LoadStaticPointer, reg, idx);
             fn.set_temp_reg(this, reg);

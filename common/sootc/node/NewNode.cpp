@@ -3,6 +3,7 @@
 #include "common/carbon/lib/StringId.hpp"
 #include "common/type_system/TypeSystem.hpp"
 #include "common/util/Log.hpp"
+#include <algorithm>
 
 namespace sootc {
 
@@ -30,7 +31,7 @@ namespace sootc {
         const std::string ctor_name = type_name + "-new";
 
         u8  ctor_reg = fn.alloc_temp_reg(nullptr);
-        u16 ctor_st = fn.add_constant(StringId(ctor_name).value, FunctionNode::ConstKind::INT);
+        u16 ctor_st = fn.add_constant(StringId(ctor_name).value, FunctionNode::ConstKind::SID);
         fn.add_instruction_imm_u16(Opcode::LookupPointer, ctor_reg, ctor_st);
 
         // 2. Build the argument list: allocation SID, type-to-make SID,
@@ -40,7 +41,7 @@ namespace sootc {
         // 2a. allocation SID (e.g. "global").
         {
             u8  reg = fn.alloc_temp_reg(nullptr);
-            u16 st = fn.add_constant(StringId(m_allocation).value, FunctionNode::ConstKind::INT);
+            u16 st = fn.add_constant(StringId(m_allocation).value, FunctionNode::ConstKind::SID);
             fn.add_instruction_imm_u16(Opcode::LookupInt, reg, st);
             arg_regs.push_back(reg);
         }
@@ -48,15 +49,59 @@ namespace sootc {
         // 2b. type-to-make SID (e.g. "vec3").
         {
             u8  reg = fn.alloc_temp_reg(nullptr);
-            u16 st = fn.add_constant(StringId(type_name).value, FunctionNode::ConstKind::INT);
+            u16 st = fn.add_constant(StringId(type_name).value, FunctionNode::ConstKind::SID);
             fn.add_instruction_imm_u16(Opcode::LookupInt, reg, st);
             arg_regs.push_back(reg);
         }
 
-        // 2c. User arguments (positional).
-        for (auto &a : m_args) {
-            a->emit(fn);
-            arg_regs.push_back(fn.get_temp_reg(a.get()));
+        // 2c. User arguments.
+        //
+        // For 'static' we don't get here (throws above).
+        // For 'global'/'heap'/'stack' the current implementation accepts
+        // BOTH `:field value` pairs (via m_fields) AND positional args
+        // (via m_args). We emit them in the order the structure declares
+        // its fields, then append positional args.
+        {
+            auto *structure = TypeSystem::instance().lookup_type_no_throw(m_type.base_type());
+            auto *st = dynamic_cast<StructureType *>(structure);
+
+            // Collect all fields, annotate with their offset in the struct.
+            struct EmitItem {
+                const FieldInit *field;
+                int              offset;
+            };
+            std::vector<EmitItem> sorted;
+            sorted.reserve(m_fields.size());
+
+            for (const auto &f : m_fields) {
+                int off = 0;
+                if (st) {
+                    Field lookup;
+                    if (st->lookup_field(f.name, &lookup)) {
+                        off = lookup.offset();
+                    } else {
+                        throw std::runtime_error(
+                            fmt::format("NewNode::emit: type '{}' has no field '{}'",
+                                        m_type.base_type(), f.name));
+                    }
+                }
+                sorted.push_back({&f, off});
+            }
+
+            std::sort(sorted.begin(), sorted.end(),
+                      [](const EmitItem &a, const EmitItem &b) { return a.offset < b.offset; });
+
+            // Emit field values in struct order.
+            for (const auto &item : sorted) {
+                item.field->value->emit(fn);
+                arg_regs.push_back(fn.get_temp_reg(item.field->value.get()));
+            }
+
+            // Then any positional args.
+            for (auto &a : m_args) {
+                a->emit(fn);
+                arg_regs.push_back(fn.get_temp_reg(a.get()));
+            }
         }
 
         // 3. Move into r24+.
@@ -65,13 +110,18 @@ namespace sootc {
                                0);
         }
 
-        // 4. Call and store result.
+        // 4. Call the constructor and store the result.
+        //
+        // `<type>-new` is a NATIVE function (registered in Globals or in
+        // NativeFunctionRegistry). ScriptLambdas are not used for runtime
+        // allocation, so we must emit CallFf (native call), not Call.
         u8 ret_reg = fn.alloc_temp_reg(nullptr);
-        fn.add_instruction(Opcode::Call, ret_reg, ctor_reg, static_cast<u8>(arg_regs.size()));
+        // `point-new` is always a native constructor.
+        fn.add_instruction(Opcode::CallFf, ret_reg, ctor_reg, static_cast<u8>(arg_regs.size()));
         fn.set_temp_reg(this, ret_reg);
     }
 
-    ProgramBinaryElement NewNode::generate(GlobalState &state) {
+    ProgramBinaryElement NewNode::generate(StringsTable &state) {
         // Static initialization is handled by DataDeclarationNode, which
         // reads the parsed fields and bakes them into a data-instance entry.
         // A bare NewNode never generates a binary on its own.

@@ -157,9 +157,7 @@ namespace carbon {
         inspect_relocations(64);
 
         m_formatter->print("\n--- String Table ---\n");
-        for (const auto &[id, str] : m_file->m_sidCache) {
-            m_formatter->print("  0x{:016X}: {}\n", id, str);
-        }
+        inspect_string_table();
 
         const u32 n = m_file->entry_count();
 
@@ -256,6 +254,34 @@ namespace carbon {
         return fmt::format("0x{:016X}", id);
     }
 
+    void BinaryFileInspector::inspect_string_table() {
+        const auto *hdr = m_file->m_dcheader;
+        if (!hdr) {
+            m_formatter->print("(no header)\n");
+            return;
+        }
+
+        const u32 offset = hdr->m_stringsOffset;
+        const u32 end = hdr->m_textSize;
+
+        if (offset == 0 || offset >= end) {
+            m_formatter->print("(empty, offset=0x{:X}, end=0x{:X})\n", offset, end);
+            return;
+        }
+
+        const char *base = reinterpret_cast<const char *>(m_file->m_bytes.get());
+        const char *p = base + offset;
+        const char *limit = base + end;
+
+        u32 idx = 0;
+        while (p < limit && *p != '\0') {
+            const size_t len = std::strlen(p);
+            m_formatter->print("  [{:>3}] @0x{:04X}: \"{}\"\n", idx++, (u32)(p - base), p);
+            p += len + 1;
+        }
+        if (idx == 0) m_formatter->print("  (empty)\n");
+    }
+
     std::string BinaryFileInspector::type_name(symbol_type type) {
         switch (type) {
         case symbol_type::B8: return "bool";
@@ -316,23 +342,27 @@ namespace carbon {
             }
             break;
 
-        case 2:
+        case 2: {
+            std::string result;
+
             if (info->a_type == OperandType::REG) {
-                return fmt::format(" {}", reg_name(ins.destination));
+                result += fmt::format(" {}", reg_name(ins.destination));
             } else if (info->a_type == OperandType::IMM_U16) {
-                return fmt::format(" {}", ins.destination);
+                result += fmt::format(" {}", ins.destination);
             }
 
             if (info->b_type == OperandType::REG) {
-                return fmt::format(", {}", reg_name(ins.operand1));
+                result += fmt::format(", {}", reg_name(ins.operand1));
             } else if (info->b_type == OperandType::IMM_U16) {
                 u16 imm = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
-                return fmt::format(", {}", imm);
+                result += fmt::format(", {}", imm);
             } else if (info->b_type == OperandType::IMM_I16) {
                 i16 imm = static_cast<i16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
-                return fmt::format(", {}", imm);
+                result += fmt::format(", {}", imm);
             }
-            break;
+
+            return result;
+        }
 
         case 3:
             if (info->a_type == OperandType::REG) {

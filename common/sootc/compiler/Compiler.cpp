@@ -283,8 +283,8 @@ namespace sootc {
             }
 
             // Generate the binary.
-            GlobalState state;
-            auto        element = file_node->generate(state);
+            StringsTable strings_table;
+            auto        element = file_node->generate(strings_table);
 
             // Nothing to emit: the file contained only compile-time
             // declarations (deftype / defenum). The types are already
@@ -301,7 +301,10 @@ namespace sootc {
 
             auto binary_result =
                 BinaryFile::from_buffer(filename, std::move(bytes), element.m_rawData.size());
-            if (!binary_result) { return std::unexpected("Failed to create binary from buffer"); }
+            if (!binary_result) {
+                return std::unexpected("Failed to create binary from buffer: " +
+                                       binary_result.error());
+            }
 
             auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
 
@@ -1003,7 +1006,7 @@ namespace sootc {
                 auto result = compile_file(p);
 
                 if (!result) {
-                    lg::error("Failed to compile {}", p.string());
+                    lg::error("Failed to compile {}: {}", p.string(), result.error());
                     return;
                 }
 
@@ -1020,4 +1023,5 @@ namespace sootc {
 
         lg::warn("lib.soc not found");
     }
+
 } // namespace sootc

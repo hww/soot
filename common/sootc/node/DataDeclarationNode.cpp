@@ -40,7 +40,7 @@ namespace {
 
 namespace sootc {
 
-    ProgramBinaryElement DataDeclarationNode::generate(GlobalState &state) {
+    ProgramBinaryElement DataDeclarationNode::generate(StringsTable &state) {
         (void)state;
 
         if (!m_instance) {

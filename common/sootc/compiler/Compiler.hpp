@@ -24,8 +24,8 @@
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
-#include "type_system/TypeSystem.hpp"
 #include "type_system/Deftype.hpp"
+#include "type_system/TypeSystem.hpp"
 
 namespace sootc {
 
@@ -42,6 +42,17 @@ namespace sootc {
         WANT_EXIT,   // User requested exit.
         WANT_RELOAD, // Reload the compiler (rebuild state).
         ERR,         // Recoverable error; keep the loop going.
+    };
+
+    // Per-function metadata registered with the compiler.
+    //
+    //   signature   — full TypeSpec, e.g. (function string int object)
+    //   is_native   — true if this is a native C function (CallFf), false for script
+    //   is_varargs  — true if the signature contains _varargs_ (or &rest)
+    struct FunctionInfo {
+        TypeSpec signature;
+        bool     is_native = false;
+        bool     is_varargs = false;
     };
 
     // Options passed to the Compiler constructor.
@@ -91,14 +102,35 @@ namespace sootc {
 
         TypeSpec parse_typespec(const soot::Object &form) { return ::parse_typespec(&m_ts, form); };
 
-        // --- Functions declarations ---
+        // --- Function declarations ---
+        //
+        // define_function_signature   — for script lambdas (defun, defmethod).
+        // define_native_signature     — for native C functions (define-extern).
+        //
+        // Both go into the same m_functions table; the `is_native` flag
+        // decides whether CallNode emits `Call` or `CallFf`.
         void define_function_signature(const std::string &name, const TypeSpec &sig) {
-            m_function_signatures[name] = sig;
+            m_functions[name] = {sig, /*is_native=*/false, /*is_varargs=*/false};
+        }
+
+        void define_native_signature(const std::string &name, const TypeSpec &sig,
+                                     bool is_varargs = false) {
+            m_functions[name] = {sig, /*is_native=*/true, is_varargs};
         }
 
         std::optional<TypeSpec> lookup_function_signature(const std::string &name) const {
-            auto it = m_function_signatures.find(name);
-            return it != m_function_signatures.end() ? std::optional(it->second) : std::nullopt;
+            auto it = m_functions.find(name);
+            return it != m_functions.end() ? std::optional(it->second.signature) : std::nullopt;
+        }
+
+        bool is_native_function(const std::string &name) const {
+            auto it = m_functions.find(name);
+            return it != m_functions.end() && it->second.is_native;
+        }
+
+        bool is_varargs_function(const std::string &name) const {
+            auto it = m_functions.find(name);
+            return it != m_functions.end() && it->second.is_varargs;
         }
 
         // --- Environment management ---
@@ -159,12 +191,12 @@ namespace sootc {
             CompilerError err(std::move(where));
             auto          info_str = m_soot.get_reader().get_db().get_info_for(form);
             if (info_str != "?") {
-                // ← строка 135
                 if (info_str.starts_with("  at ")) { info_str = info_str.substr(5); }
                 err.at(info_str);
             }
             return err;
         }
+
     private:
         // --- Initialization ---
         void load_soot_prelude(); // lib.sot -> m_soot (interpreted)
@@ -176,8 +208,8 @@ namespace sootc {
 
         // --- Compilation ---
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-        compile_internal(soot::Object &forms, const std::string &filename);
-        void       render_internal_error(const std::exception &e);
+             compile_internal(soot::Object &forms, const std::string &filename);
+        void render_internal_error(const std::exception &e);
 
         // --- Helpers ---
         ReplStatus interpret_and_print(const std::string &script);
@@ -193,10 +225,7 @@ namespace sootc {
         void print_error(const std::string &context, const std::exception &e);
         void print_warning(const std::string &warning);
 
-
         // Report a compilation error with a formatted message.
-        // The message may be a runtime string (fmt::runtime is used internally),
-        // so format arguments are checked at runtime, not at compile time.
         template <typename... Args>
         [[noreturn]] void throw_compiler_error(const soot::Object &code, const std::string &str,
                                                Args &&...args) {
@@ -222,11 +251,9 @@ namespace sootc {
         std::unique_ptr<GlobalNode> m_global_env;
         std::unique_ptr<NoneNode>   m_none;
 
-        std::string m_current_file;
-        std::unordered_map<std::string, TypeSpec> m_function_signatures;
+        std::string                                   m_current_file;
+        std::unordered_map<std::string, FunctionInfo> m_functions;
         std::unordered_map<std::string, soot::Object> m_constants;
-
-
     };
 
 } // namespace sootc

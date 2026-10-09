@@ -11,7 +11,8 @@ namespace sootc {
 class GlobalNode : public Node {
     std::unordered_map<std::string, Node*> m_symbols;
     std::vector<Node*> m_ordered_symbols;
-    
+  
+
 protected:
     void update_self_cache() override {
         m_cached_global = this;
@@ -42,9 +43,9 @@ public:
         }
         m_symbols[name] = node;
     }
-    
+
     const std::unordered_map<std::string, Node*>& symbols() const { return m_symbols; }
-    ProgramBinaryElement generate(GlobalState& state) override { (void)state; return ProgramBinaryElement{0}; };
+    ProgramBinaryElement generate(StringsTable& state) override { (void)state; return ProgramBinaryElement{0}; };
 
 };
 

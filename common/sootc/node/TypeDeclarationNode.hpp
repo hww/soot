@@ -22,7 +22,7 @@ namespace sootc {
         std::string     to_string() const override { return "(deftype " + m_type.print() + ")"; }
         const TypeSpec &type() const { return m_type; }
 
-        ProgramBinaryElement generate(GlobalState &) override {
+        ProgramBinaryElement generate(StringsTable &) override {
             return ProgramBinaryElement(0); // deferred to FileNode::make_binary
         }
     };

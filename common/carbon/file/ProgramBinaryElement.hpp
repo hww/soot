@@ -76,8 +76,9 @@ namespace carbon {
             : m_entry(std::move(other.m_entry)), m_rawData(std::move(other.m_rawData)),
               m_stringOffsets(std::move(other.m_stringOffsets)),
               m_relocTable(std::move(other.m_relocTable)),
-              m_structLayout(std::move(other.m_structLayout)), m_byteOffset(other.m_byteOffset),
-              m_bitOffset(other.m_bitOffset) {
+              m_structLayout(std::move(other.m_structLayout)),
+              m_stringConstantSlots(std::move(other.m_stringConstantSlots)),
+              m_byteOffset(other.m_byteOffset), m_bitOffset(other.m_bitOffset) {
             other.m_entry.m_entryPtr = nullptr;
             other.m_byteOffset = 0;
             other.m_bitOffset = 0;
@@ -92,13 +93,14 @@ namespace carbon {
             static_assert(std::is_trivially_copyable_v<T>,
                           "push_value requires a trivially-copyable T");
 
-            const size_t     slots_before = (m_rawData.size() + 7) / 8;
             const std::byte *p = reinterpret_cast<const std::byte *>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
-            const size_t slots_after = (m_rawData.size() + 7) / 8;
-            const size_t new_slots = slots_after - slots_before;
 
-            for (size_t i = 0; i < new_slots; ++i) { insert_into_reloctable(0, 1); }
+            // Довести m_relocTable ровно до (m_rawData.size() + 7) / 8.
+            // Это корректно и когда запись умещается в уже начатый слот
+            // (тогда новых битов не будет), и когда переходит через границу.
+            const size_t needed = (m_rawData.size() + 7) / 8;
+            while (m_relocTable.size() < needed) { m_relocTable.push_back(false); }
 
             check_size();
         }
@@ -114,14 +116,13 @@ namespace carbon {
                           "push_value_with_ptr requires a trivially-copyable T");
 
             const size_t base_offset = m_rawData.size();
-            const size_t slots_before = (base_offset + 7) / 8;
 
             const std::byte *p = reinterpret_cast<const std::byte *>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
-            const size_t slots_after = (m_rawData.size() + 7) / 8;
-            const size_t new_slots = slots_after - slots_before;
 
-            for (size_t i = 0; i < new_slots; ++i) { insert_into_reloctable(0, 1); }
+            // Довести m_relocTable ровно до (m_rawData.size() + 7) / 8.
+            const size_t needed = (m_rawData.size() + 7) / 8;
+            while (m_relocTable.size() < needed) { m_relocTable.push_back(false); }
 
             (verify_and_mark_ptr(base_offset, slots), ...);
 
@@ -156,10 +157,21 @@ namespace carbon {
         std::vector<u64>       m_stringOffsets;
         std::vector<bool>      m_relocTable;
 
+        // Slots in m_rawData whose value must be patched to the absolute
+        // file offset of a string in the global string table. Filled in by
+        // FunctionNode::build_binary for ConstKind::STRING constants and
+        // resolved later by FileNode::make_binary, once data_size is known.
+        struct StringConstantSlot {
+            u64 slot_offset; // byte offset inside m_rawData where the u64 lives
+            u32 str_offset_in_table; // index into StringsTable::offsets()
+        };
+        std::vector<StringConstantSlot> m_stringConstantSlots;
+
         std::optional<StructLayoutInfo> m_structLayout;
 
         u64 m_byteOffset = 0;
         u8  m_bitOffset = 0;
+
 
     private:
         /// @brief Mark the slot containing a pointer field as relocatable.

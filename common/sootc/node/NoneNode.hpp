@@ -18,9 +18,9 @@ public:
         return "none";
     }
     
-    ProgramBinaryElement generate(GlobalState& state) override {
+    ProgramBinaryElement generate(StringsTable& sttings_table) override {
         // NoneNode не генерирует код
-        (void)state;
+        (void)sttings_table;
         return ProgramBinaryElement(0);
     }
     

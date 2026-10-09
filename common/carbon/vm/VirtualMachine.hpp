@@ -105,6 +105,7 @@ namespace carbon {
             is_error = false;
             break_reason = "";
             current_frame = nullptr; 
+            NativeFunctionRegistry::get_instance().initialize_builtins();
         }
 
         ~VirtualMachine() {

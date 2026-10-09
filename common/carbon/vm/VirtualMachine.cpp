@@ -694,15 +694,26 @@ namespace carbon {
                 case Opcode::LookupPointer: {
                     Variant &dest = current_frame->get_register(instr.a);
                     u32      idx = instr.b;
-                    u64      value = current_frame->get_static_int(idx);
-                    dest = Variant(value); // SID
+
+                    // ST[idx] — это SID (или уже указатель).
+                    u64 raw = current_frame->get_static_int(idx);
+
+                    // Если это указатель (или уже PTR в ST) — вернуть как есть.
+                    // Если это SID — резолвить через NativeFunctionRegistry.
+                    auto native = find_native_function(static_cast<StringId>(raw));
+                    if (native) {
+                        dest = Variant(reinterpret_cast<void *>(native), RuntimeType::Pointer);
+                    } else {
+                        // Fallback: вернуть SID как int (для CallFf, который сам ищет).
+                        dest = Variant(raw);
+                    }
                     break;
                 }
 
 
-                    // ============================================================
-                    // Indirect Load (через указатель)
-                    // ============================================================
+                // ============================================================
+                // Indirect Load (через указатель)
+                // ============================================================
 
                 case Opcode::LoadInt:
                 case Opcode::LoadI32:
@@ -850,23 +861,22 @@ namespace carbon {
                     // ============================================================
 
                 case Opcode::LoadStaticInt: {
-                    // _RDI[_RBP] = symbol_table_ptr[_RDI[_RSI]]
-                    u64 index = current_frame->get_register(instr.b).get_i64();
+                    u32 index = instr.b; // ← индекс, не регистр
                     i64 value = current_frame->get_static_int(index);
                     current_frame->get_register(instr.a) = Variant(value);
                     break;
                 }
 
                 case Opcode::LoadStaticFloat: {
-                    u64 index = current_frame->get_register(instr.b).get_i64();
-                    f64 value = current_frame->get_static_float(index); // ← get_static_float!
+                    u32 index = instr.b; // ← индекс
+                    f64 value = current_frame->get_static_float(index);
                     current_frame->get_register(instr.a) = Variant(value);
                     break;
                 }
 
                 case Opcode::LoadStaticPointer: {
-                    u64   index = current_frame->get_register(instr.b).get_i64();
-                    void *ptr = current_frame->get_static_pointer(index); // ← get_static_pointer!
+                    u32   index = instr.b; // ← индекс
+                    void *ptr = current_frame->get_static_pointer(index);
                     current_frame->get_register(instr.a) = Variant(ptr, RuntimeType::Pointer);
                     break;
                 }

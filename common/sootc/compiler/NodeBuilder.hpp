@@ -41,6 +41,7 @@ namespace sootc {
         std::unique_ptr<Node> build_begin(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_define(const soot::Object &form, Node *context);
         std::unique_ptr<Node> build_define_extern(const soot::Object &form, Node *node);
+        std::unique_ptr<Node> build_define_native(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_defmacro(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_seval(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_deftype(const soot::Object &form, Node *node);
@@ -74,7 +75,6 @@ namespace sootc {
         std::vector<std::unique_ptr<Node>> parse_args(const soot::Object &args_form, Node *node);
         std::unique_ptr<Node> build_body_as_sequence(const soot::Object &body_forms, Node *node);
         TypeSpec              build_function_signature(FunctionNode *fn, const std::string &name);
-
         TypeSystem &m_ts;
         Compiler   *m_compiler;
 
@@ -119,6 +119,9 @@ namespace sootc {
         std::unique_ptr<Node> build_not_wrap(const soot::Object &form, Node *node);
         std::unique_ptr<Node> build_lognot_wrap(const soot::Object &form, Node *node);
 
+        std::unique_ptr<Node> build_define_extern_or_native(const soot::Object &form,
+                                                                         Node               *node,
+                                                                         bool is_native);
         // Table of built-in form handlers.
         std::unordered_map<std::string, BuildMethod> m_form_table;
         void                                         init_form_table();

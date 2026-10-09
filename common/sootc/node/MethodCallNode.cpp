@@ -27,7 +27,7 @@ namespace sootc {
     void MethodCallNode::emit(FunctionNode &fn) {
         // 1. Resolve the method lambda from the symbol table.
         u8  fn_reg = fn.alloc_temp_reg(nullptr);
-        u16 st_idx = fn.add_constant(StringId(m_full_name).value, FunctionNode::ConstKind::INT);
+        u16 st_idx = fn.add_constant(StringId(m_full_name).value, FunctionNode::ConstKind::SID);
         fn.add_instruction_imm_u16(Opcode::LookupPointer, fn_reg, st_idx);
 
         // 2. Evaluate receiver + arguments.
@@ -45,9 +45,11 @@ namespace sootc {
                                0);
         }
 
-        // 4. Call. Result goes into a fresh temp register.
+        // 4. Call — CallFf for native methods, Call for script methods.
+        const Opcode call_op = m_is_native ? Opcode::CallFf : Opcode::Call;
+
         u8 ret_reg = fn.alloc_temp_reg(m_type);
-        fn.add_instruction(Opcode::Call, ret_reg, fn_reg, static_cast<u8>(arg_regs.size()));
+        fn.add_instruction(call_op, ret_reg, fn_reg, static_cast<u8>(arg_regs.size()));
 
         fn.set_temp_reg(this, ret_reg);
     }

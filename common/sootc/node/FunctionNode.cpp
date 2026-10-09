@@ -2,14 +2,15 @@
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
 
-#include "carbon/vm/Instructions.hpp"
+#include "common/carbon/vm/Instructions.hpp"
 #include "common/carbon/file/DCScript.hpp"
 #include "common/carbon/file/ProgramBinaryElement.hpp"
 #include "common/carbon/lib/StringId.hpp"
 #include "common/carbon/lib/StringIdManager.hpp"
 #include "common/util/Log.hpp"
-#include "sootc/libs/CompareOp.hpp"
-#include "sootc/node/Node.hpp"
+#include "common/sootc/libs/CompareOp.hpp"
+#include "common/sootc/node/Node.hpp"
+#include "common/sootc/libs/StringsTable.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -226,13 +227,21 @@ namespace sootc {
     ///              must be relocated. They live at 8-byte slots 1 and 2.
     ///            - Instructions and constants: no relocations.
     ProgramBinaryElement FunctionNode::build_binary(const std::string &module_name,
-                                                    GlobalState       &state) {
-        (void)state;
+                                                    StringsTable       &strings_table) {
         (void)module_name;
+        (void)strings_table;
+
+        // Compute the offsets of the constant pool with the same alignment
+        // rule that build_binary uses when it writes them: the payload is
+        // padded to an 8-byte boundary before the first constant, so
+        // m_pSymbols must point at that aligned offset, not at the raw
+        // end-of-instructions offset.
+        const u64 instr_end = sizeof(ScriptLambda) + m_instructions.size() * sizeof(Instruction);
+        const u64 constants_start = (instr_end + 7) & ~u64{7};
 
         u64 total_size = sizeof(sid64) + sizeof(ScriptLambda) +
                          m_instructions.size() * sizeof(Instruction) +
-                         m_constants.size() * sizeof(u64);
+                         (constants_start - instr_end) + m_constants.size() * sizeof(u64);
 
         ProgramBinaryElement element(total_size);
 
@@ -244,8 +253,7 @@ namespace sootc {
 
         ScriptLambda lambda = {StringId("script-lambda").value,
                                reinterpret_cast<u64 *>(sizeof(ScriptLambda)),
-                               reinterpret_cast<u64 *>(sizeof(ScriptLambda) +
-                                                       m_instructions.size() * sizeof(Instruction)),
+                               reinterpret_cast<u64 *>(constants_start),
                                StringId("function").value,
                                (sizeof(ScriptLambda) + sizeof(Instruction) * m_instructions.size() +
                                 sizeof(lambda_symbol_entry) * m_constants.size()),
@@ -267,9 +275,61 @@ namespace sootc {
         element.push_value_with_ptr(lambda, PTR_FIELD(ScriptLambda, m_pInstruction),
                                     PTR_FIELD(ScriptLambda, m_pSymbols));
 
-        for (const Instruction &instr : m_instructions) { element.push_value(instr); }
+                for (const Instruction &instr : m_instructions) { element.push_value(instr); }
 
-        for (size_t i = 0; i < m_constants.size(); ++i) { element.push_value(m_constants[i]); }
+         for (size_t i = 0; i < m_constants.size(); ++i) {
+            lg::info("build_binary: i={}, value=0x{:016X}, kind={}", i, m_constants[i],
+                     (i < m_constants_kind.size() ? (u32)m_constants_kind[i] : 999u));
+
+            // Constants are 8-byte values and every relocation bit covers a
+            // whole 8-byte slot. Pad the payload to an 8-byte boundary so a
+            // constant never straddles a slot boundary, and its relocation
+            // bit lands on the slot that actually contains it.
+            while (element.m_rawData.size() % 8 != 0) {
+                element.m_rawData.push_back(std::byte{0});
+            }
+            {
+                const size_t needed = (element.m_rawData.size() + 7) / 8;
+                while (element.m_relocTable.size() < needed) {
+                    element.m_relocTable.push_back(false);
+                }
+            }
+
+            const u64 offset_in_payload = element.m_rawData.size();
+            element.push_value(m_constants[i]);
+            lg::info("AFTER push_value: i={}, rawData.size()={}", i, element.m_rawData.size());
+
+            // Only string constants require relocation against the global
+            // string table. Their value is currently the index of the
+            // string in StringsTable::offsets(); it will be replaced by
+            // FileNode::make_binary with the absolute file offset of the
+            // string, and the slot will be marked as relocatable.
+            //
+            // IMPORTANT: we do NOT duplicate the string inside the
+            // function payload. The string lives in the global string
+            // table at the end of the file, and the slot holds a pointer
+            // to it (as a file-relative offset that the loader turns into
+            // an absolute pointer).
+            const bool is_string = (i < m_constants_kind.size() &&
+                                    m_constants_kind[i] == static_cast<u8>(ConstKind::STRING));
+
+            if (is_string) {
+                // m_constants[i] holds the byte offset of the string inside the
+                // StringsTable (as returned by lookup_or_add), NOT an index.
+                const u32 str_offset_in_table = static_cast<u32>(m_constants[i]);
+                element.m_stringConstantSlots.push_back({offset_in_payload, str_offset_in_table});
+
+                // Mark the slot as relocatable so read_reloc_table() converts the
+                // file-relative string offset stored here into an absolute pointer.
+                // FileNode::make_binary will temporarily clear this bit for
+                // adjust_offsets() and restore it before folding into the final
+                // bitmap.
+                const size_t slot_bit = offset_in_payload / 8;
+                if (slot_bit < element.m_relocTable.size()) {
+                    element.m_relocTable[slot_bit] = true;
+                }
+            }
+        }
 
         return element;
     }

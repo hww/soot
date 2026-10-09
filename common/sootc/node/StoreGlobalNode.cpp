@@ -10,7 +10,7 @@ void StoreGlobalNode::emit(FunctionNode &fn) {
         // For now, just make sure the symbol name lands in the constant pool,
         // so we can at least see it in the listing.
         if (m_value) { m_value->emit(fn); }
-        fn.add_constant(static_cast<u64>(StringId(m_name).value), FunctionNode::ConstKind::STRING);
+        fn.add_constant(static_cast<u64>(StringId(m_name).value), FunctionNode::ConstKind::SID);
     }
 
 } // namespace sootc

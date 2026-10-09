@@ -75,7 +75,7 @@ namespace sootc {
         /// @brief Static initialization: serialize into a data-instance entry.
         /// @details Only valid for m_allocation == "static". Returns an empty
         ///          element otherwise (the top-level compiler reports an error).
-        ProgramBinaryElement generate(GlobalState &state) override;
+        ProgramBinaryElement generate(StringsTable &state) override;
     };
 
 } // namespace sootc

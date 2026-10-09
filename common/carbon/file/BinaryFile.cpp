@@ -6,18 +6,92 @@
 #include "fmt/format.h"
 #include "util/Log.hpp"
 
+#include "BinaryFileInspector.hpp"
 #include <cstddef>
 #include <cstring>
-#include <string>
 #include <expected>
 #include <filesystem>
 #include <fstream>
 #include <immintrin.h>
 #include <iostream>
+#include <string>
 #include <vector>
-#include "BinaryFileInspector.hpp"
 
 namespace carbon {
+
+    // =========================================================================
+    // Move semantics
+    // =========================================================================
+    //
+    // BinaryFile holds raw pointers into m_bytes:
+    //     m_dcheader   -> (const DC_Header *) m_bytes.get()
+    //     m_relocTable -> m_bytes.get() + m_textSize + sizeof(u32)
+    //     m_strings    -> m_bytes.get() + m_stringsOffset
+    //
+    // A defaulted move constructor would copy those pointers verbatim and
+    // leave them pointing at the old (moved-from) buffer, which is then
+    // freed. We therefore re-anchor them after the move.
+    void BinaryFile::rebuild_pointers_from_bytes() noexcept {
+        if (!m_bytes || m_size == 0) {
+            m_dcheader = nullptr;
+            m_relocTable = location();
+            m_strings = location();
+            return;
+        }
+
+        m_dcheader = reinterpret_cast<const DC_Header *>(m_bytes.get());
+
+        const u64 text_size = m_dcheader->m_textSize;
+        if (text_size + sizeof(u32) <= m_size) {
+            m_relocTable = location(m_bytes.get() + text_size + sizeof(u32));
+        } else {
+            m_relocTable = location();
+        }
+
+        const u64 strings_offset = m_dcheader->m_stringsOffset;
+        if (strings_offset <= m_size) {
+            m_strings = location(m_bytes.get() + strings_offset);
+        } else {
+            m_strings = location();
+        }
+    }
+
+    BinaryFile::BinaryFile(BinaryFile &&other) noexcept
+        : m_path(std::move(other.m_path)), m_dcheader(other.m_dcheader),
+          m_dcscript(other.m_dcscript), m_size(other.m_size), m_bytes(std::move(other.m_bytes)),
+          m_pointedAtTable(std::move(other.m_pointedAtTable)), m_strings(other.m_strings),
+          m_relocTable(other.m_relocTable), m_sidCache(std::move(other.m_sidCache)),
+          m_emittedStructs(std::move(other.m_emittedStructs)),
+          m_dataStructs(std::move(other.m_dataStructs)) {
+        // m_dcheader was copied from `other` and still points into the old
+        // buffer; rebuild it (and the other raw pointers) from m_bytes.
+        rebuild_pointers_from_bytes();
+        other.m_dcheader = nullptr;
+        other.m_dcscript = nullptr;
+        other.m_size = 0;
+    }
+
+    BinaryFile &BinaryFile::operator=(BinaryFile &&other) noexcept {
+        if (this != &other) {
+            m_path = std::move(other.m_path);
+            m_dcheader = other.m_dcheader;
+            m_dcscript = other.m_dcscript;
+            m_size = other.m_size;
+            m_bytes = std::move(other.m_bytes);
+            m_pointedAtTable = std::move(other.m_pointedAtTable);
+            m_strings = other.m_strings;
+            m_relocTable = other.m_relocTable;
+            m_sidCache = std::move(other.m_sidCache);
+            m_emittedStructs = std::move(other.m_emittedStructs);
+            m_dataStructs = std::move(other.m_dataStructs);
+
+            rebuild_pointers_from_bytes();
+            other.m_dcheader = nullptr;
+            other.m_dcscript = nullptr;
+            other.m_size = 0;
+        }
+        return *this;
+    }
 
     [[nodiscard]] std::expected<BinaryFile, std::string>
     BinaryFile::from_path(const std::filesystem::path &path) noexcept {
@@ -46,12 +120,20 @@ namespace carbon {
         }
 
         BinaryFile file(path, size, std::move(bytes), dcheader);
-        file.read_reloc_table();
+        try {
+            file.read_reloc_table();
+        } catch (const std::exception &e) {
+            return std::unexpected{std::string("read_reloc_table failed: ") + e.what()};
+        }
         file.replace_newlines_in_stringtable();
-        return file;
+
+        // Explicit move: BinaryFile holds raw pointers into its buffer, so
+        // the move constructor must re-anchor them. Returning by value would
+        // otherwise let the compiler pick the (deleted) copy path.
+        return std::move(file);
     }
-    
-     [[nodiscard]] std::expected<BinaryFile, std::string>
+
+    [[nodiscard]] std::expected<BinaryFile, std::string>
     BinaryFile::from_buffer(const std::filesystem::path &path, byte_uptr bytes,
                             size_t size) noexcept {
         if (!bytes) { return std::unexpected{"from_buffer: bytes is null"}; }
@@ -115,9 +197,15 @@ namespace carbon {
         }
 
         BinaryFile file(path, size, std::move(bytes), dcheader);
-        file.read_reloc_table();
+        try {
+            file.read_reloc_table();
+        } catch (const std::exception &e) {
+            return std::unexpected{std::string("read_reloc_table failed: ") + e.what()};
+        }
         file.replace_newlines_in_stringtable();
-        return file;
+
+        // See the comment in from_path.
+        return std::move(file);
     }
 
     [[nodiscard]] bool BinaryFile::save(const std::filesystem::path &path) noexcept {
@@ -160,7 +248,7 @@ namespace carbon {
         const u8  byte = static_cast<u8>(m_pointedAtTable[slot_index / 8]);
         return (byte & (1u << (slot_index % 8))) != 0;
     }
-    
+
     /// @return true if `loc` points to a relocated 8-byte slot in the file.
     /// @details m_relocTable is a bitmap where bit N covers byte offset N*8.
     [[nodiscard]] bool BinaryFile::is_file_ptr(const location loc) const noexcept {
@@ -172,7 +260,7 @@ namespace carbon {
         return (byte & (1u << (slot_index % 8))) != 0;
     }
 
-    
+
     /// @return true if `loc` lies inside the string table.
     [[nodiscard]] bool BinaryFile::is_string(const location loc) const noexcept {
         return loc >= m_strings;
@@ -181,7 +269,7 @@ namespace carbon {
     /// @details Every memory access is bounds-checked. If anything is off, the
     ///          function throws with a precise message that names the offending
     ///          offset, the size, and the buffer limit. No silent corruption.
-    void BinaryFile::read_reloc_table()  {
+    void BinaryFile::read_reloc_table() {
         if (!m_dcheader) { throw std::runtime_error("[BinaryFile] read_reloc_table: null header"); }
 
         // ------------------------------------------------------------------
@@ -243,6 +331,8 @@ namespace carbon {
             auto     *entry = reinterpret_cast<u64 *>(m_bytes.get() + slot_offset);
             const u64 offset = *entry;
 
+            lg::info("reloc: slot={}, slot_offset=0x{:X}, offset=0x{:X}", slot, slot_offset,
+                     offset);
             // The stored offset must point inside the buffer.
             if (offset >= m_size) {
                 throw std::runtime_error(
@@ -494,4 +584,4 @@ namespace carbon {
         const auto end = base + m_size;
         return addr >= base && addr + size <= end;
     }
-}
+} // namespace carbon

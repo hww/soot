@@ -32,7 +32,7 @@ namespace sootc {
         const NewNode     *instance() const { return m_instance.get(); }
         bool               is_exported() const { return m_exported; }
 
-        ProgramBinaryElement generate(GlobalState &) override;
+        ProgramBinaryElement generate(StringsTable &) override;
     };
 
 } // namespace sootc

@@ -40,6 +40,7 @@ namespace carbon {
         std::string ptr_str(const void *ptr);
         std::string sid_str(sid64 id);
         std::string type_name(symbol_type type);
+        void        inspect_string_table();
 
         // Disassembly helpers
         std::string reg_name(u8 reg);

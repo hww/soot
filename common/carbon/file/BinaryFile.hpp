@@ -2,18 +2,18 @@
 #include "CommonTypes.hpp"
 #include "DCHeader.hpp"
 #include "DCScript.hpp"
+#include "ProgramBinaryElement.hpp"
 #include "common/carbon/lib/SIDBase.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "lib/ByteUtils.hpp"
+
+
 #include "ProgramBinaryElement.hpp"
-
-
-#include <memory>
-#include <string>
-#include <map>
-#include <set>
 #include <iostream>
-#include "ProgramBinaryElement.hpp"
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
 
 namespace carbon {
 
@@ -66,7 +66,7 @@ namespace carbon {
     };
 
 
-     /// @brief Kind of value stored in a symbol-table entry.
+    /// @brief Kind of value stored in a symbol-table entry.
     enum class symbol_type {
         B8,     ///< bool*
         I32,    ///< i32*
@@ -108,8 +108,7 @@ namespace carbon {
     /// @brief In-memory representation of a loaded DC file.
     /// @details Owns the mapped bytes and provides typed access to the header,
     ///          relocation table, string table, and entry list.
-    class BinaryFile
-    {
+    class BinaryFile {
     public:
         /// @brief Classification of an entry payload, based on its m_typeId.
         enum class EntryKind {
@@ -130,9 +129,23 @@ namespace carbon {
 
         BinaryFile(const BinaryFile &) = delete;
         BinaryFile &operator=(const BinaryFile &) = delete;
-        BinaryFile(BinaryFile &&) noexcept = default;
-        BinaryFile &operator=(BinaryFile &&) noexcept = default;
+
+        // The class holds raw pointers into m_bytes (m_dcheader, m_relocTable,
+        // m_strings). A defaulted move constructor would copy those pointers
+        // verbatim and leave them dangling after m_bytes is moved from. We
+        // therefore re-derive them from the moved-to buffer.
+        BinaryFile(BinaryFile &&other) noexcept;
+        BinaryFile &operator=(BinaryFile &&other) noexcept;
+
         ~BinaryFile() = default;
+
+        /// @brief Re-derive m_dcheader, m_relocTable and m_strings from m_bytes.
+        /// @details Called after a move to make the raw pointers valid for the
+        ///          new buffer base. The invariant is:
+        ///            m_dcheader   == (const DC_Header *) m_bytes.get()
+        ///            m_relocTable == m_bytes + m_textSize + sizeof(u32)
+        ///            m_strings    == m_bytes + m_stringsOffset
+        void rebuild_pointers_from_bytes() noexcept;
 
         [[nodiscard]] static std::expected<BinaryFile, std::string>
         from_path(const std::filesystem::path &path) noexcept;
@@ -194,17 +207,18 @@ namespace carbon {
         /// @brief Print the entry table (name, type, ptr, kind) to `os`.
         void dump_entries(std::ostream &os = std::cout) const;
 
-        std::filesystem::path               m_path;           ///< source path (for diagnostics)
-        const DC_Header*                    m_dcheader = nullptr; ///< pointer into m_bytes
-        const StateScript*                  m_dcscript = nullptr; ///< set by the disassembler when a state-script is found
-        std::size_t                         m_size = 0;       ///< size of the mapped buffer in bytes
-        byte_uptr                           m_bytes;          ///< owned file bytes
-        byte_uptr                           m_pointedAtTable; ///< bitmap: which file offsets are pointed at
-        location                            m_strings;        ///< start of the string table
-        location                            m_relocTable;     ///< start of the relocation bitmap (after its u32 size)
-        std::map<sid64, const std::string>  m_sidCache;       ///< SID -> resolved name
-        std::set<p64>                       m_emittedStructs; ///< used by emit-once mode
-        std::vector<DataStructEntry>        m_dataStructs;    ///< populated at load time
+        std::filesystem::path m_path;               ///< source path (for diagnostics)
+        const DC_Header      *m_dcheader = nullptr; ///< pointer into m_bytes
+        const StateScript    *m_dcscript =
+            nullptr;                  ///< set by the disassembler when a state-script is found
+        std::size_t m_size = 0;       ///< size of the mapped buffer in bytes
+        byte_uptr   m_bytes;          ///< owned file bytes
+        byte_uptr   m_pointedAtTable; ///< bitmap: which file offsets are pointed at
+        location    m_strings;        ///< start of the string table
+        location    m_relocTable;     ///< start of the relocation bitmap (after its u32 size)
+        std::map<sid64, const std::string> m_sidCache;       ///< SID -> resolved name
+        std::set<p64>                      m_emittedStructs; ///< used by emit-once mode
+        std::vector<DataStructEntry>       m_dataStructs;    ///< populated at load time
 
         /// @return true if the given location is a relocated pointer (not a raw value).
         [[nodiscard]] bool is_file_ptr(location loc) const noexcept;
@@ -220,7 +234,7 @@ namespace carbon {
 
     private:
         /// Parse the relocation bitmap at m_dcheader->m_textSize and apply relocations.
-        void read_reloc_table() ;
+        void read_reloc_table();
 
         /// Replace '\n' with ' ' inside the string table (the game does this too).
         void replace_newlines_in_stringtable() noexcept;
@@ -229,4 +243,4 @@ namespace carbon {
         [[nodiscard]] bool is_valid_ptr(const void *ptr, size_t size) const noexcept;
     };
 
-}
+} // namespace carbon

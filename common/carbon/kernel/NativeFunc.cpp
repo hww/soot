@@ -1,9 +1,11 @@
-﻿#include "common/carbon/kernel/NativeFunc.hpp"
+﻿
+#include "common/carbon/kernel/NativeFunc.hpp"
 #include "common/CommonTypes.hpp"
 #include "common/util/Log.hpp"
 #include "lib/StringId.hpp"
+#include "fmt/args.h"        // ← ДОБАВЬ ЭТУ СТРОКУ
+#include "fmt/format.h"      // ← если ещё нет
 #include <iostream>
-
 
 namespace carbon {
 
@@ -42,17 +44,58 @@ namespace carbon {
     // ============================================================================
     // Built-in Native Functions
     // ============================================================================
+    Variant native_print(u32 argc, const Variant *argv) {
+        if (argc == 0) { return Variant(true); }
 
-    Variant native_print(u32 argc, const Variant* argv) {
-        for (u32 i = 0; i < argc; i++) {
-            std::cout << argv[i].to_string() << " ";
+        // ---- argv[0] — format string ----
+        if (!argv[0].is_ptr()) {
+            // Если первый аргумент не строка — печатаем всё как есть
+            // (чтобы не падать на (print 42)).
+            for (u32 i = 0; i < argc; ++i) {
+                if (i > 0) fmt::print(" ");
+                fmt::print("{}", argv[i]);
+            }
+            return Variant(true);
         }
+
+        const char *fmt_str = static_cast<const char *>(argv[0].get_ptr());
+
+        // ---- Остальные argv[1..N] — varargs для fmt ----
+        fmt::dynamic_format_arg_store<fmt::format_context> store;
+        for (u32 i = 1; i < argc; ++i) {
+            const auto &v = argv[i];
+            switch (v.get_type()) {
+            case carbon::RuntimeType::Int: store.push_back(v.get_i64()); break;
+            case carbon::RuntimeType::Float: store.push_back(v.get_f64()); break;
+            case carbon::RuntimeType::Pointer: {
+                const void *raw = v.get_ptr();
+                if (raw == nullptr) {
+                    store.push_back("null");
+                } else {
+                    // Соглашение: pointer в print — это C-string.
+                    store.push_back(static_cast<const char *>(raw));
+                }
+                break;
+            }
+            case carbon::RuntimeType::Null: store.push_back("null"); break;
+            }
+        }
+
+        // ---- Один вызов fmt::vprint — печатает всё скопом ----
+        try {
+            fmt::vprint(fmt_str, store);
+        } catch (const fmt::format_error &e) {
+            // Если формат сломан — печатаем как есть + сообщение.
+            fmt::print(stderr, "[print format error: {}]\n", e.what());
+            fmt::print("{}", fmt_str);
+        }
+
         return Variant(true);
     }
 
-    Variant native_println(u32 argc, const Variant* argv) {
+    Variant native_println(u32 argc, const Variant *argv) {
         native_print(argc, argv);
-        std::cout << std::endl;
+        fmt::print("\n");
         return Variant(true);
     }
 
@@ -117,17 +160,17 @@ namespace carbon {
 
     void NativeFunctionRegistry::initialize_builtins() {
         // Basic I/O
-        register_function("print", native_print);
-        register_function("println", native_println);
+        register_function("_print", native_print);
+        register_function("_println", native_println);
 
         // Arithmetic
-        register_function("add", native_add);
-        register_function("sub", native_subtract);
-        register_function("mul", native_multiply);
-        register_function("div", native_divide);
+        register_function("_add", native_add);
+        register_function("_sub", native_subtract);
+        register_function("_mul", native_multiply);
+        register_function("_div", native_divide);
 
         // Math functions
-        register_function("abs", [](u32 argc, const Variant* argv) -> Variant {
+        register_function("_abs", [](u32 argc, const Variant* argv) -> Variant {
             if (argc < 1) return Variant(0);
             if (argv[0].is_float()) {
                 return Variant(std::abs(argv[0].to_float()));
@@ -137,7 +180,7 @@ namespace carbon {
             }
             });
 
-        register_function("sqrt", [](u32 argc, const Variant* argv) -> Variant {
+        register_function("_sqrt", [](u32 argc, const Variant* argv) -> Variant {
             if (argc < 1) return Variant(0.0f);
             f32 value = argv[0].to_float();
             if (value < 0) {
@@ -148,12 +191,12 @@ namespace carbon {
             });
 
         // Type conversion
-        register_function("to_int", [](u32 argc, const Variant* argv) -> Variant {
+        register_function("_to_int", [](u32 argc, const Variant* argv) -> Variant {
             if (argc < 1) return Variant(0);
             return Variant(argv[0].to_int());
             });
 
-        register_function("to_float", [](u32 argc, const Variant* argv) -> Variant {
+        register_function("_to_float", [](u32 argc, const Variant* argv) -> Variant {
             if (argc < 1) return Variant(0.0f);
             return Variant(argv[0].to_float());
             });

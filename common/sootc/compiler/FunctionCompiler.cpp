@@ -62,6 +62,10 @@ namespace sootc {
         }
 
         if (last_expr) {
+            // Save return type before moving `last_expr` into the ReturnNode.
+            Type *return_type = last_expr->get_type();
+            if (return_type) { fn->set_return_type(return_type); }
+
             auto ret = std::make_unique<ReturnNode>(std::move(last_expr));
             fn->set_body(std::move(ret));
         }

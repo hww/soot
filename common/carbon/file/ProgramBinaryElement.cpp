@@ -1,4 +1,4 @@
-#include "ProgramBinaryElement.hpp"
+﻿#include "ProgramBinaryElement.hpp"
 
 #include "lib/StringIdManager.hpp"
 #include "lib/Variant.hpp"
@@ -13,6 +13,7 @@ namespace carbon {
     ProgramBinaryElement::ProgramBinaryElement(const u64 size) noexcept {
         m_rawData.reserve(size);
         m_relocTable.reserve(size / 8);
+        m_stringConstantSlots.reserve(4);
         m_byteOffset = 0;
         m_bitOffset = 0;
         m_entry.m_entryPtr = nullptr;
@@ -59,12 +60,8 @@ namespace carbon {
         }
     }
 
-    void ProgramBinaryElement::insert_string_offset() noexcept {
-        m_stringOffsets.emplace_back(m_rawData.size());
-    }
-
     void ProgramBinaryElement::insert_string_offset(const u64 offset) noexcept {
-        m_stringOffsets.emplace_back(m_rawData.size() + offset);
+        m_stringOffsets.emplace_back(offset); // ← сохраняем ровно offset
     }
 
     void ProgramBinaryElement::adjust_offsets(const u64 offset) {

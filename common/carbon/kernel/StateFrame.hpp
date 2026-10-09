@@ -92,9 +92,14 @@ public:
 
     void *get_static_pointer(u32 offset) const {
         ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-        return reinterpret_cast<void *>(data_ptr[offset]);
+        const u64 raw = data_ptr[offset];
+        if (raw == 0) return nullptr;
+        // raw — смещение относительно НАЧАЛА PAYLOAD'а функции.
+        // byte_code указывает на ScriptLambda внутри payload'а (сразу после
+        // заголовочного sid64), поэтому база = byte_code - sizeof(sid64).
+        // sizeof(sid64) == 8.
+        return reinterpret_cast<u8 *>(byte_code) - sizeof(sid64) + raw;
     }
-
 
 private:
     /**

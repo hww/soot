@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// DCFile.hpp
+
+#pragma once
 
 #include "common/CommonTypes.hpp"
 #include "common/carbon/lib/StringId.hpp"

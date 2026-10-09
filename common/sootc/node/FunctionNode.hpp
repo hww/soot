@@ -14,8 +14,10 @@
 
 using namespace carbon;
 
+
 namespace sootc {
 
+    struct StringsTable;
     class ExpressionNode;
 
     /*
@@ -82,7 +84,7 @@ namespace sootc {
 
         // Тело функции
         std::unique_ptr<ExpressionNode> m_body;
-
+        StringsTable                    *m_state = nullptr;
     protected:
         void update_self_cache() override { m_cached_function = this; }
 
@@ -154,10 +156,13 @@ namespace sootc {
         void  set_return_type(Type *type) { m_return_type = type; }
         Type *get_return_type() const { return m_return_type; }
 
+        void         set_global_state(StringsTable *s) { m_state = s; }
+        StringsTable *global_state() const { return m_state; }
+
         // ========================================================================
         // Константы
         // ========================================================================
-        enum class ConstKind { INT, FLOAT, STRING };
+        enum class ConstKind { INT, FLOAT, STRING, SID };
         u16 add_constant(u64 value, ConstKind kind = ConstKind::INT);
 
         // ========================================================================
@@ -185,12 +190,12 @@ namespace sootc {
         // ========================================================================
         // Сериализация
         // ========================================================================
-        ProgramBinaryElement generate(GlobalState &state) override {
+        ProgramBinaryElement generate(StringsTable &state) override {
             return build_binary(m_name, state);
         }
 
     private:
-        ProgramBinaryElement build_binary(const std::string &module_name, GlobalState &state);
+        ProgramBinaryElement build_binary(const std::string &module_name, StringsTable &state);
 
         // ========================================================================
         // Доступ к результатам
