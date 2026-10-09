@@ -357,6 +357,21 @@
 (asm-file "soot_src/common/lib/vf-macros.soc")
 
 ;; ----------------------------------------------------------------------------
+;; Native
+;; ----------------------------------------------------------------------------
+
+(define-native _print   (function _varargs_ object))
+(define-native _println (function _varargs_ object))
+(define-native _add     (function int int object))
+(define-native _sub     (function int int object))
+(define-native _mul     (function int int object))
+(define-native _div     (function int int object))
+(define-native _abs     (function int object))
+(define-native _sqrt    (function float object))
+(define-native _to_int  (function object object))
+(define-native _to_float (function object object))
+
+;; ----------------------------------------------------------------------------
 ;; Load marker
 ;; ----------------------------------------------------------------------------
 ;(define *soc-lib-loaded* #t)
