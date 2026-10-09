@@ -5,6 +5,7 @@
 #include "common/carbon/lib/SIDBase.hpp"
 #include "common/carbon/vm/Instructions.hpp"
 #include "lib/ByteUtils.hpp"
+#include "ProgramBinaryElement.hpp"
 
 
 #include <memory>
