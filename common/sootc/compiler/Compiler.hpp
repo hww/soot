@@ -155,6 +155,12 @@ namespace sootc {
         void print_listing(const BinaryFile &file);
         bool save_binary(const BinaryFile &file, const std::filesystem::path &target_dir);
         bool save_listing(const BinaryFile &file, const std::filesystem::path &target_dir);
+        bool save_header(const BinaryFile &file, const std::filesystem::path &target_dir);
+        /// @brief Save the whole REPL session to <name>.bin and <name>.h.
+        /// @param name   Base name (without extension). Defaults to "repl".
+        /// @param dir    Output directory. Defaults to ".".
+        /// @return true on success.
+        bool save_session(const std::string &name, const std::filesystem::path &dir);
 
         // --- Macros ---
         bool         is_soot_macro(const std::string &name);
@@ -254,6 +260,14 @@ namespace sootc {
         std::string                                   m_current_file;
         std::unordered_map<std::string, FunctionInfo> m_functions;
         std::unordered_map<std::string, soot::Object> m_constants;
+
+        /// @brief All top-level forms entered in the REPL during this session.
+        /// @details Appended to on every successful compile_and_report().
+        ///          Used by :save / :cf to write the whole session to disk.
+        std::vector<soot::Object> m_session_forms;
+
+        /// @brief Base name used when saving the REPL session.
+        std::string m_session_name = "repl";
     };
 
 } // namespace sootc

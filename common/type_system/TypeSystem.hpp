@@ -350,6 +350,19 @@ class TypeSystem {
     std::string generate_deftype_for_bitfield(const BitFieldType *type) const;
     std::string generate_deftype_footer(const Type *type) const;
 
+    /// @brief Generate a C header file with struct declarations for all
+    ///        StructureType-derived types reachable from the given list.
+    /// @details Emits a minimal `struct <name> { ... };` for each type,
+    ///          plus a `static_assert(sizeof(...) == ...)` so C++ code
+    ///          detects layout mismatches at compile time.
+    ///
+    ///          Types that are not structures (value types, enums, bitfields)
+    ///          are emitted as `typedef` aliases of their underlying C type.
+    ///
+    ///          The header does NOT contain allocators, getters, setters, or
+    ///          any runtime logic — that belongs in the .soc/.bin side.
+    std::string generate_c_header(const std::vector<std::string> &type_names) const;
+
     // ========================================================================
     // Built-in Types
     // ========================================================================

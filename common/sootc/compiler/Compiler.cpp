@@ -470,6 +470,31 @@ namespace sootc {
             return ReplStatus::OK;
         }
 
+        // === :save [name] -- write the whole session to <name>.bin / <name>.h ===
+        if (trimmed == ":save" || trimmed.substr(0, 6) == ":save ") {
+            std::string name = m_session_name;
+            if (trimmed.size() > 6) {
+                name = trimmed.substr(6);
+                const auto first = name.find_first_not_of(" \t");
+                const auto last = name.find_last_not_of(" \t");
+                if (first != std::string::npos) { name = name.substr(first, last - first + 1); }
+            }
+
+            try {
+                if (save_session(name, ".")) {
+                    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                               "; saved session as {}.bin and {}.h\n", name, name);
+                } else {
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                               "; ERROR: failed to save session\n");
+                }
+            } catch (const std::exception &e) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                           e.what());
+            }
+            return ReplStatus::OK;
+        }
+
         lg::warn("Unknown command: {}", trimmed);
         return ReplStatus::OK;
     }
@@ -560,13 +585,25 @@ namespace sootc {
                            "; ERROR: failed to read input\n");
                 return ReplStatus::ERR;
             }
+            // Remember every top-level form for :save. The forms are stored
+            // as parsed soot::Object values, which are reference-counted and
+            // cheap to keep around.
+            {
+                auto cur = forms;
+                while (cur.is_pair()) {
+                    m_session_forms.push_back(cur.as_pair()->car);
+                    cur = cur.as_pair()->cdr;
+                }
+            }
 
             auto result = compile_file(forms, "<repl>");
-            if (!result) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                           result.error());
+
+            if (forms.is_null()) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: failed to read input\n");
                 return ReplStatus::ERR;
             }
+
 
             // If the input contained only type/enum declarations, there is
             // no binary to register.
@@ -904,6 +941,127 @@ namespace sootc {
 
         fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
         return true;
+    }
+
+    bool Compiler::save_header(const BinaryFile &file, const std::filesystem::path &target_dir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::create_directories(target_dir, ec);
+
+        // Collect type names that actually have an SsType entry in the
+        // binary. This filters out all builtin VM types (structure, basic,
+        // symbol, type, string, function, ...) and only emits user types.
+        std::vector<std::string> type_names;
+        const DCEntry           *table = file.entries();
+        const u32                n = file.entry_count();
+        if (table) {
+            for (u32 i = 0; i < n; ++i) {
+                if (BinaryFile::entry_kind(table[i]) != BinaryFile::EntryKind::SsType) { continue; }
+                const SsType *st = file.entry_as_ss_type(table[i]);
+                if (!st) continue;
+                const std::string name = file.resolve_sid(st->m_name);
+                if (!name.empty()) { type_names.push_back(name); }
+            }
+        }
+
+        if (type_names.empty()) {
+            return true; // nothing to emit
+        }
+
+        std::string header = m_ts.generate_c_header(type_names);
+
+        fs::path      out = target_dir / (file.m_path.stem().string() + ".h");
+        std::ofstream ofs(out);
+        if (!ofs) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot open {} for writing\n",
+                       out.string());
+            return false;
+        }
+        ofs << header;
+
+        fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+        return true;
+    }
+
+    bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        if (ec) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n", dir.string(),
+                       ec.message());
+            return false;
+        }
+
+        if (m_session_forms.empty()) {
+            fmt::print(fg(fmt::color::yellow), "; WARN: session is empty, nothing to save\n");
+            return false;
+        }
+
+        // Build a synthetic file node that contains every form the user
+        // typed during this session. We compile it as if it were a single
+        // .soc file.
+        try {
+            NodeBuilder builder(m_ts, this);
+            auto        file_node = std::make_unique<FileNode>(name);
+
+            auto top_level_body = std::make_unique<SequenceNode>();
+            auto top_level = std::make_unique<FunctionNode>("top-level");
+            bool top_level_used = false;
+
+            for (auto &form : m_session_forms) {
+                auto node = builder.build(form, file_node.get());
+                if (!node) continue;
+
+                if (dynamic_cast<FunctionNode *>(node.get()) != nullptr ||
+                    dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
+                    dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
+                    dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
+                    file_node->add_child(std::move(node));
+                } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
+                    node.release();
+                    top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
+                    top_level_used = true;
+                }
+            }
+
+            if (top_level_used) {
+                top_level->set_body(std::move(top_level_body));
+                file_node->add_child(std::move(top_level));
+            }
+
+            StringsTable strings_table;
+            auto         element = file_node->generate(strings_table);
+            if (element.m_rawData.empty()) {
+                fmt::print(fg(fmt::color::yellow), "; WARN: session produced no binary output\n");
+                return false;
+            }
+
+            auto bytes = make_aligned_buffer(element.m_rawData.size());
+            std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
+
+            auto binary_result =
+                BinaryFile::from_buffer(name, std::move(bytes), element.m_rawData.size());
+            if (!binary_result) {
+                fmt::print(fg(fmt::color::crimson), "; ERROR: {}\n", binary_result.error());
+                return false;
+            }
+
+            auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
+            for (const auto &ds : file_node->data_structs()) {
+                binary->m_dataStructs.push_back(ds);
+            }
+
+            // Now we have a BinaryFile whose m_path is `name`. Save both
+            // the binary and the header next to it.
+            if (!save_binary(*binary, dir)) return false;
+            if (!save_header(*binary, dir)) return false;
+
+            return true;
+        } catch (const std::exception &e) {
+            fmt::print(fg(fmt::color::crimson), "; EXCEPTION during save_session: {}\n", e.what());
+            return false;
+        }
     }
 
     bool Compiler::is_soot_macro(const std::string &name) {

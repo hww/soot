@@ -36,7 +36,18 @@ namespace sootc {
     ProgramBinaryElement FileNode::generate(StringsTable &strings_table) {
         auto entries = collect_all(strings_table);
 
-        if (entries.empty()) {
+        // Even with no functions or data declarations, a file may still
+        // need to emit SsType entries for its (deftype ...) forms. Only
+        // bail out when there is truly nothing to emit.
+        bool has_types = false;
+        for (auto &child : m_children) {
+            if (dynamic_cast<TypeDeclarationNode *>(child.get()) != nullptr) {
+                has_types = true;
+                break;
+            }
+        }
+
+        if (entries.empty() && !has_types) {
             std::string types;
             for (auto &child : m_children) {
                 if (!types.empty()) types += ", ";
@@ -48,7 +59,7 @@ namespace sootc {
         }
 
         std::vector<DataStructEntry> data_structs;
-        auto                         element = make_binary(std::move(entries), strings_table, data_structs);
+        auto element = make_binary(std::move(entries), strings_table, data_structs);
         m_dataStructs = std::move(data_structs);
         return element;
     }
@@ -210,11 +221,30 @@ namespace sootc {
                      fn.m_rawData.size(), fn.m_relocTable.size(), fn.m_stringOffsets.size());
         }
 
-        if (program_elements.empty()) { return ProgramBinaryElement(0); }
-
         constexpr sid64 ARRAY_SID = SID("array");
         constexpr u64   first_entry_offset = 0x28;
         constexpr u32   header_size = sizeof(DC_Header) + sizeof(ARRAY_SID);
+
+        // ------------------------------------------------------------------
+        // Collect type declarations from m_children. They are emitted as
+        // SsType entries in the entry table, so we must know about them
+        // before we can bail out on an empty program_elements list.
+        // ------------------------------------------------------------------
+        struct TypeInfo {
+            const TypeDeclarationNode           *decl;
+            std::unordered_map<std::string, u64> method_offsets;
+        };
+        std::vector<TypeInfo> type_infos;
+        for (auto &child : m_children) {
+            if (auto *td = dynamic_cast<TypeDeclarationNode *>(child.get())) {
+                TypeInfo ti;
+                ti.decl = td;
+                type_infos.push_back(std::move(ti));
+            }
+        }
+
+        // Nothing at all to emit: no functions, no data, no types.
+        if (program_elements.empty() && type_infos.empty()) { return ProgramBinaryElement(0); }
 
         // ------------------------------------------------------------------
         // Pad every program element's raw data to a multiple of 8 bytes.
@@ -224,23 +254,6 @@ namespace sootc {
             const size_t slots = (el.m_rawData.size() + 7) / 8;
             while (el.m_relocTable.size() < slots) { el.m_relocTable.push_back(false); }
             el.check_size();
-        }
-
-        // ------------------------------------------------------------------
-        // Pass 1: compute file offsets for method lambdas.
-        // ------------------------------------------------------------------
-        struct TypeInfo {
-            const TypeDeclarationNode           *decl;
-            std::unordered_map<std::string, u64> method_offsets;
-        };
-        std::vector<TypeInfo> type_infos;
-
-        for (auto &child : m_children) {
-            if (auto *td = dynamic_cast<TypeDeclarationNode *>(child.get())) {
-                TypeInfo ti;
-                ti.decl = td;
-                type_infos.push_back(std::move(ti));
-            }
         }
 
         const u64 total_entries = program_elements.size() + type_infos.size();
@@ -340,7 +353,7 @@ namespace sootc {
             }
         }
 
-         // ========================================
+        // ========================================
         // 3. PAYLOADS
         // ========================================
         //
