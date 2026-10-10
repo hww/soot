@@ -103,6 +103,32 @@ namespace sootc {
         std::expected<std::unique_ptr<BinaryFile>, std::string>
         compile_file(soot::Object &forms, const std::string &filename);
 
+        // --- Require (language form) ---
+        //
+        // Implements (require "path/to/file.sc") as a LANGUAGE form.
+        // The compiler dispatches this from NodeBuilder when it sees
+        // `require` in a source file: the file is compiled and the
+        // resulting module is registered in the active runtime, all at
+        // compile time. The form itself produces no IR.
+        //
+        // The path is resolved against the compiler's search_paths. If
+        // the file has already been loaded in this process (via a
+        // previous require, or manually by the user), the call is a
+        // no-op. This makes diamond-shaped dependency graphs cheap: a
+        // file required by two of its dependents is compiled only once.
+        //
+        // Cyclic requires are not supported: a file that requires
+        // itself, directly or transitively, is silently skipped on the
+        // second visit (the entry is added to m_loaded_files BEFORE
+        // the recursive compile, so the recursion terminates).
+        //
+        // @param form    The (require "...") form, used only for error
+        //                messages.
+        // @param path    The path string from the form.
+        // @return        true if the file was loaded (or was already
+        //                loaded before this call).
+        bool        require_file(const soot::Object &form, const std::string &path);
+
         // --- REPL ---
         ReplStatus  handle_repl_string(const std::string &input);
         void        save_repl_history();
@@ -411,13 +437,12 @@ namespace sootc {
         ///          anything" (NullRuntime) when the url is "null".
         std::unique_ptr<Runtime> m_runtime;
 
-        /// @brief Compiler-side runtime parameters, controlled by
-        ///        (arg-set "key" value) and queried by (arg-get "key").
-        ///
-        /// @details These are DIFFERENT from CompilationOptions: options
-        ///          are set once at startup and never change; args are
-        ///          set and read interactively during a REPL session.
-        ///          Common keys: "print-listing", "print-ir", "log-level".
-        std::unordered_map<std::string, soot::Object> m_args;
+        // --- Loaded files (for require) ---
+        //
+        // Absolute paths of .sc files that have already been loaded
+        // in this Compiler instance. Populated by require_file(). Used
+        // to make requires idempotent, so a file that is required by
+        // two of its dependents is compiled only once.
+        std::set<std::filesystem::path> m_loaded_files;
     };
 } // namespace sootc

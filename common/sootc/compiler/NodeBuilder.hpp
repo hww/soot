@@ -70,6 +70,19 @@ namespace sootc {
         std::unique_ptr<ExpressionNode>    build_not(const soot::Object &form, Node *node);
         std::unique_ptr<ExpressionNode>    build_lognot(const soot::Object &form, Node *node);
 
+        /// @brief Build (require "path/to/file.sc").
+        ///
+        /// @details `require` is a LANGUAGE form: it is handled by the
+        ///          compiler during compilation, not by the REPL. The
+        ///          actual work (resolving the path, compiling the
+        ///          file, loading the module into the active runtime)
+        ///          is delegated to Compiler::require_file.
+        ///
+        ///          The form produces no IR: after the compiler has
+        ///          loaded the required module, it continues with the
+        ///          next form. An empty SequenceNode is returned.
+        std::unique_ptr<Node>              build_require(const soot::Object &form, Node *node);
+
         // ---- Helpers ----
         Type                              *parse_type(const soot::Object &type_form, Node *node);
         std::vector<std::unique_ptr<Node>> parse_args(const soot::Object &args_form, Node *node);

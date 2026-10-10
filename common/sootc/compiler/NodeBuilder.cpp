@@ -73,6 +73,10 @@ namespace sootc {
         m_form_table["defconstant"] = &NodeBuilder::build_defconstant;
         m_form_table["define-extern"] = &NodeBuilder::build_define_extern;
         m_form_table["define-native"] = &NodeBuilder::build_define_native;
+
+        // (require "path/to/file.sc") — language-level dependency form.
+        // See NodeBuilder::build_require and Compiler::require_file.
+        m_form_table["require"] = &NodeBuilder::build_require;
     }
 
     // ============================================================================
@@ -1706,5 +1710,46 @@ namespace sootc {
     std::unique_ptr<ExpressionNode> NodeBuilder::build_lognot(const soot::Object &form,
                                                               Node               *node) {
         return build_unary_common(form, node, UnaryNode::Op::BITNOT, "lognot");
+    }
+
+        // (require "path/to/file.sc")
+    //
+    // Compile and load a dependency at compile time. The actual work
+    // is done by Compiler::require_file, which resolves the path,
+    // skips already-loaded files, compiles the target, and registers
+    // the resulting module in the active runtime.
+    //
+    // The form produces no IR: after the compiler has loaded the
+    // required module, it continues with the next form. An empty
+    // SequenceNode is returned to signal that nothing was emitted.
+    std::unique_ptr<Node> NodeBuilder::build_require(const soot::Object &form, Node *node) {
+        (void)node;
+
+        // Expect exactly one argument: a string path.
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_require")
+                .expected("(require \"path/to/file.sc\")")
+                .got("missing path");
+        }
+
+        const auto &path_obj = rest.as_pair()->car;
+        if (!path_obj.is_string()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_require")
+                .expected("a string path")
+                .got(path_obj.print());
+        }
+
+        // No extra arguments.
+        if (rest.as_pair()->cdr.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_require")
+                .expected("a single path argument")
+                .got(fmt::format("extra arguments after '{}'", path_obj.to_std_string()));
+        }
+
+        // Delegate to the compiler.
+        m_compiler->require_file(form, path_obj.to_std_string());
+
+        return std::make_unique<SequenceNode>();
     }
 } // namespace sootc

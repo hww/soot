@@ -2,6 +2,7 @@
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "third_party/replxx/include/replxx.hxx"
 
 #include "carbon/file/Globals.hpp"
@@ -334,6 +335,112 @@ namespace sootc {
         }
 
         return result;
+    }
+
+    // (require "path/to/file.sc")
+    //
+    // Implements require as a language form. Called by NodeBuilder when
+    // it sees `require` at the head of a form during compilation.
+    //
+    // The file is resolved against the compiler's search_paths. If the
+    // resolved path has already been loaded (in this Compiler instance,
+    // via an earlier require or a user action), the call is a no-op.
+    // Otherwise the file is compiled and the resulting module is
+    // registered in the active runtime.
+    //
+    // See the header comment on Compiler::require_file for the
+    // rationale, including the handling of cyclic requires.
+    bool Compiler::require_file(const soot::Object &form, const std::string &path) {
+        // ------------------------------------------------------------------
+        // 1. Resolve the path against search_paths.
+        // ------------------------------------------------------------------
+        namespace fs = std::filesystem;
+
+        std::string resolved = path;
+
+        if (!fs::exists(resolved)) {
+            bool found = false;
+            for (const auto &dir : m_config.search_paths) {
+                fs::path candidate = fs::path(dir) / path;
+                if (fs::exists(candidate)) {
+                    resolved = candidate.string();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw CompilerError("Compiler::require_file")
+                    .expected("a file that exists in search_paths")
+                    .got(fmt::format("'{}'", path))
+                    .note(fmt::format("search_paths: {}", fmt::join(m_config.search_paths, ", ")));
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 2. Normalize the path so that two different spellings of the
+        //    same file resolve to the same key in m_loaded_files.
+        // ------------------------------------------------------------------
+        std::error_code ec;
+        fs::path        canonical = fs::weakly_canonical(resolved, ec);
+        if (ec) {
+            // weakly_canonical can fail if the path does not exist, but
+            // we already checked fs::exists above, so this is rare. Fall
+            // back to the resolved path as-is.
+            canonical = resolved;
+        }
+
+        // ------------------------------------------------------------------
+        // 3. Skip if already loaded.
+        // ------------------------------------------------------------------
+        if (m_loaded_files.count(canonical)) {
+            lg::debug("require: '{}' already loaded — skipping", canonical.string());
+            return true;
+        }
+
+        // Mark as loaded BEFORE compiling. This is what makes cyclic
+        // requires terminate: if the file we are about to compile
+        // requires itself (directly or transitively), the inner call
+        // sees the key in m_loaded_files and returns immediately.
+        m_loaded_files.insert(canonical);
+
+        // ------------------------------------------------------------------
+        // 4. Compile and load.
+        // ------------------------------------------------------------------
+        lg::info("require: loading '{}'", canonical.string());
+
+        auto result = compile_file(canonical);
+        if (!result) {
+            // Compilation failed. Remove the marker so that a later
+            // require of the same file can be retried after the user
+            // fixes the problem.
+            m_loaded_files.erase(canonical);
+            throw CompilerError("Compiler::require_file")
+                .expected("a compilable file")
+                .got(fmt::format("'{}'", canonical.string()))
+                .caused_by(result.error());
+        }
+
+        // `*result` is the unique_ptr<BinaryFile>. It is empty when the
+        // file contained only compile-time declarations (deftype /
+        // defenum / defconstant). That is a normal outcome: the types
+        // are already registered in TypeSystem, so there is nothing to
+        // load into the runtime.
+        if (!*result) {
+            lg::debug("require: '{}' produced no binary (compile-time only)", canonical.string());
+            return true;
+        }
+
+        bool loaded = m_runtime->load_module(std::move(**result));
+        if (!loaded) {
+            m_loaded_files.erase(canonical);
+            throw CompilerError("Compiler::require_file")
+                .expected("the runtime to accept the module")
+                .got(fmt::format("runtime '{}' rejected '{}'", m_runtime->name(),
+                                 canonical.string()));
+        }
+
+        lg::info("require: loaded '{}'", canonical.string());
+        return true;
     }
 
     // The core compilation driver: build the node tree, generate a binary,
@@ -818,27 +925,31 @@ namespace sootc {
 
     // (arg-set "key" value)
     //
-    // Set a compiler runtime parameter. These are DIFFERENT from
-    // CompilationOptions: options are set once at startup and never
-    // change; args are set and read interactively during a REPL
-    // session and can be inspected with (arg-get "key").
+    // Set a compiler runtime parameter. The parameter is stored
+    // directly in m_config (CompilationOptions), which is the single
+    // source of truth for every compiler option — the same struct
+    // that the CLI populates at startup and that compile_and_report
+    // reads when it decides whether to print the listing, the IR, etc.
     //
-    // Recognised keys:
-    //   "print-listing"  — bool; controls whether compile_and_report
-    //                      prints the binary listing after each compile.
-    //   "print-ir"       — bool; reserved (currently used only in
-    //                      CompilationOptions, not read here).
-    //   "print-asm"      — bool; reserved.
-    //   "log-level"      — string; informational only.
+    // Changing a parameter here takes effect immediately for every
+    // subsequent compilation in this session.
     //
-    // Any other key is stored as-is and can be retrieved with
-    // (arg-get "key"). This lets users stash arbitrary values without
-    // extending the compiler for every new flag.
+    // Recognised keys (see also cmd_arg_get):
+    //   "print-listing"  bool   — print the binary listing after each compile
+    //   "print-ir"       bool   — print the IR
+    //   "print-ast"      bool   — print the AST
+    //   "print-asm"      bool   — print the generated assembly
+    //   "log-level"      string — log level: "debug" | "info" | "warn" | "error"
+    //
+    // Read-only keys (settable only from the CLI):
+    //   "sidbase", "runtime", "search-paths", "platform",
+    //   "mode", "user-profile" — query with (arg-get ...) but not settable.
     //
     // Examples:
     //   (arg-set "print-listing" #t)
     //   (arg-set "log-level" "debug")
     ReplStatus Compiler::cmd_arg_set(const soot::Object &form) {
+        // --- Parse the key and value ---
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson),
@@ -863,21 +974,84 @@ namespace sootc {
         const std::string key = key_obj.to_std_string();
         const auto       &value = after_key.as_pair()->car;
 
-        m_args[key] = value;
+        // --- Helpers ---
+        //
+        // SOOT has no native bool type; #t / #f are the canonical
+        // truthy values. We accept any symbol and treat "#t" as true,
+        // anything else as false, so that (arg-set "x" #f) works and
+        // (arg-set "x" whatever) is not silently truthy.
+        auto as_bool = [](const soot::Object &o) -> bool {
+            return o.is_symbol() && o.as_symbol() == "#t";
+        };
 
-        fmt::print(fg(fmt::color::green), "; arg-set \"{}\" => {}\n", key, value.print());
-        return ReplStatus::OK;
+        // --- Dispatch ---
+        if (key == "print-listing") {
+            m_config.print_listing = as_bool(value);
+            fmt::print(fg(fmt::color::green), "; arg-set \"print-listing\" => {}\n",
+                       m_config.print_listing ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-ir") {
+            m_config.debug_print_ir = as_bool(value);
+            fmt::print(fg(fmt::color::green), "; arg-set \"print-ir\" => {}\n",
+                       m_config.debug_print_ir ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-ast") {
+            m_config.debug_print_ast = as_bool(value);
+            fmt::print(fg(fmt::color::green), "; arg-set \"print-ast\" => {}\n",
+                       m_config.debug_print_ast ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-asm") {
+            m_config.debug_print_asm = as_bool(value);
+            fmt::print(fg(fmt::color::green), "; arg-set \"print-asm\" => {}\n",
+                       m_config.debug_print_asm ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "log-level") {
+            if (!value.is_string() && !value.is_symbol()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: \"log-level\" expects a string (debug|info|warn|error)\n");
+                return ReplStatus::ERR;
+            }
+            m_config.log_level = value.to_std_string();
+            fmt::print(fg(fmt::color::green), "; arg-set \"log-level\" => \"{}\"\n",
+                       m_config.log_level);
+            return ReplStatus::OK;
+        }
+
+        // --- Read-only keys: give a clear error, not a silent no-op ---
+        if (key == "sidbase" || key == "runtime" || key == "search-paths" || key == "platform" ||
+            key == "mode" || key == "user-profile") {
+            fmt::print(fg(fmt::color::yellow),
+                       "; ERROR: \"{}\" is read-only (set it on the command line)\n", key);
+            return ReplStatus::ERR;
+        }
+
+        // --- Unknown key ---
+        fmt::print(fg(fmt::color::crimson),
+                   "; ERROR: unknown key \"{}\". Try one of: "
+                   "print-listing, print-ir, print-ast, print-asm, log-level\n",
+                   key);
+        return ReplStatus::ERR;
     }
 
-    // (arg-get "key")
+      // (arg-get "key")
     //
-    // Read a compiler runtime parameter. Returns the empty list if the
-    // key has not been set.
+    // Read a compiler runtime parameter. Values are read directly
+    // from m_config, which is the single source of truth for every
+    // compiler option — the same struct the CLI populates at startup.
+    //
+    // Unknown keys return (unset) rather than an error, so that a
+    // script can safely probe for optional keys.
     //
     // Examples:
     //   (arg-get "print-listing")
     //   (arg-get "log-level")
+    //   (arg-get "sidbase")
     ReplStatus Compiler::cmd_arg_get(const soot::Object &form) {
+        // --- Parse the key ---
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson), "; ERROR: (arg-get \"key\") requires a key\n");
@@ -892,11 +1066,34 @@ namespace sootc {
 
         const std::string key = key_obj.to_std_string();
 
-        // A few keys are READ-ONLY and live in the compiler config,
-        // not in m_args. "sidbase" is one of them: it is fixed at
-        // startup (from --sidbase) and cannot be changed at runtime.
-        // Reading it via (arg-get "sidbase") returns the configured
-        // path, or (unset) if none was set.
+        // --- Mutable keys ---
+        if (key == "print-listing") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"print-listing\" => {}\n",
+                       m_config.print_listing ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-ir") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"print-ir\" => {}\n",
+                       m_config.debug_print_ir ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-ast") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"print-ast\" => {}\n",
+                       m_config.debug_print_ast ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "print-asm") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"print-asm\" => {}\n",
+                       m_config.debug_print_asm ? "#t" : "#f");
+            return ReplStatus::OK;
+        }
+        if (key == "log-level") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"log-level\" => \"{}\"\n",
+                       m_config.log_level);
+            return ReplStatus::OK;
+        }
+
+        // --- Read-only keys ---
         if (key == "sidbase") {
             if (m_config.sidbase_path.empty()) {
                 fmt::print(fg(fmt::color::yellow), "; arg-get \"sidbase\" => (unset)\n");
@@ -906,14 +1103,19 @@ namespace sootc {
             }
             return ReplStatus::OK;
         }
-
-        auto it = m_args.find(key);
-        if (it == m_args.end()) {
-            fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
+        if (key == "runtime") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"runtime\" => \"{}\"\n",
+                       m_runtime->name());
+            return ReplStatus::OK;
+        }
+        if (key == "user-profile") {
+            fmt::print(fg(fmt::color::green), "; arg-get \"user-profile\" => \"{}\"\n",
+                       m_config.user_profile);
             return ReplStatus::OK;
         }
 
-        fmt::print(fg(fmt::color::green), "; arg-get \"{}\" => {}\n", key, it->second.print());
+        // --- Unknown ---
+        fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
         return ReplStatus::OK;
     }
 
@@ -1020,20 +1222,11 @@ namespace sootc {
                 return ReplStatus::OK;
             }
 
-            // Whether to print the binary listing is controlled by
-            // either the compile-time option (from the CLI, --
-            // print-listing) or a runtime arg set with
-            // (arg-set "print-listing" #t). The runtime arg takes
-            // precedence when it is present, so that a REPL session
-            // can override the CLI default without restarting.
-            bool should_print_listing = m_config.print_listing;
-            auto it = m_args.find("print-listing");
-            if (it != m_args.end()) {
-                // Values are stored as soot::Object. We treat the
-                // symbol #t as true, anything else as false.
-                should_print_listing = it->second.is_symbol() && it->second.as_symbol() == "#t";
-            }
-            if (should_print_listing) { print_listing(**result); }
+            // print_listing is now the single source of truth: it can
+            // be set from the CLI (--print-listing) or from the REPL
+            // with (arg-set "print-listing" #t). Both paths write to
+            // m_config, so this check has nothing left to look up.
+            if (m_config.print_listing) { print_listing(**result); }
 
             // Hand the compiled module to the active runtime. This is
             // the ONE place where sootc talks to the execution backend
