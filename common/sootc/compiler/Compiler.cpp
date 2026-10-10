@@ -443,6 +443,8 @@ namespace sootc {
             "save-session",
             "sc-run",
             "sc-eval",
+            "arg-set",
+            "arg-get",
         };
         return kCommands;
     }
@@ -500,6 +502,8 @@ namespace sootc {
         if (name == "save-session") return cmd_save_session(form);
         if (name == "sc-run") return cmd_sc_run(form);
         if (name == "sc-eval") return cmd_sc_eval(form);
+        if (name == "arg-set") return cmd_arg_set(form);
+        if (name == "arg-get") return cmd_arg_get(form);
 
         fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
         return ReplStatus::ERR;
@@ -739,6 +743,91 @@ namespace sootc {
         return ReplStatus::OK;
     }
 
+    // (arg-set "key" value)
+    //
+    // Set a compiler runtime parameter. These are DIFFERENT from
+    // CompilationOptions: options are set once at startup and never
+    // change; args are set and read interactively during a REPL
+    // session and can be inspected with (arg-get "key").
+    //
+    // Recognised keys:
+    //   "print-listing"  — bool; controls whether compile_and_report
+    //                      prints the binary listing after each compile.
+    //   "print-ir"       — bool; reserved (currently used only in
+    //                      CompilationOptions, not read here).
+    //   "print-asm"      — bool; reserved.
+    //   "log-level"      — string; informational only.
+    //
+    // Any other key is stored as-is and can be retrieved with
+    // (arg-get "key"). This lets users stash arbitrary values without
+    // extending the compiler for every new flag.
+    //
+    // Examples:
+    //   (arg-set "print-listing" #t)
+    //   (arg-set "log-level" "debug")
+    ReplStatus Compiler::cmd_arg_set(const soot::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (arg-set \"key\" value) requires a key and a value\n");
+            return ReplStatus::ERR;
+        }
+        const auto &key_obj = rest.as_pair()->car;
+        if (!key_obj.is_string() && !key_obj.is_symbol()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (arg-set ...) key must be string or symbol\n");
+            return ReplStatus::ERR;
+        }
+
+        auto after_key = rest.as_pair()->cdr;
+        if (!after_key.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (arg-set \"{}\" value) requires a value\n",
+                       key_obj.to_std_string());
+            return ReplStatus::ERR;
+        }
+
+        const std::string key = key_obj.to_std_string();
+        const auto       &value = after_key.as_pair()->car;
+
+        m_args[key] = value;
+
+        fmt::print(fg(fmt::color::green), "; arg-set \"{}\" => {}\n", key, value.print());
+        return ReplStatus::OK;
+    }
+
+    // (arg-get "key")
+    //
+    // Read a compiler runtime parameter. Returns the empty list if the
+    // key has not been set.
+    //
+    // Examples:
+    //   (arg-get "print-listing")
+    //   (arg-get "log-level")
+    ReplStatus Compiler::cmd_arg_get(const soot::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (arg-get \"key\") requires a key\n");
+            return ReplStatus::ERR;
+        }
+        const auto &key_obj = rest.as_pair()->car;
+        if (!key_obj.is_string() && !key_obj.is_symbol()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (arg-get ...) key must be string or symbol\n");
+            return ReplStatus::ERR;
+        }
+
+        const std::string key = key_obj.to_std_string();
+        auto              it = m_args.find(key);
+        if (it == m_args.end()) {
+            fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
+            return ReplStatus::OK;
+        }
+
+        fmt::print(fg(fmt::color::green), "; arg-get \"{}\" => {}\n", key, it->second.print());
+        return ReplStatus::OK;
+    }
+
     // ===============================================================
     // REPL loop helpers
     // ===============================================================
@@ -842,7 +931,20 @@ namespace sootc {
                 return ReplStatus::OK;
             }
 
-            if (m_config.print_listing) { print_listing(**result); }
+            // Whether to print the binary listing is controlled by
+            // either the compile-time option (from the CLI, --
+            // print-listing) or a runtime arg set with
+            // (arg-set "print-listing" #t). The runtime arg takes
+            // precedence when it is present, so that a REPL session
+            // can override the CLI default without restarting.
+            bool should_print_listing = m_config.print_listing;
+            auto it = m_args.find("print-listing");
+            if (it != m_args.end()) {
+                // Values are stored as soot::Object. We treat the
+                // symbol #t as true, anything else as false.
+                should_print_listing = it->second.is_symbol() && it->second.as_symbol() == "#t";
+            }
+            if (should_print_listing) { print_listing(**result); }
 
             // Hand the compiled module to the active runtime. This is
             // the ONE place where sootc talks to the execution backend

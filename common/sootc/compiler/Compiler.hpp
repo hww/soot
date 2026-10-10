@@ -83,6 +83,8 @@ namespace sootc {
         ///          Do not include a scheme prefix; the runtime parses
         ///          optional "tcp://" or "http://" if present.
         std::string runtime_url;
+
+
     };
 
     class Compiler {
@@ -331,6 +333,10 @@ namespace sootc {
         ReplStatus cmd_save_session(const soot::Object &form);
         ReplStatus cmd_sc_run(const soot::Object &form);
         ReplStatus cmd_sc_eval(const soot::Object &form);
+
+        // --- Arguments ---
+        ReplStatus cmd_arg_set(const soot::Object &form);
+        ReplStatus cmd_arg_get(const soot::Object &form);
 
         // --- State ---
         TypeSystem                    &m_ts;

@@ -1,0 +1,10 @@
+19:01:12 [info] Initialized 10 built-in native functions
+19:01:12 [info] Initialized 3 allocator native functions
+19:01:12 [info] Runtime: local-vm
+19:01:12 [info] Loading SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+19:01:12 [info] Loaded SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+19:01:12 [info] Loading SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+19:01:12 [info] Registered constant: *default-territory* = 0
+19:01:12 [info] build_ss_type 'vector': 4 fields, 10 methods, 432 bytes
+19:01:12 [info] build_ss_type 'cvector': 4 fields, 10 methods, 432 bytes
+19:01:12 [info] Loaded SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
