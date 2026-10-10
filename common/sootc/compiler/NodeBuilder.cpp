@@ -79,6 +79,7 @@ namespace sootc {
     // build — single dispatch
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build(const soot::Object &form, Node *node) {
+
         if (form.is_symbol()) {
             // ---- Soot literals: #t / #f ----
             //
@@ -107,6 +108,14 @@ namespace sootc {
         if (!head.is_symbol()) return build_call(form, node);
 
         std::string keyword = head.as_symbol();
+
+        // Log
+        if (m_compiler && m_compiler->is_soot_macro(keyword)) {
+            auto expanded = m_compiler->expand_soot_macro(form);
+            lg::debug("MACRO '{}' -> {}", keyword, expanded.print());
+            return build(expanded, node);
+        }
+
 
         // 1. SOOT macros — expand first.
         if (m_compiler && m_compiler->is_soot_macro(keyword)) {
@@ -805,10 +814,21 @@ namespace sootc {
         }
 
         // ---- Binary operator ----
-        auto left = build_expression(rest.as_pair()->car, node);
-        auto right = build_expression(rest.as_pair()->cdr.as_pair()->car, node);
+        //
+        // `+` and `-` may take more than two arguments in Lisp:
+        //     (+ a b c d)  ==  (((a + b) + c) + d)
+        // We fold left, one BinaryNode at a time.
+        auto current = rest;
+        auto left = build_expression(current.as_pair()->car, node);
+        current = current.as_pair()->cdr;
 
-        return std::make_unique<BinaryNode>(op, std::move(left), std::move(right));
+        while (current.is_pair()) {
+            auto right = build_expression(current.as_pair()->car, node);
+            left = std::make_unique<BinaryNode>(op, std::move(left), std::move(right));
+            current = current.as_pair()->cdr;
+        }
+
+        return std::unique_ptr<BinaryNode>(dynamic_cast<BinaryNode *>(left.release()));
     }
 
     // ============================================================================
@@ -1066,7 +1086,7 @@ namespace sootc {
         auto env = m_compiler->get_soot_environment();
         m_compiler->get_soot_interpreter().eval_form(define_form, env.as_env_ptr());
 
-        lg::info("Registered macro: {}", name_form.to_std_string());
+        lg::debug("Registered macro: {}", name_form.to_std_string());
         return std::make_unique<SequenceNode>();
     }
 
@@ -1139,7 +1159,7 @@ namespace sootc {
             value_form.as_pair()->car.as_symbol() == "macro") {
             auto env = m_compiler->get_soot_environment();
             m_compiler->get_soot_interpreter().eval_form(form, env.as_env_ptr());
-            lg::info("Registered macro: {}", name);
+            lg::debug("Registered macro: {}", name);
             return std::make_unique<SequenceNode>();
         }
 
@@ -1162,6 +1182,7 @@ namespace sootc {
             lg::info("Registered function: {} : {}", name, sig.print());
 
             if (auto *file = context->file()) { file->bind(name, fn); }
+            lg::info("build_define: '{}' -> FunctionNode", name);
             return value_node;
         }
 
@@ -1295,7 +1316,7 @@ namespace sootc {
             m_compiler->define_native_signature(name, sig);
         else
             m_compiler->define_function_signature(name, sig);
-        lg::info("Registered native signature: {} : {}", name, sig.print());
+        lg::debug("Registered native signature: {} : {}", name, sig.print());
 
         return std::make_unique<SequenceNode>();
     }
@@ -1308,7 +1329,7 @@ namespace sootc {
         try {
             DeftypeResult result = parse_deftype(rest, &m_ts);
             StringIdManager::instance().register_string(result.type.base_type());
-            lg::info("Registered type: {}", result.type.print());
+            lg::debug("Registered type: {}", result.type.print());
             return std::make_unique<TypeDeclarationNode>(result.type);
         } catch (const std::exception &e) {
             throw m_compiler->make_error(form, "NodeBuilder::build_deftype")
@@ -1325,7 +1346,7 @@ namespace sootc {
         auto rest = form.as_pair()->cdr;
         try {
             EnumType *enum_type = parse_defenum(rest, &m_ts);
-            lg::info("Registered enum: {}", enum_type->get_name());
+            lg::debug("Registered enum: {}", enum_type->get_name());
             return std::make_unique<EnumDeclarationNode>(enum_type->get_name());
         } catch (const std::exception &e) {
             throw m_compiler->make_error(form, "NodeBuilder::build_defenum")
@@ -1458,7 +1479,7 @@ namespace sootc {
         try {
             MethodInfo info = m_ts.lookup_method(type_name, method_name);
             m_ts.define_method(type_name, method_name, info.type, std::nullopt);
-            lg::info("defmethod {}-{}: registered (id {}, sig {})", type_name, method_name, info.id,
+            lg::debug("defmethod {}-{}: registered (id {}, sig {})", type_name, method_name, info.id,
                      info.type.print());
         } catch (const std::exception &e) {
             throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")

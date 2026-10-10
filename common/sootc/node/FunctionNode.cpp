@@ -325,7 +325,7 @@ namespace sootc {
 
             const u64 offset_in_payload = element.m_rawData.size();
             element.push_value(m_constants[i]);
-            lg::info("AFTER push_value: i={}, rawData.size()={}", i, element.m_rawData.size());
+            lg::debug("AFTER push_value: i={}, rawData.size()={}", i, element.m_rawData.size());
 
             // Only string constants require relocation against the global
             // string table. Their value is currently the index of the

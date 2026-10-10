@@ -72,6 +72,9 @@ namespace carbon {
         std::shared_ptr<StackFrame> get_parent() const {
             return parent;
         }
+
+        u32 get_registers_count() { return MAX_REGISTERS; }
+
         // ------------------------------------------------------------------------
         // Register Access
         // ------------------------------------------------------------------------

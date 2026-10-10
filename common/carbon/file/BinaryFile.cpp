@@ -331,7 +331,7 @@ namespace carbon {
             auto     *entry = reinterpret_cast<u64 *>(m_bytes.get() + slot_offset);
             const u64 offset = *entry;
 
-            lg::info("reloc: slot={}, slot_offset=0x{:X}, offset=0x{:X}", slot, slot_offset,
+            lg::debug("reloc: slot={}, slot_offset=0x{:X}, offset=0x{:X}", slot, slot_offset,
                      offset);
             // The stored offset must point inside the buffer.
             if (offset >= m_size) {

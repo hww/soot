@@ -567,18 +567,22 @@ namespace carbon {
         // STRING REPRESENTATION
         // =========================================================================
 
+        /// @brief Format this Variant for logging and diagnostics.
+        /// @details For pointers we ONLY print the numeric address. We do
+        ///          NOT try to interpret it as a std::string, because a
+        ///          Pointer Variant may hold a ScriptLambda*, a Process*,
+        ///          a raw object pointer, or a std::string* — and the VM
+        ///          has no way to tell them apart here. Trying to read a
+        ///          non-string pointer as std::string* is undefined
+        ///          behaviour and crashes the process.
         std::string to_string() const {
             switch (type_) {
-                case RuntimeType::Null:    return "null";
-                case RuntimeType::Int:     return std::to_string(get_i64());
-                case RuntimeType::Float:   return std::to_string(get_f64());
-                case RuntimeType::Pointer:
-                    if (ptr_value == nullptr) return "null";
-                    try {
-                        return get_string();
-                    } catch (...) {
-                        return fmt::format("ptr:{}", ptr_value);
-                    }
+            case RuntimeType::Null: return "null";
+            case RuntimeType::Int: return std::to_string(get_i64());
+            case RuntimeType::Float: return std::to_string(get_f64());
+            case RuntimeType::Pointer:
+                if (ptr_value == nullptr) return "null";
+                return fmt::format("ptr:0x{:X}", reinterpret_cast<uintptr_t>(ptr_value));
             }
             return "unknown";
         }

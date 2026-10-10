@@ -33,10 +33,6 @@ namespace sootc {
         // Call `allocate-<type>(allocation)` — a native function registered
         // by NativeAllocators. It returns a pointer to a zero-initialized
         // slot large enough for one <type>.
-        //
-        // The first argument is the allocation keyword ('process / 'global /
-        // 'stack / ...) as a SID. For now the allocator ignores it and always
-        // returns a slot from the per-type pool.
         // =====================================================================
         const std::string alloc_name = "allocate-" + type_name;
 
@@ -57,15 +53,24 @@ namespace sootc {
         fn.add_instruction(Opcode::CallFf, ptr_reg, alloc_reg, 1);
 
         // =====================================================================
-        // Step 2: construct.
+        // Step 2: construct, only if the type has its own `new` method.
         //
-        // Call `<type>-new(allocation, this, ...user_args)` — a script method
-        // (ScriptLambda). It receives `this` = ptr_reg and is responsible for
-        // setting fields and returning `this`.
-        //
-        // Unlike the allocator, the constructor is script-side, so we use
-        // Call (not CallFf).
+        // `get_my_new_method` returns true only when `(defmethod new <type>
+        // ...)` was declared *for this type*, not for an ancestor. A type
+        // without its own `new` simply produces a zeroed instance, which is
+        // the correct behaviour for GOAL-style types.
         // =====================================================================
+        bool has_ctor = false;
+        if (Type *t = TypeSystem::instance().lookup_type_no_throw(type_name)) {
+            MethodInfo info;
+            has_ctor = t->get_my_new_method(&info);
+        }
+
+        if (!has_ctor) {
+            fn.set_temp_reg(this, ptr_reg);
+            return;
+        }
+
         const std::string ctor_name = type_name + "-new";
         u8                ctor_reg = fn.alloc_temp_reg(nullptr);
         u16 ctor_st = fn.add_constant(StringId(ctor_name).value, FunctionNode::ConstKind::SID);
@@ -96,8 +101,7 @@ namespace sootc {
                                0);
         }
 
-        // Call the constructor. It is a ScriptLambda, not a native function,
-        // so we use Call (not CallFf).
+        // Call the constructor. It is a ScriptLambda, so Call, not CallFf.
         u8 ret_reg = fn.alloc_temp_reg(nullptr);
         fn.add_instruction(Opcode::Call, ret_reg, ctor_reg, static_cast<u8>(arg_regs.size()));
         fn.set_temp_reg(this, ret_reg);

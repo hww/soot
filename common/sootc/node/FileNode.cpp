@@ -212,8 +212,6 @@ namespace sootc {
     ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
                                                StringsTable                     &strings_table,
                                                std::vector<DataStructEntry>     &out_data_structs) {
-        printf("=== make_binary DEBUG ===\n");
-        printf("program_elements.size() = %zu\n", program_elements.size());
         lg::info("make_binary: program_elements.size()={}", program_elements.size());
         for (auto &fn : program_elements) {
             lg::info("  fn '{}': rawData={}, relocTable={}, stringOffsets={}",
@@ -341,7 +339,7 @@ namespace sootc {
             entry.m_entryPtr = reinterpret_cast<void *>(first_function_start + prev_entry_size);
             element.push_value_with_ptr(entry, PTR_FIELD(DCEntry, m_entryPtr));
             prev_entry_size += fn.m_rawData.size();
-            lg::info("FileNode::make_binary entry {}", entry.to_string());
+            lg::debug("FileNode::make_binary entry {}", entry.to_string());
 
             if (fn.m_structLayout) {
                 DataStructEntry ds;
@@ -392,7 +390,7 @@ namespace sootc {
 
                 *reinterpret_cast<u64 *>(&fn.m_rawData[slot.slot_offset]) = absolute_offset;
 
-                lg::info("make_binary: string slot at payload+0x{:X} -> abs 0x{:X} "
+                lg::debug("make_binary: string slot at payload+0x{:X} -> abs 0x{:X} "
                          "(str_index={}, table_offset=0x{:X})",
                          slot.slot_offset, absolute_offset, slot.str_offset_in_table,
                          str_offset_in_table);
@@ -478,7 +476,7 @@ namespace sootc {
         const u32 reloc_size = static_cast<u32>(reloc_bytes);
 
         element.push_value(reloc_size);
-        lg::info("Construct reloc table with size {}", reloc_size);
+        lg::debug("Construct reloc table with size {}", reloc_size);
 
         for (u64 i = 0; i < reloc_bytes; ++i) {
             uint8_t byte = 0;
@@ -504,7 +502,7 @@ namespace sootc {
                             "Header text/string offsets will be wrong.",
                             element.m_rawData.size(), total_size));
         }
-        lg::info("make_binary: assembled {} bytes (expected {})", element.m_rawData.size(),
+        lg::debug("make_binary: assembled {} bytes (expected {})", element.m_rawData.size(),
                  total_size);
 
         return element;

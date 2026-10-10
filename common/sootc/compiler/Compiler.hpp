@@ -261,6 +261,17 @@ namespace sootc {
         std::unordered_map<std::string, FunctionInfo> m_functions;
         std::unordered_map<std::string, soot::Object> m_constants;
 
+
+        // Per-instance set of already-loaded prelude paths.
+        //
+        // MUST NOT be static: each Compiler instance has its own interpreter
+        // (`m_soot`), and macro registration is per-interpreter. A static
+        // set would silently skip loading lib.soc into the second and later
+        // Compiler instances, leaving them without `defun`, `let`, etc.,
+        // which breaks every unit test that creates a fresh Compiler.
+        std::set<std::filesystem::path> m_loaded_soot_libs;
+        std::set<std::filesystem::path> m_loaded_soc_libs;
+
         /// @brief All top-level forms entered in the REPL during this session.
         /// @details Appended to on every successful compile_and_report().
         ///          Used by :save / :cf to write the whole session to disk.
@@ -269,5 +280,4 @@ namespace sootc {
         /// @brief Base name used when saving the REPL session.
         std::string m_session_name = "repl";
     };
-
 } // namespace sootc

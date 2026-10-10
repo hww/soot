@@ -55,6 +55,7 @@ namespace carbon {
         (void)argv;
         if (!g_allocators) return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
         vector *ptr = g_allocators->allocate_vector_slot();
+        std::memset(ptr, 0, sizeof(vector));
         return Variant(static_cast<void *>(ptr), RuntimeType::Pointer);
     }
 
@@ -71,6 +72,11 @@ namespace carbon {
     // =========================================================================
 
     void NativeAllocators::initialize_builtins() {
+        // Remember this instance so that the free native functions can reach
+        // its pools. There is exactly one VirtualMachine in the process, and
+        // its NativeAllocators is the one that owns the pools.
+        g_allocators = this;
+
         auto &reg = NativeFunctionRegistry::get_instance();
         reg.register_function("allocate-i64", &allocate_i64);
         reg.register_function("allocate-f32", &allocate_f32);

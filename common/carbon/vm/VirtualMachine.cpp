@@ -170,7 +170,14 @@ namespace carbon {
 
             Instruction instr = current_frame->get_next_instruction();
 
-            if (enable_debug_log) lg::debug("PC={} : {}", current_frame->pc - 1, instr.to_string());
+            if (enable_debug_log) {
+                std::string logstring;
+                for (int i = 0; i < current_frame->get_registers_count(); i++) {
+                    logstring +=
+                        fmt::format("R{}={} ", i, current_frame->get_register(i).to_string());
+                }
+                lg::info("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
+            }
 
             try {
 
@@ -411,15 +418,36 @@ namespace carbon {
                     Variant &dest = current_frame->get_register(instr.a);
                     Variant &src = current_frame->get_register(instr.b);
                     i32      imm = static_cast<i32>(instr.c);
-                    dest = Variant(src.to_int() + imm);
+
+                    // DC's IAddImm is used both for plain integer arithmetic and for
+                    // pointer arithmetic (field address computation). In the pointer case
+                    // the result must stay a Pointer; otherwise subsequent Load/Store
+                    // opcodes fail with "expected pointer, got int".
+                    if (src.is_ptr()) {
+                        auto *bytes = static_cast<std::byte *>(src.get_ptr());
+                        dest = Variant(static_cast<void *>(bytes + imm), RuntimeType::Pointer);
+                    } else {
+                        dest = Variant(src.to_int() + imm);
+                    }
                     break;
                 }
+       
 
                 case Opcode::ISubImm: {
                     Variant &dest = current_frame->get_register(instr.a);
                     Variant &src = current_frame->get_register(instr.b);
                     i32      imm = static_cast<i32>(instr.c);
-                    dest = Variant(src.to_int() - imm);
+
+                    // DC's IAddImm is used both for plain integer arithmetic and for
+                    // pointer arithmetic (field address computation). In the pointer case
+                    // the result must stay a Pointer; otherwise subsequent Load/Store
+                    // opcodes fail with "expected pointer, got int".
+                    if (src.is_ptr()) {
+                        auto *bytes = static_cast<std::byte *>(src.get_ptr());
+                        dest = Variant(static_cast<void *>(bytes - imm), RuntimeType::Pointer);
+                    } else {
+                        dest = Variant(src.to_int() + imm);
+                    }
                     break;
                 }
 

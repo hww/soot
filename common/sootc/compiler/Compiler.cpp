@@ -11,20 +11,20 @@
 #include "common/soot/ParseHelpers.hpp"
 #include "common/soot/Reader.hpp"
 #include "common/util/Log.hpp"
+#include "file/SizeAssertions.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
+#include "sootc/compiler/Macro.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
+#include "sootc/node/DataDeclarationNode.hpp"
+#include "sootc/node/EnumDeclarationNode.hpp"
 #include "sootc/node/FileNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
+#include "sootc/node/TypeDeclarationNode.hpp"
 #include "type_system/TypeSystem.hpp"
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
-#include "file/SizeAssertions.hpp"
-#include "sootc/node/DataDeclarationNode.hpp"
-#include "sootc/node/EnumDeclarationNode.hpp"
-#include "sootc/node/TypeDeclarationNode.hpp"
-#include "sootc/compiler/Macro.hpp"
 
 namespace sootc {
 
@@ -284,7 +284,7 @@ namespace sootc {
 
             // Generate the binary.
             StringsTable strings_table;
-            auto        element = file_node->generate(strings_table);
+            auto         element = file_node->generate(strings_table);
 
             // Nothing to emit: the file contained only compile-time
             // declarations (deftype / defenum). The types are already
@@ -601,7 +601,7 @@ namespace sootc {
                 }
             }
 
-             auto result = compile_file(forms, "<repl>");
+            auto result = compile_file(forms, "<repl>");
 
             // `result` is std::expected<unique_ptr<BinaryFile>, string>.
             // `!result` is true when the expected holds an error, NOT when
@@ -1086,13 +1086,9 @@ namespace sootc {
     // Prelude loading
     // ===============================================================
 
-    // Load lib.sot into the SOOT interpreter.
-    // lib.sot is INTERPRETED: it contains utilities used while expanding
-    // macros (car, cdr, map, filter, setf, defstruct, ...).
+
     void Compiler::load_soot_prelude() {
         namespace fs = std::filesystem;
-
-        static std::set<fs::path> used_paths;
 
         std::vector<fs::path> candidates = {
             file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.sot",
@@ -1102,17 +1098,6 @@ namespace sootc {
 
         for (const auto &p : candidates) {
             if (!fs::exists(p)) { continue; }
-
-            // Normalize the path so that "a/b/c" and "./a/b/c" map to the same key.
-            std::error_code ec;
-            fs::path        normalized = fs::weakly_canonical(p, ec);
-            if (ec) { normalized = p; }
-
-            if (used_paths.contains(normalized)) {
-                lg::info("Skipping already loaded SOOT library {}", p.string());
-                continue;
-            }
-            used_paths.insert(normalized);
 
             lg::info("Loading SOOT library {}", p.string());
 
@@ -1140,13 +1125,8 @@ namespace sootc {
         lg::warn("lib.sot not found");
     }
 
-    // Load lib.soc into the compiler.
-    // lib.soc is COMPILED, not interpreted. Its macros register in m_soot,
-    // its types register in m_ts.
     void Compiler::load_soc_prelude() {
         namespace fs = std::filesystem;
-
-        static std::set<fs::path> used_paths;
 
         std::vector<fs::path> candidates = {
             file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.soc",
@@ -1156,16 +1136,6 @@ namespace sootc {
 
         for (const auto &p : candidates) {
             if (!fs::exists(p)) { continue; }
-
-            std::error_code ec;
-            fs::path        normalized = fs::weakly_canonical(p, ec);
-            if (ec) { normalized = p; }
-
-            if (used_paths.contains(normalized)) {
-                lg::info("Skipping already loaded SOOTC library {}", p.string());
-                continue;
-            }
-            used_paths.insert(normalized);
 
             lg::info("Loading SOOTC library {}", p.string());
 
@@ -1190,5 +1160,4 @@ namespace sootc {
 
         lg::warn("lib.soc not found");
     }
-
 } // namespace sootc

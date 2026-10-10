@@ -181,6 +181,7 @@ if(BUILD_TESTS)
     include(tests/soot/CMakeLists.txt)
     include(tests/carbon/CMakeLists.txt)
     include(tests/engine/CMakeLists.txt)
+    include(tests/sootc/CMakeLists.txt) 
     include(tests/type_system/CMakeLists.txt) 
 endif()
 
@@ -189,7 +190,8 @@ add_custom_target(tests
     COMMENT "Building all tests"
     DEPENDS 
         soot_test
-        typesys_tests  # ИСПРАВЛЕНО: было type_system_test
+        typesys_tests  
         carbon_test
         engine_test
+        sootc_test
 )
