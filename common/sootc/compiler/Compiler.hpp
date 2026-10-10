@@ -312,5 +312,16 @@ namespace sootc {
         ///          only ever grows, which is what "unique within this
         ///          Compiler" means.
         u64         m_lambda_counter = 0;
+
+        /// @brief Set to true by the (e) custom form to request REPL exit.
+        /// @details handle_repl_string reads this after running a form and
+        ///          converts it into ReplStatus::WANT_EXIT.
+        bool m_want_exit = false;
+
+        /// @brief Set to true by the (reload) custom form to request a
+        ///        compiler reload.
+        /// @details handle_repl_string reads this after running a form and
+        ///          converts it into ReplStatus::WANT_RELOAD.
+        bool m_want_reload = false;
     };
 } // namespace sootc
