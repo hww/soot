@@ -294,15 +294,51 @@ namespace sootc {
     // ============================================================================
     // if
     // ============================================================================
+    // Build (if cond then) or (if cond then else).
+    //
+    // The three-argument form is the common case, but SOOT also
+    // permits the two-argument form, where the value of the whole
+    // expression is whatever the `then` branch produced (and #f/0
+    // when the condition is false, depending on the VM). The old
+    // implementation unconditionally read
+    //   rest.as_pair()->cdr.as_pair()->cdr.as_pair()->car
+    // which crashes on a two-argument form because the second `cdr`
+    // is an empty list. `as_pair()` on a null then throws
+    // "as_pair called on a null null".
+    //
+    // The version below walks the argument list step by step and
+    // stops as soon as there is nothing left.
     std::unique_ptr<IfNode> NodeBuilder::build_if(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
+
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_if")
+                .expected("(if cond then [else])")
+                .got("missing condition");
+        }
+
         auto cond_form = rest.as_pair()->car;
-        auto then_form = rest.as_pair()->cdr.as_pair()->car;
-        auto else_form = rest.as_pair()->cdr.as_pair()->cdr.as_pair()->car;
+
+        auto after_cond = rest.as_pair()->cdr;
+        if (!after_cond.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_if")
+                .expected("(if cond then [else])")
+                .got("missing then-branch");
+        }
+
+        auto then_form = after_cond.as_pair()->car;
+        auto after_then = after_cond.as_pair()->cdr;
+
+        // Optional else-branch. When omitted, the value of the `if`
+        // expression is unspecified; the VM currently leaves the
+        // result register as-is.
+        std::unique_ptr<ExpressionNode> else_branch;
+        if (after_then.is_pair()) {
+            else_branch = build_expression(after_then.as_pair()->car, node);
+        }
 
         auto cond = build_expression(cond_form, node);
         auto then_branch = build_expression(then_form, node);
-        auto else_branch = else_form.is_null() ? nullptr : build_expression(else_form, node);
 
         return std::make_unique<IfNode>(std::move(cond), std::move(then_branch),
                                         std::move(else_branch));
@@ -745,17 +781,59 @@ namespace sootc {
     // ============================================================================
     // while
     // ============================================================================
+    // (while test [:label <symbol>] body...)
+    //
+    // The :label keyword is optional and, when present, must be followed
+    // by a symbol. It names the loop in FunctionNode::m_labels, giving
+    // a stable, user-chosen name to the entry label. The exit label is
+    // derived from it by appending "_end".
+    //
+    // Everything after the optional :label is treated as the loop body
+    // and is compiled into a single ExpressionNode (a SequenceNode when
+    // there is more than one form).
     std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_while")
-                .expected("(while test body...)")
+                .expected("(while test [:label <symbol>] body...)")
                 .got("missing condition");
         }
 
         auto cond_form = rest.as_pair()->car;
-        auto body_forms = rest.as_pair()->cdr;
+        auto after_cond = rest.as_pair()->cdr;
 
+        // Optional :label <symbol> immediately after the test.
+        //
+        // We accept exactly one such keyword. Anything else after the
+        // test that is not :label starts the body.
+        std::optional<std::string> label;
+        if (after_cond.is_pair()) {
+            const auto &first = after_cond.as_pair()->car;
+            if (first.is_symbol() && first.is_keyword() &&
+                first.as_symbol().name_ptr == std::string(":label")) {
+                auto after_kw = after_cond.as_pair()->cdr;
+                if (!after_kw.is_pair()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_while")
+                        .expected("symbol after :label")
+                        .got("end of form");
+                }
+                const auto &label_form = after_kw.as_pair()->car;
+                if (!label_form.is_symbol()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_while")
+                        .expected("symbol as label name")
+                        .got(label_form.print());
+                }
+                // Symbols from the reader carry a leading ':' for
+                // keyword-like names. The label itself must not.
+                std::string raw = label_form.as_symbol();
+                if (!raw.empty() && raw[0] == ':') { raw = raw.substr(1); }
+                label = raw;
+                after_cond = after_kw.as_pair()->cdr;
+            }
+        }
+
+        // Whatever remains is the body.
+        auto body_forms = after_cond;
         if (!body_forms.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_while")
                 .expected("non-empty body")
@@ -765,9 +843,13 @@ namespace sootc {
         auto cond = build_expression(cond_form, node);
         auto body = build_body_as_sequence(body_forms, node);
 
-        return std::make_unique<WhileNode>(
+        auto while_node = std::make_unique<WhileNode>(
             std::move(cond),
             std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(body.release())));
+
+        if (label.has_value()) { while_node->set_label(*label); }
+
+        return while_node;
     }
 
     // ============================================================================
@@ -865,14 +947,78 @@ namespace sootc {
         auto rest = form.as_pair()->cdr;
 
         if (!head.is_symbol()) {
+            // Head is not a symbol. The only legal case is a call of an
+            // immediately-constructed lambda, i.e. ((lambda (x) ...) arg...).
+            // This is the canonical expansion of `let`/`let*` in Scheme,
+            // so lib.soc relies on it heavily.
+            //
+            // We handle it by compiling the head as an expression, storing
+            // it in a temp register, then emitting a Call through that
+            // register. The result is identical to what a named call
+            // would produce, but the callee is a value, not a SID.
+            if (head.is_pair() && head.as_pair()->car.is_symbol()) {
+                const std::string head_sym = head.as_pair()->car.as_symbol();
+                if (head_sym == "lambda" || head_sym == "function") {
+                    // Compile the lambda into a FunctionNode and wrap it
+                    // in a LambdaNode-like expression. In this codebase
+                    // FunctionNode is itself usable as an ExpressionNode
+                    // value, so we just build the FunctionNode and use
+                    // its address as the call target.
+                    auto  lambda_fn = build_lambda(head, node);
+                    auto *fn_raw = dynamic_cast<FunctionNode *>(lambda_fn.get());
+                    if (!fn_raw) {
+                        throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                            .expected("FunctionNode produced by build_lambda")
+                            .got("non-FunctionNode");
+                    }
+
+                    // Move ownership of the FunctionNode into an
+                    // ExpressionNode-compatible holder so it can be
+                    // emitted like any other expression. FunctionNode is
+                    // a Node, not an ExpressionNode, so we need a thin
+                    // wrapper: for now, emit the lambda inline and use
+                    // its function SID.
+                    //
+                    // Simpler approach: synthesize a unique name for the
+                    // lambda, register it in the current file's symbol
+                    // table, and emit a normal named call.
+                    std::string lambda_name = m_compiler->make_unique_lambda_name(
+                        node->file() ? node->file()->name() : std::string("<anonymous>"));
+
+                    fn_raw->set_name(lambda_name);
+
+                    if (auto *file = node->file()) {
+                        // Transfer ownership and bind the name so the
+                        // CallNode below can resolve it at runtime.
+                        FunctionNode *raw = fn_raw;
+                        lambda_fn.release();
+                        file->add_child(std::unique_ptr<Node>(raw));
+                        file->bind(lambda_name, raw);
+                    }
+
+                    // Compile arguments and emit a normal CallNode
+                    // referencing the synthesized name.
+                    auto args = parse_args(rest, node);
+                    auto call = std::make_unique<CallNode>(lambda_name, nullptr);
+                    call->set_is_native(false);
+                    for (auto &arg : args) {
+                        call->add_argument(std::unique_ptr<ExpressionNode>(
+                            dynamic_cast<ExpressionNode *>(arg.release())));
+                    }
+                    return call;
+                }
+            }
+
             throw m_compiler->make_error(form, "NodeBuilder::build_call")
-                .expected("symbol as the function name")
+                .expected("symbol as the function name, or a (lambda ...) form")
                 .got(fmt::format("'{}' (type: {})", head.print(), head.class_name()))
-                .note("The first element of a function call must be a symbol.");
+                .note("The first element of a function call must be either "
+                      "a symbol or a lambda expression.");
         }
 
         std::string func_name = head.to_std_string();
         auto        args = parse_args(rest, node);
+   
 
          // ---- Typecheck against known signature (if any) ----
         if (auto sig = m_compiler->lookup_function_signature(func_name)) {
@@ -996,16 +1142,53 @@ namespace sootc {
     // ============================================================================
     // parse_type
     // ============================================================================
+    // Resolve a type form to a Type*.
+    //
+    // Three cases are supported:
+    //
+    //   1. The form is a symbol that names a registered type
+    //      (int, float, object, a user type, ...). Return that Type*.
+    //
+    //   2. The form is a symbol that does not name a registered type,
+    //      and ALLOW_SIMPLE_ARGUMENT_SYNTAX is enabled. This happens
+    //      for untyped lambda parameters such as (lambda (n) ...).
+    //      Fall back to `object`, the dynamic type.
+    //
+    //   3. Any other form (list, integer, string, ...) is a hard error.
+    //      Report it verbatim so the caller sees exactly what was
+    //      rejected.
+    //
+    // When ALLOW_SIMPLE_ARGUMENT_SYNTAX is disabled, case 2 becomes a
+    // hard error as well, with an actionable message.
     Type *NodeBuilder::parse_type(const soot::Object &type_form, Node *node) {
-        (void)node;
+        (void)node; // The context node is not needed here — the type
+                    // resolver is context-free.
+
         if (type_form.is_symbol()) {
-            Type *t = m_ts.lookup_type(type_form.as_symbol());
+            // `lookup_type_no_throw` returns nullptr instead of throwing,
+            // so we can distinguish "symbol is not a type name" from
+            // "symbol is a type name that failed to resolve".
+            Type *t = m_ts.lookup_type_no_throw(type_form.as_symbol());
             if (t) return t;
+
+#if ALLOW_SIMPLE_ARGUMENT_SYNTAX
+            // Untyped parameter or forward-declared name: default to
+            // `object`. Intentional — see the file header comment.
+            return m_ts.lookup_type("object");
+#else
+            const std::string note = fmt::format("Annotate the type, e.g. 'object', or set "
+                                                 "ALLOW_SIMPLE_ARGUMENT_SYNTAX to 1.");
             throw m_compiler->make_error(type_form, "NodeBuilder::parse_type")
-                .expected("known type (int, float, ...)")
-                .got(fmt::format("type '{}'", type_form.as_symbol().c_str()));
+                .expected("symbol naming a known type (int, float, object, ...)")
+                .got(fmt::format("unknown type name '{}'", type_form.as_symbol().c_str()))
+                .note(note);
+#endif
         }
-        return m_ts.lookup_type("object");
+
+        // Non-symbol type forms are never valid in this dialect.
+        throw m_compiler->make_error(type_form, "NodeBuilder::parse_type")
+            .expected("symbol naming a type (int, float, object, ...)")
+            .got(type_form.print());
     }
 
     // ============================================================================

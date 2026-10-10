@@ -1,6 +1,18 @@
 ﻿#pragma once
 
+// ---------------------------------------------------------------------------
+// CompilerError — structured error type for internal compiler bugs.
+//
+// This header is included from Compiler.hpp, which is included from many
+// translation units. It must therefore be self-sufficient: every symbol
+// used by the inline methods below has to be declared here, or pulled in
+// by the includes at the top. In particular, fmt::color and fmt::emphasis
+// live in fmt/color.h, NOT in fmt/format.h — include both.
+// ---------------------------------------------------------------------------
+
+#include "fmt/color.h"
 #include "fmt/format.h"
+
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -8,23 +20,23 @@
 namespace sootc {
 
     // -------------------------------------------------------------------------------------------
-    // 
-    // СОГЛАШЕНИЕ
     //
-    // 1. Внутренние ошибки(баг компилятора, неверное состояние) → CompilerError.
-    // 
-    // 2. Пользовательские ошибки(неизвестный символ, не тот тип) → throw_compiler_error(form, ...) 
-    // в Compiler, как у нас уже есть.
-    // 
-    // 3. Инварианты в горячем коде(assert, unreachable) — оставляем как std::logic_error или assert,
-    // они не для пользователя и не для отладки компилятора,
-    // а для отлова программистских ошибок в C++.
+    // CONVENTION
+    //
+    // 1. Internal errors (compiler bug, invalid state) -> CompilerError.
+    //
+    // 2. User errors (unknown symbol, wrong type) -> throw_compiler_error(form, ...)
+    //    in Compiler, as we already have.
+    //
+    // 3. Invariants in hot code (assert, unreachable) — keep as std::logic_error or assert,
+    //    they are not for the user and not for compiler debugging,
+    //    but for catching programmer errors in C++.
     // -------------------------------------------------------------------------------------------
-    // 
-    // Единый формат для внутренних ошибок компилятора (баги в самом компиляторе,
-    // не ошибки пользователя).
     //
-    // Использование:
+    // Single format for internal compiler errors (bugs in the compiler itself,
+    // not user errors).
+    //
+    // Usage:
     //   throw CompilerError("FileNode::generate")
     //       .where("repl file '<repl>'")
     //       .expected("at least one FunctionNode")
@@ -62,11 +74,17 @@ namespace sootc {
             return *this;
         }
 
+        // Render the error to stdout in a compact, structured form.
+        //
+        // The color and emphasis specifiers come from fmt/color.h; the
+        // include at the top of this file guarantees they are visible
+        // here regardless of include order in the including translation
+        // unit.
         void render() const {
             build_message();
             fmt::print(fg(fmt::color::indian_red) | fmt::emphasis::bold,
                        "\n─── COMPILER ERROR ─────────────────────────\n");
-            if (!m_where.empty()) { // ← не печатать пустой where
+            if (!m_where.empty()) { // do not print an empty `where` line
                 fmt::print(fg(fmt::color::indian_red), "{}\n", m_where);
             }
             for (const auto &[k, v] : m_details) {
@@ -80,6 +98,8 @@ namespace sootc {
         }
 
     private:
+        // Build the plain-text version of the message once and cache it.
+        // Called from both render() and what(), so it must be idempotent.
         void build_message() const {
             if (!m_message.empty()) return;
             m_message = m_where;

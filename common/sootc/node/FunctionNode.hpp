@@ -41,7 +41,11 @@ namespace sootc {
      * .Потом add_parameter(name, type) с nullptr — упадёт или даст мусор.
      */
 
-    // #define ALLOW_SIMPLE_ARGUMENT_SYNTAX 1
+// At the top of NodeBuilder.hpp, before any includes that could
+// reference the flag:
+#ifndef ALLOW_SIMPLE_ARGUMENT_SYNTAX
+#define ALLOW_SIMPLE_ARGUMENT_SYNTAX 1
+#endif
 
 
     class FunctionNode : public Node {

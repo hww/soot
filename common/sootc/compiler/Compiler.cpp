@@ -1,6 +1,7 @@
 // sootc/compiler/Compiler.cpp
 #include "fmt/color.h"
 #include "fmt/core.h"
+#include "fmt/format.h"
 #include "third_party/replxx/include/replxx.hxx"
 
 #include "carbon/file/BinaryFileInspector.hpp"
@@ -318,11 +319,15 @@ namespace sootc {
 
             return binary;
 
+        } catch (const soot::EvalException &e) {
+            fmt::print(fg(fmt::color::orange), "SOOT error while compiling {}: {}\n", filename,
+                       e.what());
+            return std::unexpected(std::string("SOOT error: ") + e.what());
         } catch (const CompilerError &e) {
             e.render();
             return std::unexpected(std::string(e.what()));
         } catch (const std::exception &e) {
-            render_internal_error(e);
+            render_internal_error(e); // ← только сюда
             return std::unexpected(std::string("Internal compiler error: ") + e.what());
         }
     }
@@ -1080,6 +1085,35 @@ namespace sootc {
 
     soot::Object Compiler::expand_soot_macro(const soot::Object &form) {
         return expand_soot_macro_for_compiler(m_soot, form);
+    }
+    // Synthesize a unique name for an anonymous lambda.
+    //
+    // Called by NodeBuilder::build_call when the head of a call is a
+    // lambda form rather than a symbol. The generated name is used as
+    // the entry name inside the binary and as the binding in the
+    // enclosing FileNode's symbol table, so it must be unique within
+    // that file. Because each file is compiled by a single Compiler
+    // instance, a per-instance counter is sufficient.
+    //
+    // The format "<base>::lambda#<n>" is deliberately not a valid SOOT
+    // symbol from the reader's point of view: it contains ':' and '#',
+    // which the reader would reject. This guarantees that a synthesized
+    // name can never collide with a name the user wrote, even if the
+    // user's base string happens to match an existing function.
+    //
+    // @param base  Human-readable prefix, typically the source file's
+    //              path. May be empty; in that case "<anon>" is used.
+    // @return      A name of the form "<base>::lambda#<n>".
+    std::string Compiler::make_unique_lambda_name(const std::string &base) {
+        // Fall back to a stable placeholder when the caller has no
+        // useful base string. Using "<anon>" rather than "" keeps the
+        // resulting name readable in disassembly and logs.
+        const std::string &effective_base = base.empty() ? "<anon>" : base;
+
+        // Post-increment: the first lambda gets #0, the second #1, and
+        // so on. The counter is never reset, so names are unique for
+        // the lifetime of this Compiler instance.
+        return fmt::format("{}::lambda#{}", effective_base, m_lambda_counter++);
     }
 
     // ===============================================================

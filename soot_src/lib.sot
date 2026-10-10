@@ -9,6 +9,16 @@
 ;; Anything that defines the SYNTAX of the language (defun, defmacro, let,
 ;; while, case, if, when, ...) lives in lib.soc, because those are compiled
 ;; forms. Here we keep only what the interpreter itself needs.
+;;
+;; IMPORTANT: the macros defined here live in *global-env*, the
+;; interpreter's own environment. The compiler does NOT see them:
+;; Compiler::try_getting_macro_from_soot looks up names ONLY in
+;; *soot-env*, without walking up to *global-env*. This is what keeps
+;; the interpreter's `if`/`when`/`not`/`==`/`!=` from shadowing the
+;; compiler's built-in forms.
+;;
+;; Mirrors the split in OpenGOAL: goos-lib.gs → *global-env*,
+;; goal-lib.gc → *goal-env*, and the compiler only consults the latter.
 ;; =============================================================================
 
 ;; ===========================================================================
@@ -34,39 +44,48 @@
 (defsmacro declare-extern (name type)
   `(declare-external ',name ',type))
 
-;; stoot macro to let us define goal macros from goos:
+;; soot macro to let us define goal macros from goos:
 (defsmacro defgmacro (name args &rest body)
   `(define :env *soot-env* ,name (macro ,args ,@body))
   )
 
+;; ===========================================================================
+;; Interpreter control-flow macros
+;; ===========================================================================
+;;
+;; These are the interpreter's OWN versions of if/when/not/unless/etc.
+;; They are used when the interpreter expands a macro whose body
+;; contains control-flow forms — for example, a lib.soc macro that has
+;; `if` inside its body.
+;;
+;; The compiler does NOT see them, because try_getting_macro_from_soot
+;; only consults *soot-env*. When the compiler encounters `if` in
+;; compiled code, it goes to m_form_table and emits an IfNode.
+;;
+;; This is the same design OpenGOAL uses: goos-lib.gs defines if/when/
+;; not/unless/etc. in *global-env*, while goal-lib.gc relies on the
+;; compiler's built-in forms (compile_if, compile_when, ...). The two
+;; coexist because they live in different environments.
+
 (defsmacro if (clause true false)
-  `(cond (,clause ,true) (#t ,false))
-  )
+  `(cond (,clause ,true) (#t ,false)))
 
 (defsmacro when (clause &rest body)
-  `(if ,clause (begin ,@body) #f)
-  )
+  `(if ,clause (begin ,@body) #f))
 
 (defsmacro not (x)
-  `(if ,x #f #t)
-  )
+  `(if ,x #f #t))
 
 (defsmacro unless (clause &rest body)
-  `(if (not ,clause) (begin ,@body) #f)
-  )
+  `(if (not ,clause) (begin ,@body) #f))
 
 (defsmacro aif (condition true false)
   "Anaphoric if, similar to Common Lisp"
   `(let ((it ,condition))
-      (if it
-          ,true
-          ,false
-          )
-      )
-  )
+      (if it ,true ,false)))
 
 ;; ===========================================================================
-;; Predicates
+;; Predicates (interpreter-side)
 ;; ===========================================================================
 
 (defsmacro none?     (x) `(type? 'none ,x))
@@ -93,6 +112,22 @@
     (#t #f)))
 
 (defsmacro notnull? (x) `(not (null? ,x)))
+
+;; ===========================================================================
+;; Interpreter-side numeric / comparison macros
+;; ===========================================================================
+;;
+;; `==`, `!=`, `neq?`, `between` are the interpreter's own macros. They
+;; expand into interpreter calls (eq?, =, not) which the interpreter
+;; knows how to evaluate. The compiler never sees them; when the
+;; compiler encounters `==` in compiled code, it goes to m_form_table
+;; and emits a CompareNode.
+
+(defsmacro neq? (a b) `(not (eq? ,a ,b)))
+(defsmacro !=   (a b) `(not (= ,a ,b)))
+(defsmacro ==   (a b) `(eq? ,a ,b))
+(defsmacro between (val min max)
+  `(and (<= ,min ,val) (<= ,val ,max)))
 
 ;; ===========================================================================
 ;; Constants
@@ -138,14 +173,13 @@
     vals))
 
 ;; ===========================================================================
-;; Control constructs (SOOT level only)
+;; Interpreter-side case / case-type
 ;; ===========================================================================
-;; Note: when/unless/not/cond/if are NOT here. They live in lib.soc,
-;; because they are syntax of the compiled language.
-
-(defsmacro aif (condition true-branch false-branch)
-  `(let ((it ,condition))
-     (if it ,true-branch ,false-branch)))
+;;
+;; These are the interpreter's own case forms. lib.soc has its own
+;; `case` that expands into a compiler-side cond. The two do not
+;; conflict because they live in different environments and are used
+;; by different consumers.
 
 (defsmacro case (expr &rest branches)
   (let ((val-sym (gensym)))
@@ -185,19 +219,6 @@
    ((string? container) (string-for-each container proc))
    ((hash-table? container) (hash-table-for-each container proc))
    (#t (error (fmt #f "for-each: unsupported container type {}" container)))))
-
-(defsmacro dotimes (var &rest body)
-  `(let ((,(first var) 0))
-     (while (< ,(first var) ,(second var))
-            ,@body
-            (set! ,(first var) (+ ,(first var) 1)))
-     ,@(cddr var)))
-
-(defsmacro dolist (bindings &rest body)
-  `(let ((,(car bindings) ,(cadr bindings)))
-     (while (not (null? ,(car bindings)))
-            ,@body
-            (set! ,(car bindings) (cdr ,(car bindings))))))
 
 ;; ===========================================================================
 ;; MAP-style iterators
@@ -408,16 +429,6 @@
 (desfun sign (x) (if (>= x 0) '+ '-))
 
 ;; ===========================================================================
-;; Predicates (SOOT level)
-;; ===========================================================================
-
-(defsmacro neq? (a b) `(not (eq? ,a ,b)))
-(defsmacro !=   (a b) `(not (= ,a ,b)))
-(defsmacro ==   (a b) `(eq? ,a ,b))
-(defsmacro between (val min max)
-  `(and (<= ,min ,val) (<= ,val ,max)))
-
-;; ===========================================================================
 ;; Strings
 ;; ===========================================================================
 
@@ -555,8 +566,6 @@
 ;; ===========================================================================
 ;; Bootstrap SOOT Compiler macro system
 ;; ===========================================================================
-
-
 
 ;; goal macro to define a goal macro
 (defgmacro defmacro (name args &rest body)

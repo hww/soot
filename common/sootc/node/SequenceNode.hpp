@@ -20,7 +20,7 @@ namespace sootc {
 
         size_t size() const { return m_exprs.size(); }
 
-        void SequenceNode::emit(FunctionNode &func) {
+        void emit(FunctionNode &func) override {
             if (m_exprs.empty()) {
                 // Empty sequence: no value. Leave the caller to handle it.
                 return;

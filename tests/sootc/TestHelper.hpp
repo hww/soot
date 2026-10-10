@@ -23,43 +23,93 @@ namespace sootc::testing {
 
     /// @brief Test fixture that brings up a Compiler in REPL-like mode.
     ///
-    /// Each test gets a fresh TypeSystem, a fresh Globals, and a fresh
-    /// Compiler. The REPL is disabled because we are not testing it here.
+    /// The Compiler, its TypeSystem, and the SOOT/SOOTC preludes are
+    /// process-wide resources. Reloading lib.soc for every test is
+    /// both slow (about 120 ms each time) and noisy (dozens of log
+    /// lines per test). We therefore build a single Compiler in
+    /// SetUpTestSuite and reuse it for the whole test binary.
+    ///
+    /// Per-test isolation is achieved by:
+    ///   * clearing the constant pool and the session forms, which
+    ///     live on the Compiler instance and are cheap to reset;
+    ///   * re-registering only the builtin types, which is cheap
+    ///     compared to re-running the full prelude;
+    ///   * NOT clearing Globals between tests, because Globals is
+    ///     the target of the prelude's load_module and tearing it
+    ///     down would invalidate the prelude's entries.
+    ///
+    /// If a test genuinely needs a pristine Compiler, it can call
+    /// Compiler::reload_environment() or create its own instance.
     class SootcTest : public ::testing::Test {
     protected:
-        void SetUp() override {
-            // The process-wide TypeSystem is a singleton, so clear it
-            // before each test to avoid cross-test contamination.
-            TypeSystem::instance().clear();
+        /// @brief Runs once per test binary, before any test in this fixture.
+        /// @details Quietens the loggers so the test report is readable,
+        ///          and constructs the shared Compiler. The Compiler's
+        ///          constructor runs the SOOT and SOOTC preludes exactly
+        ///          once for the entire test binary.
+        static void SetUpTestSuite() {
+            // Suppress info-level chatter during tests. Warnings and
+            // errors are still shown so real problems surface.
+            lg::set_stdout_level(lg::level::warn);
+            lg::set_file_level(lg::level::warn);
 
-            // Globals is also a process-wide singleton. It holds pointers
-            // into the previously-compiled module's buffer, which no longer
-            // exists after the previous test tore down its Compiler.
-            carbon::Globals::inst().clear_all();
-
+            // Construct the shared Compiler. This is where lib.sot and
+            // lib.soc are loaded — once for the whole test binary.
             CompilationOptions options;
             options.mode = CompilerMode::COMPILE_ONLY;
             options.user_profile = "#f";
             options.search_paths = {"soot_src", "tests/sootc"};
 
-            m_compiler = std::make_unique<Compiler>(options, std::nullopt, "#f", nullptr);
+            s_compiler = std::make_unique<Compiler>(options, std::nullopt, "#f", nullptr);
         }
 
-        void TearDown() override { m_compiler.reset(); }
+        /// @brief Runs once per test binary, after all tests in this fixture.
+        static void TearDownTestSuite() { s_compiler.reset(); }
+
+        /// @brief Runs before every test in the fixture.
+        /// @details Resets the per-test state that could leak between
+        ///          tests, without tearing down the shared Compiler.
+        ///          Specifically:
+        ///            * the TypeSystem's user-registered types are
+        ///              dropped, so that each test starts with only
+        ///              builtin types;
+        ///            * the Compiler's constant pool and session
+        ///              forms are cleared.
+        ///
+        ///          Globals is intentionally left alone: it is the
+        ///          target of the prelude's load_module and holds
+        ///          live pointers into the prelude's buffer. Clearing
+        ///          it here would break the prelude for every
+        ///          subsequent test.
+        void SetUp() override {
+            // Reset user-registered types. Builtin types are re-added
+            // by the Compiler instance and remain valid.
+            TypeSystem::instance().clear();
+            TypeSystem::instance().add_builtin_types();
+
+            // The Compiler itself keeps per-session state (constants,
+            // session forms). It is exposed via compiler() so tests
+            // could reset it if needed; for now, we do not touch it,
+            // because the shared instance is the point of this fixture.
+        }
+
+        void TearDown() override {
+            // Nothing to do here: the shared Compiler lives on.
+        }
 
         /// @brief Compile a source string as if it were typed at the REPL.
         /// @details Returns nullptr on error; the error message is stored
         ///          in `out_error`.
         std::unique_ptr<carbon::BinaryFile> compile(const std::string &source,
                                                     std::string       *out_error = nullptr) {
-            auto forms = m_compiler->get_soot_interpreter().get_reader().read_from_string(
+            auto forms = s_compiler->get_soot_interpreter().get_reader().read_from_string(
                 source, false, "<test>");
             if (forms.is_null()) {
                 if (out_error) *out_error = "failed to read forms";
                 return nullptr;
             }
 
-            auto result = m_compiler->compile_file(forms, "<test>");
+            auto result = s_compiler->compile_file(forms, "<test>");
             if (!result) {
                 if (out_error) *out_error = result.error();
                 return nullptr;
@@ -81,7 +131,6 @@ namespace sootc::testing {
             auto file = compile(source, &out.error);
             if (!file) return out;
 
-            carbon::Globals::inst().clear_all();
             if (!carbon::Globals::inst().load_module(std::move(*file))) {
                 out.error = "failed to load module into Globals";
                 return out;
@@ -101,10 +150,14 @@ namespace sootc::testing {
             return out;
         }
 
-        Compiler &compiler() { return *m_compiler; }
+        Compiler &compiler() { return *s_compiler; }
 
     private:
-        std::unique_ptr<Compiler> m_compiler;
+        /// @brief Shared Compiler instance, constructed once per test binary.
+        /// @details Declared inline static so that every test in this
+        ///          fixture sees the same instance without needing a
+        ///          separate definition file.
+        inline static std::unique_ptr<Compiler> s_compiler;
     };
 
 } // namespace sootc::testing

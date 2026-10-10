@@ -13,23 +13,53 @@ namespace sootc {
     // ============================================================================
     // try_getting_macro_from_soot
     // ============================================================================
+    // Look up a macro by name in *soot-env* ONLY.
+    //
+    // The interpreter (lib.sot) and the compiler (lib.soc) have
+    // different ideas about what some names mean. `if`, `when`, `not`,
+    // `unless`, `==`, `!=`, `zero?`, `max`, `min` are macros in the
+    // interpreter, but built-in compiler forms in NodeBuilder. If the
+    // compiler looked those names up in *global-env* (the interpreter's
+    // own environment), it would expand them with the interpreter's
+    // semantics and generate code that either fails to compile
+    // (if without else) or references functions that are not in the
+    // VM's Globals table (eq?, =).
+    //
+    // In OpenGOAL, the equivalent separation is achieved by having two
+    // environments: *global-env* for GOOS, *goal-env* for GOAL. Macros
+    // defined with `defsmacro` live in *global-env*; macros defined
+    // with `defgmacro` live in *goal-env*. The compiler only ever
+    // consults *goal-env*, so the interpreter's `if`/`when`/... never
+    // shadow the compiler's own forms.
+    //
+    // We mirror that design here. *soot-env* is the compiler-side
+    // environment. lib.soc registers its macros there (see
+    // NodeBuilder::build_define). lib.sot registers its macros in
+    // *global-env* via m_soot.eval_string(). The two never mix as
+    // long as this lookup does NOT walk up the parent chain.
+    //
+    // The lookup below reads the binding directly out of *soot-env*'s
+    // own var table. If the name is not bound there, it is not a
+    // compiler macro, regardless of whether it is a macro in
+    // *global-env*.
     bool try_getting_macro_from_soot(soot::Interpreter &soot, const soot::Object &macro_name,
                                      soot::Object *dest) {
         if (!macro_name.is_symbol()) { return false; }
 
         auto sootc_env = soot.get_soot_environment().as_env_ptr();
 
-        Object macro_obj;
-        try {
-            macro_obj = soot.eval_symbol(macro_name, sootc_env);
-        } catch (const soot::EvalException &) {
-            // Symbol not defined in sootc-env.
-            return false;
-        }
+        // Look up ONLY in soot-env's own bindings, without walking
+        // up to *global-env*. The exact API depends on your
+        // EnvironmentObject; the one used elsewhere in the codebase
+        // is `vars.lookup(symbol)`.
+        //
+        // If your EnvironmentObject exposes a `lookup_local` /
+        // `lookup_here` method, use that instead.
+        auto *entry = sootc_env->vars.lookup(macro_name.as_symbol());
+        if (!entry) { return false; }
+        if (!entry->is_macro()) { return false; }
 
-        if (!macro_obj.is_macro()) { return false; }
-
-        if (dest) { *dest = macro_obj; }
+        if (dest) { *dest = *entry; }
         return true;
     }
 

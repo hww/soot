@@ -176,7 +176,7 @@ namespace carbon {
                     logstring +=
                         fmt::format("R{}={} ", i, current_frame->get_register(i).to_string());
                 }
-                lg::info("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
+                lg::debug("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
             }
 
             try {
@@ -548,6 +548,20 @@ namespace carbon {
                     Variant &src1 = current_frame->get_register(instr.b);
                     Variant &src2 = current_frame->get_register(instr.c);
                     dest = Variant(src1.to_int() == src2.to_int());
+                    break;
+                }
+                // Integer not-equal.
+                //
+                // This opcode is emitted by NodeBuilder::build_compare
+                // for the `!=` form. It is the counterpart of IEqual
+                // and must be present in the switch, or the VM will
+                // fall through to `default:` and abort with
+                // "Unknown opcode: 91".
+                case Opcode::INotEqual: {
+                    Variant &dest = current_frame->get_register(instr.a);
+                    Variant &src1 = current_frame->get_register(instr.b);
+                    Variant &src2 = current_frame->get_register(instr.c);
+                    dest = Variant(src1.to_int() != src2.to_int());
                     break;
                 }
 

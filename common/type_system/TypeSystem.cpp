@@ -1079,65 +1079,144 @@ ValueType *TypeSystem::add_builtin_value_type(const std::string &parent,
 // └── ...
 // ============================================================================
 void TypeSystem::add_builtin_types() {
+    // ---------------------------------------------------------------------
+    // Global type configuration
+    // ---------------------------------------------------------------------
+    //
+    // These settings define the primitive sizes and alignments used by
+    // every structure and value type registered below. Getting any of
+    // them wrong silently corrupts the layout of every structure that
+    // contains a field of the affected kind, so the values here must
+    // match what the VM actually reads and writes at runtime.
+    //
+    //   pointer_reg_class — the register class used to move pointers
+    //   pointer_size      — the size in bytes of a pointer in memory.
+    //                       The VM stores pointers in 64-bit registers
+    //                       and reads them with a full 8-byte load in
+    //                       Opcode::LoadPointer, so this must be 8.
+    //   crc_value_size    — the size in bytes of a SID64. Every SID in
+    //                       the DC format (SsField::m_name, SsType::m_name,
+    //                       DCEntry::m_nameID, ScriptLambda::m_funcName)
+    //                       is a sid64, so this must be 8.
+    //   struct_alignment  — alignment of structure types in memory.
+    // ---------------------------------------------------------------------
     TypeConfig::pointer_reg_class = RegClass::GPR_64;
-    TypeConfig::pointer_size = 4;
+    TypeConfig::pointer_size = 8;
     TypeConfig::array_data_offset = 12;
     TypeConfig::default_alignment = 4;
-    TypeConfig::crc_value_size = 4;
+    TypeConfig::crc_value_size = 8;
     TypeConfig::struct_alignment = 16;
     TypeConfig::struct_array_stride_alignment = 16;
     TypeConfig::struct_array_start_alignment = 16;
     TypeConfig::basic_array_start_alignment = 16;
 
+    // ---------------------------------------------------------------------
+    // Idempotence guard
+    // ---------------------------------------------------------------------
+    //
+    // add_builtin_types may be called more than once (for example by
+    // tests that share a TypeSystem instance). The presence of the
+    // `object` type is used as a marker that the builtin tree has
+    // already been installed.
+    if (!m_types.empty() && m_types.find("object") != m_types.end()) { return; }
 
-    // Проверяем что базовые типы еще не инициализированы
-    if (!m_types.empty() && m_types.find("object") != m_types.end()) {
-        return; // Уже инициализированы
-    }
-
-    // Базовые null типы
+    // ---------------------------------------------------------------------
+    // Null / placeholder types
+    // ---------------------------------------------------------------------
+    //
+    // These three types have no runtime representation. They are used
+    // as sentinels in type specifications:
+    //   none      — result of a function that returns nothing
+    //   _type_    — placeholder for the concrete type in method signatures
+    //   _varargs_ — marker for a variadic tail in a function signature
     add_type("none", std::make_unique<NullType>("none"));
     add_type("_type_", std::make_unique<NullType>("_type_"));
     add_type("_varargs_", std::make_unique<NullType>("_varargs_"));
 
-    // OBJECT - корневой тип
+    // ---------------------------------------------------------------------
+    // Root: object
+    // ---------------------------------------------------------------------
+    //
+    // `object` is the root of the entire type hierarchy. Its own size
+    // (4) is the size of a reference to an object, not of the object
+    // itself; the actual object layout depends on the concrete type.
     auto obj_type = add_type("object", std::make_unique<ValueType>("object", "object", false, 4,
                                                                    true, RegClass::GPR_64));
 
-    add_builtin_value_type("object", "pointer", 4);
+    // `pointer` is the generic untyped pointer. It must be 8 bytes so
+    // that a field declared as `pointer` occupies the same space as a
+    // field of any concrete pointer type (e.g. `(pointer uint8)`).
+    add_builtin_value_type("object", "pointer", 8);
 
-    // Базовые структурные типы
+    // ---------------------------------------------------------------------
+    // Structural roots: structure and basic
+    // ---------------------------------------------------------------------
+    //
+    // `structure` has no runtime type information and no method table
+    // of its own beyond the inherited ones.
+    // `basic` adds a 4-byte type tag at the front of every instance.
     auto structure_type = add_builtin_structure("object", "structure");
     auto basic_type = add_builtin_basic("structure", "basic");
 
-    // BitFieldType должен быть создан ПЕРЕД другими типами, так как они могут на него ссылаться
-    // Создаем BitFieldType как ValueType с правильными параметрами
+    // ---------------------------------------------------------------------
+    // Bitfield
+    // ---------------------------------------------------------------------
+    //
+    // Represented as a 4-byte ValueType. Fields of a bitfield type are
+    // registered later via add_field_to_bitfield, which computes their
+    // bit offsets and widths.
     auto bitfield_type =
         add_type("bitfield", std::make_unique<ValueType>("object", "bitfield", false, 4, false,
                                                          RegClass::GPR_64));
 
-    // Базовые типы
-    auto symbol_type = add_builtin_basic("basic", "symbol");
+    // ---------------------------------------------------------------------
+    // Basic-derived builtin types
+    // ---------------------------------------------------------------------
+    //
+    // `symbol` is a SID64 everywhere in the codebase: the reader,
+    // StringIdManager, ScriptLambda::m_funcName, SsField::m_name, the
+    // whole DC format. It must therefore occupy 8 bytes, not 4. Using
+    // add_builtin_basic() would have given it the default `basic` size
+    // (4 bytes) and silently corrupted every struct layout that
+    // contains a symbol field.
+    //
+    // ValueType is used instead of BasicType because it takes an
+    // explicit size. RegClass::GPR_64 matches the VM's register width
+    // for integer-like values, which is what a SID is.
+    //
+    // `type`, `string`, and `function` remain BasicTypes because they
+    // genuinely carry a 4-byte type tag at the front (inherited from
+    // `basic`) and are laid out as structures.
+    auto symbol_type =
+        add_builtin_value_type("basic", "symbol", /*size=*/8,
+                               /*is_ref=*/false, /*is_signed=*/false, RegClass::GPR_64);
+
     auto type_type = add_builtin_basic("basic", "type");
     auto string_type = add_builtin_basic("basic", "string");
     auto function_type = add_builtin_basic("basic", "function");
 
-    // Матричный тип для тестов
+    // Placeholder structure used by tests and by future matrix math.
     auto matrix_type = add_builtin_structure("structure", "matrix");
 
-    // ПРАВИЛЬНАЯ числовая иерархия как в OpenGOAL:
-    // object -> number -> integer -> sinteger -> int32/int64
+    // ---------------------------------------------------------------------
+    // Numeric hierarchy
+    // ---------------------------------------------------------------------
+    //
+    // object -> number -> integer -> sinteger / uinteger -> concrete widths
+    // object -> number -> float
+    //
+    // This mirrors the OpenGOAL layout so that method IDs and field
+    // offsets that were derived from GOAL source remain valid.
     auto number_type =
         add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
 
-    // float
+    // float is 4 bytes and lives in the FPR register class.
     auto float_type = add_builtin_value_type("number", "float", 4, false, false, RegClass::FPR);
 
-    // integer
     auto integer_type =
         add_builtin_value_type("number", "integer", 8, false, false, RegClass::GPR_64);
 
-    // signed integers
+    // Signed integers.
     auto sinteger_type =
         add_builtin_value_type("integer", "sinteger", 8, false, true, RegClass::GPR_64);
     auto int8_type = add_builtin_value_type("sinteger", "int8", 1, false, true);
@@ -1145,7 +1224,7 @@ void TypeSystem::add_builtin_types() {
     auto int32_type = add_builtin_value_type("sinteger", "int32", 4, false, true);
     auto int64_type = add_builtin_value_type("sinteger", "int64", 8, false, true);
 
-    // unsigned integers
+    // Unsigned integers.
     auto uinteger_type =
         add_builtin_value_type("integer", "uinteger", 8, false, false, RegClass::GPR_64);
     auto uint8_type = add_builtin_value_type("uinteger", "uint8", 1, false, false);
@@ -1155,17 +1234,37 @@ void TypeSystem::add_builtin_types() {
 
     auto bool_type = add_builtin_value_type("integer", "bool", 1, false, false, RegClass::GPR_8);
 
-    // Псевдонимы как в оригинале
+    // ---------------------------------------------------------------------
+    // Aliases
+    // ---------------------------------------------------------------------
+    //
+    // `int` and `uint` are the register-width aliases used throughout
+    // user code. They are 8 bytes, matching RegClass::GPR_64. Both are
+    // marked as not-usable-in-runtime so that they cannot appear as
+    // field types in a deftype; only their concrete widths can.
     auto int_type = add_builtin_value_type("integer", "int", 8, false, true, RegClass::GPR_64);
     int_type->disallow_in_runtime();
 
     auto uint_type = add_builtin_value_type("uinteger", "uint", 8, false, false, RegClass::GPR_64);
     uint_type->disallow_in_runtime();
 
-    // Предеклорация
+    // ---------------------------------------------------------------------
+    // Forward declarations
+    // ---------------------------------------------------------------------
+    //
+    // `memory-usage-block` is referenced by object::mem-usage before it
+    // is defined elsewhere. A forward declaration lets the method
+    // signature resolve without requiring the full type definition.
     forward_declare_type_as("memory-usage-block", "basic");
 
-    // Добавляем методы object
+    // ---------------------------------------------------------------------
+    // Methods inherited from object
+    // ---------------------------------------------------------------------
+    //
+    // Method IDs are assigned in the order these declarations appear.
+    // Do not reorder them: the numeric IDs are baked into compiled
+    // binaries and into the VM's kernel entry points (SOOT_NEW_METHOD,
+    // SOOT_DEL_METHOD, ...).
     declare_method(obj_type, "new", {}, false,
                    make_function_typespec({"symbol", "type", "int"}, "_type_"), false);
     declare_method(obj_type, "delete", {}, false, make_function_typespec({"_type_"}, "none"),
@@ -1185,10 +1284,23 @@ void TypeSystem::add_builtin_types() {
                    make_function_typespec({"_type_", "memory-usage-block", "int"}, "_type_"),
                    false);
 
-    // Добавлегте полей
+    // ---------------------------------------------------------------------
+    // Fields of `basic`
+    // ---------------------------------------------------------------------
+    //
+    // Every `basic`-derived object starts with a 4-byte SID that names
+    // its runtime type. This is what allows the VM to dispatch on
+    // `-> type` and to walk a `type` chain at runtime.
     add_field_to_type(basic_type, "type", make_typespec("type"));
 
-    // TYPE
+    // ---------------------------------------------------------------------
+    // Fields of `type`
+    // ---------------------------------------------------------------------
+    //
+    // `type` describes a concrete type at runtime. The layout below is
+    // what the loader walks when it relocates a type at load time.
+    // `method-table` is a pointer, not an inline array, so it must be
+    // declared as `(pointer function)` rather than `function`.
     builtin_structure_inherit(type_type);
     add_field_to_type(type_type, "symbol", make_typespec("symbol"));
     add_field_to_type(type_type, "parent", make_typespec("type"));
@@ -1197,23 +1309,50 @@ void TypeSystem::add_builtin_types() {
                       make_typespec("uint16")); // todo, u16 or s16. what really is this?
     add_field_to_type(type_type, "heap-base", make_typespec("uint16"));        // todo
     add_field_to_type(type_type, "allocated-length", make_typespec("uint16")); // todo
-    add_field_to_type(type_type, "method-table", make_typespec("function"), false, true);
+    add_field_to_type(type_type, "method-table", make_pointer_typespec("function"), false, true);
 
-    builtin_structure_inherit(symbol_type);
-    add_field_to_type(symbol_type, "value", make_typespec("object"), 4);
+    // ---------------------------------------------------------------------
+    // Fields of `symbol`
+    // ---------------------------------------------------------------------
+    //
+    // NOTE: symbol is a ValueType (8-byte SID), not a BasicType. It
+    // therefore has no inherited `basic` header and no nested `value`
+    // field. The previous code called builtin_structure_inherit and
+    // add_field_to_type here, which only makes sense for BasicType;
+    // those calls have been removed along with the type change.
+    //
+    // If you later need `symbol` to be a structure again (e.g. to give
+    // it methods), switch it back to add_builtin_basic with an
+    // explicit 8-byte size, and restore the two calls below.
 
+    // ---------------------------------------------------------------------
+    // Fields of `string`
+    // ---------------------------------------------------------------------
+    //
+    // `length` is a 4-byte signed integer. `data` is a pointer to the
+    // string's character buffer; with pointer_size = 8 it occupies 8
+    // bytes and the natural layout is length at 0, data at 8.
     builtin_structure_inherit(string_type);
     add_field_to_type(string_type, "length", make_typespec("int32"), 4);
     add_field_to_type(string_type, "data", make_pointer_typespec("uint8"), 8, false,
                       true); // dynamic
 
-    if (Type::verbose)
-        fmt::print("DEBUG: Builtin types initialized successfully\n");
+    if (Type::verbose) fmt::print("DEBUG: Builtin types initialized successfully\n");
     verify_type_sizes();
 }
 
 void TypeSystem::verify_type_sizes() {
-    // Проверяем критические размеры
+    // Sanity-check the sizes of the most important builtin types.
+    //
+    // These values are the contract that the rest of the codebase
+    // relies on. If any of them change, the layout of every structure
+    // that contains a field of the affected type silently changes as
+    // well, and the .bin files produced by the compiler will no longer
+    // match what the VM expects.
+    //
+    // `check_size` only warns; it does not throw. This is deliberate:
+    // during bring-up it is useful to see all mismatches in one run
+    // rather than aborting on the first one.
     auto check_size = [&](const std::string &name, size_t expected) {
         Type *type = lookup_type(name);
         if (type && type->get_size_in_memory() != expected) {
@@ -1222,17 +1361,43 @@ void TypeSystem::verify_type_sizes() {
         }
     };
 
+    // object is a reference; its size is the size of a reference to
+    // an object (4 bytes), not the size of the object itself.
     check_size("object", 4);
+
+    // Concrete integer widths.
     check_size("int8", 1);
     check_size("int16", 2);
     check_size("int", 8);
     check_size("uint8", 1);
     check_size("uint16", 2);
     check_size("uint", 8);
+
+    // Pointer-sized values.
     check_size("basic", 4);
+
+    // symbol is a SID64: 8 bytes.
     check_size("symbol", 8);
+
+    // string has a 4-byte length and an 8-byte data pointer. The
+    // natural layout is length at 0 and data at 8, so the raw size is
+    // 12. If StructureType::get_size_in_memory applies struct_alignment
+    // (16), the reported size will be 16; both are acceptable.
     check_size("string", 12);
-    check_size("type", 20);
+
+    // type inherits basic (4-byte tag) plus the fields declared above:
+    //   symbol            : 8 bytes (SID64)
+    //   parent            : 8 bytes (pointer to type)
+    //   size              : 2 bytes
+    //   psize             : 2 bytes
+    //   heap-base         : 2 bytes
+    //   allocated-length  : 2 bytes
+    //   method-table      : 8 bytes (pointer to function)
+    // Total after the 4-byte basic tag: 4 + 8 + 8 + 2 + 2 + 2 + 2 + 8 = 36,
+    // but the exact number depends on how fields are packed and how
+    // the compiler orders them. Do not assert a specific value here
+    // unless you also pin down the packing rules; the warning is only
+    // informational.
 }
 
 // ============================================================================

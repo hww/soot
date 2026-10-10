@@ -277,7 +277,7 @@ namespace sootc {
                            .m_typeId = StringId("script-lambda").value,
                            .m_entryPtr = nullptr};
 
-        lg::info("FunctionNode::build_binary for entry {}", element.m_entry.to_string());
+        lg::debug("FunctionNode::build_binary for entry {}", element.m_entry.to_string());
 
         ScriptLambda lambda = {StringId("script-lambda").value,
                                reinterpret_cast<u64 *>(sizeof(ScriptLambda)),
@@ -295,7 +295,7 @@ namespace sootc {
                                0x0};
 
         // Diagnostic: print the exact size so we can craft the relocation mask.
-        lg::info("sizeof(ScriptLambda) = {}", sizeof(ScriptLambda));
+        lg::debug("sizeof(ScriptLambda) = {}", sizeof(ScriptLambda));
 
         // TODO: verify ScriptLambda layout. For now, mark only slots 1 and 2
         // as relocatable (the two pointer fields m_pSymbols and m_pConstants).
@@ -306,7 +306,7 @@ namespace sootc {
                 for (const Instruction &instr : m_instructions) { element.push_value(instr); }
 
          for (size_t i = 0; i < m_constants.size(); ++i) {
-            lg::info("build_binary: i={}, value=0x{:016X}, kind={}", i, m_constants[i],
+            lg::debug("build_binary: i={}, value=0x{:016X}, kind={}", i, m_constants[i],
                      (i < m_constants_kind.size() ? (u32)m_constants_kind[i] : 999u));
 
             // Constants are 8-byte values and every relocation bit covers a

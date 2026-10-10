@@ -166,6 +166,27 @@ namespace sootc {
         bool         is_soot_macro(const std::string &name);
         soot::Object expand_soot_macro(const soot::Object &form);
 
+        // --- Lambda name synthesis ---
+        //
+        // NodeBuilder calls this when it encounters a call whose head is
+        // not a symbol, e.g. ((lambda (x) x) 5). The lambda is given a
+        // unique name so that the enclosing FileNode can register it in
+        // its symbol table and the CallNode that replaces the original
+        // form can reference it by that name.
+        //
+        // The name is unique within this Compiler instance, not globally,
+        // so separate Compiler instances (and tests) do not interfere
+        // with one another.
+        //
+        // Format: "<base>::lambda#<n>", where <n> is a monotonically
+        // increasing counter starting at 0.
+        //
+        // @param base  Human-readable prefix, typically the enclosing
+        //              file's name. May be empty.
+        // @return      A name that has not been produced by this
+        //              Compiler before.
+        std::string make_unique_lambda_name(const std::string &base);
+
         // --- REPL callbacks ---
         replxx::Replxx::completions_t
         find_symbols_or_object_file_by_prefix(const std::string &context, int &context_len,
@@ -279,5 +300,17 @@ namespace sootc {
 
         /// @brief Base name used when saving the REPL session.
         std::string m_session_name = "repl";
+        /// @brief Monotonic counter used by make_unique_lambda_name.
+        ///
+        /// @details NodeBuilder synthesizes a name for every anonymous
+        ///          lambda that appears in the head of a call, e.g.
+        ///          ((lambda (x) x) 5). The counter is per-Compiler so
+        ///          that separate Compiler instances — including the
+        ///          ones constructed by individual tests — never collide.
+        ///
+        ///          The value is intentionally not reset by anything: it
+        ///          only ever grows, which is what "unique within this
+        ///          Compiler" means.
+        u64         m_lambda_counter = 0;
     };
 } // namespace sootc

@@ -4,8 +4,8 @@
 ;; ============================================================================
 ;; This file is COMPILED by the compiler, not interpreted.
 ;; Its side effects:
-;;   - defmacro registers macros in m_soot
-;;     (via expansion into define ... macro ...)
+;;   - defmacro registers macros in *soot-env* (via expansion into
+;;     define ... macro ...)
 ;;   - deftype / defenum register types in m_ts
 ;;   - defconstant registers constants in the compiler environment
 ;;   - seval executes SOOT code immediately, during compilation of lib.soc
@@ -13,6 +13,21 @@
 ;;
 ;; Anything that only needs to run while expanding macros belongs in lib.sot.
 ;; This file defines the SYNTAX of the language.
+;;
+;; IMPORTANT: the macros defined here live in *soot-env*, the
+;; compiler's own environment. try_getting_macro_from_soot looks ONLY
+;; in *soot-env*, so these macros are visible to the compiler. They
+;; must NOT collide with names that NodeBuilder registers in
+;; m_form_table, because if a macro and a built-in form share a name,
+;; the macro wins and the built-in form is unreachable.
+;;
+;; Reserved names (do NOT define macros for these here):
+;;   define, define-export, lambda, function, begin,
+;;   if, cond, while, let, set!, new, ->,
+;;   +, -, *, /, %, >, <, >=, <=, ==, !=,
+;;   abs, neg, not, lognot,
+;;   defmacro, deftype, defenum, defmethod, seval,
+;;   update-macro-metadata, defconstant, define-extern, define-native
 ;; ============================================================================
 
 ;; ----------------------------------------------------------------------------
@@ -35,30 +50,30 @@
 (defmacro desfun (name args &rest body)
   `(seval (desfun ,name ,args ,@body)))
 
-(defmacro let (bindings &rest body)
-  `((lambda :immediate #t ,(apply first bindings) ,@body)
-    ,@(apply second bindings)))
+;; NOTE: `let` is a built-in form (LetNode). Do not define a macro for
+;; it here. The compiler lowers (let ((x 1) (y 2)) body) directly into
+;; a LetNode.
 
+;; NOTE: `let*` is not a built-in form. We expand it into nested `let`
+;; forms, which the compiler handles natively.
 (defmacro let* (bindings &rest body)
   (if (null? bindings)
     `(begin ,@body)
-    `((lambda :immediate #t (,(caar bindings))
-        (let* ,(cdr bindings) ,@body))
-      ,(car (cdar bindings)))))
+    `(let (,(car bindings))
+        (let* ,(cdr bindings) ,@body))))
 
+;; `when` and `unless` expand into the built-in `if` and `begin`.
 (defmacro when (condition &rest body)
   `(if ,condition (begin ,@body)))
 
 (defmacro unless (condition &rest body)
   `(if (not ,condition) (begin ,@body)))
 
-(defmacro if (condition true-case &rest others)
-  (if (null? others)
-    `(cond (,condition ,true-case))
-    `(cond (,condition ,true-case) (else ,(first others)))))
-
-(defmacro not (x)
-  `(if ,x #f #t))
+;; NOTE: `if` is a built-in form (IfNode). Do not define a macro for it.
+;; NOTE: `not` is a built-in unary operation (UnaryNode::NOT). Do not
+;; define a macro for it.
+;; NOTE: `cond` is a built-in form (build_cond). Do not define a macro
+;; for it.
 
 (defmacro aif (condition true &rest false)
   `(let ((it ,condition))
@@ -70,50 +85,86 @@
 ;; ----------------------------------------------------------------------------
 ;; Loops
 ;; ----------------------------------------------------------------------------
+;;
+;; `while` is a BUILT-IN FORM (WhileNode). Do not define a macro for it.
+;; WhileNode accepts an optional :label keyword, so the dependent
+;; macros below can forward it.
 
-(defmacro while (test &key (label #f) &rest body)
-  ;; Implementation is intentionally left as a placeholder.
-  ;; Replace with the real expansion used by your compiler.
-  `(begin ,@body))
+(defmacro until (test &rest body)
+  `(while (not ,test)
+     ,@body))
 
-(defmacro until (test &key (label #f) &rest body)
-  `(begin ,@body))
+(defmacro dotimes (var &key label &rest body)
+  (let ((limit (second var))
+        (name  (first var)))
+    (if label
+        `(let ((,name 0))
+           (while (< ,name ,limit) :label ,label
+             ,@body
+             (set! ,name (+ ,name 1))))
+        `(let ((,name 0))
+           (while (< ,name ,limit)
+             ,@body
+             (set! ,name (+ ,name 1)))))))
 
-(defmacro dotimes (var &key (label #f) &rest body)
-  `(let ((,(first var) 0))
-     (while (< ,(first var) ,(second var)) :label ,label
-       ,@body
-       (1+! ,(first var)))
-     ,@(cddr var)))
+(defmacro dolist (bindings &key label &rest body)
+  (let ((name (car bindings))
+        (lst  (cadr bindings)))
+    (if label
+        `(let ((,name ,lst))
+           (while (not (null? ,name)) :label ,label
+             ,@body
+             (set! ,name (cdr ,name))))
+        `(let ((,name ,lst))
+           (while (not (null? ,name))
+             ,@body
+             (set! ,name (cdr ,name)))))))
 
-(defmacro dolist (bindings &rest body)
-  `(let ((,(car bindings) ,(cadr bindings)))
-     (while (not (null? ,(car bindings)))
-       ,@body
-       (set! ,(car bindings) (cdr ,(car bindings))))))
+(defmacro loop (&key label &rest body)
+  (if label
+      `(while #t :label ,label
+         ,@body)
+      `(while #t
+         ,@body)))
 
-(defmacro loop (&key (label #f) &rest body)
-  `(while #t :label ,label ,@body))
-
-(defmacro countdown (var &key (label #f) &rest body)
-  `(let ((,(first var) ,(second var)))
-     (while (!= ,(first var) 0) :label ,label
-       (set! ,(first var) (- ,(first var) 1))
-       ,@body)))
+(defmacro countdown (var &key label &rest body)
+  (let ((name (first var))
+        (init (second var)))
+    (if label
+        `(let ((,name ,init))
+           (while (!= ,name 0) :label ,label
+             (set! ,name (- ,name 1))
+             ,@body))
+        `(let ((,name ,init))
+           (while (!= ,name 0)
+             (set! ,name (- ,name 1))
+             ,@body)))))
 
 ;; ----------------------------------------------------------------------------
 ;; Case
 ;; ----------------------------------------------------------------------------
+;;
+;; `case` expands into a `cond` chain using `comp` for the equality
+;; test. The test defaults to `=`, which the compiler lowers to a
+;; CompareNode; `string=` is a native function used for string
+;; comparison.
 
 (defmacro case (switch &key (comp =) &rest cases)
-  ;; Placeholder expansion; replace with the real one.
-  `(begin ,@cases))
-
-(defmacro case-str (switch &rest cases)
-  `(case ,switch ,@cases :comp string=))
+  (let ((switch-name (gensym)))
+    `(let ((,switch-name ,switch))
+       (cond
+         ,@(map (lambda (clause)
+                  (let ((head (first clause))
+                        (body (cdr clause)))
+                    (if (and (symbol? head) (eq? head 'else))
+                      `(else ,@body)
+                      `((or ,@(map (lambda (v) `(,comp ,switch-name ,v))
+                                   head))
+                        ,@body))))
+                cases)))))
 
 ;; ----------------------------------------------------------------------------
-;; Pairs and lists (compiled forms)
+;; Pairs and lists
 ;; ----------------------------------------------------------------------------
 
 (defmacro cons (a b)
@@ -379,25 +430,19 @@
   ((x    float   :offset 0)
    (y    float   :offset 4)
    (z    float   :offset 8)
-   (w    float   :offset 12)
-   ;(data float 4 :overlay-at x)
-   ;(quad uint128 :overlay-at x)
-   )
-(:methods
+   (w    float   :offset 12))
+  (:methods
     (len (vector) float)))
 
 (defmethod len ((this vector))
-   (+ (-> this x) (-> this y) (-> this z) (-> this w))))))
+  (+ (-> this x) (-> this y) (-> this z) (-> this w)))
 
 (deftype cvector (structure)
   ((x    float   :offset 0)
    (y    float   :offset 4)
    (z    float   :offset 8)
-   (w    float   :offset 12)
-   ;(data float 4 :overlay-at x)
-   ;(quad uint128 :overlay-at x)
-   )
-(:methods
+   (w    float   :offset 12))
+  (:methods
     (new (symbol float float float float) _type_)
     (len (cvector) float)))
 
@@ -409,7 +454,7 @@
   this)
 
 (defmethod len ((this cvector))
-        (+ (-> this x) (-> this y) (-> this z) (-> this w))))))
+  (+ (-> this x) (-> this y) (-> this z) (-> this w)))
 
 ;; ----------------------------------------------------------------------------
 ;; Load marker
