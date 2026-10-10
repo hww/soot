@@ -1125,9 +1125,9 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> candidates = {
-            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.sot",
-            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.sot",
-            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.sot",
+            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.st",
+            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.st",
+            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.st",
         };
 
         for (const auto &p : candidates) {
@@ -1163,9 +1163,9 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> candidates = {
-            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.soc",
-            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.soc",
-            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.soc",
+            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.sc",
+            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.sc",
+            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.sc",
         };
 
         for (const auto &p : candidates) {
