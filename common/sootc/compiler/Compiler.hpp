@@ -12,6 +12,7 @@
 #include "fmt/format.h"
 
 #include "sootc/compiler/CompilerError.hpp"
+#include "sootc/runtime/Runtime.hpp"
 
 #include "sootc/node/GlobalNode.hpp"
 #include "sootc/node/Node.hpp"
@@ -65,7 +66,23 @@ namespace sootc {
         bool                     debug_print_ir = false;
         bool                     debug_print_ast = false;
         bool                     debug_print_asm = false;
+        bool                     print_listing = false;
+        std::string              log_level = "info";
+        std::string              sidbase_path;
         std::vector<std::string> search_paths;
+
+        /// @brief Execution backend.
+        ///
+        /// @details Empty string        -> LocalVmRuntime (default).
+        ///          "null"             -> NullRuntime (for --compile-only
+        ///                                and tests).
+        ///          "<host>:<port>"    -> RemoteRuntime (talk to an
+        ///                                external carbon.exe over the
+        ///                                cross-socket protocol).
+        ///
+        ///          Do not include a scheme prefix; the runtime parses
+        ///          optional "tcp://" or "http://" if present.
+        std::string runtime_url;
     };
 
     class Compiler {
@@ -86,7 +103,6 @@ namespace sootc {
 
         // --- REPL ---
         ReplStatus  handle_repl_string(const std::string &input);
-        ReplStatus  handle_repl_command(const std::string &input);
         void        save_repl_history();
         void        print_to_repl(const std::string &str);
         std::string get_prompt();
@@ -187,6 +203,11 @@ namespace sootc {
         //              Compiler before.
         std::string make_unique_lambda_name(const std::string &base);
 
+        // --- Runtime ---
+        /// @brief Access the active runtime.
+        Runtime       &runtime() { return *m_runtime; }
+        const Runtime &runtime() const { return *m_runtime; }
+
         // --- REPL callbacks ---
         replxx::Replxx::completions_t
         find_symbols_or_object_file_by_prefix(const std::string &context, int &context_len,
@@ -226,8 +247,8 @@ namespace sootc {
 
     private:
         // --- Initialization ---
-        void load_soot_prelude(); // lib.sot -> m_soot (interpreted)
-        void load_soc_prelude();  // lib.soc -> compiler (compiled)
+        void load_soot_prelude(); // lib.st -> m_soot (interpreted)
+        void load_soc_prelude();  // lib.sc -> compiler (compiled)
 
         void load_user_profile();
         void setup_repl();
@@ -268,6 +289,49 @@ namespace sootc {
             throw CompilerError("Compilation Error");
         }
 
+        // ------------------------------------------------------------------
+        // REPL command dispatch
+        // ------------------------------------------------------------------
+        //
+        // Commands are recognised by handle_repl_string BEFORE the normal
+        // compile pipeline runs. A line is a command if, when parsed as a
+        // single SOOT form, it is a proper list whose head is a symbol in
+        // repl_commands(). Command forms never reach NodeBuilder, never
+        // produce IR, and never get registered in Globals.
+        //
+        // This separation is deliberate: REPL commands are tools of the
+        // compiler, not forms of the language. They must not shadow or be
+        // shadowed by built-in forms, and they must not appear in the
+        // compiled output.
+
+        /// @brief The set of names recognised as REPL commands.
+        static const std::set<std::string> &repl_commands();
+
+        /// @brief If `input` parses to a REPL command form, dispatch it.
+        /// @return The command's ReplStatus, or std::nullopt if `input`
+        ///         is not a REPL command and should go through the
+        ///         normal compile pipeline.
+        std::optional<ReplStatus> try_handle_repl_command(const std::string &input);
+
+        /// @brief Map a command name to its handler.
+        ReplStatus dispatch_repl_command(const std::string &name, const soot::Object &form);
+
+        // Individual command handlers. Each returns ReplStatus so that a
+        // command can request exit / reload; malformed arguments print
+        // "; ERROR: ..." and return ReplStatus::ERR.
+        ReplStatus cmd_help(const soot::Object &form);
+        ReplStatus cmd_clear(const soot::Object &form);
+        ReplStatus cmd_e(const soot::Object &form);
+        ReplStatus cmd_reload(const soot::Object &form);
+        ReplStatus cmd_sizes(const soot::Object &form);
+        ReplStatus cmd_inspect_env(const soot::Object &form);
+        ReplStatus cmd_inspect_env_soots(const soot::Object &form);
+        ReplStatus cmd_has_macro(const soot::Object &form);
+        ReplStatus cmd_list_symbols(const soot::Object &form);
+        ReplStatus cmd_save_session(const soot::Object &form);
+        ReplStatus cmd_sc_run(const soot::Object &form);
+        ReplStatus cmd_sc_eval(const soot::Object &form);
+
         // --- State ---
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;
@@ -282,12 +346,11 @@ namespace sootc {
         std::unordered_map<std::string, FunctionInfo> m_functions;
         std::unordered_map<std::string, soot::Object> m_constants;
 
-
         // Per-instance set of already-loaded prelude paths.
         //
         // MUST NOT be static: each Compiler instance has its own interpreter
         // (`m_soot`), and macro registration is per-interpreter. A static
-        // set would silently skip loading lib.soc into the second and later
+        // set would silently skip loading lib.sc into the second and later
         // Compiler instances, leaving them without `defun`, `let`, etc.,
         // which breaks every unit test that creates a fresh Compiler.
         std::set<std::filesystem::path> m_loaded_soot_libs;
@@ -300,6 +363,7 @@ namespace sootc {
 
         /// @brief Base name used when saving the REPL session.
         std::string m_session_name = "repl";
+
         /// @brief Monotonic counter used by make_unique_lambda_name.
         ///
         /// @details NodeBuilder synthesizes a name for every anonymous
@@ -311,7 +375,7 @@ namespace sootc {
         ///          The value is intentionally not reset by anything: it
         ///          only ever grows, which is what "unique within this
         ///          Compiler" means.
-        u64         m_lambda_counter = 0;
+        u64 m_lambda_counter = 0;
 
         /// @brief Set to true by the (e) custom form to request REPL exit.
         /// @details handle_repl_string reads this after running a form and
@@ -323,5 +387,31 @@ namespace sootc {
         /// @details handle_repl_string reads this after running a form and
         ///          converts it into ReplStatus::WANT_RELOAD.
         bool m_want_reload = false;
+
+        /// @brief The execution backend.
+        ///
+        /// @details Decided once in the constructor from
+        ///          `CompilationOptions::runtime_url`, and used for
+        ///          everything that used to talk directly to
+        ///          `carbon::Globals` or `carbon::VirtualMachine`:
+        ///
+        ///            * compile_and_report — to load a module.
+        ///            * cmd_sc_run         — to call a function.
+        ///
+        ///          The default (empty runtime_url) is a local
+        ///          in-process VM, which is what sootc has always
+        ///          used. A non-empty runtime_url means "talk to an
+        ///          external host" (RemoteRuntime), or "don't run
+        ///          anything" (NullRuntime) when the url is "null".
+        std::unique_ptr<Runtime> m_runtime;
+
+        /// @brief Compiler-side runtime parameters, controlled by
+        ///        (arg-set "key" value) and queried by (arg-get "key").
+        ///
+        /// @details These are DIFFERENT from CompilationOptions: options
+        ///          are set once at startup and never change; args are
+        ///          set and read interactively during a REPL session.
+        ///          Common keys: "print-listing", "print-ir", "log-level".
+        std::unordered_map<std::string, soot::Object> m_args;
     };
 } // namespace sootc

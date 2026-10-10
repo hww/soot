@@ -23,6 +23,9 @@
 #include "sootc/node/FileNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
+#include "sootc/runtime/LocalVmRuntime.hpp"
+#include "sootc/runtime/NullRuntime.hpp"
+#include "sootc/runtime/RemoteRuntime.hpp"
 #include "type_system/TypeSystem.hpp"
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
@@ -45,6 +48,25 @@ namespace sootc {
         m_ts.add_builtin_types();
         m_global_env = std::make_unique<GlobalNode>();
         m_none = std::make_unique<NoneNode>();
+
+        // Pick the execution backend. The default is the in-process
+        // Carbon VM, which is what sootc has always used. Two
+        // alternatives exist:
+        //
+        //   "null"          -> NullRuntime; used by --compile-only
+        //                      and by tests that do not execute code.
+        //
+        //   "<host>:<port>" -> RemoteRuntime; sends work to an
+        //                      external host (carbon.exe) over the
+        //                      cross-socket protocol.
+        if (m_config.runtime_url.empty()) {
+            m_runtime = std::make_unique<LocalVmRuntime>();
+        } else if (m_config.runtime_url == "null") {
+            m_runtime = std::make_unique<NullRuntime>();
+        } else {
+            m_runtime = std::make_unique<RemoteRuntime>(m_config.runtime_url);
+        }
+        lg::info("Runtime: {}", m_runtime->name());
 
         // 1. SOOT prelude -> interpreter (lib.st).
         load_soot_prelude();
@@ -100,295 +122,28 @@ namespace sootc {
 
     Compiler::~Compiler() = default;
 
-    // Register C++-side forms that need access to the compiler's state.
-    // Only get-enum-vals lives here; everything else is defined in lib.sc.
+    // ===============================================================
+    // Compiler-side SOOT forms
+    // ===============================================================
+    //
+    // Only `get-enum-vals` is registered here. It is the ONLY custom
+    // form that is part of the LANGUAGE and must therefore be visible
+    // to the compiler's pipeline: lib.sc uses it inside macro expansion
+    // to resolve enum values.
+    //
+    // All REPL commands — help, clear, e, reload, sizes, inspect-env,
+    // inspect-env-soots, has-macro, list-symbols, save-session, sc-run,
+    // sc-eval — are NOT registered here. They are handled by
+    // handle_repl_string before the pipeline runs; see repl_commands()
+    // and dispatch_repl_command().
     void Compiler::setup_soot_forms() {
         soot::ArgumentSpec spec(true, false);
 
-        // (get-enum-vals 'name) — used by lib.sc enum macros.
         m_soot.add_custom_form(
             "get-enum-vals",
             [this](const soot::Object &form, soot::Arguments &args,
                    const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
                 return builtin_get_enum_vals(form, args, env);
-            },
-            &spec);
-
-        // ---------------------------------------------------------------------
-        // REPL control forms
-        // ---------------------------------------------------------------------
-        //
-        // These replace the old `:command` syntax. Anything typed at the
-        // REPL is now an ordinary S-expression; there is no separate
-        // command namespace. The forms below are registered as C++ custom
-        // forms in *soot-env* so the compiler can dispatch to them.
-        //
-        // The exit / reload forms set flags that handle_repl_string reads
-        // after running the form.
-
-        // (e) — exit the REPL.
-        m_soot.add_custom_form(
-            "e",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                m_want_exit = true;
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (reload) — reload the environment (re-runs lib.st/lib.sc).
-        m_soot.add_custom_form(
-            "reload",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                m_want_reload = true;
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (clear) — clear the terminal.
-        m_soot.add_custom_form(
-            "clear",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                if (m_repl) { m_repl->clear_screen(); }
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (sizes) — print all known structure sizes.
-        m_soot.add_custom_form(
-            "sizes",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                carbon::print_all_struct_sizes();
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (help) — print REPL help.
-        m_soot.add_custom_form(
-            "help",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                if (m_repl) { m_repl->print_help_message(); }
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (list-symbols) — list every symbol currently in Globals.
-        m_soot.add_custom_form(
-            "list-symbols",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                auto symbols = carbon::Globals::inst().all_symbols();
-                for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (save-session ["name"]) — write the REPL session to a .bin / .h pair.
-        m_soot.add_custom_form(
-            "save-session",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)env;
-                std::string name = m_session_name;
-                if (!args.unnamed.empty()) { name = args.unnamed[0].to_std_string(); }
-                try {
-                    if (save_session(name, ".")) {
-                        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                                   "; saved session as {}.bin and {}.h\n", name, name);
-                    } else {
-                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                                   "; ERROR: failed to save session\n");
-                    }
-                } catch (const std::exception &e) {
-                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                               e.what());
-                }
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // ---------------------------------------------------------------------
-        // Compiler / interpreter evaluation forms
-        // ---------------------------------------------------------------------
-
-        // (sc-run name arg...) — execute a compiled function in the VM.
-        //
-        // Arguments are typed by their SOOT object kind:
-        //   integer   -> i64
-        //   float     -> f32
-        //   string    -> std::string
-        //   symbol    -> StringId
-        m_soot.add_custom_form(
-            "sc-run",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)env;
-                if (args.unnamed.empty()) {
-                    throw std::runtime_error("sc-run: expected function name");
-                }
-                const auto &name_obj = args.unnamed[0];
-                if (!name_obj.is_symbol() && !name_obj.is_string()) {
-                    throw std::runtime_error("sc-run: name must be symbol or string");
-                }
-                const std::string name = name_obj.to_std_string();
-
-                std::vector<carbon::Variant> vm_args;
-                for (size_t i = 1; i < args.unnamed.size(); ++i) {
-                    const auto &o = args.unnamed[i];
-                    if (o.is_integer()) {
-                        vm_args.push_back(carbon::Variant(static_cast<i64>(o.as_integer())));
-                    } else if (o.is_float()) {
-                        vm_args.push_back(carbon::Variant(static_cast<f32>(o.as_float())));
-                    } else if (o.is_string()) {
-                        vm_args.push_back(carbon::Variant(o.to_std_string()));
-                    } else if (o.is_symbol()) {
-                        vm_args.push_back(
-                            carbon::Variant(carbon::StringId(o.as_symbol().name_ptr)));
-                    } else {
-                        throw std::runtime_error(
-                            fmt::format("sc-run: unsupported argument kind: {}", o.print()));
-                    }
-                }
-
-                auto &globals = carbon::Globals::inst();
-                void *fn_ptr = globals.find_symbol_ptr(carbon::StringId(name));
-                if (!fn_ptr) {
-                    throw std::runtime_error(
-                        fmt::format("sc-run: '{}' not found in Globals", name));
-                }
-
-                auto                  *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
-                carbon::VirtualMachine vm;
-                carbon::Variant result = vm.execute_function(lambda, carbon::RunMode::Run, vm_args);
-                vm.purge();
-
-                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", name,
-                           result.to_string());
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (sc-eval form) — evaluate a form in the compiler's SOOT interpreter.
-        // This is the compiler-side analogue of `:soot`.
-        m_soot.add_custom_form(
-            "sc-eval",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                if (args.unnamed.empty()) {
-                    throw std::runtime_error("sc-eval: expected expression");
-                }
-                // Evaluate the first unnamed argument in the interpreter's
-                // global environment and print the result.
-                auto result = m_soot.eval_form(args.unnamed[0], env);
-                fmt::print(fg(fmt::color::green), "{}\n", result.print());
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (inspect-env) — dump the compiler-side environment.
-        m_soot.add_custom_form(
-            "inspect-env",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-                // *soot-env* is the compiler-side environment. Its
-                // `vars` field is an EnvironmentMap, i.e. an
-                // InternedPtrMap<Object>. InternedPtrMap does not expose
-                // begin()/end() and its Entry type is private, but it
-                // does expose get_all_entries(), which returns a
-                // const std::vector<Entry>&. We iterate that vector
-                // with `auto`, which lets us read `entry.key` (a
-                // `const char*`) and `entry.value` (an `Object`)
-                // without naming Entry explicitly.
-                auto sootc_env = m_soot.get_soot_environment().as_env_ptr();
-
-                fmt::print("\n=== Compiler environment (*soot-env*) ===\n");
-
-                const auto &entries = sootc_env->vars.get_all_entries();
-                for (const auto &entry : entries) {
-                    // Empty slots in the open-addressing table have a
-                    // null key. Skip them.
-                    if (!entry.key) { continue; }
-
-                    // Classify the bound value.
-                    const char *kind = "value";
-                    if (entry.value.is_macro()) kind = "macro";
-                    else if (entry.value.is_function())
-                        kind = "function";
-                    else if (entry.value.is_special_form())
-                        kind = "special-form";
-                    else if (entry.value.is_primitive())
-                        kind = "primitive";
-
-                    fmt::print("  {:<40} {}\n", entry.key, kind);
-                }
-
-                fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(),
-                           sootc_env->vars.size());
-                return soot::Object::make_none();
-            },
-            &spec);
-
-        // (inspect-env-soots) — dump the interpreter-side environment
-        // (*global-env*). Same iteration strategy as inspect-env.
-        m_soot.add_custom_form(
-            "inspect-env-soots",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
-                (void)form;
-                (void)args;
-                (void)env;
-
-                auto global_env = m_soot.get_global_environment().as_env_ptr();
-
-                fmt::print("\n=== Interpreter environment (*global-env*) ===\n");
-
-                const auto &entries = global_env->vars.get_all_entries();
-                for (const auto &entry : entries) {
-                    if (!entry.key) { continue; }
-
-                    const char *kind = "value";
-                    if (entry.value.is_macro()) kind = "macro";
-                    else if (entry.value.is_function())
-                        kind = "function";
-                    else if (entry.value.is_special_form())
-                        kind = "special-form";
-                    else if (entry.value.is_primitive())
-                        kind = "primitive";
-
-                    fmt::print("  {:<40} {}\n", entry.key, kind);
-                }
-
-                fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(),
-                           global_env->vars.size());
-                return soot::Object::make_none();
             },
             &spec);
     }
@@ -610,10 +365,11 @@ namespace sootc {
             e.render();
             return std::unexpected(std::string(e.what()));
         } catch (const std::exception &e) {
-            render_internal_error(e); // ← только сюда
+            render_internal_error(e);
             return std::unexpected(std::string("Internal compiler error: ") + e.what());
         }
     }
+
     // Render a C++ exception that escaped NodeBuilder/Compiler internals.
     // This is a bug in the compiler, not in user code.
     void Compiler::render_internal_error(const std::exception &e) {
@@ -632,184 +388,32 @@ namespace sootc {
                    "Please report this with the .sc file that triggered it.\n\n");
     }
 
-    // ========== Interpretation ==========
-
-    // Handle REPL commands that start with ':'. Unknown commands produce a
-    // warning and are otherwise ignored.
-    ReplStatus Compiler::handle_repl_command(const std::string &input) {
-        // The input is already trimmed by handle_repl_string, but be defensive.
-        std::string trimmed = input;
-        const auto  first_ws = trimmed.find_first_not_of(" \t");
-        if (first_ws != std::string::npos && first_ws > 0) { trimmed = trimmed.substr(first_ws); }
-
-        if (trimmed == ":exit" || trimmed == ":quit") { return ReplStatus::WANT_EXIT; }
-
-        if (trimmed == ":reload") { return ReplStatus::WANT_RELOAD; }
-
-        // === :run <name> [args...] -- execute a loaded function in the VM ===
-        if (trimmed.size() >= 5 && trimmed.substr(0, 5) == ":run ") {
-            std::string rest = trimmed.substr(5);
-
-            // Trim whitespace
-            const auto first = rest.find_first_not_of(" \t");
-            if (first == std::string::npos) {
-                fmt::print(fg(fmt::color::yellow), "; ERROR: :run requires a function name\n");
-                return ReplStatus::OK;
-            }
-            const auto last = rest.find_last_not_of(" \t");
-            rest = rest.substr(first, last - first + 1);
-
-            // Split into name and args by first space
-            const auto  space = rest.find_first_of(" \t");
-            std::string name = (space == std::string::npos) ? rest : rest.substr(0, space);
-            std::string args_str = (space == std::string::npos) ? "" : rest.substr(space + 1);
-
-            auto &globals = carbon::Globals::inst();
-            void *fn_ptr = globals.find_symbol_ptr(carbon::StringId(name));
-
-            if (fn_ptr == nullptr) {
-                fmt::print(fg(fmt::color::crimson), "; ERROR: '{}' not found in Globals\n", name);
-                return ReplStatus::OK;
-            }
-
-            auto *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
-
-            // Parse arguments — int (no dot) or float (with dot).
-            std::vector<carbon::Variant> vm_args;
-            if (!args_str.empty()) {
-                std::istringstream iss(args_str);
-                std::string        token;
-                while (iss >> token) {
-                    try {
-                        if (token.find('.') != std::string::npos) {
-                            vm_args.push_back(carbon::Variant(std::stod(token)));
-                        } else {
-                            vm_args.push_back(
-                                carbon::Variant(static_cast<int64_t>(std::stoll(token))));
-                        }
-                    } catch (const std::exception &e) {
-                        fmt::print(fg(fmt::color::yellow),
-                                   "; WARN: skipping bad argument '{}': {}\n", token, e.what());
-                    }
-                }
-            }
-
-            carbon::VirtualMachine vm;
-            carbon::Variant result = vm.execute_function(lambda, carbon::RunMode::Run, vm_args);
-
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", rest,
-                       result.to_string());
-
-            // Release every object allocated during this expression. Objects created
-            // by script code are only valid until the next purge.
-            vm.purge();
-
-            return ReplStatus::OK;
-        }
-
-        if (trimmed == ":help") {
-            m_repl->print_help_message();
-            return ReplStatus::OK;
-        }
-
-        if (trimmed == ":clear") {
-            m_repl->clear_screen();
-            return ReplStatus::OK;
-        }
-
-        if (trimmed == ":sizes") {
-            carbon::print_all_struct_sizes();
-            return ReplStatus::OK;
-        }
-
-        // === :load <file> -- compile and register a module ===
-        if (trimmed.substr(0, 5) == ":load") {
-            std::string filename = trimmed.substr(6);
-            filename.erase(0, filename.find_first_not_of(" \t"));
-            filename.erase(filename.find_last_not_of(" \t") + 1);
-
-            try {
-                auto load_result = compile_file(filename);
-                if (load_result) {
-                    lg::info("Loaded and compiled: {}", filename);
-                    carbon::Globals::inst().load_module(std::move(**load_result));
-                } else {
-                    lg::error("Failed to load: {}", load_result.error());
-                }
-            } catch (const std::exception &e) { print_error("Load error", e); }
-            return ReplStatus::OK;
-        }
-
-        // === :soot <expr> -- evaluate a SOOT expression in the interpreter ===
-        if (trimmed.size() >= 5 && trimmed.substr(0, 5) == ":soot") {
-            std::string expr = trimmed.size() > 6 ? trimmed.substr(6) : "";
-            if (expr.empty()) {
-                fmt::print("; usage: :soot <expression>\n");
-                return ReplStatus::OK;
-            }
-            try {
-                auto result = m_soot.eval_string(expr, "<repl>");
-                fmt::print(fg(fmt::color::green), "{}\n", result.print());
-            } catch (const std::exception &e) {
-                fmt::print(fg(fmt::color::crimson), "SOOT error: {}\n", e.what());
-            }
-            return ReplStatus::OK;
-        }
-
-        // === :list -- list symbols registered in Globals ===
-        if (trimmed == ":list") {
-            auto symbols = carbon::Globals::inst().all_symbols();
-            for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
-            return ReplStatus::OK;
-        }
-
-        // === :save [name] -- write the whole session to <name>.bin / <name>.h ===
-        if (trimmed == ":save" || trimmed.substr(0, 6) == ":save ") {
-            std::string name = m_session_name;
-            if (trimmed.size() > 6) {
-                name = trimmed.substr(6);
-                const auto first = name.find_first_not_of(" \t");
-                const auto last = name.find_last_not_of(" \t");
-                if (first != std::string::npos) { name = name.substr(first, last - first + 1); }
-            }
-
-            try {
-                if (save_session(name, ".")) {
-                    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                               "; saved session as {}.bin and {}.h\n", name, name);
-                } else {
-                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                               "; ERROR: failed to save session\n");
-                }
-            } catch (const std::exception &e) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                           e.what());
-            }
-            return ReplStatus::OK;
-        }
-
-        lg::warn("Unknown command: {}", trimmed);
-        return ReplStatus::OK;
-    }
+    // ===============================================================
+    // REPL dispatch
+    // ===============================================================
 
     // Dispatch a REPL line.
     //
-    // As of the new REPL design, there is no separate `:command` namespace:
-    // every input is an ordinary S-expression. Commands like (e), (reload),
-    // (help), (sc-run ...) are registered as C++ custom forms in
-    // setup_soot_forms() and are dispatched through the normal compile
-    // pipeline. handle_repl_string only has to check the exit/reload flags
-    // after running the form.
+    // There is no separate `:command` namespace. Every input is an
+    // ordinary S-expression. If the form is a REPL command (head is a
+    // symbol in repl_commands()), it is dispatched to the corresponding
+    // cmd_* handler before the pipeline runs. Anything else is code and
+    // goes through compile_and_report / interpret_and_print.
     ReplStatus Compiler::handle_repl_string(const std::string &input) {
         const auto first = input.find_first_not_of(" \t");
         if (first == std::string::npos) return ReplStatus::OK; // all whitespace
 
         std::string trimmed = input.substr(first);
 
-        // Reset the flags; the custom forms set them if they want to
-        // request exit or reload.
         m_want_exit = false;
         m_want_reload = false;
+
+        // REPL commands are handled BEFORE compilation.
+        if (auto status = try_handle_repl_command(trimmed)) {
+            if (*status == ReplStatus::WANT_EXIT) return ReplStatus::WANT_EXIT;
+            if (*status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
+            return *status;
+        }
 
         switch (m_config.mode) {
         case CompilerMode::INTERPRET_ONLY: interpret_and_print(trimmed); break;
@@ -822,6 +426,322 @@ namespace sootc {
         if (m_want_reload) return ReplStatus::WANT_RELOAD;
         return ReplStatus::OK;
     }
+
+    // The set of names recognised as REPL commands. Kept as a
+    // function-local static so it is built exactly once per process.
+    const std::set<std::string> &Compiler::repl_commands() {
+        static const std::set<std::string> kCommands = {
+            "help",
+            "clear",
+            "e",
+            "reload",
+            "sizes",
+            "inspect-env",
+            "inspect-env-soots",
+            "has-macro",
+            "list-symbols",
+            "save-session",
+            "sc-run",
+            "sc-eval",
+        };
+        return kCommands;
+    }
+
+    // If `input` parses to a REPL command form, dispatch it and return
+    // its status. Otherwise return std::nullopt so the caller can fall
+    // through to the normal compile pipeline.
+    std::optional<ReplStatus> Compiler::try_handle_repl_command(const std::string &input) {
+        // Legacy `:command` syntax is no longer supported. Detect it
+        // early and give the user a helpful hint instead of a raw
+        // "undefined variable ':run'" from the compiler.
+        if (!input.empty() && input[0] == ':') {
+            fmt::print(fg(fmt::color::yellow), "; WARN: ':' command syntax is no longer supported. "
+                                               "Use (e), (reload), (help), (sc-run ...), etc.\n");
+            return ReplStatus::OK;
+        }
+
+        // Quick reject: if it does not start with '(', it cannot be a
+        // command form. Anything else goes through the normal pipeline.
+        if (input.empty() || input[0] != '(') return std::nullopt;
+        // Parse the input. With add_top_level = false, the reader
+        // returns a LIST of forms — even for a single-form input.
+        auto form = m_soot.get_reader().read_from_string(input, false, "<repl>");
+        if (form.is_null() || !form.is_pair()) return std::nullopt;
+
+        // Unwrap the one-element list produced by add_top_level = false.
+        //
+        // After this step, `form` is the actual user form, e.g.
+        // `(has-macro "defun")`. We detect the wrapper by checking
+        // whether the head is a pair (which means "this is a list of
+        // forms") rather than a symbol.
+        if (form.as_pair()->car.is_pair()) { form = form.as_pair()->car; }
+
+        if (!form.is_pair()) return std::nullopt;
+
+        const auto &head = form.as_pair()->car;
+        if (!head.is_symbol()) return std::nullopt;
+
+        const std::string name = head.as_symbol().name_ptr;
+        if (!repl_commands().count(name)) return std::nullopt;
+
+        return dispatch_repl_command(name, form);
+    }
+
+    ReplStatus Compiler::dispatch_repl_command(const std::string &name, const soot::Object &form) {
+        if (name == "help") return cmd_help(form);
+        if (name == "clear") return cmd_clear(form);
+        if (name == "e") return cmd_e(form);
+        if (name == "reload") return cmd_reload(form);
+        if (name == "sizes") return cmd_sizes(form);
+        if (name == "inspect-env") return cmd_inspect_env(form);
+        if (name == "inspect-env-soots") return cmd_inspect_env_soots(form);
+        if (name == "has-macro") return cmd_has_macro(form);
+        if (name == "list-symbols") return cmd_list_symbols(form);
+        if (name == "save-session") return cmd_save_session(form);
+        if (name == "sc-run") return cmd_sc_run(form);
+        if (name == "sc-eval") return cmd_sc_eval(form);
+
+        fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
+        return ReplStatus::ERR;
+    }
+
+    // ===============================================================
+    // REPL command handlers
+    // ===============================================================
+
+    ReplStatus Compiler::cmd_help(const soot::Object &form) {
+        (void)form;
+        if (m_repl) m_repl->print_help_message();
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_clear(const soot::Object &form) {
+        (void)form;
+        if (m_repl) m_repl->clear_screen();
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_e(const soot::Object &form) {
+        (void)form;
+        return ReplStatus::WANT_EXIT;
+    }
+
+    ReplStatus Compiler::cmd_reload(const soot::Object &form) {
+        (void)form;
+        return ReplStatus::WANT_RELOAD;
+    }
+
+    ReplStatus Compiler::cmd_sizes(const soot::Object &form) {
+        (void)form;
+        carbon::print_all_struct_sizes();
+        return ReplStatus::OK;
+    }
+
+    // Dump the compiler-side environment (*soot-env*).
+    //
+    // *soot-env* is the environment where lib.sc registers its macros.
+    // try_getting_macro_from_soot consults only this environment, so
+    // whatever appears here is what the compiler sees as macros.
+    ReplStatus Compiler::cmd_inspect_env(const soot::Object &form) {
+        (void)form;
+        auto sootc_env = m_soot.get_soot_environment().as_env_ptr();
+
+        fmt::print("\n=== Compiler environment (*soot-env*) ===\n");
+
+        const auto &entries = sootc_env->vars.get_all_entries();
+        std::size_t used = 0;
+        for (const auto &entry : entries) {
+            if (!entry.key) continue;
+            ++used;
+
+            const char *kind = "value";
+            if (entry.value.is_macro()) kind = "macro";
+            else if (entry.value.is_function())
+                kind = "function";
+            else if (entry.value.is_special_form())
+                kind = "special-form";
+            else if (entry.value.is_primitive())
+                kind = "primitive";
+
+            fmt::print("  {:<40} {}\n", entry.key, kind);
+        }
+
+        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
+        return ReplStatus::OK;
+    }
+
+    // Dump the interpreter-side environment (*global-env*).
+    //
+    // *global-env* is where lib.st and the interpreter register their
+    // macros and built-in functions. The compiler does NOT consult this
+    // environment for macro dispatch.
+    ReplStatus Compiler::cmd_inspect_env_soots(const soot::Object &form) {
+        (void)form;
+        auto global_env = m_soot.get_global_environment().as_env_ptr();
+
+        fmt::print("\n=== Interpreter environment (*global-env*) ===\n");
+
+        const auto &entries = global_env->vars.get_all_entries();
+        std::size_t used = 0;
+        for (const auto &entry : entries) {
+            if (!entry.key) continue;
+            ++used;
+
+            const char *kind = "value";
+            if (entry.value.is_macro()) kind = "macro";
+            else if (entry.value.is_function())
+                kind = "function";
+            else if (entry.value.is_special_form())
+                kind = "special-form";
+            else if (entry.value.is_primitive())
+                kind = "primitive";
+
+            fmt::print("  {:<40} {}\n", entry.key, kind);
+        }
+
+        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
+        return ReplStatus::OK;
+    }
+
+    // Check whether `name` is a macro visible to the compiler, i.e. a
+    // macro registered in *soot-env*.
+    ReplStatus Compiler::cmd_has_macro(const soot::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (has-macro \"name\") requires a name\n");
+            return ReplStatus::ERR;
+        }
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_symbol() && !name_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (has-macro ...) name must be symbol or string\n");
+            return ReplStatus::ERR;
+        }
+        const std::string name = name_obj.to_std_string();
+        const bool        is_macro = is_soot_macro(name);
+
+        fmt::print(fg(is_macro ? fmt::color::green : fmt::color::yellow),
+                   "; has-macro \"{}\" => {}\n", name, is_macro ? "true" : "false");
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_list_symbols(const soot::Object &form) {
+        (void)form;
+        auto symbols = carbon::Globals::inst().all_symbols();
+        for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_save_session(const soot::Object &form) {
+        std::string session_name = m_session_name;
+
+        auto rest = form.as_pair()->cdr;
+        if (rest.is_pair() && rest.as_pair()->car.is_string()) {
+            session_name = rest.as_pair()->car.to_std_string();
+        }
+
+        try {
+            if (save_session(session_name, ".")) {
+                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                           "; saved session as {}.bin and {}.h\n", session_name, session_name);
+            } else {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: failed to save session\n");
+                return ReplStatus::ERR;
+            }
+        } catch (const std::exception &e) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n", e.what());
+            return ReplStatus::ERR;
+        }
+        return ReplStatus::OK;
+    }
+
+    // (sc-run name arg...)
+    //
+    // Execute a compiled function in the active runtime.
+    //
+    // Argument types are inferred from the SOOT object kind:
+    //   integer   -> i64
+    //   float     -> f32
+    //   string    -> std::string
+    //   symbol    -> StringId
+    //
+    // Example: (sc-run gcd 48 18)
+    ReplStatus Compiler::cmd_sc_run(const soot::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (sc-run name arg...) requires a name\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_symbol() && !name_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (sc-run ...) name must be symbol or string\n");
+            return ReplStatus::ERR;
+        }
+        const std::string name = name_obj.to_std_string();
+
+        // Parse arguments as SOOT objects and convert to Variants.
+        std::vector<carbon::Variant> vm_args;
+        auto                         args_rest = rest.as_pair()->cdr;
+        while (args_rest.is_pair()) {
+            const auto &o = args_rest.as_pair()->car;
+            if (o.is_integer()) {
+                vm_args.push_back(carbon::Variant(static_cast<i64>(o.as_integer())));
+            } else if (o.is_float()) {
+                vm_args.push_back(carbon::Variant(static_cast<f32>(o.as_float())));
+            } else if (o.is_string()) {
+                vm_args.push_back(carbon::Variant(o.to_std_string()));
+            } else if (o.is_symbol()) {
+                vm_args.push_back(carbon::Variant(carbon::StringId(o.as_symbol().name_ptr)));
+            } else {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (sc-run ...) unsupported argument kind: {}\n", o.print());
+                return ReplStatus::ERR;
+            }
+            args_rest = args_rest.as_pair()->cdr;
+        }
+
+        // Hand the call to the active runtime.
+        auto result = m_runtime->call(name, vm_args);
+        if (!result.ok) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                       result.error);
+            return ReplStatus::ERR;
+        }
+
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", name,
+                   result.value.to_string());
+        return ReplStatus::OK;
+    }
+
+    // (sc-eval expr)
+    //
+    // Evaluate a SOOT expression in the interpreter's global environment
+    // and print the result. This is the compiler-side analogue of the
+    // old `:soot` REPL command.
+    ReplStatus Compiler::cmd_sc_eval(const soot::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (sc-eval <expr>) requires an expression\n");
+            return ReplStatus::ERR;
+        }
+        try {
+            auto result =
+                m_soot.eval_form(rest.as_pair()->car, m_soot.get_global_environment().as_env_ptr());
+            fmt::print(fg(fmt::color::green), "{}\n", result.print());
+        } catch (const std::exception &e) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: {}\n", e.what());
+            return ReplStatus::ERR;
+        }
+        return ReplStatus::OK;
+    }
+
+    // ===============================================================
+    // REPL loop helpers
+    // ===============================================================
 
     void Compiler::save_repl_history() { m_repl->save_history(); }
 
@@ -922,12 +842,20 @@ namespace sootc {
                 return ReplStatus::OK;
             }
 
-            print_listing(**result);
+            if (m_config.print_listing) { print_listing(**result); }
 
-            bool loaded = carbon::Globals::inst().load_module(std::move(**result));
+            // Hand the compiled module to the active runtime. This is
+            // the ONE place where sootc talks to the execution backend
+            // during a compile: previously it called
+            // carbon::Globals::inst().load_module(...) directly, which
+            // hard-wired the in-process VM. Now it goes through the
+            // Runtime abstraction, so the same code path works with
+            // LocalVmRuntime, RemoteRuntime, and NullRuntime.
+            bool loaded = m_runtime->load_module(std::move(**result));
             if (!loaded) {
                 fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,
-                           "; WARN: failed to register module in Globals\n");
+                           "; WARN: failed to register module in runtime '{}'\n",
+                           m_runtime->name());
             }
 
             fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK\n");
@@ -1387,6 +1315,7 @@ namespace sootc {
     soot::Object Compiler::expand_soot_macro(const soot::Object &form) {
         return expand_soot_macro_for_compiler(m_soot, form);
     }
+
     // Synthesize a unique name for an anonymous lambda.
     //
     // Called by NodeBuilder::build_call when the head of a call is a
@@ -1420,7 +1349,6 @@ namespace sootc {
     // ===============================================================
     // Prelude loading
     // ===============================================================
-
 
     void Compiler::load_soot_prelude() {
         namespace fs = std::filesystem;
@@ -1482,7 +1410,7 @@ namespace sootc {
                     return;
                 }
 
-                if (*result) { carbon::Globals::inst().load_module(std::move(**result)); }
+                if (*result) { m_runtime->load_module(std::move(**result)); }
 
                 lg::info("Loaded SOOTC library {}", p.string());
                 return;

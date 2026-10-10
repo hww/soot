@@ -206,7 +206,7 @@ namespace sootc {
             lg::warn("emit_body: null body for function '{}'", m_name);
             return;
         }
-        lg::info("emit_body: function '{}', body type = {}", m_name, body->node_type());
+        lg::debug("emit_body: function '{}', body type = {}", m_name, body->node_type());
 
         m_instructions.clear();
         m_constants.clear();

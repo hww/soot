@@ -1,0 +1,66 @@
+// sootc/runtime/Runtime.hpp
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "carbon/file/BinaryFile.hpp"
+#include "carbon/lib/Variant.hpp"
+
+namespace sootc {
+
+    /// @brief Result of running a function in a runtime.
+    struct RuntimeResult {
+        bool            ok = false;
+        std::string     error;
+        carbon::Variant value;
+    };
+
+    /// @brief Abstract execution backend.
+    ///
+    /// @details sootc compiles source into a `BinaryFile`. That binary is
+    ///          handed to the current Runtime, which is responsible for
+    ///          executing it. There are three concrete implementations:
+    ///
+    ///            LocalVmRuntime  — runs the bytecode in the in-process
+    ///                              Carbon VM. Used when no external
+    ///                              host is configured. No processes,
+    ///                              no game state — just executes
+    ///                              lambdas.
+    ///
+    ///            RemoteRuntime   — sends bytecode to an external host
+    ///                              (carbon.exe) over the existing
+    ///                              cross-socket protocol. The host is
+    ///                              a full runtime with processes,
+    ///                              entities, and game state.
+    ///
+    ///            NullRuntime     — discards bytecode. Used by tests and
+    ///                              by `--compile-only`.
+    ///
+    ///          sootc does not know which runtime is active. It calls
+    ///          load_module() and call() and that's it.
+    class Runtime {
+    public:
+        virtual ~Runtime() = default;
+
+        /// @brief Load a compiled module into the runtime.
+        /// @details For LocalVmRuntime this registers the module's
+        ///          symbols in `carbon::Globals`. For RemoteRuntime
+        ///          this sends the module over the wire. NullRuntime
+        ///          silently accepts everything.
+        /// @return true on success.
+        virtual bool load_module(carbon::BinaryFile &&file) = 0;
+
+        /// @brief Call a function by name with the given arguments.
+        /// @details The function must have been loaded into the runtime
+        ///          beforehand (via load_module or by the runtime being
+        ///          the host itself).
+        virtual RuntimeResult call(const std::string                  &name,
+                                   const std::vector<carbon::Variant> &args) = 0;
+
+        /// @brief Human-readable name of this runtime, for logs and the REPL.
+        virtual std::string name() const = 0;
+    };
+
+} // namespace sootc

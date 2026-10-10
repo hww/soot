@@ -75,14 +75,14 @@ namespace sootc {
                 fn->set_global_state(&state); // ← добавить ЭТУ строку
                 fn->emit_body();
                 entries.push_back(fn->generate(state));
-                lg::info("Function '{}': {} instructions, {} constants", fn->name(),
+                lg::debug("Function '{}': {} instructions, {} constants", fn->name(),
                          fn->instructions().size(), fn->constants().size());
             } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
                 ProgramBinaryElement element = decl->generate(state);
                 const size_t         payload_size = element.m_rawData.size();
                 if (payload_size > 0) {
                     entries.push_back(std::move(element));
-                    lg::info("Data declaration '{}': {} bytes", decl->name(), payload_size);
+                    lg::debug("Data declaration '{}': {} bytes", decl->name(), payload_size);
                 } else {
                     lg::warn("Data declaration '{}' produced empty element", decl->name());
                 }
@@ -212,9 +212,9 @@ namespace sootc {
     ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
                                                StringsTable                     &strings_table,
                                                std::vector<DataStructEntry>     &out_data_structs) {
-        lg::info("make_binary: program_elements.size()={}", program_elements.size());
+        lg::debug("make_binary: program_elements.size()={}", program_elements.size());
         for (auto &fn : program_elements) {
-            lg::info("  fn '{}': rawData={}, relocTable={}, stringOffsets={}",
+            lg::debug("  fn '{}': rawData={}, relocTable={}, stringOffsets={}",
                      StringIdManager::instance().get_string(fn.m_entry.m_nameID),
                      fn.m_rawData.size(), fn.m_relocTable.size(), fn.m_stringOffsets.size());
         }
@@ -308,7 +308,7 @@ namespace sootc {
         const u64 reloc_bytes = (relocatable_size + 7) / 8;
         const u64 total_size = relocatable_size + 4 + reloc_bytes;
 
-        printf("total_size = %lu\n", (unsigned long)total_size);
+        lg::debug("make_binary total_size = %lu\n", (unsigned long)total_size);
 
         ProgramBinaryElement element(total_size);
 
