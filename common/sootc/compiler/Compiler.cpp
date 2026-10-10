@@ -4,15 +4,16 @@
 #include "fmt/format.h"
 #include "third_party/replxx/include/replxx.hxx"
 
-#include "carbon/file/BinaryFileInspector.hpp"
 #include "carbon/file/Globals.hpp"
+#include "carbon/file/BinaryFileInspector.hpp"
+#include "carbon/file/SizeAssertions.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
-#include "common/soot/Interpreter.hpp"
-#include "common/soot/Object.hpp"
-#include "common/soot/ParseHelpers.hpp"
-#include "common/soot/Reader.hpp"
-#include "common/util/Log.hpp"
-#include "file/SizeAssertions.hpp"
+#include "carbon/file/SizeAssertions.hpp"
+#include "carbon/lib/StringIdManager.hpp"
+#include "soot/Interpreter.hpp"
+#include "soot/Object.hpp"
+#include "soot/ParseHelpers.hpp"
+#include "soot/Reader.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
@@ -26,9 +27,9 @@
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
 #include "sootc/runtime/RemoteRuntime.hpp"
-#include "type_system/TypeSystem.hpp"
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
+#include "type_system/TypeSystem.hpp"
 
 namespace sootc {
 
@@ -67,6 +68,51 @@ namespace sootc {
             m_runtime = std::make_unique<RemoteRuntime>(m_config.runtime_url);
         }
         lg::info("Runtime: {}", m_runtime->name());
+
+        // ---------------------------------------------------------------------
+        // SIDBase loading
+        // ---------------------------------------------------------------------
+        //
+        // The SIDBase is a binary map from SID64 hashes back to their
+        // original strings. It is the only way to recover a human-
+        // readable name from a SID that appears in a compiled binary
+        // (for the disassembler, the inspector, error messages, ...).
+        //
+        // We load it here — BEFORE load_soot_prelude and lib.sc — so
+        // that every string registered during prelude loading (lib.st
+        // and lib.sc contain many symbol names) is available for
+        // reverse lookup from the very first byte compiled in this
+        // process.
+        //
+        // If sidbase_path is empty, nothing is loaded: the process
+        // starts with an empty SID registry. That is exactly what the
+        // unit tests rely on, because they never want to touch the
+        // user's sidbase file.
+        if (!m_config.sidbase_path.empty()) {
+            std::error_code ec;
+            const bool      exists = std::filesystem::exists(m_config.sidbase_path, ec);
+
+            if (ec) {
+                lg::warn("SIDBase: cannot stat '{}': {} — starting empty", m_config.sidbase_path,
+                         ec.message());
+            } else if (!exists) {
+                lg::info("SIDBase: '{}' not found — will be created on exit",
+                         m_config.sidbase_path);
+            } else {
+                const bool loaded = carbon::StringIdManager::instance().load_dconstruct_sidbase(
+                    m_config.sidbase_path);
+
+                if (loaded) {
+                    lg::info("SIDBase: loaded {} entries from '{}'",
+                             carbon::StringIdManager::instance().size(), m_config.sidbase_path);
+                } else {
+                    lg::warn("SIDBase: failed to load '{}' — starting empty",
+                             m_config.sidbase_path);
+                }
+            }
+        } else {
+            lg::info("SIDBase: no path configured — using in-memory registry only");
+        }
 
         // 1. SOOT prelude -> interpreter (lib.st).
         load_soot_prelude();
@@ -120,7 +166,34 @@ namespace sootc {
         setup_soot_forms();
     }
 
-    Compiler::~Compiler() = default;
+    Compiler::~Compiler() {
+        // ---------------------------------------------------------------------
+        // SIDBase saving
+        // ---------------------------------------------------------------------
+        //
+        // Every string that has been registered during this session —
+        // whether because it appeared in the source code, in a compiled
+        // module, or in a manual SID() call from C++ — should survive
+        // the process. We therefore save the whole registry back to the
+        // same path on exit, if a path was configured.
+        //
+        // The save is best-effort: a failure to write the file is
+        // logged but does not abort the process, since the compiler
+        // may be exiting for an unrelated reason (a fatal error, a
+        // user-requested reload, ...).
+        if (!m_config.sidbase_path.empty()) {
+            const std::size_t count = carbon::StringIdManager::instance().size();
+
+            const bool saved =
+                carbon::StringIdManager::instance().save_dconstruct_sidbase(m_config.sidbase_path);
+
+            if (saved) {
+                lg::info("SIDBase: saved {} entries to '{}'", count, m_config.sidbase_path);
+            } else {
+                lg::warn("SIDBase: failed to save '{}'", m_config.sidbase_path);
+            }
+        }
+    }
 
     // ===============================================================
     // Compiler-side SOOT forms
@@ -818,7 +891,23 @@ namespace sootc {
         }
 
         const std::string key = key_obj.to_std_string();
-        auto              it = m_args.find(key);
+
+        // A few keys are READ-ONLY and live in the compiler config,
+        // not in m_args. "sidbase" is one of them: it is fixed at
+        // startup (from --sidbase) and cannot be changed at runtime.
+        // Reading it via (arg-get "sidbase") returns the configured
+        // path, or (unset) if none was set.
+        if (key == "sidbase") {
+            if (m_config.sidbase_path.empty()) {
+                fmt::print(fg(fmt::color::yellow), "; arg-get \"sidbase\" => (unset)\n");
+            } else {
+                fmt::print(fg(fmt::color::green), "; arg-get \"sidbase\" => \"{}\"\n",
+                           m_config.sidbase_path);
+            }
+            return ReplStatus::OK;
+        }
+
+        auto it = m_args.find(key);
         if (it == m_args.end()) {
             fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
             return ReplStatus::OK;
