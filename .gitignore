@@ -21,3 +21,4 @@ common/carbon/main.cpp
 *.udb
 soot_understand.udb
 tmp
+build_wsl.log compiler.20261010_190157.log compiler.20261010_190233.log compiler.20261010_190257.log compiler.20261011_121207.log compiler.20261011_121254.log compiler.20261011_121431.log compiler.20261011_122502.log compiler.20261011_122608.log compiler.20261011_122721.log compiler.20261011_131129.log compiler.20261011_131208.log
