@@ -1,7 +1,7 @@
 ﻿# common/script/CMakeLists.txt
 
 # 1. Ядро: только базовые типы данных Лиспа
-add_library(libsotcore
+add_library(libscriptcore
     common/script/Object.cpp
     common/script/SourceText.cpp
     common/script/Reader.cpp
@@ -14,12 +14,12 @@ add_library(libsotcore
     common/script/Archive.cpp
 )
 
-target_include_directories(libsotcore PUBLIC
+target_include_directories(libscriptcore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/common/util
 )
 
-target_link_libraries(libsotcore PRIVATE 
+target_link_libraries(libscriptcore PRIVATE 
     fmt::fmt 
     libsootutils
     replxx  
@@ -27,7 +27,7 @@ target_link_libraries(libsotcore PRIVATE
 )
 
 # 2. Архивные модули
-add_library(libsot
+add_library(libscript
     common/script/Interpreter.cpp
     common/script/archive/MemoryArchive.cpp
     common/script/archive/RelocationTable.cpp
@@ -37,13 +37,13 @@ add_library(libsot
     common/script/archive/LabelTable.cpp
 )
 
-target_include_directories(libsot PUBLIC
+target_include_directories(libscript PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/common/util
 )
 
-target_link_libraries(libsot PRIVATE 
-    libsotcore
+target_link_libraries(libscript PRIVATE 
+    libscriptcore
     fmt::fmt 
     replxx  
     librepl          
@@ -51,9 +51,9 @@ target_link_libraries(libsot PRIVATE
 )
 
 # 3. Исполняемый файл
-add_executable(soot common/script/Main.cpp)
-target_link_libraries(soot PRIVATE 
-    libsot 
+add_executable(script common/script/Main.cpp)
+target_link_libraries(script PRIVATE 
+    libscript 
     libtypesys 
     fmt::fmt 
     replxx      
@@ -61,13 +61,13 @@ target_link_libraries(soot PRIVATE
     libsootutils
 )
 
-set_target_properties(soot PROPERTIES 
+set_target_properties(script PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 # Установка
-install(TARGETS soot
+install(TARGETS script
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib

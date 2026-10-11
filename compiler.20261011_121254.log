@@ -1,0 +1,2 @@
+12:12:56 [warn] RemoteRuntime: could not connect to 127.0.0.1:9999 — calls will fail
+12:12:56 [error] Failed to create Compiler: invalid utf8

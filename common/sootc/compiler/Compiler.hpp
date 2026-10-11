@@ -205,6 +205,30 @@ namespace sootc {
         /// @param dir    Output directory. Defaults to ".".
         /// @return true on success.
         bool save_session(const std::string &name, const std::filesystem::path &dir);
+        /// @brief Save a .dci manifest for a compiled module.
+        ///
+        /// @details A .dci file describes the module's logical path,
+        ///          its imports, and its exports. It lives next to the
+        ///          .bin file and is read by the loader (carbon) to
+        ///          resolve dependencies without the user having to
+        ///          list them on the command line.
+        ///
+        ///          The manifest is built from:
+        ///            * logical_path  — the file's path relative to
+        ///                              source_root, with the
+        ///                              extension stripped;
+        ///            * binary_size   — the size of the emitted .bin;
+        ///            * imports       — every file that was pulled in
+        ///                              via (require ...) during this
+        ///                              compilation;
+        ///            * exports       — every top-level name that was
+        ///                              registered (functions and
+        ///                              data).
+        ///
+        /// @param file       The BinaryFile that was just produced.
+        /// @param target_dir Directory to write the .dci into.
+        /// @return true on success.
+        bool           save_dci(const BinaryFile &file, const std::filesystem::path &target_dir);
 
         // --- Macros ---
         bool         is_soot_macro(const std::string &name);

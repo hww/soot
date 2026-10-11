@@ -1,0 +1,10 @@
+12:14:33 [warn] RemoteRuntime: could not connect to 127.0.0.1:9999 (calls will fail)
+12:14:33 [info] Runtime: remote:127.0.0.1:9999
+12:14:33 [info] SIDBase: no path configured — using in-memory registry only
+12:14:33 [info] Loading SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+12:14:33 [info] Loaded SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+12:14:33 [info] Loading SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+12:14:33 [info] Registered constant: *default-territory* = 0
+12:14:33 [info] build_ss_type 'vector': 4 fields, 10 methods, 432 bytes
+12:14:33 [info] build_ss_type 'cvector': 4 fields, 10 methods, 432 bytes
+12:14:33 [info] Loaded SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc

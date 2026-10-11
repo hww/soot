@@ -1,0 +1,15 @@
+12:27:21 [info] Initialized 10 built-in native functions
+12:27:21 [info] Initialized 3 allocator native functions
+12:27:21 [info] Runtime: local-vm
+12:27:21 [info] SIDBase: no path configured — using in-memory registry only
+12:27:21 [info] Loading SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+12:27:22 [info] Loaded SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+12:27:22 [info] Loading SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+12:27:22 [info] Registered constant: *default-territory* = 0
+12:27:22 [info] build_ss_type 'vector': 4 fields, 10 methods, 432 bytes
+12:27:22 [info] build_ss_type 'cvector': 4 fields, 10 methods, 432 bytes
+12:27:22 [info] Loaded SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+12:27:22 [info] Processing: ./tests/mkvec.sc
+12:27:22 [info] Registered function: mkvec : (function cvector)
+12:27:22 [info] build_define: 'mkvec' -> FunctionNode
+12:27:22 [info] Compiled: ./tests/mkvec.sc

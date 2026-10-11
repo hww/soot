@@ -290,6 +290,7 @@ int main(int argc, char *argv[]) {
                 fs::path target = opts.target_dir;
                 compiler->save_binary(**result, target);
                 compiler->save_header(**result, target);
+                compiler->save_dci(**result, target);
 
                 lg::info("Compiled: {}", input_file);
             }

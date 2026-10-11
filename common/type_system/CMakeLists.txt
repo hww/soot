@@ -9,7 +9,7 @@ add_library(libtypesys
 )
 
 # Линкуем fmt если нужно
-target_link_libraries(libtypesys PRIVATE libsotcore fmt::fmt libsootutils)
+target_link_libraries(libtypesys PRIVATE libscriptcore fmt::fmt libsootutils)
 
 # Для теста
 add_executable(typesys common/type_system/Main.cpp)

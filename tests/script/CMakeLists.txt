@@ -10,7 +10,7 @@ include_directories(common/script)
 # ==============================================================
 
 # Создаем тестовый исполняемый файл
-add_executable(soot_test
+add_executable(script_test
     tests/script/MainScriptTest.cpp
     tests/script/TestBasicTypes.cpp
     tests/script/TestArithmetic.cpp
@@ -30,19 +30,19 @@ add_executable(soot_test
 )
 
 # Линкуем с нашей библиотекой и gtest
-target_link_libraries(soot_test libsot libtypesys gtest_main fmt)
-target_include_directories(soot_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
+target_link_libraries(script_test libscript libtypesys gtest_main fmt)
+target_include_directories(script_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
 if(MSVC)
-    set_target_properties(soot_test PROPERTIES 
+    set_target_properties(script_test PROPERTIES 
         VS_DEBUGGER_ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/Debug"
     )
 endif()
-set_target_properties(soot_test PROPERTIES 
+set_target_properties(script_test PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 # Регистрируем тесты для Test Explorer
-gtest_discover_tests(soot_test)
+gtest_discover_tests(script_test)
 
 

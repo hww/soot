@@ -4,7 +4,7 @@
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 #include "third_party/replxx/include/replxx.hxx"
-
+#include "carbon/file/DCIFile.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/file/BinaryFileInspector.hpp"
 #include "carbon/file/SizeAssertions.hpp"
@@ -1690,7 +1690,92 @@ namespace sootc {
             return false;
         }
     }
+    // Save a .dci manifest for a compiled module.
+    //
+    // A .dci file is the module's declaration: its logical path, the
+    // imports it depends on, and the exports it provides. The loader
+    // (carbon) reads it to resolve dependencies without the user
+    // having to list them on the command line.
+    //
+    // For now, only the imports side is populated. Exports would
+    // require tracking every top-level name that ended up in the
+    // binary, which the current pipeline does not do. The .dci is
+    // still useful: a loader that walks the import graph can order
+    // its loads correctly.
+    bool Compiler::save_dci(const BinaryFile &file, const std::filesystem::path &target_dir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::create_directories(target_dir, ec);
 
+        // --- Logical path ---
+        //
+        // Compute the module's logical path from the file's path,
+        // relative to the source_root. Strip the extension and
+        // normalise separators to '/'.
+        std::string logical_path = file.m_path.string();
+
+        if (!m_config.search_paths.empty()) {
+            // Find the first search path that the file lives under,
+            // and strip it. Fall back to the file's own stem.
+            for (const auto &root : m_config.search_paths) {
+                fs::path root_abs = fs::absolute(root, ec);
+                fs::path file_abs = fs::absolute(file.m_path, ec);
+                if (ec) continue;
+
+                auto rel = fs::relative(file_abs, root_abs, ec);
+                if (!ec && !rel.empty() && rel.string().rfind("..", 0) != 0) {
+                    logical_path = rel.replace_extension("").generic_string();
+                    break;
+                }
+            }
+        }
+
+        if (logical_path.empty()) { logical_path = file.m_path.stem().string(); }
+
+        // --- Build the manifest ---
+        carbon::DCIFile manifest;
+        manifest.logical_path = logical_path;
+        manifest.module_name = carbon::DCIFile::extract_module_name(logical_path);
+        manifest.binary_size = static_cast<u32>(file.m_size);
+
+        // Imports: every file that was pulled in via (require ...).
+        for (const auto &dep : m_loaded_files) {
+            // Store the imported module by its logical path, not by
+            // its absolute filesystem path, so the manifest is
+            // portable between machines.
+            std::string dep_path = dep.string();
+            if (!m_config.search_paths.empty()) {
+                for (const auto &root : m_config.search_paths) {
+                    fs::path root_abs = fs::absolute(root, ec);
+                    fs::path dep_abs = fs::absolute(dep, ec);
+                    if (ec) continue;
+
+                    auto rel = fs::relative(dep_abs, root_abs, ec);
+                    if (!ec && !rel.empty() && rel.string().rfind("..", 0) != 0) {
+                        dep_path = rel.replace_extension("").generic_string();
+                        break;
+                    }
+                }
+            }
+            manifest.imports.emplace_back(carbon::StringId(dep_path));
+        }
+
+        // Exports: for now, leave empty. A future change to the
+        // compiler can record every top-level name that was emitted
+        // and fill this in.
+        //
+        // manifest.exports = ...;
+
+        // --- Write the .dci ---
+        fs::path out = target_dir / (file.m_path.stem().string() + ".dci");
+        if (!manifest.save(out.string())) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot write {}\n", out.string());
+            return false;
+        }
+
+        fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+        return true;
+    }
     bool Compiler::is_soot_macro(const std::string &name) {
         auto sym = m_soot.intern(name.c_str());
         return try_getting_macro_from_soot(m_soot, sym, nullptr);

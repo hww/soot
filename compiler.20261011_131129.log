@@ -1,0 +1,16 @@
+13:11:29 [info] Initialized 10 built-in native functions
+13:11:29 [info] Initialized 3 allocator native functions
+13:11:29 [info] Runtime: local-vm
+13:11:29 [info] SIDBase: no path configured — using in-memory registry only
+13:11:29 [info] Loading SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+13:11:29 [info] Loaded SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
+13:11:29 [info] Loading SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+13:11:29 [info] Registered constant: *default-territory* = 0
+13:11:29 [info] build_ss_type 'vector': 4 fields, 10 methods, 432 bytes
+13:11:29 [info] build_ss_type 'cvector': 4 fields, 10 methods, 432 bytes
+13:11:29 [info] Loaded SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
+13:11:29 [info] Processing: ./tests/mkvec.sc
+13:11:29 [error] Failed: ./tests/mkvec.sc - Compiler::require_file
+  expected: a file that exists in search_paths
+  got:      'lib.sc'
+  note:     search_paths: ., scripts, src, examples, .

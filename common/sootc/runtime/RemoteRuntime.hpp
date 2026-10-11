@@ -1,49 +1,39 @@
-// sootc/runtime/RemoteRuntime.hpp
 #pragma once
 
 #include "sootc/runtime/Runtime.hpp"
+
+#include "common/repl/nrepl/ReplClient.h"
 
 #include <memory>
 #include <string>
 
 namespace sootc {
 
-    /// @brief A Runtime that sends work to an external host.
+    /// @brief A Runtime that sends work to an external host over the
+    ///        cross-socket nREPL protocol.
     ///
     /// @details The host is a separate process (carbon.exe) that owns
     ///          the full runtime: processes, entities, game state.
-    ///          Communication goes over the existing cross-socket
-    ///          protocol used by ReplServer/ReplClient — we do NOT
-    ///          invent a new protocol here.
+    ///          Communication goes over the same socket protocol used
+    ///          by ReplServer / ReplClient:
     ///
-    ///          The wire format is the same ReplServerMessageType
-    ///          / ReplServerHeader format that ReplServer already
-    ///          understands:
+    ///            request:  [header: EVAL][payload: form text]
+    ///            response: [header: EVAL_RESULT][payload: result text]
     ///
-    ///            struct ReplServerHeader {
-    ///              u32 length;   // length of the payload that follows
-    ///              u32 type;     // one of ReplServerMessageType
-    ///            };
+    ///          load_module is intentionally a no-op: the host is
+    ///          assumed to manage its own module loading (it is the
+    ///          one that actually compiles and registers game code).
     ///
-    ///          For now, only EVAL messages are used: the payload is a
-    ///          single form encoded as SOOT text (the same encoding the
-    ///          REPL uses). load_module() sends the binary as a
-    ///          base64-encoded EVAL of a special (load-binary "...")
-    ///          form; the exact shape can be adjusted once carbon.exe
-    ///          implements it.
-    ///
-    ///          This class is intentionally a stub: it connects, it
-    ///          knows how to send and receive frames, but the actual
-    ///          handshake and semantics are left for when carbon.exe
-    ///          is ready. Until then, all methods return a clear
-    ///          "not implemented" error rather than silently
-    ///          succeeding, so that a misconfigured `--runtime <url>`
-    ///          fails loudly.
+    ///          call() builds the SOOT expression "(name arg1 arg2 ...)"
+    ///          from the function name and the Variant arguments, sends
+    ///          it, and waits for the server's reply. A reply starting
+    ///          with "ERROR: " is treated as a runtime error; anything
+    ///          else is the printed result of the form.
     class RemoteRuntime : public Runtime {
-        std::string m_url; // e.g. "127.0.0.1:8181"
-        std::string m_host;
-        int         m_port = -1;
-        bool        m_connected = false;
+        std::string                 m_url;
+        std::string                 m_host;
+        int                         m_port = -1;
+        std::unique_ptr<ReplClient> m_client;
 
     public:
         explicit RemoteRuntime(std::string url);

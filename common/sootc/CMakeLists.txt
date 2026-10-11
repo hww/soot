@@ -34,8 +34,8 @@ target_include_directories(libsootc PUBLIC
 
 # Связывание с зависимостями
 target_link_libraries(libsootc PRIVATE 
-    libsot 
-    libsotcore 
+    libscript 
+    libscriptcore 
     libtypesys
     libsootutils 
     fmt 
@@ -55,8 +55,8 @@ add_executable(sootc common/sootc/Main.cpp)
 # ВАЖНО: добавляем все библиотеки, которые нужны исполняемому файлу
 target_link_libraries(sootc PRIVATE 
     libsootc
-    libsot 
-    libsotcore 
+    libscript 
+    libscriptcore 
     libtypesys
     libsootutils 
     fmt 

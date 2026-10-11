@@ -48,8 +48,8 @@ add_executable(carbon common/carbon/Main.cpp)
 
 
 target_link_libraries(carbon PRIVATE 
-    libsot 
-    libsotcore 
+    libscript 
+    libscriptcore 
     libtypesys
     libsootutils 
     fmt 

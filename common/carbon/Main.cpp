@@ -1,317 +1,300 @@
-#include "common/carbon/kernel/Kernel.hpp"
-#include "common/carbon/kernel/ProcessRunner.hpp"
-#include "common/carbon/vm/VirtualMachine.hpp"
-#include "common/script/Reader.hpp"
-#include "common/script/Object.hpp"
+// carbon/Main.cpp
+#include "carbon/file/BinaryFile.hpp"
+#include "carbon/file/DCIFile.hpp"
+#include "carbon/file/Globals.hpp"
+#include "carbon/kernel/Kernel.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
+
 #include "common/util/Log.hpp"
 #include "fmt/color.h"
-#include "lib/StringId.hpp"
-#include <cstddef>
-#include <memory>
+#include "fmt/format.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
-#include <filesystem>
 
 using namespace carbon;
-using namespace script;
 
-namespace fs = std::filesystem;
+namespace {
 
-Variant parse_argument(const char* arg) {
-    // Пробуем как целое число
-    char* endptr = nullptr;
-    long long_val = strtol(arg, &endptr, 10);
-    if (*endptr == '\0' && endptr != arg) {
-        return Variant(static_cast<i32>(long_val));
+    void print_usage(const char *prog) {
+        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "carbon — Carbon VM runtime\n\n");
+        fmt::print("Usage:\n");
+        fmt::print("  {} [options] <file.bin> <function> [args...]\n", prog);
+        fmt::print("  {} [options] -I <dir> -I <dir> <file.bin> <function> [args...]\n", prog);
+        fmt::print("\nOptions:\n");
+        fmt::print("  -I, --include <dir>     Add a module search path (repeatable)\n");
+        fmt::print("  -l, --load <file.bin>   Load a module explicitly (repeatable)\n");
+        fmt::print("  -h, --help              Show this help\n");
+        fmt::print("\nNotes:\n");
+        fmt::print("  Every module is expected to declare its dependencies in a\n");
+        fmt::print("  .dci manifest next to its .bin. The loader reads the\n");
+        fmt::print("  manifest and recursively loads every import it lists.\n");
+        fmt::print("  Use -I to add directories where .bin/.dci pairs can be\n");
+        fmt::print("  found. If no -I is given, only the directory of the\n");
+        fmt::print("  module itself is searched.\n");
+        fmt::print("\nExamples:\n");
+        fmt::print("  {} -I build build/mkvec.bin mkvec\n", prog);
+        fmt::print("  {} -I build -I modules build/main.bin main-fn 1 2 3\n", prog);
     }
-    
-    // Пробуем как число с плавающей точкой
-    double double_val = strtod(arg, &endptr);
-    if (*endptr == '\0' && endptr != arg) {
-        return Variant(static_cast<float>(double_val));
-    }
-    
-    // Пробуем как boolean
-    if (strcmp(arg, "true") == 0 || strcmp(arg, "#t") == 0) {
-        return Variant(true);
-    }
-    if (strcmp(arg, "false") == 0 || strcmp(arg, "#f") == 0) {
-        return Variant(false);
-    }
-    
-    // Иначе строка
-    return Variant(std::string(arg));
-}
 
-void print_usage(const char* program_name) {
-    fmt::print(fg(fmt::color::cyan), "Carbon VM - A lightweight Lisp-like virtual machine\n\n");
-    fmt::print(fg(fmt::color::cyan), "Usage:\n");
-    fmt::print("  {} [options] <module> [function] [args...]\n", program_name);
-    fmt::print("  {} [options] -c <expression>\n", program_name);
-    fmt::print("\n");
-    fmt::print(fg(fmt::color::cyan), "Options:\n");
-    fmt::print("  -I, --include <path>   Add module search path (can be used multiple times)\n");
-    fmt::print("  -l, --load <module>    Load module (can be used multiple times)\n");
-    fmt::print("  -c, --call <expr>      Call expression (e.g., '(add 5 3)')\n");
-    fmt::print("  -h, --help             Show this help\n");
-    fmt::print("\n");
-    fmt::print(fg(fmt::color::cyan), "Examples:\n");
-    fmt::print("  {} -I build/modules math/add 5 3\n", program_name);
-    fmt::print("  {} -I build/modules lib/math add 5 3\n", program_name);
-    fmt::print("  {} -I build/modules -c '(add 5 3)'\n", program_name);
-    fmt::print("  {} -I build/modules --load math/add --call add 5 3\n", program_name);
-}
+    Variant parse_argument(const char *arg) {
+        char *end = nullptr;
 
-int main(int argc, char* argv[]) {
+        long long_value = std::strtol(arg, &end, 10);
+        if (*end == '\0' && end != arg) { return Variant(static_cast<i64>(long_value)); }
 
-    fmt::print("=== DEBUG: argc = {} ===\n", argc);
-    for (int i = 0; i < argc; i++) {
-        fmt::print("  argv[{}] = '{}'\n", i, argv[i]);
+        double dbl_value = std::strtod(arg, &end);
+        if (*end == '\0' && end != arg) { return Variant(static_cast<f32>(dbl_value)); }
+
+        if (std::strcmp(arg, "true") == 0 || std::strcmp(arg, "#t") == 0) { return Variant(true); }
+        if (std::strcmp(arg, "false") == 0 || std::strcmp(arg, "#f") == 0) {
+            return Variant(false);
+        }
+
+        return Variant(std::string(arg));
     }
-    
-    
-    if (argc < 2) {
-        print_usage(argv[0]);
-        return 1;
+
+} // namespace
+
+namespace {
+
+    // Recursive module loader.
+    //
+    // bin_path:       the .bin to load
+    // already_loaded: dedup set for cyclic imports
+    // search_paths:   directories to search for imported modules
+    //
+    // Steps:
+    //   1. If the module was already loaded, return.
+    //   2. Read the module's .dci, if it exists.
+    //   3. Recursively load every import listed in the .dci.
+    //   4. Load the .bin into Globals.
+    bool load_module_recursive(const std::filesystem::path              &bin_path,
+                               std::set<std::filesystem::path>          &already_loaded,
+                               const std::vector<std::filesystem::path> &search_paths) {
+
+        namespace fs = std::filesystem;
+        std::error_code ec;
+
+        fs::path canonical = fs::weakly_canonical(bin_path, ec);
+        if (ec) { canonical = bin_path; }
+
+        if (already_loaded.count(canonical)) { return true; }
+        already_loaded.insert(canonical);
+
+        // Read the .dci manifest if it exists.
+        fs::path dci_path = bin_path;
+        dci_path.replace_extension(".dci");
+
+        if (fs::exists(dci_path)) {
+            try {
+                carbon::DCIFile manifest = carbon::DCIFile::parse(dci_path.string());
+                fs::path        parent_dir = bin_path.parent_path();
+
+                for (const auto &imp : manifest.imports) {
+                    const std::string dep_name = imp.to_string();
+
+                    // Search order:
+                    //   1. next to the importing module
+                    //   2. in each -I directory
+                    std::vector<fs::path> candidates;
+                    candidates.push_back(parent_dir / (dep_name + ".bin"));
+                    for (const auto &root : search_paths) {
+                        candidates.push_back(root / (dep_name + ".bin"));
+                    }
+
+                    bool found = false;
+                    for (const auto &candidate : candidates) {
+                        if (fs::exists(candidate)) {
+                            if (!load_module_recursive(candidate, already_loaded, search_paths)) {
+                                return false;
+                            }
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        fmt::print(stderr,
+                                   "carbon: error: module '{}' imports '{}' but no "
+                                   "{} file was found (searched {} locations)\n",
+                                   bin_path.filename().string(), dep_name, dep_name + ".bin",
+                                   candidates.size());
+                        return false;
+                    }
+                }
+            } catch (const std::exception &e) {
+                fmt::print(stderr, "carbon: error: cannot parse '{}': {}\n", dci_path.string(),
+                           e.what());
+                return false;
+            }
+        }
+
+        // Load the .bin itself.
+        auto result = carbon::BinaryFile::from_path(bin_path);
+        if (!result) {
+            fmt::print(stderr, "carbon: error: cannot read '{}': {}\n", bin_path.string(),
+                       result.error());
+            return false;
+        }
+        if (!carbon::Globals::inst().load_module(std::move(*result))) {
+            fmt::print(stderr, "carbon: error: failed to register '{}'\n", bin_path.string());
+            return false;
+        }
+        fmt::print(fg(fmt::color::green), "carbon: loaded {}\n", bin_path.string());
+        return true;
     }
-       /* 
-    std::vector<std::string> include_paths;
-    std::vector<std::string> modules_to_load;
-    std::string call_expr;
-    std::string module_name;
-    std::string function_name;
-    std::vector<Variant> args;
-    
-    // Парсим аргументы
-    int i = 1;
-    while (i < argc) {
-        std::string arg = argv[i];
-        
+
+} // namespace
+
+int main(int argc, char *argv[]) {
+    std::vector<std::string>           load_files;
+    std::vector<std::filesystem::path> search_paths;
+    std::vector<std::string>           positional;
+    bool                               want_help = false;
+
+    // ----- Parse CLI -----
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+
+        if (arg == "-h" || arg == "--help") {
+            want_help = true;
+            break;
+        }
         if (arg == "-I" || arg == "--include") {
-            if (i + 1 < argc) {
-                include_paths.push_back(argv[++i]);
-                i++;
-            } else {
-                fmt::print(fg(fmt::color::red), "Error: {} requires an argument\n", arg);
+            if (i + 1 >= argc) {
+                fmt::print(stderr, "carbon: error: '{}' requires a dir\n", arg);
                 return 1;
             }
+            search_paths.emplace_back(argv[++i]);
+            continue;
         }
-        else if (arg == "-l" || arg == "--load") {
-            if (i + 1 < argc) {
-                modules_to_load.push_back(argv[++i]);
-                i++;
-            } else {
-                fmt::print(fg(fmt::color::red), "Error: {} requires an argument\n", arg);
+        if (arg == "-l" || arg == "--load") {
+            if (i + 1 >= argc) {
+                fmt::print(stderr, "carbon: error: '{}' requires a file\n", arg);
                 return 1;
             }
+            load_files.emplace_back(argv[++i]);
+            continue;
         }
-        else if (arg == "-c" || arg == "--call") {
-            if (i + 1 < argc) {
-                call_expr = argv[++i];
-                i++;
-            } else {
-                fmt::print(fg(fmt::color::red), "Error: {} requires an argument\n", arg);
-                return 1;
-            }
-        }
-        else if (arg == "-h" || arg == "--help") {
-            print_usage(argv[0]);
-            return 0;
-        }
-        else if (arg[0] == '-') {
-            fmt::print(fg(fmt::color::red), "Unknown option: {}\n", arg);
+        if (!arg.empty() && arg[0] == '-') {
+            fmt::print(stderr, "carbon: error: unknown option '{}'\n", arg);
             print_usage(argv[0]);
             return 1;
         }
-        else {
-            // Не-опция: определяем как модуль/функцию/аргументы
-            if (module_name.empty()) {
-                module_name = arg;
-                i++;
-            }
-            else if (function_name.empty()) {
-                // Проверяем, является ли аргумент числом
-                char* endptr = nullptr;
-                strtol(arg.c_str(), &endptr, 10);
-                if (*endptr == '\0' && endptr != arg.c_str()) {
-                    // Это число - значит это первый аргумент
-                    function_name = module_name;
-                    // Извлекаем имя функции из модуля
-                    size_t pos = function_name.find_last_of("/");
-                    if (pos != std::string::npos) {
-                        function_name = function_name.substr(pos + 1);
-                    }
-                    args.push_back(parse_argument(arg.c_str()));
-                    i++;
-                } else {
-                    // Это имя функции
-                    function_name = arg;
-                    i++;
-                }
-            }
-            else {
-                args.push_back(parse_argument(arg.c_str()));
-                i++;
-            }
-        }
+        positional.push_back(arg);
     }
-    
-    // Если не указано имя функции, используем имя модуля
-    if (function_name.empty() && !module_name.empty()) {
-        size_t pos = module_name.find_last_of("/");
-        if (pos != std::string::npos) {
-            function_name = module_name.substr(pos + 1);
-        } else {
-            function_name = module_name;
-        }
-    }
-    
-    lg::info("=== Carbon VM ===");
-    
-    // 1. Инициализируем модульную систему
-    ModuleRegistry& registry = ModuleRegistry::instance();
-    
-    // Добавляем пути поиска
-    if (include_paths.empty()) {
-        // По умолчанию: текущая директория
-        registry.add_search_path(".");
-        lg::info("Added default include path: .");
-    } else {
-        for (const auto& path : include_paths) {
-            if (fs::exists(path)) {
-                registry.add_search_path(path);
-                lg::info("Added include path: {}", path);
-            } else {
-                lg::warn("Include path does not exist: {}", path);
-            }
-        }
-    }
-    
-    // 2. Сканируем модули
-    registry.scan_and_index(true);
-    
-    // 3. Загружаем указанные модули (если есть)
-    ModuleManager& mm = ModuleManager::instance();
-    std::vector<std::shared_ptr<Module>> loaded_modules;
-    
-    for (const auto& mod_name : modules_to_load) {
-        auto module = mm.load_module(SID(mod_name.c_str()));
-        if (module && module->binary_file) {
-            loaded_modules.push_back(module);
-            lg::info("Loaded module: {}", mod_name);
-        } else {
-            lg::error("Failed to load module: {}", mod_name);
-        }
-    }
-    
-    // 4. Если указан call_expr, парсим и выполняем
-    if (!call_expr.empty()) {
-        lg::info("Evaluating: {}", call_expr);
-        
-        // Инициализируем парсер
-        Reader reader;
-        Object form = reader.read_from_string(call_expr, false, "<command-line>");
-        lg::info("Parsed: {}", form.print());
-        
-        // TODO: Выполнить S-выражение в контексте загруженных модулей
-        lg::info("Expression evaluation not yet implemented");
-        return 0;
-    }
-    
-    // 5. Иначе выполняем вызов функции из одного модуля
-    if (module_name.empty()) {
-        lg::error("No module specified");
+
+    if (want_help || (load_files.empty() && positional.size() < 2)) {
         print_usage(argv[0]);
-        return 1;
+        return want_help ? 0 : 1;
     }
-    
-    // Загружаем модуль
-    auto loaded_module = mm.load_module(StringId(module_name.c_str()));
-    if (!loaded_module) {
-        lg::error("Module '{}' not found", module_name);
-        lg::info("Available modules:");
-        int count = 0;
-        for (auto name : registry.get_available_modules()) {
-            lg::info("  - {}", name);
-            count++;
+
+    // ----- Kernel -----
+    bool            kernel_ok = false;
+    VirtualMachine *vm_ptr = nullptr;
+
+    try {
+        auto &kernel = Kernel::instance();
+        kernel_ok = kernel.initialize();
+        if (kernel_ok) {
+            vm_ptr = &kernel.virtual_machine();
+        } else {
+            lg::warn("carbon: Kernel::initialize() returned false — "
+                     "falling back to a bare VirtualMachine");
         }
-        if (count == 0) {
-            lg::info("  (no modules found)");
-            lg::info("Hint: Check that .dci files exist in include paths");
+    } catch (const std::exception &e) {
+        lg::warn("carbon: Kernel initialization failed ({}), "
+                 "falling back to a bare VirtualMachine",
+                 e.what());
+    }
+
+    VirtualMachine  local_vm;
+    VirtualMachine &vm = vm_ptr ? *vm_ptr : local_vm;
+
+    // ----- Load modules -----
+    //
+    // Order:
+    //   1. Explicit -l files, in the order given.
+    //   2. The first positional, if it is an existing file.
+    //
+    // No "prelude" guessing: carbon does not know about lib.bin. If a
+    // module needs lib.bin, its .dci must say so, and the loader will
+    // find lib.bin via .dci + search_paths.
+    std::set<std::filesystem::path> already_loaded;
+
+    auto load_one = [&](const std::string &path) -> bool {
+        return load_module_recursive(path, already_loaded, search_paths);
+    };
+
+    for (const auto &path : load_files) {
+        if (!load_one(path)) {
+            if (kernel_ok) { Kernel::instance().shutdown(); }
+            return 1;
         }
-        return 1;
     }
-    
-    if (!loaded_module->binary_file) {
-        lg::error("Module '{}' has no binary data", module_name);
-        return 1;
-    }
-    lg::info("{}", loaded_module->inspect());
-    // Находим функцию через API модуля
-    FunctionDesc* function_code = loaded_module->resolve_function(SID(function_name.c_str()));
-    if (!function_code) {
-        lg::error("Function '{}' not found in module '{}'", function_name, module_name);
-        
-        // Показываем доступные экспорты
-        lg::info("Available exports in module '{}':", module_name);
-        for (const auto& [name, def] : loaded_module->export_table) {
-            lg::info("  - {} (type: {})", name.to_string(), 
-                     def ? def->name : "unknown");
+
+    std::size_t pos_start = 0;
+    if (!positional.empty() && std::filesystem::exists(positional[0])) {
+        if (!load_one(positional[0])) {
+            if (kernel_ok) { Kernel::instance().shutdown(); }
+            return 1;
         }
+        pos_start = 1;
+    }
+
+    if (positional.size() <= pos_start) {
+        fmt::print(stderr, "carbon: error: no function name given\n");
+        print_usage(argv[0]);
+        if (kernel_ok) { Kernel::instance().shutdown(); }
         return 1;
     }
-    
-    lg::info("Module: {}", module_name);
-    lg::info("Function: {}", function_name);
-    lg::info("Arguments: {}", args.size());
-    
-    // 6. Инициализируем ядро
-    Kernel& kernel = Kernel::instance();
-    if (!kernel.initialize()) {
-        lg::error("Failed to initialize kernel");
+
+    const std::string    fn_name = positional[pos_start];
+    std::vector<Variant> args;
+    args.reserve(positional.size() - pos_start - 1);
+    for (std::size_t i = pos_start + 1; i < positional.size(); ++i) {
+        args.push_back(parse_argument(positional[i].c_str()));
+    }
+
+    // ----- Resolve function -----
+    void *fn_ptr = Globals::inst().find_symbol_ptr(StringId(fn_name));
+    if (fn_ptr == nullptr) {
+        fmt::print(stderr, "carbon: error: function '{}' not found in Globals\n", fn_name);
+        if (kernel_ok) { Kernel::instance().shutdown(); }
         return 1;
     }
-    
-    // 7. Создаём процесс
-    Process* process = ProcessRunner::spawn(
-        StringId("test_process"),
-        kernel.root(),
-        nullptr, // No entry point, we'll execute manually
-        nullptr
-    );
-    
-    if (!process) {
-        lg::error("Failed to create process");
-        kernel.shutdown();
+
+    auto *lambda = reinterpret_cast<ScriptLambda *>(fn_ptr);
+
+    // ----- Run -----
+    fmt::print(fg(fmt::color::cyan), "carbon: calling {}({} args)\n", fn_name, args.size());
+
+    Variant result;
+    try {
+        result = vm.execute_function(lambda, RunMode::Run, args);
+        vm.purge();
+    } catch (const std::exception &e) {
+        fmt::print(stderr, "carbon: execution failed: {}\n", e.what());
+        if (kernel_ok) { Kernel::instance().shutdown(); }
         return 1;
     }
-    
-    lg::info("Process created: {}", process->to_string());
-    
-    // 8. Создаём фрейм и выполняем
-    VirtualMachine& vm = kernel.virtual_machine();
-    auto frame = std::make_shared<StackFrame>(function_code, nullptr);
-    
-    // Устанавливаем аргументы
-    frame->argc = static_cast<u32>(args.size());
-    for (size_t i = 0; i < args.size() && i < MAX_ARGS; i++) {
-        frame->set_argument(static_cast<u32>(i), args[i]);
+
+    if (vm.is_error) {
+        fmt::print(stderr, "carbon: VM error: {}\n", vm.break_reason);
+        if (kernel_ok) { Kernel::instance().shutdown(); }
+        return 1;
     }
-    
-    // Выводим аргументы для отладки
-    std::string args_str;
-    for (size_t i = 0; i < args.size(); i++) {
-        if (i > 0) args_str += ", ";
-        args_str += args[i].to_string();
-    }
-    lg::info("Calling {}({})...", function_name, args_str);
-    
-    // Выполняем функцию
-    Variant result = vm.execute(frame);
-    lg::info("Result: {}", result.to_string());
-    
-    // 9. Очистка
-    kernel.shutdown();
-    */
+
+    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "{} = {}\n", fn_name,
+               result.to_string());
+
+    if (kernel_ok) { Kernel::instance().shutdown(); }
     return 0;
 }

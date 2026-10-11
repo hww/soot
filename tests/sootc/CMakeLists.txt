@@ -16,8 +16,8 @@ add_executable(sootc_test
 
 target_link_libraries(sootc_test PRIVATE
     libsootc
-    libsot
-    libsotcore
+    libscript
+    libscriptcore
     libtypesys
     libsootutils
     fmt
