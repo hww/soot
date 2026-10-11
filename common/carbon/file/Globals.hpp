@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "common/carbon/lib/StringId.hpp"
+#include "carbon/lib/StringId.hpp"
 #include "file/BinaryFile.hpp"
 #include "file/DCHeader.hpp"
 

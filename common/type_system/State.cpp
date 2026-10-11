@@ -1,5 +1,5 @@
-#include "common/type_system/State.hpp"
-#include "common/util/Assert.hpp"
+#include "type_system/State.hpp"
+#include "util/Assert.hpp"
 
 /*!
  * Convert a (state <blah> ...) to the function required to go. Must be state.

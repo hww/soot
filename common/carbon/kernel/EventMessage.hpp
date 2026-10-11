@@ -1,9 +1,9 @@
 // common/carbon/kernel/EventMessage.hpp
 #pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Variant.hpp"
-#include "common/carbon/lib/StringId.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/lib/StringId.hpp"
 
 using namespace carbon;
 

@@ -1,7 +1,7 @@
 #include "NativeAllocators.hpp"
 
-#include "common/carbon/vm/NativeFunc.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/vm/NativeFunc.hpp"
+#include "util/Log.hpp"
 
 
 

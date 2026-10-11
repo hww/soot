@@ -2,9 +2,9 @@
 
 #include <optional>
 
-#include "common/CommonTypes.hpp"
-#include "common/util/Assert.hpp"
-#include "common/util/Range.hpp"
+#include "CommonTypes.hpp"
+#include "util/Assert.hpp"
+#include "util/Range.hpp"
 
 constexpr int BITS_PER_BYTE = 8;
 template <typename T>

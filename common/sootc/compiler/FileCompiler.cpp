@@ -1,7 +1,7 @@
-#include "common/sootc/compiler/FileCompiler.hpp"
-#include "common/sootc/compiler/NodeBuilder.hpp"
-#include "common/sootc/node/FileNode.hpp"
-#include "common/sootc/node/GlobalNode.hpp"
+#include "sootc/compiler/FileCompiler.hpp"
+#include "sootc/compiler/NodeBuilder.hpp"
+#include "sootc/node/FileNode.hpp"
+#include "sootc/node/GlobalNode.hpp"
 
 namespace sootc {
 namespace FileCompiler {

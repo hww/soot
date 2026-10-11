@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "common/type_system/TypeSystem.hpp"
-#include "common/type_system/Defenum.hpp"
-#include "common/soot/Export.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "type_system/Defenum.hpp"
+#include "script/Export.hpp"
 #include "fmt/format.h"
 
 class DefEnumTest : public ::testing::Test {

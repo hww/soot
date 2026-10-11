@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CommonTypes.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/Variant.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/Variant.hpp"
 
 #include "generated/vector.hpp"
 

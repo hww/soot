@@ -1,6 +1,6 @@
 #pragma once
-#include "common/soot/Object.hpp"
-#include "common/type_system/TypeSpec.hpp"
+#include "script/Object.hpp"
+#include "type_system/TypeSpec.hpp"
 #include <string>
 
 namespace soot {

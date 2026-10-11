@@ -2,8 +2,8 @@
 
 #include <optional>
 
-#include "common/type_system/TypeSystem.hpp"
-#include "common/type_system/TypeSpec.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "type_system/TypeSpec.hpp"
 
 // This contains type system utilities related to state and process
 

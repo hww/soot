@@ -1,7 +1,7 @@
 ﻿#include "LetNode.hpp"
 #include "FunctionNode.hpp"
 #include "VariableNode.hpp"
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 #include "vm/Instructions.hpp"
 
 namespace sootc {

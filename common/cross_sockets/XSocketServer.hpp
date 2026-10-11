@@ -5,8 +5,8 @@
 #include <thread>
 #include <vector>
 
-#include "common/CommonTypes.hpp"
-#include "common/cross_sockets/XSocket.hpp"
+#include "CommonTypes.hpp"
+#include "cross_sockets/XSocket.hpp"
 
 /// @brief A cross platform generic socket server implementation
 class XSocketServer {

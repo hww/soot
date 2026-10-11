@@ -3,9 +3,9 @@
 #include <optional>
 #include <stdexcept>
 
-#include "common/util/Range.hpp"
+#include "util/Range.hpp"
 
-#include "common/util/Json.hpp"
+#include "util/Json.hpp"
 
 using json = nlohmann::json;
 

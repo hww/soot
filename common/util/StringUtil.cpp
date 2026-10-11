@@ -1,5 +1,5 @@
-#include "common/util/StringUtil.hpp"
-#include "common/util/Diff.hpp"
+#include "util/StringUtil.hpp"
+#include "util/Diff.hpp"
 
 #include <iomanip>
 #include <random>

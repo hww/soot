@@ -11,8 +11,9 @@
  */
 
 #include "Config.hpp"
-#include "common/type_system/TypeSpec.hpp"
-#include "common/util/StringIdHash.hpp"
+#include "type_system/TypeSpec.hpp"
+#include "util/StringIdHash.hpp"
+#include "script/TextDb.hpp"
 #include <cstdint>
 #include <fmt/format.h>
 #include <map>
@@ -20,7 +21,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <soot/TextDb.hpp>
 
 // Forward declarations
 class Type;

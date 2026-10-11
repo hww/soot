@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 #include <chrono>
 #include <vector>
 

@@ -1,7 +1,7 @@
 // sootc/runtime/RemoteRuntime.cpp
 #include "sootc/runtime/RemoteRuntime.hpp"
 
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 
 namespace sootc {
 

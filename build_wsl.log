@@ -16,7 +16,7 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[4/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/SourceText.cpp.o
+[4/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/SourceText.cpp.o
 [5/110] Building CXX object CMakeFiles/librepl.dir/common/repl/nrepl/ReplClient.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets/XSocketServer.hpp:8,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/nrepl/ReplServer.h:6,
@@ -32,40 +32,40 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/cross_sockets
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[7/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/ParseHelpers.cpp.o
-[8/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/TextDb.cpp.o
-[9/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/PrinterEnv.cpp.o
+[7/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/ParseHelpers.cpp.o
+[8/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/TextDb.cpp.o
+[9/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/PrinterEnv.cpp.o
 [10/110] Linking CXX static library lib/libxsockets_lib.a
-[11/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Printer.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Printer.cpp:2:
+[11/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/Printer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Printer.cpp:2:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[12/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Archive.cpp.o
+[12/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/Archive.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Config.hpp:3,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Archive.cpp:3:
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Archive.cpp:3:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[13/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryArchive.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.cpp:1:
-/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
-/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+[13/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/MemoryArchive.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.cpp:1:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
   121 |         if (pos < 0 || pos > m_region->size()) {
       |             ~~~~^~~
-[14/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/RelocationTable.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.hpp:5,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.cpp:1:
+[14/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/RelocationTable.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/archive/RelocationTable.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/archive/RelocationTable.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[15/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemorySymbolTable.cpp.o
-[16/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Reader.cpp.o
+[15/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/MemorySymbolTable.cpp.o
+[16/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/Reader.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.cpp:1:
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Reader.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
@@ -80,32 +80,32 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/versions/vers
 /home/valery/projects/hww/_c/soot.git/common/repl/config.cpp:83:1: warning: control reaches end of non-void function [-Wreturn-type]
    83 | }
       | ^
-[18/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Object.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Object.cpp:2:
+[18/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/Object.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Object.cpp:2:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[19/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/PrettyPrinter.cpp.o
+[19/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/PrettyPrinter.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/PrettyPrinter.hpp:10,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/PrettyPrinter.cpp:1:
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/PrettyPrinter.hpp:10,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/PrettyPrinter.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[20/110] Building CXX object CMakeFiles/libsotcore.dir/common/soot/Errors.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.hpp:4,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.cpp:1:
+[20/110] Building CXX object CMakeFiles/libsotcore.dir/common/script/Errors.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Errors.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Errors.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[21/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryRegion.cpp.o
-[22/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/MemoryBuffer.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/archive/RelocationTable.hpp:5,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryBuffer.hpp:6,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryBuffer.cpp:1:
+[21/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/MemoryRegion.cpp.o
+[22/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/MemoryBuffer.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/archive/RelocationTable.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryBuffer.hpp:6,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryBuffer.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
@@ -117,7 +117,7 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/versions/vers
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[24/110] Building CXX object CMakeFiles/libsot.dir/common/soot/archive/LabelTable.cpp.o
+[24/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/LabelTable.cpp.o
 [25/110] Building CXX object CMakeFiles/libsootc.dir/common/sootc/node/Node.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/ProgramBinaryElement.hpp:3,
                  from /home/valery/projects/hww/_c/soot.git/common/sootc/node/Node.hpp:4,
@@ -151,12 +151,12 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/file/D
 /home/valery/projects/hww/_c/soot.git/common/carbon/vm/Instructions.hpp:155:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
   155 |         struct {
       |                ^
-[26/110] Building CXX object CMakeFiles/soot.dir/common/soot/Main.cpp.o
+[26/110] Building CXX object CMakeFiles/soot.dir/common/script/Main.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/versions/version.h:4,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/config.h:8,
                  from /home/valery/projects/hww/_c/soot.git/common/repl/repl_wrapper.h:8,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Reader.hpp:5,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Main.cpp:5:
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Reader.hpp:5,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Main.cpp:5:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
@@ -618,32 +618,32 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/lib/SI
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
-[49/110] Building CXX object CMakeFiles/libsot.dir/common/soot/Interpreter.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.hpp:3,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:1:
+[49/110] Building CXX object CMakeFiles/libsot.dir/common/script/Interpreter.cpp.o
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.hpp:3,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:1:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \
       |                                                                                                     
 In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.hpp:3,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:12:
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:12:
 /home/valery/projects/hww/_c/soot.git/common/type_system/TypeSystem.hpp:31:16: warning: ISO C++ prohibits anonymous structs [-Wpedantic]
    31 |         struct {
       |                ^
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:29:
-/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
-/home/valery/projects/hww/_c/soot.git/common/soot/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:29:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
   121 |         if (pos < 0 || pos > m_region->size()) {
       |             ~~~~^~~
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_get_context(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:5307:15: warning: comparison of unsigned expression in ‘>= 0’ is always true [-Wtype-limits]
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_get_context(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:5307:15: warning: comparison of unsigned expression in ‘>= 0’ is always true [-Wtype-limits]
  5307 |     if (index >= 0)
       |         ~~~~~~^~~~
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_read_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:7631:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_read_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:7631:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
  7631 |     if (index < 0 || index >= region->size()) {
       |         ~~~~~~^~~
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_write_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
-/home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.cpp:7660:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_write_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:7660:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
  7660 |     if (index < 0 || index >= region->size()) {
       |         ~~~~~~^~~
 [50/110] Building CXX object CMakeFiles/libcarbon.dir/common/carbon/lib/StringIdManager.cpp.o
@@ -1535,7 +1535,7 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/carbon/vm/Sta
 [81/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/conversion.cxx.o
 [82/110] Building CXX object third_party/fmt/CMakeFiles/fmt.dir/src/format.cc.o
 [83/110] Building CXX object CMakeFiles/libxiff.dir/common/xiff/src/XiffCompiler.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpreter.hpp:3,
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.hpp:3,
                  from /home/valery/projects/hww/_c/soot.git/common/xiff/include/xiff/XiffCompiler.hpp:3,
                  from /home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffCompiler.cpp:5:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
@@ -1546,8 +1546,8 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Interpre
 [86/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/prompt.cxx.o
 [87/110] Building CXX object third_party/replxx/CMakeFiles/replxx.dir/src/terminal.cxx.o
 [88/110] Building CXX object CMakeFiles/xiff.dir/common/xiff/src/XiffMain.cpp.o
-In file included from /home/valery/projects/hww/_c/soot.git/common/soot/Errors.hpp:4,
-                 from /home/valery/projects/hww/_c/soot.git/common/soot/Export.hpp:3,
+In file included from /home/valery/projects/hww/_c/soot.git/common/script/Errors.hpp:4,
+                 from /home/valery/projects/hww/_c/soot.git/common/script/Export.hpp:3,
                  from /home/valery/projects/hww/_c/soot.git/common/xiff/src/XiffMain.cpp:2:
 /home/valery/projects/hww/_c/soot.git/common/CommonTypes.hpp:217:100: warning: backslash-newline at end of file
   217 | #define ENUM_FLAG_OPERATORS(T)                                                                     \

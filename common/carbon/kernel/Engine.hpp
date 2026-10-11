@@ -1,9 +1,9 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/kernel/Connectable.hpp"
-#include "common/carbon/kernel/Connection.hpp"
-#include "common/carbon/lib/StringId.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/kernel/Connectable.hpp"
+#include "carbon/kernel/Connection.hpp"
+#include "carbon/lib/StringId.hpp"
 
 using namespace carbon;
 

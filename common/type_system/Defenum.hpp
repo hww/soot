@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/type_system/TypeSystem.hpp"
-#include "common/soot/Object.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "script/Object.hpp"
 
 EnumType* parse_defenum(const soot::Object& defenum,
     TypeSystem* ts,

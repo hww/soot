@@ -1,6 +1,6 @@
 ﻿
-#include "common/soot/export.h" 
-#include "common/type_system/export.h"
+#include "script/export.h" 
+#include "type_system/export.h"
 
 #include "gtest/gtest.h"
 #include "fmt/format.h"

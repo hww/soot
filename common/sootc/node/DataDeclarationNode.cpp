@@ -1,12 +1,12 @@
 ﻿#include "DataDeclarationNode.hpp"
 #include "ConstNode.hpp"
 
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/StringIdManager.hpp"
-#include "common/type_system/Type.hpp"
-#include "common/type_system/TypeSpec.hpp"
-#include "common/type_system/TypeSystem.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/StringIdManager.hpp"
+#include "type_system/Type.hpp"
+#include "type_system/TypeSpec.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "util/Log.hpp"
 
 #include "fmt/format.h"
 

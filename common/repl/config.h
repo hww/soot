@@ -5,9 +5,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/versions/version.h"
+#include "versions/version.h"
 
-#include "common/util/Json.hpp"
+#include "util/Json.hpp"
 
 using json = nlohmann::json;
 

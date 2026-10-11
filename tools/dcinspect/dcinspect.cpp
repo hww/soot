@@ -18,8 +18,8 @@
 //   3 - cannot open file
 //   4 - validation failed
 
-#include "common/carbon/file/BinaryFile.hpp"
-#include "common/carbon/file/BinaryFileInspector.hpp"
+#include "carbon/file/BinaryFile.hpp"
+#include "carbon/file/BinaryFileInspector.hpp"
 
 #include "fmt/format.h"
 

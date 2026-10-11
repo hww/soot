@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringId.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/StringId.hpp"
 
 namespace carbon {
 

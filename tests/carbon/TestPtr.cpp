@@ -1,5 +1,5 @@
 ﻿#include "gtest/gtest.h"
-#include "common/carbon/lib/Ptr.hpp"
+#include "carbon/lib/Ptr.hpp"
 
 using namespace carbon;
 

@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include <cassert>
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 namespace carbon
 {

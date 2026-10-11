@@ -6,7 +6,7 @@
  */
 
 // clang-format off
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 #ifdef OS_POSIX
 #include <arpa/inet.h>
 #include <netinet/in.h>

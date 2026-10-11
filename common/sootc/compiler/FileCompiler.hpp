@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/soot/Object.hpp"
+#include "script/Object.hpp"
 #include <memory>
 #include <string>
 

@@ -1,8 +1,8 @@
-#include "common/type_system/Type.hpp"
+#include "type_system/Type.hpp"
 
-#include "common/type_system/TypeSystem.hpp"
-#include "common/util/Assert.hpp"
-#include "common/util/StringIdHash.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "util/Assert.hpp"
+#include "util/StringIdHash.hpp"
 #include "fmt/format.h"
 
 #include <algorithm>

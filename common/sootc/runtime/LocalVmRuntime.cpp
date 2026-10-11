@@ -2,7 +2,7 @@
 #include "sootc/runtime/LocalVmRuntime.hpp"
 
 #include "carbon/file/Globals.hpp"
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 
 namespace sootc {
 

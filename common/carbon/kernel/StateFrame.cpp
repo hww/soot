@@ -1,8 +1,8 @@
 ﻿// StateFrame.cpp
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/kernel/StateFrame.hpp"
-#include "common/carbon/vm/VirtualMachine.hpp"
-#include "common/carbon/kernel/Process.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/kernel/StateFrame.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
+#include "carbon/kernel/Process.hpp"
 #include "lib/StringId.hpp"
 
 namespace carbon {

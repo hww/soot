@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/lib/Variant.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/lib/Variant.hpp"
 #include <map>
 
 

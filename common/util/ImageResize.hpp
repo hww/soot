@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 void resize_rgba_image(u8* dst,
                        int dst_w,

@@ -1,7 +1,7 @@
 // FunctionCompiler.hpp
 #pragma once
 
-#include "soot/Object.hpp"
+#include "script/Object.hpp"
 #include "sootc/node/Node.hpp"
 #include <memory>
 

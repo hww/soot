@@ -11,8 +11,8 @@
  * (get_at navigation, inspect-as-sexpr, to_alias) has been removed.
  */
 
-#include "common/type_system/Type.hpp"
-#include "common/type_system/TypeSpec.hpp"
+#include "type_system/Type.hpp"
+#include "type_system/TypeSpec.hpp"
 
 #include <memory>
 #include <optional>

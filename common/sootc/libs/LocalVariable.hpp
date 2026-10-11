@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/type_system/Type.hpp"
+#include "type_system/Type.hpp"
 
 namespace sootc {
 

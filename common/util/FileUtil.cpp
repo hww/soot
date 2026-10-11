@@ -1,6 +1,6 @@
 // FileHub.cpp - все реализации
-#include "common/util/FileUtil.hpp"
-#include "common/util/Log.hpp"
+#include "util/FileUtil.hpp"
+#include "util/Log.hpp"
 #include <fstream>
 #include <regex>
 

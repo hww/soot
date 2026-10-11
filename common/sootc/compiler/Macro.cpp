@@ -1,8 +1,8 @@
-﻿#include "common/sootc/compiler/Macro.hpp"
+﻿#include "sootc/compiler/Macro.hpp"
 
-#include "common/soot/Errors.hpp"
-#include "common/soot/Interpreter.hpp"
-#include "common/util/Log.hpp"
+#include "script/Errors.hpp"
+#include "script/Interpreter.hpp"
+#include "util/Log.hpp"
 
 namespace sootc {
 

@@ -6,9 +6,9 @@
  * @ingroup kernel
  */
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/kernel/Types.hpp"
-#include "common/carbon/kernel/Process.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/kernel/Types.hpp"
+#include "carbon/kernel/Process.hpp"
 #include <vector>
 #include <memory>
 #include <unordered_map>

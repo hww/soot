@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 #include <string>
 
 // ============================================================================

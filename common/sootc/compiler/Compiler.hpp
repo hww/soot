@@ -18,9 +18,9 @@
 #include "sootc/node/Node.hpp"
 #include "sootc/node/NoneNode.hpp"
 
-#include "common/soot/Interpreter.hpp"
-#include "common/soot/Object.hpp"
-#include "common/soot/Reader.hpp"
+#include "script/Interpreter.hpp"
+#include "script/Object.hpp"
+#include "script/Reader.hpp"
 
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/file/Globals.hpp"

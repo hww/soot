@@ -1,16 +1,16 @@
 ﻿#include "repl_wrapper.h"
 
 #include "CommonTypes.hpp"
-#include "common/util/FileUtil.hpp"
-#include "common/util/JsonUtil.hpp"
-#include "common/util/StringUtil.hpp"
-#include "common/versions/version.h"
+#include "util/FileUtil.hpp"
+#include "util/JsonUtil.hpp"
+#include "util/StringUtil.hpp"
+#include "versions/version.h"
 
 #include "fmt/format.h"
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "third_party/replxx/include/replxx.hxx"
-#include "common/versions/revision.h"
+#include "versions/revision.h"
 
 #ifndef FMT_CONSTEVAL
 #define FMT_CONSTEVAL

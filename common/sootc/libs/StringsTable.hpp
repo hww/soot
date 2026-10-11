@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 #include <vector>
 #include <expected>
 #include <string>

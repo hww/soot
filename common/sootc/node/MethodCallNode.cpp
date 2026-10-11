@@ -2,8 +2,8 @@
 #include "FunctionNode.hpp"
 
 #include "carbon/vm/Instructions.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "util/Log.hpp"
 
 namespace sootc {
 

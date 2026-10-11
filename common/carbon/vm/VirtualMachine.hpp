@@ -1,12 +1,12 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/Variant.hpp"
-#include "common/carbon/vm/Instructions.hpp"
-#include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/vm/NativeFunc.hpp"
-#include "common/carbon/vm/NativeAllocators.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/vm/Instructions.hpp"
+#include "carbon/vm/StackFrame.hpp"
+#include "carbon/vm/NativeFunc.hpp"
+#include "carbon/vm/NativeAllocators.hpp"
 #include <memory>
 
 namespace carbon {

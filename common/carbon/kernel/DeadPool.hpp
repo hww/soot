@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
+#include "carbon/ForwardDeclarations.hpp"
 
 namespace carbon {
 

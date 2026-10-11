@@ -1,5 +1,5 @@
 ﻿#include <gtest/gtest.h>
-#include "common/carbon/Export.hpp"
+#include "carbon/Export.hpp"
 
 using namespace carbon;
 using namespace carbon;

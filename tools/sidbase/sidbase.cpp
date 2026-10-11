@@ -21,10 +21,10 @@
 
 #include "Args.hpp"
 
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/SIDBase.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/StringIdManager.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/SIDBase.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/StringIdManager.hpp"
 
 #include "fmt/format.h"
 

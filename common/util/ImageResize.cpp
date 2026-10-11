@@ -1,8 +1,8 @@
-#include "common/util/ImageResize.hpp"
+#include "util/ImageResize.hpp"
 
 #include <cmath>
 
-#include "common/util/math/Vector.hpp"
+#include "util/math/Vector.hpp"
 
 namespace {
 struct BilinearSample {

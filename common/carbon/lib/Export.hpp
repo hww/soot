@@ -1,6 +1,6 @@
 ﻿// Common files
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/Variant.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/ScriptObject.hpp"
-#include "common/carbon/lib/Ptr.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/ScriptObject.hpp"
+#include "carbon/lib/Ptr.hpp"

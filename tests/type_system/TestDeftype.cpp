@@ -1,6 +1,6 @@
-#include "common/soot/Export.hpp"
-#include "common/type_system/Deftype.hpp"
-#include "common/type_system/TypeSystem.hpp"
+#include "script/Export.hpp"
+#include "type_system/Deftype.hpp"
+#include "type_system/TypeSystem.hpp"
 #include "fmt/format.h"
 #include <gtest/gtest.h>
 

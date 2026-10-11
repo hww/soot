@@ -2,7 +2,7 @@
 
 #include "BinaryFile.hpp"
 
-#include "common/carbon/lib/StringIdManager.hpp"
+#include "carbon/lib/StringIdManager.hpp"
 #include "fmt/format.h"
 #include "util/Log.hpp"
 

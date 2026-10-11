@@ -1,8 +1,8 @@
 #include "NewNode.hpp"
 
-#include "common/carbon/lib/StringId.hpp"
-#include "common/type_system/TypeSystem.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "util/Log.hpp"
 #include <algorithm>
 
 namespace sootc {

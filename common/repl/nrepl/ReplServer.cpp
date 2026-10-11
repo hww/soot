@@ -1,8 +1,8 @@
 // clang-format off
 #include "ReplServer.h"
 
-#include "common/cross_sockets/XSocket.hpp"
-#include "common/versions/version.h"
+#include "cross_sockets/XSocket.hpp"
+#include "versions/version.h"
 
 #include "fmt/core.h"
 
@@ -13,7 +13,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #endif
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 // clang-format on
 
 // TODO - The server also needs to eventually return the result of the evaluation

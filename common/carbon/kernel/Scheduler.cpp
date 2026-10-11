@@ -1,5 +1,5 @@
-﻿#include "common/carbon/kernel/Scheduler.hpp"
-#include "common/util/Log.hpp"
+﻿#include "carbon/kernel/Scheduler.hpp"
+#include "util/Log.hpp"
 #include "lib/StringId.hpp"
 #include <algorithm>
 #include <format>

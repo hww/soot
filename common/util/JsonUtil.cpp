@@ -1,6 +1,6 @@
-#include "common/util/JsonUtil.hpp"
-#include "common/util/Log.hpp"
-#include "common/util/Assert.hpp"
+#include "util/JsonUtil.hpp"
+#include "util/Log.hpp"
+#include "util/Assert.hpp"
 
 /*!
  * Strip out // and / * comments

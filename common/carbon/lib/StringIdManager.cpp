@@ -1,10 +1,10 @@
 // StringIdManager.cpp
-#include "common/carbon/lib/StringIdManager.hpp"
+#include "carbon/lib/StringIdManager.hpp"
 
 #include "CommonTypes.hpp"
-#include "common/carbon/lib/SIDBase.hpp"
-#include "common/util/Log.hpp"
-#include "common/util/StringIdHash.hpp"
+#include "carbon/lib/SIDBase.hpp"
+#include "util/Log.hpp"
+#include "util/StringIdHash.hpp"
 
 #include "fmt/format.h"
 

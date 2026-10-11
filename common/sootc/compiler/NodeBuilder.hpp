@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/soot/Object.hpp"
+#include "script/Object.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/node/BinaryNode.hpp"
 #include "sootc/node/CallNode.hpp"

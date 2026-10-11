@@ -2,15 +2,15 @@
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
 
-#include "common/carbon/vm/Instructions.hpp"
-#include "common/carbon/file/DCScript.hpp"
-#include "common/carbon/file/ProgramBinaryElement.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/StringIdManager.hpp"
-#include "common/util/Log.hpp"
-#include "common/sootc/libs/CompareOp.hpp"
-#include "common/sootc/node/Node.hpp"
-#include "common/sootc/libs/StringsTable.hpp"
+#include "carbon/vm/Instructions.hpp"
+#include "carbon/file/DCScript.hpp"
+#include "carbon/file/ProgramBinaryElement.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/StringIdManager.hpp"
+#include "util/Log.hpp"
+#include "sootc/libs/CompareOp.hpp"
+#include "sootc/node/Node.hpp"
+#include "sootc/libs/StringsTable.hpp"
 
 #include <algorithm>
 #include <cstring>

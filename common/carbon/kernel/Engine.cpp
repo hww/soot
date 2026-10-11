@@ -1,5 +1,5 @@
-﻿#include "common/carbon/kernel/Engine.hpp"
-#include "common/carbon/kernel/Process.hpp"
+﻿#include "carbon/kernel/Engine.hpp"
+#include "carbon/kernel/Process.hpp"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>

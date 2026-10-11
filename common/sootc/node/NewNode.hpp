@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "ExpressionNode.hpp"
-#include "common/type_system/TypeSpec.hpp"
+#include "type_system/TypeSpec.hpp"
 #include "sootc/node/FunctionNode.hpp"
 #include "sootc/node/Node.hpp"
 #include <memory>

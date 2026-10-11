@@ -1,11 +1,11 @@
 // FileNode.cpp
-#include "common/sootc/node/FileNode.hpp"
+#include "sootc/node/FileNode.hpp"
 #include "DataDeclarationNode.hpp"
 #include "EnumDeclarationNode.hpp"
 #include "TypeDeclarationNode.hpp"
-#include "common/carbon/file/DCHeader.hpp"
-#include "common/sootc/node/FunctionNode.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/file/DCHeader.hpp"
+#include "sootc/node/FunctionNode.hpp"
+#include "util/Log.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/node/DataDeclarationNode.hpp"
 

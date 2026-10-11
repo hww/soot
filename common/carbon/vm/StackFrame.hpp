@@ -1,12 +1,12 @@
 ﻿#pragma once
 
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/Variant.hpp"
-#include "common/carbon/vm/Instructions.hpp"
-#include "common/carbon/kernel/Process.hpp"
-#include "common/carbon/kernel/EventMessage.hpp"
-#include "common/util/Assert.hpp"
-#include "common/util/Log.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/vm/Instructions.hpp"
+#include "carbon/kernel/Process.hpp"
+#include "carbon/kernel/EventMessage.hpp"
+#include "util/Assert.hpp"
+#include "util/Log.hpp"
 #include "file/DCScript.hpp"
 #include "lib/StringId.hpp"
 #include <iostream>

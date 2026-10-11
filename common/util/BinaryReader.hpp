@@ -11,8 +11,8 @@
 #include <vector>
 #include <filesystem>
 
-#include "common/CommonTypes.hpp"
-#include "common/util/Assert.h"
+#include "CommonTypes.hpp"
+#include "util/Assert.h"
 
 class BinaryReader {
  public:

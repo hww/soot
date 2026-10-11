@@ -1,8 +1,8 @@
 // clang-format off
 #include "ReplClient.h"
 
-#include "common/cross_sockets/XSocket.hpp"
-#include "common/versions/version.h"
+#include "cross_sockets/XSocket.hpp"
+#include "versions/version.h"
 
 #include "fmt/core.h"
 

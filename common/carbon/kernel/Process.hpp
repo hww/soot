@@ -1,12 +1,12 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/file/DCScript.hpp"
-#include "common/carbon/kernel/Types.hpp"
-#include "common/carbon/kernel/Connectable.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/vm/StackFrame.hpp"
+#include "carbon/file/DCScript.hpp"
+#include "carbon/kernel/Types.hpp"
+#include "carbon/kernel/Connectable.hpp"
 #include "kernel/EventMessage.hpp"
 #include <cstddef>
 #include <functional>

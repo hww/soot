@@ -1,7 +1,7 @@
 // StringIdManager.hpp
 #pragma once
 
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 
 #include <cstdint>
 #include <shared_mutex>

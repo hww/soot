@@ -11,8 +11,8 @@
 #include <vector>
 #include <filesystem>
 
-#include "common/util/Assert.h"
-#include "common/util/file_hub.h"
+#include "util/Assert.h"
+#include "util/file_hub.h"
 
 struct BinaryWriterRef {
   size_t offset;

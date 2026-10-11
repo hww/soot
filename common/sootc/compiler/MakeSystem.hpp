@@ -1,7 +1,7 @@
 #pragma  once
 
 #include "repl/config.h"
-#include "soot/Interpreter.hpp"
+#include "script/Interpreter.hpp"
 class MakeSystem {
     public:
 

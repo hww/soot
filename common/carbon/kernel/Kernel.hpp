@@ -6,11 +6,11 @@
  * @ingroup kernel
  */
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/kernel/Types.hpp"
-#include "common/carbon/kernel/Process.hpp"
-#include "common/carbon/kernel/Scheduler.hpp"
-#include "common/carbon/vm/VirtualMachine.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/kernel/Types.hpp"
+#include "carbon/kernel/Process.hpp"
+#include "carbon/kernel/Scheduler.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
 
 namespace carbon {
 

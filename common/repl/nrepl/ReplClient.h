@@ -2,7 +2,7 @@
 
 #include "ReplServer.h"
 
-#include "common/cross_sockets/XSocketClient.hpp"
+#include "cross_sockets/XSocketClient.hpp"
 
 class ReplClient : public XSocketClient {
  public:

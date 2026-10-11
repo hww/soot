@@ -1,7 +1,7 @@
 ﻿// main.cpp
 #include "CommonTypes.hpp"
-#include "common/util/FileUtil.hpp"
-#include "common/util/Log.hpp"
+#include "util/FileUtil.hpp"
+#include "util/Log.hpp"
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "sootc/compiler/Compiler.hpp"

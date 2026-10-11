@@ -5,8 +5,8 @@
 #include "Node.hpp"
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
-#include "common/type_system/TypeSystem.hpp"
-#include "common/sootc/libs/StringsTable.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "sootc/libs/StringsTable.hpp"
 #include <stdexcept>
 
 namespace sootc {

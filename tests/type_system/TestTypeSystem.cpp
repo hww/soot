@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "common/type_system/Export.hpp"
+#include "type_system/Export.hpp"
 #include "fmt/format.h"
 
 class TypeSystemTest : public ::testing::Test {

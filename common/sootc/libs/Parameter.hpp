@@ -2,7 +2,7 @@
 #pragma once
 
 #include <string>
-#include "common/type_system/Type.hpp"
+#include "type_system/Type.hpp"
 
 namespace sootc {
 

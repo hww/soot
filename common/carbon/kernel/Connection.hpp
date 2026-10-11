@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/kernel/Connectable.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/kernel/Connectable.hpp"
 
 namespace carbon {
 

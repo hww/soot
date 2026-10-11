@@ -1,9 +1,9 @@
 
 #include <string>
 
-#include "common/cross_sockets/XSocketClient.hpp"
-#include "common/cross_sockets/XSocket.hpp"
-#include "common/util/Log.hpp"
+#include "cross_sockets/XSocketClient.hpp"
+#include "cross_sockets/XSocket.hpp"
+#include "util/Log.hpp"
 
 #include "fmt/format.h"
 

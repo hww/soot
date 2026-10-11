@@ -1,7 +1,7 @@
 #include "Register.hpp"
-#include "common/soot/ListBuilder.hpp"
+#include "script/ListBuilder.hpp"
 #include "TypeSystem.hpp"
-#include "soot/Object.hpp"
+#include "script/Object.hpp"
 
 namespace soot {
 

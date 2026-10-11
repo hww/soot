@@ -1,6 +1,6 @@
 #include "config.h"
 
-#include "common/versions/version.h"
+#include "versions/version.h"
 
 #include "fmt/core.h"
 

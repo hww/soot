@@ -1,4 +1,4 @@
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 #include <cstdio>
 #include <mutex>
 #include <sstream>

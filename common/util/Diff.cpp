@@ -30,7 +30,7 @@
 //
 // The Google C++ Testing and Mocking Framework (Google Test)
 
-#include "common/util/Diff.hpp"
+#include "util/Diff.hpp"
 
 #include <algorithm>
 #include <list>

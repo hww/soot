@@ -1,7 +1,7 @@
-#include "common/type_system/TypeSpec.hpp"
+#include "type_system/TypeSpec.hpp"
 
-#include "common/type_system/TypeSystem.hpp"
-#include "common/util/Assert.hpp"
+#include "type_system/TypeSystem.hpp"
+#include "util/Assert.hpp"
 #include "fmt/format.h"
 
 #include <algorithm>

@@ -3,7 +3,7 @@
 #include <optional>
 #include <set>
 
-#include "common/cross_sockets/XSocketServer.hpp"
+#include "cross_sockets/XSocketServer.hpp"
 
 enum ReplServerMessageType { PING = 0, EVAL = 10, SHUTDOWN = 20 };
 

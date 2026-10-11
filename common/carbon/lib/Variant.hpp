@@ -1,7 +1,7 @@
 ﻿#pragma once
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringId.hpp"
-#include "common/carbon/lib/ScriptObject.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/ScriptObject.hpp"
 #include "type_system/Type.hpp"
 #include <cstddef>
 #include "fmt/format.h"

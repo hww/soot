@@ -1,9 +1,9 @@
 #pragma once
 
-#include "common/soot/Object.hpp"
-#include "common/type_system/State.hpp"
-#include "common/type_system/TypeSpec.hpp"
-#include "common/type_system/TypeSystem.hpp"
+#include "script/Object.hpp"
+#include "type_system/State.hpp"
+#include "type_system/TypeSpec.hpp"
+#include "type_system/TypeSystem.hpp"
 
 struct DeftypeResult {
     TypeSpec  type;

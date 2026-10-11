@@ -1,8 +1,8 @@
 ﻿// StringId.hpp
 #pragma once
 
-#include "common/CommonTypes.hpp"
-#include "common/carbon/lib/StringIdManager.hpp"
+#include "CommonTypes.hpp"
+#include "carbon/lib/StringIdManager.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -84,7 +84,7 @@ inline constexpr bool operator!=(sid64 lhs, const carbon::StringId &rhs) noexcep
 // SID() macros
 // ===========================================================================
 
-#include "common/util/StringIdHash.hpp"
+#include "util/StringIdHash.hpp"
 
 /// @brief Build a StringId from a string literal without runtime registration.
 /// @details The hash is computed at compile time; the resulting StringId is

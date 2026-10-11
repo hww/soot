@@ -115,7 +115,7 @@ Start a local interactive session for real-time experimentation:
 bash> soot
 ```
 
-* 📖 [SOOT Script Language - Quick Reference](common/soot/README.md)
+* 📖 [SOOT Script Language - Quick Reference](common/script/README.md)
   
 #### 2. Network REPL (nREPL)
 
@@ -172,7 +172,7 @@ User Configuration (`~/.config/soot/config.sot`)
 
 SOOT includes a minimal Standard Library located at /usr/local/share/soot/lib.sot. This library is automatically loaded to provide essential definitions and to handle cross-platform hardware abstractions.
 
-* 📖 [SOOT Common Library Documentation](common/soot/README.LIB.md)
+* 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
 
 ## 📁 Configuration Paths and Files
 
@@ -322,8 +322,8 @@ The following EMacs config file should get you started and configure OpenGOAL's 
 
 ## 📖 Other Documentation
 
-* [SOOT Script Language - Quick Reference](common/soot/README.md)
-* [SOOT Common Library Documentation](common/soot/README.LIB.md)
+* [SOOT Script Language - Quick Reference](common/script/README.md)
+* [SOOT Common Library Documentation](common/script/README.LIB.md)
 
 ---
 

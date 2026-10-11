@@ -2,7 +2,7 @@
 #include "FunctionNode.hpp"
 
 #include "carbon/vm/Instructions.hpp"
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 
 namespace sootc {
 

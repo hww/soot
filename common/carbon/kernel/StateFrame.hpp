@@ -1,9 +1,9 @@
 ﻿// StateFrame.hpp
 #pragma once
 
-#include "common/carbon/ForwardDeclarations.hpp"
-#include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/file/Export.hpp"
+#include "carbon/ForwardDeclarations.hpp"
+#include "carbon/vm/StackFrame.hpp"
+#include "carbon/file/Export.hpp"
 
 namespace carbon {
 

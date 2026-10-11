@@ -1,10 +1,10 @@
 ﻿// Common files
-#include "common/carbon/lib/Export.hpp"
+#include "carbon/lib/Export.hpp"
 // The .bin and .dc file format
-#include "common/carbon/file/Export.hpp"
+#include "carbon/file/Export.hpp"
 // The virtual machine
-#include "common/carbon/vm/Export.hpp"
+#include "carbon/vm/Export.hpp"
 // The kernel
-#include "common/carbon/kernel/Export.hpp"
+#include "carbon/kernel/Export.hpp"
 
 

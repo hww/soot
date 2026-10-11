@@ -1,7 +1,7 @@
 // VariableInfo.hpp
 #pragma once
 
-#include "common/type_system/Type.hpp"
+#include "type_system/Type.hpp"
 #include <string>
 
 namespace sootc {

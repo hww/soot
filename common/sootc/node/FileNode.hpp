@@ -2,10 +2,10 @@
 #pragma once
 
 #include "Node.hpp"
-#include "common/carbon/file/BinaryFile.hpp"
-#include "common/carbon/file/ProgramBinaryElement.hpp"
-#include "common/sootc/libs/StringsTable.hpp"
-#include "common/sootc/node/TypeDeclarationNode.hpp"
+#include "carbon/file/BinaryFile.hpp"
+#include "carbon/file/ProgramBinaryElement.hpp"
+#include "sootc/libs/StringsTable.hpp"
+#include "sootc/node/TypeDeclarationNode.hpp"
 #include <expected>
 #include <string>
 #include <unordered_map>

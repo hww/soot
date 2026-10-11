@@ -1,5 +1,5 @@
-#include "common/carbon/kernel/EventMessage.hpp"
-#include "common/carbon/kernel/Process.hpp"
+#include "carbon/kernel/EventMessage.hpp"
+#include "carbon/kernel/Process.hpp"
 
 namespace carbon {
     /**

@@ -3,8 +3,8 @@
 #include "DCHeader.hpp"
 #include "DCScript.hpp"
 #include "ProgramBinaryElement.hpp"
-#include "common/carbon/lib/SIDBase.hpp"
-#include "common/carbon/vm/Instructions.hpp"
+#include "carbon/lib/SIDBase.hpp"
+#include "carbon/vm/Instructions.hpp"
 #include "lib/ByteUtils.hpp"
 
 

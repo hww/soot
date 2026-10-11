@@ -11,9 +11,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #endif
-#include "common/util/Assert.h"
-#include "common/util/FileUtil.h"
-#include "common/util/string_util.h"
+#include "util/Assert.h"
+#include "util/FileUtil.h"
+#include "util/string_util.h"
 
 namespace lg {
 struct Logger {

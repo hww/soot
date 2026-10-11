@@ -1,7 +1,7 @@
 ﻿
-#include "common/carbon/vm/NativeFunc.hpp"
-#include "common/CommonTypes.hpp"
-#include "common/util/Log.hpp"
+#include "carbon/vm/NativeFunc.hpp"
+#include "CommonTypes.hpp"
+#include "util/Log.hpp"
 #include "lib/StringId.hpp"
 #include "fmt/args.h"        // ← ДОБАВЬ ЭТУ СТРОКУ
 #include "fmt/format.h"      // ← если ещё нет

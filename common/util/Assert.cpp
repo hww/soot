@@ -1,4 +1,4 @@
-#include "common/util/Assert.hpp"
+#include "util/Assert.hpp"
 
 #ifndef NO_ASSERT
 
@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <string_view>
 
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 
 #ifdef ASSET_WITH_TERMINATE
 

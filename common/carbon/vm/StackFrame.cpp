@@ -1,6 +1,6 @@
-﻿#include "common/carbon/vm/StackFrame.hpp"
-#include "common/carbon/lib/Export.hpp"
-#include "common/carbon/file/Export.hpp"
+﻿#include "carbon/vm/StackFrame.hpp"
+#include "carbon/lib/Export.hpp"
+#include "carbon/file/Export.hpp"
 #include "file/DCScript.hpp"
 #include "vm/Instructions.hpp"
 

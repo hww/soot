@@ -4,7 +4,7 @@
  */
 
 // clang-format off
-#include "common/CommonTypes.hpp"
+#include "CommonTypes.hpp"
 #ifdef OS_POSIX
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -20,7 +20,7 @@
 #include <string.h>
 
 #include "fmt/format.h"
-#include "common/util/Log.hpp"
+#include "util/Log.hpp"
 // clang-format on
 
 int open_socket(int af, int type, int protocol) {
