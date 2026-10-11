@@ -229,7 +229,11 @@ namespace sootc {
         /// @param target_dir Directory to write the .dci into.
         /// @return true on success.
         bool           save_dci(const BinaryFile &file, const std::filesystem::path &target_dir);
-
+        /// @brief Save the accumulated SIDBase to the path from m_config.
+        /// @details Called by main.cpp after all input files are compiled,
+        ///          or on REPL exit. This is the ONLY place that writes
+        ///          sidbase to disk.
+        void           save_sidbase();
         // --- Macros ---
         bool         is_soot_macro(const std::string &name);
         script::Object expand_soot_macro(const script::Object &form);

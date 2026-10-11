@@ -40,6 +40,11 @@ add_library(libcarbon
     common/carbon/kernel/ProcessRunner.cpp
     common/carbon/kernel/Scheduler.cpp
     common/carbon/kernel/StateFrame.cpp
+
+    common/carbon/gc/Arena.cpp
+    common/carbon/gc/ArenaManager.cpp
+    common/carbon/gc/TypeRegistry.cpp
+    common/carbon/gc/GC.cpp
 )
 
 

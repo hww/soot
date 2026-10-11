@@ -1,4 +1,4 @@
-#include "TestHelper.hpp"
+﻿#include "TestHelper.hpp"
 
 using namespace sootc::testing;
 
@@ -135,6 +135,6 @@ TEST_F(SootcTest, NewMethodInsertionOfThis) {
           (set! (-> this value) v)
           this)
     )");
-    // Either compiles or fails with a clear error � both are acceptable
+    // Either compiles or fails with a clear error — both are acceptable
     // for the purpose of this smoke test.
 }

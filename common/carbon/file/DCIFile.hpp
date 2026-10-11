@@ -8,6 +8,11 @@
 #include "script/Reader.hpp"
 #include "util/FileUtil.hpp"
 
+#include "fmt/color.h"
+#include "fmt/core.h"
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -55,7 +60,7 @@ namespace carbon {
             file_util::create_dirs_for_file(filename);
             std::ofstream file(filename);
             if (!file) { return false; }
-            fmt::print("DciFile save {}\n", filename);
+
             file << "\xEF\xBB\xBF"; // UTF-8 BOM
             file << to_string();
             return true;

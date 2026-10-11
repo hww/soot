@@ -7,7 +7,11 @@
 #include "carbon/vm/StackFrame.hpp"
 #include "carbon/vm/NativeFunc.hpp"
 #include "carbon/vm/NativeAllocators.hpp"
+#include "carbon/gc/GC.hpp"
+
 #include <memory>
+
+using namespace carbon::gc;
 
 namespace carbon {
 
@@ -155,7 +159,8 @@ namespace carbon {
         Variant execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode = RunMode::Run);
         Variant execute(RunMode mode = RunMode::Run);
 
-
+        
+   
     private:
         // ------------------------------------------------------------------------
         // Internal Helpers

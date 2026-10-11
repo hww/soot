@@ -293,6 +293,19 @@ namespace carbon {
          */
         void dump_debug_info() const;
 
+        // ============================================================================
+        // Garbage collector
+        // ============================================================================
+
+        static constexpr u32 GC_INTERVAL_FRAMES = 10;
+        u32                  m_frames_since_gc = 0;
+
+        void gc_mark_all_roots();
+
+        void mark_frame_recursive(StackFrame *f, u64 pass);
+
+        void update_gc();
+
     private:
         // ============================================================================
         // Private Constructor

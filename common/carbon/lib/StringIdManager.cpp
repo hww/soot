@@ -203,27 +203,42 @@ namespace carbon {
     // Serialization (dconstruct binary sidbase format)
     // ===========================================================================
 
-    bool StringIdManager::save_dconstruct_sidbase(const std::string &filename) const {
+bool StringIdManager::save_dconstruct_sidbase(const std::string &filename) const {
         std::shared_lock lock(mutex_);
 
-        // Build entries and a string pool.
-        std::vector<SIDBaseEntry> entries;
-        entries.reserve(reverse_lookup_.size());
+        // Sort by hash so the result can be binary-searched by SIDBase.
+        std::vector<std::pair<sid64, std::string>> sorted;
+        sorted.reserve(reverse_lookup_.size());
+        for (const auto &[id, name] : reverse_lookup_) { sorted.emplace_back(id, name); }
+        std::sort(sorted.begin(), sorted.end(),
+                  [](const auto &a, const auto &b) { return a.first < b.first; });
 
-        std::vector<char> string_pool;
-        for (const auto &[id, name] : reverse_lookup_) {
+        // Layout: [u64 count][SIDBaseEntry x N][string pool]
+        //
+        // IMPORTANT: each entry's offset is from the START OF THE FILE,
+        // not from the start of the string pool.
+        const u64 header_size = sizeof(u64);
+        const u64 entries_size = sorted.size() * sizeof(SIDBaseEntry);
+        u64       current_offset = header_size + entries_size;
+
+        std::vector<char>         string_pool;
+        std::vector<SIDBaseEntry> entries;
+        entries.reserve(sorted.size());
+
+        u64 total_string_bytes = 0;
+        for (const auto &[id, name] : sorted) total_string_bytes += name.size() + 1;
+        string_pool.reserve(total_string_bytes);
+
+        for (const auto &[id, name] : sorted) {
             SIDBaseEntry entry;
             entry.hash = id;
-            entry.offset = string_pool.size();
+            entry.offset = current_offset; // <-- FROM START OF FILE
             entries.push_back(entry);
 
             string_pool.insert(string_pool.end(), name.begin(), name.end());
             string_pool.push_back('\0');
+            current_offset += name.size() + 1;
         }
-
-        // Sort by hash for binary search in the runtime.
-        std::sort(entries.begin(), entries.end(),
-                  [](const auto &a, const auto &b) { return a.hash < b.hash; });
 
         std::ofstream file(filename, std::ios::binary);
         if (!file.is_open()) {
@@ -237,6 +252,7 @@ namespace carbon {
                    static_cast<std::streamsize>(entries.size() * sizeof(SIDBaseEntry)));
         file.write(string_pool.data(), static_cast<std::streamsize>(string_pool.size()));
 
+        lg::debug("StringIdManager: saved {} entries to '{}'", entries.size(), filename);
         return file.good();
     }
 
@@ -253,11 +269,19 @@ namespace carbon {
             const auto &entry = sidbase[i];
             const char *name = sidbase.get_string_by_offset(entry.offset);
 
-            // Truncate 64-bit hash to 32 bits (the game uses 32-bit SIDs internally).
-            const u32 id32 = static_cast<u32>(entry.hash);
-            reverse_lookup_[id32] = name;
+            // Keep the FULL 64-bit hash. Do not truncate to u32.
+            if (name == nullptr || *name == '\0') {
+                // Skip entries whose offset does not point at a real string.
+                // This catches sidbases written by older, buggy versions
+                // (offset-from-pool instead of offset-from-file).
+                lg::warn("StringIdManager: entry {} has empty string (offset {}), skipping", i,
+                         entry.offset);
+                continue;
+            }
+            reverse_lookup_[entry.hash] = name;
         }
 
+        lg::debug("StringIdManager: loaded {} entries from '{}'", sidbase.numEntries(), filename);
         return true;
     }
 

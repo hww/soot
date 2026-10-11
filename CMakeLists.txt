@@ -182,6 +182,7 @@ if(BUILD_TESTS)
     include(tests/carbon/CMakeLists.txt)
     include(tests/engine/CMakeLists.txt)
     include(tests/sootc/CMakeLists.txt) 
+    include(tests/gc/CMakeLists.txt) 
     include(tests/type_system/CMakeLists.txt) 
 endif()
 
@@ -194,4 +195,5 @@ add_custom_target(tests
         carbon_test
         engine_test
         sootc_test
+        gc_tests
 )

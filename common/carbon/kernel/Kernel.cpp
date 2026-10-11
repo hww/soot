@@ -203,4 +203,50 @@ namespace carbon {
             });
     }
 
+    // ============================================================================
+    // GC
+    // ============================================================================
+
+    void Kernel::gc_mark_all_roots() {
+        const u64 pass = gc::current_pass();
+
+        for (auto &proc : scheduler_.get_all_process()) {
+            if (!proc) continue;
+            mark_frame_recursive(proc->main_thread.get(), pass);
+            mark_frame_recursive(proc->top_thread.get(), pass);
+            mark_frame_recursive(proc->stack_frame_top.get(), pass);
+            mark_frame_recursive(proc->current_state_frame.get(), pass);
+        }
+    }
+
+    void Kernel::mark_frame_recursive(StackFrame *f, u64 pass) {
+        if (!f) return;
+        if (f->mark_id == pass) return;
+        f->mark_id = pass;
+
+        for (auto &reg : f->registers) {
+            if (reg.is_ptr()) {
+                void *p = reg.get_ptr();
+                if (gc::is_in_heap(p)) { gc::mark_object(p); }
+            }
+        }
+
+        mark_frame_recursive(f->parent.get(), pass);
+    }
+
+    void Kernel::update_gc() {
+        ++m_frames_since_gc;
+        if (m_frames_since_gc < GC_INTERVAL_FRAMES) return;
+        m_frames_since_gc = 0;
+
+        gc::start_pass();
+
+        // STW: mark все корни.
+        gc_mark_all_roots();
+
+        // STW: sweep до конца.
+        while (!gc::sweep_pass(1024)) {}
+
+        gc::finish_pass();
+    }
 } // namespace carbon

@@ -167,33 +167,27 @@ namespace sootc {
         setup_soot_forms();
     }
 
-    Compiler::~Compiler() {
-        // ---------------------------------------------------------------------
-        // SIDBase saving
-        // ---------------------------------------------------------------------
+   Compiler::~Compiler() {
+        // SIDBase saving is the caller's responsibility, not ours.
         //
-        // Every string that has been registered during this session —
-        // whether because it appeared in the source code, in a compiled
-        // module, or in a manual SID() call from C++ — should survive
-        // the process. We therefore save the whole registry back to the
-        // same path on exit, if a path was configured.
+        // We deliberately do NOT save the sidbase here. Reasons:
         //
-        // The save is best-effort: a failure to write the file is
-        // logged but does not abort the process, since the compiler
-        // may be exiting for an unrelated reason (a fatal error, a
-        // user-requested reload, ...).
-        if (!m_config.sidbase_path.empty()) {
-            const std::size_t count = carbon::StringIdManager::instance().size();
-
-            const bool saved =
-                carbon::StringIdManager::instance().save_dconstruct_sidbase(m_config.sidbase_path);
-
-            if (saved) {
-                lg::info("SIDBase: saved {} entries to '{}'", count, m_config.sidbase_path);
-            } else {
-                lg::warn("SIDBase: failed to save '{}'", m_config.sidbase_path);
-            }
-        }
+        //   1. The caller (main.cpp, or a test) knows best when the
+        //      compilation "session" is over. For a CLI run with several
+        //      input files, that is after the last file; for a REPL, that
+        //      is on exit; for a unit test, that is never.
+        //
+        //   2. A destructor is the wrong place for a side-effecting
+        //      operation that can fail. If saving throws (disk full,
+        //      permission denied), a destructor must not propagate the
+        //      exception, and swallowing it silently loses data.
+        //
+        //   3. If the process crashes, the destructor does not run at all,
+        //      so relying on it gives a false sense of safety.
+        //
+        // The caller should invoke StringIdManager::instance().save_dconstruct_sidbase()
+        // explicitly at the point where the session ends. See main.cpp
+        // for the CLI and REPL paths.
     }
 
     // ===============================================================
@@ -1566,7 +1560,7 @@ namespace sootc {
         ofs << "; (not yet wired to BinaryFile API)\n";
         (void)file;
 
-        fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
         return true;
     }
 
@@ -1606,7 +1600,7 @@ namespace sootc {
         }
         ofs << header;
 
-        fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
         return true;
     }
 
@@ -1773,9 +1767,26 @@ namespace sootc {
             return false;
         }
 
-        fmt::print(fg(fmt::color::green), "; wrote {}\n", out.string());
+        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
         return true;
     }
+
+    void Compiler::save_sidbase() {
+        if (m_config.sidbase_path.empty()) {
+            return; // no path configured, nothing to save
+        }
+
+        const std::size_t count = carbon::StringIdManager::instance().size();
+        const bool        saved =
+            carbon::StringIdManager::instance().save_dconstruct_sidbase(m_config.sidbase_path);
+
+        if (saved) {
+            lg::info("SIDBase: saved {} entries to '{}'", count, m_config.sidbase_path);
+        } else {
+            lg::warn("SIDBase: failed to save '{}'", m_config.sidbase_path);
+        }
+    }
+
     bool Compiler::is_soot_macro(const std::string &name) {
         auto sym = m_soot.intern(name.c_str());
         return try_getting_macro_from_soot(m_soot, sym, nullptr);

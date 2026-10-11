@@ -1,155 +1,85 @@
-﻿# Устройство файла sidbase.bin
+﻿# Устройство файла `sidbase.bin` (исправленная версия)
 
-Судя по коду (в частности `source/base/sidbase.cpp` и `source/disassembly/disassembler.cpp`), файл `sidbase.bin` — это **отсортированный по хэшу массив строковых идентификаторов (SID)**. Он используется для «обратного» поиска: по 64-битному (или 32-битному) хэшу восстановить исходную строку.
+Файл `sidbase.bin` — это **отсортированный по хэшу массив записей**, каждая из которых связывает 64-битный хэш SID со смещением строки в файле. Используется для обратного поиска: по хэшу восстановить исходную строку.
 
 ---
 
 ## 1. Формат файла
 
-Файл имеет очень простую бинарную структуру:
-
 ```
-┌─────────────────────────────┐
-│  u64 num_entries            │  ← количество записей
-├─────────────────────────────┤
-│  SIDBaseEntry[0]            │
-│  SIDBaseEntry[1]            │
-│  ...                        │
-│  SIDBaseEntry[num_entries-1]│
-├─────────────────────────────┤
-│  Строковый пул (raw bytes)  │  ← все строки подряд, без разделителей
-└─────────────────────────────┘
+┌─────────────────────────────────────┐
+│  u64 numEntries                     │  offset 0, size 8
+├─────────────────────────────────────┤
+│  SIDBaseEntry[0]                    │  offset 8
+│  SIDBaseEntry[1]                    │  ...
+│  ...                                │
+│  SIDBaseEntry[numEntries-1]         │  offset 8 + (numEntries-1)*16
+├─────────────────────────────────────┤
+│  Строковый пул                      │  offset 8 + numEntries*16
+│  "str1\0str2\0str3\0..."            │
+└─────────────────────────────────────┘
 ```
 
-### Структура одной записи
-
-Из кода видно, что `SIDBaseEntry` — это пара `(hash, offset)`:
+### Структура записи
 
 ```cpp
-// Реконструкция из sidbase.cpp:
-// entries = reinterpret_cast<SIDBaseEntry*>(temp_buffer + 8);
-// current->hash
-// current->offset
-// m_sidbytes.get() + current->offset  → указатель на строку
-
 struct SIDBaseEntry {
-    sid64 hash;   // 8 байт — хэш строки (например, FNV-1a 64)
-    u64   offset; // 8 байт — смещение в строковом пуле (от начала пула)
+    sid64 hash;   // 8 байт — хэш строки (FNV-1a 64)
+    u64   offset; // 8 байт — смещение строки ОТ НАЧАЛА ФАЙЛА
 };
 ```
 
-Итого: **16 байт на запись**.
+Итого **16 байт** на запись.
 
-### Полная C++-модель файла
+### Ключевые факты
 
-```cpp
-#pragma once
-#include <cstdint>
-#include <vector>
-#include <string>
-#include <memory>
-#include <expected>
-#include <fstream>
-#include <filesystem>
-
-namespace dconstruct {
-
-using u64   = uint64_t;
-using sid64 = uint64_t;
-using sid32 = uint32_t;
-
-// Одна запись в таблице поиска
-#pragma pack(push, 1)
-struct SIDBaseEntry {
-    sid64 hash;   // хэш SID (обычно 64-битный FNV-1a)
-    u64   offset; // смещение строки в строковом пуле
-};
-#pragma pack(pop)
-
-// Заголовок файла (всего 8 байт)
-#pragma pack(push, 1)
-struct SIDBaseHeader {
-    u64 numEntries; // количество записей в таблице
-};
-#pragma pack(pop)
-
-// Рантайм-представление загруженного файла
-class SIDBase {
-public:
-    static std::expected<SIDBase, std::string>
-    from_binary(const std::filesystem::path& path) noexcept;
-
-    // Бинарный поиск по отсортированному массиву
-    [[nodiscard]] const char* search(sid64 hash) const noexcept;
-    [[nodiscard]] bool        sid_exists(sid64 hash) const noexcept;
-
-    // Публичные поля, которые использует Disassembler:
-    u64              m_numEntries = 0;
-    std::unique_ptr<std::byte[]> m_sidbytes; // весь файл в памяти
-    SIDBaseEntry*    m_entries   = nullptr;  // = m_sidbytes + 8
-    sid64            m_lowestSid  = 0;       // m_entries[0].hash
-    sid64            m_highestSid = 0;       // m_entries[numEntries-1].hash
-};
-
-} // namespace dconstruct
-```
+1. **Записи отсортированы по `hash` по возрастанию.** Это критично для бинарного поиска.
+2. **`offset` — от начала файла, а не от начала строкового пула.** Это видно из `search`:
+   ```cpp
+   return reinterpret_cast<const char*>(m_sidbytes.get() + current->offset);
+   ```
+   где `m_sidbytes` — это указатель на **начало файла** (не на пул).
+3. **Строки нуль-терминированы.** Каждая строка заканчивается `\0`.
+4. **Порядок строк в пуле не связан с порядком entries.** Строки могут идти в произвольном порядке — важно только, что `offset` каждой записи указывает на её строку.
+5. **Заголовок — ровно 8 байт.** Никакой магии, версии или флагов.
 
 ---
 
-## 2. Как это загружается (по шагам из `sidbase.cpp`)
+## 2. Пример содержимого
 
-```cpp
-std::expected<SIDBase, std::string>
-SIDBase::from_binary(const std::filesystem::path& path) noexcept
-{
-    std::ifstream sidfile(path, std::ios::binary);
-    if (!sidfile.is_open())
-        return std::unexpected{"couldn't open sidbase at path '" + path.string() + "'\n"};
+Пусть 3 строки: `"joel"`, `"tommy"`, `"ellie"`. Хэши в порядке возрастания дают порядок `joel < tommy < ellie` (условно).
 
-    const std::size_t fsize = std::filesystem::file_size(path);
-    std::byte* temp_buffer = new std::byte[fsize];
-
-    // 1. Читаем количество записей (первые 8 байт)
-    u64 num_entries = 0;
-    sidfile.read(reinterpret_cast<char*>(&num_entries), 8);
-    sidfile.seekg(0);
-
-    // 2. Читаем весь файл целиком
-    sidfile.read(reinterpret_cast<char*>(temp_buffer), fsize);
-
-    // 3. Записи начинаются сразу после заголовка
-    auto entries = reinterpret_cast<SIDBaseEntry*>(temp_buffer + 8);
-    auto bytes   = std::unique_ptr<std::byte[]>(temp_buffer);
-
-    // 4. Запоминаем границы для быстрой проверки «в диапазоне ли хэш»
-    const sid64 lowest  = entries[0].hash;
-    const sid64 highest = entries[num_entries - 1].hash;
-
-    return SIDBase{num_entries, std::move(bytes), entries, lowest, highest};
-}
+```
+Offset      Bytes                          Meaning
+──────────  ─────────────────────────────  ──────────────────────────
+0x00000000  03 00 00 00 00 00 00 00        numEntries = 3
+0x00000008  <hash("joel")>                 SIDBaseEntry[0].hash
+0x00000010  38 00 00 00 00 00 00 00        SIDBaseEntry[0].offset = 0x38
+0x00000018  <hash("tommy")>                SIDBaseEntry[1].hash
+0x00000020  3D 00 00 00 00 00 00 00        SIDBaseEntry[1].offset = 0x3D
+0x00000028  <hash("ellie")>                SIDBaseEntry[2].hash
+0x00000030  43 00 00 00 00 00 00 00        SIDBaseEntry[2].offset = 0x43
+0x00000038  "joel\0"                       (5 байт)
+0x0000003D  "tommy\0"                      (6 байт)
+0x00000043  "ellie\0"                      (6 байт)
 ```
 
-**Важные моменты:**
-- Записи **отсортированы по `hash`** по возрастанию — это критично для бинарного поиска.
-- Строки лежат в конце файла единым пулом; `offset` каждой записи указывает **от начала пула** (не от начала файла).
-- Файл читается в память целиком, чтобы не делать `seek` при каждом поиске.
+Проверка: `m_sidbytes.get() + 0x38` = `temp_buffer + 0x38` = адрес строки `"joel"`. Верно.
+
+Строки в пуле идут в порядке, в котором они были в исходном файле (или в любом другом — это не влияет на корректность).
 
 ---
 
 ## 3. Поиск по хэшу
 
 ```cpp
-const char* SIDBase::search(sid64 hash) const noexcept
-{
+const char* SIDBase::search(sid64 hash) const noexcept {
     u64 low = 0, high = m_numEntries - 1, mid = 0;
-
     while (low <= high) {
         mid = low + (high - low) / 2;
         const SIDBaseEntry* cur = m_entries + mid;
-
         if (cur->hash == hash) [[unlikely]]
             return reinterpret_cast<const char*>(m_sidbytes.get() + cur->offset);
-
         if (cur->hash < hash)
             low = mid + 1;
         else {
@@ -157,7 +87,7 @@ const char* SIDBase::search(sid64 hash) const noexcept
             high = mid - 1;
         }
     }
-    return nullptr; // не найдено
+    return nullptr;
 }
 ```
 
@@ -165,77 +95,53 @@ const char* SIDBase::search(sid64 hash) const noexcept
 
 ---
 
-## 4. Пример содержимого файла на диске
-
-Пусть, например, в sidbase 3 строки: `"ellie"`, `"joel"`, `"tommy"`. Тогда файл может выглядеть так:
-
-```
-Offset      Bytes                                          Meaning
-──────────  ─────────────────────────────────────────────  ─────────────────────────
-0x00000000  03 00 00 00 00 00 00 00                        num_entries = 3
-0x00000008  <hash("ellie")  8 байт>                        SIDBaseEntry[0].hash
-0x00000010  <offset 0x0000000000000028>                    SIDBaseEntry[0].offset
-0x00000018  <hash("joel")   8 байт>                        SIDBaseEntry[1].hash
-0x00000020  <offset 0x000000000000002E>                    SIDBaseEntry[1].offset
-0x00000028  <hash("tommy")  8 байт>                        SIDBaseEntry[2].hash
-0x00000030  <offset 0x0000000000000033>                    SIDBaseEntry[2].offset
-0x00000038  "ellie\0joel\0tommy\0"                         строковый пул (6+5+6 = 17 байт)
-```
-
-Обрати внимание: `entries[0].offset = 0x28` — это смещение **от начала пула**, а сам пул начинается с `8 + 3*16 = 0x38`. То есть `m_sidbytes.get() + 0x28` = адрес строки `"ellie"`.
-
----
-
-## 5. Как этим пользуется `Disassembler`
-
-В `disassembler.cpp`:
+## 4. Как этим пользуется `Disassembler`
 
 ```cpp
 const char* Disassembler::lookup(sid64 sid) {
     auto res = m_currentFile->m_sidCache.find(sid);
     if (res != m_currentFile->m_sidCache.end())
-        return res->second.c_str();          // кэш попаданий
+        return res->second.c_str();
 
     const char* hash_string = m_sidbase->search(sid);
     if (hash_string == nullptr) {
-        // строки нет в базе — генерируем "0xDEADBEEF..."
         auto [iter, _] = m_currentFile->m_sidCache.emplace(
             sid, int_to_string_id<sid64>(sid));
         hash_string = iter->second.c_str();
     } else {
-        m_currentFile->m_sidCache.emplace(sid, hash_string); // кэшируем
+        m_currentFile->m_sidCache.emplace(sid, hash_string);
     }
     return hash_string;
 }
 ```
 
-Так как `search()` возвращает указатель на память внутри `m_sidbytes`, кэш хранит `std::string` (копию), чтобы не зависеть от времени жизни `SIDBase`.
+`search()` возвращает указатель в `m_sidbytes`, кэш хранит `std::string` (копию), чтобы не зависеть от времени жизни `SIDBase`.
 
 ---
 
-## 6. Ограничения и предположения
+## 5. Ограничения и предположения
 
 | Предположение | Где используется |
 |---|---|
 | Записи отсортированы по `hash` | `SIDBase::search` (бинарный поиск) |
-| `m_entries[0].hash` = минимальный, `m_entries[N-1].hash` = максимальный | `Disassembler::is_unmapped_sid` |
-| Все строки лежат в конце файла одним пулом | `m_sidbytes.get() + entry.offset` |
-| Строки нуль-терминированы | `reinterpret_cast<const char*>` + `%s` в printf |
+| `offset` — от начала файла | `SIDBase::search` (`m_sidbytes.get() + offset`) |
+| Строки нуль-терминированы | `reinterpret_cast<const char*>` + `%s` |
+| `m_entries[0].hash` = минимум | `Disassembler::is_unmapped_sid` (быстрый фильтр) |
+| `m_entries[N-1].hash` = максимум | то же |
 | Файл читается целиком в память | `new std::byte[fsize]` |
-
-`is_unmapped_sid` проверяет, что значение лежит в `[m_lowestSid, m_highestSid]` — это быстрый предварительный фильтр, чтобы не дёргать бинарный поиск для явно мусорных чисел.
 
 ---
 
-## 7. Итоговая краткая схема
+## 6. Краткая схема
 
 ```
 sidbase.bin
 ├── u64 numEntries
 ├── SIDBaseEntry[numEntries]   (16 байт каждый, отсортированы по hash)
 │   ├── sid64 hash
-│   └── u64   offset → в пул строк
-└── string pool (raw bytes, "str1\0str2\0...")
-
-Поиск: binary search по hash → offset → указатель на строку в пуле.
+│   └── u64   offset  ← от начала ФАЙЛА
+└── string pool               ("str1\0str2\0...")
 ```
+
+---
+

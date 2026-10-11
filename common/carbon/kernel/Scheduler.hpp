@@ -213,6 +213,14 @@ namespace carbon {
          */
         void cleanup_all_processes();
 
+        /**
+         * @brief Получить процессы
+         */
+        [[nodiscard]] const std::vector<std::unique_ptr<Process>> &
+        get_all_process() const noexcept {
+            return all_processes_;
+        }
+
         // ============================================================================
         // Utility Methods
         // ============================================================================

@@ -1,10 +1,12 @@
 ﻿// main.cpp
 #include "CommonTypes.hpp"
-#include "util/FileUtil.hpp"
-#include "util/Log.hpp"
+#include "carbon/lib/SIDBase.hpp"
+#include "carbon/lib/StringIdManager.hpp"
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "sootc/compiler/Compiler.hpp"
+#include "util/FileUtil.hpp"
+#include "util/Log.hpp"
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -34,7 +36,8 @@ struct CommandLineOptions {
     // Behavior.
     bool        interactive = true;    // open REPL?
     bool        print_listing = false; // print listing in CLI mode?
-    std::string log_level = "info";    // debug | info | warn | error
+    std::string log_level = "warn";    // debug | info | warn | error
+    std::string log_file;
 
     // Compiler mode.
     sootc::CompilerMode mode = sootc::CompilerMode::HYBRID;
@@ -48,8 +51,9 @@ struct CommandLineOptions {
     //   "<host>:<port>" -> RemoteRuntime
     std::string runtime_url = "local";
 
-    // SIDBase path (currently stored but not used; loaded/saved by a
-    // future change to Compiler).
+    // SIDBase path. If set, sidbase is loaded before compilation
+    // and saved after all input files have been compiled. If empty,
+    // sidbase lives only in memory for the duration of the process.
     std::string sidbase_path;
 
     // Soot platform.
@@ -79,7 +83,12 @@ void print_help(const char *program_name) {
     fmt::print("  -n, --no-repl        Don't open the REPL (CLI mode only)\n");
     fmt::print("  --print-listing      Print binary listing after each file (CLI)\n");
     fmt::print("  --log <level>        Log level: debug|info|warn|error (default: info)\n");
-    fmt::print("  --sidbase <path>     Path to sidbase (reserved; not used yet)\n");
+    fmt::print("  --log-file <path>    Write logs to a file (default: stderr only)\n");
+
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nString IDs:\n");
+    fmt::print("  --sidbase <path>     Path to sidbase. Loaded before compilation,\n");
+    fmt::print("                       saved after all input files are processed.\n");
+    fmt::print("                       If omitted, sidbase lives in memory only.\n");
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nCompiler mode:\n");
     fmt::print("  --compile-only       Only compile, no interpretation at REPL\n");
@@ -105,6 +114,8 @@ void print_help(const char *program_name) {
     fmt::print("  {} --runtime 127.0.0.1:8181         ; open REPL, talk to remote host\n",
                program_name);
     fmt::print("  {} --target out --source-root src -n math/add.sc\n", program_name);
+    fmt::print("  {} --sidbase base.bin -n a.sc b.sc  ; compile many files, one sidbase\n",
+               program_name);
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nREPL commands (in Lisp syntax):\n");
     fmt::print("  (help)                Show REPL help\n");
@@ -188,6 +199,11 @@ CommandLineOptions parse_args(int argc, char *argv[]) {
             opts.input_files.push_back(arg);
         }
 
+        // ----- Log file -----
+        else if (arg == "--log-file" && i + 1 < argc) {
+            opts.log_file = argv[++i];
+        }
+
         // ----- Unknown -----
         else {
             fmt::print(stderr, "Unknown option: {}\n", arg);
@@ -212,10 +228,30 @@ int main(int argc, char *argv[]) {
         }
 
         // ----- Logging -----
-        lg::set_file_level(lg::level::info);
+        //
+        // Convention:
+        //   * The loggers (lg::info, lg::warn, lg::error, lg::debug)
+        //     always go to stderr, so they never pollute the actual
+        //     output of the tool. A caller can redirect stdout to a
+        //     file and still see diagnostics on the terminal.
+        //   * Log level is controlled by --log (default "info").
+        //   * File logging is OPT-IN via --log-file <path>. Without
+        //     that flag, no file is created anywhere — not in the
+        //     current directory, not in a cache dir. This matches how
+        //     rustc, clang, and cargo behave.
         lg::set_stdout_level(parse_log_level(opts.log_level));
-        lg::set_file("compiler");
-        lg::initialize();
+
+        if (!opts.log_file.empty()) {
+            lg::set_file(opts.log_file);
+            lg::set_file_level(parse_log_level(opts.log_level));
+            lg::initialize();
+            lg::info("Log file enabled: {}", opts.log_file);
+        } else {
+            // No file logging. Tell the logger to use stderr only.
+            // (See the Log library's API for the exact call; the
+            // important thing is that no file is opened.)
+            lg::initialize();
+        }
 
         // ----- REPL configuration -----
         REPL::Config repl_config(opts.platform);
@@ -295,6 +331,20 @@ int main(int argc, char *argv[]) {
                 lg::info("Compiled: {}", input_file);
             }
 
+            // ----- SIDBase: save after compilation -----
+            //
+            // All strings encountered by the compiler have been
+            // registered in StringIdManager by this point (via the
+            // StringId constructors). We flush the accumulated table
+            // to disk exactly once, so that a single
+            // `sootc --sidbase base.bin a.sc b.sc c.sc` run produces
+            // a single consistent sidbase regardless of how many
+            // files it compiled.
+            //
+            // If --sidbase was not given, we skip saving: the base
+            // lives only in memory for the duration of the process.
+            compiler->save_sidbase();
+
             // If REPL is disabled, exit after compiling.
             if (!opts.interactive) { return 0; }
         } else if (!opts.interactive) {
@@ -322,6 +372,21 @@ int main(int argc, char *argv[]) {
             if (!input.empty()) {
                 status = compiler->handle_repl_string(input);
                 compiler->save_repl_history();
+            }
+        }
+
+        // ----- SIDBase: save on REPL exit -----
+        //
+        // If the user ran the REPL (interactive mode) and typed any
+        // #name literals, those strings were registered during the
+        // session. Flush them to disk on the way out. This is best-
+        // effort: if the user kills the terminal, we can't save.
+        if (opts.interactive && !opts.sidbase_path.empty()) {
+            if (carbon::StringIdManager::instance().save_dconstruct_sidbase(opts.sidbase_path)) {
+                lg::info("Saved sidbase: {} ({} entries)", opts.sidbase_path,
+                         carbon::StringIdManager::instance().size());
+            } else {
+                lg::error("Failed to save sidbase: {}", opts.sidbase_path);
             }
         }
 

@@ -43,6 +43,7 @@ namespace carbon {
         u32 pc = 0;                             // Program counter
         u32 argc = 0;                           // Number of arguments
         u32 ret_num = 0;                        // Return register number
+        u64 mark_id = 0;                        // для epoch GC
 
         // ------------------------------------------------------------------------
         // Registers

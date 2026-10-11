@@ -67,7 +67,7 @@ namespace carbon {
 
         // Освобождаем память кучи
         if (heap_base) {
-            free(heap_base);
+            std::free(heap_base);
             heap_base = nullptr;
             heap_cur = nullptr;
             heap_top = nullptr;

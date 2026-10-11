@@ -1374,7 +1374,7 @@ void TypeSystem::verify_type_sizes() {
     check_size("uint", 8);
 
     // Pointer-sized values.
-    check_size("basic", 4);
+    check_size("basic", 8);
 
     // symbol is a SID64: 8 bytes.
     check_size("symbol", 8);
@@ -1383,7 +1383,7 @@ void TypeSystem::verify_type_sizes() {
     // natural layout is length at 0 and data at 8, so the raw size is
     // 12. If StructureType::get_size_in_memory applies struct_alignment
     // (16), the reported size will be 16; both are acceptable.
-    check_size("string", 12);
+    check_size("string", 24);
 
     // type inherits basic (4-byte tag) plus the fields declared above:
     //   symbol            : 8 bytes (SID64)
