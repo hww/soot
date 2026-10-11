@@ -1,9 +1,0 @@
-19:02:57 [info] RemoteRuntime: target 127.0.0.1:8181 (protocol not yet implemented)
-19:02:57 [info] Runtime: remote:127.0.0.1:8181
-19:02:57 [info] Loading SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
-19:02:57 [info] Loaded SOOT library D:\projects\hww\_c\soot.git\soot_src\lib.st
-19:02:57 [info] Loading SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
-19:02:57 [info] Registered constant: *default-territory* = 0
-19:02:57 [info] build_ss_type 'vector': 4 fields, 10 methods, 432 bytes
-19:02:57 [info] build_ss_type 'cvector': 4 fields, 10 methods, 432 bytes
-19:02:57 [info] Loaded SOOTC library D:\projects\hww\_c\soot.git\soot_src\lib.sc
