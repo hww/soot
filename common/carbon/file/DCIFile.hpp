@@ -44,7 +44,7 @@ namespace carbon {
 
         /// @brief Parse a .dci file from disk.
         static DCIFile parse(const std::string &filename) {
-            soot::Reader reader;
+            script::Reader reader;
             auto         obj = reader.read_from_file({filename}, true, false);
             return parse_from_object(obj);
         }
@@ -83,10 +83,10 @@ namespace carbon {
         }
 
     private:
-        /// @brief Convert a parsed soot::Object tree into a DCIFile.
-        static DCIFile parse_from_object(const soot::Object &obj);
-        static u32     parse_binary_size(const soot::Object &obj);
-        static void    parse_import_export(const soot::Object &obj, DCIFile &result);
+        /// @brief Convert a parsed script::Object tree into a DCIFile.
+        static DCIFile parse_from_object(const script::Object &obj);
+        static u32     parse_binary_size(const script::Object &obj);
+        static void    parse_import_export(const script::Object &obj, DCIFile &result);
     };
 
 } // namespace carbon

@@ -1,7 +1,7 @@
 #include "script/Interpreter.hpp"
 #include <gtest/gtest.h>
 
-using namespace soot;
+using namespace script;
 
 class LoopTest : public ::testing::Test {
   protected:

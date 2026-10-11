@@ -5,7 +5,7 @@
 
 namespace {
 
-    std::string symbol_string(const soot::Object& obj) {
+    std::string symbol_string(const script::Object& obj) {
         if (obj.is_symbol()) {
             return obj.as_symbol().name_ptr;
         }
@@ -19,7 +19,7 @@ namespace {
         return ts->tc(ts->make_typespec(expected), actual);
     }
 
-    TypeSpec parse_typespec(TypeSystem* ts, const soot::Object& src) {
+    TypeSpec parse_typespec(TypeSystem* ts, const script::Object& src) {
         if (src.is_symbol()) {
             return ts->make_typespec(symbol_string(src));
         }
@@ -68,7 +68,7 @@ namespace {
 // (defenum simple (entry1) (entry2) (entry3))
 // but this method invoked with
 // (simple (entry1) (entry2) (entry3))
-EnumType* parse_defenum(const soot::Object& defenum,
+EnumType* parse_defenum(const script::Object& defenum,
     TypeSystem* ts,
     DefinitionMetadata* symbol_metadata) {
     // Базовая валидация - defenum должен быть списком
@@ -80,7 +80,7 @@ EnumType* parse_defenum(const soot::Object& defenum,
     bool is_bitfield = false;
     std::unordered_map<std::string, int64_t> entries;
 
-    const soot::Object* iter = &defenum;
+    const script::Object* iter = &defenum;
 
     // Проверяем первый элемент - должен быть именем
     auto& name_obj = iter->as_pair()->car;

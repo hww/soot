@@ -82,7 +82,7 @@ namespace sootc {
     // ============================================================================
     // build — single dispatch
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build(const script::Object &form, Node *node) {
 
         if (form.is_symbol()) {
             // ---- Soot literals: #t / #f ----
@@ -139,7 +139,7 @@ namespace sootc {
 // Wrap forwarders — uniform signature for the dispatch table.
 // ============================================================================
 #define WRAP_FORWARD(wrap_name, target)                                                            \
-    std::unique_ptr<Node> NodeBuilder::wrap_name(const soot::Object &form, Node *node) {           \
+    std::unique_ptr<Node> NodeBuilder::wrap_name(const script::Object &form, Node *node) {           \
         return target(form, node);                                                                 \
     }
 
@@ -172,7 +172,7 @@ namespace sootc {
     // ============================================================================
     // begin
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_begin(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_begin(const script::Object &form, Node *node) {
         auto body_forms = form.as_pair()->cdr;
         auto seq = std::make_unique<SequenceNode>();
         auto cur = body_forms;
@@ -236,7 +236,7 @@ namespace sootc {
     // ============================================================================
     // lambda
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_lambda(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_lambda(const script::Object &form, Node *node) {
         return FunctionCompiler::compile_function(form, node, *this);
     }
 
@@ -244,7 +244,7 @@ namespace sootc {
     // update-macro-metadata
     // ============================================================================
 
-    std::unique_ptr<Node> NodeBuilder::build_update_macro_metadata(const soot::Object &form,
+    std::unique_ptr<Node> NodeBuilder::build_update_macro_metadata(const script::Object &form,
                                                                    Node               *node) {
         (void)form;
         (void)node;
@@ -256,7 +256,7 @@ namespace sootc {
     // defconstant
     // ============================================================================
 
-    std::unique_ptr<Node> NodeBuilder::build_defconstant(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_defconstant(const script::Object &form, Node *node) {
         (void)node;
 
         auto rest = form.as_pair()->cdr;
@@ -283,7 +283,7 @@ namespace sootc {
         auto value_form = after_name.as_pair()->car;
 
         // Parse the value (must be a literal — number, string, symbol).
-        soot::Object value = value_form;
+        script::Object value = value_form;
 
         // Register the constant in the compiler's constant pool.
         //
@@ -312,7 +312,7 @@ namespace sootc {
     //
     // The version below walks the argument list step by step and
     // stops as soon as there is nothing left.
-    std::unique_ptr<IfNode> NodeBuilder::build_if(const soot::Object &form, Node *node) {
+    std::unique_ptr<IfNode> NodeBuilder::build_if(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -351,7 +351,7 @@ namespace sootc {
     // ============================================================================
     // cond
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_cond(const soot::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_cond(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -361,8 +361,8 @@ namespace sootc {
         }
 
         struct Clause {
-            soot::Object test;
-            soot::Object body;
+            script::Object test;
+            script::Object body;
         };
         std::vector<Clause> clauses;
 
@@ -408,7 +408,7 @@ namespace sootc {
     // ============================================================================
     // let
     // ============================================================================
-    std::unique_ptr<LetNode> NodeBuilder::build_let(const soot::Object &form, Node *node) {
+    std::unique_ptr<LetNode> NodeBuilder::build_let(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -473,7 +473,7 @@ namespace sootc {
     // ============================================================================
     // set!
     // ============================================================================
-    std::unique_ptr<SetNode> NodeBuilder::build_set(const soot::Object &form, Node *node) {
+    std::unique_ptr<SetNode> NodeBuilder::build_set(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -521,7 +521,7 @@ namespace sootc {
     // ============================================================================
     // ->
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const soot::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -607,7 +607,7 @@ namespace sootc {
     // ============================================================================
     // new
     // ============================================================================
-    std::unique_ptr<NewNode> NodeBuilder::build_new(const soot::Object &form, Node *node) {
+    std::unique_ptr<NewNode> NodeBuilder::build_new(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -623,7 +623,7 @@ namespace sootc {
 
         // Unwrap (quote x) -> x. In Lisp, 'x is (quote x), and the reader
         // does not collapse it, so we must handle it here.
-        const soot::Object *first_ptr = &first;
+        const script::Object *first_ptr = &first;
         if (first.is_pair() && first.as_pair()->car.is_symbol() &&
             first.as_pair()->car.as_symbol() == "quote") {
             const auto &quoted = first.as_pair()->cdr;
@@ -657,7 +657,7 @@ namespace sootc {
             }
 
             const auto         &type_obj = rest.as_pair()->car;
-            const soot::Object *type_ptr = &type_obj;
+            const script::Object *type_ptr = &type_obj;
             if (type_obj.is_pair() && type_obj.as_pair()->car.is_symbol() &&
                 type_obj.as_pair()->car.as_symbol() == "quote") {
                 const auto &quoted = type_obj.as_pair()->cdr;
@@ -746,7 +746,7 @@ namespace sootc {
     // ============================================================================
     // body-as-sequence
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_body_as_sequence(const soot::Object &body_forms,
+    std::unique_ptr<Node> NodeBuilder::build_body_as_sequence(const script::Object &body_forms,
                                                               Node               *node) {
         if (body_forms.is_pair() && body_forms.as_pair()->cdr.is_null()) {
             return build_expression(body_forms.as_pair()->car, node);
@@ -795,7 +795,7 @@ namespace sootc {
     // Everything after the optional :label is treated as the loop body
     // and is compiled into a single ExpressionNode (a SequenceNode when
     // there is more than one form).
-    std::unique_ptr<WhileNode> NodeBuilder::build_while(const soot::Object &form, Node *node) {
+    std::unique_ptr<WhileNode> NodeBuilder::build_while(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_while")
@@ -859,7 +859,7 @@ namespace sootc {
     // ============================================================================
     // arithmetic
     // ============================================================================
-    std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const soot::Object &form, Node *node) {
+    std::unique_ptr<BinaryNode> NodeBuilder::build_binary(const script::Object &form, Node *node) {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
 
@@ -920,7 +920,7 @@ namespace sootc {
     // ============================================================================
     // comparison
     // ============================================================================
-    std::unique_ptr<CompareNode> NodeBuilder::build_compare(const soot::Object &form, Node *node) {
+    std::unique_ptr<CompareNode> NodeBuilder::build_compare(const script::Object &form, Node *node) {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
 
@@ -946,7 +946,7 @@ namespace sootc {
     // ============================================================================
     // call
     // ============================================================================
-    std::unique_ptr<CallNode> NodeBuilder::build_call(const soot::Object &form, Node *node) {
+    std::unique_ptr<CallNode> NodeBuilder::build_call(const script::Object &form, Node *node) {
         auto head = form.as_pair()->car;
         auto rest = form.as_pair()->cdr;
 
@@ -1075,7 +1075,7 @@ namespace sootc {
     // ============================================================================
     // variable
     // ============================================================================
-    std::unique_ptr<VariableNode> NodeBuilder::build_variable(const soot::Object &form,
+    std::unique_ptr<VariableNode> NodeBuilder::build_variable(const script::Object &form,
                                                               Node               *node) {
         if (!form.is_symbol()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_variable")
@@ -1096,7 +1096,7 @@ namespace sootc {
     // ============================================================================
     // const
     // ============================================================================
-    std::unique_ptr<ConstNode> NodeBuilder::build_const(const soot::Object &form, Node *node) {
+    std::unique_ptr<ConstNode> NodeBuilder::build_const(const script::Object &form, Node *node) {
         (void)node;
         if (form.is_integer()) return ConstNode::make_int(form.as_integer());
         if (form.is_float()) return ConstNode::make_float(form.as_float());
@@ -1107,7 +1107,7 @@ namespace sootc {
     // ============================================================================
     // expression
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const soot::Object &form,
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const script::Object &form,
                                                                   Node               *node) {
         auto child_node = build(form, node);
 
@@ -1131,7 +1131,7 @@ namespace sootc {
     // ============================================================================
     // parse_args
     // ============================================================================
-    std::vector<std::unique_ptr<Node>> NodeBuilder::parse_args(const soot::Object &args_form,
+    std::vector<std::unique_ptr<Node>> NodeBuilder::parse_args(const script::Object &args_form,
                                                                Node               *node) {
         std::vector<std::unique_ptr<Node>> args;
         auto                               current = args_form;
@@ -1164,7 +1164,7 @@ namespace sootc {
     //
     // When ALLOW_SIMPLE_ARGUMENT_SYNTAX is disabled, case 2 becomes a
     // hard error as well, with an actionable message.
-    Type *NodeBuilder::parse_type(const soot::Object &type_form, Node *node) {
+    Type *NodeBuilder::parse_type(const script::Object &type_form, Node *node) {
         (void)node; // The context node is not needed here — the type
                     // resolver is context-free.
 
@@ -1198,7 +1198,7 @@ namespace sootc {
     // ============================================================================
     // seval
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_seval(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_seval(const script::Object &form, Node *node) {
         (void)node;
 
         auto rest = form.as_pair()->cdr;
@@ -1213,7 +1213,7 @@ namespace sootc {
         auto  env = soot.get_global_environment();
 
         try {
-            soot::Object current = rest;
+            script::Object current = rest;
             while (current.is_pair()) {
                 soot.eval_form(current.as_pair()->car, env.as_env_ptr());
                 current = current.as_pair()->cdr;
@@ -1235,7 +1235,7 @@ namespace sootc {
     // ============================================================================
     // defmacro
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_defmacro(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_defmacro(const script::Object &form, Node *node) {
         (void)node;
 
         auto rest = form.as_pair()->cdr;
@@ -1262,13 +1262,13 @@ namespace sootc {
         auto body_form = after_name.as_pair()->cdr;
 
         auto macro_form =
-            soot::Object::make_pair(m_compiler->get_soot_interpreter().intern("macro"),
-                                    soot::Object::make_pair(args_form, body_form));
+            script::Object::make_pair(m_compiler->get_soot_interpreter().intern("macro"),
+                                    script::Object::make_pair(args_form, body_form));
 
-        auto define_form = soot::Object::make_pair(
+        auto define_form = script::Object::make_pair(
             m_compiler->get_soot_interpreter().intern("define"),
-            soot::Object::make_pair(
-                name_form, soot::Object::make_pair(macro_form, soot::Object::make_null())));
+            script::Object::make_pair(
+                name_form, script::Object::make_pair(macro_form, script::Object::make_null())));
 
         auto env = m_compiler->get_soot_environment();
         m_compiler->get_soot_interpreter().eval_form(define_form, env.as_env_ptr());
@@ -1280,7 +1280,7 @@ namespace sootc {
     // ============================================================================
     // define / define-export
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_define(const soot::Object &form, Node *context) {
+    std::unique_ptr<Node> NodeBuilder::build_define(const script::Object &form, Node *context) {
         const bool exported = form.as_pair()->car.is_symbol("define-export");
 
         auto rest = form.as_pair()->cdr;
@@ -1291,7 +1291,7 @@ namespace sootc {
         }
 
         // ---- Optional :env keyword ----
-        soot::Object env_form = soot::Object::make_none();
+        script::Object env_form = script::Object::make_none();
         {
             auto first = rest.as_pair()->car;
             if (first.is_symbol() && first.is_keyword() && first.is_symbol(":env")) {
@@ -1327,7 +1327,7 @@ namespace sootc {
                 .got("end of form");
         }
 
-        soot::Object value_form = after_name.as_pair()->car;
+        script::Object value_form = after_name.as_pair()->car;
 
         if (value_form.is_string()) {
             auto after_doc = after_name.as_pair()->cdr;
@@ -1408,18 +1408,18 @@ namespace sootc {
                               name, name, name));
     }
 
-    std::unique_ptr<Node> NodeBuilder::build_define_extern(const soot::Object& form, Node* node) {
+    std::unique_ptr<Node> NodeBuilder::build_define_extern(const script::Object& form, Node* node) {
         return build_define_extern_or_native(form, node, false);
 
     }
 
-    std::unique_ptr<Node> NodeBuilder::build_define_native(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_define_native(const script::Object &form, Node *node) {
         return build_define_extern_or_native(form, node, true);
     }
 
     // (define-extern _format (function _varargs_ object))
     // (define-extern wait-animate (function string string object))
-    std::unique_ptr<Node> NodeBuilder::build_define_extern_or_native(const soot::Object &form,
+    std::unique_ptr<Node> NodeBuilder::build_define_extern_or_native(const script::Object &form,
                                                                Node               *node, bool is_native) {
         (void)node;
 
@@ -1510,7 +1510,7 @@ namespace sootc {
     // ============================================================================
     // deftype
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_deftype(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_deftype(const script::Object &form, Node *node) {
         (void)node;
         auto rest = form.as_pair()->cdr;
         try {
@@ -1528,7 +1528,7 @@ namespace sootc {
     // ============================================================================
     // defenum
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_defenum(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_defenum(const script::Object &form, Node *node) {
         (void)node;
         auto rest = form.as_pair()->cdr;
         try {
@@ -1545,7 +1545,7 @@ namespace sootc {
     // ============================================================================
     // defmethod
     // ============================================================================
-    std::unique_ptr<Node> NodeBuilder::build_defmethod(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_defmethod(const script::Object &form, Node *node) {
         auto rest = form.as_pair()->cdr;
 
         // ---- 1. Method name ----
@@ -1680,7 +1680,7 @@ namespace sootc {
     // ============================================================================
     // unary
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_unary_common(const soot::Object &form,
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_unary_common(const script::Object &form,
                                                                     Node *node, UnaryNode::Op op,
                                                                     const char *op_name) {
         auto rest = form.as_pair()->cdr;
@@ -1698,16 +1698,16 @@ namespace sootc {
         return std::make_unique<UnaryNode>(op, std::move(operand));
     }
 
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_abs(const soot::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_abs(const script::Object &form, Node *node) {
         return build_unary_common(form, node, UnaryNode::Op::ABS, "abs");
     }
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_neg(const soot::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_neg(const script::Object &form, Node *node) {
         return build_unary_common(form, node, UnaryNode::Op::NEG, "neg");
     }
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_not(const soot::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_not(const script::Object &form, Node *node) {
         return build_unary_common(form, node, UnaryNode::Op::NOT, "not");
     }
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_lognot(const soot::Object &form,
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_lognot(const script::Object &form,
                                                               Node               *node) {
         return build_unary_common(form, node, UnaryNode::Op::BITNOT, "lognot");
     }
@@ -1722,7 +1722,7 @@ namespace sootc {
     // The form produces no IR: after the compiler has loaded the
     // required module, it continues with the next form. An empty
     // SequenceNode is returned to signal that nothing was emitted.
-    std::unique_ptr<Node> NodeBuilder::build_require(const soot::Object &form, Node *node) {
+    std::unique_ptr<Node> NodeBuilder::build_require(const script::Object &form, Node *node) {
         (void)node;
 
         // Expect exactly one argument: a string path.

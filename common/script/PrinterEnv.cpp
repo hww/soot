@@ -5,7 +5,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace soot {
+namespace script {
 
     std::string EnvironmentPrettyPrinter::to_string(const EnvironmentObject& env,
         bool include_parents,

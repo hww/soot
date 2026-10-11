@@ -1,6 +1,6 @@
 #include "LabelTable.hpp"
 
-namespace soot {
+namespace script {
 Object LabelTable::get_at(SymbolTable* st, const Object &key) {
     (void)st;
     if (key.is_symbol() || key.is_string()) {

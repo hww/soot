@@ -49,13 +49,13 @@ namespace sootc {
         //
         // Any other keyword is consumed and ignored, matching the loose
         // contract used by lib.soc's let/let* macros.
-        std::unique_ptr<FunctionNode> compile_function(const soot::Object &form, Node *node,
+        std::unique_ptr<FunctionNode> compile_function(const script::Object &form, Node *node,
                                                        NodeBuilder &builder) {
 
             auto rest = form.as_pair()->cdr;
 
             // Skip keyword options: :name, :immediate, :segment, :no-typecheck.
-            soot::Object current = rest;
+            script::Object current = rest;
             std::string  function_name;
 
             while (current.is_pair()) {
@@ -167,7 +167,7 @@ namespace sootc {
         //
         // Anything else is a hard error and is reported with the exact
         // form that was rejected, so that macro-expanded code is debuggable.
-        void parse_arguments(const soot::Object &args_form, FunctionNode *func_node, Node *node,
+        void parse_arguments(const script::Object &args_form, FunctionNode *func_node, Node *node,
                              NodeBuilder &builder) {
 
             (void)node; // Kept for API symmetry with other FunctionCompiler

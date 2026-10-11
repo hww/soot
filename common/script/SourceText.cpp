@@ -1,7 +1,7 @@
 #include "SourceText.hpp"
 #include "util/FileUtil.hpp"
 
-namespace soot {
+namespace script {
 
 /*!
  * Initialize with the given string

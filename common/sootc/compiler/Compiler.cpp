@@ -211,12 +211,12 @@ namespace sootc {
     // handle_repl_string before the pipeline runs; see repl_commands()
     // and dispatch_repl_command().
     void Compiler::setup_soot_forms() {
-        soot::ArgumentSpec spec(true, false);
+        script::ArgumentSpec spec(true, false);
 
         m_soot.add_custom_form(
             "get-enum-vals",
-            [this](const soot::Object &form, soot::Arguments &args,
-                   const std::shared_ptr<soot::EnvironmentObject> &env) -> soot::Object {
+            [this](const script::Object &form, script::Arguments &args,
+                   const std::shared_ptr<script::EnvironmentObject> &env) -> script::Object {
                 return builtin_get_enum_vals(form, args, env);
             },
             &spec);
@@ -224,9 +224,9 @@ namespace sootc {
 
     // Built-in get-enum-vals. Returns a list of (symbol . value) pairs
     // for the enum whose name is given as the first argument.
-    soot::Object
-    Compiler::builtin_get_enum_vals(const soot::Object &form, soot::Arguments &args,
-                                    const std::shared_ptr<soot::EnvironmentObject> &env) {
+    script::Object
+    Compiler::builtin_get_enum_vals(const script::Object &form, script::Arguments &args,
+                                    const std::shared_ptr<script::EnvironmentObject> &env) {
         (void)form;
         (void)env;
 
@@ -256,49 +256,49 @@ namespace sootc {
         std::sort(sorted_values.begin(), sorted_values.end(),
                   [](const auto &a, const auto &b) { return a.second < b.second; });
 
-        std::vector<soot::Object> enum_vals;
+        std::vector<script::Object> enum_vals;
         for (auto &thing : sorted_values) {
-            enum_vals.push_back(soot::Object::make_pair(
-                soot::Object::make_symbol(&m_soot.symbol_table(), thing.first),
-                soot::Object::make_integer(thing.second)));
+            enum_vals.push_back(script::Object::make_pair(
+                script::Object::make_symbol(&m_soot.symbol_table(), thing.first),
+                script::Object::make_integer(thing.second)));
         }
 
-        return soot::build_list(enum_vals);
+        return script::build_list(enum_vals);
     }
 
-    // Parse arguments into a soot::Arguments format. Throws a compiler error
+    // Parse arguments into a script::Arguments format. Throws a compiler error
     // if parsing fails.
-    soot::Arguments Compiler::get_va(const soot::Object &form, const soot::Object &rest) {
-        soot::Arguments args;
+    script::Arguments Compiler::get_va(const script::Object &form, const script::Object &rest) {
+        script::Arguments args;
         std::string     err;
-        if (!soot::get_va(rest, &err, &args)) { throw_compiler_error(form, "{}", err); }
+        if (!script::get_va(rest, &err, &args)) { throw_compiler_error(form, "{}", err); }
         return args;
     }
 
     // Same as get_va, but does not handle named arguments.
-    soot::Arguments Compiler::get_va_no_named(const soot::Object &form, const soot::Object &rest) {
+    script::Arguments Compiler::get_va_no_named(const script::Object &form, const script::Object &rest) {
         (void)form;
-        soot::Arguments args;
-        soot::get_va_no_named(rest, &args);
+        script::Arguments args;
+        script::get_va_no_named(rest, &args);
         return args;
     }
 
     // Validate the parsed arguments (unnamed/named) and throw a compiler
     // error if the check fails.
     void Compiler::va_check(
-        const soot::Object &form, const soot::Arguments &args,
-        const std::vector<std::optional<soot::ObjectType>> &unnamed,
-        const std::unordered_map<std::string, std::pair<bool, std::optional<soot::ObjectType>>>
+        const script::Object &form, const script::Arguments &args,
+        const std::vector<std::optional<script::ObjectType>> &unnamed,
+        const std::unordered_map<std::string, std::pair<bool, std::optional<script::ObjectType>>>
             &named) {
         std::string err;
-        if (!soot::va_check(args, unnamed, named, &err)) { throw_compiler_error(form, "{}", err); }
+        if (!script::va_check(args, unnamed, named, &err)) { throw_compiler_error(form, "{}", err); }
     }
 
     // Walk a proper list and invoke f on each element. Throws a compiler
     // error if the list is not proper.
-    void Compiler::for_each_in_list(const soot::Object                              &list,
-                                    const std::function<void(const soot::Object &)> &f) {
-        const soot::Object *iter = &list;
+    void Compiler::for_each_in_list(const script::Object                              &list,
+                                    const std::function<void(const script::Object &)> &f) {
+        const script::Object *iter = &list;
         while (iter->is_pair()) {
             auto lap = iter->as_pair();
             f(lap->car);
@@ -324,7 +324,7 @@ namespace sootc {
 
     // Compile already-parsed forms. Optionally prints IR if configured.
     std::expected<std::unique_ptr<BinaryFile>, std::string>
-    Compiler::compile_file(soot::Object &forms, const std::string &filename) {
+    Compiler::compile_file(script::Object &forms, const std::string &filename) {
         m_current_file = filename;
         auto result = compile_internal(forms, filename);
 
@@ -350,7 +350,7 @@ namespace sootc {
     //
     // See the header comment on Compiler::require_file for the
     // rationale, including the handling of cyclic requires.
-    bool Compiler::require_file(const soot::Object &form, const std::string &path) {
+    bool Compiler::require_file(const script::Object &form, const std::string &path) {
         // ------------------------------------------------------------------
         // 1. Resolve the path against search_paths.
         // ------------------------------------------------------------------
@@ -447,7 +447,7 @@ namespace sootc {
     // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
     // if the input produced no binary output (compile-time-only declarations).
     std::expected<std::unique_ptr<BinaryFile>, std::string>
-    Compiler::compile_internal(soot::Object &forms, const std::string &filename) {
+    Compiler::compile_internal(script::Object &forms, const std::string &filename) {
         try {
             NodeBuilder builder(m_ts, this);
             auto        file_node = std::make_unique<FileNode>(filename);
@@ -537,7 +537,7 @@ namespace sootc {
 
             return binary;
 
-        } catch (const soot::EvalException &e) {
+        } catch (const script::EvalException &e) {
             fmt::print(fg(fmt::color::orange), "SOOT error while compiling {}: {}\n", filename,
                        e.what());
             return std::unexpected(std::string("SOOT error: ") + e.what());
@@ -669,7 +669,7 @@ namespace sootc {
         return dispatch_repl_command(name, form);
     }
 
-    ReplStatus Compiler::dispatch_repl_command(const std::string &name, const soot::Object &form) {
+    ReplStatus Compiler::dispatch_repl_command(const std::string &name, const script::Object &form) {
         if (name == "help") return cmd_help(form);
         if (name == "clear") return cmd_clear(form);
         if (name == "e") return cmd_e(form);
@@ -693,29 +693,29 @@ namespace sootc {
     // REPL command handlers
     // ===============================================================
 
-    ReplStatus Compiler::cmd_help(const soot::Object &form) {
+    ReplStatus Compiler::cmd_help(const script::Object &form) {
         (void)form;
         if (m_repl) m_repl->print_help_message();
         return ReplStatus::OK;
     }
 
-    ReplStatus Compiler::cmd_clear(const soot::Object &form) {
+    ReplStatus Compiler::cmd_clear(const script::Object &form) {
         (void)form;
         if (m_repl) m_repl->clear_screen();
         return ReplStatus::OK;
     }
 
-    ReplStatus Compiler::cmd_e(const soot::Object &form) {
+    ReplStatus Compiler::cmd_e(const script::Object &form) {
         (void)form;
         return ReplStatus::WANT_EXIT;
     }
 
-    ReplStatus Compiler::cmd_reload(const soot::Object &form) {
+    ReplStatus Compiler::cmd_reload(const script::Object &form) {
         (void)form;
         return ReplStatus::WANT_RELOAD;
     }
 
-    ReplStatus Compiler::cmd_sizes(const soot::Object &form) {
+    ReplStatus Compiler::cmd_sizes(const script::Object &form) {
         (void)form;
         carbon::print_all_struct_sizes();
         return ReplStatus::OK;
@@ -726,7 +726,7 @@ namespace sootc {
     // *soot-env* is the environment where lib.sc registers its macros.
     // try_getting_macro_from_soot consults only this environment, so
     // whatever appears here is what the compiler sees as macros.
-    ReplStatus Compiler::cmd_inspect_env(const soot::Object &form) {
+    ReplStatus Compiler::cmd_inspect_env(const script::Object &form) {
         (void)form;
         auto sootc_env = m_soot.get_soot_environment().as_env_ptr();
 
@@ -759,7 +759,7 @@ namespace sootc {
     // *global-env* is where lib.st and the interpreter register their
     // macros and built-in functions. The compiler does NOT consult this
     // environment for macro dispatch.
-    ReplStatus Compiler::cmd_inspect_env_soots(const soot::Object &form) {
+    ReplStatus Compiler::cmd_inspect_env_soots(const script::Object &form) {
         (void)form;
         auto global_env = m_soot.get_global_environment().as_env_ptr();
 
@@ -789,7 +789,7 @@ namespace sootc {
 
     // Check whether `name` is a macro visible to the compiler, i.e. a
     // macro registered in *soot-env*.
-    ReplStatus Compiler::cmd_has_macro(const soot::Object &form) {
+    ReplStatus Compiler::cmd_has_macro(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson), "; ERROR: (has-macro \"name\") requires a name\n");
@@ -809,14 +809,14 @@ namespace sootc {
         return ReplStatus::OK;
     }
 
-    ReplStatus Compiler::cmd_list_symbols(const soot::Object &form) {
+    ReplStatus Compiler::cmd_list_symbols(const script::Object &form) {
         (void)form;
         auto symbols = carbon::Globals::inst().all_symbols();
         for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
         return ReplStatus::OK;
     }
 
-    ReplStatus Compiler::cmd_save_session(const soot::Object &form) {
+    ReplStatus Compiler::cmd_save_session(const script::Object &form) {
         std::string session_name = m_session_name;
 
         auto rest = form.as_pair()->cdr;
@@ -851,7 +851,7 @@ namespace sootc {
     //   symbol    -> StringId
     //
     // Example: (sc-run gcd 48 18)
-    ReplStatus Compiler::cmd_sc_run(const soot::Object &form) {
+    ReplStatus Compiler::cmd_sc_run(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson), "; ERROR: (sc-run name arg...) requires a name\n");
@@ -905,7 +905,7 @@ namespace sootc {
     // Evaluate a SOOT expression in the interpreter's global environment
     // and print the result. This is the compiler-side analogue of the
     // old `:soot` REPL command.
-    ReplStatus Compiler::cmd_sc_eval(const soot::Object &form) {
+    ReplStatus Compiler::cmd_sc_eval(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson),
@@ -948,7 +948,7 @@ namespace sootc {
     // Examples:
     //   (arg-set "print-listing" #t)
     //   (arg-set "log-level" "debug")
-    ReplStatus Compiler::cmd_arg_set(const soot::Object &form) {
+    ReplStatus Compiler::cmd_arg_set(const script::Object &form) {
         // --- Parse the key and value ---
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
@@ -980,7 +980,7 @@ namespace sootc {
         // truthy values. We accept any symbol and treat "#t" as true,
         // anything else as false, so that (arg-set "x" #f) works and
         // (arg-set "x" whatever) is not silently truthy.
-        auto as_bool = [](const soot::Object &o) -> bool {
+        auto as_bool = [](const script::Object &o) -> bool {
             return o.is_symbol() && o.as_symbol() == "#t";
         };
 
@@ -1050,7 +1050,7 @@ namespace sootc {
     //   (arg-get "print-listing")
     //   (arg-get "log-level")
     //   (arg-get "sidbase")
-    ReplStatus Compiler::cmd_arg_get(const soot::Object &form) {
+    ReplStatus Compiler::cmd_arg_get(const script::Object &form) {
         // --- Parse the key ---
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
@@ -1191,7 +1191,7 @@ namespace sootc {
                 return ReplStatus::ERR;
             }
             // Remember every top-level form for :save. The forms are stored
-            // as parsed soot::Object values, which are reference-counted and
+            // as parsed script::Object values, which are reference-counted and
             // cheap to keep around.
             {
                 auto cur = forms;
@@ -1264,21 +1264,21 @@ namespace sootc {
     }
 
     // Interpret a string by parsing it first.
-    soot::Object Compiler::interpret(const std::string &input) {
+    script::Object Compiler::interpret(const std::string &input) {
         auto forms = m_soot.get_reader().read_from_string(input, false, "<repl>");
         return interpret(forms);
     }
 
     // Interpret already-parsed forms in the global SOOT environment.
-    soot::Object Compiler::interpret(const soot::Object &forms) {
+    script::Object Compiler::interpret(const script::Object &forms) {
         if (m_config.debug_print_ast) { lg::info("AST: {}", forms.print()); }
 
-        soot::Object result = soot::Object::make_none();
+        script::Object result = script::Object::make_none();
         try {
             auto env = m_soot.get_global_environment();
 
             if (forms.is_pair()) {
-                for_each_in_list(forms, [&](const soot::Object &o) {
+                for_each_in_list(forms, [&](const script::Object &o) {
                     result = m_soot.eval_form(o, env.as_env_ptr());
                 });
             } else {
@@ -1288,10 +1288,10 @@ namespace sootc {
             printf("%s\n", result.print().c_str());
             return result;
 
-        } catch (soot::ExitException &e) {
+        } catch (script::ExitException &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
             exit(e.exit_code);
-        } catch (soot::EvalException &e) {
+        } catch (script::EvalException &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError:");
             fmt::print("Error: {}", e.full_report(m_soot.get_reader()));
         } catch (const std::exception &e) {
@@ -1319,11 +1319,11 @@ namespace sootc {
         lg::info("Loaded user profile: {}", m_config.user_profile);
     }
 
-    void Compiler::set_global(const std::string &name, const soot::Object &value) {
+    void Compiler::set_global(const std::string &name, const script::Object &value) {
         m_soot.define_global(name.c_str(), value);
     }
 
-    soot::Object Compiler::get_global(const std::string &name) {
+    script::Object Compiler::get_global(const std::string &name) {
         return m_soot.get_global(Object::intern(&m_soot.symbol_table(), name.c_str()));
     }
 
@@ -1696,7 +1696,7 @@ namespace sootc {
         return try_getting_macro_from_soot(m_soot, sym, nullptr);
     }
 
-    soot::Object Compiler::expand_soot_macro(const soot::Object &form) {
+    script::Object Compiler::expand_soot_macro(const script::Object &form) {
         return expand_soot_macro_for_compiler(m_soot, form);
     }
 

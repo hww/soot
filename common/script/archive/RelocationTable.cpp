@@ -1,6 +1,6 @@
 #include "RelocationTable.hpp"
 
-namespace soot {
+namespace script {
 Object RelocationTable::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();

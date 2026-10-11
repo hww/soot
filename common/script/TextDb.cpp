@@ -3,7 +3,7 @@
 #include "fmt/color.h"
 #include <algorithm>
 
-namespace soot {
+namespace script {
 
 /*!
  * Inform the TextDB about a source of text.

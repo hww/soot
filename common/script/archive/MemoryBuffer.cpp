@@ -1,6 +1,6 @@
 #include "MemoryBuffer.hpp"
 
-namespace soot {
+namespace script {
 Object MemoryBuffer::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {
         std::string name = key.to_std_string();

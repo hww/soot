@@ -7,7 +7,7 @@
 
 #include "script/Object.hpp"
 
-namespace soot {
+namespace script {
     bool get_va(const Object& rest, std::string* err_string, Arguments* result);
     void get_va_no_named(const Object& rest, Arguments* result);
     bool va_check(

@@ -3,7 +3,7 @@
 #include "script/Object.hpp"
 #include "CommonTypes.hpp"   
 
-namespace soot {
+namespace script {
 
 class Reader;
 

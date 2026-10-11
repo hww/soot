@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-namespace soot {
+namespace script {
 
 class Interpreter;
 struct ListBuilder {

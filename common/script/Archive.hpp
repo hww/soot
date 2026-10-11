@@ -3,7 +3,7 @@
 
 #include "script/Object.hpp"
 
-namespace soot {
+namespace script {
 
 /*!
  * Archive class. Used for loading, saving, and garbage collecting

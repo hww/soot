@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace soot {
+namespace script {
 
 class RelocationTable : public NativeObject {
   public:

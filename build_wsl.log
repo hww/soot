@@ -49,7 +49,7 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/C
       |                                                                                                     
 [13/110] Building CXX object CMakeFiles/libsot.dir/common/script/archive/MemoryArchive.cpp.o
 In file included from /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.cpp:1:
-/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void script::MemoryArchive::seek(size_t)’:
 /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
   121 |         if (pos < 0 || pos > m_region->size()) {
       |             ~~~~^~~
@@ -217,7 +217,7 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/T
 /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:59:34: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘long long unsigned int’ [-Wsign-compare]
    59 |             case 8: return value <= 18446744073709551615ULL;
       |                            ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
-/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp: In function ‘EnumType* parse_defenum(const soot::Object&, TypeSystem*, DefinitionMetadata*)’:
+/home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp: In function ‘EnumType* parse_defenum(const script::Object&, TypeSystem*, DefinitionMetadata*)’:
 /home/valery/projects/hww/_c/soot.git/common/type_system/Defenum.cpp:238:1: warning: control reaches end of non-void function [-Wreturn-type]
   238 | }
       | ^
@@ -630,19 +630,19 @@ In file included from /home/valery/projects/hww/_c/soot.git/common/type_system/D
    31 |         struct {
       |                ^
 In file included from /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:29:
-/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void soot::MemoryArchive::seek(size_t)’:
+/home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp: In member function ‘virtual void script::MemoryArchive::seek(size_t)’:
 /home/valery/projects/hww/_c/soot.git/common/script/archive/MemoryArchive.hpp:121:17: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
   121 |         if (pos < 0 || pos > m_region->size()) {
       |             ~~~~^~~
-/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_get_context(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘script::Object script::Interpreter::eval_get_context(const script::Object&, script::Arguments&, const std::shared_ptr<script::EnvironmentObject>&)’:
 /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:5307:15: warning: comparison of unsigned expression in ‘>= 0’ is always true [-Wtype-limits]
  5307 |     if (index >= 0)
       |         ~~~~~~^~~~
-/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_read_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘script::Object script::Interpreter::eval_region_read_byte(const script::Object&, script::Arguments&, const std::shared_ptr<script::EnvironmentObject>&)’:
 /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:7631:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
  7631 |     if (index < 0 || index >= region->size()) {
       |         ~~~~~~^~~
-/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘soot::Object soot::Interpreter::eval_region_write_byte(const soot::Object&, soot::Arguments&, const std::shared_ptr<soot::EnvironmentObject>&)’:
+/home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp: In member function ‘script::Object script::Interpreter::eval_region_write_byte(const script::Object&, script::Arguments&, const std::shared_ptr<script::EnvironmentObject>&)’:
 /home/valery/projects/hww/_c/soot.git/common/script/Interpreter.cpp:7660:15: warning: comparison of unsigned expression in ‘< 0’ is always false [-Wtype-limits]
  7660 |     if (index < 0 || index >= region->size()) {
       |         ~~~~~~^~~

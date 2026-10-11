@@ -35,7 +35,7 @@ class BitField;
 class MethodInfo;
 class TypeSpec;
 
-using namespace soot;
+using namespace script;
 
 // ============================================================================
 // Definition Metadata
@@ -43,7 +43,7 @@ using namespace soot;
 
 struct DefinitionMetadata {
     // Близко к оригиналу, но с удобными методами
-    std::optional<soot::ShortInfo>   definition_info;
+    std::optional<script::ShortInfo>   definition_info;
     std::optional<std::string> docstring;
 
     // Добавляем только convenience методы без изменения структуры данных

@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace soot {
+namespace script {
 
 class Interpreter;
 

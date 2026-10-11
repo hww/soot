@@ -16,7 +16,7 @@
  */
 
 namespace {
-const soot::Object &car(const soot::Object *x) {
+const script::Object &car(const script::Object *x) {
     if (!x->is_pair()) {
         throw std::runtime_error("invalid deftype form");
     }
@@ -24,7 +24,7 @@ const soot::Object &car(const soot::Object *x) {
     return x->as_pair()->car;
 }
 
-const soot::Object *cdr(const soot::Object *x) {
+const script::Object *cdr(const script::Object *x) {
     if (!x->is_pair()) {
         throw std::runtime_error("invalid deftype form");
     }
@@ -32,7 +32,7 @@ const soot::Object *cdr(const soot::Object *x) {
     return &x->as_pair()->cdr;
 }
 
-std::string deftype_parent_list(const soot::Object &list) {
+std::string deftype_parent_list(const script::Object &list) {
     if (!list.is_pair()) {
         throw std::runtime_error("invalid parent list in deftype: " + list.print());
     }
@@ -54,7 +54,7 @@ bool is_type(const std::string &expected, const TypeSpec &actual, const TypeSyst
     return ts->tc(ts->make_typespec(expected), actual);
 }
 
-std::string symbol_string(const soot::Object &obj) {
+std::string symbol_string(const script::Object &obj) {
     if (obj.is_symbol()) {
         return obj.as_symbol().name_ptr;
     }
@@ -64,14 +64,14 @@ std::string symbol_string(const soot::Object &obj) {
     throw std::runtime_error(obj.print() + " was supposed to be a symbol, but isn't");
 }
 
-int64_t get_int(const soot::Object &obj) {
+int64_t get_int(const script::Object &obj) {
     if (obj.is_integer()) {
         return obj.as_integer();
     }
     throw std::runtime_error(obj.print() + " was supposed to be an integer, but isn't");
 }
 
-double get_float(const soot::Object &obj) {
+double get_float(const script::Object &obj) {
     if (obj.is_integer()) {
         return obj.as_integer();
     } else if (obj.is_float()) {
@@ -80,8 +80,8 @@ double get_float(const soot::Object &obj) {
     throw std::runtime_error(obj.print() + " was supposed to be an number, but isn't");
 }
 
-void add_field(StructureType *structure, TypeSystem *ts, const soot::Object &def,
-               soot::EnvironmentMap *constants) {
+void add_field(StructureType *structure, TypeSystem *ts, const script::Object &def,
+               script::EnvironmentMap *constants) {
     auto rest = &def;
 
     auto name = symbol_string(car(rest));
@@ -241,7 +241,7 @@ void add_field(StructureType *structure, TypeSystem *ts, const soot::Object &def
     }
 }
 
-void add_bitfield(BitFieldType *bitfield_type, TypeSystem *ts, const soot::Object &def) {
+void add_bitfield(BitFieldType *bitfield_type, TypeSystem *ts, const script::Object &def) {
     auto rest = &def;
 
     auto name = symbol_string(car(rest));
@@ -331,9 +331,9 @@ StateHandler handler_keyword_to_kind(const std::string &name) {
     }
 }
 
-void declare_method(Type *type, TypeSystem *type_system, const soot::Object &def,
+void declare_method(Type *type, TypeSystem *type_system, const script::Object &def,
                     StructureDefResult &struct_def) {
-    for_each_in_list(def, [&](const soot::Object &_obj) {
+    for_each_in_list(def, [&](const script::Object &_obj) {
         auto obj = &_obj;
         // (name args return-type [:no-virtual] [:replace] [:state] [:behavior] [id])
         // or alternatively
@@ -344,8 +344,8 @@ void declare_method(Type *type, TypeSystem *type_system, const soot::Object &def
         std::string                method_overlay_name;
         TypeSpec                   function_typespec("function");
         std::optional<std::string> docstring;
-        soot::Object             args;
-        soot::Object             return_type;
+        script::Object             args;
+        script::Object             return_type;
         bool                       no_virtual = false;
         bool                       replace_method = false;
         bool                       overlay_method = false;
@@ -442,7 +442,7 @@ void declare_method(Type *type, TypeSystem *type_system, const soot::Object &def
             }
 
             // fill in args now that we've finalized the function spec
-            for_each_in_list(args, [&](const soot::Object &o) {
+            for_each_in_list(args, [&](const script::Object &o) {
                 function_typespec.add_arg(parse_typespec(type_system, o));
             });
             function_typespec.add_arg(parse_typespec(type_system, return_type));
@@ -473,9 +473,9 @@ void declare_method(Type *type, TypeSystem *type_system, const soot::Object &def
     });
 }
 
-void declare_state_methods(Type *type, TypeSystem *type_system, const soot::Object &def,
+void declare_state_methods(Type *type, TypeSystem *type_system, const script::Object &def,
                            StructureDefResult & /*struct_def*/) {
-    for_each_in_list(def, [&](const soot::Object &_obj) {
+    for_each_in_list(def, [&](const script::Object &_obj) {
         auto obj = &_obj;
         // either state-name or (state-name args...) or (state-name "docstring" args...)
         std::string                method_name;
@@ -496,7 +496,7 @@ void declare_state_methods(Type *type, TypeSystem *type_system, const soot::Obje
                 docstring = car(&args).as_string()->data;
                 obj = cdr(&args);
             }
-            for_each_in_list(args, [&](const soot::Object &o) {
+            for_each_in_list(args, [&](const script::Object &o) {
                 function_typespec.add_arg(parse_typespec(type_system, o));
             });
         }
@@ -506,9 +506,9 @@ void declare_state_methods(Type *type, TypeSystem *type_system, const soot::Obje
     });
 }
 
-void declare_state(Type *type, TypeSystem *type_system, const soot::Object &def,
+void declare_state(Type *type, TypeSystem *type_system, const script::Object &def,
                    StructureDefResult &struct_def) {
-    for_each_in_list(def, [&](const soot::Object &_obj) {
+    for_each_in_list(def, [&](const script::Object &_obj) {
         auto obj = &_obj;
         if (obj->is_list()) {
             // (name [(:event "docstring"...)] ,@args)
@@ -540,7 +540,7 @@ void declare_state(Type *type, TypeSystem *type_system, const soot::Object &def,
 
             TypeSpec state_typespec("state");
 
-            for_each_in_list(*args, [&](const soot::Object &o) {
+            for_each_in_list(*args, [&](const script::Object &o) {
                 state_typespec.add_arg(parse_typespec(type_system, o));
             });
             state_typespec.add_arg(TypeSpec(type->get_name()));
@@ -559,10 +559,10 @@ void declare_state(Type *type, TypeSystem *type_system, const soot::Object &def,
 }
 
 StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
-                                       const soot::Object &fields, const soot::Object &options,
-                                       soot::EnvironmentMap *constants) {
+                                       const script::Object &fields, const script::Object &options,
+                                       script::EnvironmentMap *constants) {
     StructureDefResult result;
-    for_each_in_list(fields, [&](const soot::Object &o) { add_field(type, ts, o, constants); });
+    for_each_in_list(fields, [&](const script::Object &o) { add_field(type, ts, o, constants); });
     TypeFlags flags;
     flags.heap_base = 0;
 
@@ -690,10 +690,10 @@ struct BitFieldTypeDefResult {
 };
 
 BitFieldTypeDefResult parse_bitfield_type_def(BitFieldType *type, TypeSystem *ts,
-                                              const soot::Object &fields,
-                                              const soot::Object &options) {
+                                              const script::Object &fields,
+                                              const script::Object &options) {
     BitFieldTypeDefResult result;
-    for_each_in_list(fields, [&](const soot::Object &o) { add_bitfield(type, ts, o); });
+    for_each_in_list(fields, [&](const script::Object &o) { add_bitfield(type, ts, o); });
     TypeFlags flags;
     flags.heap_base = 0;
     flags.size = type->get_size_in_memory();
@@ -775,7 +775,7 @@ BitFieldTypeDefResult parse_bitfield_type_def(BitFieldType *type, TypeSystem *ts
 
 } // namespace
 
-TypeSpec parse_typespec(TypeSystem *type_system, const soot::Object &src) {
+TypeSpec parse_typespec(TypeSystem *type_system, const script::Object &src) {
     if (src.is_symbol()) {
         return type_system->make_typespec(symbol_string(src));
     } else if (src.is_pair()) {
@@ -828,11 +828,11 @@ TypeSpec parse_typespec(TypeSystem *type_system, const soot::Object &src) {
     return {};
 }
 
-DeftypeResult parse_deftype(const soot::Object &deftype, TypeSystem *ts,
-                            soot::EnvironmentMap *constants) {
+DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
+                            script::EnvironmentMap *constants) {
     try {
         DefinitionMetadata     symbol_metadata;
-        soot::EnvironmentMap no_consts;
+        script::EnvironmentMap no_consts;
 
         auto iter = &deftype;
 

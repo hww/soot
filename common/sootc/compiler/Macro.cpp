@@ -6,9 +6,9 @@
 
 namespace sootc {
 
-    using soot::Arguments;
-    using soot::EnvironmentObject;
-    using soot::Object;
+    using script::Arguments;
+    using script::EnvironmentObject;
+    using script::Object;
 
     // ============================================================================
     // try_getting_macro_from_soot
@@ -42,8 +42,8 @@ namespace sootc {
     // own var table. If the name is not bound there, it is not a
     // compiler macro, regardless of whether it is a macro in
     // *global-env*.
-    bool try_getting_macro_from_soot(soot::Interpreter &soot, const soot::Object &macro_name,
-                                     soot::Object *dest) {
+    bool try_getting_macro_from_soot(script::Interpreter &soot, const script::Object &macro_name,
+                                     script::Object *dest) {
         if (!macro_name.is_symbol()) { return false; }
 
         auto sootc_env = soot.get_soot_environment().as_env_ptr();
@@ -66,7 +66,7 @@ namespace sootc {
     // ============================================================================
     // expand_macro_once
     // ============================================================================
-    bool expand_macro_once(soot::Interpreter &soot, const soot::Object &src, soot::Object *out) {
+    bool expand_macro_once(script::Interpreter &soot, const script::Object &src, script::Object *out) {
         if (!src.is_pair()) { return false; }
 
         const Object &first = src.as_pair()->car;
@@ -99,7 +99,7 @@ namespace sootc {
     // ============================================================================
     // expand_macro_completely
     // ============================================================================
-    soot::Object expand_macro_completely(soot::Interpreter &soot, const soot::Object &src) {
+    script::Object expand_macro_completely(script::Interpreter &soot, const script::Object &src) {
         Object result = src;
         while (expand_macro_once(soot, result, &result)) {
             // repeat
@@ -110,7 +110,7 @@ namespace sootc {
     // ============================================================================
     // expand_soot_macro_for_compiler
     // ============================================================================
-    soot::Object expand_soot_macro_for_compiler(soot::Interpreter &soot, const soot::Object &form) {
+    script::Object expand_soot_macro_for_compiler(script::Interpreter &soot, const script::Object &form) {
         Object expanded;
         if (!expand_macro_once(soot, form, &expanded)) { return form; }
         return expand_macro_completely(soot, expanded);

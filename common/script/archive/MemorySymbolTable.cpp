@@ -1,6 +1,6 @@
 #include "MemorySymbolTable.hpp"
 
-namespace soot {
+namespace script {
 
 Object MemorySymbolTable::get_at(SymbolTable* st, const Object &key) {
     if (key.is_symbol() || key.is_string()) {

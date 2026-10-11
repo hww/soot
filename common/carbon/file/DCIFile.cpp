@@ -2,7 +2,7 @@
 
 namespace carbon {
 
-    DCIFile DCIFile::parse_from_object(const soot::Object &obj) {
+    DCIFile DCIFile::parse_from_object(const script::Object &obj) {
         DCIFile result;
 
         // Expected top-level: a single non-empty list.
@@ -45,7 +45,7 @@ namespace carbon {
         return result;
     }
 
-    u32 DCIFile::parse_binary_size(const soot::Object &obj) {
+    u32 DCIFile::parse_binary_size(const script::Object &obj) {
         if (!obj.is_pair()) { throw std::runtime_error("Expected list for binary size"); }
 
         const auto first = obj.as_pair()->car;
@@ -59,7 +59,7 @@ namespace carbon {
         return static_cast<u32>(first.as_integer());
     }
 
-    void DCIFile::parse_import_export(const soot::Object &obj, DCIFile &result) {
+    void DCIFile::parse_import_export(const script::Object &obj, DCIFile &result) {
         if (!obj.is_pair()) {
             throw std::runtime_error("Expected non-empty list for import/export");
         }

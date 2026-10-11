@@ -13,7 +13,7 @@
 #include <filesystem>
 
 using namespace carbon;
-using namespace soot;
+using namespace script;
 
 namespace fs = std::filesystem;
 

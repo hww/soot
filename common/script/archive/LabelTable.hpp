@@ -8,7 +8,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace soot {
+namespace script {
 
 struct MemoryLabel : public NativeObject {
     std::string name;

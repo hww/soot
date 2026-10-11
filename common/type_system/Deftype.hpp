@@ -12,7 +12,7 @@ struct DeftypeResult {
     bool      create_runtime_type = true;
 };
 
-TypeSpec parse_typespec(TypeSystem *type_system, const soot::Object &src);
+TypeSpec parse_typespec(TypeSystem *type_system, const script::Object &src);
 
-DeftypeResult parse_deftype(const soot::Object &deftype, TypeSystem *ts,
-                            soot::EnvironmentMap *constants = nullptr);
+DeftypeResult parse_deftype(const script::Object &deftype, TypeSystem *ts,
+                            script::EnvironmentMap *constants = nullptr);

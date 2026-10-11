@@ -8,7 +8,7 @@
 #include "script/Object.hpp"
 
 
-namespace soot {
+namespace script {
 
 /**
  * @brief Буфер памяти с метаданными

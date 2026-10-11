@@ -4,7 +4,7 @@
 #include "CommonTypes.hpp"
 #include <stdexcept>
 
-namespace soot {
+namespace script {
 
 // ============================================================
 // Archive

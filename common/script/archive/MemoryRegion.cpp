@@ -2,7 +2,7 @@
 #include "FileUtil.hpp"
 #include <fstream>
 
-namespace soot {
+namespace script {
 Object MemoryRegion::get_at(SymbolTable* st, const Object &key) {
     (void)st;
     // Системные свойства

@@ -3,7 +3,7 @@
 #include "type_system/TypeSpec.hpp"
 #include <string>
 
-namespace soot {
+namespace script {
 struct Register : NativeObject {
     Object name;           // Имя переменной
     Object reg;            // Ссылка на физический регистр

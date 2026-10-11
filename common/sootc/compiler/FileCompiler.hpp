@@ -12,7 +12,7 @@ class Compiler;
 namespace FileCompiler {
 
 // Только строит дерево из AST
-std::unique_ptr<FileNode> compile(const soot::Object& forms, 
+std::unique_ptr<FileNode> compile(const script::Object& forms, 
                                    const std::string& filename, 
                                    Compiler& compiler);
 

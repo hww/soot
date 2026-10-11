@@ -5,7 +5,7 @@
 
 #include "script/Object.hpp"
 
-namespace soot::pretty_print {
+namespace script::pretty_print {
 	// string -> object (as a symbol)
 	Object to_symbol(const std::string& str);
 

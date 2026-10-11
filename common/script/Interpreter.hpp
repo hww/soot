@@ -15,7 +15,7 @@
 
 class TypeSystem;
 
-namespace soot {
+namespace script {
 
 class Interpreter {
     friend class SootTypeSystem;

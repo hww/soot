@@ -5,7 +5,7 @@
 #include <vector>
 
 
-namespace soot {
+namespace script {
 
 class SourceText {
   public:

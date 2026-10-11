@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace soot::pretty_print {
+namespace script::pretty_print {
 
 // Вспомогательные функции
 inline const std::string quote_symbol(Node::QuoteKind kind) {
@@ -488,4 +488,4 @@ std::string to_string(const Object &obj, int line_length) {
     return node_to_string(&root);
 }
 
-} // namespace soot::pretty_print
+} // namespace script::pretty_print

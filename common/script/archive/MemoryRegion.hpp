@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace soot {
+namespace script {
 
 /**
  * @brief Простой регион памяти - только байты и базовый адрес

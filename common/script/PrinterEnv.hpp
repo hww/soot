@@ -7,7 +7,7 @@
 #include <functional>
 #include <memory>
 
-namespace soot {
+namespace script {
 
     class EnvironmentPrettyPrinter {
     public:

@@ -17,7 +17,7 @@
 
 #include <functional>
 
-namespace soot {
+namespace script {
 // Портируемые типы
 using FloatType = double;
 using IntType = int64_t;
@@ -1739,8 +1739,8 @@ Object build_list(const std::vector<Object> &objects);
 } // namespace soot
 
 namespace std {
-template <> struct hash<soot::InternedSymbolPtr> {
-    size_t operator()(const soot::InternedSymbolPtr &s) const noexcept {
+template <> struct hash<script::InternedSymbolPtr> {
+    size_t operator()(const script::InternedSymbolPtr &s) const noexcept {
         // Поскольку символы интернированы, адрес указателя
         // сам по себе является отличным уникальным хешем.
         return std::hash<const char *>{}(s.name_ptr);

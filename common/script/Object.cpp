@@ -12,7 +12,7 @@
 #include <sstream>
 #include <string>
 
-namespace soot {
+namespace script {
 
 // ============================================================================
 // Type Strings

@@ -2,7 +2,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
-using namespace soot;
+using namespace script;
 
 class MathTest : public ::testing::Test {
   protected:

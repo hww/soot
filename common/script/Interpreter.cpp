@@ -31,7 +31,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace soot {
+namespace script {
 
 Interpreter::Interpreter(const std::string &username, bool load_libs, bool init_type_system, SootPlatform platform)
     : m_setter_map(), m_reader() {
@@ -471,10 +471,10 @@ void Interpreter::execute_repl(REPL::Wrapper& repl) {
             Object evald = eval_with_rewind(*obj, m_global_environment.as_env_ptr());
             // print
             printf("%s\n", evald.print().c_str());
-        } catch (soot::ExitException &e) {
+        } catch (script::ExitException &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nExit: {}\n", e.what());
             exit(e.exit_code);
-        } catch (soot::EvalException &e) {
+        } catch (script::EvalException &e) {
             fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "\nError:");
             fmt::print("Error: {}", e.full_report(m_reader));
         } catch (const std::exception &e) {

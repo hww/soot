@@ -2,7 +2,7 @@
 
 #include "fmt/format.h"
 
-namespace soot {
+namespace script {
 
 bool get_va(const Object &rest, std::string *err_string, Arguments *result) {
     Arguments args;

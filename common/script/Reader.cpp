@@ -6,7 +6,7 @@
 #include "repl/repl_wrapper.h"
 #include <cctype>
 
-namespace soot {
+namespace script {
 namespace {
 /*!
  * Is this a valid character to start a decimal integer number?
@@ -214,7 +214,7 @@ Object Reader::read_single_form(TextStream &ts, EvalCallback eval_callback) {
 
             Object sym = Object::make_symbol(&m_symbols, macro.replacement.c_str());
             // Возвращаем либо (quote объект), либо просто символ замены
-            return macro.list ? soot::build_list({sym, inner_obj}) : sym;
+            return macro.list ? script::build_list({sym, inner_obj}) : sym;
         }
     }
 

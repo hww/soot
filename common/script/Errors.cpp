@@ -3,7 +3,7 @@
 #include "script/Reader.hpp"
 #include <fmt/ranges.h>
 
-namespace soot {
+namespace script {
 
 // Основной метод для получения красивого отчета
 std::string EvalException::full_report(Reader &reader) const {

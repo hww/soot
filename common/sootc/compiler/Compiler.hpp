@@ -101,7 +101,7 @@ namespace sootc {
         compile_file(const std::filesystem::path &path);
 
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-        compile_file(soot::Object &forms, const std::string &filename);
+        compile_file(script::Object &forms, const std::string &filename);
 
         // --- Require (language form) ---
         //
@@ -127,7 +127,7 @@ namespace sootc {
         // @param path    The path string from the form.
         // @return        true if the file was loaded (or was already
         //                loaded before this call).
-        bool        require_file(const soot::Object &form, const std::string &path);
+        bool        require_file(const script::Object &form, const std::string &path);
 
         // --- REPL ---
         ReplStatus  handle_repl_string(const std::string &input);
@@ -137,14 +137,14 @@ namespace sootc {
         std::string get_repl_input();
 
         // --- Interpretation ---
-        soot::Object interpret(const std::string &input);
-        soot::Object interpret(const soot::Object &forms);
+        script::Object interpret(const std::string &input);
+        script::Object interpret(const script::Object &forms);
 
         // --- Types ---
         TypeSystem       &ts() { return m_ts; }
         const TypeSystem &ts() const { return m_ts; }
 
-        TypeSpec parse_typespec(const soot::Object &form) { return ::parse_typespec(&m_ts, form); };
+        TypeSpec parse_typespec(const script::Object &form) { return ::parse_typespec(&m_ts, form); };
 
         // --- Function declarations ---
         //
@@ -178,19 +178,19 @@ namespace sootc {
         }
 
         // --- Environment management ---
-        void         set_global(const std::string &name, const soot::Object &value);
-        soot::Object get_global(const std::string &name);
+        void         set_global(const std::string &name, const script::Object &value);
+        script::Object get_global(const std::string &name);
         void         reload_environment();
 
-        soot::Interpreter &get_soot_interpreter() { return m_soot; }
-        soot::Object       get_soot_environment() { return m_soot.get_soot_environment(); }
+        script::Interpreter &get_soot_interpreter() { return m_soot; }
+        script::Object       get_soot_environment() { return m_soot.get_soot_environment(); }
 
         // --- Constants ---
-        void define_constant(const std::string &name, const soot::Object &value) {
+        void define_constant(const std::string &name, const script::Object &value) {
             m_constants[name] = value;
         }
 
-        std::optional<soot::Object> lookup_constant(const std::string &name) const {
+        std::optional<script::Object> lookup_constant(const std::string &name) const {
             auto it = m_constants.find(name);
             return it != m_constants.end() ? std::optional(it->second) : std::nullopt;
         }
@@ -208,7 +208,7 @@ namespace sootc {
 
         // --- Macros ---
         bool         is_soot_macro(const std::string &name);
-        soot::Object expand_soot_macro(const soot::Object &form);
+        script::Object expand_soot_macro(const script::Object &form);
 
         // --- Lambda name synthesis ---
         //
@@ -248,22 +248,22 @@ namespace sootc {
         void repl_coloring(const std::string &input, replxx::Replxx::colors_t &colors);
 
         // --- Built-in SOOT forms ---
-        soot::Object builtin_get_enum_vals(const soot::Object &form, soot::Arguments &args,
-                                           const std::shared_ptr<soot::EnvironmentObject> &env);
+        script::Object builtin_get_enum_vals(const script::Object &form, script::Arguments &args,
+                                           const std::shared_ptr<script::EnvironmentObject> &env);
 
-        soot::Arguments get_va(const soot::Object &form, const soot::Object &rest);
-        soot::Arguments get_va_no_named(const soot::Object &form, const soot::Object &rest);
+        script::Arguments get_va(const script::Object &form, const script::Object &rest);
+        script::Arguments get_va_no_named(const script::Object &form, const script::Object &rest);
 
         void va_check(
-            const soot::Object &form, const soot::Arguments &args,
-            const std::vector<std::optional<soot::ObjectType>> &unnamed,
-            const std::unordered_map<std::string, std::pair<bool, std::optional<soot::ObjectType>>>
+            const script::Object &form, const script::Arguments &args,
+            const std::vector<std::optional<script::ObjectType>> &unnamed,
+            const std::unordered_map<std::string, std::pair<bool, std::optional<script::ObjectType>>>
                 &named);
 
-        void for_each_in_list(const soot::Object                              &list,
-                              const std::function<void(const soot::Object &)> &f);
+        void for_each_in_list(const script::Object                              &list,
+                              const std::function<void(const script::Object &)> &f);
 
-        CompilerError make_error(const soot::Object &form, std::string where) const {
+        CompilerError make_error(const script::Object &form, std::string where) const {
             CompilerError err(std::move(where));
             auto          info_str = m_soot.get_reader().get_db().get_info_for(form);
             if (info_str != "?") {
@@ -284,7 +284,7 @@ namespace sootc {
 
         // --- Compilation ---
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-             compile_internal(soot::Object &forms, const std::string &filename);
+             compile_internal(script::Object &forms, const std::string &filename);
         void render_internal_error(const std::exception &e);
 
         // --- Helpers ---
@@ -303,7 +303,7 @@ namespace sootc {
 
         // Report a compilation error with a formatted message.
         template <typename... Args>
-        [[noreturn]] void throw_compiler_error(const soot::Object &code, const std::string &str,
+        [[noreturn]] void throw_compiler_error(const script::Object &code, const std::string &str,
                                                Args &&...args) {
             fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "-- Compilation Error! --\n");
             if (!str.empty() && str.back() == '\n') {
@@ -342,32 +342,32 @@ namespace sootc {
         std::optional<ReplStatus> try_handle_repl_command(const std::string &input);
 
         /// @brief Map a command name to its handler.
-        ReplStatus dispatch_repl_command(const std::string &name, const soot::Object &form);
+        ReplStatus dispatch_repl_command(const std::string &name, const script::Object &form);
 
         // Individual command handlers. Each returns ReplStatus so that a
         // command can request exit / reload; malformed arguments print
         // "; ERROR: ..." and return ReplStatus::ERR.
-        ReplStatus cmd_help(const soot::Object &form);
-        ReplStatus cmd_clear(const soot::Object &form);
-        ReplStatus cmd_e(const soot::Object &form);
-        ReplStatus cmd_reload(const soot::Object &form);
-        ReplStatus cmd_sizes(const soot::Object &form);
-        ReplStatus cmd_inspect_env(const soot::Object &form);
-        ReplStatus cmd_inspect_env_soots(const soot::Object &form);
-        ReplStatus cmd_has_macro(const soot::Object &form);
-        ReplStatus cmd_list_symbols(const soot::Object &form);
-        ReplStatus cmd_save_session(const soot::Object &form);
-        ReplStatus cmd_sc_run(const soot::Object &form);
-        ReplStatus cmd_sc_eval(const soot::Object &form);
+        ReplStatus cmd_help(const script::Object &form);
+        ReplStatus cmd_clear(const script::Object &form);
+        ReplStatus cmd_e(const script::Object &form);
+        ReplStatus cmd_reload(const script::Object &form);
+        ReplStatus cmd_sizes(const script::Object &form);
+        ReplStatus cmd_inspect_env(const script::Object &form);
+        ReplStatus cmd_inspect_env_soots(const script::Object &form);
+        ReplStatus cmd_has_macro(const script::Object &form);
+        ReplStatus cmd_list_symbols(const script::Object &form);
+        ReplStatus cmd_save_session(const script::Object &form);
+        ReplStatus cmd_sc_run(const script::Object &form);
+        ReplStatus cmd_sc_eval(const script::Object &form);
 
         // --- Arguments ---
-        ReplStatus cmd_arg_set(const soot::Object &form);
-        ReplStatus cmd_arg_get(const soot::Object &form);
+        ReplStatus cmd_arg_set(const script::Object &form);
+        ReplStatus cmd_arg_get(const script::Object &form);
 
         // --- State ---
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;
-        soot::Interpreter              m_soot;
+        script::Interpreter              m_soot;
         std::unique_ptr<REPL::Wrapper> m_repl;
 
         CompilationOptions          m_config;
@@ -376,7 +376,7 @@ namespace sootc {
 
         std::string                                   m_current_file;
         std::unordered_map<std::string, FunctionInfo> m_functions;
-        std::unordered_map<std::string, soot::Object> m_constants;
+        std::unordered_map<std::string, script::Object> m_constants;
 
         // Per-instance set of already-loaded prelude paths.
         //
@@ -391,7 +391,7 @@ namespace sootc {
         /// @brief All top-level forms entered in the REPL during this session.
         /// @details Appended to on every successful compile_and_report().
         ///          Used by :save / :cf to write the whole session to disk.
-        std::vector<soot::Object> m_session_forms;
+        std::vector<script::Object> m_session_forms;
 
         /// @brief Base name used when saving the REPL session.
         std::string m_session_name = "repl";

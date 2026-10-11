@@ -9,7 +9,7 @@
 
 #include "fmt/format.h"
 
-namespace soot::pretty_print {
+namespace script::pretty_print {
 
 namespace {
 // the integer representation is used here instead, wouldn't want really long numbers
@@ -24,7 +24,7 @@ const std::unordered_map<u32, std::string> const_floats = {{0x40490fda, "PI"},
  * Print a float in a nice representation if possible, or an exact 32-bit integer constant to
  * be reinterpreted.
  */
-soot::Object float_representation(float value) {
+script::Object float_representation(float value) {
     u32 int_value;
     memcpy(&int_value, &value, 4);
     if (!proper_float(value)) {
@@ -34,51 +34,51 @@ soot::Object float_representation(float value) {
     } else if (const_floats.find(int_value) != const_floats.end()) {
         return pretty_print::to_symbol(const_floats.at(int_value));
     } else if (banned_floats.find(int_value) == banned_floats.end()) {
-        return soot::Object::make_float(value);
+        return script::Object::make_float(value);
     } else {
         return pretty_print::build_list("the-as", "float", fmt::format("#x{:x}", int_value));
     }
 }
 
-std::unique_ptr<soot::Reader> pretty_printer_reader;
+std::unique_ptr<script::Reader> pretty_printer_reader;
 std::mutex pretty_printer_reader_mutex;
 
-soot::Reader& get_pretty_printer_reader() {
+script::Reader& get_pretty_printer_reader() {
   if (!pretty_printer_reader) {
-    pretty_printer_reader = std::make_unique<soot::Reader>();
+    pretty_printer_reader = std::make_unique<script::Reader>();
   }
   return *pretty_printer_reader;
 }
 
-soot::Object to_symbol(const std::string& str) {
+script::Object to_symbol(const std::string& str) {
   std::lock_guard<std::mutex> guard(pretty_printer_reader_mutex);
-  return soot::Object::make_symbol(&get_pretty_printer_reader().symbol_table(), str.c_str());
+  return script::Object::make_symbol(&get_pretty_printer_reader().symbol_table(), str.c_str());
 }
 
-soot::Object new_string(const std::string &str) {
+script::Object new_string(const std::string &str) {
     return Object::make_string(str);
 }
 
-soot::Object build_list(const std::string &str) {
+script::Object build_list(const std::string &str) {
     return build_list(to_symbol(str));
 }
 
-soot::Object build_list(const soot::Object &obj) {
-    return Object::make_pair(obj, soot::Object::make_null());
+script::Object build_list(const script::Object &obj) {
+    return Object::make_pair(obj, script::Object::make_null());
 }
 
-soot::Object build_list(const std::vector<soot::Object> &objects) {
+script::Object build_list(const std::vector<script::Object> &objects) {
     if (objects.empty()) {
-        return soot::Object::make_null();
+        return script::Object::make_null();
     } else {
         return build_list(objects.data(), objects.size());
     }
 }
 
 // build a list out of an array of forms
-soot::Object build_list(const soot::Object *objects, int count) {
+script::Object build_list(const script::Object *objects, int count) {
     ASSERT(count);
-    soot::Object result = soot::Object::make_null();
+    script::Object result = script::Object::make_null();
     for (int i = count; i-- > 0;) {
         result = Object::make_pair(objects[i], result);
     }
@@ -87,11 +87,11 @@ soot::Object build_list(const soot::Object *objects, int count) {
 }
 
 // build a list out of a vector of strings that are converted to symbols
-soot::Object build_list(const std::vector<std::string> &symbols) {
+script::Object build_list(const std::vector<std::string> &symbols) {
     if (symbols.empty()) {
-        return soot::Object::make_null();
+        return script::Object::make_null();
     }
-    std::vector<soot::Object> f;
+    std::vector<script::Object> f;
     f.reserve(symbols.size());
     for (auto &x : symbols) {
         f.push_back(to_symbol(x));
@@ -99,7 +99,7 @@ soot::Object build_list(const std::vector<std::string> &symbols) {
     return build_list(f.data(), f.size());
 }
 
-void append(soot::Object &_in, const soot::Object &add) {
+void append(script::Object &_in, const script::Object &add) {
     auto *in = &_in;
     while (in->is_pair() && !in->as_pair()->cdr.is_null()) {
         in = &in->as_pair()->cdr;
@@ -111,4 +111,4 @@ void append(soot::Object &_in, const soot::Object &add) {
     in->as_pair()->cdr = add;
 }
 
-} // namespace soot::pretty_print
+} // namespace script::pretty_print

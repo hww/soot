@@ -1,5 +1,5 @@
 #include "MemoryArchive.hpp"
-namespace soot {
+namespace script {
 
 Object MemoryArchive::get_at(SymbolTable* st, const Object &key) {
     (void)st;

@@ -9,7 +9,7 @@
 #include "script/Object.hpp"
 #include "SourceText.hpp"
 
-namespace soot {
+namespace script {
 
 struct ShortInfo {
     std::string filename;

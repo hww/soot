@@ -5,7 +5,7 @@
 #include "script/Archive.hpp"
 #include "script/Object.hpp"
 
-namespace soot {
+namespace script {
 
 /**
  * @brief Архиватор для работы с MemoryRegion

@@ -15,10 +15,10 @@ namespace FunctionCompiler {
 
 // Компилирует lambda/function формы в FunctionNode
 std::unique_ptr<FunctionNode> compile_function(
-    const soot::Object& form, Node* context, NodeBuilder& builder);
+    const script::Object& form, Node* context, NodeBuilder& builder);
 
 // Парсит аргументы функции
-void parse_arguments(const soot::Object& args_form, 
+void parse_arguments(const script::Object& args_form, 
                      FunctionNode* fn, 
                      Node* node, 
                      NodeBuilder& builder);
