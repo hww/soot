@@ -2,7 +2,7 @@
 
 /*!
  * @file TypeSpec.h
- * A GOAL TypeSpec is a reference to a type or compound type.
+ * A SOOT TypeSpec is a reference to a type or compound type.
  *
  * NOTE: This is a pure C++ class. It is NOT a Lisp Object and does not
  * inherit from NativeObject/HeapObject. All Lisp-facing functionality

@@ -283,7 +283,7 @@ git push origin feature/amazing-feature
 
 ## 🎨 Emacs Configuration
 
-The following EMacs config file should get you started and configure OpenGOAL's formatting style
+The following EMacs config file should get you started and configure SOOT's formatting style
 
 ```lisp
 ;; make .sot files use lisp-mode

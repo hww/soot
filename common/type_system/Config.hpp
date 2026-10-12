@@ -11,15 +11,15 @@ enum class RegClass { GPR_8, GPR_16, GPR_32, GPR_64, FPR, INVALID };
 
 std::string reg_kind_to_string(RegClass reg_class);
 
-constexpr u32 SOOT_NEW_METHOD = 0;      // method ID of GOAL new
-constexpr u32 SOOT_DEL_METHOD = 1;      // method ID of GOAL delete
-constexpr u32 SOOT_PRINT_METHOD = 2;    // method ID of GOAL print
-constexpr u32 SOOT_INSPECT_METHOD = 3;  // method ID of GOAL inspect
-constexpr u32 SOOT_LENGTH_METHOD = 4;   // method ID of GOAL length
-constexpr u32 SOOT_ASIZE_METHOD = 5;    // method ID of GOAL size
-constexpr u32 SOOT_COPY_METHOD = 6;     // method ID of GOAL copy
-constexpr u32 SOOT_RELOC_METHOD = 7;    // method ID of GOAL relocate
-constexpr u32 SOOT_MEMUSAGE_METHOD = 8; // method ID of GOAL mem-usage
+constexpr u32 SOOT_NEW_METHOD = 0;      // method ID of SOOT new
+constexpr u32 SOOT_DEL_METHOD = 1;      // method ID of SOOT delete
+constexpr u32 SOOT_PRINT_METHOD = 2;    // method ID of SOOT print
+constexpr u32 SOOT_INSPECT_METHOD = 3;  // method ID of SOOT inspect
+constexpr u32 SOOT_LENGTH_METHOD = 4;   // method ID of SOOT length
+constexpr u32 SOOT_ASIZE_METHOD = 5;    // method ID of SOOT size
+constexpr u32 SOOT_COPY_METHOD = 6;     // method ID of SOOT copy
+constexpr u32 SOOT_RELOC_METHOD = 7;    // method ID of SOOT relocate
+constexpr u32 SOOT_MEMUSAGE_METHOD = 8; // method ID of SOOT mem-usage
 
 struct TypeConfig {
     static RegClass pointer_reg_class;

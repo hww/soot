@@ -1205,8 +1205,8 @@ void TypeSystem::add_builtin_types() {
     // object -> number -> integer -> sinteger / uinteger -> concrete widths
     // object -> number -> float
     //
-    // This mirrors the OpenGOAL layout so that method IDs and field
-    // offsets that were derived from GOAL source remain valid.
+    // This mirrors the OpenSOOT layout so that method IDs and field
+    // offsets that were derived from SOOT source remain valid.
     auto number_type =
         add_builtin_value_type("object", "number", 8, false, false, RegClass::GPR_64);
 

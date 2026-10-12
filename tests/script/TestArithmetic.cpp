@@ -75,7 +75,7 @@ TEST_F(ArithmeticTest, MixedTypesFollowFirstArg) {
     EXPECT_DOUBLE_EQ(obj.as_float(), 3.5);
 }
 
-// Тест деления (всегда float в OpenGOAL)
+// Тест деления (всегда float в OpenSOOT)
 TEST_F(ArithmeticTest, Division) {
     Object obj = eval("(/ 6.0 2)");
     EXPECT_TRUE(obj.is_float()); // Всегда float для деления

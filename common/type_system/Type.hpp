@@ -2,7 +2,7 @@
 
 /*!
  * @file Type.h
- * Representation of a GOAL type in the type system.
+ * Representation of a SOOT type in the type system.
  *
  * NOTE: This is a pure C++ subsystem. Types are NOT Lisp objects and do not
  * inherit from NativeObject/HeapObject. All Lisp-facing functionality

@@ -2,7 +2,7 @@
 
 /*!
  * @file TypeSystem.h
- * The GOAL Type System.
+ * The SOOT Type System.
  * Stores types, symbol types, methods, etc, and does typechecking,
  * lowest-common-ancestor, field access types, and reverse type lookups.
  *

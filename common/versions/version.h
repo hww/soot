@@ -4,10 +4,10 @@
 #include "CommonTypes.hpp"
 
 namespace versions {
-// language version (OpenGOAL)
+// language version (OpenSOOT)
 
-constexpr i32 GOAL_VERSION_MAJOR = 1;
-constexpr i32 GOAL_VERSION_MINOR = 0;
+constexpr i32 SOOT_VERSION_MAJOR = 1;
+constexpr i32 SOOT_VERSION_MINOR = 0;
 
 }
 #endif //_SOOT_VERSION_H_

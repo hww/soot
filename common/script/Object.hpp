@@ -83,7 +83,7 @@ class Archive;
 struct TextStream;
 struct ArgumentSpec;
 
-// InternedSymbolPtr как в OpenGOAL
+// InternedSymbolPtr
 struct InternedSymbolPtr {
     const char *name_ptr;
 
@@ -137,7 +137,7 @@ struct InternedSymbolPtr {
     }
 };
 
-// FixedObject шаблон как в OpenGOAL
+// FixedObject шаблон как в OpenSOOT
 template <typename T> std::string fixed_to_string(T x);
 
 template <> std::string fixed_to_string<FloatType>(FloatType x);
@@ -192,7 +192,7 @@ class Object {
   public:
     ObjectType type = ObjectType::NONE;
 
-    // For fixed types (value semantics) - как в OpenGOAL
+    // For fixed types (value semantics) - как в OpenSOOT
     union {
         IntegerObject integer_obj;
         FloatObject   float_obj;

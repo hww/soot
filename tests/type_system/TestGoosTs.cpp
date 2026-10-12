@@ -43,7 +43,7 @@ TEST(TypeSystem, DefaultMethods) {
 
 TEST(TypeSystemReverse, NestedInlineWeird) {
     // tests the case where we're accessing nested inline arrays, with a dynamic inner access
-    // and constant outer access, which will be constant propagated by the GOAL compiler.
+    // and constant outer access, which will be constant propagated by the SOOT compiler.
     TypeSystem ts;
     ts.add_builtin_types();
     script::Reader reader;

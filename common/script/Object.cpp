@@ -232,7 +232,7 @@ std::vector<Object> Object::to_vector() const {
         current = pair->cdr;         // Переходим к следующей паре
     }
 
-    // В GOAL/Lisp список должен заканчиваться на 'empty-list / 'nil.
+    // В SOOT/Lisp список должен заканчиваться на 'empty-list / 'nil.
     // Если в конце осталось что-то другое (не none) — это "точечная пара" (dotted pair).
     // Для define-extern это обычно не нужно, но для надежности проверим:
     if (!current.is_none() && !current.is_null()) {

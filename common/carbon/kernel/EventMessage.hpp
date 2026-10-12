@@ -10,7 +10,7 @@ using namespace carbon;
 namespace carbon {
      class Process;   
 /**
- * @brief Event message structure (like in GOAL)
+ * @brief Event message structure (like in SOOT)
  * Used to pass events between processes
  */
 struct EventMessage {
@@ -21,7 +21,7 @@ struct EventMessage {
     StringId message;           // Event type
     int num_params = 0;         // Number of parameters
     
-    // Event parameters as inline array (up to 7 as in GOAL)
+    // Event parameters as inline array (up to 7 as in SOOT)
     Variant params[MAX_PARAMS];
     
     /**
