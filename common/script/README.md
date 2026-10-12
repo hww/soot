@@ -1,8 +1,8 @@
-# 📖 **SOOT Script Language - Quick Reference** (Updated)
+# 📖 SOOT Script Language - Quick Reference (Updated)
 
 SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting language for C++ applications.
 
-## 📚 **Table of Contents**
+## 📚 Table of Contents
 
 - [Argument Syntax](#argument-syntax)
 - [Special Forms](#special-forms)
@@ -21,14 +21,17 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 - [Reader](#reader)
 - [Macro System](#macro-system)
 - [Other Functions](#other-functions)
-- [Other Documentation](#other-documentation)
-- [Serialization](#serialization)
+- [Environment Functions](#environment-functions)
+- [Error Handling](#error-handling)
+- [Getter-Setter System](#getter-setter-system)
+- [Iteration Functions](#iteration-functions)
+- [Type System & Metaprogramming](#type-system--metaprogramming)
 
 ---
 
-## 📋 **Argument Syntax**
+## 📋 Argument Syntax
 
-### **Basic Syntax**
+### Basic Syntax
 
 ```scheme
 ; Required arguments
@@ -41,9 +44,13 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 ; Keyword arguments (must start with :)
 (lambda (&key name age) ...)       ; optional keyword args
 (lambda (&key (name "John")) ...) ; keyword with default value
+
+; Optional arguments
+(lambda (&optional x y) ...)       ; x, y optional
+(lambda (&optional (x 10)) ...)    ; x optional with default 10
 ```
 
-### **Calling Functions**
+### Calling Functions
 
 ```scheme
 (function arg1 arg2 :key1 value1 :key2 value2)
@@ -51,88 +58,81 @@ SOOT (Scriptable Object-Oriented Toolkit) - Scheme-like embedded scripting langu
 ; Keyword args must have colon prefix!
 ```
 
-### **Examples**
-
-```scheme
-; Correct:
-((lambda (x &key flag) (list x flag)) 5 :flag #t)
-; → (5 #t)
-
-; WRONG (missing colon):
-((lambda (x &key flag) ...) 5 flag #t)  ; Error!
-
-; With default values:
-((lambda (&key (width 100) &key (height 200)) 
-   (* width height)) :width 50)
-; → 10000  (width=50, height=200 default)
-```
-
-### **Argument Order Rules**
+### Argument Order Rules
 
 1. Required positional arguments first
-2. `&key` keyword arguments (optional)
-3. `&rest` variable arguments (last)
-
-**NOT SUPPORTED:** `&optional`, `&body` (use `&rest` instead)
+2. `&optional` optional positional arguments
+3. `&key` keyword arguments
+4. `&rest` variable arguments (last)
 
 ---
 
-## 🎯 **Special Forms**
+## 🎯 Special Forms
 
 Special forms don't evaluate their arguments automatically.
 
-### **Variable Definition**
+### Variable Definition
 
 ```scheme
-(define x 10)                  ; Define global variable
+(define x 10)                  ; Define variable
+(define x 10 :env some-env)    ; Define in specific environment
 (set! x 20)                    ; Modify existing variable
 ```
 
-### **Conditionals**
+### Conditionals
 
 ```scheme
-(if condition then-expr else-expr)
 (cond 
   (condition1 expr1)
   (condition2 expr2)
   (else default-expr))
+
+(or expr1 expr2 ...)           ; Short-circuit OR
+(and expr1 expr2 ...)          ; Short-circuit AND
 ```
 
-### **Logical Operators**
-
-```scheme
-(and expr1 expr2 ...)         ; Short-circuit AND
-(or expr1 expr2 ...)          ; Short-circuit OR
-```
-
-### **Functions & Macros**
+### Functions & Macros
 
 ```scheme
 (lambda (args) body...)       ; Function definition
 (macro (args) body...)        ; Macro definition
 (let ((var1 val1) ...) body)  ; Local bindings
 (let* ((var1 val1) ...) body) ; Sequential bindings
+(let name ((var1 val1) ...) body) ; Named let
 (while condition body...)     ; While loop
 ```
 
-### **Quoting**
+### Quoting
 
 ```scheme
 (quote expr)                  ; or 'expr
 (quasiquote expr)             ; or `expr with , and ,@
 ```
 
-### **Control Flow**
+### Control Flow
 
 ```scheme
 (begin expr1 expr2 ...)       ; Sequence of expressions
+(top-level expr1 expr2 ...)   ; Top-level evaluation
+```
+
+### Error Handling
+
+```scheme
+(with-error-handler handler-fn body...)
+```
+
+### Other Special Forms
+
+```scheme
+(eval-args arg1 arg2 ...)     ; Evaluate arguments in place (for macros)
 ```
 
 ---
 
-## 🔧 **Built-in Functions**
+## 🔧 Built-in Functions
 
-## 🔢 **Mathematics**
+## 🔢 Mathematics
 
 | Function          | Arguments          | Description      |
 | ----------------- | ------------------ | ---------------- |
@@ -140,18 +140,30 @@ Special forms don't evaluate their arguments automatically.
 | `-`               | `number number...` | Subtraction      |
 | `*`               | `number...`        | Multiplication   |
 | `/`               | `number number`    | Division         |
-| `=`               | `number number`    | Numeric equality |
+| `=`               | `number number...` | Numeric equality |
 | `<` `>` `<=` `>=` | `number number`    | Comparisons      |
 | `abs`             | `number`           | Absolute value   |
 | `max` `min`       | `number...`        | Maximum/Minimum  |
 | `expt`            | `base exponent`    | Power            |
 | `sqrt`            | `number`           | Square root      |
-| `ash`             | `integer`          | Arithmetic shift |
-| `logand`          | `integer`          | Logic AND        |
-| `logor`           | `integer`          | Logic OR         |
-| `logxor`          | `integer`          | Logic XOR        |
-| `lognot`          | `integer`          | Logic NOT        |
-| `lshift`          | `integer shift`    | Logic shift      |
+| `ash`             | `integer shift`    | Arithmetic shift |
+| `floor`           | `number`           | Round down       |
+| `ceiling`         | `number`           | Round up         |
+| `round`           | `number`           | Round to nearest |
+| `mod`             | `integer integer`  | Modulo           |
+| `sin` `cos` `tan` | `number`           | Trigonometry     |
+| `atan`            | `number [number]`  | Arctangent       |
+
+### Bitwise Operations
+
+| Function | Arguments          | Description      |
+| -------- | ------------------ | ---------------- |
+| `logand` | `integer...`       | Bitwise AND      |
+| `logior` | `integer...`       | Bitwise OR       |
+| `logxor` | `integer...`       | Bitwise XOR      |
+| `lognot` | `integer`          | Bitwise NOT      |
+| `lshift` | `integer shift`    | Left shift       |
+| `rshift` | `integer shift`    | Right shift      |
 
 **Examples:**
 
@@ -164,18 +176,34 @@ Special forms don't evaluate their arguments automatically.
 (max 1 5 3)         ; → 5
 (expt 2 3)          ; → 8
 (ash 4 2)           ; → 16  (4 << 2)
+(logand #b1100 #b1010) ; → #b1000
+(logior #b1100 #b1010) ; → #b1110
 ```
 
-## 📝 **Strings**
+## 📝 Strings
 
-| Function         | Arguments          | Description            |
-| ---------------- | ------------------ | ---------------------- |
-| `string-append`  | `string...`        | Concatenate strings    |
-| `string-length`  | `string`           | String length          |
-| `string-ref`     | `string integer`   | Get character at index |
-| `string-substr`  | `string start end` | Substring              |
-| `string->symbol` | `string`           | Convert to symbol      |
-| `symbol->string` | `symbol`           | Convert to string      |
+| Function              | Arguments          | Description              |
+| --------------------- | ------------------ | ------------------------ |
+| `string-append`       | `string...`        | Concatenate strings      |
+| `string-length`       | `string`           | String length            |
+| `string-ref`          | `string integer`   | Get character at index   |
+| `string-substr`       | `string start end` | Substring (negative OK)  |
+| `string-replace`      | `string from to`   | Replace all occurrences  |
+| `string-prefix?`      | `string prefix`    | Check prefix             |
+| `string-suffix?`      | `string suffix`    | Check suffix             |
+| `string-contains?`    | `string substring` | Check contains           |
+| `string-split`        | `string delim`     | Split into list          |
+| `string-join`         | `list delim`       | Join list with delimiter |
+| `string-to-lower`     | `string`           | Convert to lowercase     |
+| `string-to-upper`     | `string`           | Convert to uppercase     |
+| `string-titelize`     | `string`           | Title case               |
+| `string-trim`         | `string`           | Trim whitespace          |
+| `string-ltrim`        | `string`           | Trim left                |
+| `string-rtrim`        | `string`           | Trim right               |
+| `string-trim-idents`  | `string`           | Trim newline indents     |
+| `string->symbol`      | `string`           | Convert to symbol        |
+| `symbol->string`      | `symbol`           | Convert to string        |
+| `string-for-each`     | `string lambda`    | Iterate over characters  |
 
 **Examples:**
 
@@ -184,22 +212,26 @@ Special forms don't evaluate their arguments automatically.
 (string-length "test")              ; → 4
 (string-ref "abc" 1)                ; → #\b
 (string-substr "hello" 1 4)         ; → "ell"
-(string->symbol "my-var")           ; → my-var
-(symbol->string 'my-var)            ; → "my-var"
+(string-substr "hello" -3 -1)       ; → "ll"
+(string-split "a,b,c" ",")          ; → ("a" "b" "c")
+(string-join '("a" "b" "c") "-")    ; → "a-b-c"
+(string-prefix? "hello" "he")       ; → #t
 ```
 
-## 🔗 **Lists and Pairs**
+## 🔗 Lists and Pairs
 
-| Function              | Arguments    | Description                      |
-| --------------------- | ------------ | -------------------------------- |
-| `cons`                | `item list`  | Create pair                      |
-| `car`                 | `pair`       | First element                    |
-| `cdr`                 | `pair`       | Rest of list                     |
-| `set-car!` `set-cdr!` | `pair value` | Modify pair                      |
-| `list`                | `item...`    | Create list                      |
-| `length`              | `list`       | List length                      |
-| `append`              | `list...`    | Concatenate lists                |
-| `apply`               | `func list`  | Apply function to list arguments |
+| Function                  | Arguments    | Description                      |
+| ------------------------- | ------------ | -------------------------------- |
+| `cons`                    | `item list`  | Create pair                      |
+| `car`                     | `pair`       | First element                    |
+| `cdr`                     | `pair`       | Rest of list                     |
+| `set-car!` `set-cdr!`     | `pair value` | Modify pair                      |
+| `list`                    | `item...`    | Create list                      |
+| `length`                  | `list`       | List length                      |
+| `append`                  | `list...`    | Concatenate lists                |
+| `apply`                   | `func list`  | Apply function to list arguments |
+| `getf`                    | `key plist`  | Get value from property list     |
+| `assoc`                   | `key alist`  | Find pair in association list    |
 
 **Examples:**
 
@@ -211,306 +243,160 @@ Special forms don't evaluate their arguments automatically.
 (length '(a b c d))      ; → 4
 (append '(1 2) '(3 4))   ; → (1 2 3 4)
 (apply + '(1 2 3))       ; → 6
+(getf 'b '(:a 1 :b 2))   ; → 2
+(assoc 'b '((a . 1) (b . 2))) ; → (b . 2)
 ```
 
-## 🗃️ **Vectors**
+## 🗃️ Vectors (Arrays)
 
-| Function        | Arguments              | Description            |
-| --------------- | ---------------------- | ---------------------- |
-| `vector`        | `item...`              | Create vector          |
-| `vector-ref`    | `vector integer`       | Get element            |
-| `vector-set!`   | `vector integer value` | Set element            |
-| `vector-length` | `vector`               | Vector size            |
-| `vector->list`  | `vector`               | Convert vector to list |
+| Function          | Arguments            | Description            |
+| ----------------- | -------------------- | ---------------------- |
+| `make-array`      | `item...`            | Create array           |
+| `array-ref`       | `array integer`      | Get element            |
+| `array-set!`      | `array integer value`| Set element            |
+| `array-length`    | `array`              | Array size             |
+| `array->list`     | `array`              | Convert array to list  |
+| `array-for-each`  | `array lambda`       | Iterate over elements  |
 
 **Examples:**
 
 ```scheme
-(vector 1 2 3)                   ; → #(1 2 3)
-(vector-ref #(a b c) 1)          ; → b
-(vector-set! #(1 2 3) 1 99)      ; → #(1 99 3)
-(vector-length #(a b c d))       ; → 4
-(vector->list #(1 2 3))          ; → (1 2 3)
+(make-array 1 2 3)               ; → #(1 2 3)
+(array-ref #(a b c) 1)           ; → b
+(array-set! #(1 2 3) 1 99)       ; → #(1 99 3)
+(array-length #(a b c d))        ; → 4
+(array->list #(1 2 3))           ; → (1 2 3)
 ```
 
-## 🔍 **Type Predicates**
+## 🔍 Type Predicates
 
 | Function      | Arguments         | Returns                |
 | ------------- | ----------------- | ---------------------- |
 | `null?`       | `value`           | #t if empty list       |
 | `pair?`       | `value`           | #t if pair/list        |
-| `symbol?`     | `value`           | #t if symbol           |
-| `number?`     | `value`           | #t if integer or float |
-| `string?`     | `value`           | #t if string           |
-| `char?`       | `value`           | #t if character        |
-| `vector?`     | `value`           | #t if vector           |
-| `procedure?`  | `value`           | #t if function         |
-| `boolean?`    | `value`           | #t if #t or #f         |
-| `reader?`     | `value`           | #t if reader object    |
-| `lextoken?`   | `value`           | #t if lex token        |
-| `hash-table?` | `value`           | #t if hash table       |
-| `place?`      | `value`           | #t if place            |
-| `type-of`     | `value`           | Returns type as symbol |
 | `type?`       | `value type-name` | Check specific type    |
+| `keyword?`    | `value`           | #t if keyword          |
+| `type-of`     | `value`           | Returns type as symbol |
 
 **Examples:**
 
 ```scheme
 (null? '())              ; → #t
 (pair? '(1 2))           ; → #t
-(symbol? 'x)             ; → #t
-(number? 42)             ; → #t
-(string? "hello")        ; → #t
 (type? 'integer 5)       ; → #t
 (type? 'string "test")   ; → #t
-(type-name "hello")      ; → 'string
+(type-of "hello")        ; → string
+(keyword? :foo)          ; → #t
 ```
 
-## ⚖️ **Comparisons**
+## ⚖️ Comparisons
 
 | Function | Arguments | Description     |
 | -------- | --------- | --------------- |
-| `eq?`    | `any any` | Object identity |
-| `eqv?`   | `any any` | Value equality  |
+| `eq?`    | `any any` | Object equality |
 
 **Examples:**
 
 ```scheme
 (eq? 'a 'a)              ; → #t
 (eq? '(1 2) '(1 2))      ; → #f (different objects)
-(eqv? 5 5)               ; → #t
-(eqv? "hi" "hi")         ; → #t (string value equality)
+(eq? 5 5)                ; → #t
 ```
 
-## 🗄️ **Hash Tables**
+## 🗄️ Hash Tables
 
-| Function             | Arguments         | Description              |
-| -------------------- | ----------------- | ------------------------ |
-| `make-hash-table`    | `pairs...`        | Create hash table        |
-| `hash-table-set!`    | `table key value` | Set value                |
-| `hash-table-ref`     | `table key`       | Get value                |
-| `hash-table-try-ref` | `table key`       | Returns (success? value) |
-| `hash-table?`        | `value`           | Check if hash table      |
-| `hash-table-length`  | `table`           | Number of entries        |
-| `hash-table->list`   | `table`           | Convert to list of pairs |
+| Function                | Arguments         | Description              |
+| ----------------------- | ----------------- | ------------------------ |
+| `make-hash-table`       | `pairs... :size n :type t` | Create hash table |
+| `hash-table-set!`       | `table key value` | Set value                |
+| `hash-table-ref`        | `table key [default]` | Get value            |
+| `hash-table-try-ref`    | `table key`       | Returns (success? value) |
+| `hash-table-contains?`  | `table key`       | Check if key exists      |
+| `hash-table-length`     | `table`           | Number of entries        |
+| `hash-table->list`      | `table`           | Convert to list of pairs |
+| `hash-table-for-each`   | `table lambda`    | Iterate over entries     |
 
 **Examples:**
 
 ```scheme
-(define ht (make-hash-table :name "John" :age 30))
+(define ht (make-hash-table))
 (hash-table-set! ht "name" "John")
 (hash-table-ref ht "name")       ; → "John"
+(hash-table-ref ht "age" 0)      ; → 0 (default)
 (hash-table-try-ref ht "age")    ; → (#t 30) or (#f ())
+(hash-table-contains? ht "name") ; → #t
 (hash-table-length ht)           ; → 2
-(hash-table->list ht)            ; → (("name" . "John") ("age" . 30))
 ```
 
-Here is the concise documentation in English to replace the **Place** section in your project.
+### Universal Table Access
 
----
+| Function   | Arguments               | Description                    |
+| ---------- | ----------------------- | ------------------------------ |
+| `get-at`   | `target key [default]`  | Universal getter               |
+| `set-at!`  | `target key value`      | Universal setter               |
 
-## Generalized Variables (Getter-Setter Mapping)
-
-Soot implements a "Lisp-style" generalized variable system. Instead of using intermediate "Place" objects, the system relies on **symbolic transformation**. This allows the `setf` macro to rewrite read-expressions into their corresponding write-calls during the macro-expansion phase.
-
-### Core Primitives (C++)
-
-- `(defsetf getter-name setter-name)` — Registers a global association between a getter function and its corresponding setter function.
-- `(get-setter getter-name)` — Returns the setter symbol associated with the given getter, or `nil` if no registration exists.
-
-### Architecture
-
-The system is powered by a high-performance `std::unordered_map` in the C++ core, mapping `InternedSymbolPtr` keys to `InternedSymbolPtr` values. Since symbols are interned, lookups are performed via pointer comparison, ensuring near-instantaneous transformation without memory allocation or string processing.
-
-### The `setf` Macro
-
-The `setf` macro uses this registry to perform code rewriting. It handles two primary cases:
-
-1. **Symbols**: If the target is a symbol, it expands to a simple `set!`.
-2. **Forms**: If the target is a list, it looks up the setter for the `car` of the form.
-
-```lisp
-(defmacro setf (place value)
-  (if (symbolp place)
-      `(set! ,place ,value)
-      (let ((setter (get-setter (car place))))
-        (if (not (nilp setter))
-            `(,setter ,@(cdr place) ,value)
-            (error "SETF: No setter registered for: " (car place))))))
-
-```
-
-### Usage Example
-
-**Registration (Library Level):**
-
-```lisp
-(defsetf 'car 'set-car!)
-(defsetf 'get 'hash-table-set!)
-(defsetf 'vector-ref 'vector-set!)
-
-```
-
-**Expansion (User Level):**
-
-The expression `(setf (get table "key") 100)` expands directly into `(hash-table-set! table "key" 100)`.
-
----
-
-## Bitwise Operations (Bit-Magic)
-
-SOOT provides a robust set of bitwise primitives essential for low-level systems programming, instruction encoding, and hardware emulation. These functions operate on integer values at the binary level.
-
-### Core Bitwise Primitives
-
-#### `ash` (Arithmetic Shift)
-
-`(ash value count)`
-
-Performs an arithmetic shift of `value` by `count` bits.
-
-- If **`count`** is positive, the value is shifted **left** (multiplication by ).
-- If **`count`** is negative, the value is shifted **right** (division by ).
-- **Note:** Right shifts preserve the sign bit (arithmetic shift), making it safe for signed integers.
-
-**Example:**
-
-```lisp
-(ash #b00001111 2)  ; => #b00111100 (60)
-(ash #b00111100 -2) ; => #b00001111 (15)
-
-```
-
-#### `logand` (Bitwise AND)
-
-`(logand &rest integers)`
-
-Returns the bitwise logical AND of its arguments. If no arguments are provided, it returns `-1` (the identity element for AND). Used primarily for **masking** specific bits.
-
-**Example:**
-
-```lisp
-(logand #b1100 #b1010) ; => #b1000
-
-```
-
-#### `logior` (Bitwise Inclusive OR)
-
-`(logior &rest integers)`
-
-Returns the bitwise logical inclusive OR of its arguments. If no arguments are provided, it returns `0`. Used primarily for **combining** flags or opcodes.
-
-**Example:**
-
-```lisp
-;; Combining Z80 opcode bits
-(logior #x40 (ash reg-dest 3) reg-src)
-
-```
-
-#### `logxor` (Bitwise Exclusive OR)
-
-`(logxor &rest integers)`
-
-Returns the bitwise logical exclusive OR of its arguments. Returns `0` if no arguments are provided. Useful for **toggling** specific bits or parity checks.
-
-**Example:**
-
-```lisp
-(logxor #b1100 #b1010) ; => #b0110
-
-```
-
-#### `lognot` (Bitwise NOT)
-
-`(lognot integer)`
-
-Returns the bitwise complement (inverse) of the integer. Every `0` bit becomes `1` and every `1` bit becomes `0`.
-
-**Example:**
-
-```lisp
-(lognot #b0000) ; => -1 (or #b1111... in two's complement)
-
-```
-
----
-
-#### Implementation Note for SOOT
-
-All bitwise operations in SOOT are performed using 64-bit signed integers. When encoding 8-bit or 16-bit Z80 instructions, ensure you use `(logand ... #xFF)` or `(logand ... #xFFFF)` to truncate values to the desired width if necessary.
-
-## 💾 **File I/O**
+## 💾 File I/O
 
 | Function                   | Arguments                          | Description                  |
 | -------------------------- | ---------------------------------- | ---------------------------- |
-| `print` `pprint` `inspect` | `value`                            | Print with different formats |
+| `print`                    | `value`                            | Print value                  |
 | `fmt`                      | `dest format args...`              | Formatted output             |
-| `fmt`                      | `dest format args... :color color` | Formatted output with color  |
-| `error`                    | `message [object]`                 | Throw error with context     |
+| `pfmt`                     | `value :width n`                   | Pretty-print to string       |
+| `inspect`                  | `value`                            | Inspect object structure     |
+| `error`                    | `message :ctx object`              | Throw error with context     |
 | `file-exists?`             | `filename`                         | Check if file exists         |
-| `read-str`                 | `filename`                         | Read from file to string     |
+| `read-str`                 | `filename`                         | Read file to string          |
 | `parse-str`                | `string`                           | Parse string to code         |
 | `load`                     | `filename`                         | Load and execute file        |
 | `read-file`                | `filename`                         | Read file contents as code   |
+| `read-text-file`           | `filename`                         | Read text file               |
+| `write-text-file`          | `filename content`                 | Write text file              |
+| `read-binary-file`         | `filename`                         | Read binary file             |
+| `write-binary-file`        | `filename data`                    | Write binary file            |
 
 **Examples:**
 
 ```scheme
 (print "Hello")                    ; Print value
 (load "script.sot")               ; Execute file
-(file-exists? "data.txt")         ; → #t or #f
 (fmt #t "Hello ~a" "World")       ; Print formatted
 (fmt #f "Value: ~d" 42)           ; → "Value: 42"
-(error "File not found" form)     ; Throw error with location
+(fmt #t "Error!" :color "red")    ; Colored output
+(error "File not found" :ctx form) ; Throw error
 ```
 
-**Colors:**
-
-Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "gray"
+**Colors:** `"red"`, `"green"`, `"yellow"`, `"blue"`, `"magenta"`, `"cyan"`, `"white"`, `"gray"`
 
 **Logging:**
 
-| Function | Arguments         | Description |
-| -------- | ----------------- | ----------- |
-| log      | `"trace" message` |             |
-| log      | `"debug" message` |             |
-| log      | `"info" message`  |             |
-| log      | `"warn" message`  |             |
-| log      | `"error" message` |             |
-| log      | `"die" message`   |             |
+```scheme
+(log 'info "Message ~a" value)
+(log 'debug "Debug: ~a" data)
+(log 'error "Error: ~a" msg)
+```
 
-## 🖥️ **System**
+## 🖥️ System
 
 | Function                   | Arguments  | Description                         |
 | -------------------------- | ---------- | ----------------------------------- |
 | `system`                   | `command`  | Execute shell command               |
 | `get-environment-variable` | `name`     | Get env variable                    |
-| `exit`                     | `[code]`   | Exit interpreter (default code 0)   |
+| `exit`                     | `code`     | Exit interpreter                    |
 | `get-path`                 | `'cwd`     | Current working dir                 |
 | `get-path`                 | `'exe`     | Executable directory                |
-| `get-path`                 | `'home`    | User home ~                         |
-| `get-path`                 | `'config`  | User settings ~/.config/soot/       |
-| `get-path`                 | `'cache`   | Cache files ~/.cache/soot/          |
-| `get-path`                 | `'share`   | Shared files /usr/local/share/soot/ |
+| `get-path`                 | `'home`    | User home                           |
+| `get-path`                 | `'config`  | User config directory               |
+| `get-path`                 | `'cache`   | Cache directory                     |
+| `get-path`                 | `'share`   | Shared files directory              |
 | `get-path`                 | `'project` | Project folder                      |
 | `find-file`                | `filename` | Find file in system directories     |
 
-**Examples:**
-
-```scheme
-(system "ls -la")                     ; Execute command
-(get-environment-variable "PATH")     ; Get PATH env
-(get-path 'cwd)                       ; → "/current/path"
-(exit 0)                              ; Exit with code 0
-```
-
-## 🔄 **Type Conversions**
+## 🔄 Type Conversions
 
 | Function         | Arguments              | Description        |
 | ---------------- | ---------------------- | ------------------ |
-| `number->string` | `number :base integer` | Convert to string  |
-| `string->number` | `string :base integer` | Parse number       |
+| `number->string` | `number :base n`       | Convert to string  |
+| `string->number` | `string :base n`       | Parse number       |
 | `char->integer`  | `char`                 | Character to ASCII |
 | `integer->char`  | `integer`              | ASCII to character |
 
@@ -523,30 +409,28 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 (integer->char 66)               ; → #\B
 ```
 
-## 🎲 **Time Functions**
+## 🎲 Time Functions
 
-| Function            | Arguments | Description                                                  | Example Output        |
-| ------------------- | --------- | ------------------------------------------------------------ | --------------------- |
-| `time-seconds`      |           | Returns current Unix timestamp in seconds (since 1970-01-01) | `1734167895`          |
-| `time-milliseconds` |           | Returns current Unix timestamp in milliseconds               | `1734167895123`       |
-| `time-microseconds` |           | Returns current Unix timestamp in microseconds               | `1734167895123456`    |
-| `time-nanoseconds`  |           | Returns current Unix timestamp in nanoseconds                | `1734167895123456789` |
+| Function            | Arguments | Description                          |
+| ------------------- | --------- | ------------------------------------ |
+| `time-seconds`      |           | Unix timestamp in seconds            |
+| `time-milliseconds` |           | Unix timestamp in milliseconds       |
+| `time-microseconds` |           | Unix timestamp in microseconds       |
+| `time-nanoseconds`  |           | Unix timestamp in nanoseconds        |
 
-## 📖 **Reader and LexTokens**
+## 📖 Reader Functions
 
-### **Reader Functions**
-
-| Function                 | Arguments                    | Description                                         |
-| ------------------------ | ---------------------------- | --------------------------------------------------- |
-| `set-macro-character`    | `pattern replacement/lambda` | Define reader macro                                 |
-| `remove-macro-character` | `pattern`                    | Remove reader macro                                 |
-| `get-macro-character`    | `pattern`                    | Get reader macro definition                         |
-| `read`                   | `reader`                     | Read one object from reader                         |
-| `read-char`              | `reader`                     | Read one character from reader                      |
-| `peek-char`              | `reader`                     | Peek next character without consuming               |
-| `read-delimited-list`    | `terminator reader`          | Read list until terminator                          |
-| `source-info`            | `pair`                       | Get information about source code of the expression |
-| `get-context`            | `integer stack offset`       | Get the expression of stack frame offset            |
+| Function                 | Arguments                    | Description                     |
+| ------------------------ | ---------------------------- | ------------------------------- |
+| `set-macro-character`    | `pattern replacement/lambda` | Define reader macro             |
+| `remove-macro-character` | `pattern`                    | Remove reader macro             |
+| `get-macro-character`    | `pattern`                    | Get reader macro definition     |
+| `read`                   | `reader`                     | Read one object from reader     |
+| `read-char`              | `reader`                     | Read one character              |
+| `peek-char`              | `reader`                     | Peek without consuming          |
+| `read-delimited-list`    | `terminator reader`          | Read list until terminator      |
+| `source-info`            | `object`                     | Get source code information     |
+| `get-context`            | `integer offset`             | Get stack frame expression      |
 
 **Examples:**
 
@@ -555,56 +439,29 @@ Available colors "red", "green", "yellow", "blue", "magenta", "cyan", "white", "
 (set-macro-character "$" "label")
 (read "$test")                 ; → (label test)
 
+;; Lambda reader macro
 (set-macro-character #\[ 
   (lambda (r s)
     (let ((lis (read-delimited-list #\] r)))
       (apply 'vector lis))))
 ```
 
-Get the source info from the expression.
+### Source Information
 
-```lisp
-soot> (source-info '())
-=> null
-soot> (source-info '(1))
-=> (:file "repl" :line 0 :column 14 :text "(source-info '(1))")
-soot> (source-info      '(1))
-=> (:file "repl" :line 0 :column 19 :text "(source-info      '(1))")
+```scheme
+(source-info '(1))
+; → (:file "repl" :line 0 :column 14 :text "(source-info '(1))")
 ```
 
-Get the stack frame expression
+### Stack Context
 
-```lisp
-soot> (defun foo () (fmt #t "Context: {}\n" (get-context 0)))   ; Take this frame
-=> #<unnamed lambda>
-soot> (defun bar () (foo))
-=> #<unnamed lambda>
-soot> (bar)
-Context: (get-context 0)                                        ; Context is (get-context 0)
-=> null
-soot> (defun foo () (fmt #t "Context: {}\n" (get-context 1)))   ; Take parent frame
-=> #<unnamed lambda>
-soot> (bar)
-Context: (fmt #t "<<{}>>" (get-context 1))                      ; Context is (fmt #t "<<{}>>" (get-context 1))
-=> null
-soot> (defun foo () (fmt #t "Context: {}>>\n" (get-context 2))) ; Take parent of parent frame
-=> #<unnamed lambda>
-soot> (bar)
-Context: (foo)                                                  ; Context is (foo)
-=> null
+```scheme
+(get-context 0)   ; Current frame
+(get-context 1)   ; Parent frame
+(get-context 2)   ; Grandparent frame
 ```
 
-Get the location of conext
-
-```lisp
-soot> (defun foo () (fmt #t "Context: {}\n" (source-info (get-context 4))))
-=> #<unnamed lambda>
-soot> (bar)
-Context: (:file "repl" :line 0 :column 0 :text "(bar)")
-=> null
-```
-
-## 🔄 **Macro System**
+## 🔄 Macro System
 
 | Function      | Arguments    | Description                 |
 | ------------- | ------------ | --------------------------- |
@@ -613,49 +470,149 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 **Examples:**
 
 ```scheme
-(define-macro my-or (lambda args
-  (if (null? args)
-      #f
-      (list 'if (car args) 
-            (car args)
-            (cons 'my-or (cdr args))))))
-
 (macroexpand '(my-or a b c))
 ; → (if a a (my-or b c))
 ```
 
-## 🎲 **Other Functions**
+## 🎲 Other Functions
 
-| Function | Arguments    | Description            |
-| -------- | ------------ | ---------------------- |
-| `gensym` |              | Generate unique symbol |
-| `eval`   | `expression` | Evaluate expression    |
+| Function          | Arguments           | Description            |
+| ----------------- | ------------------- | ---------------------- |
+| `gensym`          |                     | Generate unique symbol |
+| `eval`            | `expression`        | Evaluate expression    |
+| `eval`            | `func args... :env e` | Apply function       |
 
 **Examples:**
 
 ```scheme
 (gensym)        ; → gensym0, gensym1, ...
 (eval '(+ 1 2)) ; → 3
+(eval (lambda (x) (* x 2)) 5) ; → 10
+```
+
+## 🌍 Environment Functions
+
+| Function              | Arguments           | Description                    |
+| --------------------- | ------------------- | ------------------------------ |
+| `env`                 |                     | Get current environment        |
+| `current-env`         |                     | Get current environment        |
+| `defined?`            | `symbol`            | Check if symbol is defined     |
+| `lookup`              | `symbol :env e`     | Look up symbol value           |
+| `current-function`    | `'function`/`'asm`  | Get current function           |
+| `env-name`            |                     | Get environment name           |
+| `env-name!`           | `symbol`            | Set environment name           |
+
+**Examples:**
+
+```scheme
+(defined? 'x)           ; → #t or #f
+(lookup 'x)             ; → value or none
+(env-name)              ; → symbol
+```
+
+## ⚠️ Error Handling
+
+### Special Form
+
+```scheme
+(with-error-handler handler-lambda body...)
+```
+
+**Handler receives:** `(message error-form trace-list)`
+
+**Handler returns:**
+- `#f` or `null` - suppress error
+- `#t` - re-throw error
+- `(context . "message")` - add context and re-throw
+- Other value - suppress and return value
+
+**Example:**
+
+```scheme
+(with-error-handler
+  (lambda (msg form trace)
+    (fmt #t "Error: ~a\n" msg)
+    #f)  ; Suppress error
+  (error "Something went wrong"))
+```
+
+### Error Function
+
+```scheme
+(error "message" :ctx object)  ; Throw error with context
+```
+
+## 🔧 Getter-Setter System
+
+| Function         | Arguments              | Description                    |
+| ---------------- | ---------------------- | ------------------------------ |
+| `defsetf`        | `getter setter`        | Register getter-setter pair    |
+| `get-setter`     | `getter`               | Get setter for getter          |
+
+**Example:**
+
+```scheme
+(defsetf 'car 'set-car!)
+(defsetf 'hash-table-ref 'hash-table-set!)
+
+;; Used by setf macro
+(setf (car x) 10)  ; Expands to (set-car! x 10)
+```
+
+## 🔁 Iteration Functions
+
+| Function               | Arguments           | Description                    |
+| ---------------------- | ------------------- | ------------------------------ |
+| `list-for-each`        | `list lambda`       | Iterate over list elements     |
+| `list-for-each-pair`   | `list lambda`       | Iterate over key-value pairs   |
+| `string-for-each`      | `string lambda`     | Iterate over characters        |
+| `array-for-each`       | `array lambda`      | Iterate over array elements    |
+| `hash-table-for-each`  | `table lambda`      | Iterate over hash table        |
+
+**Lambda signatures:**
+- 1 argument: `(item)` or `(char-code)`
+- 2 arguments: `(index item)` or `(key value)`
+
+**Examples:**
+
+```scheme
+(list-for-each '(1 2 3) (lambda (x) (print x)))
+(list-for-each '(a b) (lambda (i x) (fmt #t "~d: ~a\n" i x)))
+(hash-table-for-each ht (lambda (k v) (fmt #t "~a = ~a\n" k v)))
+```
+
+## 🔧 Function Metadata
+
+| Function         | Arguments              | Description                    |
+| ---------------- | ---------------------- | ------------------------------ |
+| `function-name`  | `function`             | Get function name              |
+| `function-name!` | `function name`        | Set function name              |
+
+**Examples:**
+
+```scheme
+(function-name my-func)        ; → name or ""
+(function-name! my-func 'new-name)
 ```
 
 ---
 
-## 🚀 **Quick Start Examples**
+## 🚀 Quick Start Examples
 
-### **Hello World**
+### Hello World
 
 ```scheme
 (print "Hello, World!")
 ```
 
-### **Function Definition**
+### Function Definition
 
 ```scheme
 (define (square x) (* x x))
 (square 5)  ; → 25
 ```
 
-### **List Processing**
+### List Processing
 
 ```scheme
 (define (map f lst)
@@ -666,33 +623,50 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 (map (lambda (x) (* x 2)) '(1 2 3 4))  ; → (2 4 6 8)
 ```
 
-### **File Processing**
+### Error Handling
 
 ```scheme
-(define data (read-file "data.txt"))
-(if (string? data)
-    (print (string-length data))
-    (error "Failed to read file"))
+(with-error-handler
+  (lambda (msg form trace)
+    (fmt #t "Caught: ~a\n" msg)
+    #f)
+  (error "Test error"))
+```
+
+### Working with Hash Tables
+
+```scheme
+(define config (make-hash-table))
+(hash-table-set! config "debug" #t)
+(hash-table-set! config "level" 5)
+
+(hash-table-for-each config
+  (lambda (key value)
+    (fmt #t "~a: ~a\n" key value)))
 ```
 
 ---
 
-## ⚠️ **Common Pitfalls**
+## ⚠️ Common Pitfalls
 
 1. **Keywords need colon**: `:flag` not `flag` in function calls
-2. **Lists vs. Vectors**: Use `()` for lists, `#()` for vectors
-3. **Equality**: Use `eqv?` for value comparison, `eq?` for object identity
-4. **No `&body`**: Use `&rest` instead
-5. **Macro arguments**: Macros don't evaluate arguments automatically
+2. **Lists vs. Arrays**: Use `()` for lists, `#(...)` for arrays
+3. **Equality**: Use `eq?` for comparison
+4. **Macro arguments**: Macros don't evaluate arguments automatically
+5. **&rest placement**: Must be last in argument list
 
 ---
 
-## 🔗 **Useful Patterns**
+## 🔗 Useful Patterns
 
 ```scheme
 ;; Optional arguments with defaults
-(lambda (&key (verbose #f) (level 1))
+(lambda (&optional (verbose #f) (level 1))
   (if verbose (print "Level:" level)))
+
+;; Keyword arguments with defaults
+(lambda (&key (name "default") (age 0))
+  (list name age))
 
 ;; Variable arguments
 (lambda (&rest args)
@@ -701,12 +675,12 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 ;; Error handling with context
 (if (file-exists? "config.sot")
     (load "config.sot")
-    (error "Config not found, using defaults" 'config.sot))
+    (error "Config not found" :ctx 'config.sot))
 ```
 
 ---
 
-## 📖 **Type Reference**
+## 📖 Type Reference
 
 | Type       | Literal        | Example               |
 | ---------- | -------------- | --------------------- |
@@ -716,18 +690,18 @@ Context: (:file "repl" :line 0 :column 0 :text "(bar)")
 | String     | `"text"`       | `"Hello"`, `"test\n"` |
 | Character  | `#\c`          | `#\a`, `#\newline`    |
 | Symbol     | `'name`        | `'x`, `'my-var`       |
+| Keyword    | `:name`        | `:key`, `:value`      |
 | List       | `(a b c)`      | `'(1 2 3)`, `()`      |
-| Vector     | `#(a b c)`     | `#(1 2 3)`            |
+| Array      | `#(a b c)`     | `#(1 2 3)`            |
 | Pair       | `(a . b)`      | `(1 . 2)`             |
 | Lambda     | `(lambda ...)` | Function object       |
 | Macro      | `(macro ...)`  | Macro object          |
-| Hash Table | `#{...}`       | Hash table object     |
-| Lex Token  |                | Token with metadata   |
+| Hash Table | `#{}`          | Hash table object     |
 | Reader     |                | Text stream reader    |
 
 ---
 
-## 🎯 **REPL Commands**
+## 🎯 REPL Commands
 
 ```bash
 soot> (+ 1 2 3)        ; Evaluate expression
@@ -737,71 +711,51 @@ soot> exit             ; Exit REPL
 
 ---
 
-## 📋 **Function Index**
+## 📋 Function Index
 
 | Category        | Functions                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Core            | `define`, `set!`, `lambda`, `macro`, `if`, `cond`, `let`, `let*`, `quote`, `quasiquote`                                              |
-| Math            | `+`, `-`, `*`, `/`, `=`, `<`, `>`, `<=`, `>=`, `abs`, `max`, `min`, `expt`, `sqrt`, `ash`                                            |
-| Lists           | `cons`, `car`, `cdr`, `list`, `length`, `append`, `apply`, `set-car!`, `set-cdr!`                                                    |
-| Strings         | `string-append`, `string-length`, `string-ref`, `string-substr`,`string_starts_with?`, `string-suffix?`, `string-split`              |
-| Vectors         | `vector`, `vector-ref`, `vector-set!`, `vector-length`, `vector->list`                                                               |
-| Hash Tables     | `make-hash-table`, `hash-table-set!`, `hash-table-ref`, `hash-table-try-ref`, `hash-table?`, `hash-table-length`, `hash-table->list` |
-| Type Predicates | `null?`, `pair?`, `symbol?`, `number?`, `string?`, `char?`, `vector?`, `procedure?`, `boolean?`, `type?`, `reader?`, `lextoken?`     |
-| Comparisons     | `eq?`, `eqv?`                                                                                                                        |
-| Conversions     | `number->string`, `string->number`, `char->integer`, `integer->char`, `string->symbol`, `symbol->string`                             |
-| File I/O        | `print`, `pprint`, `inspect`, `fmt`, `error`, `file-exists?`, `read-str`, `parse-str`, `load`, `read-file`                           |
-| System          | `system`, `get-environment-variable`, `exit`, `get-path`, `find-file`                                                                |
+| Special Forms   | `define`, `set!`, `quote`, `lambda`, `macro`, `cond`, `or`, `and`, `let`, `let*`, `while`, `quasiquote`, `with-error-handler`, `eval-args` |
+| Math            | `+`, `-`, `*`, `/`, `=`, `<`, `>`, `<=`, `>=`, `abs`, `max`, `min`, `expt`, `sqrt`, `ash`, `floor`, `ceiling`, `round`, `mod`, `sin`, `cos`, `tan`, `atan` |
+| Bitwise         | `logand`, `logior`, `logxor`, `lognot`, `lshift`, `rshift`                                                                           |
+| Lists           | `cons`, `car`, `cdr`, `list`, `length`, `append`, `apply`, `set-car!`, `set-cdr!`, `getf`, `assoc`                                    |
+| Strings         | `string-append`, `string-length`, `string-ref`, `string-substr`, `string-replace`, `string-prefix?`, `string-suffix?`, `string-contains?`, `string-split`, `string-join`, `string-to-lower`, `string-to-upper`, `string-trim`, `string-for-each` |
+| Arrays          | `make-array`, `array-ref`, `array-set!`, `array-length`, `array->list`, `array-for-each`                                              |
+| Hash Tables     | `make-hash-table`, `hash-table-set!`, `hash-table-ref`, `hash-table-try-ref`, `hash-table-contains?`, `hash-table-length`, `hash-table->list`, `hash-table-for-each` |
+| Type Predicates | `null?`, `type?`, `keyword?`, `type-of`                                                                                               |
+| Comparisons     | `eq?`                                                                                                                                 |
+| Conversions     | `number->string`, `string->number`, `char->integer`, `integer->char`, `string->symbol`, `symbol->string`                              |
+| File I/O        | `print`, `fmt`, `pfmt`, `inspect`, `error`, `file-exists?`, `read-str`, `parse-str`, `load`, `read-file`, `read-text-file`, `write-text-file`, `read-binary-file`, `write-binary-file` |
+| System          | `system`, `get-environment-variable`, `exit`, `get-path`, `find-file`                                                                 |
 | Time            | `time-seconds`, `time-milliseconds`, `time-microseconds`, `time-nanoseconds`                                                         |
-| Reader          | `set-macro-character`, `remove-macro-character`, `get-macro-character`, `read`, `read-char`, `peek-char`, `read-delimited-list`      |
-| Macro System    | `macroexpand`                                                                                                                        |
-| Other           | `gensym`, `eval`                                                                                                                     |
+| Reader          | `set-macro-character`, `remove-macro-character`, `get-macro-character`, `read`, `read-char`, `peek-char`, `read-delimited-list`, `source-info`, `get-context` |
+| Macro System    | `macroexpand`                                                                                                                         |
+| Environment     | `env`, `current-env`, `defined?`, `lookup`, `current-function`, `env-name`, `env-name!`                                              |
+| Iteration       | `list-for-each`, `list-for-each-pair`, `string-for-each`, `array-for-each`, `hash-table-for-each`                                   |
+| Table Access    | `get-at`, `set-at!`                                                                                                                   |
+| Getter/Setter   | `defsetf`, `get-setter`                                                                                                               |
+| Functions       | `function-name`, `function-name!`                                                                                                     |
+| Other           | `gensym`, `eval`, `log`, `crc32`                                                                                                      |
 
 ---
 
-**Version**: SOOT Core [sha:...]  
+**Version**: SOOT Core  
 **Syntax**: Scheme-like with Common Lisp influences  
 **License**: Project-specific
 
-## 📖 **Other Documentation**
+## 📖 Other Documentation
 
 - 📖 [SOOT Common Library Documentation](common/script/README.LIB.md)
 
-### **Key Updates to Documentation:**
-
-1. **Added missing functions**: `apply`, `vector->list`, `hash-table-length`, `hash-table->list`
-2. **Updated type predicates**: Added `hash-table?` and `type-name`
-3. **Enhanced error function**: Now supports optional context object
-4. **Added LexToken section**: Documented all lex token functions
-5. **Added Macro section**: Documented `macroexpand`
-6. **Fixed formatting**: Consistent tables and examples
-7. **Added function index**: Quick reference by category
-8. **Updated examples**: All examples now match actual implementation
-9. **Corrected argument syntax**: Fixed documentation for keyword arguments
-10. **Added reader macro examples**: Show both string and lambda variants
-
-The documentation now accurately reflects all functions available in the `Interpreter` class implementation.
-
-## Apendix
-
 ---
 
-### 🛠 Type System & Metaprogramming
+## 🛠 Type System & Metaprogramming
 
-The interpreter features a robust type system integration inspired by OpenGOAL. This allows the assembler to query high-level type metadata during the compilation phase for the Z80 target.
+The interpreter features a robust type system integration inspired by OpenGOAL.
 
-#### `(defmacro name (args...) body...)`
-
-Defines a compile-time macro. Macros allow for code transformation before execution, enabling the creation of custom assembly DSLs and optimized instruction generation.
-
-**Usage:** Used to automate repetitive assembly patterns or calculate offsets at compile-time.
-
-#### `(defenum name (entries...))`
+### `(defenum name (entries...))`
 
 Registers an enumeration in the global type database.
-
-- **Syntax:** `(defenum Color (red 0) (green 1) (blue 2))`
-- **Note:** Enum symbols are treated as constants by the assembler.
 
 ```lisp
 (defenum color
@@ -811,7 +765,7 @@ Registers an enumeration in the global type database.
         (blue 2))
 ```
 
-For the bitfields.
+For bitfields:
 
 ```lisp
 (defenum color-mask
@@ -825,1270 +779,66 @@ For the bitfields.
 
 ### `(deftype name (parent) (fields...))`
 
-Defines a new structure or basic type. The C++ backend automatically calculates field offsets, alignment, and total size based on the target architecture (Z80).
-
-**Example:**
+Defines a new structure or basic type.
 
 ```lisp
 (deftype sprite (basic)
   ((x int32)
    (y int32)
-  (data (pointer uint8))))
-
+   (data (pointer uint8))))
 ```
 
-#### `(typespec definition)`
+### `(typespec definition)`
 
-Validates a type description and returns a canonical S-expression. It allows the use of compound types (pointers, arrays) without explicitly defining them via `deftype`.
+Validates a type description and returns a canonical S-expression.
 
-- **Example:** `(typespec (pointer uint32))` returns `(pointer uint32)` if valid.
+```lisp
+(typespec (pointer uint32))  ; → (pointer uint32)
+```
 
-#### `(type-info spec [property])`
+### `(type-info spec [property])`
 
-The primary reflection tool. It queries the C++ TypeSystem for metadata.
+Queries the C++ TypeSystem for metadata.
 
-- **Arguments:** * `spec`: A type name (symbol) or a specification (list).
-- `property` (optional): A specific attribute to retrieve (`'size`, `'align`, `':behavior`, etc.).
-- **Example:** `(type-info '(pointer uint8) 'size)` returns `2` (pointer size on Z80).
+```lisp
+(type-info '(pointer uint8) 'size)  ; → 2
+```
 
 ### `(type-list)`
 
-Returns a flat list of all registered type names. Useful for debugging and verifying the current state of the TypeSystem.
+Returns a flat list of all registered type names.
 
 ---
 
-#### Practical Assembly Example
-
-By leveraging these forms, you can create "Type-Aware" assembly macros that calculate offsets automatically:
-
-```lisp
-(defmacro ld-field (reg base-reg type field)
-  (let ((offset (type-info type field))) ;; Query C++ for the offset
-    `(ld ,reg (+ ,base-reg ,offset))))   ;; Generate Z80 opcodes
-
-;; In the program:
-(ld-field 'a 'hl 'Sprite 'y)             ;; Expands to: (ld a (+ hl 1))
-
-```
-
----
-
-# Buffer System Documentation
-
-## Overview
-
-The buffer system provides low-level memory manipulation capabilities for systems programming, emulation, and binary data generation. It simulates raw memory regions with support for typed access, labels, relocations, and hex dumping.
-
-## Core Components
-
-### 1. StaticBuffer
-
-Raw memory buffer representing a contiguous region of bytes.
-
-#### Creation
-
-```scheme
-(make-static-buffer "buffer-name" size-in-bytes base-address)
-```
-
-**Parameters:**
-
-- `name`: String identifier for debugging/logging
-- `size`: Integer size in bytes
-- `origin`: Base virtual address (VMA). Writing to offset 0 writes to `origin` address.
-
-**Example:**
-
-```scheme
-(define ram (make-static-buffer "main-ram" 1024 #x0000))
-(define rom (make-static-buffer "boot-rom" 4096 #xC000))
-```
-
-### 2. StaticWriter
-
-Stream-like interface for sequential writing with automatic alignment.
-
-#### Creation
-
-```scheme
-(make-static-writer buffer-object)
-```
-
-**Example:**
-
-```scheme
-(define writer (make-static-writer ram))
-```
-
-### 3. TypePointer
-
-Typed memory pointer that associates a memory address with a specific type.
-
-#### Creation
-
-Via writer (allocates automatically):
-
-```scheme
-(static-cell writer 'type-name)
-```
-
-Via buffer (direct offset access):
-
-```scheme
-(static-cell buffer offset 'type-name)
-```
-
-**Examples:**
-
-```scheme
-;; Allocate a vector in writer's current position
-(define vec (static-cell writer 'vector))
-
-;; Access specific offset in buffer
-(define header (static-cell rom #x100 'file-header))
-```
-
-## Operations
-
-### 1. Label Management
-
-#### Set/Update Label
-
-```scheme
-(buffer-label-set buffer-or-writer label-name 
-                  :address addr 
-                  :segment seg 
-                  :meta data)
-```
-
-**Parameters:**
-
-- `buffer-or-writer`: Target buffer or writer
-- `label-name`: String or symbol identifier
-- `:address`: Optional integer address (default: writer's position)
-- `:segment`: Optional segment name (default: "main")
-- `:meta`: Optional metadata object
-
-**Examples:**
-
-```scheme
-;; Set label at writer's current position
-(buffer-label-set writer "entry-point")
-
-;; Set label at specific address
-(buffer-label-set rom "interrupt-handler" :address #xFF00)
-```
-
-#### Get Label
-
-```scheme
-(buffer-label-get buffer-or-writer label-name)
-```
-
-**Returns:** Label object or `null` if not found.
-
-### 2. Data Writing
-
-#### High-level Write
-
-```scheme
-(buffer-write target value :type 'type :address offset)
-```
-
-**Parameters:**
-
-- `target`: Buffer or writer object
-- `value`: Data to write (scalar or structured)
-- `:type`: Type name (required)
-- `:address`: Offset for buffer writes (required for buffers)
-
-**Examples:**
-
-```scheme
-;; Write single value through writer
-(buffer-write writer 42 :type 'int32)
-
-;; Write structured data
-(buffer-write writer '((x . 10) (y . 20) (z . 30)) :type 'vector3)
-
-;; Write to specific buffer address
-(buffer-write rom #xC3 :type 'uint8 :address 0)  ;; JP instruction
-```
-
-#### Recursive Structure Writing
-
-For complex types, supports nested field assignment:
-
-```scheme
-;; Write to array elements
-(buffer-write writer '(10 20 30 40) :type 'int16-array)
-
-;; Write to structure fields
-(buffer-write writer '((position . (10 20 30)) 
-                       (velocity . (1 0 0))) 
-              :type 'particle)
-```
-
-### 3. Data Reading
-
-#### Read from Buffer
-
-```scheme
-(buffer-read buffer :type 'type :address offset)
-```
-
-**Returns:** Typed value from memory.
-
-**Example:**
-
-```scheme
-(define value (buffer-read rom :type 'uint16 :address #x100))
-```
-
-### 4. Memory Inspection
-
-#### Hex Dump
-
-```scheme
-(buffer-dump buffer start-offset byte-count show-ascii? bytes-per-line)
-```
-
-**Parameters:**
-
-- `buffer`: Buffer to inspect
-- `start-offset`: Starting byte offset
-- `byte-count`: Number of bytes to display
-- `show-ascii?`: Boolean to show ASCII representation
-- `bytes-per-line`: Number of bytes per output line
-
-**Example:**
-
-```scheme
-;; Display 256 bytes with ASCII
-(fmt #t (buffer-dump ram 0 256 #t 16))
-```
-
-### 5. Relocation & Linking
-
-#### Add Relocation
-
-```scheme
-(buffer-reloc buffer offset target-label)
-```
-
-Creates a relocation entry that will be resolved during linking.
-
-**Example:**
-
-```scheme
-;; Write jump instruction
-(buffer-write rom #xC3 :type 'uint8 :address 0)  ;; JP opcode
-(buffer-reloc rom 1 "interrupt-handler")       ;; Address to fill
-```
-
-#### Link Buffer
-
-```scheme
-(buffer-link buffer)
-```
-
-Resolves all relocation entries using label addresses.
-
-### 6. Static Object Creation
-
-#### Create and Initialize Static Object
-
-```scheme
-(static-new 'type-name field-value-pairs...)
-```
-
-Creates a buffer containing an initialized instance of a type.
-
-**Example:**
-
-```scheme
-(define my-vector (static-new 'vector3 :x 10 :y 20 :z 30))
-```
-
-## Type System Integration
-
-### Supported Type Categories
-
-1. **Primitive Types**: `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `float`, `double`
-2. **Enums**: User-defined enumeration types
-3. **Structures**: Composite types with named fields
-4. **Arrays**: Fixed-size arrays of any type
-5. **Bitfields**: Packed bit fields
-
-### Type-Aware Features
-
-- **Automatic Alignment**: Writers align according to type requirements
-- **Field Access**: Navigate structure fields with `->` operator
-- **Array Indexing**: Access array elements by index
-- **Endian Awareness**: Platform-appropriate byte ordering
-
-## Advanced Usage Examples
-
-### 1. Binary File Generation
-
-```scheme
-(define exe (make-static-buffer "executable" 4096 #x1000))
-
-;; Write header
-(buffer-write exe #x7F454C46 :type 'uint32 :address 0)  ;; ELF magic
-(buffer-label-set exe "entry-point" :address #x1000)
-
-;; Write code section
-(define code-writer (make-static-writer exe))
-(buffer-label-set code-writer "_start")
-(buffer-write code-writer #x90 :type 'uint8)  ;; NOP
-;; ... more code ...
-
-;; Link and export
-(buffer-link exe)
-(export-hex "output.hex" exe)
-```
-
-### 2. Memory-Mapped Structures
-
-```scheme
-(deftype hardware-register
-  (control uint8 :bits ((enable 0) (mode 1-3) (irq 7)))
-  (status uint8)
-  (data uint16))
-
-(define uart (static-cell mmio #x1000 'hardware-register))
-
-;; Access fields
-(set! (-> uart 'control 'enable) 1)
-(define ready? (-> uart 'status 'ready))
-```
-
-### 3. Relocatable Code Generation
-
-```scheme
-(define code (make-static-buffer "code" 1024 #x0000))
-
-;; Forward reference to function
-(buffer-label-set code "call-target" :segment "text")
-(buffer-reloc code 2 "some-function")
-
-;; Later define the function
-(buffer-label-set code "some-function" :address #x0100)
-(buffer-write code #xC9 :type 'uint8 :address #x0100)  ;; RET
-
-;; Link to resolve addresses
-(buffer-link code)
-```
-
-## Error Handling
-
-Most buffer operations validate:
-
-- Type existence
-- Boundary checks
-- Alignment requirements
-- Label existence for relocations
-
-Errors include detailed source location information from the TextDb system.
-
-## Performance Notes
-
-- **Zero-copy**: TypePointer provides direct memory access without copying
-- **Type safety**: Compile-time type checking through TypeSystem
-- **Memory efficient**: Shared buffer references minimize duplication
-
-## Integration with Assembler
-
-The buffer system integrates with Z80 assembler for low-level code generation:
-
-```scheme
-(zasm
-  (ld hl (-> my-struct 'field))
-  (call (buffer-label-get code "helper-function"))
-  (ret))
-```
-
-This system provides the foundation for binary manipulation, emulator memory models, and firmware generation tools.
-
-# ASM Helpers Documentation
-
-## Overview
-
-The ASM (Assembly) helpers system provides tools for low-level programming, inline assembly functions, register allocation, and function metadata. It bridges high-level Scheme code with low-level assembly operations.
-
-## Type System Integration
-
-### Forward Type Declaration
-
-```scheme
-(declare-type type-name kind-symbol)
-```
-
-**Purpose:** Declare a type before its full definition for forward references.
-
-**Parameters:**
-
-- `type-name`: Symbol naming the type
-- `kind-symbol`: Type category (`'structure`, `'enum`, `'value`, etc.)
-
-**Examples:**
-
-```scheme
-;; Forward declare types
-(declare-type hardware-register 'structure)
-(declare-type interrupt-vector 'value)
-
-;; Later define them
-(deftype hardware-register
-  (control uint8)
-  (status uint8)
-  (data uint16))
-```
-
-## Function Metadata Declaration
-
-### `(declare ...)` Form
-
-Adds metadata to functions for optimization and code generation hints.
-
-#### Syntax
-
-```scheme
-(defun function-name parameters
-  (declare option1 option2 ...)
-  function-body)
-```
-
-### Available Declarations
-
-#### 1. **Inline Optimization**
-
-```scheme
-(declare (inline))           ;; Always inline when possible
-(declare (allow-inline))     ;; Allow compiler to inline at discretion
-```
-
-#### 2. **Assembly Functions**
-
-```scheme
-(declare (asm-func return-type))
-```
-
-**Purpose:** Marks a function as implemented in assembly with specified return type.
-
-**Examples:**
-
-```scheme
-(defun read-port (port)
-  (declare (asm-func uint8))
-  (asm "in al, dx; ret" port))
-
-(defun system-call (number arg1 arg2)
-  (declare (asm-func int))
-  (asm "int 0x80; ret" number arg1 arg2))
-```
-
-#### 3. **Debugging and Output**
-
-```scheme
-(declare (print-asm))        ;; Print generated assembly code
-```
-
-#### 4. **Register Usage**
-
-```scheme
-(declare (allow-saved-regs)) ;; Allow use of callee-saved registers
-```
-
-### Complete Examples
-
-```scheme
-;; Optimized math function
-(defun fast-multiply (x y)
-  (declare (inline))
-  (declare (print-asm))
-  (* x y))
-
-;; System interface
-(defun get-time ()
-  (declare (asm-func uint32))
-  (asm "rdtsc; ret"))
-
-;; Critical section
-(defun context-switch (new-sp)
-  (declare (asm-func void))
-  (declare (allow-saved-regs))
-  (asm "push ebp; mov ebp, esp; ..." new-sp))
-```
-
-## Assembly Register Management
-
-### Register Aliases (`rlet`)
-
-Creates a scoped environment with named register aliases for assembly programming.
-
-#### Syntax
-
-```scheme
-(rlet ((alias1 :reg physical-reg :type type-name :offset offset)
-       (alias2 :reg ...))
-  body...)
-```
-
-**Parameters per alias:**
-
-- `alias`: Symbol name for the alias
-- `:reg`: Physical register symbol (e.g., `'eax`, `'r13`)
-- `:type`: Type name for typed access
-- `:offset`: Integer offset from register base
-
-#### Examples
-
-```scheme
-;; Simple register binding
-(rlet ((self :reg ix :type vec3))
-  (zasm (ld hl (self x))
-        (ret)))
-
-;; Multiple registers with offsets
-(rlet ((base :reg ebp :type stack-frame)
-       (index :reg ecx :type int32 :offset 4))
-  (zasm (mov eax, [base index])
-        (add eax, 8)))
-
-;; Nested rlet for different scopes
-(rlet ((this :reg edi :type object))
-  (let ((field (-> this 'value)))
-    (rlet ((temp :reg eax))
-      (zasm (mov temp, field)
-            (shl temp, 1)))))
-```
-
-### Register Alias Inspection (`rlet-ref`)
-
-Query properties of register aliases within an `rlet` scope.
-
-#### Syntax
-
-```scheme
-(rlet-ref alias-symbol property-name)
-```
-
-**Properties:**
-
-- `'reg` or `'physical_reg`: Physical register symbol
-- `'type` or `'type_name`: Type name as string
-- `'offset`: Offset as integer
-
-#### Example
-
-```scheme
-(rlet ((ptr :reg esi :type byte* :offset 8))
-  (let ((reg (rlet-ref 'ptr 'reg))
-        (type (rlet-ref 'ptr 'type))
-        (off (rlet-ref 'ptr 'offset)))
-    (fmt #t "Pointer: register={}, type={}, offset={}" reg type off)))
-```
-
-### Assembly Register Object Creation
-
-```scheme
-(make-asm-regs bindings...)
-```
-
-Creates a standalone `AsmRegsObject` for manual register management.
-
-**Example:**
-
-```scheme
-(define regs (make-asm-regs 
-               ('self :reg ix :type vector3)
-               ('temp :reg a :type int8)))
-```
-
-## Function Metadata Access
-
-### `(declarations ...)` Function
-
-Query metadata attached to the current function.
-
-#### Syntax
-
-```scheme
-(declarations)                    ;; Get all metadata as alist
-(declarations :name 'key)         ;; Get specific metadata value
-```
-
-**Common Metadata Keys:**
-
-- `'is_asm_func`: Boolean for assembly functions
-- `'asm-func-return-type`: TypeSpec for assembly function return
-- `'inline-by-default`: Boolean for automatic inlining
-- `'save-code`: Boolean to preserve generated code
-- `'print-asm`: Boolean to output assembly
-- `'asm_func_saved_regs`: Boolean allowing saved register use
-
-#### Examples
-
-```scheme
-(defun debug-func (x)
-  (declare (inline))
-  (declare (print-asm))
-  
-  ;; Access own metadata
-  (let ((meta (declarations)))
-    (when (cdr (assoc 'print-asm meta))
-      (fmt #t "This function will print assembly\n")))
-  
-  (* x 2))
-
-;; Check specific property
-(defun maybe-inline (a b)
-  (declare (allow-inline))
-  (if (cdr (assoc 'allow-inline (declarations)))
-      (+ a b)
-      (slow-add a b)))
-```
-
-## Method System Integration
-
-### Dynamic Method Assignment (`set-method`)
-
-Assign or replace method implementations at runtime.
-
-#### Syntax
-
-```scheme
-(set-method type method-identifier implementation)
-```
-
-**Parameters:**
-
-- `type`: Type symbol or Type object
-- `method-identifier`: Method name (symbol) or ID (integer)
-- `implementation`: Function object to assign
-
-#### Examples
-
-```scheme
-;; Define a type
-(deftype vector3
-  (x float)
-  (y float)
-  (z float))
-
-;; Default method implementation
-(.defmethod length ((v vector3))
-  (sqrt (+ (expt (-> v 'x) 2)
-           (expt (-> v 'y) 2)
-           (expt (-> v 'z) 2))))
-
-;; Replace with optimized version
-(set-method 'vector3 'length
-  (lambda (v)
-    (asm-fp-sqrt 
-      (asm-fp-add
-        (asm-fp-mul (-> v 'x) (-> v 'x))
-        (asm-fp-add
-          (asm-fp-mul (-> v 'y) (-> v 'y))
-          (asm-fp-mul (-> v 'z) (-> v 'z)))))))
-
-;; Replace by method ID
-(set-method (lookup-type 'vector3) 3  ;; method ID for 'length
-            fast-vector-length)
-```
-
-## Assembly Environment Object
-
-The `AsmEnvironmentObject` extends regular environments with:
-
-1. **Register Table**: Maps symbol names to `Register` objects
-2. **Scoped Access**: Aliases are only visible within the `rlet` body
-3. **Type Integration**: Aliases can have associated types for safe access
-4. **Automatic Cleanup**: Aliases don't persist beyond the scope
-
-### Internal Structure
-
-```cpp
-struct Register {
-    Object name;          // Symbol name (e.g., 'self, 'temp)
-    Object physical_reg;  // Physical register (e.g., 'eax, 'r13)
-    std::string type_name; // Associated type name
-    int offset;           // Offset from register
-};
-```
-
-## Integration Examples
-
-### Complete Assembly Function with Register Management
-
-```scheme
-(defun vector3-dot (a b)
-  (declare (asm-func float))
-  (declare (allow-saved-regs))
-  
-  (rlet ((va :reg edi :type vector3 :source a)
-         (vb :reg esi :type vector3 :source b)
-         (sum :reg xmm0 :type float))
-    
-    (zasm 
-      ;; Load vector components
-      (movss xmm1, [va vector3.x])
-      (movss xmm2, [vb vector3.x])
-      (mulss xmm1, xmm2)
-      
-      (movss xmm3, [va vector3.y])
-      (movss xmm4, [vb vector3.y])
-      (mulss xmm3, xmm4)
-      (addss xmm1, xmm3)
-      
-      (movss xmm3, [va vector3.z])
-      (movss xmm4, [vb vector3.z])
-      (mulss xmm3, xmm4)
-      (addss xmm1, xmm3)
-      
-      ;; Result in xmm0
-      (movss sum, xmm1))))
-```
-
-### Method Specialization for Hardware
-
-```scheme
-;; Generic implementation
-(.defmethod read-sensor ((dev device))
-  (sleep 0.01)
-  (io-read (-> dev 'port)))
-
-;; Hardware-specific optimized version
-(when (hardware-avx2-available?)
-  (set-method 'device 'read-sensor
-    (lambda (dev)
-      (declare (asm-func uint16))
-      (rlet ((port :reg dx :type io-port :source (-> dev 'port)))
-        (zasm (in ax, dx))))))
-```
-
-## Best Practices
-
-1. **Use `rlet` for Assembly**: Always use `rlet` for register management in assembly code
-2. **Declare Assembly Functions**: Use `(declare (asm-func ...))` for type safety
-3. **Forward Declare Types**: Use `declare-type` for circular dependencies
-4. **Metadata for Optimization**: Use `declare` forms to guide the compiler
-5. **Dynamic Methods Judiciously**: Use `set-method` for hardware-specific optimizations
-
-This system enables writing high-performance, hardware-aware code while maintaining the safety and expressiveness of a high-level language.
-
-# Serialization
-
-## Table of Contents
-
-1. [Memory Region](#memory-region)
-2. [Memory Buffer](#memory-buffer)
-3. [Archive System](#archive-system)
-4. [Labels](#labels)
-5. [Symbols](#symbols)
-6. [Relocations](#relocations)
-7. [Serialization](#serialization)
-8. [Complete Examples](#complete-examples)
-
----
-
-## Memory Region
-
-A `memory-region` is a raw chunk of memory with a base address. It contains only bytes - no metadata, no labels, no types.
-
-### Constructor
-
-```lisp
-(make-memory-region size [:base address])
-```
-
-**Parameters:**
-
-- `size` - Size in bytes (integer)
-- `:base` - Base address (optional, default 0)
-
-**Returns:** New memory region object
-
-**Example:**
-
-```lisp
-(define rom (make-memory-region 32768 :base #x8000))
-(define ram (make-memory-region 4096))  ; base = 0
-```
-
-### Basic Operations
-
-```lisp
-;; Read/write individual bytes
-(memory-region-read-byte region offset)     -> integer
-(memory-region-write-byte! region offset value)
-
-;; Get region properties
-(region :size)        -> integer
-(region :base)        -> integer
-(region :type)        -> "memory-region"
-(region :start-addr)  -> base address
-(region :end-addr)    -> base + size
-
-;; Inspect region
-(inspect region)      -> plist of properties
-(print region)        -> "#<memory-region 8000-ffff size=32768>"
-```
-
-### Hex Export
-
-```lisp
-(memory-region-export-hex region path 
-                         [:start offset] 
-                         [:end offset] 
-                         [:append?])
-
-;; Examples:
-(memory-region-export-hex rom "output.hex")
-(memory-region-export-hex rom "output.hex" :start #x100 :end #x1FF)
-(memory-region-export-hex rom "output.hex" :append #t)
-```
-
-### Hex Dump
-
-```lisp
-(memory-region-dump region [:start offset] [:size bytes] [:ascii?] [:width])
-
-;; Example:
-(print (memory-region-dump rom :start #x100 :size 64 :ascii? #t :width 16))
-```
-
----
-
-## Memory Buffer
-
-A `memory-buffer` combines a memory region with optional metadata tables (labels, symbols, relocations).
-
-### Constructor
-
-```lisp
-(make-memory-buffer [:region region] | [:size size [:base address]])
-
-;; Examples:
-(define buf (make-memory-buffer :size 65536 :base #x8000))
-(define buf2 (make-memory-buffer :region existing-region))
-```
-
-### Component Access
-
-```lisp
-;; Get components
-(buf :region)   -> memory-region
-(buf :labels)   -> label-table (or null)
-(buf :symbols)  -> symbol-table (or null)
-(buf :relocs)   -> relocation-table (or null)
-
-;; Set components
-(set! (buf :labels) label-table)
-(set! (buf :symbols) symbol-table)
-(set! (buf :relocs) relocation-table)
-```
-
-### Direct Label Access (via buffer)
-
-```lisp
-;; Shortcut to labels table
-(buf "label-name")     -> offset or null
-(set! (buf "label-name") offset)
-(set! (buf "label-name") '(:address offset :align 2))
-```
-
----
-
-## Archive System
-
-### Creating Archives
-
-```lisp
-;; Memory archive (most common)
-(make-memory-archive buffer [:write bool] [:version int])
-
-;; Examples:
-(define ar (make-memory-archive buf :write #t))    ; write mode
-(define ar (make-memory-archive buf :write #f))    ; read mode
-(define ar (make-memory-archive buf :write #t :version 2))
-```
-
-### Archive Operations
-
-```lisp
-;; Position management
-(archive-tell ar)           -> current position
-(archive-seek! ar position)  ; seek to position
-(archive-at-end? ar)        -> boolean
-
-;; Control
-(archive-close! ar)         ; close archive (flushes if needed)
-(archive-flush! ar)         ; flush to underlying storage
-(archive-error? ar)         ; check for errors
-```
-
-### Convenience Macro
-
-```lisp
-(defmacro with-archive ((ar buffer mode) &body body)
-  `(let ((,ar (make-memory-archive ,buffer :write ,(eq mode :write))))
-     (unwind-protect
-         (progn ,@body)
-       (archive-close! ,ar))))
-
-;; Usage:
-(with-archive (ar buf :write)
-  (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3)))
-```
-
----
-
-## Labels
-
-Labels associate names with memory offsets.
-
-### Direct Label Table Operations
-
-```lisp
-;; Get label table from buffer
-(define labels (buf :labels))
-
-;; Add/update label
-(label-add! labels "start" 0)
-(label-add! labels "handler" '(:address #x100 :align 2))
-
-;; Query labels
-(label-get labels "start")      -> offset or null
-(label-has? labels "start")     -> boolean
-(label-list labels)             -> list of label names
-(label-table labels)            -> hash table of name->offset
-
-;; Remove
-(label-remove! labels "old-label")
-
-;; Properties
-(labels :size)   -> number of labels
-(labels :type)   -> "label-table"
-(inspect labels)  -> plist with :count
-```
-
-### Buffer-Level Label Operations
-
-```lisp
-;; Set label (via buffer)
-(memory-buffer-label-set! buf "start" 0)
-(memory-buffer-label-set! buf "handler" '(:address #x100))
-
-;; Get label
-(memory-buffer-label-ref buf "start")  -> offset or null
-```
-
----
-
-## Symbols
-
-Symbols are used for linking and cross-referencing.
-
-### Direct Symbol Table Operations
-
-```lisp
-;; Get symbol table
-(define symbols (buf :symbols))
-
-;; Add symbol
-(symbol-add! symbols "irq_handler")  -> index
-
-;; Query symbols
-(symbol-find symbols "irq_handler")  -> info plist or null
-(symbol-find symbols index)          -> info plist or null
-(symbol-list symbols)                -> list of symbol names
-
-;; Symbol info format:
-;; ((:name . "irq_handler") (:crc32 . 12345678) (:index . 0))
-```
-
-### Buffer-Level Symbol Operations
-
-```lisp
-;; Add symbol
-(memory-buffer-symbol-set! buf "irq_handler")  -> index
-
-;; Get symbol info
-(memory-buffer-symbol-ref buf "irq_handler")  -> plist or null
-(memory-buffer-symbol-ref buf 0)               -> plist or null
-```
-
----
-
-## Relocations
-
-Relocations specify how to fix up addresses at link time.
-
-### Direct Relocation Table Operations
-
-```lisp
-;; Get relocation table
-(define relocs (buf :relocs))
-
-;; Add relocation
-(reloc-add! relocs offset type target)
-
-;; Types:
-;; :abs   - absolute address
-;; :rel   - relative address (for jumps/calls)
-;; :crc   - CRC of symbol name
-;; :table - symbol table reference
-
-;; Examples:
-(reloc-add! relocs #x10 :abs "irq_handler")
-(reloc-add! relocs #x20 :rel "start")
-
-;; Query relocations
-(reloc-list relocs)                    -> list of all relocations
-(reloc-list relocs :index 0)           -> single relocation
-
-;; Relocation info format:
-;; ((:offset . 16) (:type . :abs) (:target . "irq_handler"))
-
-;; Clear all relocations
-(reloc-clear! relocs)
-```
-
-### Buffer-Level Relocation Operations
-
-```lisp
-;; Add relocation
-(memory-buffer-reloc-set! buf #x10 :abs "irq_handler")
-(memory-buffer-reloc-set! buf #x20 :rel "start")
-
-;; Query relocations
-(memory-buffer-reloc-ref buf)           -> list of all
-(memory-buffer-reloc-ref buf :index 0)  -> single relocation
-```
-
-### Linking
-
-```lisp
-;; Apply all relocations (resolve addresses)
-(buffer-link! buf)
-
-;; This updates the memory region with actual addresses
-;; using the label table to resolve targets
-```
-
----
-
-## Serialization
-
-The unified serialization interface.
-
-### Basic Serialization
-
-```lisp
-;; Write mode
-(archive-serialize archive type :value object)  -> bytes written
-
-;; Read mode
-(archive-serialize archive type)                -> object
-
-;; Examples:
-(with-archive (ar buf :write)
-  (archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
-  (archive-serialize ar 'point :value '(:x 10 :y 20)))
-
-(with-archive (ar buf :read)
-  (define v (archive-serialize ar 'vec3))    ; -> (:_type_ vec3 :x 1 :y 2 :z 3)
-  (define p (archive-serialize ar 'point)))  ; -> (:_type_ point :x 10 :y 20)
-```
-
-### Serialization Format
-
-The serialization format preserves type information:
-
-```lisp
-;; Writing automatically adds type tag
-(archive-serialize ar 'vec3 :value '(:x 1 :y 2 :z 3))
-;; In archive: (:_type_ vec3 :x 1 :y 2 :z 3)
-
-;; Reading reconstructs the same structure
-(archive-serialize ar 'vec3)  ; -> (:_type_ vec3 :x 1 :y 2 :z 3)
-```
-
-### Supported Types
-
-- **Value types**: integers, floats, booleans
-- **Enum types**: symbols <-> integers
-- **Bitfield types**: symbols/lists <-> bitmasks
-- **Structure types**: property lists
-- **Basic types**: strings, symbols
-- **Pointers**: offsets (as integers)
-
----
-
-## Complete Examples
-
-### Example 1: Creating and Using a Buffer
-
-```lisp
-;; Create a buffer
-(define buf (make-memory-buffer :size 65536 :base #x8000))
-
-;; Add labels
-(memory-buffer-label-set! buf "start" 0)
-(memory-buffer-label-set! buf "data" #x100)
-(memory-buffer-label-set! buf "handler" '(:address #x200 :align 2))
-
-;; Add symbols
-(memory-buffer-symbol-set! buf "irq_handler")
-(memory-buffer-symbol-set! buf "main")
-
-;; Add relocations
-(memory-buffer-reloc-set! buf #x10 :abs "irq_handler")
-(memory-buffer-reloc-set! buf #x20 :rel "start")
-
-;; Write some data
-(memory-region-write-byte! (buf :region) #x100 #xAA)
-(memory-region-write-byte! (buf :region) #x101 #xBB)
-
-;; Link everything
-(buffer-link! buf)
-
-;; Export to hex
-(memory-region-export-hex (buf :region) "output.hex")
-```
-
-### Example 2: Serializing Objects
-
-```lisp
-;; Define types
-(deftypespec point (x int) (y int))
-(deftypespec line (start point) (end point))
-
-;; Create objects
-(define p1 '(:x 10 :y 20))
-(define p2 '(:x 30 :y 40))
-(define line '(:start ,p1 :end ,p2))
-
-;; Serialize to buffer
-(define buf (make-memory-buffer :size 1024))
-(with-archive (ar buf :write)
-  (archive-serialize ar 'point :value p1)
-  (archive-serialize ar 'point :value p2)
-  (archive-serialize ar 'line :value line)
-  (archive-tell ar))  ; total bytes written
-
-;; Read back
-(with-archive (ar buf :read)
-  (define p1-read (archive-serialize ar 'point))  ; -> (:_type_ point :x 10 :y 20)
-  (define p2-read (archive-serialize ar 'point))  ; -> (:_type_ point :x 30 :y 40)
-  (define line-read (archive-serialize ar 'line))) ; -> (:_type_ line :start ...)
-```
-
-### Example 3: Working with Labels and Symbols
-
-```lisp
-;; Create buffer
-(define buf (make-memory-buffer :size 32768 :base #x8000))
-
-;; Add labels (for assembler)
-(memory-buffer-label-set! buf "code_start" 0)
-(memory-buffer-label-set! buf "irq_vector" #x38)
-(memory-buffer-label-set! buf "data_area" #x1000)
-
-;; Add symbols (for linker)
-(for-each (lambda (sym)
-           (memory-buffer-symbol-set! buf sym))
-         '("printf" "malloc" "free"))
-
-;; Query labels
-(memory-buffer-label-ref buf "code_start")    ; -> 0
-(memory-buffer-label-ref buf "nonexistent")   ; -> null
-
-;; Query symbols
-(memory-buffer-symbol-ref buf "printf")       ; -> info plist
-(memory-buffer-symbol-ref buf 0)              ; -> info by index
-
-;; Get all symbols
-(symbol-list (buf :symbols))  ; -> ("printf" "malloc" "free")
-```
-
-### Example 4: Relocations and Linking
-
-```lisp
-;; Create buffer with code
-(define code (make-memory-buffer :size 4096 :base #x8000))
-
-;; Add label for target
-(memory-buffer-label-set! code "target_routine" #x100)
-
-;; Generate code with relocations
-;; Assume we're generating a jump instruction:
-;; JP target_routine (3 bytes: 0xC3 + 16-bit address)
-
-;; Write opcode
-(memory-region-write-byte! (code :region) 0 #xC3)
-
-;; Add relocation for the address word
-(memory-buffer-reloc-set! code 1 :abs "target_routine")
-
-;; Later, after all labels are defined:
-(buffer-link! code)
-
-;; Now the address is resolved
-(memory-region-read-byte (code :region) 1)  ; low byte of #x100
-(memory-region-read-byte (code :region) 2)  ; high byte
-```
-
-### Example 5: Complete Assembly Pipeline
-
-```lisp
-;; 1. Create buffer for code
-(define code (make-memory-buffer :size 16384 :base #x8000))
-
-;; 2. Assemble (simplified)
-(assemble-code code '(
-  (org #x8000)
-  (label start)
-  (ld a #xAA)
-  (ld (hl) a)
-  (jp handler)
-  (label handler)
-  (ret)
-))
-
-;; 3. Add external references
-(memory-buffer-symbol-set! code "external_printf")
-
-;; 4. Add relocations
-(memory-buffer-reloc-set! code #x10 :abs "external_printf")
-
-;; 5. Link
-(buffer-link! code)
-
-;; 6. Export
-(memory-region-export-hex (code :region) "program.hex")
-
-;; 7. Inspect result
-(inspect code)
-(print (memory-region-dump (code :region) :start 0 :size 64))
-```
-
----
-
-## Summary
-
-| Category          | Constructor           | Key Operations                                   |
-| ----------------- | --------------------- | ------------------------------------------------ |
-| **Memory Region** | `make-memory-region`  | `read-byte`, `write-byte!`, `export-hex`, `dump` |
-| **Memory Buffer** | `make-memory-buffer`  | Component access via keywords                    |
-| **Archive**       | `make-memory-archive` | `tell`, `seek!`, `at-end?`, `close!`             |
-| **Labels**        | via buffer            | `label-set!`, `label-ref`, `label-list`          |
-| **Symbols**       | via buffer            | `symbol-set!`, `symbol-ref`, `symbol-list`       |
-| **Relocations**   | via buffer            | `reloc-set!`, `reloc-ref`, `link!`               |
-| **Serialization** | `archive-serialize`   | Universal read/write                             |
-
-This API provides a clean, consistent interface for all memory management and serialization needs!
-
+## 📝 Summary of Changes
+
+This documentation was updated to reflect the current implementation:
+
+**Removed functions (not in current code):**
+- `if` special form (use `cond` instead)
+- `pprint` (use `pfmt` instead)
+- `eqv?` (use `eq?` instead)
+- Many type predicates (`pair?`, `symbol?`, `number?`, etc.) - use `type?` instead
+- `vector` functions (renamed to `array`)
+- `declare-type`, `declare`, `rlet`, `rlet-ref`, `make-asm-regs`, `declarations`, `set-method` (not in Interpreter)
+
+**Added functions:**
+- `with-error-handler` special form
+- `eval-args` special form
+- Environment functions: `env`, `current-env`, `lookup`, `current-function`, `env-name`, `env-name!`
+- Iteration functions: `list-for-each`, `list-for-each-pair`, `string-for-each`, `array-for-each`, `hash-table-for-each`
+- Table access: `get-at`, `set-at!`
+- Getter/Setter: `defsetf`, `get-setter`
+- Function metadata: `function-name`, `function-name!`
+- Math: `floor`, `ceiling`, `round`, `mod`, `sin`, `cos`, `tan`, `atan`, `crc32`
+- String: `string-replace`, `string-prefix?`, `string-suffix?`, `string-contains?`, `string-split`, `string-join`, `string-trim`, `string-trim-idents`
+- Logging: `log`
+- Binary I/O: `read-binary-file`, `write-binary-file`, `read-text-file`, `write-text-file`
+
+**Renamed:**
+- `vector` → `array`
+- `vector-ref` → `array-ref`
+- `vector-set!` → `array-set!`
+- `vector-length` → `array-length`
+- `vector->list` → `array->list`
+- `make-vector` → `make-array`
