@@ -334,7 +334,7 @@ namespace carbon {
     }
 
     template <u8 padding> [[nodiscard]] bool UP_Instruction<padding>::op1_is_reg() const noexcept {
-        return operand1_is_used() && !operand1_is_immediate() && operand1 < ARG_REGISTERS_OFFSET;
+        return operand1_is_used() && !operand1_is_immediate() && a < ARG_REGISTERS_OFFSET;
     }
 
     template <u8 padding> [[nodiscard]] bool UP_Instruction<padding>::op2_is_reg() const noexcept {
