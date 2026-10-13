@@ -85,14 +85,27 @@ namespace sootc {
     std::unique_ptr<Node> NodeBuilder::build(const script::Object &form, Node *node) {
 
         if (form.is_symbol()) {
-            // ---- Soot literals: #t / #f ----
-            //
-            // The reader parses `#t` and `#f` as ordinary symbols, but
-            // semantically they are boolean constants. SOOT's VM treats any
-            // non-zero int as true, so we map them to 1 and 0.
             const std::string name = form.as_symbol();
+
+            // ---- Boolean literals ----
             if (name == "#t") return ConstNode::make_int(1);
             if (name == "#f") return ConstNode::make_int(0);
+
+            // ---- SID literal: #name ----
+            //
+            // In the SOOT reader, `#foo` is not a symbol reference; it
+            // is a literal SID. The compiler interns the string in
+            // StringIdManager and emits a 64-bit constant load. The VM
+            // sees the same SID that native functions (map-set, map-get,
+            // symbol comparison) expect.
+            //
+            // Note: keywords (`:foo`) are NOT SID literals. They are
+            // internal symbols used by forms like `new`. They are not
+            // handled here.
+            if (name.size() > 1 && name[0] == '#') {
+                const sid64 sid = static_cast<sid64>(StringId(name));
+                return ConstNode::make_sid(sid);
+            }
 
             // ---- Compile-time constants ----
             if (m_compiler) {
@@ -521,7 +534,8 @@ namespace sootc {
     // ============================================================================
     // ->
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const script::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_deref(const script::Object &form,
+                                                             Node                 *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -550,11 +564,13 @@ namespace sootc {
                 .got("unknown");
         }
 
+        // `expr` is the object itself, not a pointer wrapper around it.
+        // Its type is already the concrete struct type (cvector, vector,
+        // ...). get_deref_info is deliberately NOT called here: it is
+        // meant for wrapper types (pointer(T), inline-array(T),
+        // dynamic-array(T)) and, applied to a bare structure, wrongly
+        // returns the parent type.
         Type *struct_type = expr_type;
-        {
-            DerefInfo di = m_ts.get_deref_info(TypeSpec(expr_type->get_name()));
-            if (di.can_deref && di.result_type.get()) struct_type = di.result_type.get();
-        }
 
         auto *st = dynamic_cast<StructureType *>(struct_type);
         if (!st) {
@@ -563,7 +579,7 @@ namespace sootc {
                 .got(struct_type ? struct_type->get_name() : "unknown");
         }
 
-        // Field?
+        // ---- Field? ----
         Field field;
         if (st->lookup_field(name, &field)) {
             Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
@@ -576,7 +592,7 @@ namespace sootc {
                                                static_cast<u32>(field.offset()), field_type);
         }
 
-        // Method?
+        // ---- Method? ----
         MethodInfo method_info;
         if (m_ts.try_lookup_method(struct_type->get_name(), name, &method_info)) {
             std::vector<std::unique_ptr<ExpressionNode>> args;
@@ -591,6 +607,8 @@ namespace sootc {
                 return_type = m_ts.lookup_type_no_throw(method_info.type.last_arg().base_type());
             }
 
+            // The full name of a method is "<type>-<method>". This is the
+            // name under which defmethod registers it in Globals.
             const std::string full_name = fmt::format("{}-{}", struct_type->get_name(), name);
 
             auto method_call = std::make_unique<MethodCallNode>(std::move(expr), full_name,
@@ -1070,7 +1088,19 @@ namespace sootc {
                 // ... ваш существующий код типчека ...
             }
         }
-
+        // ---- Existence check ----
+        //
+        // A call is valid only if the name is known to the compiler:
+        // either a script function registered by defun/defmethod, or a
+        // native function registered by define-native. Anything else is
+        // an undefined name and must be reported at compile time,
+        // instead of producing a Call that will fail at runtime.
+        if (!m_compiler->lookup_function_signature(func_name)) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                .expected("a defined or declared function")
+                .got(fmt::format("undefined function '{}'", func_name))
+                .note("Define it with defun/defmethod, or declare it with define-native.");
+        }
         auto call = std::make_unique<CallNode>(func_name, nullptr);
         call->set_is_native(m_compiler->is_native_function(func_name));
         for (auto &arg : args) {

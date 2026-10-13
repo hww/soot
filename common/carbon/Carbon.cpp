@@ -282,7 +282,7 @@ namespace carbon {
         return true;
     }
 
-    bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
+bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
         if (!m_impl->initialized) {
             lg::error("Carbon::load_module_from_binary: not initialized");
             return false;
@@ -312,6 +312,15 @@ namespace carbon {
                                                  StringId(e.m_typeId), StringId(logical_name));
                 symbol_sids.push_back(e.m_nameID);
             }
+        }
+
+        // Drop any previous symbols registered under the same logical name.
+        // Without this, an old ModuleRegistry entry is overwritten by the
+        // insert below, its BinaryFile is freed, and every pointer Globals
+        // holds into that file becomes dangling. On the next call, the VM
+        // dereferences that pointer and crashes.
+        if (ModuleRegistry::Entry *old = m_impl->modules->find(logical_name)) {
+            for (sid64 sid : old->symbol_sids) { m_impl->globals->remove_symbol(StringId(sid)); }
         }
 
         ModuleRegistry::Entry entry;

@@ -30,6 +30,11 @@ namespace sootc {
         bool          load_module(carbon::BinaryFile &&file) override;
         RuntimeResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override;
+        
+        bool          has_symbol(const std::string &name) const override {
+            return m_carbon.globals() &&
+                   m_carbon.globals()->find_symbol_ptr(carbon::StringId(name)) != nullptr;
+        }
 
     private:
         carbon::Carbon m_carbon;

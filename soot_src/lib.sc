@@ -405,22 +405,43 @@
 ;; Library extensions
 ;; ----------------------------------------------------------------------------
 
-(asm-file "soot_src/common/lib/vf-macros.soc")
+;(asm-file "soot_src/common/lib/vf-macros.soc")
 
 ;; ----------------------------------------------------------------------------
 ;; Native
 ;; ----------------------------------------------------------------------------
-
+; --- I/O ---
 (define-native _print   (function _varargs_ object))
 (define-native _println (function _varargs_ object))
-(define-native _add     (function int int object))
-(define-native _sub     (function int int object))
-(define-native _mul     (function int int object))
-(define-native _div     (function int int object))
-(define-native _abs     (function int object))
-(define-native _sqrt    (function float object))
-(define-native _to_int  (function object object))
-(define-native _to_float (function object object))
+
+; --- Allocator ---
+; Signature is (where, type-id) -> pointer. Both args are SIDs or values.
+; Varargs is not needed; the compiler will accept exactly 2 args.
+(define-native allocate (function object object object))
+
+; --- String ---
+(define-native string-alloc   (function int object))
+(define-native string-from-c  (function object object))
+(define-native string-concat  (function object object object))
+(define-native string-len     (function object int))
+(define-native string-eq      (function object object int))
+(define-native string-cstr    (function object object))
+
+; --- Map ---
+(define-native make-map   (function object))
+(define-native map-count  (function object int))
+(define-native map-get    (function object object object))
+(define-native map-set    (function object object object object))
+(define-native map-del    (function object object int))
+(define-native map-has    (function object object int))
+
+; --- Array ---
+(define-native make-array  (function object object))
+(define-native array-size  (function object int))
+(define-native array-cap   (function object int))
+(define-native array-data  (function object object))
+(define-native array-clear (function object object))
+(define-native array-push  (function object object object))
 
 ;; ----------------------------------------------------------------------------
 ;; Native types

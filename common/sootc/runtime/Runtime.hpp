@@ -61,6 +61,12 @@ namespace sootc {
 
         /// @brief Human-readable name of this runtime, for logs and the REPL.
         virtual std::string name() const = 0;
+
+        /// @brief Does the runtime currently have a symbol with this name?
+        /// @details Used by the REPL to decide whether to call `top-level`
+        ///          after a successful module load. Returns false in
+        ///          backends that cannot answer the question.
+        virtual bool has_symbol(const std::string & /*name*/) const { return false; }
     };
 
 } // namespace sootc

@@ -44,6 +44,8 @@ namespace sootc {
                            const std::vector<carbon::Variant> &args) override;
 
         std::string name() const override { return fmt::format("remote:{}", m_url); }
+
+        bool has_symbol(const std::string &) const override { return true; }
     };
 
 } // namespace sootc

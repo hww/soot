@@ -1,0 +1,5 @@
+﻿(usemap (787)
+  (import)
+  (export)
+  (strings event none vector-asize-of allocate-silent unknown state native unnamed event-message post string-cstr exit f64 enter map-count null trans top-level code script-lambda map-set type number integer sinteger i64 cvector-len array-push i32 process i16 i8 uinteger u64 cvector-inspect char vector-inspect u32 new-method u16 function u8 f32 cvector bool global string sid sid32 method make-map _print _println array-cap allocate string-alloc string-from-c string-len string-concat string-eq map-get map-del map-has cvector-asize-of make-array array-size array-data relocate vector-len array-clear w vector cvector-new asm-file x float y z new cvector-relocate vector-new cvector-mem-usage delete vector-delete print vector-print inspect length vector-length asize-of copy vector-copy vector-relocate mem-usage vector-mem-usage len structure cvector-delete #health cvector-print cvector-length cvector-copy lib_0 test <repl>_1 heap <repl>_2 use-map <repl>_3)
+)

@@ -54,6 +54,14 @@ public:
         return std::unique_ptr<ConstNode>(new ConstNode(val));
     }
     
+    static std::unique_ptr<ConstNode> make_sid(sid64 val) {
+        // A SID is a 64-bit integer. Reuse the int path; the constant
+        // pool stores 64-bit values and LoadStaticI64Imm loads them
+        // into a register unchanged. map-set / map-get call get_sid()
+        // on the argument, which works for Int Variants.
+        return std::unique_ptr<ConstNode>(new ConstNode(static_cast<i64>(val)));
+    }
+
     // ---- Value accessors ----
     [[nodiscard]] bool is_int() const noexcept { return m_etype == EType::INT; }
     [[nodiscard]] bool is_float() const noexcept { return m_etype == EType::FLOAT; }

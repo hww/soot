@@ -617,9 +617,9 @@ namespace sootc {
             "save-session",
             "sc-run",
             "sc-eval",
-            "arg!",
-            "arg",
-            "argls",
+            "arg-set",
+            "arg-get",
+            "arg-ls",
             "gcls",
             "gc",
         };
@@ -679,9 +679,9 @@ namespace sootc {
         if (name == "save-session") return cmd_save_session(form);
         if (name == "sc-run") return cmd_sc_run(form);
         if (name == "sc-eval") return cmd_sc_eval(form);
-        if (name == "arg!") return cmd_arg_set(form);
-        if (name == "arg") return cmd_arg_get(form);
-        if (name == "argls") return cmd_arg_list(form);
+        if (name == "arg-set") return cmd_arg_set(form);
+        if (name == "arg-get") return cmd_arg_get(form);
+        if (name == "arg-ls") return cmd_arg_list(form);
         if (name == "gcls") return cmd_gc_list(form);
         if (name == "gc") return cmd_gc_collect(form);
 
@@ -1410,6 +1410,33 @@ namespace sootc {
                            m_runtime->name());
             }
 
+            // After the module is loaded, run its `top-level` function if
+            // it has one. In REPL mode, every expression that is not a
+            // declaration (defun / deftype / define with a function value)
+            // ends up in a synthetic `top-level` function. Running it here
+            // makes `(_print "Hello")` behave like an expression statement:
+            // it executes immediately, and its value (if any) is printed.
+            //
+            // If there is no `top-level` (for example, the input was just
+            // a `defun`), the lookup returns nothing and we silently skip.
+            if (m_runtime->has_symbol("top-level")) {
+                auto top_level_result = m_runtime->call("top-level", {});
+                if (top_level_result.ok) {
+                    // Print the return value only if it is not the dummy
+                    // `1` that _print returns. A more elaborate version
+                    // could compare against the function's declared return
+                    // type, but for now the check below is enough.
+                    const std::string printed = top_level_result.value.to_string();
+                    if (printed != "1" && printed != "null" && !printed.empty()) {
+                        fmt::print(fg(fmt::color::cyan), "; => {}\n", printed);
+                    }
+                } else {
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                               top_level_result.error);
+                    return ReplStatus::ERR;
+                }
+            }
+
             fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK\n");
             return ReplStatus::OK;
         } catch (const std::exception &e) {
@@ -1778,13 +1805,20 @@ namespace sootc {
         return true;
     }
 
-    bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
+        bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
         namespace fs = std::filesystem;
+
+        // Resolve the output directory against the project root.
+        fs::path out_dir = dir;
+        if (out_dir.is_relative()) {
+            out_dir = file_util::get_path(file_util::PathType::PROJECT) / out_dir;
+        }
+
         std::error_code ec;
-        fs::create_directories(dir, ec);
+        fs::create_directories(out_dir, ec);
         if (ec) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n", dir.string(),
-                       ec.message());
+            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n",
+                       out_dir.string(), ec.message());
             return false;
         }
 
@@ -1793,9 +1827,6 @@ namespace sootc {
             return false;
         }
 
-        // Build a synthetic file node that contains every form the user
-        // typed during this session. We compile it as if it were a single
-        // .sc file.
         try {
             NodeBuilder builder(m_ts, this);
             auto        file_node = std::make_unique<FileNode>(name);
@@ -1847,10 +1878,10 @@ namespace sootc {
                 binary->m_dataStructs.push_back(ds);
             }
 
-            // Now we have a BinaryFile whose m_path is `name`. Save both
-            // the binary and the header next to it.
-            if (!save_binary(*binary, dir)) return false;
-            if (!save_header(*binary, dir)) return false;
+            // Save binary, header, and dci.
+            if (!save_binary(*binary, out_dir)) return false;
+            if (!save_header(*binary, out_dir)) return false;
+            if (!save_dci(*binary, out_dir)) return false;
 
             return true;
         } catch (const std::exception &e) {

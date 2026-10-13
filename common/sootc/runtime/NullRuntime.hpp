@@ -32,6 +32,8 @@ namespace sootc {
         }
 
         std::string name() const override { return "null"; }
+
+        bool has_symbol(const std::string &) const override { return true; }
     };
 
 } // namespace sootc

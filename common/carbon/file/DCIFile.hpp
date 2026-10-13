@@ -79,9 +79,9 @@ namespace carbon {
             for (const auto &exp : exports) { result += " " + exp.to_string(); }
             result += ")\n";
 
-            result += "  (strings";
-            for (const auto &[id, str] : StringIdManager::instance()) { result += " " + str; }
-            result += ")\n";
+            //result += "  (strings";
+            //for (const auto &[id, str] : StringIdManager::instance()) { result += " " + str; }
+            //result += ")\n";
 
             result += ")\n";
             return result;
