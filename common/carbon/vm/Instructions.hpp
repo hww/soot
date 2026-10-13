@@ -5,64 +5,51 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <ostream>
 #include <string>
 
 namespace carbon {
 
-    // Register file layout:
-    //   r0..r23   local variables (24 registers)
-    //   r24..r33  arguments       (10 registers)
     constexpr u32 MAX_REGISTERS = 34;
     constexpr u32 ARG_REGISTERS_OFFSET = 24;
     constexpr u32 LOCAL_REGISTERS_OFFSET = 0;
-    constexpr u32 MAX_LOCALS = ARG_REGISTERS_OFFSET - LOCAL_REGISTERS_OFFSET; // 24
-    constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET;            // 10
+    constexpr u32 MAX_LOCALS = ARG_REGISTERS_OFFSET - LOCAL_REGISTERS_OFFSET;
+    constexpr u32 MAX_ARGS = MAX_REGISTERS - ARG_REGISTERS_OFFSET;
 
-    /// @brief Type of an instruction operand.
-    enum class OperandType : u8 {
-        NONE,    ///< operand unused
-        REG,     ///< register index
-        IMM_U8,  ///< 8-bit unsigned immediate
-        IMM_I16, ///< 16-bit signed immediate
-        IMM_U16, ///< 16-bit unsigned immediate (symbol-table index, argument count)
-    };
-
-    /// @brief Static type of a symbol-table entry, when known.
+    enum class OperandType : u8 { NONE, REG, IMM_U8, IMM_I16, IMM_U16 };
     enum class StaticType {
-        NONE,    ///< unknown
-        POINTER, ///< pointer
-        I8,      ///< int8
-        U8,      ///< uint8
-        I16,     ///< int16
-        U16,     ///< uint16
-        I32,     ///< int32
-        U32,     ///< uint32
-        I64,     ///< int64
-        U64,     ///< uint64
-        FLOAT,   ///< f32
-        DOUBLE,  ///< f64
-        SID      ///< SID64
+        NONE,
+        POINTER,
+        I8,
+        U8,
+        I16,
+        U16,
+        I32,
+        U32,
+        I64,
+        U64,
+        FLOAT,
+        DOUBLE,
+        SID
     };
 
-    /// @brief Metadata for a single Opcode: name, operand kinds, and static type.
     struct InstructionInfo {
-        Opcode      opcode;      ///< opcode value
-        const char *name;        ///< human-readable mnemonic
-        OperandType a_type;      ///< destination operand kind
-        OperandType b_type;      ///< first source operand kind
-        OperandType c_type;      ///< second source operand kind
-        StaticType  static_type; ///< static type of the symbol-table value, if any
+        Opcode      opcode;
+        const char *name;
+        OperandType a_type;
+        OperandType b_type;
+        OperandType c_type;
+        StaticType  static_type;
 
         [[nodiscard]] size_t operands_count() const noexcept {
-            size_t cnt = 0;
-            if (a_type != OperandType::NONE) ++cnt;
-            if (b_type != OperandType::NONE) ++cnt;
-            if (c_type != OperandType::NONE) ++cnt;
-            return cnt;
+            size_t n = 0;
+            if (a_type != OperandType::NONE) ++n;
+            if (b_type != OperandType::NONE) ++n;
+            if (c_type != OperandType::NONE) ++n;
+            return n;
         }
-
         [[nodiscard]] bool is_reg(OperandType t) const noexcept { return t == OperandType::REG; }
         [[nodiscard]] bool is_imm(OperandType t) const noexcept {
             return t == OperandType::IMM_U8 || t == OperandType::IMM_I16 ||
@@ -71,10 +58,178 @@ namespace carbon {
         [[nodiscard]] bool is_used(OperandType t) const noexcept { return t != OperandType::NONE; }
     };
 
-    /// @brief Look up instruction metadata by opcode.
     [[nodiscard]] inline const InstructionInfo *get_instruction_info(Opcode op);
+    [[nodiscard]] inline const char            *opcode_mnemonic(Opcode opcode) noexcept;
 
-    /// @brief Convert an opcode to its human-readable mnemonic.
+    // -------------------------------------------------------------------------
+    // UP_Instruction
+    // -------------------------------------------------------------------------
+    //
+    //   byte 0 : opcode
+    //   byte 1 : a
+    //   byte 2 : b
+    //   byte 3 : c
+    //   bytes 4..4+Padding : padding (unused)
+    //
+    // imm16 is computed from b (low) and c (high).
+
+    template <u8 Padding> struct UP_Instruction {
+        Opcode                  opcode;
+        u8                      a;
+        u8                      b;
+        u8                      c;
+        std::array<u8, Padding> padding;
+
+        [[nodiscard]] u16 imm16() const noexcept {
+            return static_cast<u16>(b) | (static_cast<u16>(c) << 8);
+        }
+        [[nodiscard]] i16 imm16_signed() const noexcept { return static_cast<i16>(imm16()); }
+        void              set_imm16(u16 v) noexcept {
+            b = static_cast<u8>(v & 0xFF);
+            c = static_cast<u8>(v >> 8);
+        }
+
+        [[nodiscard]] bool operand1_is_immediate() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_imm(info->b_type);
+        }
+        [[nodiscard]] bool operand2_is_immediate() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_imm(info->c_type);
+        }
+        [[nodiscard]] bool operand1_is_used() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_used(info->b_type);
+        }
+        [[nodiscard]] bool operand2_is_used() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_used(info->c_type);
+        }
+        [[nodiscard]] bool op1_is_reg() const noexcept {
+            return operand1_is_used() && !operand1_is_immediate() && b < ARG_REGISTERS_OFFSET;
+        }
+        [[nodiscard]] bool op2_is_reg() const noexcept {
+            return operand2_is_used() && !operand2_is_immediate() && c < ARG_REGISTERS_OFFSET;
+        }
+
+        [[nodiscard]] const char *opcode_to_string() const noexcept {
+            return opcode_mnemonic(opcode);
+        }
+        [[nodiscard]] std::string to_string() const { return opcode_to_string(); }
+
+        [[nodiscard]] bool operator==(const UP_Instruction &rhs) const noexcept {
+            return opcode == rhs.opcode && a == rhs.a && b == rhs.b && c == rhs.c;
+        }
+    };
+
+    // Specialisation for the canonical 4-byte form: no trailing padding.
+    template <> struct UP_Instruction<0> {
+        Opcode opcode;
+        u8     a;
+        u8     b;
+        u8     c;
+
+        [[nodiscard]] u16 imm16() const noexcept {
+            return static_cast<u16>(b) | (static_cast<u16>(c) << 8);
+        }
+        [[nodiscard]] i16 imm16_signed() const noexcept { return static_cast<i16>(imm16()); }
+        void              set_imm16(u16 v) noexcept {
+            b = static_cast<u8>(v & 0xFF);
+            c = static_cast<u8>(v >> 8);
+        }
+
+        [[nodiscard]] bool operand1_is_immediate() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_imm(info->b_type);
+        }
+        [[nodiscard]] bool operand2_is_immediate() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_imm(info->c_type);
+        }
+        [[nodiscard]] bool operand1_is_used() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_used(info->b_type);
+        }
+        [[nodiscard]] bool operand2_is_used() const noexcept {
+            const auto *info = get_instruction_info(opcode);
+            return info && info->is_used(info->c_type);
+        }
+        [[nodiscard]] bool op1_is_reg() const noexcept {
+            return operand1_is_used() && !operand1_is_immediate() && b < ARG_REGISTERS_OFFSET;
+        }
+        [[nodiscard]] bool op2_is_reg() const noexcept {
+            return operand2_is_used() && !operand2_is_immediate() && c < ARG_REGISTERS_OFFSET;
+        }
+
+        [[nodiscard]] const char *opcode_to_string() const noexcept {
+            return opcode_mnemonic(opcode);
+        }
+        [[nodiscard]] std::string to_string() const { return opcode_to_string(); }
+
+        [[nodiscard]] bool operator==(const UP_Instruction<0> &rhs) const noexcept {
+            return opcode == rhs.opcode && a == rhs.a && b == rhs.b && c == rhs.c;
+        }
+    };
+
+    using LongInstruction = UP_Instruction<4>;
+    using ShortInstruction = UP_Instruction<0>;
+    using Instruction = ShortInstruction;
+
+    static_assert(sizeof(ShortInstruction) == 4, "ShortInstruction must be 4 bytes");
+    static_assert(sizeof(LongInstruction) == 8, "LongInstruction must be 8 bytes");
+    static_assert(sizeof(Instruction) == 4, "Instruction must be 4 bytes");
+
+    [[nodiscard]] inline LongInstruction from_short(const ShortInstruction &s) noexcept {
+        LongInstruction out{};
+        out.opcode = s.opcode;
+        out.a = s.a;
+        out.b = s.b;
+        out.c = s.c;
+        return out;
+    }
+
+    inline std::ostream &operator<<(std::ostream &os, const Instruction &ins) noexcept {
+        os << ins.opcode_to_string() << " " << unsigned(ins.a) << " " << unsigned(ins.b) << " "
+           << unsigned(ins.c);
+        return os;
+    }
+
+    // -------------------------------------------------------------------------
+    // InstructionFactory
+    // -------------------------------------------------------------------------
+
+    class InstructionFactory {
+    public:
+        [[nodiscard]] static constexpr Instruction abc(Opcode op, u8 a, u8 b, u8 c) noexcept {
+            return Instruction{op, a, b, c};
+        }
+        [[nodiscard]] static constexpr Instruction ab(Opcode op, u8 a, u8 b) noexcept {
+            return abc(op, a, b, 0);
+        }
+        [[nodiscard]] static constexpr Instruction a(Opcode op, u8 a) noexcept {
+            return abc(op, a, 0, 0);
+        }
+        [[nodiscard]] static constexpr Instruction imm(Opcode op, u8 a, u16 imm) noexcept {
+            Instruction ins{op, a, 0, 0};
+            ins.set_imm16(imm);
+            return ins;
+        }
+        [[nodiscard]] static constexpr Instruction branch(Opcode op, u16 target) noexcept {
+            Instruction ins{op, 0, 0, 0};
+            ins.set_imm16(target);
+            return ins;
+        }
+        [[nodiscard]] static constexpr Instruction lookup(Opcode op, u8 dst, u16 sym) noexcept {
+            Instruction ins{op, dst, 0, 0};
+            ins.set_imm16(sym);
+            return ins;
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // opcode_mnemonic
+    // -------------------------------------------------------------------------
+
     [[nodiscard]] inline const char *opcode_mnemonic(Opcode opcode) noexcept {
         switch (opcode) {
         case Opcode::Return: return "Return";
@@ -178,336 +333,10 @@ namespace carbon {
         }
     }
 
-    /// @brief One VM instruction. `padding` is the number of trailing alignment bytes
-    ///        (4 for the T2R/T1X format, 0 for the compact UC4 format).
-    /// @details The first 4 bytes are a union that can be viewed as:
-    ///            - { opcode, a, b, c }         — general register form
-    ///            - { opcode, a_imm, imm16 }    — signed 16-bit immediate form
-    ///            - { opcode, a_k, uim16 }      — unsigned 16-bit immediate form
-    ///            - { opcode, destination, operand1, operand2 } — raw bytes
-    template <u8 padding> struct UP_Instruction {
-        union {
-            u32 as_u32; ///< whole instruction as a single u32
+    // -------------------------------------------------------------------------
+    // INSTRUCTION_INFO
+    // -------------------------------------------------------------------------
 
-            struct {
-                Opcode opcode : 8; ///< opcode
-                u8     a;          ///< destination register / condition register
-                u8     b;          ///< source register 1
-                u8     c;          ///< source register 2
-            };
-            struct {
-                u8 : 8;    ///< opcode padding
-                u8  a_imm; ///< destination register for immediate form
-                i16 imm16; ///< 16-bit signed immediate
-            };
-            struct {
-                u8 : 8;    ///< opcode padding
-                u8  a_k;   ///< destination register
-                u16 uim16; ///< 16-bit unsigned immediate
-            };
-            struct {
-                u8 : 8;         ///< opcode padding
-                u8 destination; ///< raw destination byte
-                u8 operand1;    ///< raw operand-1 byte
-                u8 operand2;    ///< raw operand-2 byte
-            };
-        };
-
-        std::array<std::byte, padding> m_padding; ///< trailing alignment bytes (unused by VM)
-
-        [[nodiscard]] bool operator==(const UP_Instruction<padding> &rhs) const noexcept = default;
-
-        [[nodiscard]] bool destination_is_immediate() const noexcept;
-        [[nodiscard]] bool operand1_is_immediate() const noexcept;
-        [[nodiscard]] bool operand2_is_immediate() const noexcept;
-        [[nodiscard]] bool operand1_is_used() const noexcept;
-        [[nodiscard]] bool operand2_is_used() const noexcept;
-        [[nodiscard]] bool op1_is_reg() const noexcept;
-        [[nodiscard]] bool op2_is_reg() const noexcept;
-
-        /// @brief Pack a 16-bit value into operand1 (low byte) and operand2 (high byte).
-        void set_lo_hi(const u16 value) noexcept {
-            operand1 = static_cast<u8>(value & 0xFF);
-            operand2 = static_cast<u8>((value >> 8) & 0xFF);
-        }
-
-        [[nodiscard]] const char *opcode_to_string() const noexcept;
-        [[nodiscard]] std::string to_string() const { return opcode_to_string(); }
-    };
-
-    template <> struct UP_Instruction<0> {
-        union {
-            u32 as_u32; ///< whole instruction as a single u32
-
-            struct {
-                Opcode opcode : 8; ///< opcode
-                u8     a;          ///< destination register / condition register
-                u8     b;          ///< source register 1
-                u8     c;          ///< source register 2
-            };
-            struct {
-                u8 : 8;    ///< opcode padding
-                u8  a_imm; ///< destination register for immediate form
-                i16 imm16; ///< 16-bit signed immediate
-            };
-            struct {
-                u8 : 8;    ///< opcode padding
-                u8  a_k;   ///< destination register
-                u16 uim16; ///< 16-bit unsigned immediate
-            };
-            struct {
-                u8 : 8;         ///< opcode padding
-                u8 destination; ///< raw destination byte
-                u8 operand1;    ///< raw operand-1 byte
-                u8 operand2;    ///< raw operand-2 byte
-            };
-        };
-
-        [[nodiscard]] bool operator==(const UP_Instruction<0> &rhs) const noexcept = default;
-
-        [[nodiscard]] bool destination_is_immediate() const noexcept;
-        [[nodiscard]] bool operand1_is_immediate() const noexcept;
-        [[nodiscard]] bool operand2_is_immediate() const noexcept;
-        [[nodiscard]] bool operand1_is_used() const noexcept;
-        [[nodiscard]] bool operand2_is_used() const noexcept;
-        [[nodiscard]] bool op1_is_reg() const noexcept;
-        [[nodiscard]] bool op2_is_reg() const noexcept;
-
-        /// @brief Pack a 16-bit value into operand1 (low byte) and operand2 (high byte).
-        void set_lo_hi(const u16 value) noexcept {
-            operand1 = static_cast<u8>(value & 0xFF);
-            operand2 = static_cast<u8>((value >> 8) & 0xFF);
-        }
-
-        [[nodiscard]] const char *opcode_to_string() const noexcept;
-        [[nodiscard]] std::string to_string() const { return opcode_to_string(); }
-    };
-
-    template <u8 padding>
-    [[nodiscard]] const char *UP_Instruction<padding>::opcode_to_string() const noexcept {
-        return opcode_mnemonic(opcode);
-    }
-
-    [[nodiscard]] inline const char *UP_Instruction<0>::opcode_to_string() const noexcept {
-        return opcode_mnemonic(opcode);
-    }
-
-    /// @brief Return true if the opcode writes to memory through a pointer.
-    [[nodiscard]] static constexpr bool is_store_opcode(const Opcode op) noexcept {
-        return op == Opcode::StoreI8 || op == Opcode::StoreU8 || op == Opcode::StoreI16 ||
-               op == Opcode::StoreU16 || op == Opcode::StoreI32 || op == Opcode::StoreU32 ||
-               op == Opcode::StoreI64 || op == Opcode::StoreU64 || op == Opcode::StoreFloat ||
-               op == Opcode::StorePointer || op == Opcode::StoreArray;
-    }
-
-    // ---------------------------------------------------------------------------
-    // UP_Instruction<padding> — out-of-line member definitions
-    // ---------------------------------------------------------------------------
-
-    template <u8 padding>
-    [[nodiscard]] bool UP_Instruction<padding>::destination_is_immediate() const noexcept {
-        return false;
-    }
-
-    template <u8 padding>
-    [[nodiscard]] bool UP_Instruction<padding>::operand1_is_immediate() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_imm(info->b_type);
-    }
-
-    template <u8 padding>
-    [[nodiscard]] bool UP_Instruction<padding>::operand2_is_immediate() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_imm(info->c_type);
-    }
-
-    template <u8 padding>
-    [[nodiscard]] bool UP_Instruction<padding>::operand1_is_used() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_used(info->b_type);
-    }
-
-    template <u8 padding>
-    [[nodiscard]] bool UP_Instruction<padding>::operand2_is_used() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_used(info->c_type);
-    }
-
-    template <u8 padding> [[nodiscard]] bool UP_Instruction<padding>::op1_is_reg() const noexcept {
-        return operand1_is_used() && !operand1_is_immediate() && a < ARG_REGISTERS_OFFSET;
-    }
-
-    template <u8 padding> [[nodiscard]] bool UP_Instruction<padding>::op2_is_reg() const noexcept {
-        return operand2_is_used() && !operand2_is_immediate() && operand2 < ARG_REGISTERS_OFFSET;
-    }
-
-    // ---------------------------------------------------------------------------
-    // UP_Instruction<0> — out-of-line member definitions
-    // ---------------------------------------------------------------------------
-
-    [[nodiscard]] inline bool UP_Instruction<0>::destination_is_immediate() const noexcept {
-        return false;
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::operand1_is_immediate() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_imm(info->b_type);
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::operand2_is_immediate() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_imm(info->c_type);
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::operand1_is_used() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_used(info->b_type);
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::operand2_is_used() const noexcept {
-        const auto *info = get_instruction_info(opcode);
-        return info && info->is_used(info->c_type);
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::op1_is_reg() const noexcept {
-        return operand1_is_used() && !operand1_is_immediate() && operand1 < ARG_REGISTERS_OFFSET;
-    }
-
-    [[nodiscard]] inline bool UP_Instruction<0>::op2_is_reg() const noexcept {
-        return operand2_is_used() && !operand2_is_immediate() && operand2 < ARG_REGISTERS_OFFSET;
-    }
-
-    // ---------------------------------------------------------------------------
-    // Aliases and helpers
-    // ---------------------------------------------------------------------------
-    /*
-     * ## Что означают эти сокращения
-     *
-     * | Код     | Игра                           | Год  | Платформа   | Формат инструкций |
-     * |---------|--------------------------------|------|-------------|----------------------------|
-     * | **UC1** | Uncharted: Drake's Fortune     | 2007 | PS3         | **другой** формат (не DC?)
-     * | | **UC2** | Uncharted 2: Among Thieves     | 2009 | PS3         | **ввелись StateScript'ы**
-     * | | **UC3** | Uncharted 3: Drake's Deception | 2011 | PS3         | близок к UC2 | | **UC4**
-     * | Uncharted 4: A Thief's End     | 2016 | PS4         | **4-байтовые**             | |
-     * **T1X** | Uncharted: The Lost Legacy     | 2017 | PS4         | **4-байтовые**             |
-     * | **T2R** | The Last of Us Part II         | 2020 | PS4/PS5/ PC | **4-байтовые** |
-     *
-     * **Все три** (`UC4`, `T1X`, `T2R`) — **4-байтовые** инструкции. Это **единый формат**
-     * DC-файлов, введённый в UC4 и используемый дальше.
-     *
-     * **`LogInstruction`** (8 байт) — **не используется** в реальных играх. Это **артефакт** нашего
-     * кода: кто-то (или я) определил его как «T2R/T1X format», но это **неверно**.
-     */
-    using LongInstruction = UP_Instruction<4>; ///< 8-byte instruction (unused in practice)
-    using ShortInstruction =
-        UP_Instruction<0>;                ///< 4-byte instruction (canonical UC4/T1X/T2R format)
-    using Instruction = ShortInstruction; ///< alias: canonical 4-byte instruction
-
-    static_assert(sizeof(ShortInstruction) == 4, "ShortInstruction must be 4 bytes");
-    static_assert(sizeof(LongInstruction) == 8, "LogInstruction must be 8 bytes");
-    static_assert(sizeof(Instruction) == 4, "Instruction must be 4 bytes");
-
-    /// @brief Expand a compact 4-byte instruction into the 8-byte form.
-    [[nodiscard]] static constexpr LongInstruction
-    from_short(const ShortInstruction &short_ins) noexcept {
-        LongInstruction ins{};
-        ins.opcode = short_ins.opcode;
-        ins.destination = short_ins.destination;
-        ins.operand1 = short_ins.operand1;
-        ins.operand2 = short_ins.operand2;
-        return ins;
-    }
-
-    template <u8 padding>
-    inline std::ostream &operator<<(std::ostream &os, const UP_Instruction<padding> &ins) noexcept {
-        os << ins.opcode_to_string() << " " << static_cast<unsigned>(ins.destination) << " "
-           << static_cast<unsigned>(ins.operand1) << " " << static_cast<unsigned>(ins.operand2);
-        return os;
-    }
-
-    // ---------------------------------------------------------------------------
-    // Disassembled line
-    // ---------------------------------------------------------------------------
-
-    using istr_line = u16;
-
-    /// @brief One decoded instruction line inside a disassembled function.
-    struct function_disassembly_line {
-        Instruction        m_instruction;             ///< decoded instruction (4 bytes)
-        istr_line          m_location;                ///< instruction index within the function
-        std::string        m_text;                    ///< formatted disassembly text
-        const Instruction *m_globalPointer = nullptr; ///< start of the function's instruction array
-        std::string        m_comment;                 ///< formatted comment (side info)
-        u16  m_target = std::numeric_limits<u16>::max(); ///< branch target index (max == no target)
-        bool m_isArgMove = false;                        ///< true if this is an argument move
-
-        function_disassembly_line() noexcept = default;
-
-        function_disassembly_line(u64 idx, const Instruction *ptr) noexcept
-            : m_instruction(ptr[idx]), m_location(idx), m_globalPointer(ptr) {}
-    };
-
-    // ---------------------------------------------------------------------------
-    // Instruction factory
-    // ---------------------------------------------------------------------------
-
-    /// @brief Convenience constructors for Instruction values.
-    class InstructionFactory {
-    public:
-        /// @brief Three-register instruction (dest, op1, op2).
-        [[nodiscard]] static constexpr Instruction abc(Opcode op, u8 a, u8 b, u8 c) noexcept {
-            Instruction ins{};
-            ins.opcode = op;
-            ins.destination = a;
-            ins.operand1 = b;
-            ins.operand2 = c;
-            return ins;
-        }
-
-        /// @brief Two-register instruction (dest, op1); operand2 = 0.
-        [[nodiscard]] static constexpr Instruction ab(Opcode op, u8 a, u8 b) noexcept {
-            return abc(op, a, b, 0);
-        }
-
-        /// @brief One-register instruction (dest).
-        [[nodiscard]] static constexpr Instruction a(Opcode op, u8 a) noexcept {
-            return abc(op, a, 0, 0);
-        }
-
-        /// @brief Instruction with a 16-bit immediate (imm16) in operand1/operand2.
-        [[nodiscard]] static constexpr Instruction imm(Opcode op, u8 a, u16 imm) noexcept {
-            Instruction ins{};
-            ins.opcode = op;
-            ins.destination = a;
-            ins.set_lo_hi(imm);
-            return ins;
-        }
-
-        /// @brief Branch instruction with a 16-bit target instruction index.
-        [[nodiscard]] static constexpr Instruction branch(Opcode op, u16 target) noexcept {
-            Instruction ins{};
-            ins.opcode = op;
-            ins.set_lo_hi(target);
-            return ins;
-        }
-
-        /// @brief Lookup instruction with a 16-bit symbol-table index.
-        [[nodiscard]] static constexpr Instruction lookup(Opcode op, u8 dst,
-                                                          u16 sym_offset) noexcept {
-            Instruction ins{};
-            ins.opcode = op;
-            ins.destination = dst;
-            ins.set_lo_hi(sym_offset);
-            return ins;
-        }
-    };
-
-    // ---------------------------------------------------------------------------
-    // Instruction metadata table
-    // ---------------------------------------------------------------------------
-
-    // IMPORTANT: this table MUST be in the same order as `enum class Opcode`,
-    // because `get_instruction_info` uses binary search over `opcode`.
     static const InstructionInfo INSTRUCTION_INFO[] = {
         {Opcode::Return, "Return", OperandType::REG, OperandType::NONE, OperandType::NONE,
          StaticType::NONE},
@@ -705,12 +534,9 @@ namespace carbon {
          StaticType::NONE},
     };
 
-    /// @brief Look up instruction metadata by opcode.
-    /// @details INSTRUCTION_INFO is in the same order as `enum class Opcode`,
-    ///          so this is a direct indexed lookup.
     [[nodiscard]] inline const InstructionInfo *get_instruction_info(Opcode op) {
         const auto idx = static_cast<size_t>(op);
-        if (idx >= std::size(INSTRUCTION_INFO)) { return nullptr; }
+        if (idx >= std::size(INSTRUCTION_INFO)) return nullptr;
         return &INSTRUCTION_INFO[idx];
     }
 

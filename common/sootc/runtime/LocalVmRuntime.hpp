@@ -1,37 +1,38 @@
-// sootc/runtime/LocalVmRuntime.hpp
 #pragma once
 
+#include "carbon/Carbon.hpp"
 #include "sootc/runtime/Runtime.hpp"
-
-#include "carbon/vm/VirtualMachine.hpp"
 
 namespace sootc {
 
-    /// @brief In-process Carbon VM as a Runtime.
+    /// @brief Runtime backend that executes code in-process, via a
+    ///        long-lived Carbon instance owned by this object.
     ///
-    /// @details Wraps `carbon::VirtualMachine` and `carbon::Globals`.
-    ///          This is exactly the logic that used to live inline in
-    ///          `Compiler::compile_and_report` and the old `:run`
-    ///          REPL command, extracted into a Runtime so that the
-    ///          rest of sootc does not need to care where code is
-    ///          executed.
+    /// Unlike the old implementation, which talked directly to
+    /// carbon::Globals::inst() and a bare VirtualMachine, this class
+    /// owns a full Carbon context. That means:
     ///
-    ///          Loaded modules are registered in `carbon::Globals`. The
-    ///          VM is reused across calls, but its frame-lifetime
-    ///          allocators are purged after each call, matching the
-    ///          existing `vm.purge()` behaviour.
+    ///   - module load/unload goes through Carbon::load_module /
+    ///     unload_module, so SsTypes are registered in the GC and
+    ///     symbols live in Carbon's Globals, not in a process-wide
+    ///     singleton;
+    ///
+    ///   - each LocalVmRuntime is isolated: two of them do not share
+    ///     a symbol table, a heap, or a process list. This is what
+    ///     makes unit tests safe.
     class LocalVmRuntime : public Runtime {
-        carbon::VirtualMachine m_vm;
-
     public:
-        LocalVmRuntime() = default;
+        LocalVmRuntime();
+        ~LocalVmRuntime() override;
 
-        bool load_module(carbon::BinaryFile &&file) override;
+        [[nodiscard]] std::string name() const override { return "local-vm"; }
 
+        bool          load_module(carbon::BinaryFile &&file) override;
         RuntimeResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override;
 
-        std::string name() const override { return "local-vm"; }
+    private:
+        carbon::Carbon m_carbon;
     };
 
 } // namespace sootc

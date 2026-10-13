@@ -43,7 +43,7 @@ public:
         // ---- Determine whether this is a float or int operation ----
         //
         // The result type follows the FIRST operand's type — mirrors the
-        // principle of least surprise and matches how GOAL dispatches.
+        // principle of least surprise and matches how SOOT dispatches.
         // If the first operand is unknown, fall back to int.
         Type      *left_type = m_left->get_type();
         const bool is_float = (left_type && left_type->get_name() == "float");

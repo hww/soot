@@ -1,11 +1,13 @@
 ﻿#include "carbon/vm/VirtualMachine.hpp"
 #include "carbon/file/Export.hpp"
 #include "carbon/vm/StackFrame.hpp"
+#include "carbon/file/DCScript.hpp"
+#include "carbon/file/Globals.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/Carbon.hpp"
+
 #include "util/Log.hpp"
-#include "file/DCScript.hpp"
-#include "file/Globals.hpp"
-#include "lib/StringId.hpp"
-#include "lib/Variant.hpp"
 
 using namespace carbon;
 using namespace carbon;
@@ -127,8 +129,8 @@ namespace carbon {
             return Variant();
         }
 
-        auto current_frame = create_stack_frame(script_lambda->get_code_ptr(),
-                                                script_lambda->get_symbols_ptr(), nullptr);
+        auto current_frame = std::make_shared<StackFrame>(script_lambda, nullptr);
+
         return execute(current_frame, mode);
     }
 
@@ -138,9 +140,7 @@ namespace carbon {
             lg::error("Cannot execute null FunctionDesc");
             return Variant();
         }
-
-        auto current_frame = create_stack_frame(script_lambda->get_code_ptr(),
-                                                script_lambda->get_symbols_ptr(), nullptr);
+        auto current_frame = std::make_shared < StackFrame>(script_lambda, nullptr);
 
         // ---- Install arguments into r24, r25, ... ----
         //
@@ -170,7 +170,7 @@ namespace carbon {
 
             Instruction instr = current_frame->get_next_instruction();
 
-            if (enable_debug_log) {
+            if (true || enable_debug_log) {
                 std::string logstring;
                 for (int i = 0; i < current_frame->get_registers_count(); i++) {
                     logstring +=
@@ -223,7 +223,7 @@ namespace carbon {
                         func_ptr = func_var.get_ptr();
                     } else if (func_var.is_int()) {
                         StringId sid = func_var.get_sid();
-                        func_ptr = Globals::inst().find_symbol_ptr(sid);
+                        func_ptr = carbon->globals()->find_symbol_ptr(sid);
 
                         if (!func_ptr) {
                             lg::error("Call: function '{}' (SID 0x{:016X}) "
@@ -250,8 +250,7 @@ namespace carbon {
 
                     ScriptLambda *target_code = reinterpret_cast<ScriptLambda *>(func_ptr);
 
-                    auto new_frame = create_stack_frame(
-                        target_code->get_code_ptr(), target_code->get_symbols_ptr(), current_frame);
+                    auto new_frame = std::make_shared <StackFrame>(target_code, current_frame);
 
                     new_frame->ret_num = instr.a;
                     new_frame->argc = instr.c;
@@ -305,19 +304,19 @@ namespace carbon {
                 }
 
                 case Opcode::Branch: {
-                    current_frame->pc = instr.imm16;
+                    current_frame->pc = instr.imm16();
                     break;
                 }
 
                 case Opcode::BranchIf: {
                     Variant &condition = current_frame->get_register(instr.a);
-                    if (condition.to_bool()) { current_frame->pc = instr.imm16; }
+                    if (condition.to_bool()) { current_frame->pc = instr.imm16(); }
                     break;
                 }
 
                 case Opcode::BranchIfNot: {
                     Variant &condition = current_frame->get_register(instr.a);
-                    if (!condition.to_bool()) { current_frame->pc = instr.imm16; }
+                    if (!condition.to_bool()) { current_frame->pc = instr.imm16(); }
                     break;
                 }
 
@@ -409,8 +408,8 @@ namespace carbon {
                 // Integer Immediate Instructions (0x2*)
                 // ============================================================
                 case Opcode::LoadU16Imm: {
-                    Variant &dest = current_frame->get_register(instr.a_imm);
-                    dest = Variant(instr.imm16);
+                    Variant &dest = current_frame->get_register(instr.a);
+                    dest = Variant(instr.imm16());
                     break;
                 }
 

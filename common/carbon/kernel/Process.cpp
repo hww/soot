@@ -1,15 +1,17 @@
 ﻿#include "carbon/kernel/Process.hpp"
 #include "carbon/kernel/StateFrame.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
+#include "carbon/file/DCScript.hpp"
+#include "carbon/Carbon.hpp"
+#include "carbon/file/Export.hpp"
+#include "carbon/kernel/EventMessage.hpp"
+#include "carbon/lib/StringId.hpp"
+#include "carbon/lib/Variant.hpp"
+#include "carbon/vm/StackFrame.hpp"
+
 #include "util/Assert.hpp"
 #include "util/Log.hpp"
-#include "carbon/file/Export.hpp"
-#include "file/DCScript.hpp"
-#include "kernel/EventMessage.hpp"
-#include "kernel/Kernel.hpp"
-#include "lib/StringId.hpp"
-#include "lib/Variant.hpp"
-#include "vm/StackFrame.hpp"
+
 #include <format>
 #include <memory>
 
@@ -116,7 +118,7 @@ namespace carbon {
             return false;
         }
 
-        auto &vm = Kernel::instance().virtual_machine();
+        auto &vm = *Carbon::current()->vm();
 
         // Если уже есть текущее состояние, нужно выйти из него
         if (current_state) {
@@ -135,7 +137,7 @@ namespace carbon {
         // Устанавливаем новое состояние
         current_state = new_state;
         
-        // Копируем делегаты из SsState в процесс (как в GOAL)
+        // Копируем делегаты из SsState в процесс (как в SOOT)
         trans_hook = new_state->get_trans_function();
         post_hook = new_state->get_post_function();
         
@@ -237,7 +239,7 @@ namespace carbon {
         if (handler == nullptr) return false;
 
         auto saved_top_thread = top_thread;
-        auto& vm = Kernel::instance().virtual_machine();
+        auto &vm = *Carbon::current()->vm();
 
         auto event_frame = std::make_shared<StackFrame>(
             handler,
@@ -358,7 +360,7 @@ namespace carbon {
             return false;
         }
 
-        auto& vm = Kernel::instance().virtual_machine();
+        auto &vm = *Carbon::current()->vm();
 
         if (has_pending_transition()) {
             if (!execute_deferred_transition(next_state)) {
@@ -436,12 +438,12 @@ namespace carbon {
             push_frame(current_state_frame);
             
             // Выполняем enter-обработчик
-            auto& vm = Kernel::instance().virtual_machine();
+            auto &vm = *Carbon::current()->vm();
             execute_enter_handler(vm, current_state->get_enter_function());
         }
 
         // Обновляем обработчики
-        auto& vm = Kernel::instance().virtual_machine();
+        auto &vm = *Carbon::current()->vm();
         update_state_hooks(vm);
 
         lg::debug("Process '{}': activated with state '{}'",
@@ -584,7 +586,7 @@ namespace carbon {
         // Выполняем enter обработчик немедленно
         auto enter = new_state->get_enter_function();
         if (enter) {
-            auto& vm = Kernel::instance().virtual_machine();
+            auto &vm = *Carbon::current()->vm();
             execute_enter_handler(vm, enter);
         }
         
@@ -597,7 +599,7 @@ namespace carbon {
     }
 
     bool Process::execute_deferred_transition(SsState* new_state) {
-        auto& vm = Kernel::instance().virtual_machine();
+        auto &vm = *Carbon::current()->vm();
         
         // Удаляем текущий StateFrame (вызовет exit-обработчик)
         if (current_state_frame) {

@@ -1,30 +1,85 @@
-﻿#include <gtest/gtest.h>
+﻿#include "carbon/Export.hpp"
+
 #include "util/Log.hpp"
+
 #include <chrono>
 #include <vector>
+#include <chrono>
+#include <vector>
+#include <gtest/gtest.h>
 
-#include "carbon/Export.hpp"
 
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
 using namespace carbon;
 
 
 class NativeFunctionsTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        NativeFunctionRegistry::get_instance().initialize_builtins();
-    }
+    static void SetUpTestSuite() { gc::initialize(1, 16); }
+    static void TearDownTestSuite() { gc::shutdown(); }
 
-    void TearDown() override {
-        // Очищаем реестр между тестами
-        // Можно добавить метод clear() в реестр если нужно
+    void SetUp() override {
+        auto &reg = NativeFunctionRegistry::get_instance();
+        reg.clear();
+
+        reg.register_function("print",
+                              [](u32, const Variant *) -> Variant { return Variant(true); });
+
+        reg.register_function("println",
+                              [](u32, const Variant *) -> Variant { return Variant(true); });
+
+        reg.register_function("add", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 2) return Variant(0);
+            if (argv[0].is_float() || argv[1].is_float())
+                return Variant(argv[0].to_float() + argv[1].to_float());
+            return Variant(argv[0].to_int() + argv[1].to_int());
+        });
+
+        reg.register_function("sub", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 2) return Variant(0);
+            return Variant(argv[0].to_int() - argv[1].to_int());
+        });
+
+        reg.register_function("mul", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 2) return Variant(0);
+            return Variant(argv[0].to_int() * argv[1].to_int());
+        });
+
+        reg.register_function("div", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 2) return Variant(0);
+            if (argv[0].is_float() || argv[1].is_float()) {
+                f32 d = argv[1].to_float();
+                if (d == 0.0f) return Variant(0.0f);
+                return Variant(argv[0].to_float() / d);
+            }
+            i64 d = argv[1].to_int();
+            if (d == 0) return Variant(0);
+            return Variant(argv[0].to_int() / d);
+        });
+
+        reg.register_function("abs", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 1) return Variant(0);
+            if (argv[0].is_float()) return Variant(std::fabs(argv[0].to_float()));
+            return Variant(std::abs(argv[0].to_int()));
+        });
+
+        reg.register_function("sqrt", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 1) return Variant(0.0f);
+            f32 v = argv[0].to_float();
+            if (v < 0) return Variant(0.0f);
+            return Variant(std::sqrt(v));
+        });
+
+        reg.register_function("to_int", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 1) return Variant(0);
+            return Variant(argv[0].to_int());
+        });
+
+        reg.register_function("to_float", [](u32 argc, const Variant *argv) -> Variant {
+            if (argc < 1) return Variant(0.0f);
+            return Variant(argv[0].to_float());
+        });
     }
 };
-
 // ============================================================================
 // Basic Functionality Tests
 // ============================================================================

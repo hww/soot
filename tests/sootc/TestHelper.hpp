@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "carbon/Carbon.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "sootc/compiler/Compiler.hpp"
@@ -33,25 +34,29 @@ namespace sootc::testing {
     ///   * clearing the constant pool and the session forms, which
     ///     live on the Compiler instance and are cheap to reset;
     ///   * re-registering only the builtin types, which is cheap
-    ///     compared to re-running the full prelude;
-    ///   * NOT clearing Globals between tests, because Globals is
-    ///     the target of the prelude's load_module and tearing it
-    ///     down would invalidate the prelude's entries.
+    ///     compared to re-running the full prelude.
     ///
-    /// If a test genuinely needs a pristine Compiler, it can call
-    /// Compiler::reload_environment() or create its own instance.
+    /// A shared Carbon context is created once per test binary and
+    /// used for every load_module / execute_function call. It is NOT
+    /// torn down between tests, because the prelude's modules live
+    /// inside it and dropping it would invalidate the prelude.
     class SootcTest : public ::testing::Test {
     protected:
-        /// @brief Runs once per test binary, before any test in this fixture.
-        /// @details Quietens the loggers so the test report is readable,
-        ///          and constructs the shared Compiler. The Compiler's
-        ///          constructor runs the SOOT and SOOTC preludes exactly
-        ///          once for the entire test binary.
         static void SetUpTestSuite() {
             // Suppress info-level chatter during tests. Warnings and
             // errors are still shown so real problems surface.
             lg::set_stdout_level(lg::level::warn);
             lg::set_file_level(lg::level::warn);
+
+            // Bring up the shared Carbon context first, so that any
+            // code in the Compiler's constructor that reaches for
+            // Carbon::current() finds a valid context.
+            carbon::CarbonConfig carbon_cfg;
+            carbon_cfg.register_builtin_types = true;
+            s_carbon = std::make_unique<carbon::Carbon>();
+            if (!s_carbon->initialize(carbon_cfg)) {
+                throw std::runtime_error("SootcTest: failed to initialize Carbon");
+            }
 
             // Construct the shared Compiler. This is where lib.sot and
             // lib.soc are loaded — once for the whole test binary.
@@ -63,39 +68,25 @@ namespace sootc::testing {
             s_compiler = std::make_unique<Compiler>(options, std::nullopt, "#f", nullptr);
         }
 
-        /// @brief Runs once per test binary, after all tests in this fixture.
-        static void TearDownTestSuite() { s_compiler.reset(); }
+        static void TearDownTestSuite() {
+            s_compiler.reset();
+            if (s_carbon) {
+                s_carbon->shutdown();
+                s_carbon.reset();
+            }
+        }
 
-        /// @brief Runs before every test in the fixture.
-        /// @details Resets the per-test state that could leak between
-        ///          tests, without tearing down the shared Compiler.
-        ///          Specifically:
-        ///            * the TypeSystem's user-registered types are
-        ///              dropped, so that each test starts with only
-        ///              builtin types;
-        ///            * the Compiler's constant pool and session
-        ///              forms are cleared.
-        ///
-        ///          Globals is intentionally left alone: it is the
-        ///          target of the prelude's load_module and holds
-        ///          live pointers into the prelude's buffer. Clearing
-        ///          it here would break the prelude for every
-        ///          subsequent test.
         void SetUp() override {
             // Reset user-registered types. Builtin types are re-added
             // by the Compiler instance and remain valid.
             TypeSystem::instance().clear();
             TypeSystem::instance().add_builtin_types();
 
-            // The Compiler itself keeps per-session state (constants,
-            // session forms). It is exposed via compiler() so tests
-            // could reset it if needed; for now, we do not touch it,
-            // because the shared instance is the point of this fixture.
+            // Carbon and Compiler deliberately survive between tests:
+            // the prelude's modules live inside them.
         }
 
-        void TearDown() override {
-            // Nothing to do here: the shared Compiler lives on.
-        }
+        void TearDown() override {}
 
         /// @brief Compile a source string as if it were typed at the REPL.
         /// @details Returns nullptr on error; the error message is stored
@@ -123,41 +114,44 @@ namespace sootc::testing {
 
         /// @brief Compile the source, then run the named function in the VM.
         /// @details `source` must define the function. The function is
-        ///          looked up by SID in Globals, which is populated from
-        ///          the BinaryFile produced by compile().
+        ///          looked up by SID in the shared Carbon context.
         RunResult run(const std::string &source, const std::string &function_name) {
             RunResult out;
 
             auto file = compile(source, &out.error);
             if (!file) return out;
 
-            if (!carbon::Globals::inst().load_module(std::move(*file))) {
-                out.error = "failed to load module into Globals";
+            // Load the compiled module into the shared Carbon context
+            // under a unique logical name so that repeated runs of the
+            // same test do not collide. The name is derived from the
+            // test name plus a monotonic counter.
+            const std::string logical = "<test>/" + std::to_string(s_module_counter++);
+
+            if (!s_carbon->load_module_from_binary(logical, std::move(*file))) {
+                out.error = "failed to load module into Carbon";
                 return out;
             }
 
-            auto &globals = carbon::Globals::inst();
-            void *fn_ptr = globals.find_symbol_ptr(carbon::StringId(function_name));
+            void *fn_ptr = s_carbon->globals()->find_symbol_ptr(carbon::StringId(function_name));
             if (!fn_ptr) {
                 out.error = "function '" + function_name + "' not found in Globals";
                 return out;
             }
 
-            auto                  *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
-            carbon::VirtualMachine vm;
-            out.value = vm.execute_function(lambda, carbon::RunMode::Run);
+            auto *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
+            auto *vm = s_carbon->vm();
+            out.value = vm->execute_function(lambda, carbon::RunMode::Run);
             out.ok = true;
             return out;
         }
 
-        Compiler &compiler() { return *s_compiler; }
+        Compiler       &compiler() { return *s_compiler; }
+        carbon::Carbon &carbon_context() { return *s_carbon; }
 
     private:
-        /// @brief Shared Compiler instance, constructed once per test binary.
-        /// @details Declared inline static so that every test in this
-        ///          fixture sees the same instance without needing a
-        ///          separate definition file.
-        inline static std::unique_ptr<Compiler> s_compiler;
+        inline static std::unique_ptr<Compiler>       s_compiler;
+        inline static std::unique_ptr<carbon::Carbon> s_carbon;
+        inline static std::size_t                     s_module_counter = 0;
     };
 
 } // namespace sootc::testing

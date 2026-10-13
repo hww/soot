@@ -88,7 +88,7 @@ namespace sootc {
             // ---- Soot literals: #t / #f ----
             //
             // The reader parses `#t` and `#f` as ordinary symbols, but
-            // semantically they are boolean constants. GOAL's VM treats any
+            // semantically they are boolean constants. SOOT's VM treats any
             // non-zero int as true, so we map them to 1 and 0.
             const std::string name = form.as_symbol();
             if (name == "#t") return ConstNode::make_int(1);
@@ -287,7 +287,7 @@ namespace sootc {
 
         // Register the constant in the compiler's constant pool.
         //
-        // Mirrors GOAL's compile_defconstant:
+        // Mirrors SOOT's compile_defconstant:
         //   m_global_constants.set(sym, value);
         m_compiler->define_constant(name_form.to_std_string(), value);
         lg::info("Registered constant: {} = {}", name_form.to_std_string(), value.print());
@@ -1208,7 +1208,7 @@ namespace sootc {
                 .got("no arguments");
         }
 
-        // Mirrors GOAL's Compiler::compile_seval.
+        // Mirrors SOOT's Compiler::compile_seval.
         auto &soot = m_compiler->get_soot_interpreter();
         auto  env = soot.get_global_environment();
 
@@ -1450,14 +1450,14 @@ namespace sootc {
         auto type_form = after_name.as_pair()->car;
 
         // ---- Two forms of type spec: ----
-        //   1. (function arg1-type arg2-type ... return-type)   — GOAL-style
+        //   1. (function arg1-type arg2-type ... return-type)   — SOOT-style
         //   2. (arg-name type) (arg-name type) ...              — verbose-style
         TypeSpec sig;
 
         if (type_form.is_pair() && type_form.as_pair()->car.is_symbol() &&
             type_form.as_pair()->car.as_symbol() == "function") {
             // ---- Form 1: (function ...) ----
-            // Parse via parse_typespec — same as define-extern in GOAL.
+            // Parse via parse_typespec — same as define-extern in SOOT.
             try {
                 sig = m_compiler->parse_typespec(type_form);
             } catch (const std::exception &e) {

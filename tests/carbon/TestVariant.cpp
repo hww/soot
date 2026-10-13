@@ -1,14 +1,17 @@
 ﻿#include "gtest/gtest.h"
 
 #include "carbon/Export.hpp"
+#include "carbon/gc/GC.hpp"
 
 using namespace carbon;
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
-using namespace carbon;
 
-TEST(Variant, Construction) {
+class VariantTest : public ::testing::Test {
+protected:
+    static void SetUpTestSuite() { gc::initialize(1, 16); }
+    static void TearDownTestSuite() { gc::shutdown(); }
+};
+
+TEST_F(VariantTest, Construction) {
     Variant nil;
     EXPECT_TRUE(nil.is_null());
 
@@ -25,14 +28,14 @@ TEST(Variant, Construction) {
     EXPECT_TRUE(bool_val.get_bool());
 }
 
-TEST(Variant, StringOperations) {
+TEST_F(VariantTest, StringOperations) {
     Variant str_val("hello");
-    EXPECT_TRUE(str_val.is_ptr());
+    EXPECT_TRUE(str_val.is_string());
     EXPECT_EQ(str_val.get_string(), "hello");
     EXPECT_EQ(str_val.to_string(), "hello");
 }
 
-TEST(Variant, Assignment) {
+TEST_F(VariantTest, Assignment) {
     Variant var;
     var.set_i32(100);
     EXPECT_EQ(var.get_i32(), 100);
@@ -44,7 +47,7 @@ TEST(Variant, Assignment) {
     EXPECT_EQ(var.get_string(), "test");
 }
 
-TEST(Variant, Comparison) {
+TEST_F(VariantTest, Comparison) {
     Variant a(10);
     Variant b(10);
     Variant c(20);
@@ -53,7 +56,7 @@ TEST(Variant, Comparison) {
     EXPECT_NE(a, c);
 }
 
-TEST(Variant, Conversion) {
+TEST_F(VariantTest, Conversion) {
     Variant i32_val(42);
     EXPECT_EQ(i32_val.get_i32(), 42);
     EXPECT_FLOAT_EQ(i32_val.to_float(), 42.0f);

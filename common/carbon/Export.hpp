@@ -6,5 +6,6 @@
 #include "carbon/vm/Export.hpp"
 // The kernel
 #include "carbon/kernel/Export.hpp"
+#include "carbon/gc/GC.hpp"
 
 

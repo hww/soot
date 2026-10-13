@@ -122,6 +122,8 @@ namespace carbon {
         }
         void initialize_builtins();
         int function_count() { return functions_.size(); }
+        void clear() { functions_.clear(); }
+
     private:
         NativeFunctionRegistry() = default;
         std::map<StringId, NativeFunction> functions_;

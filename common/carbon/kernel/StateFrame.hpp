@@ -13,7 +13,7 @@ namespace carbon {
  * Наследует от ProtectFrame для гарантированного вызова exit-обработчика
  * при разрушении фрейма (например, при выходе из состояния через throw или return).
  * 
- * В GOAL StateFrame копирует все обработчики состояния, но использует только exit.
+ * В SOOT StateFrame копирует все обработчики состояния, но использует только exit.
  * Остальные обработчики (enter, trans, update, post, event) вызываются Process/StateMachine
  * напрямую из StateDesc. Копирование сделано для быстрого доступа, но фактически не используется.
  */
@@ -116,7 +116,7 @@ private:
     // Данные
     // ============================================================================
     
-    // Копии обработчиков из StateDesc (как в GOAL)
+    // Копии обработчиков из StateDesc (как в SOOT)
     ScriptLambda* enter_function_ = nullptr;
     ScriptLambda* trans_function_ = nullptr;
     ScriptLambda* code_function_ = nullptr;

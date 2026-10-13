@@ -58,7 +58,7 @@ namespace sootc {
         // `get_my_new_method` returns true only when `(defmethod new <type>
         // ...)` was declared *for this type*, not for an ancestor. A type
         // without its own `new` simply produces a zeroed instance, which is
-        // the correct behaviour for GOAL-style types.
+        // the correct behaviour for SOOT-style types.
         // =====================================================================
         bool has_ctor = false;
         if (Type *t = TypeSystem::instance().lookup_type_no_throw(type_name)) {

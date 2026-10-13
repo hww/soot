@@ -23,7 +23,7 @@ StateFrame::StateFrame(SsState* state_desc, std::shared_ptr<StackFrame> parent)
         name = state_desc->state_id();
         frame_type = FrameType::STATE;
         
-        // Копируем обработчики из StateDesc (как в GOAL)
+        // Копируем обработчики из StateDesc (как в SOOT)
         enter_function_ = state_desc->get_enter_function();
         trans_function_ = state_desc->get_trans_function();
         code_function_ = state_desc->get_code_function();

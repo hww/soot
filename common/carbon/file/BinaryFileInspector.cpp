@@ -338,7 +338,7 @@ namespace carbon {
         switch (info->operands_count()) {
         case 1:
             if (info->a_type == OperandType::REG) {
-                return fmt::format(" {}", reg_name(ins.destination));
+                return fmt::format(" {}", reg_name(ins.a));
             }
             break;
 
@@ -346,18 +346,18 @@ namespace carbon {
             std::string result;
 
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" {}", reg_name(ins.destination));
+                result += fmt::format(" {}", reg_name(ins.a));
             } else if (info->a_type == OperandType::IMM_U16) {
-                result += fmt::format(" {}", ins.destination);
+                result += fmt::format(" {}", ins.a);
             }
 
             if (info->b_type == OperandType::REG) {
-                result += fmt::format(", {}", reg_name(ins.operand1));
+                result += fmt::format(", {}", reg_name(ins.b));
             } else if (info->b_type == OperandType::IMM_U16) {
-                u16 imm = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+                u16 imm = (static_cast<u16>(ins.c) << 8) | ins.b;
                 result += fmt::format(", {}", imm);
             } else if (info->b_type == OperandType::IMM_I16) {
-                i16 imm = static_cast<i16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
+                i16 imm = static_cast<i16>((static_cast<u16>(ins.c) << 8) | ins.b);
                 result += fmt::format(", {}", imm);
             }
 
@@ -366,19 +366,19 @@ namespace carbon {
 
         case 3:
             if (info->a_type == OperandType::REG) {
-                return fmt::format(" {}", reg_name(ins.destination));
+                return fmt::format(" {}", reg_name(ins.a));
             }
             if (info->b_type == OperandType::REG) {
-                return fmt::format(", {}", reg_name(ins.operand1));
+                return fmt::format(", {}", reg_name(ins.b));
             } else if (info->b_type == OperandType::IMM_U16) {
-                return fmt::format(", {}", ins.operand1);
+                return fmt::format(", {}", ins.b);
             }
             if (info->c_type == OperandType::REG) {
-                return fmt::format(", {}", reg_name(ins.operand2));
+                return fmt::format(", {}", reg_name(ins.c));
             } else if (info->c_type == OperandType::IMM_U8) {
-                return fmt::format(", {}", ins.operand2);
+                return fmt::format(", {}", ins.c);
             } else if (info->c_type == OperandType::IMM_I16) {
-                i16 imm = static_cast<i16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
+                i16 imm = static_cast<i16>((static_cast<u16>(ins.c) << 8) | ins.b);
                 return fmt::format(", {}", imm);
             }
             break;
@@ -387,14 +387,14 @@ namespace carbon {
         // Add comments for special instructions
         if (ins.opcode == Opcode::LookupPointer || ins.opcode == Opcode::LookupInt ||
             ins.opcode == Opcode::LookupFloat) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             return fmt::format("  ; = {}", resolve_symbol(idx, lambda));
         } else if (ins.opcode == Opcode::LoadStaticFloatImm) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             return fmt::format("  ; = {}", resolve_float(idx, lambda));
         } else if (ins.opcode == Opcode::BranchIfNot || ins.opcode == Opcode::BranchIf ||
                    ins.opcode == Opcode::Branch) {
-            u16 target = static_cast<u16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
+            u16 target = static_cast<u16>((static_cast<u16>(ins.c) << 8) | ins.b);
             return fmt::format("  ; => L_{:X}", target);
         }
 
@@ -1357,18 +1357,18 @@ namespace carbon {
 
             if (!info) {
                 m_formatter->print("{:04X}   {:08X}   {:02X} {:02X} {:02X}   <unknown>\n", i,
-                                   file_offset, static_cast<u8>(ins.opcode), ins.destination,
-                                   ins.operand1, ins.operand2);
+                                   file_offset, static_cast<u8>(ins.opcode), ins.a,
+                                   ins.b, ins.c);
                 continue;
             }
 
-            if (info->static_type != StaticType::NONE && ins.uim16 < lambda->m_numSymbols) {
-                symbol_types[ins.uim16] = info->static_type;
+            if (info->static_type != StaticType::NONE && ins.imm16() < lambda->m_numSymbols) {
+                symbol_types[ins.imm16()] = info->static_type;
             }
 
             m_formatter->print("{:04X}   {:08X}   {:02X} {:02X} {:02X} {:02X}  {}\n", i,
-                               file_offset, static_cast<u8>(ins.opcode), ins.destination,
-                               ins.operand1, ins.operand2, format_instruction(ins, info, lambda));
+                               file_offset, static_cast<u8>(ins.opcode), ins.a,
+                               ins.b, ins.c, format_instruction(ins, info, lambda));
         }
 
         const u32 num_syms = lambda->m_numSymbols;
@@ -1458,43 +1458,43 @@ namespace carbon {
         switch (info->operands_count()) {
         case 1:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
             break;
         case 2:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
             if (info->b_type == OperandType::REG) {
-                result += fmt::format(", r{}", ins.operand1);
+                result += fmt::format(", r{}", ins.b);
             } else if (info->b_type == OperandType::IMM_U16) {
-                u16 imm = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+                u16 imm = (static_cast<u16>(ins.c) << 8) | ins.b;
                 result += fmt::format(", {}", imm);
             }
             break;
         case 3:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
-            if (info->b_type == OperandType::REG) { result += fmt::format(", r{}", ins.operand1); }
+            if (info->b_type == OperandType::REG) { result += fmt::format(", r{}", ins.b); }
             if (info->c_type == OperandType::REG) {
-                result += fmt::format(", r{}", ins.operand2);
+                result += fmt::format(", r{}", ins.c);
             } else if (info->c_type == OperandType::IMM_U8) {
-                result += fmt::format(", {}", ins.operand2);
+                result += fmt::format(", {}", ins.c);
             }
             break;
         }
 
         if (ins.opcode == Opcode::LookupPointer || ins.opcode == Opcode::LookupInt ||
             ins.opcode == Opcode::LookupFloat) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             result += fmt::format("  ; = {}", resolve_symbol(idx, lambda));
         } else if (ins.opcode == Opcode::LoadStaticFloatImm) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             result += fmt::format("  ; = {}", resolve_float(idx, lambda));
         } else if (ins.opcode == Opcode::BranchIfNot || ins.opcode == Opcode::BranchIf ||
                    ins.opcode == Opcode::Branch) {
-            u16 target = static_cast<u16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
+            u16 target = static_cast<u16>((static_cast<u16>(ins.c) << 8) | ins.b);
             result += fmt::format("  ; => L_{:X}", target);
         }
 
@@ -1509,43 +1509,43 @@ namespace carbon {
         switch (info->operands_count()) {
         case 1:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
             break;
         case 2:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
             if (info->b_type == OperandType::REG) {
-                result += fmt::format(", r{}", ins.operand1);
+                result += fmt::format(", r{}", ins.b);
             } else if (info->b_type == OperandType::IMM_U16) {
-                u16 imm = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+                u16 imm = (static_cast<u16>(ins.c) << 8) | ins.b;
                 result += fmt::format(", {}", imm);
             }
             break;
         case 3:
             if (info->a_type == OperandType::REG) {
-                result += fmt::format(" r{}", ins.destination);
+                result += fmt::format(" r{}", ins.a);
             }
-            if (info->b_type == OperandType::REG) { result += fmt::format(", r{}", ins.operand1); }
+            if (info->b_type == OperandType::REG) { result += fmt::format(", r{}", ins.b); }
             if (info->c_type == OperandType::REG) {
-                result += fmt::format(", r{}", ins.operand2);
+                result += fmt::format(", r{}", ins.c);
             } else if (info->c_type == OperandType::IMM_U8) {
-                result += fmt::format(", {}", ins.operand2);
+                result += fmt::format(", {}", ins.c);
             }
             break;
         }
 
         if (ins.opcode == Opcode::LookupPointer || ins.opcode == Opcode::LookupInt ||
             ins.opcode == Opcode::LookupFloat) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             result += fmt::format("  ; = {}", resolve_symbol(idx, lambda));
         } else if (ins.opcode == Opcode::LoadStaticFloatImm) {
-            u16 idx = (static_cast<u16>(ins.operand2) << 8) | ins.operand1;
+            u16 idx = (static_cast<u16>(ins.c) << 8) | ins.b;
             result += fmt::format("  ; = {}", resolve_float(idx, lambda));
         } else if (ins.opcode == Opcode::BranchIfNot || ins.opcode == Opcode::BranchIf ||
                    ins.opcode == Opcode::Branch) {
-            u16 target = static_cast<u16>((static_cast<u16>(ins.operand2) << 8) | ins.operand1);
+            u16 target = static_cast<u16>((static_cast<u16>(ins.c) << 8) | ins.b);
             result += fmt::format("  ; => L_{:X}", target);
         }
 

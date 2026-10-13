@@ -24,6 +24,7 @@ namespace carbon {
     
     class VirtualMachine;
     struct StackFrame;
+    class Carbon;
 
     // ============================================================================
     // Native Function Interface
@@ -90,6 +91,7 @@ namespace carbon {
 
     class VirtualMachine {
     public:
+        Carbon* carbon;
         bool enable_debug_log;
         bool is_suspended;
         bool is_break;
@@ -98,13 +100,15 @@ namespace carbon {
         std::shared_ptr<StackFrame> current_frame;
         NativeAllocators            m_allocators;
 
-        VirtualMachine() {
+        VirtualMachine(Carbon *carbon) : carbon(carbon)
+        {
             enable_debug_log = true;
             is_suspended = false;
             is_break = false;
             is_error = false;
             break_reason = "";
             current_frame = nullptr; 
+            
             NativeFunctionRegistry::get_instance().initialize_builtins();
             // Register allocators before anything else can call them.
             m_allocators.initialize_builtins();
@@ -177,28 +181,8 @@ namespace carbon {
         // Internal Helpers
         // ------------------------------------------------------------------------
 
-        std::shared_ptr<StackFrame> create_root_frame() {
-            auto frame = std::make_shared<StackFrame>();
-            frame->pc = 0;
-            frame->ret_num = 0;
-            frame->argc = 0;
-            return frame;
-        }
 
-        std::shared_ptr<StackFrame> create_stack_frame(Instruction* code_ptr, u64* data_ptr, std::shared_ptr<StackFrame> parent) {
-            auto frame = std::make_shared<StackFrame>();
-            frame->parent = parent;
-            frame->code_ptr = code_ptr;
-            frame->data_ptr = data_ptr;
-            frame->pc = 0;
-            frame->ret_num = 0;
-            frame->argc = 0;
-            return frame;
-        }
 
-        void destroy_stack_frame(StackFrame* frame) {
-            delete frame;
-        }
     };
 
 } // namespace vm

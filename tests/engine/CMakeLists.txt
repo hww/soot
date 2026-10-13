@@ -18,7 +18,16 @@ add_executable(engine_test
 )
 
 # Линкуем с нашей библиотекой и gtest
-target_link_libraries(engine_test libcarbon gtest_main fmt)
+target_link_libraries(engine_test 
+    libcarbon 
+    libscript         
+    libscriptcore     
+    libtypesys        
+    libsootutils      
+    fmt               
+    gtest_main 
+    fmt)
+
 target_include_directories(carbon_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/script)
 
 if(MSVC)

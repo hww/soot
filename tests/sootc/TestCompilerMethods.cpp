@@ -89,11 +89,9 @@ TEST_F(SootcTest, MethodIsRegisteredInGlobals) {
     )");
     ASSERT_NE(file, nullptr);
 
-    carbon::Globals::inst().clear_all();
-    ASSERT_TRUE(carbon::Globals::inst().load_module(std::move(*file)));
+    ASSERT_TRUE(carbon_context().load_module_from_binary("thing-test", std::move(*file)));
 
-    // Methods are registered under "<type>-<method>" as the full name.
-    void *fn_ptr = carbon::Globals::inst().find_symbol_ptr(carbon::StringId("thing-get-n"));
+    void *fn_ptr = carbon_context().globals()->find_symbol_ptr(carbon::StringId("thing-get-n"));
     EXPECT_NE(fn_ptr, nullptr);
 }
 
@@ -111,11 +109,10 @@ TEST_F(SootcTest, MultipleMethodsOnSameType) {
     )");
     ASSERT_NE(file, nullptr);
 
-    carbon::Globals::inst().clear_all();
-    ASSERT_TRUE(carbon::Globals::inst().load_module(std::move(*file)));
+    ASSERT_TRUE(carbon_context().load_module_from_binary("pair-test", std::move(*file)));
 
-    EXPECT_NE(carbon::Globals::inst().find_symbol_ptr(carbon::StringId("pair-get-a")), nullptr);
-    EXPECT_NE(carbon::Globals::inst().find_symbol_ptr(carbon::StringId("pair-get-b")), nullptr);
+    EXPECT_NE(carbon_context().globals()->find_symbol_ptr(carbon::StringId("pair-get-a")), nullptr);
+    EXPECT_NE(carbon_context().globals()->find_symbol_ptr(carbon::StringId("pair-get-b")), nullptr);
 }
 
 // =============================================================================

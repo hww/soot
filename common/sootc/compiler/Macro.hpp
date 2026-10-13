@@ -12,7 +12,7 @@ namespace sootc {
 
     /// @brief Look up a macro by name in the interpreter's "sootc-env".
     ///
-    /// Mirrors GOAL's Compiler::try_getting_macro_from_goos:
+    /// Mirrors SOOT's Compiler::try_getting_macro_from_goos:
     ///   - search happens in the compiler-side environment (goal_env / sootc-env),
     ///   - the macro object is returned via `dest` if found.
     ///
@@ -25,7 +25,7 @@ namespace sootc {
 
     /// @brief Expand a macro invocation exactly once.
     ///
-    /// Mirrors GOAL's Compiler::expand_macro_once.
+    /// Mirrors SOOT's Compiler::expand_macro_once.
     ///
     /// Steps:
     ///   1. Ensure `src` is a proper list whose head is a symbol.
@@ -42,7 +42,7 @@ namespace sootc {
 
     /// @brief Expand macros repeatedly until the result is no longer a macro call.
     ///
-    /// Mirrors GOAL's Compiler::expand_macro_completely.
+    /// Mirrors SOOT's Compiler::expand_macro_completely.
     script::Object expand_macro_completely(script::Interpreter &soot, const script::Object &src);
 
     /// @brief Expand a macro form on behalf of NodeBuilder.

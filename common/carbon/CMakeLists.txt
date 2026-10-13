@@ -15,7 +15,7 @@ add_library(libcarbon
     ## Local Libs
     common/carbon/lib/SIDBase.cpp
     common/carbon/lib/StringIdManager.cpp
-    common/carbon/lib/Ptr.cpp
+    
 
     ## File
     common/carbon/file/BinaryFile.cpp   
@@ -24,7 +24,7 @@ add_library(libcarbon
     common/carbon/file/DCIFile.cpp   
 
     ## Virtual machine
-    common/carbon/vm/Instructions.cpp
+    
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
     common/carbon/vm/NativeFunc.cpp   
@@ -35,16 +35,21 @@ add_library(libcarbon
     common/carbon/kernel/Connection.cpp
     common/carbon/kernel/Connectable.cpp
     common/carbon/kernel/Engine.cpp
-    common/carbon/kernel/Kernel.cpp
+    
     common/carbon/kernel/Process.cpp
     common/carbon/kernel/ProcessRunner.cpp
     common/carbon/kernel/Scheduler.cpp
     common/carbon/kernel/StateFrame.cpp
 
+    ## Memory manager
     common/carbon/gc/Arena.cpp
     common/carbon/gc/ArenaManager.cpp
     common/carbon/gc/TypeRegistry.cpp
     common/carbon/gc/GC.cpp
+
+    ## Top level
+    common/carbon/Carbon.cpp
+
 )
 
 
@@ -62,7 +67,6 @@ target_link_libraries(carbon PRIVATE
 )
 
 set_source_files_properties(
-    common/carbon/vm/Instructions.cpp
     common/carbon/vm/StackFrame.cpp
     PROPERTIES COMPILE_OPTIONS "-Wno-pedantic"
 )

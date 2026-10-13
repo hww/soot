@@ -1,29 +1,34 @@
 ﻿#pragma once
 #include "CommonTypes.hpp"
+#include "carbon/gc/GC.hpp"
 #include "carbon/lib/StringId.hpp"
-#include "carbon/lib/ScriptObject.hpp"
 #include "type_system/Type.hpp"
-#include <cstddef>
+
 #include "fmt/format.h"
+
+#include <cstddef>
+#include <cstring>
 
 namespace carbon {
 
     /**
-      * Тип регистра 
-      */
+     * Тип регистра
+     */
     enum class RuntimeType : u8 {
         Null,
-        Int,      // 64-bit целое + bool + char
-        Float,    // 64-bit float
-        Pointer   // указатель на что угодно
+        Int,     // 64-bit целое + bool + char
+        Float,   // 64-bit float
+        Pointer, // указатель на что угодно
+        String
     };
 
-    inline const char* value_type_to_string(RuntimeType type) {
+    inline const char *value_type_to_string(RuntimeType type) {
         switch (type) {
-            case RuntimeType::Null:    return "null";
-            case RuntimeType::Int:     return "int";
-            case RuntimeType::Float:   return "float";
-            case RuntimeType::Pointer: return "pointer";
+        case RuntimeType::Null: return "null";
+        case RuntimeType::Int: return "int";
+        case RuntimeType::Float: return "float";
+        case RuntimeType::Pointer: return "pointer";
+        case RuntimeType::String: return "string";
         }
         return "unknown";
     }
@@ -38,28 +43,17 @@ namespace carbon {
      */
     class TypeError : public std::runtime_error {
     public:
-        TypeError(const std::string& message, RuntimeType actual_type)
-            : std::runtime_error(
-                fmt::format("TypeError: {} (actual type: {})",
-                    message,
-                    value_type_to_string(actual_type)))
-        {
-        }
+        TypeError(const std::string &message, RuntimeType actual_type)
+            : std::runtime_error(fmt::format("TypeError: {} (actual type: {})", message,
+                                             value_type_to_string(actual_type))) {}
 
-        TypeError(const std::string& message, RuntimeType expected_type, RuntimeType actual_type)
-            : std::runtime_error(
-                fmt::format("TypeError: {} (expected type: {} actual type: {})",
-                    message,
-                    value_type_to_string(expected_type),
-                    value_type_to_string(actual_type)
-            ))
-        {
-        }
+        TypeError(const std::string &message, RuntimeType expected_type, RuntimeType actual_type)
+            : std::runtime_error(fmt::format("TypeError: {} (expected type: {} actual type: {})",
+                                             message, value_type_to_string(expected_type),
+                                             value_type_to_string(actual_type))) {}
 
-        TypeError(const std::string& message)
-            : std::runtime_error(fmt::format("TypeError: {}", message))
-        {
-        }
+        TypeError(const std::string &message)
+            : std::runtime_error(fmt::format("TypeError: {}", message)) {}
     };
 
     // =========================================================================
@@ -86,60 +80,60 @@ namespace carbon {
     // ├── structure               |       |                |              |
     // ├── basic                   |       |                |              |
     // └── ...                     |       |                |              |
-    // 
+    //
     // В регистрах VM работают :
-    // 
+    //
     // sinteger - 64 - bit знаковый(основной числовой тип)
-    // 
+    //
     //     float - 32 - bit плавающий(основной дробный тип)
-    // 
+    //
     //     Из памяти загружаются :
-    // 
+    //
     // int32 - основной целочисленный(32 - bit)
-    // 
+    //
     //     float - основной дробный(32 - bit)
-    // 
+    //
     //     int8, int16, int64 - редко используемые
-    // 
+    //
     //     uint * -практически не используются
-    // 
+    //
     //     Псевдонимы :
-    // 
+    //
     // int → sinteger(64 - bit в регистрах)
-    // 
+    //
     //     uint → uinteger(64 - bit в регистрах)
-    // 
+    //
     struct TypeIds {
-        inline static const StringId none      = StringId("none");
-        inline static const StringId type      = StringId("type");
-        inline static const StringId null      = StringId("null");
-        inline static const StringId number    = StringId("number");
-        inline static const StringId integer   = StringId("integer");
-        inline static const StringId sinteger  = StringId("sinteger");
-        inline static const StringId i64       = StringId("i64");
-        inline static const StringId i32       = StringId("i32");
-        inline static const StringId i16       = StringId("i16");
-        inline static const StringId i8        = StringId("i8");
-        inline static const StringId uinteger  = StringId("uinteger");
-        inline static const StringId u64       = StringId("u64");
-        inline static const StringId u32       = StringId("u32");
-        inline static const StringId u16       = StringId("u16");
-        inline static const StringId u8        = StringId("u8");
-        inline static const StringId f32       = StringId("f32");
-        inline static const StringId f64       = StringId("f64");
-        inline static const StringId bool_     = StringId("bool");
-        inline static const StringId char_     = StringId("char");
-        inline static const StringId string_   = StringId("string");
-        inline static const StringId sid       = StringId("sid");
-        inline static const StringId sid32     = StringId("sid32");
+        inline static const StringId none = StringId("none");
+        inline static const StringId type = StringId("type");
+        inline static const StringId null = StringId("null");
+        inline static const StringId number = StringId("number");
+        inline static const StringId integer = StringId("integer");
+        inline static const StringId sinteger = StringId("sinteger");
+        inline static const StringId i64 = StringId("i64");
+        inline static const StringId i32 = StringId("i32");
+        inline static const StringId i16 = StringId("i16");
+        inline static const StringId i8 = StringId("i8");
+        inline static const StringId uinteger = StringId("uinteger");
+        inline static const StringId u64 = StringId("u64");
+        inline static const StringId u32 = StringId("u32");
+        inline static const StringId u16 = StringId("u16");
+        inline static const StringId u8 = StringId("u8");
+        inline static const StringId f32 = StringId("f32");
+        inline static const StringId f64 = StringId("f64");
+        inline static const StringId bool_ = StringId("bool");
+        inline static const StringId char_ = StringId("char");
+        inline static const StringId string_ = StringId("string");
+        inline static const StringId sid = StringId("sid");
+        inline static const StringId sid32 = StringId("sid32");
 
-        inline static const StringId function       = StringId("function");
-        inline static const StringId native         = StringId("native");
-        inline static const StringId state          = StringId("state");
-        inline static const StringId method         = StringId("method");
-        inline static const StringId new_method     = StringId("new-method");
-        inline static const StringId event_message  = StringId("event-message");
-        inline static const StringId process        = StringId("process");
+        inline static const StringId function = StringId("function");
+        inline static const StringId native = StringId("native");
+        inline static const StringId state = StringId("state");
+        inline static const StringId method = StringId("method");
+        inline static const StringId new_method = StringId("new-method");
+        inline static const StringId event_message = StringId("event-message");
+        inline static const StringId process = StringId("process");
     };
 
     /**
@@ -156,158 +150,93 @@ namespace carbon {
         // CONSTRUCTORS
         // =========================================================================
 
-        Variant()
-            : type_(RuntimeType::Null)
-            , int_value(0)
-        {
-        }
+        Variant() : type_(RuntimeType::Null), int_value(0) {}
 
-        Variant(i64 value)
-            : type_(RuntimeType::Int)
-            , int_value(value)
-        {
-        }
+        Variant(i64 value) : type_(RuntimeType::Int), int_value(value) {}
 
-        Variant(u64 value)
-            : type_(RuntimeType::Int)
-            , int_value(value)
-        {
-        }
+        Variant(u64 value) : type_(RuntimeType::Int), int_value(value) {}
 
-        Variant(i32 value)
-            : type_(RuntimeType::Int)
-            , int_value(value)
-        {
-        }
+        Variant(i32 value) : type_(RuntimeType::Int), int_value(value) {}
 
-        Variant(u32 value)
-            : type_(RuntimeType::Int)
-            , int_value(value)
-        {
-        }
+        Variant(u32 value) : type_(RuntimeType::Int), int_value(value) {}
 
-        Variant(f32 value)
-            : type_(RuntimeType::Float)
-            , float_value(value)
-        {
-        }
+        Variant(f32 value) : type_(RuntimeType::Float), float_value(value) {}
 
-        
-        Variant(f64 value)
-            : type_(RuntimeType::Float)
-            , float_value(value)
-        {
-        }
+        Variant(f64 value) : type_(RuntimeType::Float), float_value(value) {}
 
-        Variant(bool value)
-            : type_(RuntimeType::Int)
-            , int_value(value ? 1 : 0)
-        {
-        }
+        Variant(bool value) : type_(RuntimeType::Int), int_value(value ? 1 : 0) {}
 
-        Variant(void* ptr, RuntimeType type)
-            : type_(type)
-            , ptr_value(ptr)
-        {
-        }
+        Variant(void *ptr, RuntimeType type) : type_(type), ptr_value(ptr) {}
 
-        Variant(StringId sid)
-            : type_(RuntimeType::Int), int_value(static_cast<u64>(sid))
-        {
-        }
+        Variant(StringId sid) : type_(RuntimeType::Int), int_value(static_cast<u64>(sid)) {}
 
-        Variant(std::string string)
-        {
-            create_script_object<std::string>(RuntimeType::Pointer, string);
-        }
+        Variant(std::string string) { set_string(string); }
 
-        Variant(const char* string)
-        {
-            std::string str(string);
-            create_script_object<std::string>(RuntimeType::Pointer, str);
-        }
-
-        // =========================================================================
-        // RULE OF 5 - CRITICAL FOR REFCOUNTING!
-        // =========================================================================
-
-        // 1. Копи-конструктор
-        Variant(const Variant& other)
-            : type_(other.type_)
-        {
-            if (other.is_number()) {
-                // Числа копируем напрямую
-                if (other.is_int() || other.is_sid() || other.is_bool()) {
-                    int_value = other.int_value;
-                }
-                else if (other.is_float()) {
-                    float_value = other.float_value;
-                }
-            }
-            else if (other.is_ptr() && other.ptr_value != nullptr) {
-                // Для указателей - увеличиваем refcount
-                ptr_value = other.ptr_value;
-                ref_ptr();  // ✅ Увеличиваем refcount!
-            }
+        Variant(const char *string) {
+            if (string) set_string(std::string(string));
             else {
-                // null или nullptr
+                type_ = RuntimeType::Null;
                 int_value = 0;
             }
         }
 
-        // 2. Оператор присваивания копированием
-        Variant& operator=(const Variant& other) {
+        // =========================================================================
+        // RULE OF 5
+        // =========================================================================
+
+        Variant(const Variant &other) : type_(other.type_) {
+            if (other.is_number()) {
+                if (other.is_int() || other.is_sid() || other.is_bool()) {
+                    int_value = other.int_value;
+                } else if (other.is_float()) {
+                    float_value = other.float_value;
+                }
+            } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
+                ptr_value = other.ptr_value;
+            } else {
+                int_value = 0;
+            }
+        }
+
+        Variant &operator=(const Variant &other) {
             if (this != &other) {
-                // Освобождаем текущие ресурсы
                 cleanup();
 
-                // Копируем из other
                 type_ = other.type_;
 
                 if (other.is_number()) {
                     if (other.is_int() || other.is_sid() || other.is_bool()) {
                         int_value = other.int_value;
-                    }
-                    else if (other.is_float()) {
+                    } else if (other.is_float()) {
                         float_value = other.float_value;
                     }
-                }
-                else if (other.is_ptr() && other.ptr_value != nullptr) {
+                } else if (other.type_ == RuntimeType::Pointer ||
+                           other.type_ == RuntimeType::String) {
                     ptr_value = other.ptr_value;
-                    ref_ptr();  // ✅ Увеличиваем refcount!
-                }
-                else {
+                } else {
                     int_value = 0;
                 }
             }
             return *this;
         }
 
-        // 3. Move-конструктор
-        Variant(Variant&& other) noexcept
-            : type_(other.type_)
-        {
+        Variant(Variant &&other) noexcept : type_(other.type_) {
             if (other.is_number()) {
                 if (other.is_int() || other.is_sid() || other.is_bool()) {
                     int_value = other.int_value;
-                }
-                else if (other.is_float()) {
+                } else if (other.is_float()) {
                     float_value = other.float_value;
                 }
-            }
-            else if (other.is_ptr()) {
-                // Move - забираем владение без изменения refcount
+            } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
                 ptr_value = other.ptr_value;
-                other.ptr_value = nullptr;  // Обнуляем у источника
+                other.ptr_value = nullptr;
                 other.type_ = RuntimeType::Null;
-            }
-            else {
+            } else {
                 int_value = 0;
             }
         }
 
-        // 4. Move-присваивание
-        Variant& operator=(Variant&& other) noexcept {
+        Variant &operator=(Variant &&other) noexcept {
             if (this != &other) {
                 cleanup();
 
@@ -316,31 +245,27 @@ namespace carbon {
                 if (other.is_number()) {
                     if (other.is_int() || other.is_sid() || other.is_bool()) {
                         int_value = other.int_value;
-                    }
-                    else if (other.is_float()) {
+                    } else if (other.is_float()) {
                         float_value = other.float_value;
                     }
-                }
-                else if (other.is_ptr()) {
+                } else if (other.type_ == RuntimeType::Pointer ||
+                           other.type_ == RuntimeType::String) {
                     ptr_value = other.ptr_value;
                     other.ptr_value = nullptr;
                     other.type_ = RuntimeType::Null;
-                }
-                else {
+                } else {
                     int_value = 0;
                 }
             }
             return *this;
         }
 
-        // 5. Деструктор (уже есть, но обновим)
-        ~Variant() {
-            cleanup();
-        }
+        ~Variant() { cleanup(); }
+
         // =========================================================================
         // VALUE SETTERS
         // =========================================================================
-        
+
         void set_i64(i64 value) {
             type_ = RuntimeType::Int;
             int_value = value;
@@ -366,33 +291,30 @@ namespace carbon {
             int_value = value;
         }
 
-        void set_ptr(void* ptr, RuntimeType type) {
-            // Если уже храним указатель - уменьшаем refcount
-            if (is_ptr() && ptr_value != nullptr) {
-                unref_ptr();
-            }
-
+        void set_ptr(void *ptr, RuntimeType type) {
             type_ = type;
             ptr_value = ptr;
-
-            // Увеличиваем refcount для нового указателя
-            if (ptr != nullptr) {
-                ref_ptr();
-            }
         }
 
         void set_sid(StringId sid) {
             type_ = RuntimeType::Int;
             int_value = static_cast<u64>(sid);
-        }     
-        
+        }
+
         void set_sid32(StringId sid) {
             type_ = RuntimeType::Int;
             int_value = static_cast<u64>(sid);
         }
 
-        void set_string(const std::string& str) {
-            create_script_object<std::string>(RuntimeType::Pointer, str);
+        void set_string(const std::string &str) {
+            const char *cstr = gc_make_cstr(str);
+            if (cstr) {
+                type_ = RuntimeType::String;
+                ptr_value = const_cast<char *>(cstr);
+            } else {
+                type_ = RuntimeType::Null;
+                int_value = 0;
+            }
         }
 
         void set_null() {
@@ -404,35 +326,34 @@ namespace carbon {
         // ASSIGNMENT OPERATORS
         // =========================================================================
 
-        Variant& operator=(i64 value) {
+        Variant &operator=(i64 value) {
             set_i32(value);
             return *this;
         }
 
-        Variant& operator=(float value) {
+        Variant &operator=(float value) {
             set_f64(value);
             return *this;
         }
 
-        Variant& operator=(bool value) {
+        Variant &operator=(bool value) {
             set_bool(value);
             return *this;
         }
 
-        Variant& operator=(StringId sid) {
+        Variant &operator=(StringId sid) {
             set_sid(sid);
             return *this;
         }
 
-        Variant& operator=(std::string string) {
-            set_ptr(new std::string(string), RuntimeType::Pointer);
+        Variant &operator=(std::string string) {
+            set_string(string);
             return *this;
         }
 
         // =========================================================================
         // STRICT TYPE GETTERS
         // =========================================================================
-      
 
         i64 get_i64() const {
             if (type_ != RuntimeType::Int) {
@@ -461,14 +382,14 @@ namespace carbon {
             }
             return int_value;
         }
-        
+
         f32 get_float() const {
             if (type_ != RuntimeType::Float) {
                 throw TypeError("get_float()", RuntimeType::Float, type_);
             }
             return float_value;
         }
-        
+
         f32 get_f32() const {
             if (type_ != RuntimeType::Float) {
                 throw TypeError("get_f32()", RuntimeType::Float, type_);
@@ -497,25 +418,20 @@ namespace carbon {
             return static_cast<StringId>(int_value);
         }
 
-        const void* get_ptr() const {
-            if (!is_ptr()) {
-                throw TypeError("get_ptr() expected 'pointer' but found", type_);
-            }
+        const void *get_ptr() const {
+            if (!is_ptr()) { throw TypeError("get_ptr() expected 'pointer' but found", type_); }
             return ptr_value;
         }
 
-        void* get_ptr() {
-            if (!is_ptr()) {
-                throw TypeError("get_ptr() expected 'pointer' but found", type_);
-            }
+        void *get_ptr() {
+            if (!is_ptr()) { throw TypeError("get_ptr() expected 'pointer' but found", type_); }
             return ptr_value;
         }
 
         std::string get_string() const {
-            if (type_ != RuntimeType::Pointer) {
-                throw TypeError("Expected string", type_);
-            }
-            return *static_cast<std::string*>(ptr_value);
+            if (type_ != RuntimeType::String) { throw TypeError("Expected string", type_); }
+            if (ptr_value == nullptr) return "";
+            return std::string(static_cast<const char *>(ptr_value));
         }
 
         // =========================================================================
@@ -524,22 +440,23 @@ namespace carbon {
 
         i64 to_int() const {
             if (type_ == RuntimeType::Int) return int_value;
-            if (type_ == RuntimeType::Float)  return static_cast<i32>(float_value);
-            if (type_ == RuntimeType::Pointer) return (u64)(void*)ptr_value;
+            if (type_ == RuntimeType::Float) return static_cast<i32>(float_value);
+            if (type_ == RuntimeType::Pointer) return (u64)(void *)ptr_value;
             throw TypeError("to_int() cannot convert from", type_);
         }
 
         f32 to_float() const {
             if (type_ == RuntimeType::Int) return static_cast<float>(int_value);
-            if (type_ == RuntimeType::Float)  return float_value;
+            if (type_ == RuntimeType::Float) return float_value;
             throw TypeError("to_float() cannot convert from", type_);
         }
 
         bool to_bool() const {
             if (type_ == RuntimeType::Int) return int_value != 0;
-            if (type_ == RuntimeType::Float)  return float_value != 0;
-            if (type_ == RuntimeType::Pointer) return ptr_value!=nullptr;
-            return false; // null is false
+            if (type_ == RuntimeType::Float) return float_value != 0;
+            if (type_ == RuntimeType::Pointer) return ptr_value != nullptr;
+            if (type_ == RuntimeType::String) return ptr_value != nullptr;
+            return false;
         }
 
         // =========================================================================
@@ -548,38 +465,29 @@ namespace carbon {
 
         RuntimeType get_type() const { return type_; }
 
-
-        // Проверка конкретного типа VM
-        bool is_null() const { return type_ == RuntimeType::Null; }
-        bool is_int() const { return type_ == RuntimeType::Int; }
-        bool is_float() const { return type_ == RuntimeType::Float; }
+        bool        is_null() const { return type_ == RuntimeType::Null; }
+        bool        is_int() const { return type_ == RuntimeType::Int; }
+        bool        is_float() const { return type_ == RuntimeType::Float; }
         inline bool is_ptr() const { return type_ == RuntimeType::Pointer; }
+        inline bool is_string() const { return type_ == RuntimeType::String; }
 
-        // Проверка семейства или нативного типа используемого VM
         inline bool is_number() const { return is_int() || is_float(); }
 
-        // Проверка дополнительных типов
         bool is_bool() const { return type_ == RuntimeType::Int; }
         bool is_sid() const { return type_ == RuntimeType::Int; }
 
- 
         // =========================================================================
         // STRING REPRESENTATION
         // =========================================================================
 
-        /// @brief Format this Variant for logging and diagnostics.
-        /// @details For pointers we ONLY print the numeric address. We do
-        ///          NOT try to interpret it as a std::string, because a
-        ///          Pointer Variant may hold a ScriptLambda*, a Process*,
-        ///          a raw object pointer, or a std::string* — and the VM
-        ///          has no way to tell them apart here. Trying to read a
-        ///          non-string pointer as std::string* is undefined
-        ///          behaviour and crashes the process.
         std::string to_string() const {
             switch (type_) {
             case RuntimeType::Null: return "null";
             case RuntimeType::Int: return std::to_string(get_i64());
             case RuntimeType::Float: return std::to_string(get_f64());
+            case RuntimeType::String:
+                if (ptr_value == nullptr) return "";
+                return std::string(static_cast<const char *>(ptr_value));
             case RuntimeType::Pointer:
                 if (ptr_value == nullptr) return "null";
                 return fmt::format("ptr:0x{:X}", reinterpret_cast<uintptr_t>(ptr_value));
@@ -587,7 +495,7 @@ namespace carbon {
             return "unknown";
         }
 
-        const char* to_c_string() const {
+        const char *to_c_string() const {
             thread_local static std::string buffer;
             buffer = to_string();
             return buffer.c_str();
@@ -597,110 +505,69 @@ namespace carbon {
         // COMPARISON MEMBERS
         // =========================================================================
 
-        bool operator==(const Variant& other) const {
+        bool operator==(const Variant &other) const {
             if (type_ != other.type_) return false;
 
             if (is_number()) {
                 if (is_int()) return int_value == other.int_value;
                 if (is_float()) return float_value == other.float_value;
-                if (is_sid()) return int_value == other.int_value;
             }
-
+            if (is_string()) {
+                if (ptr_value == nullptr && other.ptr_value == nullptr) return true;
+                if (ptr_value == nullptr || other.ptr_value == nullptr) return false;
+                return std::strcmp(static_cast<const char *>(ptr_value),
+                                   static_cast<const char *>(other.ptr_value)) == 0;
+            }
             return ptr_value == other.ptr_value;
         }
 
-        bool operator!=(const Variant& other) const {
-            return !(*this == other);
-        }
+        bool operator!=(const Variant &other) const { return !(*this == other); }
 
-        // Опционально: операторы порядка если нужны
-        bool operator<(const Variant& other) const {
+        bool operator<(const Variant &other) const {
             if (type_ != other.type_) return type_ < other.type_;
 
             if (is_number()) {
                 if (is_int()) return int_value < other.int_value;
                 if (is_float()) return float_value < other.float_value;
-                if (is_sid()) return int_value < other.int_value;
+            }
+            if (is_string()) {
+                const char *a = static_cast<const char *>(ptr_value);
+                const char *b = static_cast<const char *>(other.ptr_value);
+                if (!a) return b != nullptr;
+                if (!b) return false;
+                return std::strcmp(a, b) < 0;
             }
 
             return ptr_value < other.ptr_value;
         }
 
-        // =========================================================================
-        // Reference Counting
-        // =========================================================================
-        /**
-         * @brief Create script-managed object and store pointer to its DATA
-         */
-        template<typename T, typename... Args>
-        void create_script_object(RuntimeType vm_type, Args&&... args) {
-            T* data_ptr = script_create<T>(std::forward<Args>(args)...);
-            set_ptr(data_ptr, vm_type);
-        }
-
-        /**
-         * @brief Increase reference count for stored pointer
-         */
-        void ref_ptr() const {
-            if (is_ptr() && ptr_value != nullptr) {
-                // Для этого нужно знать тип, но мы можем хранить его в type_
-                // Или использовать type-erasure через шаблоны
-                //script_ref(ptr_value); // Будет работать если type_ соответствует реальному типу
-            }
-        }
-
-        /**
-         * @brief Decrease reference count for stored pointer
-         */
-        void unref_ptr() const {
-            if (is_ptr() && ptr_value != nullptr) {
-                //script_unref(ptr_value);
-            }
-        }
-
-        /**
-         * @brief Get reference count for stored pointer
-         */
-        int32_t get_ref_count() const {
-            if (!is_ptr() || ptr_value == nullptr) return -1;
-            return 0;//script_ref_count(ptr_value);
-        }
     private:
-        // =========================================================================
-        // PRIVATE MEMBERS
-        // =========================================================================
+        static const char *gc_make_cstr(const std::string &value) {
+            const std::size_t n = value.size() + 1;
+            void             *payload = gc::alloc(SID("cstr"), n, 1);
+            if (!payload) return nullptr;
+            std::memcpy(payload, value.c_str(), n);
+            return static_cast<const char *>(payload);
+        }
 
-        // Вспомогательный метод для очистки ресурсов
         void cleanup() {
-            if (is_ptr() && ptr_value != nullptr) {
-                unref_ptr();  // ✅ Уменьшаем refcount!
-            }
             type_ = RuntimeType::Null;
             int_value = 0;
         }
-        RuntimeType type_;    ///< Type identifier using StringId system
+        RuntimeType type_;
 
         union {
-            i64      int_value;    ///< Storage for integer and string_id types
-            f64      float_value;  ///< Storage for float types  
-            void*    ptr_value;    ///< Storage for pointer types (external data)
+            i64   int_value;
+            f64   float_value;
+            void *ptr_value;
         };
     };
- 
-} // namespace vm
+
+} // namespace carbon
 
 // ============================================================================
-// fmt::formatter<Variant> — минимальный форматтер
+// fmt::formatter<Variant>
 // ============================================================================
-//
-// Поддерживает: int, float, null, pointer (C-string).
-// SID пока выводится как int (числом) — чтобы отличить SID от обычного int,
-// нужно поле subtype в Variant (следующий шаг).
-//
-// Использование:
-//   fmt::print("{}\n", some_variant);
-//   fmt::format("fps: {}, name: {}", fps_variant, name_variant);
-
 
 template <> struct fmt::formatter<carbon::Variant> {
     constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
@@ -711,17 +578,13 @@ template <> struct fmt::formatter<carbon::Variant> {
 
         switch (v.get_type()) {
         case RuntimeType::Null: return fmt::format_to(ctx.out(), "null");
-
         case RuntimeType::Int: return fmt::format_to(ctx.out(), "{}", v.get_i64());
-
         case RuntimeType::Float: return fmt::format_to(ctx.out(), "{}", v.get_f64());
-
+        case RuntimeType::String: return fmt::format_to(ctx.out(), "{}", v.get_string());
         case RuntimeType::Pointer: {
             const void *raw = v.get_ptr();
-            if (raw == nullptr) { return fmt::format_to(ctx.out(), "null"); }
-            // Соглашение: Pointer в print — это C-string.
-            const char *cstr = static_cast<const char *>(raw);
-            return fmt::format_to(ctx.out(), "{}", cstr);
+            if (raw == nullptr) return fmt::format_to(ctx.out(), "null");
+            return fmt::format_to(ctx.out(), "ptr:0x{:X}", reinterpret_cast<uintptr_t>(raw));
         }
         }
         return fmt::format_to(ctx.out(), "<unknown>");

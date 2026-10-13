@@ -142,17 +142,17 @@ namespace sootc {
     void FunctionNode::add_instruction_imm_u16(Opcode op, u8 dest, u16 imm) {
         Instruction instr;
         instr.opcode = op;
-        instr.destination = dest;
-        instr.set_lo_hi(imm);
+        instr.a = dest;
+        instr.set_imm16(imm);
         m_instructions.push_back(instr);
     }
 
     void FunctionNode::add_instruction_imm_reg(Opcode op, u8 dest, u8 base, u8 imm) {
         Instruction instr;
         instr.opcode = op;
-        instr.destination = dest;
-        instr.operand1 = base;
-        instr.operand2 = imm;
+        instr.a = dest;
+        instr.b = base;
+        instr.c = imm;
         m_instructions.push_back(instr);
     }
 
@@ -180,7 +180,7 @@ namespace sootc {
             auto it = m_labels.find(label);
             if (it == m_labels.end()) { continue; }
             u32 target = it->second;
-            m_instructions[pos].set_lo_hi(static_cast<u16>(target));
+            m_instructions[pos].set_imm16(static_cast<u16>(target));
         }
         m_unresolved_branches.clear();
     }

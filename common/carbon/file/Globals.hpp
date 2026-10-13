@@ -30,14 +30,18 @@ namespace carbon {
     ///          for O(1) lookup. Thread-safety: none; callers must synchronise.
     class Globals {
     public:
-        /// @return the process-wide singleton instance.
-        static Globals &inst() {
-            static Globals instance;
-            return instance;
-        }
-
+        Globals() = default;
+        ~Globals() = default;
         Globals(const Globals &) = delete;
         Globals &operator=(const Globals &) = delete;
+
+        /// @brief Register a single symbol with an explicit owner module.
+        void register_symbol(StringId name, void *ptr, StringId type, StringId owner_module) {
+            m_symbols[name] = Symbol{ptr, type, owner_module};
+        }
+
+        /// @brief Remove a symbol by name.
+        void remove_symbol(StringId name) { m_symbols.erase(name); }
 
         /// @return a snapshot of all currently registered symbol names.
         std::vector<StringId> all_symbols() const {
@@ -131,7 +135,6 @@ namespace carbon {
         }
 
     private:
-        Globals() = default;
 
         /// @brief Register all named entries from a loaded module into the global
         ///        symbol table.

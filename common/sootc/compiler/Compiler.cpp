@@ -619,6 +619,8 @@ namespace sootc {
             "sc-eval",
             "arg-set",
             "arg-get",
+            "gcls",
+            "gc",
         };
         return kCommands;
     }
@@ -678,6 +680,8 @@ namespace sootc {
         if (name == "sc-eval") return cmd_sc_eval(form);
         if (name == "arg-set") return cmd_arg_set(form);
         if (name == "arg-get") return cmd_arg_get(form);
+        if (name == "gcls") return cmd_gc_list(form);
+        if (name == "gc") return cmd_gc_collect(form);
 
         fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
         return ReplStatus::ERR;
@@ -805,7 +809,14 @@ namespace sootc {
 
     ReplStatus Compiler::cmd_list_symbols(const script::Object &form) {
         (void)form;
-        auto symbols = carbon::Globals::inst().all_symbols();
+
+        carbon::Carbon *carbon = carbon::Carbon::current();
+        if (!carbon) {
+            fmt::print(fg(fmt::color::yellow), "; WARN: no active Carbon context\n");
+            return ReplStatus::OK;
+        }
+
+        auto symbols = carbon->globals()->all_symbols();
         for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
         return ReplStatus::OK;
     }
@@ -1110,6 +1121,100 @@ namespace sootc {
 
         // --- Unknown ---
         fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
+        return ReplStatus::OK;
+    }
+
+    // ===============================================================
+    // Garbage collector 
+    // ===============================================================
+
+    namespace {
+
+        struct GcListEntry {
+            sid64       type;
+            void       *payload;
+            std::size_t size;
+        };
+
+        struct GcListContext {
+            std::vector<GcListEntry>               *entries;
+            std::vector<sid64>                     *order;
+            std::unordered_map<sid64, std::size_t> *counts;
+        };
+
+        void gc_list_visitor(sid64 type_sid, void *payload, std::size_t size, void *user) {
+            auto *ctx = static_cast<GcListContext *>(user);
+
+            if (ctx->counts->find(type_sid) == ctx->counts->end()) {
+                (*ctx->counts)[type_sid] = 0;
+                ctx->order->push_back(type_sid);
+            }
+            (*ctx->counts)[type_sid] += 1;
+
+            ctx->entries->push_back({type_sid, payload, size});
+        }
+
+    } // namespace
+
+    ReplStatus Compiler::cmd_gc_collect(const script::Object &form) {
+        (void)form;
+
+        const auto before = gc::stats().live_objects;
+        gc::collect();
+        const auto after = gc::stats().live_objects;
+
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                   "; gc-collect: {} -> {} live objects\n", before, after);
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_gc_list(const script::Object &form) {
+        (void)form;
+
+        const auto s = gc::stats();
+
+        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "=== GC heap ===\n");
+        fmt::print("  live objects:  {}\n", s.live_objects);
+        fmt::print("  total allocs:  {}\n", s.total_allocated);
+        fmt::print("  total frees:   {}\n", s.total_freed);
+        fmt::print("  passes:        {}\n", s.total_passes);
+        fmt::print("  committed:     {} bytes\n", s.bytes_committed);
+
+        std::vector<GcListEntry>               entries;
+        std::vector<sid64>                     order;
+        std::unordered_map<sid64, std::size_t> counts;
+
+        GcListContext ctx{&entries, &order, &counts};
+        gc::for_each_live(&gc_list_visitor, &ctx);
+
+        if (entries.empty()) {
+            fmt::print(fg(fmt::color::yellow), "  (no live objects)\n");
+            return ReplStatus::OK;
+        }
+
+        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nBy type:\n");
+
+        // Sort by count descending.
+        std::sort(order.begin(), order.end(),
+                  [&](sid64 a, sid64 b) { return counts[a] > counts[b]; });
+
+        for (sid64 sid : order) {
+            const std::string name = carbon::StringId(sid).to_string();
+            fmt::print("  {:<30} {}\n", name, counts[sid]);
+        }
+
+        // Detail list (first 32).
+        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nObjects (first 32):\n");
+        constexpr std::size_t kMaxShow = 32;
+        for (std::size_t i = 0; i < entries.size() && i < kMaxShow; ++i) {
+            const auto       &e = entries[i];
+            const std::string name = carbon::StringId(e.type).to_string();
+            fmt::print("  [{}] {:<24} size={}  ptr={}\n", i, name, e.size, e.payload);
+        }
+        if (entries.size() > kMaxShow) {
+            fmt::print("  ... and {} more\n", entries.size() - kMaxShow);
+        }
+
         return ReplStatus::OK;
     }
 

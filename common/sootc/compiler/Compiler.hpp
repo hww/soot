@@ -392,6 +392,10 @@ namespace sootc {
         ReplStatus cmd_arg_set(const script::Object &form);
         ReplStatus cmd_arg_get(const script::Object &form);
 
+        // --- Garbage collector ---
+        ReplStatus cmd_gc_list(const script::Object &form);
+        ReplStatus cmd_gc_collect(const script::Object &form);
+
         // --- State ---
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;

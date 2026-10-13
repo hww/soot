@@ -18,8 +18,8 @@ TEST(Instructions, BasicStructure) {
 
     Instruction instr2 = InstructionFactory::imm(Opcode::LoadU16Imm, 5, 100);
     EXPECT_EQ(instr2.opcode, Opcode::LoadU16Imm);
-    EXPECT_EQ(instr2.a_imm, 5);
-    EXPECT_EQ(instr2.imm16, 100);
+    EXPECT_EQ(instr2.a, 5);
+    EXPECT_EQ(instr2.imm16(), 100);
 }
 
 TEST(Instructions, Size) {
@@ -31,7 +31,7 @@ TEST(Instructions, ImmediateDetection) {
     Instruction imm_instr = InstructionFactory::imm(Opcode::LoadU16Imm, 1, 42);
     // LoadU16Imm: operand2_is_immediate зависит от реализации
     // Проверяем, что immediate доступен
-    EXPECT_EQ(imm_instr.imm16, 42);
+    EXPECT_EQ(imm_instr.imm16(), 42);
 
     Instruction reg_instr = InstructionFactory::abc(Opcode::IAdd, 1, 2, 3);
     // IAdd использует регистры
@@ -81,12 +81,12 @@ TEST(Instructions, AllOpcodesHaveInfo) {
 TEST(Instructions, BranchImmediate) {
     Instruction branch = InstructionFactory::branch(Opcode::Branch, 0x1234);
     EXPECT_EQ(branch.opcode, Opcode::Branch);
-    EXPECT_EQ(branch.imm16, 0x1234);
+    EXPECT_EQ(branch.imm16(), 0x1234);
 }
 
 TEST(Instructions, LookupImmediate) {
     Instruction lookup = InstructionFactory::lookup(Opcode::LookupPointer, 3, 5);
     EXPECT_EQ(lookup.opcode, Opcode::LookupPointer);
     EXPECT_EQ(lookup.a, 3);
-    EXPECT_EQ(lookup.imm16, 5);
+    EXPECT_EQ(lookup.imm16(), 5);
 }

@@ -3,6 +3,7 @@
 #include "gc/GC.hpp"
 #include "gc/TypeRegistry.hpp"
 #include "lib/StringId.hpp"
+#include <vm/StackFrame.hpp>
 
 using namespace carbon;
 using namespace carbon::gc;
@@ -89,7 +90,7 @@ TEST_F(GCTest, AllocFreeNoCrash) {
     void *p = gc::alloc(SID("int32"));
     ASSERT_NE(p, nullptr);
 
-    gc::free(p);
+    gc::release(p);
 
     auto s = gc::stats();
     EXPECT_GE(s.total_freed, 1u);
@@ -99,8 +100,8 @@ TEST_F(GCTest, FreeIsIdempotent) {
     void *p = gc::alloc(SID("int32"));
     ASSERT_NE(p, nullptr);
 
-    gc::free(p);
-    gc::free(p); // не должно падать
+    gc::release(p);
+    gc::release(p); // не должно падать
 
     EXPECT_TRUE(true);
 }
@@ -210,10 +211,49 @@ TEST_F(GCTest, FreeDuringPassIsSafe) {
     ASSERT_NE(p, nullptr);
 
     gc::start_pass();
-    gc::free(p); // явно освободили во время прохода
+    gc::release(p); // явно освободили во время прохода
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
     // Не должно падать, объект должен быть учтён как освобождённый.
     EXPECT_TRUE(true);
+}
+
+TEST_F(GCTest, StackFrameRootsKeepObjectAlive) {
+    auto frame = std::make_shared<StackFrame>();
+
+    void *obj = gc::alloc(SID("cell"));
+    ASSERT_NE(obj, nullptr);
+    frame->registers[0] = Variant(obj, RuntimeType::Pointer);
+
+    // Ручной mark, имитируем Kernel::mark_frame_recursive.
+    gc::start_pass();
+    const u64 pass = gc::current_pass();
+
+    if (frame->mark_id != pass) {
+        frame->mark_id = pass;
+        for (auto &reg : frame->registers) {
+            if (reg.is_ptr() && gc::is_in_heap(reg.get_ptr())) { gc::mark_object(reg.get_ptr()); }
+        }
+    }
+
+    while (!gc::sweep_pass(1024)) {}
+    gc::finish_pass();
+
+    // Объект должен быть жив.
+    EXPECT_EQ(gc::live_objects(), 1u);
+}
+
+TEST_F(GCTest, StackFrameNotMarkedFreesObject) {
+    auto frame = std::make_shared<StackFrame>();
+
+    void *obj = gc::alloc(SID("cell"));
+    ASSERT_NE(obj, nullptr);
+    frame->registers[0] = Variant(obj, RuntimeType::Pointer);
+
+    // НЕ помечаем фрейм.
+    gc::collect();
+
+    // Объект должен быть удалён.
+    EXPECT_EQ(gc::live_objects(), 0u);
 }

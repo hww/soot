@@ -76,6 +76,8 @@ namespace carbon::gc {
         lg::info("gc shutdown");
     }
 
+    bool is_initialized() { return state().arena_mgr != nullptr; }
+
     // ========================================================================
     // Allocation
     // ========================================================================
@@ -125,19 +127,17 @@ namespace carbon::gc {
         return payload;
     }
 
-    void free(void *ptr) {
+    void release(void *ptr) {
         GCState &s = state();
         if (!s.arena_mgr) return;
         if (!ptr) return;
         if (!s.arena_mgr->owns(ptr)) {
-            lg::warn("gc::free: pointer {} not in heap", ptr);
+            lg::warn("gc::release: pointer {} not in heap", ptr);
             return;
         }
 
         GCHeader *h = header_of(ptr);
-        if (h->flags & GC_FLAG_DEAD) {
-            return; // уже освобождён
-        }
+        if (h->flags & GC_FLAG_DEAD) { return; }
         h->flags |= GC_FLAG_DEAD;
 
         s.arena_mgr->deallocate(h);
@@ -364,4 +364,36 @@ bool sweep_pass(int budget) {
         return out;
     }
 
+    std::size_t capacity_bytes() {
+        GCState &s = state();
+        if (!s.arena_mgr) return 0;
+        return s.arena_mgr->region_size();
+    }
+
+    void for_each_live(GcVisitor visitor, void *user) {
+        GCState &s = state();
+        if (!s.arena_mgr || !visitor) return;
+
+        const auto &arenas = s.arena_mgr->all_arenas();
+        for (Arena *a : arenas) {
+            const std::size_t total = a->total_blocks();
+            const std::size_t bs = a->block_size();
+            std::byte        *base = a->begin();
+
+            for (std::size_t i = 0; i < total; ++i) {
+                if (!a->is_allocated(i)) continue;
+
+                std::byte *block = base + i * bs;
+                GCHeader  *h = reinterpret_cast<GCHeader *>(block);
+
+                if (h->flags & GC_FLAG_DEAD) continue;
+
+                void       *payload = payload_of(h);
+                sid64       sid = h->type_desc ? h->type_desc->name : 0;
+                std::size_t size = h->type_desc ? h->type_desc->size : 0;
+
+                visitor(sid, payload, size, user);
+            }
+        }
+    }
 } // namespace carbon::gc

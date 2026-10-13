@@ -17,7 +17,7 @@
 ;; the interpreter's `if`/`when`/`not`/`==`/`!=` from shadowing the
 ;; compiler's built-in forms.
 ;;
-;; Mirrors the split in OpenGOAL: goos-lib.gs → *global-env*,
+;; Mirrors the split in SOOT: soot-lib.st → *global-env*,
 ;; goal-lib.gc → *goal-env*, and the compiler only consults the latter.
 ;; =============================================================================
 
@@ -62,7 +62,7 @@
 ;; only consults *soot-env*. When the compiler encounters `if` in
 ;; compiled code, it goes to m_form_table and emits an IfNode.
 ;;
-;; This is the same design OpenGOAL uses: goos-lib.gs defines if/when/
+;; This is the same design OpenSOOT uses: goos-lib.gs defines if/when/
 ;; not/unless/etc. in *global-env*, while goal-lib.gc relies on the
 ;; compiler's built-in forms (compile_if, compile_when, ...). The two
 ;; coexist because they live in different environments.

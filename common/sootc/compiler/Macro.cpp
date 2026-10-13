@@ -25,8 +25,8 @@ namespace sootc {
     // (if without else) or references functions that are not in the
     // VM's Globals table (eq?, =).
     //
-    // In OpenGOAL, the equivalent separation is achieved by having two
-    // environments: *global-env* for GOOS, *goal-env* for GOAL. Macros
+    // In OpenSOOT, the equivalent separation is achieved by having two
+    // environments: *global-env* for GOOS, *goal-env* for SOOT. Macros
     // defined with `defsmacro` live in *global-env*; macros defined
     // with `defgmacro` live in *goal-env*. The compiler only ever
     // consults *goal-env*, so the interpreter's `if`/`when`/... never
@@ -82,7 +82,7 @@ namespace sootc {
         Arguments args = soot.get_args(src, rest, macro->args);
 
         // Create fresh env with parent = global_environment.
-        // Mirrors GOAL Macro.cpp:
+        // Mirrors SOOT Macro.cpp:
         //     mac_env->parent_env = m_goos.global_environment.as_env_ptr();
         auto mac_env_obj = EnvironmentObject::make_new();
         auto mac_env = mac_env_obj.as_env_ptr();

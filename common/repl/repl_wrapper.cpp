@@ -54,7 +54,7 @@ void Wrapper::print_welcome_message(const std::vector<std::string>& loaded_proje
     add_line(1, "");
     
     std::string welcome = fmt::format(fmt::emphasis::bold, "  Welcome to SOOT {}.{} [{}]",
-                          versions::GOAL_VERSION_MAJOR, versions::GOAL_VERSION_MINOR,
+                          versions::SOOT_VERSION_MAJOR, versions::SOOT_VERSION_MINOR,
                           fmt::format(gray, "{}", BUILT_SHA));
     
     if (!username.empty() && username != "#f" && username != "unknown") {
@@ -155,45 +155,141 @@ std::pair<std::string, bool> Wrapper::get_current_repl_token(std::string const& 
   }
   return {token, false};
 }
-
 void Wrapper::print_help_message() {
-  fmt::print(fmt::emphasis::bold, "\nREPL Controls:\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(:clear)\n");
-  fmt::print(" - Clear the current screen\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(e)\n");
-  fmt::print(" - Exit the compiler\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(lt [ip-address] [port-number])\n");
-  fmt::print(
-      " - Connect the listener to a running target. The IP address defaults to `127.0.0.1` and the "
-      "port to `8112`\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(r [ip-address] [port-number])\n");
-  fmt::print(
-      " - Attempt to reset the target and reconnect. After this, the target will have nothing "
-      "loaded.\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(:status)\n");
-  fmt::print(" - Send a ping-like message to the target. Requires the target to be connected\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(shutdown-target)\n");
-  fmt::print(" - If the target is connected, make it exit\n");
+    // ============================================================
+    // Заголовок
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n╔══════════════════════════════════════════════════╗\n");
+    fmt::print(fmt::emphasis::bold, "║              SOOTC REPL — HELP                   ║\n");
+    fmt::print(fmt::emphasis::bold, "╚══════════════════════════════════════════════════╝\n");
 
-  fmt::print(fmt::emphasis::bold, "\nCompiling & Building:\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(mi)\n");
-  fmt::print(" - Build entire game\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(mng)\n");
-  fmt::print(" - Build game engine\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(m \"filename\")\n");
-  fmt::print(" - Compile an OpenGOAL source file\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(ml \"filename\")\n");
-  fmt::print(" - Compile and Load (or reload) an OpenGOAL source file\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(build-kernel)\n");
-  fmt::print(" - Build the GOAL kernel\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(make \"file-name\")\n");
-  fmt::print(
-      " - Build a file and any out-of-date dependencies. This file must be a target in the make "
-      "system.\n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::yellow),
+               "\nNOTE: the legacy ':command' syntax is no longer supported.\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "      Every REPL control is now an ordinary S-expression:\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "      (e), (reload), (help), (clear), (sc-run ...), etc.\n");
 
-  fmt::print(fmt::emphasis::bold, "\nOther:\n");
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::magenta), "(gs)\n");
-  fmt::print(" - Enter a GOOS REPL\n");
+    // ============================================================
+    // Session control
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Session control ────────────────────────────────\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(e)\n");
+    fmt::print(" - Exit the compiler\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(reload)\n");
+    fmt::print(" - Reload the user profile and reinitialise the environment\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(clear)\n");
+    fmt::print(" - Clear the screen\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(help)\n");
+    fmt::print(" - Show this message\n");
+
+    // ============================================================
+    // Environment inspection
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Environment inspection ─────────────────────────\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(inspect-env)\n");
+    fmt::print(" - Dump the compiler environment (*soot-env*): every macro,\n");
+    fmt::print("   function and special form visible to the compiler\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(inspect-env-soots)\n");
+    fmt::print(" - Dump the interpreter environment (*global-env*): lib.st\n");
+    fmt::print("   macros and interpreter built-ins\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(has-macro \"name\")\n");
+    fmt::print(" - Report whether `name` is a macro registered in *soot-env*\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(list-symbols)\n");
+    fmt::print(" - List every symbol registered in the global StringId registry\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::lime_green), "(sizes)\n");
+    fmt::print(" - Print the sizes of all Carbon VM structures\n");
+
+    // ============================================================
+    // Execution
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Execution ──────────────────────────────────────\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::magenta), "(sc-run name arg...)\n");
+    fmt::print(" - Call a compiled function in the active runtime.\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "   Argument types are inferred: integer -> i64, float -> f32,\n");
+    fmt::print(fg(fmt::color::dim_gray), "   string -> std::string, symbol -> StringId\n");
+    fmt::print(fg(fmt::color::dim_gray), "   Example: (sc-run gcd 48 18)\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::magenta), "(sc-eval expr)\n");
+    fmt::print(" - Evaluate a SOOT expression in *global-env* and print the result.\n");
+    fmt::print(fg(fmt::color::dim_gray), "   Example: (sc-eval (+ 1 2 3))\n");
+
+    // ============================================================
+    // Compiler parameters
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Compiler parameters ────────────────────────────\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::orange), "(arg-set \"key\" value)\n");
+    fmt::print(" - Set a mutable compiler parameter. Takes effect immediately.\n");
+    fmt::print(fg(fmt::color::dim_gray), "   Mutable keys:\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "     \"print-listing\"  #t|#f   print binary listing after each compile\n");
+    fmt::print(fg(fmt::color::dim_gray), "     \"print-ir\"       #t|#f   print IR\n");
+    fmt::print(fg(fmt::color::dim_gray), "     \"print-ast\"      #t|#f   print AST\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "     \"print-asm\"      #t|#f   print generated assembly\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "     \"log-level\"      \"debug\"|\"info\"|\"warn\"|\"error\"\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::orange), "(arg-get \"key\")\n");
+    fmt::print(" - Read a compiler parameter. Unknown keys return (unset).\n");
+    fmt::print(fg(fmt::color::dim_gray), "   Read-only keys (settable only from the CLI):\n");
+    fmt::print(fg(fmt::color::dim_gray), "     \"sidbase\", \"runtime\", \"user-profile\"\n");
+
+    // ============================================================
+    // Session persistence
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Session persistence ────────────────────────────\n");
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "(save-session [\"name\"])\n");
+    fmt::print(" - Compile every top-level form entered in this session and save:\n");
+    fmt::print(fg(fmt::color::dim_gray), "     <name>.bin  — compiled binary\n");
+    fmt::print(fg(fmt::color::dim_gray), "     <name>.h    — C header for user-defined types\n");
+    fmt::print(fg(fmt::color::dim_gray), "   `name` defaults to the current session name.\n");
+
+    // ============================================================
+    // Language forms you can type
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Language forms ─────────────────────────────────\n");
+
+    fmt::print(fg(fmt::color::dim_gray), "   (define x 10)              define a variable\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (set! x 20)                mutate a variable\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (defun name (args) body)   define a function\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (defmacro name (args) body) define a goal macro\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (if test then else)        conditional\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "   (cond (test expr) ...)     multi-branch conditional\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (let ((v e)...) body)      local bindings\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (lambda (args) body)       anonymous function\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (deftype name (parent) (fields...))  define a type\n");
+    fmt::print(fg(fmt::color::dim_gray), "   (defenum name (entries...))         define an enum\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "   (require \"path/to/file.sc\")         load another module\n");
+
+    // ============================================================
+    // Modes
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n── Modes ──────────────────────────────────────────\n");
+    fmt::print(fg(fmt::color::dim_gray), "   sc >   COMPILE_ONLY    compile every input\n");
+    fmt::print(fg(fmt::color::dim_gray), "   si >   INTERPRET_ONLY  interpret every input\n");
+    fmt::print(fg(fmt::color::dim_gray),
+               "   sci>   HYBRID          interpret, fall back to compile\n");
+
+    // ============================================================
+    // Footer
+    // ============================================================
+    fmt::print(fmt::emphasis::bold, "\n══════════════════════════════════════════════════\n\n");
 }
 
 void Wrapper::print_keybind_help() {
