@@ -186,6 +186,9 @@ namespace carbon {
         /// @return the entry payload as SsType*, or nullptr if kind != SsType.
         [[nodiscard]] const SsType *entry_as_ss_type(const DCEntry &entry) const noexcept;
 
+        /// @return the entry payload as DcMap*, or nullptr if kind != Map.
+        [[nodiscard]] const DcMap *entry_as_map(const DCEntry &entry) const noexcept;
+
         // -------------------------------------------------------------------
         // SID and string helpers
         // -------------------------------------------------------------------
@@ -196,6 +199,13 @@ namespace carbon {
         /// @brief Read a null-terminated string at an absolute file location.
         /// @return the string, or "" if the location is outside the string table.
         [[nodiscard]] std::string read_string_at(location loc) const;
+
+        // -------------------------------------------------------------------
+        // The pointers tools
+        // -------------------------------------------------------------------
+
+        /// @return true if [ptr, ptr + size) lies within the mapped file buffer.
+        [[nodiscard]] bool is_valid_ptr(const void *ptr, size_t size) const noexcept;
 
         // -------------------------------------------------------------------
         // Debug
@@ -238,9 +248,6 @@ namespace carbon {
 
         /// Replace '\n' with ' ' inside the string table (the game does this too).
         void replace_newlines_in_stringtable() noexcept;
-
-        /// @return true if [ptr, ptr + size) lies within the mapped file buffer.
-        [[nodiscard]] bool is_valid_ptr(const void *ptr, size_t size) const noexcept;
     };
 
 } // namespace carbon

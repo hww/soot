@@ -2,77 +2,82 @@
 
 #include "CommonTypes.hpp"
 #include "gc/GCHeader.hpp"
-#include "lib/StringId.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace carbon::gc {
-
-    // ========================================================================
-    // Field flags
-    // ========================================================================
-    //
-    // Описывают, как интерпретировать поле. Комбинация флагов:
-    //
-    //   простой скаляр          : type=int32,  flags=0
-    //   указатель на структуру  : type=vector, flags=0
-    //   inline структура        : type=vector, flags=IS_INLINE
-    //   inline массив скаляров  : type=int32,  flags=IS_ARRAY|IS_INLINE, count=N
-    //   inline массив структур  : type=vector, flags=IS_ARRAY|IS_INLINE, count=N
-    //   динамический массив     : type=vector, flags=IS_ARRAY|IS_DYNAMIC
-    //
-    enum GCFieldFlags : u32 {
-        FIELD_IS_ARRAY = 1u << 0,
-        FIELD_IS_INLINE = 1u << 1,
-        FIELD_IS_DYNAMIC = 1u << 2,
-    };
 
     // ========================================================================
     // Type flags
     // ========================================================================
     enum GCTypeFlags : u32 {
-        TYPE_IS_SCALAR = 1u << 0,    // int32, float, ... — не указатель
-        TYPE_IS_REFERENCE = 1u << 1, // structure, basic, ... — указатель
+        TYPE_IS_SCALAR = 1u << 0,
+        TYPE_IS_REFERENCE = 1u << 1,
     };
 
     // ========================================================================
-    // FieldDesc — описание одного поля структуры
+    // PtrField
     // ========================================================================
-    struct FieldDesc {
-        sid64 type;   // sid типа поля
-        u32   offset; // runtime-смещение в объекте
-        u32   size;   // размер поля в байтах
-        u32   flags;  // FieldFlags
-        u32   count;  // число элементов (только для IS_ARRAY|IS_INLINE)
+    //
+    // Describes one pointer field inside a type. Only pointers are listed;
+    // scalars are not registered with the GC at all.
+    //
+    //   type_index : index into TypeRegistry of the field's type
+    //                (0 = unknown / opaque pointer)
+    //   offset     : byte offset of the pointer within the payload
+    //
+    // array_count and array_inline are optional metadata for inline arrays
+    // of pointers (e.g. Vector* arr[4] inside a struct). If array_count == 0,
+    // the field is a single pointer.
+    //
+    struct PtrField {
+        u32 type_index;
+        u32 offset;
+        u32 array_count; // 0 = single pointer, N = inline array of N
+        u32 flags;       // reserved
     };
 
     // ========================================================================
-    // TypeDescriptor — описание типа
+    // Delegates
     // ========================================================================
     //
-    // Живёт вечно. Хранится в реестре (владелец — реестр).
-    // Поля (fields) — массив, владелец тот же реестр.
+    // mark(payload, visitor, user):
+    //   The type walks its own pointers and calls visitor(type_sid, ptr, size,
+    //   user) for every GC pointer inside payload. The GC passes its own
+    //   mark_object trampoline as the visitor, so recursion goes through the
+    //   same code path.
     //
+    // destroy(payload):
+    //   The type releases non-GC resources. GC memory itself is reclaimed by
+    //   sweep; do not call gc::release from here.
+    //
+    using MarkVisitor = void (*)(sid64 type_sid, void *payload, std::size_t size, void *user);
+    using MarkFn = void      (*)(void *payload, MarkVisitor visitor, void *user);
+    using DestroyFn = void   (*)(void *payload);
+
+    // ========================================================================
+    // TypeDescriptor
+    // ========================================================================
     struct TypeDescriptor {
-        sid64 name;  // sid типа
-        u32   size;  // размер объекта (payload)
-        u32   align; // выравнивание объекта
-        u32   num_fields;
-        u32   flags;       // TypeFlags
-        FieldDesc *fields; // массив полей (владелец — реестр) или nullptr
+        sid64     name;           // SID hash (truncated sid64)
+        u32       size;           // sizeof(payload)
+        u32       align;          // alignof(payload)
+        u32       num_ptr_fields; // number of entries in ptr_fields
+        u32       flags;          // GCTypeFlags
+        PtrField *ptr_fields;     // pointer fields only
+        MarkFn    mark;           // traversal delegate (may be null = no pointers)
+        DestroyFn destroy;        // deletion delegate (may be null = nothing to do)
     };
 
     // ========================================================================
     // TypeRegistry
     // ========================================================================
     //
-    // Глобальный реестр. Регистрирует TypeDescriptor по sid.
-    // Идемпотентен: повторная регистрация того же sid — no-op.
-    //
-    // Живёт вечно. Не освобождает зарегистрированные типы.
-    // При shutdown() — очищает всё разом.
+    // Index 0 is a sentinel ("no type"). Real types start at index 1.
+    // Indices are stable for the lifetime of the process.
     //
     class TypeRegistry {
     public:
@@ -82,36 +87,23 @@ namespace carbon::gc {
         TypeRegistry(const TypeRegistry &) = delete;
         TypeRegistry &operator=(const TypeRegistry &) = delete;
 
-        /// @brief Зарегистрировать тип. Если sid уже зарегистрирован — no-op.
-        /// @param td  описание типа (копируется)
-        /// @return указатель на хранимый дескриптор
-        TypeDescriptor *register_type(const TypeDescriptor &td);
+        // Register a type, return its stable index. Idempotent by SID:
+        // a second call with the same SID returns the existing index.
+        u32 register_type(const TypeDescriptor &td);
 
-        /// @brief Зарегистрировать тип с явным массивом полей.
-        /// @param td          описание типа (без fields)
-        /// @param fields      массив полей (копируется)
-        /// @param num_fields  число полей
-        TypeDescriptor *register_type_with_fields(const TypeDescriptor &td, const FieldDesc *fields,
-                                                  u32 num_fields);
-
-        /// @brief Найти тип по sid. nullptr, если не зарегистрирован.
+        [[nodiscard]] TypeDescriptor *find_by_index(u32 index) const noexcept;
         [[nodiscard]] TypeDescriptor *find(sid64 sid) const noexcept;
+        [[nodiscard]] u32             find_index(sid64 sid) const noexcept;
 
-        /// @brief Очистить реестр (освобождает всё).
-        void clear();
-
-        /// @brief Количество зарегистрированных типов.
+        void                      clear();
         [[nodiscard]] std::size_t size() const noexcept { return m_types.size(); }
 
     private:
-        // Владелец дескрипторов.
-        std::unordered_map<sid64, TypeDescriptor *> m_types;
-
-        // Владелец массивов полей. Освобождаем при clear().
-        std::vector<FieldDesc *> m_field_arrays;
+        std::vector<TypeDescriptor>        m_types;       // [0] is the sentinel
+        std::vector<std::vector<PtrField>> m_ptr_storage; // stable backing for ptr_fields
+        std::unordered_map<sid64, u32>     m_by_sid;
     };
 
-    /// @brief Глобальный реестр.
     TypeRegistry &type_registry();
 
 } // namespace carbon::gc

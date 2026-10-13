@@ -464,6 +464,12 @@ namespace carbon {
         return reinterpret_cast<const SsType *>(entry.m_entryPtr);
     }
 
+    const DcMap *BinaryFile::entry_as_map(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::SsType) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(DcMap))) { return nullptr; }
+        return reinterpret_cast<const DcMap *>(entry.m_entryPtr);
+    }
+
     // ===========================================================================
     // SID and string helpers
     // ===========================================================================

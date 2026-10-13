@@ -111,6 +111,8 @@ namespace carbon {
         void inspect_lambda_summary(const SsTrack *track);
         void inspect_script_lambda(const ScriptLambda *lambda, const std::string &name = "");
         void inspect_symbol(const symbol *sym);
+        /// @brief Print the contents of a DcMap: keys and values.
+        void inspect_map(const DcMap *map);
 
         // Disassembly
         void disassemble(const ScriptLambda *lambda, const std::string &name);

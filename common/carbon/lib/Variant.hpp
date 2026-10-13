@@ -434,6 +434,14 @@ namespace carbon {
             return std::string(static_cast<const char *>(ptr_value));
         }
 
+         // Mutable pointer access for native functions that receive
+        // `const Variant*` but need to mutate the pointee. The Variant
+        // itself is not mutated; only the object it points to is.
+        template <typename T> T *get_mut_ptr() const {
+            if (!is_ptr()) { throw TypeError("get_mut_ptr() expected 'pointer' but found", type_); }
+            return static_cast<T *>(const_cast<void *>(ptr_value));
+        }
+
         // =========================================================================
         // TYPE CONVERTERS
         // =========================================================================

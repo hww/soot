@@ -108,5 +108,4 @@ namespace carbon {
 
         if (!list.is_null()) { throw std::runtime_error("Malformed import/export list"); }
     }
-
 } // namespace carbon

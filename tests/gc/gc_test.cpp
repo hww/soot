@@ -1,52 +1,81 @@
 ﻿#include <gtest/gtest.h>
 
 #include "gc/GC.hpp"
+#include "gc/GCHeader.hpp"
 #include "gc/TypeRegistry.hpp"
 #include "lib/StringId.hpp"
-#include <vm/StackFrame.hpp>
+#include "lib/Variant.hpp"
+#include "vm/StackFrame.hpp"
 
 using namespace carbon;
 using namespace carbon::gc;
 
 // ============================================================================
-// Test types — регистрируем в реестре перед тестами.
+// Test types
 // ============================================================================
+//
+// Two types are registered for the tests:
+//
+//   int32 -- scalar, no pointers. Used as a plain payload.
+//   cell  -- reference type with one pointer at offset 0. Used to
+//            exercise the recursive mark path.
+//
+// With the new TypeDescriptor there is no FieldDesc array. Instead, the
+// type provides a mark delegate that walks its own pointers, and the GC
+// just calls it.
 
 namespace {
 
-    // --- Тип "int32" — скаляр, без полей. ---
-    // Используется как простой объект в тестах.
+    // Mark delegate for `cell`. The cell has exactly one pointer at
+    // offset 0. It forwards that pointer to the visitor, which is the
+    // GC's mark_object trampoline.
+    void mark_cell(void *payload, MarkVisitor visitor, void *user) {
+        void *inner = *reinterpret_cast<void **>(payload);
+        if (inner) visitor(0, inner, 0, user);
+    }
 
-    // --- Тип "cell" — структура с одним указателем. ---
-    // Используется для проверки рекурсивного mark.
+    void destroy_cell(void * /*payload*/) {}
 
     void setup_test_types() {
-        // int32
-        TypeDescriptor td_int{};
-        td_int.name = SID("int32");
-        td_int.size = 4;
-        td_int.align = 4;
-        td_int.flags = TYPE_IS_SCALAR;
-        td_int.num_fields = 0;
-        td_int.fields = nullptr;
-        type_registry().register_type(td_int);
+        auto &reg = type_registry();
 
-        // cell — структура с одним указателем cell*
-        TypeDescriptor td_cell{};
-        td_cell.name = SID("cell");
-        td_cell.size = 8;
-        td_cell.align = 8;
-        td_cell.flags = TYPE_IS_REFERENCE;
-        td_cell.num_fields = 1;
+        // int32 -- scalar.
+        {
+            TypeDescriptor td{};
+            td.name = SID("int32");
+            td.size = 4;
+            td.align = 4;
+            td.num_ptr_fields = 0;
+            td.flags = TYPE_IS_SCALAR;
+            td.ptr_fields = nullptr;
+            td.mark = nullptr;
+            td.destroy = nullptr;
+            reg.register_type(td);
+        }
 
-        FieldDesc fd{};
-        fd.type = SID("cell");
-        fd.offset = 0;
-        fd.size = 8;
-        fd.flags = 0; // одиночный указатель
-        fd.count = 0;
+        // cell -- reference with one pointer at offset 0.
+        {
+            TypeDescriptor td{};
+            td.name = SID("cell");
+            td.size = 8;
+            td.align = 8;
+            td.num_ptr_fields = 1;
+            td.flags = TYPE_IS_REFERENCE;
 
-        type_registry().register_type_with_fields(td_cell, &fd, 1);
+            // PtrField carries the offset. The mark delegate below is what
+            // actually walks it. A future version of the GC could use
+            // ptr_fields directly, but for now the delegate is authoritative.
+            static PtrField pf{};
+            pf.type_index = reg.find_index(SID("cell"));
+            pf.offset = 0;
+            pf.array_count = 0;
+            pf.flags = 0;
+
+            td.ptr_fields = &pf;
+            td.mark = &mark_cell;
+            td.destroy = &destroy_cell;
+            reg.register_type(td);
+        }
     }
 
 } // namespace
@@ -72,10 +101,7 @@ protected:
 // Tests
 // ============================================================================
 
-TEST_F(GCTest, InitializeShutdown) {
-    // Просто проверяем, что initialize/shutdown не падают.
-    EXPECT_TRUE(true);
-}
+TEST_F(GCTest, InitializeShutdown) { EXPECT_TRUE(true); }
 
 TEST_F(GCTest, AllocReturnsValidPointer) {
     void *p = gc::alloc(SID("int32"));
@@ -101,7 +127,7 @@ TEST_F(GCTest, FreeIsIdempotent) {
     ASSERT_NE(p, nullptr);
 
     gc::release(p);
-    gc::release(p); // не должно падать
+    gc::release(p); // must not crash
 
     EXPECT_TRUE(true);
 }
@@ -128,9 +154,10 @@ TEST_F(GCTest, MarkObjectKeepsItAlive) {
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
-    // Объект должен быть жив.
+    // Object must be alive. pass_cycle is a bitfield inside flags, so
+    // use the accessor instead of the (removed) field.
     auto h = header_of(p);
-    EXPECT_NE(h->pass_cycle, 0u);
+    EXPECT_NE(gc_get_pass_cycle(h->flags), 0u);
 }
 
 TEST_F(GCTest, CollectAfterMarkKeepsObject) {
@@ -139,7 +166,6 @@ TEST_F(GCTest, CollectAfterMarkKeepsObject) {
 
     const auto before = gc::live_objects();
 
-    // Mark + collect.
     gc::start_pass();
     gc::mark_object(p);
     while (!gc::sweep_pass(1024)) {}
@@ -159,13 +185,12 @@ TEST_F(GCTest, RecursiveMark) {
     // outer->field = inner
     *reinterpret_cast<void **>(outer) = inner;
 
-    // Помечаем только outer.
+    // Mark only outer. The delegate must follow the pointer into inner.
     gc::start_pass();
     gc::mark_object(outer);
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
-    // Оба живы.
     EXPECT_EQ(gc::live_objects(), 2u);
 }
 
@@ -175,13 +200,13 @@ TEST_F(GCTest, SweepFreesUnmarked) {
     ASSERT_NE(a, nullptr);
     ASSERT_NE(b, nullptr);
 
-    // Помечаем только a.
+    // Mark only a.
     gc::start_pass();
     gc::mark_object(a);
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
-    // b должен быть освобождён. Теперь live = 1.
+    // b must be freed.
     EXPECT_EQ(gc::live_objects(), 1u);
 }
 
@@ -201,7 +226,7 @@ TEST_F(GCTest, IsInHeapRejectsForeign) {
 TEST_F(GCTest, MarkObjectForeignIsNoop) {
     int local = 0;
     gc::start_pass();
-    gc::mark_object(&local); // не должно падать
+    gc::mark_object(&local); // must not crash
     gc::finish_pass();
     EXPECT_TRUE(true);
 }
@@ -211,11 +236,10 @@ TEST_F(GCTest, FreeDuringPassIsSafe) {
     ASSERT_NE(p, nullptr);
 
     gc::start_pass();
-    gc::release(p); // явно освободили во время прохода
+    gc::release(p); // explicit release during a pass
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
-    // Не должно падать, объект должен быть учтён как освобождённый.
     EXPECT_TRUE(true);
 }
 
@@ -226,9 +250,9 @@ TEST_F(GCTest, StackFrameRootsKeepObjectAlive) {
     ASSERT_NE(obj, nullptr);
     frame->registers[0] = Variant(obj, RuntimeType::Pointer);
 
-    // Ручной mark, имитируем Kernel::mark_frame_recursive.
+    // Manual mark, mimicking Kernel::mark_frame_recursive.
     gc::start_pass();
-    const u64 pass = gc::current_pass();
+    const u32 pass = gc::current_pass();
 
     if (frame->mark_id != pass) {
         frame->mark_id = pass;
@@ -240,7 +264,6 @@ TEST_F(GCTest, StackFrameRootsKeepObjectAlive) {
     while (!gc::sweep_pass(1024)) {}
     gc::finish_pass();
 
-    // Объект должен быть жив.
     EXPECT_EQ(gc::live_objects(), 1u);
 }
 
@@ -251,9 +274,8 @@ TEST_F(GCTest, StackFrameNotMarkedFreesObject) {
     ASSERT_NE(obj, nullptr);
     frame->registers[0] = Variant(obj, RuntimeType::Pointer);
 
-    // НЕ помечаем фрейм.
+    // Do not mark the frame.
     gc::collect();
 
-    // Объект должен быть удалён.
     EXPECT_EQ(gc::live_objects(), 0u);
 }

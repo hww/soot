@@ -5,6 +5,7 @@
 #include "CommonTypes.hpp"
 #include "fmt/format.h"
 #include "lib/StringId.hpp"
+#include "lib/Variant.hpp"
 #include "vm/Instructions.hpp"
 #include <cstddef>
 #include <string>
@@ -434,5 +435,44 @@ namespace carbon {
         }
         return nullptr;
     }
+
+    // ---------------------------------------------------------------------------
+    // On-disk representation of `map` (used by BinaryFileInspector).
+    // ---------------------------------------------------------------------------
+ 
+        // On-disk representation of `map`.
+    //
+    // DcMap:
+    //   m_typeId   = SID("map") or SID("map-32")
+    //   m_size     = number of elements
+    //   m_pKeys    = pointer to sid64[m_size]   (relocated)
+    //   m_pValues  = pointer to u64[m_size]     (relocated)
+    //
+    // Each m_pValues[i] points at the `m_data` field of a DcMapValue.
+    // The full value is obtained by stepping back 8 bytes:
+    //
+    //     const DcMapValue *v =
+    //         reinterpret_cast<const DcMapValue*>(m_pValues[i] - 8);
+    //
+    // This mirrors Disassembler::insert_struct, case SID("map"), which does
+    // exactly the same `- 8` adjustment.
+    //
+    struct DcMap {
+        sid64  m_typeId;
+        u64    m_size;
+        sid64 *m_pKeys;
+        u64   *m_pValues;
+    };
+
+    // The typed wrapper around a single map value. Equivalent to the game's
+    // structs::unmapped, reproduced here so that libcarbon does not depend
+    // on the disassembler's namespace.
+    struct DcMapValue {
+        sid64 m_typeId; // +0x00: SID of the value type
+        void *m_data;   // +0x08: pointer to the payload
+    };
+
+    static_assert(sizeof(DcMap) == 0x20, "DcMap must be 0x20 bytes");
+    static_assert(sizeof(DcMapValue) == 0x10, "DcMapValue must be 0x10 bytes");
 }
 

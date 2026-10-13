@@ -499,100 +499,94 @@ namespace carbon {
     Scheduler        *Carbon::scheduler() noexcept { return m_impl->scheduler.get(); }
     gc::ArenaManager *Carbon::gc_heap() noexcept { return m_impl->gc_heap.get(); }
 
-    void Carbon::register_builtin_gc_types() {
+        void Carbon::register_builtin_gc_types() {
         auto &reg = gc::type_registry();
 
-        auto reg_scalar = [&](const char *name, std::size_t size, std::size_t align) {
-            if (reg.find(SID(name))) return;
-            gc::TypeDescriptor td{};
-            td.name = SID(name);
-            td.size = static_cast<u32>(size);
-            td.align = static_cast<u32>(align);
-            td.num_fields = 0;
-            td.flags = gc::TYPE_IS_SCALAR;
-            td.fields = nullptr;
-            reg.register_type(td);
-        };
+        auto reg_one = [&](const char *name, std::size_t size, std::size_t align, bool is_ref) {
+            const sid64 sid = static_cast<sid64>(SID(name));
+            if (reg.find(sid)) return;
 
-        auto reg_ref = [&](const char *name, std::size_t size, std::size_t align) {
-            if (reg.find(SID(name))) return;
             gc::TypeDescriptor td{};
-            td.name = SID(name);
+            td.name = sid;
             td.size = static_cast<u32>(size);
             td.align = static_cast<u32>(align);
-            td.num_fields = 0;
-            td.flags = gc::TYPE_IS_REFERENCE;
-            td.fields = nullptr;
+            td.num_ptr_fields = 0;
+            td.flags = is_ref ? gc::TYPE_IS_REFERENCE : gc::TYPE_IS_SCALAR;
+            td.ptr_fields = nullptr;
+            td.mark = nullptr;
+            td.destroy = nullptr;
             reg.register_type(td);
         };
 
         // Fixed-size scalar types.
-        reg_scalar("i64", sizeof(i64), alignof(i64));
-        reg_scalar("f32", sizeof(f32), alignof(f32));
-        reg_scalar("sid64", sizeof(sid64), alignof(sid64));
+        reg_one("i64", sizeof(i64), alignof(i64), false);
+        reg_one("f32", sizeof(f32), alignof(f32), false);
+        reg_one("sid64", sizeof(sid64), alignof(sid64), false);
 
-        // cstr: variable-size raw byte buffer used to store strings
-        // in the GC heap. The size is passed explicitly to gc::alloc,
-        // so the descriptor's `size` field is left at 0. There are no
-        // pointers inside a cstr, so it is registered as a scalar
-        // (nothing to scan during mark).
-        reg_scalar("cstr", 0, 1);
+        // cstr: variable-size raw byte buffer. size is passed to
+        // gc::alloc explicitly, so descriptor size is 0. No pointers
+        // inside, so no mark delegate.
+        reg_one("cstr", 0, 1, false);
 
-        // vector/cvector are sized by generated/vector.hpp. If that
-        // header is not available in carbon, leave these commented
-        // and register them later from sootc.
-        // reg_ref("vector",  sizeof(vector),  alignof(vector));
-        // reg_ref("cvector", sizeof(cvector), alignof(cvector));
+        // vector/cvector: not registered here. sootc registers them
+        // when generated/vector.hpp is available.
     }
 
-    void Carbon::register_ss_type_in_gc(const SsType &st) {
+        void Carbon::register_ss_type_in_gc(const SsType &st) {
         auto &reg = gc::type_registry();
-
-        // Already registered? Either this module is being loaded twice,
-        // or another module already brought in this type. In both cases
-        // do not overwrite: first one wins.
         if (reg.find(st.m_name)) return;
 
-        gc::TypeDescriptor td{};
-        td.name = st.m_name;
-        td.size = st.m_size;
-        td.align = st.m_align ? st.m_align : 16;
-        td.flags = gc::TYPE_IS_REFERENCE;
-        td.num_fields = st.m_numFields;
-
-        // Convert SsField -> gc::FieldDesc.
-        std::vector<gc::FieldDesc> fields;
-        fields.reserve(st.m_numFields);
+        // SsType comes from a loaded file. Its field layout is described
+        // by SsField[], but the new TypeDescriptor does not carry a
+        // generic field array. Instead, each type provides a mark
+        // delegate that walks its own pointers.
+        //
+        // Generating such a delegate from SsField[] at load time is not
+        // possible without emitting code: mark must be a plain C function
+        // pointer. So for now we register the type with no traversal.
+        //
+        // Consequence: any GC pointers inside an SsType instance are not
+        // marked and will be reclaimed. This is acceptable while SsType
+        // instances do not contain GC references. When they do, this
+        // function needs to be replaced with a mechanism that produces a
+        // per-type mark function from the layout (e.g. code generation in
+        // sootc, or a small interpreter that reads SsField[] and calls
+        // the visitor).
+        //
+        // The `ptr_fields` array is filled in for informational purposes
+        // (offsets of pointer-shaped SsFields), but the GC does not use
+        // it yet.
+        std::vector<gc::PtrField> ptr_fields;
+        ptr_fields.reserve(st.m_numFields);
 
         for (u32 i = 0; i < st.m_numFields; ++i) {
             const SsField &f = st.m_pFields[i];
 
-            gc::FieldDesc fd{};
-            fd.type = f.m_type;
-            fd.offset = f.m_offset;
-            fd.size = f.m_size;
-            fd.count = f.m_count;
-            fd.flags = 0;
+            const bool is_inline = (f.m_flags & 0x1) != 0;
+            const bool is_dynamic = (f.m_flags & 0x2) != 0;
+            const bool is_array = (f.m_flags & 0x4) != 0;
 
-            // SsField::m_flags layout:
-            //   bit 0 -- inline
-            //   bit 1 -- dynamic
-            //   bit 2 -- array
-            //
-            // gc::FieldDesc::flags layout:
-            //   FIELD_IS_ARRAY   = 1 << 0
-            //   FIELD_IS_INLINE  = 1 << 1
-            //   FIELD_IS_DYNAMIC = 1 << 2
-            //
-            // The bit orders are DIFFERENT, so we cannot copy f.m_flags
-            // directly into fd.flags. Transfer each bit individually.
-            if (f.m_flags & 0x1) fd.flags |= gc::FIELD_IS_INLINE;
-            if (f.m_flags & 0x2) fd.flags |= gc::FIELD_IS_DYNAMIC;
-            if (f.m_flags & 0x4) fd.flags |= gc::FIELD_IS_ARRAY;
+            // Skip inline structs, dynamic arrays, and inline arrays.
+            // Only single non-inline pointer fields are captured here.
+            if (is_inline || is_dynamic || is_array) continue;
 
-            fields.push_back(fd);
+            gc::PtrField pf{};
+            pf.type_index = reg.find_index(f.m_type);
+            pf.offset = f.m_offset;
+            pf.array_count = 0;
+            pf.flags = 0;
+            ptr_fields.push_back(pf);
         }
 
-        reg.register_type_with_fields(td, fields.data(), static_cast<u32>(fields.size()));
+        gc::TypeDescriptor td{};
+        td.name = static_cast<u32>(st.m_name);
+        td.size = st.m_size;
+        td.align = st.m_align ? st.m_align : 16;
+        td.num_ptr_fields = static_cast<u32>(ptr_fields.size());
+        td.flags = gc::TYPE_IS_REFERENCE;
+        td.ptr_fields = ptr_fields.empty() ? nullptr : ptr_fields.data();
+        td.mark = nullptr; // see comment above
+        td.destroy = nullptr;
+        reg.register_type(td);
     }
 } // namespace carbon

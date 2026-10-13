@@ -1,6 +1,9 @@
 ﻿#include "NativeAllocators.hpp"
 
 #include "carbon/vm/NativeFunc.hpp"
+#include "carbon/vm/NativeString.hpp"
+#include "carbon/vm/NativeMap.hpp"
+#include "carbon/vm/NativeArray.hpp"
 #include "gc/GC.hpp"
 #include "gc/TypeRegistry.hpp"
 #include "util/Log.hpp"
@@ -59,68 +62,46 @@ namespace carbon {
     // =========================================================================
 
     void NativeAllocators::register_allocator_types() {
+        // inside NativeAllocators::register_allocator_types()
         auto &reg = gc::type_registry();
 
-        // ---- i64 ----
-        {
+        auto reg_scalar = [&](const char *name, std::size_t size, std::size_t align) {
+            const sid64 sid = static_cast<sid64>(SID(name));
+            if (reg.find(sid)) return;
             gc::TypeDescriptor td{};
-            td.name = SID("i64");
-            td.size = sizeof(i64);
-            td.align = alignof(i64);
-            td.num_fields = 0;
+            td.name = sid;
+            td.size = static_cast<u32>(size);
+            td.align = static_cast<u32>(align);
+            td.num_ptr_fields = 0;
             td.flags = gc::TYPE_IS_SCALAR;
-            td.fields = nullptr;
+            td.ptr_fields = nullptr;
+            td.mark = nullptr;
+            td.destroy = nullptr;
             reg.register_type(td);
-        }
+        };
 
-        // ---- f32 ----
-        {
+        auto reg_ref = [&](const char *name, std::size_t size, std::size_t align) {
+            const sid64 sid = static_cast<sid64>(SID(name));
+            if (reg.find(sid)) return;
             gc::TypeDescriptor td{};
-            td.name = SID("f32");
-            td.size = sizeof(f32);
-            td.align = alignof(f32);
-            td.num_fields = 0;
-            td.flags = gc::TYPE_IS_SCALAR;
-            td.fields = nullptr;
-            reg.register_type(td);
-        }
-
-        // ---- sid64 ----
-        {
-            gc::TypeDescriptor td{};
-            td.name = SID("sid64");
-            td.size = sizeof(sid64);
-            td.align = alignof(sid64);
-            td.num_fields = 0;
-            td.flags = gc::TYPE_IS_SCALAR;
-            td.fields = nullptr;
-            reg.register_type(td);
-        }
-
-        // ---- vector ----
-        // Four floats, 16 bytes. No pointers, nothing to scan.
-        {
-            gc::TypeDescriptor td{};
-            td.name = SID("vector");
-            td.size = sizeof(vector);
-            td.align = alignof(vector);
-            td.num_fields = 0;
+            td.name = sid;
+            td.size = static_cast<u32>(size);
+            td.align = static_cast<u32>(align);
+            td.num_ptr_fields = 0;
             td.flags = gc::TYPE_IS_REFERENCE;
-            td.fields = nullptr;
+            td.ptr_fields = nullptr;
+            td.mark = nullptr;    // no pointers inside
+            td.destroy = nullptr; // nothing to free
             reg.register_type(td);
-        }
+        };
 
-        // ---- cvector ----
-        {
-            gc::TypeDescriptor td{};
-            td.name = SID("cvector");
-            td.size = sizeof(cvector);
-            td.align = alignof(cvector);
-            td.num_fields = 0;
-            td.flags = gc::TYPE_IS_REFERENCE;
-            td.fields = nullptr;
-            reg.register_type(td);
-        }
+        reg_scalar("i64", sizeof(i64), alignof(i64));
+        reg_scalar("f32", sizeof(f32), alignof(f32));
+        reg_scalar("sid64", sizeof(sid64), alignof(sid64));
+        reg_scalar("variant", sizeof(Variant), alignof(Variant));
+
+        reg_ref("vector", sizeof(vector), alignof(vector));
+        reg_ref("cvector", sizeof(cvector), alignof(cvector));
     }
 
     // =========================================================================
@@ -138,6 +119,10 @@ namespace carbon {
         reg.register_function("allocate-sid", &allocate_sid);
         reg.register_function("allocate-vector", &allocate_vector);
         reg.register_function("allocate-cvector", &allocate_cvector);
+        
+        NativeString::initialize_builtins();
+        NativeString::initialize_builtins();
+        NativeString::initialize_builtins();
 
         lg::info("Initialized 5 allocator native functions");
     }

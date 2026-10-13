@@ -7,6 +7,7 @@
 #include "carbon/vm/StackFrame.hpp"
 #include "carbon/vm/NativeFunc.hpp"
 #include "carbon/vm/NativeAllocators.hpp"
+
 #include "carbon/gc/GC.hpp"
 
 #include <memory>
@@ -99,6 +100,7 @@ namespace carbon {
         std::string break_reason;
         std::shared_ptr<StackFrame> current_frame;
         NativeAllocators            m_allocators;
+
 
         VirtualMachine(Carbon *carbon) : carbon(carbon)
         {

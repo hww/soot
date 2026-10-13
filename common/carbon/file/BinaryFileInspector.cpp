@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <lib/Variant.hpp>
 
 using namespace util;
 using namespace carbon;
@@ -453,10 +454,13 @@ namespace carbon {
                 if (const auto *st = m_file->entry_as_ss_type(*entry)) { inspect_ss_type(st); }
                 break;
             }
-            case BinaryFile::EntryKind::Map:
             case BinaryFile::EntryKind::DataStruct: {
                 // Opaque payload: print the first 64 bytes as raw hex.
                 inspect_raw_payload(entry, 64);
+                break;
+            }
+            case BinaryFile::EntryKind::Map: {
+                if (const auto *map = m_file->entry_as_map(*entry)) { inspect_map(map); }
                 break;
             }
             case BinaryFile::EntryKind::Unknown: break;
@@ -1447,6 +1451,110 @@ namespace carbon {
             if (sym->lambda_ptr) { inspect_script_lambda(sym->lambda_ptr); }
             break;
         default: break;
+        }
+    }
+
+    void BinaryFileInspector::inspect_map(const DcMap *map) {
+        if (!map) {
+            m_formatter->print("Map: NULL\n");
+            return;
+        }
+
+        m_formatter->print("Map:\n");
+        IFormatter::Block block(*m_formatter, m_indent);
+
+        m_formatter->print("TypeId:  {}\n", sid_str(map->m_typeId));
+        m_formatter->print("Size:    {} entries\n", map->m_size);
+        m_formatter->print("Keys:    {}\n", ptr_str(map->m_pKeys));
+        m_formatter->print("Values:  {}\n", ptr_str(map->m_pValues));
+
+        if (map->m_size == 0) {
+            m_formatter->print("(empty)\n");
+            return;
+        }
+
+        // m_pKeys   — sid64[m_size]              (relocated, absolute)
+        // m_pValues — u64[m_size]                (relocated, absolute)
+        //
+        // Each m_pValues[i] is an absolute pointer to the `m_data` field
+        // of a DcMapValue. The DcMapValue itself lives 8 bytes earlier:
+        //
+        //     const DcMapValue *v =
+        //         reinterpret_cast<const DcMapValue*>(map->m_pValues[i] - 8);
+        //
+        // Both v->m_typeId and v->m_data are valid after relocation.
+
+        const u32 max_show = 32;
+        const u32 n = static_cast<u32>(std::min<u64>(map->m_size, max_show));
+
+        for (u32 i = 0; i < n; ++i) {
+            const sid64 key = map->m_pKeys[i];
+            const u64   value_ptr = map->m_pValues[i];
+
+            m_formatter->print("\n[{:>3}] key={}\n", i, sid_str(key));
+
+            if (value_ptr == 0) {
+                m_formatter->print("       value: null\n");
+                continue;
+            }
+
+            // The value pointer must be inside the file buffer, with at
+            // least 8 bytes before it (for the typeId field of DcMapValue).
+            if (!m_file->is_valid_ptr(reinterpret_cast<const void *>(value_ptr), 1) ||
+                !m_file->is_valid_ptr(reinterpret_cast<const void *>(value_ptr - 8),
+                                      sizeof(DcMapValue))) {
+                m_formatter->print("       value ptr 0x{:X} out of bounds\n", value_ptr);
+                continue;
+            }
+
+            const auto *v = reinterpret_cast<const DcMapValue *>(value_ptr - 8);
+
+            m_formatter->print("       type:  {}\n", sid_str(v->m_typeId));
+            m_formatter->print("       data:  {}\n", ptr_str(v->m_data));
+
+            // Decode the payload based on the value's typeId.
+            if (v->m_data == nullptr) {
+                m_formatter->print("       value: null\n");
+                continue;
+            }
+
+            if (!m_file->is_valid_ptr(v->m_data, 1)) {
+                m_formatter->print("       data ptr out of bounds\n");
+                continue;
+            }
+
+            if (v->m_typeId == SID("int32") || v->m_typeId == SID("i32")) {
+                m_formatter->print("       value: {}\n", *reinterpret_cast<const i32 *>(v->m_data));
+            } else if (v->m_typeId == SID("i64") || v->m_typeId == SID("int64")) {
+                m_formatter->print("       value: {}\n", *reinterpret_cast<const i64 *>(v->m_data));
+            } else if (v->m_typeId == SID("float") || v->m_typeId == SID("f32")) {
+                m_formatter->print("       value: {:.6f}\n",
+                                   *reinterpret_cast<const f32 *>(v->m_data));
+            } else if (v->m_typeId == SID("bool") || v->m_typeId == SID("boolean")) {
+                m_formatter->print("       value: {}\n",
+                                   *reinterpret_cast<const u8 *>(v->m_data) ? "true" : "false");
+            } else if (v->m_typeId == SID("symbol")) {
+                const sid64 s = *reinterpret_cast<const sid64 *>(v->m_data);
+                m_formatter->print("       value: {}\n", sid_str(s));
+            } else if (v->m_typeId == SID("string")) {
+                // A string value is a pointer to a C string in the string table.
+                const auto *s = *reinterpret_cast<const char *const *>(v->m_data);
+                if (s && m_file->is_valid_ptr(s, 1)) {
+                    m_formatter->print("       value: \"{}\"\n", s);
+                } else {
+                    m_formatter->print("       value: (invalid string ptr)\n");
+                }
+            } else {
+                // Unknown type: dump the first 16 bytes as hex.
+                const auto *raw = reinterpret_cast<const u8 *>(v->m_data);
+                m_formatter->print("       value: ??? ");
+                for (int k = 0; k < 16; ++k) { m_formatter->print("{:02X} ", raw[k]); }
+                m_formatter->print("\n");
+            }
+        }
+
+        if (map->m_size > max_show) {
+            m_formatter->print("\n... and {} more\n", map->m_size - max_show);
         }
     }
 

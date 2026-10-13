@@ -11,46 +11,29 @@
 
 namespace carbon::gc {
 
-    // ========================================================================
     // Lifecycle
-    // ========================================================================
-
-    void initialize(std::size_t initial_mb = 16, std::size_t max_mb = 1024);
-    void shutdown();
-
+    void               initialize(std::size_t initial_mb = 16, std::size_t max_mb = 1024);
+    void               shutdown();
     [[nodiscard]] bool is_initialized();
 
-    // ========================================================================
     // Allocation
-    // ========================================================================
-
-    void *alloc(sid64 sid, std::size_t size = 0, std::size_t align = 0);
-    void  release(void *ptr);
-
+    void              *alloc(sid64 sid, std::size_t size = 0, std::size_t align = 0);
+    void               release(void *ptr);
     [[nodiscard]] bool is_in_heap(const void *ptr);
 
-    // ========================================================================
     // Pass API
-    // ========================================================================
-
-    u64  start_pass();
+    u32  start_pass();
     void mark_object(void *payload);
     bool sweep_pass(int budget = 64);
     void finish_pass();
 
-    [[nodiscard]] u64         current_pass();
+    [[nodiscard]] u32         current_pass();
     [[nodiscard]] std::size_t live_objects();
 
-    // ========================================================================
-    // Full collection (STW, without roots — sweep only)
-    // ========================================================================
-
+    // Stop-the-world, sweep-only collection (no roots).
     void collect();
 
-    // ========================================================================
     // Queries
-    // ========================================================================
-
     [[nodiscard]] std::size_t capacity_bytes();
 
     struct Stats {
@@ -60,10 +43,9 @@ namespace carbon::gc {
         std::size_t total_passes = 0;
         std::size_t bytes_committed = 0;
     };
-
     Stats stats();
 
-    using GcVisitor = void (*)(sid64 type_sid, void *payload, std::size_t size, void *user);
-    void                   for_each_live(GcVisitor visitor, void *user);
+    using GcVisitorFn = void (*)(sid64 type_sid, void *payload, std::size_t size, void *user);
+    void                     for_each_live(GcVisitorFn visitor, void *user);
 
 } // namespace carbon::gc

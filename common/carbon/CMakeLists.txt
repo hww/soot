@@ -29,6 +29,9 @@ add_library(libcarbon
     common/carbon/vm/VirtualMachine.cpp
     common/carbon/vm/NativeFunc.cpp   
     common/carbon/vm/NativeAllocators.cpp   
+    common/carbon/vm/NativeMap.cpp   
+    common/carbon/vm/NativeString.cpp
+    common/carbon/vm/NativeArray.cpp
 
     ## Kernel
     common/carbon/kernel/EventMessage.cpp   
