@@ -19,6 +19,7 @@ add_executable(carbon_test
     tests/carbon/MapRuntimeTest.cpp
     tests/carbon/ArrayRuntimeTest.cpp
     tests/carbon/StringRuntimeTest.cpp
+    tests/carbon/AllocationTest.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest

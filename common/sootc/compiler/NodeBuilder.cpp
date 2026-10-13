@@ -643,10 +643,7 @@ namespace sootc {
 
         std::string first_str = first_ptr->as_symbol();
 
-        if (first_str == "static" || first_str == "global" || first_str == "heap" ||
-            first_str == "stack" || first_str == "stack-no-clear" || first_str == "process" ||
-            first_str == "debug") 
-            {
+        if (first_str == "static" || first_str == "global" || first_str == "heap") {
             allocation = first_str;
             rest = rest.as_pair()->cdr;
 
@@ -674,6 +671,14 @@ namespace sootc {
                     .got(type_ptr->print());
             }
             type_name = type_ptr->to_std_string();
+        } else if (first_str == "stack" || first_str == "stack-no-clear" ||
+                   first_str == "process" || first_str == "debug") {
+            throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                .expected("one of: static, global, heap")
+                .got(fmt::format("allocation '{}' is not supported by this VM", first_str))
+                .note("The VM keeps all values in Variant registers; a raw structure "
+                      "cannot live on the value stack. Use 'static' for compile-time "
+                      "initialization or 'heap' for runtime allocation.");
         } else {
             type_name = first_str;
         }
@@ -695,17 +700,20 @@ namespace sootc {
             if (constructed_type) { new_node->set_type(constructed_type); }
         }
 
-        auto fields = rest.as_pair()->cdr;
+         auto fields = rest.as_pair()->cdr;
 
-        // Two syntaxes:
+        // Two syntaxes are accepted for any allocation ('static', 'global',
+        // 'heap'):
         //
-        //   (new 'static 'vec3 :x 1 :y 2)     — :field value pairs
-        //   (new 'process 'vec3 1 2 3 4)      — positional args
+        //   (new 'heap 'cvector :x 1.0 :y 2.0 :z 3.0 :w 4.0)   -- keyword-args
+        //   (new 'heap 'cvector 1.0 2.0 3.0 4.0)               -- positional
         //
-        // For 'static we always use :field value. For non-static we use
-        // positional args because they map 1:1 to the constructor's
-        // parameters.
-        if (allocation == "static") {
+        // The first token after the type name decides. If it is a keyword,
+        // the whole tail is parsed as keyword-args and stored in m_fields;
+        // otherwise the whole tail is parsed as positional args and stored
+        // in m_args. This works uniformly for 'static and 'heap, so the
+        // same form can be written either way.
+        if (fields.is_pair() && fields.as_pair()->car.is_keyword()) {
             while (fields.is_pair()) {
                 const auto &field_name_obj = fields.as_pair()->car;
 

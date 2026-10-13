@@ -6,6 +6,7 @@
 #include "carbon/file/Globals.hpp"
 #include "carbon/gc/ArenaManager.hpp"
 #include "carbon/gc/TypeRegistry.hpp"
+#include "carbon/gc/GC.hpp"
 #include "carbon/lib/StringIdManager.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 
@@ -113,11 +114,10 @@ namespace carbon {
         bool         initialized = false;
         bool         exit_requested = false;
 
-        std::unique_ptr<gc::ArenaManager> gc_heap;
-        std::unique_ptr<VirtualMachine>   vm;
-        std::unique_ptr<Globals>          globals;
-        std::unique_ptr<ModuleRegistry>   modules;
-        std::unique_ptr<Scheduler>        scheduler;
+        std::unique_ptr<VirtualMachine> vm;
+        std::unique_ptr<Globals>        globals;
+        std::unique_ptr<ModuleRegistry> modules;
+        std::unique_ptr<Scheduler>      scheduler;
     };
 
     // ------------------------------------------------------------------------
@@ -129,6 +129,17 @@ namespace carbon {
 
     bool Carbon::initialize(const CarbonConfig &config) {
         if (m_impl->initialized) return true;
+
+        // Reject if another Carbon is already active in this thread.
+        // Done before any state is created, so a rejection leaves this
+        // object completely untouched.
+        if (t_current != nullptr && t_current != this) {
+            lg::error("Carbon::initialize: another Carbon is already active "
+                      "in this thread (0x{:X})",
+                      reinterpret_cast<uintptr_t>(t_current));
+            return false;
+        }
+        t_current = this;
 
         m_impl->config = config;
 
@@ -144,17 +155,20 @@ namespace carbon {
             }
         }
 
-        // 2. GC heap. Reserved now, pages committed lazily.
-        m_impl->gc_heap =
-            std::make_unique<gc::ArenaManager>(config.gc_initial_mb, config.gc_max_mb);
+        // 2. GC. The GC module owns the ArenaManager; Carbon just tells
+        //    it how much memory to reserve. gc::initialize must run
+        //    before any allocation, so it happens here, before the
+        //    VirtualMachine (which registers native allocators) is
+        //    constructed.
+        gc::initialize(config.gc_initial_mb, config.gc_max_mb);
 
         // 3. TypeRegistry: register the built-in VM types.
         if (config.register_builtin_types) { register_builtin_gc_types(); }
 
         // 4. VirtualMachine. This also registers the default native
-        //    functions (native_print etc.). The language runtime is
-        //    free to remove them again in its own setup; Carbon does
-        //    not decide what a language looks like.
+        //    functions (native_print etc.) and the allocator types
+        //    (vector, cvector, i64, f32, sid64, variant) via
+        //    NativeAllocators::initialize_builtins().
         m_impl->vm = std::make_unique<VirtualMachine>(this);
 
         // 5. Globals: THIS context's symbol table. Not a singleton.
@@ -170,29 +184,27 @@ namespace carbon {
         lg::info("Carbon: initialized (gc {}..{} MB, sidbase='{}')", config.gc_initial_mb,
                  config.gc_max_mb, config.sidbase_path);
 
-                if (t_current != nullptr && t_current != this) {
-            lg::error("Carbon::initialize: another Carbon is already active "
-                      "in this thread (0x{:X})",
-                      reinterpret_cast<uintptr_t>(t_current));
-            return false;
-        }
-        t_current = this;
-
         return true;
     }
 
     void Carbon::shutdown() {
         if (!m_impl->initialized) return;
 
-        // Drop processes first, then modules, then symbols, then heap.
+        // Drop processes first, then modules, then symbols, then the VM,
+        // then the GC heap itself. Order matters: the VM holds pointers
+        // into Globals, Globals holds pointers into the loaded binaries,
+        // and the binaries' payloads live in the GC heap.
         m_impl->scheduler.reset();
         m_impl->modules.reset();
         m_impl->globals.reset();
         m_impl->vm.reset();
-        m_impl->gc_heap.reset();
+
+        // Shut down the global GC state. Its ArenaManager is released
+        // here; the next gc::initialize starts from scratch.
+        gc::shutdown();
 
         m_impl->initialized = false;
-        
+
         if (t_current == this) t_current = nullptr;
 
         lg::info("Carbon: shutdown");
@@ -497,9 +509,9 @@ namespace carbon {
     Globals          *Carbon::globals() noexcept { return m_impl->globals.get(); }
     ModuleRegistry   *Carbon::modules() noexcept { return m_impl->modules.get(); }
     Scheduler        *Carbon::scheduler() noexcept { return m_impl->scheduler.get(); }
-    gc::ArenaManager *Carbon::gc_heap() noexcept { return m_impl->gc_heap.get(); }
 
-        void Carbon::register_builtin_gc_types() {
+
+    void Carbon::register_builtin_gc_types() {
         auto &reg = gc::type_registry();
 
         auto reg_one = [&](const char *name, std::size_t size, std::size_t align, bool is_ref) {
@@ -532,7 +544,7 @@ namespace carbon {
         // when generated/vector.hpp is available.
     }
 
-        void Carbon::register_ss_type_in_gc(const SsType &st) {
+    void Carbon::register_ss_type_in_gc(const SsType &st) {
         auto &reg = gc::type_registry();
         if (reg.find(st.m_name)) return;
 
@@ -579,7 +591,7 @@ namespace carbon {
         }
 
         gc::TypeDescriptor td{};
-        td.name = static_cast<u32>(st.m_name);
+        td.name = st.m_name;
         td.size = st.m_size;
         td.align = st.m_align ? st.m_align : 16;
         td.num_ptr_fields = static_cast<u32>(ptr_fields.size());

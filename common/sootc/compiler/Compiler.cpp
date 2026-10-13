@@ -617,8 +617,9 @@ namespace sootc {
             "save-session",
             "sc-run",
             "sc-eval",
-            "arg-set",
-            "arg-get",
+            "arg!",
+            "arg",
+            "argls",
             "gcls",
             "gc",
         };
@@ -678,8 +679,9 @@ namespace sootc {
         if (name == "save-session") return cmd_save_session(form);
         if (name == "sc-run") return cmd_sc_run(form);
         if (name == "sc-eval") return cmd_sc_eval(form);
-        if (name == "arg-set") return cmd_arg_set(form);
-        if (name == "arg-get") return cmd_arg_get(form);
+        if (name == "arg!") return cmd_arg_set(form);
+        if (name == "arg") return cmd_arg_get(form);
+        if (name == "argls") return cmd_arg_list(form);
         if (name == "gcls") return cmd_gc_list(form);
         if (name == "gc") return cmd_gc_collect(form);
 
@@ -1124,6 +1126,73 @@ namespace sootc {
         return ReplStatus::OK;
     }
 
+    ReplStatus Compiler::cmd_arg_list(const script::Object &form) {
+        // --- Parse (optional) filter argument ---
+        auto        rest = form.as_pair()->cdr;
+        std::string filter;
+        bool        has_filter = false;
+        if (rest.is_pair()) {
+            const auto &filter_obj = rest.as_pair()->car;
+            if (!filter_obj.is_string() && !filter_obj.is_symbol()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (arg-list ...) filter must be string or symbol\n");
+                return ReplStatus::ERR;
+            }
+            filter = filter_obj.to_std_string();
+            has_filter = true;
+        }
+
+        auto matches = [&](const std::string &key) {
+            return !has_filter || key.find(filter) != std::string::npos;
+        };
+
+        // --- Mutable keys ---
+        if (matches("print-listing") || matches("print-ir") || matches("print-ast") ||
+            matches("print-asm") || matches("log-level")) {
+            fmt::print(fg(fmt::color::cyan), "; --- Mutable keys ---\n");
+        }
+        if (matches("print-listing")) {
+            fmt::print(fg(fmt::color::green), ";   print-listing => {}\n",
+                       m_config.print_listing ? "#t" : "#f");
+        }
+        if (matches("print-ir")) {
+            fmt::print(fg(fmt::color::green), ";   print-ir      => {}\n",
+                       m_config.debug_print_ir ? "#t" : "#f");
+        }
+        if (matches("print-ast")) {
+            fmt::print(fg(fmt::color::green), ";   print-ast     => {}\n",
+                       m_config.debug_print_ast ? "#t" : "#f");
+        }
+        if (matches("print-asm")) {
+            fmt::print(fg(fmt::color::green), ";   print-asm     => {}\n",
+                       m_config.debug_print_asm ? "#t" : "#f");
+        }
+        if (matches("log-level")) {
+            fmt::print(fg(fmt::color::green), ";   log-level     => \"{}\"\n", m_config.log_level);
+        }
+
+        // --- Read-only keys ---
+        if (matches("sidbase") || matches("runtime") || matches("user-profile")) {
+            fmt::print(fg(fmt::color::cyan), "; --- Read-only keys ---\n");
+        }
+        if (matches("sidbase")) {
+            if (m_config.sidbase_path.empty()) {
+                fmt::print(fg(fmt::color::yellow), ";   sidbase       => (unset)\n");
+            } else {
+                fmt::print(fg(fmt::color::green), ";   sidbase       => \"{}\"\n",
+                           m_config.sidbase_path);
+            }
+        }
+        if (matches("runtime")) {
+            fmt::print(fg(fmt::color::green), ";   runtime       => \"{}\"\n", m_runtime->name());
+        }
+        if (matches("user-profile")) {
+            fmt::print(fg(fmt::color::green), ";   user-profile  => \"{}\"\n",
+                       m_config.user_profile);
+        }
+
+        return ReplStatus::OK;
+    }
     // ===============================================================
     // Garbage collector 
     // ===============================================================

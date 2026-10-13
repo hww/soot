@@ -1,9 +1,9 @@
 ﻿#include "NativeAllocators.hpp"
 
-#include "carbon/vm/NativeFunc.hpp"
-#include "carbon/vm/NativeString.hpp"
-#include "carbon/vm/NativeMap.hpp"
 #include "carbon/vm/NativeArray.hpp"
+#include "carbon/vm/NativeFunc.hpp"
+#include "carbon/vm/NativeMap.hpp"
+#include "carbon/vm/NativeString.hpp"
 #include "gc/GC.hpp"
 #include "gc/TypeRegistry.hpp"
 #include "util/Log.hpp"
@@ -12,57 +12,96 @@
 
 namespace carbon {
 
-    // =========================================================================
-    // Native functions
-    // =========================================================================
+    // ========================================================================
+    // Universal allocator
+    // ========================================================================
     //
-    // Each function receives argc/argv from the VM and returns a Variant
-    // holding a pointer to a freshly allocated object in the GC heap.
+    // allocate(where, type_id) -> pointer
     //
-    // If gc::alloc returns nullptr (OOM or unknown type), we return a
-    // null pointer Variant.
-
+    // `where` is one of "static", "global", "heap". It is currently
+    // accepted but ignored: all three allocate from the GC heap, because
+    // the VM has no separate global or static region. This matches the
+    // "static at top level is compile-time; at runtime it is just heap"
+    // rule the compiler enforces on its side.
+    //
+    // `type_id` is the SID of the type to allocate. The allocator looks
+    // it up in the GC type registry, takes the size and alignment from
+    // the descriptor, and asks the GC for a zero-initialized block.
+    //
+    // A type without a registered GC descriptor (or with size 0, meaning
+    // variable-size) is rejected: the allocator cannot guess how much
+    // memory to reserve.
+    //
     namespace {
-        [[nodiscard]] Variant alloc_or_null(sid64 sid, std::size_t size, std::size_t align) {
-            void *ptr = gc::alloc(sid, size, align);
+
+        // ====================================================================
+        // allocate_impl — the one real implementation.
+        // ====================================================================
+        //
+        // `silent` controls logging only. The behaviour is identical:
+        // a missing type or a bad argument list still returns a null
+        // pointer Variant. `silent = true` is used by tests that exercise
+        // the error path on purpose and do not want the log to shout.
+        //
+        Variant allocate_impl(u32 argc, const Variant *argv, bool silent) {
+            if (argc < 2) {
+                if (!silent) lg::error("allocate: expected (where, type-id), got {}", argc);
+                return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+            }
+
+            const sid64 type_sid = argv[1].get_sid();
+
+            auto *td = gc::type_registry().find(type_sid);
+            if (!td) {
+                if (!silent) lg::error("allocate: unknown type 0x{:016X}", type_sid);
+                return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+            }
+
+            if (td->size == 0) {
+                if (!silent) lg::error("allocate: type 0x{:016X} has variable size", type_sid);
+                return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+            }
+
+            void *ptr = gc::alloc(type_sid, td->size, td->align);
             if (!ptr) {
-                lg::warn("allocate: gc::alloc failed for sid=0x{:016X}", sid);
+                if (!silent) lg::error("allocate: gc::alloc failed for type 0x{:016X}", type_sid);
                 return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
             }
             return Variant(ptr, RuntimeType::Pointer);
         }
+
+
+
     } // namespace
+      
+      
+    // ========================================================================
+    // Public entry points
+    // ========================================================================
 
-    Variant allocate_i64(u32 /*argc*/, const Variant * /*argv*/) {
-        return alloc_or_null(SID("i64"), sizeof(i64), alignof(i64));
+    // Loud: this is what compiled code calls. Every error is logged.
+    Variant allocate(u32 argc, const Variant *argv) {
+        return allocate_impl(argc, argv, /*silent=*/false);
     }
 
-    Variant allocate_f32(u32 /*argc*/, const Variant * /*argv*/) {
-        return alloc_or_null(SID("f32"), sizeof(f32), alignof(f32));
-    }
+    // Silent: same behaviour, no logging. Used by tests that deliberately
+    // exercise the error path.
+    Variant allocate_silent(u32 argc, const Variant *argv) {
+        return allocate_impl(argc, argv, /*silent=*/true);
+    } 
 
-    Variant allocate_sid(u32 /*argc*/, const Variant * /*argv*/) {
-        return alloc_or_null(SID("sid64"), sizeof(sid64), alignof(sid64));
-    }
-
-    Variant allocate_vector(u32 /*argc*/, const Variant * /*argv*/) {
-        Variant v = alloc_or_null(SID("vector"), sizeof(vector), alignof(vector));
-        if (v.get_ptr() != nullptr) { std::memset(v.get_ptr(), 0, sizeof(vector)); }
-        return v;
-    }
-
-    Variant allocate_cvector(u32 /*argc*/, const Variant * /*argv*/) {
-        Variant v = alloc_or_null(SID("cvector"), sizeof(cvector), alignof(cvector));
-        if (v.get_ptr() != nullptr) { std::memset(v.get_ptr(), 0, sizeof(cvector)); }
-        return v;
-    }
-
-    // =========================================================================
-    // Types
-    // =========================================================================
-
+    // ========================================================================
+    // Type registration
+    // ========================================================================
+    //
+    // Register in the GC only the types that are allocated by name from
+    // compiled code. `vector` and `cvector` are included here because the
+    // compiler emits `allocate(where, SID("vector"))` for them. If a new
+    // scalar or reference type is added to the compiler's type table and
+    // is meant to be allocated by `new`, it must be registered here as
+    // well.
+    //
     void NativeAllocators::register_allocator_types() {
-        // inside NativeAllocators::register_allocator_types()
         auto &reg = gc::type_registry();
 
         auto reg_scalar = [&](const char *name, std::size_t size, std::size_t align) {
@@ -90,8 +129,8 @@ namespace carbon {
             td.num_ptr_fields = 0;
             td.flags = gc::TYPE_IS_REFERENCE;
             td.ptr_fields = nullptr;
-            td.mark = nullptr;    // no pointers inside
-            td.destroy = nullptr; // nothing to free
+            td.mark = nullptr;
+            td.destroy = nullptr;
             reg.register_type(td);
         };
 
@@ -104,27 +143,27 @@ namespace carbon {
         reg_ref("cvector", sizeof(cvector), alignof(cvector));
     }
 
-    // =========================================================================
-    // Registry
-    // =========================================================================
-
+    // ========================================================================
+    // Registration
+    // ========================================================================
+    //
+    // Registers the universal allocator in the native function registry,
+    // then hands off to the string, map, and array modules so that a
+    // single call to initialize_builtins installs everything a VM
+    // instance needs.
+    //
     void NativeAllocators::initialize_builtins() {
-        // First register the types in the GC.
         register_allocator_types();
 
-        // Then register the native functions.
         auto &reg = NativeFunctionRegistry::get_instance();
-        reg.register_function("allocate-i64", &allocate_i64);
-        reg.register_function("allocate-f32", &allocate_f32);
-        reg.register_function("allocate-sid", &allocate_sid);
-        reg.register_function("allocate-vector", &allocate_vector);
-        reg.register_function("allocate-cvector", &allocate_cvector);
-        
-        NativeString::initialize_builtins();
-        NativeString::initialize_builtins();
-        NativeString::initialize_builtins();
+        reg.register_function("allocate", &allocate);
+        reg.register_function("allocate-silent", &allocate_silent);
 
-        lg::info("Initialized 5 allocator native functions");
+        NativeString::initialize_builtins();
+        NativeMap::initialize_builtins();
+        NativeArray::initialize_builtins();
+
+        lg::info("NativeAllocators: registered 1 allocator, 3 modules");
     }
 
 } // namespace carbon

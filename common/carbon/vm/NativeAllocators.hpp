@@ -39,7 +39,7 @@ namespace carbon {
 
         // Register the allocate-* native functions in the registry.
         // Also register the corresponding types in the GC if not present.
-        void initialize_builtins();
+        static void initialize_builtins();
 
         // Used to clear the old per-frame pools. Now a no-op, kept for
         // compatibility with VirtualMachine::purge.

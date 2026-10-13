@@ -391,6 +391,7 @@ namespace sootc {
         // --- Arguments ---
         ReplStatus cmd_arg_set(const script::Object &form);
         ReplStatus cmd_arg_get(const script::Object &form);
+        ReplStatus cmd_arg_list(const script::Object &form);
 
         // --- Garbage collector ---
         ReplStatus cmd_gc_list(const script::Object &form);

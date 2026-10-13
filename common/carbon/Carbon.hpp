@@ -265,7 +265,6 @@ namespace carbon {
         [[nodiscard]] Globals          *globals() noexcept;
         [[nodiscard]] ModuleRegistry   *modules() noexcept;
         [[nodiscard]] Scheduler        *scheduler() noexcept;
-        [[nodiscard]] gc::ArenaManager *gc_heap() noexcept;
 
     private:
         bool load_module_recursive(const std::filesystem::path              &bin_path,

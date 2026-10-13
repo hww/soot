@@ -324,10 +324,10 @@ namespace carbon {
         if (!lambda || !lambda->m_pSymbols) return "?";
         if (index >= lambda->m_numSymbols) return "?";
 
-        u64  *symbols = lambda->m_pSymbols;
-        float f;
-        std::memcpy(&f, &symbols[index], sizeof(float));
-        return fmt::format("{:.6f}", f);
+        u64   *symbols = lambda->m_pSymbols;
+        double d;
+        std::memcpy(&d, &symbols[index], sizeof(double));
+        return fmt::format("{:.6f}", d);
     }
 
     std::string BinaryFileInspector::format_instruction(const Instruction  &ins,
@@ -1415,9 +1415,9 @@ namespace carbon {
         case StaticType::U32: return fmt::format("U32 {}", static_cast<u32>(value));
         case StaticType::U64: return fmt::format("U64 {}", value);
         case StaticType::FLOAT: {
-            float f;
-            std::memcpy(&f, &value, sizeof(float));
-            return fmt::format("FLOAT {:.6f}", f);
+            double d;
+            std::memcpy(&d, &value, sizeof(double));
+            return fmt::format("FLOAT {:.6f}", d);
         }
         case StaticType::DOUBLE: {
             double d;

@@ -1249,6 +1249,51 @@ void TypeSystem::add_builtin_types() {
     uint_type->disallow_in_runtime();
 
     // ---------------------------------------------------------------------
+    // VM-facing aliases
+    // ---------------------------------------------------------------------
+    //
+    // These names appear in the GC type registry and are what compiled
+    // code refers to when it allocates scalars (`allocate('heap, 'i64)`,
+    // `allocate('heap, 'f32)`, etc.). They must be registered in the
+    // TypeSystem as well, otherwise `(new 'heap 'i64)` fails to compile
+    // with "unknown type".
+    //
+    // They are aliases of the corresponding concrete widths and are
+    // marked as not-usable-in-runtime, just like `int` and `uint`.
+    auto i64_type = add_builtin_value_type("sinteger", "i64", 8, false, true, RegClass::GPR_64);
+    i64_type->disallow_in_runtime();
+
+    auto i32_type = add_builtin_value_type("sinteger", "i32", 4, false, true);
+    i32_type->disallow_in_runtime();
+
+    auto i16_type = add_builtin_value_type("sinteger", "i16", 2, false, true);
+    i16_type->disallow_in_runtime();
+
+    auto i8_type = add_builtin_value_type("sinteger", "i8", 1, false, true);
+    i8_type->disallow_in_runtime();
+
+    auto u64_type = add_builtin_value_type("uinteger", "u64", 8, false, false, RegClass::GPR_64);
+    u64_type->disallow_in_runtime();
+
+    auto u32_type = add_builtin_value_type("uinteger", "u32", 4, false, false);
+    u32_type->disallow_in_runtime();
+
+    auto u16_type = add_builtin_value_type("uinteger", "u16", 2, false, false);
+    u16_type->disallow_in_runtime();
+
+    auto u8_type = add_builtin_value_type("uinteger", "u8", 1, false, false);
+    u8_type->disallow_in_runtime();
+
+    auto f32_type = add_builtin_value_type("number", "f32", 4, false, false, RegClass::FPR);
+    f32_type->disallow_in_runtime();
+
+    auto f64_type = add_builtin_value_type("number", "f64", 8, false, false, RegClass::FPR);
+    f64_type->disallow_in_runtime();
+
+    auto sid64_type = add_builtin_value_type("basic", "sid64", 8, false, false, RegClass::GPR_64);
+    sid64_type->disallow_in_runtime();
+
+    // ---------------------------------------------------------------------
     // Forward declarations
     // ---------------------------------------------------------------------
     //
