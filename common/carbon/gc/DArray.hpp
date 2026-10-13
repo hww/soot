@@ -9,35 +9,24 @@
 namespace carbon::gc {
 
     // ========================================================================
-    // DArray<T> — динамический массив в GC-heap.
+    // DArray<T>
     // ========================================================================
     //
-    // Layout в памяти:
+    // NOTE: this template calls gc::alloc(/*sid=*/0, ...) for its element
+    // buffer. That means the buffer is registered with the GC as an
+    // untyped block. The GC will not scan it for pointers.
     //
-    //   struct DArrayHeader {
-    //       u32 size;       // число элементов
-    //       u32 capacity;   // вместимость
-    //       T*  data;       // указатель на данные (тоже в GC-heap)
-    //   };
+    // Consequences:
     //
-    // Сам заголовок — обычный C++ объект. Он НЕ обязательно лежит в
-    // GC-heap. Это решает пользователь.
+    //   DArray<i32>  -- fine, no pointers inside.
+    //   DArray<f32>  -- fine, no pointers inside.
+    //   DArray<T*>   -- WRONG: the pointers inside are not marked and will be
+    //                   reclaimed on the next sweep. Use RuntimeArray from
+    //                   vm/NativeArray.hpp instead, which has a per-kind
+    //                   mark delegate.
     //
-    // Данные (`data`) — в GC-heap через `gc::alloc`.
-    //
-    // Использование:
-    //
-    //   DArray<int32_t> arr;
-    //   arr.push_back(42);   // выделит data через gc::alloc
-    //
-    //   DArray<Vector3> verts;
-    //   verts.resize(100);
-    //   for (auto& v : verts) { ... }
-    //
-    // Особенности:
-    //   * Не владеет `data` — если DArray уничтожен, data остаётся в
-    //     GC-heap до следующей сборки (GC сам решит).
-    //   * При push_back данные могут переехать (realloc).
+    // If you need a typed array of pointers, prefer NativeArray's
+    // runtime-array-ptr type.
     //
     template <typename T> class DArray {
     public:

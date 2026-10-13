@@ -129,6 +129,7 @@ namespace {
         case BinaryFile::EntryKind::SsType: return "ss-type";
         case BinaryFile::EntryKind::Map: return "map";
         case BinaryFile::EntryKind::DataStruct: return "data-struct";
+        case BinaryFile::EntryKind::Array: return "array";
         case BinaryFile::EntryKind::Unknown: return "unknown";
         }
         return "unknown";
@@ -463,6 +464,10 @@ namespace carbon {
                 if (const auto *map = m_file->entry_as_map(*entry)) { inspect_map(map); }
                 break;
             }
+            case BinaryFile::EntryKind::Array: {
+                if (const auto *arr = m_file->entry_as_array(*entry)) { inspect_array(arr); }
+                break;
+            }
             case BinaryFile::EntryKind::Unknown: break;
             }
         } catch (const std::exception &e) {
@@ -543,6 +548,7 @@ namespace carbon {
             case BinaryFile::EntryKind::SsType: kind_str = "ss-type"; break;
             case BinaryFile::EntryKind::Map: kind_str = "map"; break;
             case BinaryFile::EntryKind::DataStruct: kind_str = "data-struct"; break;
+            case BinaryFile::EntryKind::Array: kind_str = "array"; break;
             case BinaryFile::EntryKind::Unknown: kind_str = "unknown"; break;
             }
 
@@ -574,6 +580,7 @@ namespace carbon {
         u32 n_types = 0;
         u32 n_maps = 0;
         u32 n_data = 0;
+        u32 n_arrays = 0;
         u32 n_unknown = 0;
 
         for (u32 i = 0; i < n; ++i) {
@@ -583,6 +590,7 @@ namespace carbon {
             case BinaryFile::EntryKind::SsType: ++n_types; break;
             case BinaryFile::EntryKind::Map: ++n_maps; break;
             case BinaryFile::EntryKind::DataStruct: ++n_data; break;
+            case BinaryFile::EntryKind::Array: ++n_arrays; break;
             case BinaryFile::EntryKind::Unknown: ++n_unknown; break;
             }
         }
@@ -594,6 +602,7 @@ namespace carbon {
         m_formatter->print("  ss-types:         {}\n", n_types);
         m_formatter->print("  maps:             {}\n", n_maps);
         m_formatter->print("  data structs:     {}\n", n_data);
+        m_formatter->print("  arrays:           {}\n", n_arrays);
         m_formatter->print("  unknown:          {}\n", n_unknown);
 
         // Print names grouped by kind.
@@ -613,6 +622,7 @@ namespace carbon {
         print_group("state-scripts", BinaryFile::EntryKind::StateScript);
         print_group("ss-types", BinaryFile::EntryKind::SsType);
         print_group("maps", BinaryFile::EntryKind::Map);
+        print_group("arrays", BinaryFile::EntryKind::Array);
         print_group("data-structs", BinaryFile::EntryKind::DataStruct);
         print_group("unknown", BinaryFile::EntryKind::Unknown);
     }
@@ -1555,6 +1565,100 @@ namespace carbon {
 
         if (map->m_size > max_show) {
             m_formatter->print("\n... and {} more\n", map->m_size - max_show);
+        }
+    }
+
+        void BinaryFileInspector::inspect_array(const DcArray *arr) {
+        if (!arr) {
+            m_formatter->print("Array: NULL\n");
+            return;
+        }
+
+        m_formatter->print("Array:\n");
+        IFormatter::Block block(*m_formatter, m_indent);
+
+        m_formatter->print("TypeId:  {}\n", sid_str(arr->m_typeId));
+        m_formatter->print("Size:    {} entries\n", arr->m_size);
+        m_formatter->print("Values:  {}\n", ptr_str(arr->m_pValues));
+
+        if (arr->m_size == 0) {
+            m_formatter->print("(empty)\n");
+            return;
+        }
+
+        // m_pValues is a flat block of u64-sized elements. After relocation
+        // each entry is an absolute pointer to the payload.
+        //
+        // For reference types, the payload belongs to a DcMapValue-style
+        // wrapper whose typeId lives 8 bytes before the pointer:
+        //
+        //     const DcMapValue *v =
+        //         reinterpret_cast<const DcMapValue*>(arr->m_pValues[i] - 8);
+
+        const u32 max_show = 32;
+        const u32 n = static_cast<u32>(std::min<u64>(arr->m_size, max_show));
+
+        for (u32 i = 0; i < n; ++i) {
+            const u64 value_ptr = arr->m_pValues[i];
+            m_formatter->print("\n[{:>3}] ", i);
+
+            if (value_ptr == 0) {
+                m_formatter->print("value: null\n");
+                continue;
+            }
+
+            // Try to interpret as a DcMapValue wrapper first. If the slot
+            // is not inside the buffer, or the type before it is not a known
+            // type SID, we fall back to raw display.
+            if (!m_file->is_valid_ptr(reinterpret_cast<const void *>(value_ptr - 8),
+                                      sizeof(DcMapValue))) {
+                m_formatter->print("value ptr 0x{:X} out of bounds\n", value_ptr);
+                continue;
+            }
+
+            const auto *v = reinterpret_cast<const DcMapValue *>(value_ptr - 8);
+            m_formatter->print("type={} data={}\n", sid_str(v->m_typeId), ptr_str(v->m_data));
+
+            if (v->m_data == nullptr) {
+                m_formatter->print("       value: null\n");
+                continue;
+            }
+            if (!m_file->is_valid_ptr(v->m_data, 1)) {
+                m_formatter->print("       data ptr out of bounds\n");
+                continue;
+            }
+
+            // Same scalar decoding as inspect_map.
+            if (v->m_typeId == SID("int32") || v->m_typeId == SID("i32")) {
+                m_formatter->print("       value: {}\n", *reinterpret_cast<const i32 *>(v->m_data));
+            } else if (v->m_typeId == SID("i64") || v->m_typeId == SID("int64")) {
+                m_formatter->print("       value: {}\n", *reinterpret_cast<const i64 *>(v->m_data));
+            } else if (v->m_typeId == SID("float") || v->m_typeId == SID("f32")) {
+                m_formatter->print("       value: {:.6f}\n",
+                                   *reinterpret_cast<const f32 *>(v->m_data));
+            } else if (v->m_typeId == SID("bool") || v->m_typeId == SID("boolean")) {
+                m_formatter->print("       value: {}\n",
+                                   *reinterpret_cast<const u8 *>(v->m_data) ? "true" : "false");
+            } else if (v->m_typeId == SID("symbol")) {
+                const sid64 s = *reinterpret_cast<const sid64 *>(v->m_data);
+                m_formatter->print("       value: {}\n", sid_str(s));
+            } else if (v->m_typeId == SID("string")) {
+                const auto *s = *reinterpret_cast<const char *const *>(v->m_data);
+                if (s && m_file->is_valid_ptr(s, 1)) {
+                    m_formatter->print("       value: \"{}\"\n", s);
+                } else {
+                    m_formatter->print("       value: (invalid string ptr)\n");
+                }
+            } else {
+                const auto *raw = reinterpret_cast<const u8 *>(v->m_data);
+                m_formatter->print("       value: ??? ");
+                for (int k = 0; k < 16; ++k) { m_formatter->print("{:02X} ", raw[k]); }
+                m_formatter->print("\n");
+            }
+        }
+
+        if (arr->m_size > max_show) {
+            m_formatter->print("\n... and {} more\n", arr->m_size - max_show);
         }
     }
 

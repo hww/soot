@@ -113,6 +113,8 @@ namespace carbon {
         void inspect_symbol(const symbol *sym);
         /// @brief Print the contents of a DcMap: keys and values.
         void inspect_map(const DcMap *map);
+        /// @brief Pretty-print a DcArray entry.
+        void inspect_array(const DcArray *arr);
 
         // Disassembly
         void disassemble(const ScriptLambda *lambda, const std::string &name);

@@ -436,13 +436,11 @@ namespace carbon {
         if (entry.m_typeId == SID("script-lambda")) { return EntryKind::ScriptLambda; }
         if (entry.m_typeId == SID("state-script")) { return EntryKind::StateScript; }
         if (entry.m_typeId == SS_TYPE_SID) { return EntryKind::SsType; }
+        if (entry.m_typeId == SID("array")) { return EntryKind::Array; }
         if (entry.m_typeId == SID("map") || entry.m_typeId == SID("map-32")) {
             return EntryKind::Map;
         }
-        if (entry.m_typeId != 0) {
-            // Any other non-zero typeId is treated as an opaque data structure.
-            return EntryKind::DataStruct;
-        }
+        if (entry.m_typeId != 0) { return EntryKind::DataStruct; }
         return EntryKind::Unknown;
     }
 
@@ -468,6 +466,12 @@ namespace carbon {
         if (entry_kind(entry) != EntryKind::SsType) { return nullptr; }
         if (!is_valid_ptr(entry.m_entryPtr, sizeof(DcMap))) { return nullptr; }
         return reinterpret_cast<const DcMap *>(entry.m_entryPtr);
+    }
+
+    const DcArray *BinaryFile::entry_as_array(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::Array) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(DcArray))) { return nullptr; }
+        return reinterpret_cast<const DcArray *>(entry.m_entryPtr);
     }
 
     // ===========================================================================

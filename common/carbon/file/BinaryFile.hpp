@@ -117,6 +117,7 @@ namespace carbon {
             StateScript,  ///< m_typeId == SID("state-script")
             SsType,       ///< m_typeId == SID("ss-type")
             Map,          ///< m_typeId == SID("map") or SID("map-32")
+            Array,        ///< m_typeId == SID("array")
             DataStruct,   ///< any other non-zero typeId (raw payload)
         };
 
@@ -188,6 +189,9 @@ namespace carbon {
 
         /// @return the entry payload as DcMap*, or nullptr if kind != Map.
         [[nodiscard]] const DcMap *entry_as_map(const DCEntry &entry) const noexcept;
+        
+        /// @return the entry payload as DcArray*, or nullptr if kind != Array.
+        [[nodiscard]] const DcArray *entry_as_array(const DCEntry &entry) const noexcept;
 
         // -------------------------------------------------------------------
         // SID and string helpers

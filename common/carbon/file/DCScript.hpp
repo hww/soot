@@ -474,5 +474,42 @@ namespace carbon {
 
     static_assert(sizeof(DcMap) == 0x20, "DcMap must be 0x20 bytes");
     static_assert(sizeof(DcMapValue) == 0x10, "DcMapValue must be 0x10 bytes");
+
+        // ---------------------------------------------------------------------------
+    // DcArray — standalone array on disk.
+    // ---------------------------------------------------------------------------
+    //
+    // Homogeneous array: one element type, one count, one data pointer.
+    // The game's own format has no self-describing array: an array there is
+    // just a u64* with the type and count living in the parent struct. We
+    // gather those three fields into one place so that our own files can
+    // carry arrays as first-class values, symmetric with DcMap.
+    //
+    // Layout:
+    //   +0x00  sid64  m_typeId    SID of the element type
+    //   +0x08  u64    m_size      number of elements
+    //   +0x10  u64*   m_pValues   pointer to the element block (relocated)
+    //
+    // How to read the elements:
+    //
+    //   scalar type (int32, f32, sid64, ...)
+    //       m_pValues points to a flat block of scalars. m_pValues[i] is
+    //       the i-th element, reinterpreted as the concrete type.
+    //
+    //   reference type (structure, cstr, ...)
+    //       m_pValues[i] points at the payload of a DcMapValue. The full
+    //       wrapper is obtained by stepping back 8 bytes, exactly as in
+    //       DcMap:
+    //
+    //           const DcMapValue *v =
+    //               reinterpret_cast<const DcMapValue*>(m_pValues[i] - 8);
+    //
+    struct DcArray {
+        sid64 m_typeId;
+        u64   m_size;
+        u64  *m_pValues;
+    };
+
+    static_assert(sizeof(DcArray) == 0x18, "DcArray must be 0x18 bytes");
 }
 

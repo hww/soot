@@ -179,6 +179,13 @@ namespace carbon {
                 int_value = 0;
             }
         }
+        
+        // Const-pointer constructor. Variant stores a mutable void*, but
+        // callers may pass const pointers (e.g. from a const Variant or from
+        // a string literal). The const_cast is safe: Variant never mutates
+        // through this pointer; it only reads or forwards it.
+        Variant(const void *ptr, RuntimeType type)
+            : type_(type), ptr_value(const_cast<void *>(ptr)) {}
 
         // =========================================================================
         // RULE OF 5

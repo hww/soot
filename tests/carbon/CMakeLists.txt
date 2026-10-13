@@ -17,6 +17,8 @@ add_executable(carbon_test
     tests/carbon/TestNativeFunctions.cpp
     tests/carbon/MapTest.cpp
     tests/carbon/MapRuntimeTest.cpp
+    tests/carbon/ArrayRuntimeTest.cpp
+    tests/carbon/StringRuntimeTest.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest
