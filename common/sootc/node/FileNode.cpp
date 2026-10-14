@@ -36,9 +36,6 @@ namespace sootc {
     ProgramBinaryElement FileNode::generate(StringsTable &strings_table) {
         auto entries = collect_all(strings_table);
 
-        // Even with no functions or data declarations, a file may still
-        // need to emit SsType entries for its (deftype ...) forms. Only
-        // bail out when there is truly nothing to emit.
         bool has_types = false;
         for (auto &child : m_children) {
             if (dynamic_cast<TypeDeclarationNode *>(child.get()) != nullptr) {
@@ -48,19 +45,19 @@ namespace sootc {
         }
 
         if (entries.empty() && !has_types) {
-            std::string types;
-            for (auto &child : m_children) {
-                if (!types.empty()) types += ", ";
-                types += child->get_node_type_string();
-            }
-            lg::info("FileNode::generate: no emittable entries ({} children: [{}])",
-                     m_children.size(), types.empty() ? "<none>" : types);
+            lg::info("FileNode::generate: nothing to emit ({} children, 0 emittable)",
+                     m_children.size());
             return ProgramBinaryElement(0);
         }
 
         std::vector<DataStructEntry> data_structs;
         auto element = make_binary(std::move(entries), strings_table, data_structs);
         m_dataStructs = std::move(data_structs);
+
+        // Advance the watermark. After this call, collect_all will start
+        // from the new index, so previously emitted children are skipped.
+
+
         return element;
     }
 
@@ -72,11 +69,11 @@ namespace sootc {
 
         for (auto &child : m_children) {
             if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
-                fn->set_global_state(&state); // ← добавить ЭТУ строку
+                fn->set_global_state(&state);
                 fn->emit_body();
                 entries.push_back(fn->generate(state));
                 lg::debug("Function '{}': {} instructions, {} constants", fn->name(),
-                         fn->instructions().size(), fn->constants().size());
+                          fn->instructions().size(), fn->constants().size());
             } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
                 ProgramBinaryElement element = decl->generate(state);
                 const size_t         payload_size = element.m_rawData.size();

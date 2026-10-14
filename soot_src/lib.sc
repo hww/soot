@@ -479,9 +479,13 @@
 
 
 (deftype matrix (structure)
- ((r0 vector)
-  (r1 vector)
-  (r2 vector)))
+ ((r0 vector :inline) ; inline vector
+  (r1 vector :inline) ; inline vector
+  (r2 vector :inline) ; inline vector
+  (r3 vector :inline) ; inline vector
+  (ptr vector)        ; just for testing pointer to vector
+  (rows vector 4 :inline :offset 0) ; array of vectors from 0 
+  ))
 
 ;; ----------------------------------------------------------------------------
 ;; Load marker

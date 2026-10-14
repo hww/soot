@@ -467,30 +467,33 @@ bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile
 
     CallResult Carbon::call(const std::string &name, const std::vector<Variant> &args) {
         CallResult out;
-
         if (!m_impl->initialized) {
             out.error = "Carbon::call: not initialized";
             return out;
         }
-
         void *fn = m_impl->globals->find_symbol_ptr(StringId(name));
         if (!fn) {
             out.error = "function '" + name + "' not found";
             return out;
         }
-
         auto *lambda = reinterpret_cast<ScriptLambda *>(fn);
-
         try {
             out.value = m_impl->vm->execute_function(lambda, RunMode::Run, args);
             m_impl->vm->purge();
-            out.ok = m_impl->vm->is_error == false;
-            if (!out.ok) out.error = m_impl->vm->break_reason;
+            if (m_impl->vm->has_error()) {
+                out.ok = false;
+                out.error = m_impl->vm->pending_error().message();
+                // Copy the error so the caller can hold it after we
+                // clear the VM's pending error.
+                out.vm_error = std::make_shared<VmError>(m_impl->vm->pending_error());
+                m_impl->vm->clear_error();
+            } else {
+                out.ok = true;
+            }
         } catch (const std::exception &e) {
             out.ok = false;
             out.error = e.what();
         }
-
         return out;
     }
 

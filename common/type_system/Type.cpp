@@ -140,7 +140,8 @@ bool Field::operator!=(const Field &other) const {
 }
 
 std::string Field::print() const {
-    return fmt::format("#<field {} @{} {}>", m_name, m_offset, m_type.print());
+    return fmt::format("#<field {} @{} {} inline:{} dynamic: {} array: {} array-size: {} alignment: {} skip-decomp: {}>", m_name, m_offset, m_type.print(), 
+        m_inline, m_dynamic, m_array, m_array_size, m_alignment, m_skip_in_static_decomp);
 }
 
 std::string Field::inspect() const {

@@ -16,94 +16,6 @@ using namespace carbon;
 namespace carbon {
 
     // ------------------------------------------------------------------------
-    // Internal Helpers
-    // ------------------------------------------------------------------------
-
-    i64 VirtualMachine::resolve_integer(std::shared_ptr<StackFrame> frame, StringId name) {
-        /*
-        auto module = frame->byte_code->owner_module;
-        if (module) {
-                Definition* resolved = module->resolve_symbol(name);
-                if (resolved) {
-                        if (resolved->type == TypeIds::i64)
-                                return *((i64*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i32)
-                                return *((i32*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i16)
-                                return *((i16*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i8)
-                                return *((i8*)resolved->ptr.get());
-
-                        if (resolved->type == TypeIds::u64)
-                                return *((u64*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u32)
-                                return *((u32*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u16)
-                                return *((u16*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u8)
-                                return *((u8*)resolved->ptr.get());
-
-        throw VmTypeError("resolve_integer", frame, resolved->type);
-                }
-                else {
-                        throw VmResolvingError("resolve_integer", frame, name);
-                }
-        }
-        */
-        throw VmResolvingError("resolve_integer", frame, name);
-    }
-
-    f64 VirtualMachine::resolve_float(std::shared_ptr<StackFrame> frame, StringId name) {
-        /*
-        auto module = frame->byte_code->owner_module;
-        if (module) {
-                Definition* resolved = module->resolve_symbol(name);
-                if (resolved) {
-                        if (resolved->type == TypeIds::i64)
-                                return *((i64*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i32)
-                                return *((i32*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i16)
-                                return *((i16*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::i8)
-                                return *((i8*)resolved->ptr.get());
-
-                        if (resolved->type == TypeIds::u64)
-                                return *((u64*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u32)
-                                return *((u32*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u16)
-                                return *((u16*)resolved->ptr.get());
-                        if (resolved->type == TypeIds::u8)
-                                return *((u8*)resolved->ptr.get());
-
-        throw VmTypeError("resolve_float", frame, resolved->type);
-                }
-                else {
-                        throw VmResolvingError("resolve_float", frame, name);
-                }
-        }
-                */
-        throw VmResolvingError("resolve_float", frame, name);
-    }
-
-    void *VirtualMachine::resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name) {
-        /*
-        auto module = frame->byte_code->owner_module;
-        if (module) {
-                Definition* resolved = module->resolve_symbol(name);
-                if (resolved) {
-                        return resolved->ptr.get();
-                }
-                else {
-                        throw VmResolvingError("resolve_pointer", frame, name);
-                }
-        }
-                */
-        throw VmResolvingError("resolve_pointer", frame, name);
-    }
-
-    // ------------------------------------------------------------------------
     // Process Management (НОВОЕ - согласно нашему базису)
     // ------------------------------------------------------------------------
 
@@ -167,6 +79,14 @@ namespace carbon {
         // Исполнение кода
         while (current_frame != nullptr) {
             if (is_break) return Variant();
+            
+            if (m_has_error) {
+                // An earlier instruction set the error flag. Stop
+                // executing. Do NOT reset current_frame: the stacktrace
+                // in m_pending_error references it, and the host may want
+                // to inspect the frame.
+                return Variant();
+            }
 
             Instruction instr = current_frame->get_next_instruction();
 
@@ -213,7 +133,6 @@ namespace carbon {
                     dest = src;
                     break;
                 }
-
                 case Opcode::Call: {
                     Variant &func_var = current_frame->get_register(instr.b);
 
@@ -226,31 +145,31 @@ namespace carbon {
                         func_ptr = carbon->globals()->find_symbol_ptr(sid);
 
                         if (!func_ptr) {
-                            lg::error("Call: function '{}' (SID 0x{:016X}) "
-                                      "not found in Globals",
-                                      sid.to_cstring(), static_cast<u64>(sid));
-                            current_frame = nullptr;
-                            is_error = true;
-                            break_reason = "Call: unresolved function";
+                            set_error(
+                                VmError::Kind::UndefinedFunction,
+                                fmt::format(
+                                    "Call: function '{}' (SID 0x{:016X}) not found in Globals",
+                                    sid.to_cstring(), static_cast<u64>(sid)),
+                                &instr);
                             break;
                         }
 
-                        // Кэшируем разрешённый указатель в регистр,
-                        // чтобы повторные вызовы не дёргали Globals.
+                        // Кэшируем разрешённый указатель в регистр, чтобы повторные
+                        // вызовы не дёргали Globals.
                         func_var = Variant(func_ptr, RuntimeType::Pointer);
                     } else {
-                        lg::error("Call: unexpected func type (not ptr, "
-                                  "not int): {}",
-                                  func_var.to_string());
-                        current_frame = nullptr;
-                        is_error = true;
-                        break_reason = "Call: invalid func type";
+                        set_error(VmError::Kind::TypeMismatch,
+                                  fmt::format("Call: unexpected function value in r{} "
+                                              "(not pointer, not int): got {}",
+                                              static_cast<unsigned>(instr.b),
+                                              value_type_to_string(func_var.get_type())),
+                                  &instr);
                         break;
                     }
 
                     ScriptLambda *target_code = reinterpret_cast<ScriptLambda *>(func_ptr);
 
-                    auto new_frame = std::make_shared <StackFrame>(target_code, current_frame);
+                    auto new_frame = std::make_shared<StackFrame>(target_code, current_frame);
 
                     new_frame->ret_num = instr.a;
                     new_frame->argc = instr.c;
@@ -272,6 +191,7 @@ namespace carbon {
 
                     if (func_var.is_ptr()) {
                         native_func = reinterpret_cast<NativeFunction>(func_var.get_ptr());
+
                     } else if (func_var.is_int()) {
                         StringId sid = func_var.get_sid();
                         native_func = find_native_function(sid);
@@ -302,7 +222,6 @@ namespace carbon {
                     if (mode == RunMode::StepIn) is_break = true;
                     break;
                 }
-
                 case Opcode::Branch: {
                     current_frame->pc = instr.imm16();
                     break;
@@ -769,20 +688,26 @@ namespace carbon {
                 case Opcode::LoadInt:
                 case Opcode::LoadI32:
                 case Opcode::LoadU32: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i32   value = *reinterpret_cast<i32 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
                 }
                 case Opcode::LoadFloat: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     f32   value = *reinterpret_cast<f32 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<f64>(value));
                     break;
                 }
 
                 case Opcode::LoadPointer: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     void *value = *reinterpret_cast<void **>(ptr);
                     current_frame->get_register(instr.a) = Variant(value, RuntimeType::Pointer);
                     break;
@@ -791,38 +716,50 @@ namespace carbon {
                 // Indirect Load (разные размеры) — 0x73..0x7B
                 // ============================================================
                 case Opcode::LoadI8: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i8    value = *reinterpret_cast<i8 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
                 }
                 case Opcode::LoadU8: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     u8    value = *reinterpret_cast<u8 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
                 }
                 case Opcode::LoadI16: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i16   value = *reinterpret_cast<i16 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
                 }
                 case Opcode::LoadU16: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     u16   value = *reinterpret_cast<u16 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
                 }
 
                 case Opcode::LoadI64: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = *reinterpret_cast<i64 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(value);
                     break;
                 }
                 case Opcode::LoadU64: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
+                    Variant &base = current_frame->get_register(instr.b);
+                    void    *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     u64   value = *reinterpret_cast<u64 *>(ptr);
                     current_frame->get_register(instr.a) = Variant(static_cast<i64>(value));
                     break;
@@ -836,33 +773,29 @@ namespace carbon {
                 case Opcode::StoreU32: {
                     Variant &regA = current_frame->get_register(instr.a);
                     Variant &regB = current_frame->get_register(instr.b);
-                    if (regA.is_ptr()) {
-                        *reinterpret_cast<i32 *>(regA.get_ptr()) = regB.to_int();
-                    } else {
-                        lg::error("STORE_IND_INT: Expected pointer, got {}", regA.to_string());
-                    }
+                    Variant &addr = current_frame->get_register(instr.a);
+                    void    *ptr = checked_get_ptr(instr, instr.b, regA);
+                    if (ptr == nullptr) break;
+                    *reinterpret_cast<i32 *>(ptr) = regB.to_int();
                     break;
                 }
 
                 case Opcode::StoreFloat: {
                     Variant &regA = current_frame->get_register(instr.a);
                     Variant &regB = current_frame->get_register(instr.b);
-                    if (regA.is_ptr()) {
-                        *reinterpret_cast<f32 *>(regA.get_ptr()) = regB.to_float();
-                    } else {
-                        lg::error("STORE_IND_FLOAT: Expected pointer, got {}", regA.to_string());
-                    }
+                    Variant &addr = current_frame->get_register(instr.a);
+                    void    *ptr = checked_get_ptr(instr, instr.b, regA);
+                    if (ptr == nullptr) break;
+                    *reinterpret_cast<f32 *>(ptr) = regB.to_float();
                     break;
                 }
 
                 case Opcode::StorePointer: {
                     Variant &regA = current_frame->get_register(instr.a);
                     Variant &regB = current_frame->get_register(instr.b);
-                    if (regA.is_ptr()) {
-                        *reinterpret_cast<void **>(regA.get_ptr()) = regB.get_ptr();
-                    } else {
-                        lg::error("STORE_IND_POINTER: Expected pointer, got {}", regA.to_string());
-                    }
+                    void    *ptr = checked_get_ptr(instr, instr.b, regA);
+                    if (ptr == nullptr) break;
+                    *reinterpret_cast<void **>(ptr) = regB.get_ptr();
                     break;
                 }
 
@@ -881,37 +814,49 @@ namespace carbon {
                 // same order, or SetNode will write to the wrong address.
                 // ============================================================
                 case Opcode::StoreI8: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto  base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i8 *>(ptr) = static_cast<i8>(value);
                     break;
                 }
                 case Opcode::StoreU8: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto  base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u8 *>(ptr) = static_cast<u8>(value);
                     break;
                 }
                 case Opcode::StoreI16: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto  base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i16 *>(ptr) = static_cast<i16>(value);
                     break;
                 }
                 case Opcode::StoreU16: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto  base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u16 *>(ptr) = static_cast<u16>(value);
                     break;
                 }
                 case Opcode::StoreI64: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto  base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i64 *>(ptr) = value;
                     break;
                 }
                 case Opcode::StoreU64: {
-                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    auto base = current_frame->get_register(instr.a);
+                    void *ptr = checked_get_ptr(instr, instr.b, base);
+                    if (ptr == nullptr) break;
                     i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u64 *>(ptr) = static_cast<u64>(value);
                     break;
@@ -998,33 +943,21 @@ namespace carbon {
                 }
                 } // end of case
             } catch (const VmError &e) {
-                VmError ne(e.get_message(), current_frame);
-                lg::error("{}", ne.what()); // уже содержит информацию о фрейме
-                current_frame = nullptr;
-                is_error = true;
-                break_reason = ne.what();
-                break;
+                // A C++-thrown VmError. Record it and stop.
+                set_error(e);
+                // The while loop will check m_has_error next iteration
+                // and return.
+                break; // out of the switch
             } catch (const TypeError &e) {
-                VmError ne(e.what(), current_frame);
-                lg::error("{}", ne.what()); // уже содержит информацию о фрейме
-                current_frame = nullptr;
-                is_error = true;
-                break_reason = ne.what();
+                // Variant::get_ptr, to_int, etc.
+                set_error(VmError::Kind::TypeMismatch, e.what(), &instr);
                 break;
             } catch (const std::exception &e) {
-                // Оборачиваем в VmError
-                lg::error("VM Exception: {} [PC={}]", e.what(),
-                          current_frame ? current_frame->pc - 1 : 0);
-                current_frame = nullptr;
-                is_error = true;
-                break_reason = e.what();
+                // Anything else that escaped from a native function.
+                set_error(VmError::Kind::NativeError, e.what(), &instr);
                 break;
             } catch (...) {
-                lg::error("VM Unknown exception [PC={}]",
-                          current_frame ? current_frame->pc - 1 : 0);
-                current_frame = nullptr;
-                is_error = true;
-                break_reason = "unknown exception";
+                set_error(VmError::Kind::Internal, "unknown exception", &instr);
                 break;
             }
             if (mode == RunMode::Step) { is_break = true; }
@@ -1033,4 +966,57 @@ namespace carbon {
         return final_result;
     }
 
+    void VirtualMachine::set_error(VmError::Kind kind, const std::string &message,
+                                   const Instruction *instr) {
+        m_pending_error = VmError(kind, message, current_frame, instr);
+        m_has_error = true;
+    }
+
+    void VirtualMachine::set_error(VmError err) {
+        m_pending_error = std::move(err);
+        m_has_error = true;
+    }
+
+    // Read the pointer stored in register `regnum` of the current frame
+    // and return it through `out_ptr`.
+    //
+    // On success:
+    //   * `out_ptr` is set to a non-null pointer.
+    //   * returns false.
+    //
+    // On failure:
+    //   * an error is recorded via set_error();
+    //   * returns true.
+    //
+    // The caller is expected to do:
+    //     void *ptr;
+    //     if (checked_get_ptr(instr, instr.b, base, "LoadFloat", ptr)) break;
+    //     ... use ptr ...
+    //
+    // `op_name` is used in the error message so that reports point at
+    // the actual opcode, not a hardcoded one.
+    [[nodiscard]] void *VirtualMachine::checked_get_ptr(Instruction &instr, u8 regnum, Variant &reg) {
+        if (!reg.is_ptr()) {
+            set_error(VmError::Kind::TypeMismatch,
+                      fmt::format("{}: register r{} is not a pointer (got {})",
+                                  opcode_mnemonic(instr.opcode),
+                                  static_cast<unsigned>(regnum),
+                                  value_type_to_string(reg.get_type())),
+                      &instr);
+            return nullptr;
+        }
+
+        void *ptr = reg.get_ptr();
+        if (ptr == nullptr) {
+            set_error(
+                VmError::Kind::NullDeref,
+                      fmt::format("{}: null base pointer in r{}", 
+                          opcode_mnemonic(instr.opcode), 
+                          static_cast<unsigned>(regnum)),
+                &instr);
+            return nullptr;
+        }
+
+        return ptr;
+    }
 } // namespace carbon

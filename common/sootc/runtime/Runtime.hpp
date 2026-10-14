@@ -7,6 +7,7 @@
 
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/lib/Variant.hpp"
+#include "carbon/vm/VmError.hpp"
 
 namespace sootc {
 
@@ -15,6 +16,9 @@ namespace sootc {
         bool            ok = false;
         std::string     error;
         carbon::Variant value;
+        // Forwarded from Carbon::CallResult when the failure was a VM
+        // error. Null otherwise.
+        std::shared_ptr<const carbon::VmError> vm_error;
     };
 
     /// @brief Abstract execution backend.

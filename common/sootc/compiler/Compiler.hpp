@@ -354,8 +354,16 @@ namespace sootc {
         }
 
         // ------------------------------------------------------------------
+        // Globals
+        // ------------------------------------------------------------------
+    public:
+        GlobalNode       *global_env() { return m_global_env.get(); }
+        const GlobalNode *global_env() const { return m_global_env.get(); }
+
+        // ------------------------------------------------------------------
         // REPL command dispatch
         // ------------------------------------------------------------------
+    private:
         //
         // Commands are recognised by handle_repl_string BEFORE the normal
         // compile pipeline runs. A line is a command if, when parsed as a
@@ -502,5 +510,6 @@ namespace sootc {
         //
         // The FileNode is destroyed only when the Compiler is destroyed.
         std::unordered_map<std::string, std::unique_ptr<FileNode>> m_file_nodes;
+
     };
 } // namespace sootc

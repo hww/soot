@@ -7,6 +7,7 @@
 #include "carbon/vm/VirtualMachine.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "type_system/TypeSystem.hpp"
+#include "util/Log.hpp"
 
 #include <filesystem>
 #include <memory>

@@ -44,6 +44,7 @@ namespace sootc {
         out.ok = r.ok;
         out.value = r.value;
         out.error = r.error;
+        out.vm_error = r.vm_error;
         return out;
     }
 

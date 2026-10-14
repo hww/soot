@@ -17,10 +17,13 @@ namespace sootc {
         std::unique_ptr<ExpressionNode> m_expr;   ///< pointer expression (base)
         std::string                     m_field;  ///< field name (resolved to offset)
         u32                             m_offset; ///< resolved byte offset
-
+        bool                            m_is_inline = false;
+        bool                            m_is_array = false;
     public:
         DerefNode(std::unique_ptr<ExpressionNode> expr, std::string field, u32 offset,
                   Type *field_type);
+        DerefNode(std::unique_ptr<ExpressionNode> expr, std::string field, u32 offset,
+                  Type *field_type, bool is_inline, bool is_array);
 
         const char *node_type() const override { return "DerefNode"; }
         std::string to_string() const override;

@@ -4,7 +4,7 @@
 #include "CommonTypes.hpp"
 #include "carbon/lib/Variant.hpp"
 #include "carbon/vm/Instructions.hpp"
-#include "carbon/vm/StackFrame.hpp"
+#include "carbon/vm/VmError.hpp"
 #include "carbon/vm/NativeFunc.hpp"
 #include "carbon/vm/NativeAllocators.hpp"
 
@@ -32,59 +32,6 @@ namespace carbon {
     // ============================================================================
 
     using NativeFunction = Variant(*)(u32 argc, const Variant* argv);
-
-    // ============================================================================
-    // Errors
-    // ============================================================================
-
-    /* Erros */
-    class VmError : public std::exception {
-    public:
-        explicit VmError(const std::string& msg, std::shared_ptr<StackFrame> frame = nullptr) 
-            : message_(msg), frame_(frame) {
-            if (frame_) {
-                auto instruction = frame_->get_this_instruction();
-                message_ = fmt::format("{} [Frame: name={}, pc={}, argc={}, inst={}]",
-                    message_,
-                    frame_->name,
-                    frame_->pc,
-                    frame_->argc,
-                    instruction.to_string());
-            }
-        }
-        
-        const char* what() const noexcept override { return message_.c_str(); }
-        
-        std::string  get_message() const {return message_;} 
-        std::shared_ptr<StackFrame> get_frame() const {return frame_;} 
-        bool has_frame() const { return frame_!=nullptr;}
-
-    protected:
-        std::string message_;
-        std::shared_ptr<StackFrame> frame_;
-    };
-
-    class VmTypeError : public VmError {
-    public:
-        VmTypeError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId expected, StringId actual) 
-            : VmError(fmt::format("{} expected type {} actual {}", 
-                msg, 
-                expected, 
-                actual), frame) {}
-        
-        VmTypeError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId actual) 
-            : VmError(fmt::format("{} unexpected type {}", 
-                msg, 
-                actual), frame) {}
-    };
-
-    class VmResolvingError : public VmError {
-    public:
-        VmResolvingError(const std::string& msg, std::shared_ptr<StackFrame> frame, StringId name) 
-            : VmError(fmt::format("{} can't resolve for name {}", 
-                msg, 
-                name), frame) {}
-    };
 
     // ============================================================================
     // Virtual Machine Core
@@ -180,11 +127,57 @@ namespace carbon {
 
 
         // ------------------------------------------------------------------------
-        // Internal Helpers
+        // Error state
         // ------------------------------------------------------------------------
+public:
+        // The VM does not throw C++ exceptions for runtime errors. Instead,
+        // an instruction that detects a problem calls set_error(), which
+        // records the error and sets m_has_error. The main execute loop
+        // checks m_has_error at the top of every iteration and, when set,
+        // stops executing and returns. This is the "soft unwind" model: the
+        // stack is not torn down in the middle of dispatch, and the error
+        // object holds the full stacktrace until the host clears it.
 
+        [[nodiscard]] bool           has_error() const noexcept { return m_has_error; }
+        [[nodiscard]] const VmError &pending_error() const noexcept { return m_pending_error; }
 
+        /// Reset the error state. Called by the host before each new
+        /// top-level entry, and by the REPL after printing a report.
+        void clear_error() {
+            m_has_error = false;
+            m_pending_error = VmError{};
+        }
 
+        /// Record an error. Does NOT throw. Sets m_has_error.
+        void set_error(VmError::Kind kind, const std::string &message,
+                       const Instruction *instr = nullptr);
+
+        /// Record an already-built VmError.
+        void set_error(VmError err);
+
+    private:
+        // Read the pointer stored in register `regnum` of the current frame
+        // and return it through `out_ptr`.
+        //
+        // On success:
+        //   * `out_ptr` is set to a non-null pointer.
+        //   * returns false.
+        //
+        // On failure:
+        //   * an error is recorded via set_error();
+        //   * returns true.
+        //
+        // The caller is expected to do:
+        //     void *ptr;
+        //     if (checked_get_ptr(instr, instr.b, base, "LoadFloat", ptr)) break;
+        //     ... use ptr ...
+        //
+        // `op_name` is used in the error message so that reports point at
+        // the actual opcode, not a hardcoded one.
+        [[nodiscard]] void *checked_get_ptr(Instruction &instr, u8 regnum, Variant &reg);
+        
+        bool    m_has_error = false;
+        VmError m_pending_error;
     };
 
 } // namespace vm

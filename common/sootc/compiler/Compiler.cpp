@@ -462,6 +462,10 @@ namespace sootc {
                 file_node = it->second.get();
             } else {
                 auto owned = std::make_unique<FileNode>(filename);
+                // The REPL compiles each input as a virtual file that exports
+                // everything. This makes `define` behave like `define-export`,
+                // which is what an interactive session needs.
+                if (filename.rfind("<repl", 0) == 0) { owned->set_export_all(true); }
                 file_node = owned.get();
                 m_file_nodes[filename] = std::move(owned);
                 owns_file_node = true;
@@ -469,30 +473,25 @@ namespace sootc {
 
             // ---- Reuse or create the top-level function ----
             //
-            // There is exactly ONE top-level function per FileNode. On the
-            // first expression, we create it and install it on the
-            // FileNode; on every subsequent expression, we append to its
-            // existing body. This is what keeps Globals["top-level"] a
-            // stable reference across REPL inputs.
+            // There is exactly ONE top-level function per FileNode.
+            // Globals["top-level"] stays a stable reference across REPL inputs.
+            //
+            // The body, however, is replaced on every input: expressions are
+            // one-shot. Only the body of the current input is emitted; previous
+            // inputs' expressions are discarded. Declarations (define, defun,
+            // deftype) live in FileNode children separately and are unaffected.
             FunctionNode *top_level = file_node->top_level();
             if (!top_level) {
                 auto tl = std::make_unique<FunctionNode>("top-level");
-                auto body = std::make_unique<SequenceNode>();
                 top_level = tl.get();
-
                 file_node->add_child(std::move(tl));
-                file_node->set_top_level(top_level, body.get());
-
-                top_level->set_body(std::move(body));
+                file_node->set_top_level(top_level);
             }
 
-            SequenceNode *top_level_body = file_node->top_level_body();
-            if (!top_level_body) {
-                // Should not happen: set_top_level was called above.
-                throw CompilerError("Compiler::compile_internal")
-                    .expected("top-level body to be installed on the FileNode")
-                    .got("null SequenceNode*");
-            }
+            // Fresh body for THIS input.
+            auto          fresh_body = std::make_unique<SequenceNode>();
+            SequenceNode *top_level_body = fresh_body.get();
+            top_level->set_body(std::move(fresh_body));
 
             // ---- Process each top-level form in this input ----
             auto current = forms;

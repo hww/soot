@@ -42,26 +42,30 @@ namespace sootc {
         // ---- Symbol table ----
         Node *lookup(const std::string &name) override;
         void  bind(const std::string &name, Node *node);
+        bool  has_local(const std::string &name) const {
+            return m_symbols.find(name) != m_symbols.end();
+        }
 
+        // ---- Top level ----
         /// @brief The module's top-level function, or nullptr if no
         ///        top-level expression has been added yet.
         FunctionNode *top_level() const { return m_top_level; }
-
-        /// @brief The mutable body of the top-level function, or nullptr.
-        /// @details New top-level expressions are appended here by the
-        ///          compiler. Only valid if top_level() != nullptr.
-        SequenceNode *top_level_body() const { return m_top_level_body; }
 
         /// @brief Install the module's top-level function and its body.
         /// @details Called by the compiler on the first top-level
         ///          expression. The FileNode takes ownership of the
         ///          FunctionNode via add_child; the body pointer is
         ///          stored for later appends.
-        void set_top_level(FunctionNode *fn, SequenceNode *body) {
-            m_top_level = fn;
-            m_top_level_body = body;
-        }
+        void set_top_level(FunctionNode *fn) { m_top_level = fn; }
 
+        void remove_top_level() {
+            m_children.erase(std::remove_if(m_children.begin(), m_children.end(),
+                                            [](const std::unique_ptr<Node> &c) {
+                                                auto *f = dynamic_cast<FunctionNode *>(c.get());
+                                                return f && f->name() == "top-level";
+                                            }),
+                             m_children.end());
+        }
         // ---- Imports ----
         void                           add_import(FileNode *file);
         const std::vector<FileNode *> &imports() const { return m_imports; }
@@ -70,6 +74,8 @@ namespace sootc {
                                            u8 bits, u64 num_bits) noexcept;
         
         const std::vector<DataStructEntry> &data_structs() const { return m_dataStructs; }
+
+        // ---- Children ----
 
         /// @brief Append a child node. Used by NodeBuilder when hoisting
         ///        declarations out of a (begin ...) form.
@@ -85,6 +91,17 @@ namespace sootc {
             m_ordered_symbols.clear();
             return out;
         }
+
+        // --- Export ---
+    public:
+
+        bool export_all() const { return m_export_all; }
+        void set_export_all(bool v) { m_export_all = v; }
+
+    private:
+        /// @brief Export all file
+        bool m_export_all = false;
+
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.
@@ -125,7 +142,6 @@ namespace sootc {
         ///          top-level function per module, and it accumulates
         ///          every expression in order.
         FunctionNode *m_top_level = nullptr;
-        SequenceNode *m_top_level_body = nullptr;
     };
 
 } // namespace sootc

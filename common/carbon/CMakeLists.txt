@@ -32,6 +32,7 @@ add_library(libcarbon
     common/carbon/vm/NativeMap.cpp   
     common/carbon/vm/NativeString.cpp
     common/carbon/vm/NativeArray.cpp
+    common/carbon/vm/VmError.cpp
 
     ## Kernel
     common/carbon/kernel/EventMessage.cpp   

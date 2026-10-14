@@ -1,6 +1,7 @@
 #pragma once
 
 #include "carbon/file/DCScript.hpp"
+#include "carbon/vm/VmError.hpp"
 
 #include <set>
 
@@ -83,6 +84,10 @@ namespace carbon {
         bool        ok = false;
         Variant     value;
         std::string error;
+        // Set when the failure came from a VM-level error (nullptr deref,
+        // type mismatch, ...). Null for non-VM failures (function not
+        // found, initialization problems, ...).
+        std::shared_ptr<const VmError> vm_error;
     };
 
     /// @brief The Carbon runtime.

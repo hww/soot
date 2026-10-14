@@ -14,6 +14,7 @@
 #include "type_system/Deftype.hpp"
 
 #include "fmt/format.h"
+#include "util/Log.hpp"
 
 #include <optional>
 #include <set>
@@ -607,8 +608,13 @@ namespace sootc {
                         .expected("known field type")
                         .got(fmt::format("field '{}' has type '{}'", name, field.type().print()));
                 }
+                //fmt::print("build_deref: name='{}', struct='{}', offset={}, is_inline={}, "
+                //         "is_array={}, type='{}'",
+                //         name, st->get_name(), field.offset(), field.is_inline(), field.is_array(),
+                //         field.type().print());
                 current = std::make_unique<DerefNode>(std::move(current), name,
-                                                      static_cast<u32>(field.offset()), field_type);
+                                                      static_cast<u32>(field.offset()), field_type,
+                                                      field.is_inline(), field.is_array());
                 continue; // proceed to the next step
             }
 
@@ -1208,7 +1214,24 @@ namespace sootc {
                 }
             }
         }
-
+        // 2b. Global (exported) name from any module?
+        //
+        // In export-all mode (REPL), every define is registered in the
+        // compiler's global environment. A later input compiles as its own
+        // FileNode, so it cannot find earlier names in file->lookup; this
+        // is where it finds them.
+        if (!type) {
+            if (auto *global = m_compiler->global_env()) {
+                if (auto *decl_node = global->lookup(name)) {
+                    if (auto *data_decl = dynamic_cast<DataDeclarationNode *>(decl_node)) {
+                        if (const NewNode *instance = data_decl->instance()) {
+                            type = m_ts.lookup_type_no_throw(instance->type().base_type());
+                        }
+                    }
+                    if (!type) { type = m_ts.lookup_type_no_throw("object"); }
+                }
+            }
+        }
         // 3. Compiler-side function table (define-native, define-extern).
         //    These are named callables, not values. If the user wrote the
         //    bare name at top level, that's a "function reference" — its
@@ -1434,7 +1457,16 @@ namespace sootc {
     // define / define-export
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_define(const script::Object &form, Node *context) {
-        const bool exported = form.as_pair()->car.is_symbol("define-export");
+        bool exported = form.as_pair()->car.is_symbol("define-export");
+        
+        // In an export-all file (the REPL), every define is exported.
+        // This is what makes the interactive session work: the user types
+        // `(define x 5)` and x is immediately visible to the next input.
+        if (!exported) {
+            if (auto *file = context->file()) {
+                if (file->export_all()) { exported = true; }
+            }
+        }
 
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
@@ -1482,17 +1514,42 @@ namespace sootc {
 
         script::Object value_form = after_name.as_pair()->car;
 
+        //if (value_form.is_string()) {
+        //    auto after_doc = after_name.as_pair()->cdr;
+        //    if (!after_doc.is_pair()) {
+        //        throw m_compiler->make_error(form, "NodeBuilder::build_define")
+        //            .expected("value after docstring")
+        //            .got("end of form");
+        //    }
+        //    value_form = after_doc.as_pair()->car;
+        //}
+
+        // Optional docstring: a string may be followed by the actual value.
+        // If there is no value after the string, the string itself IS the value.
         if (value_form.is_string()) {
             auto after_doc = after_name.as_pair()->cdr;
-            if (!after_doc.is_pair()) {
-                throw m_compiler->make_error(form, "NodeBuilder::build_define")
-                    .expected("value after docstring")
-                    .got("end of form");
+            if (after_doc.is_pair()) {
+                // Docstring followed by value.
+                value_form = after_doc.as_pair()->car;
             }
-            value_form = after_doc.as_pair()->car;
+            // Else: the string is the value itself. Fall through.
         }
 
         std::string name = def_form.to_std_string();
+        
+        // Reject redefinition. Until chunk versioning lands, a name may be
+        // defined only once per module. Silent rebinding would leave the
+        // previous object alive in Globals (dangling for anyone who held a
+        // reference), and would emit duplicate entries in the binary.
+        if (auto *file = context->file()) {
+            if (file->has_local(name) && !file->export_all()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                    .expected("a fresh name")
+                    .got(fmt::format("'{}' is already defined in this module", name))
+                    .note("Redefinition is not supported yet. Restart the session "
+                          "or use a different name.");
+            }
+        }
 
         // ---- Special case: (macro ...) ----
         if (value_form.is_pair() && value_form.as_pair()->car.is_symbol() &&
@@ -1522,6 +1579,13 @@ namespace sootc {
             lg::info("Registered function: {} : {}", name, sig.print());
 
             if (auto *file = context->file()) { file->bind(name, fn); }
+
+            // If this name is exported, also register it in the compiler's
+            // global environment. That is the table consulted by build_variable
+            // when a name is not found in the current FileNode — which is what
+            // makes a name defined in one REPL input visible to the next.
+            if (exported) { m_compiler->global_env()->bind(name, fn); }
+
             lg::info("build_define: '{}' -> FunctionNode", name);
             return value_node;
         }
@@ -1535,6 +1599,7 @@ namespace sootc {
             if (auto *file = context->file()) {
                 file->bind(name, decl.get()); // ← вот этой строки не хватает
             }
+            if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
             return decl;
         }
 
