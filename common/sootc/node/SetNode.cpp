@@ -41,32 +41,32 @@ namespace sootc {
         Type *field_type = m_lvalue->field_type();
         if (!field_type) { throw std::runtime_error("SetNode::emit: field target has no type"); }
 
-        // Compute the field address (lvalue).
         u8 addr_reg = m_lvalue->emit_lvalue(fn);
 
-        // Choose the store opcode based on the field's type.
-        const int  size = field_type->get_load_size();
-        const bool is_float = (field_type->get_preferred_reg_class() == RegClass::FPR);
-
         Opcode store_op;
-        if (is_float) {
+
+        if (field_type->is_reference()) {
+            // Reference-typed field (vector, cvector, matrix, ...).
+            store_op = Opcode::StorePointer;
+        } else if (field_type->get_preferred_reg_class() == RegClass::FPR) {
+            // Float field.
             store_op = Opcode::StoreFloat;
         } else {
-            switch (size) {
+            // Integer field, by width.
+            switch (field_type->get_load_size()) {
             case 1: store_op = Opcode::StoreI8; break;
             case 2: store_op = Opcode::StoreI16; break;
             case 4: store_op = Opcode::StoreI32; break;
             case 8: store_op = Opcode::StoreI64; break;
             default:
-                throw std::runtime_error(
-                    fmt::format("SetNode::emit: unsupported field store size {}", size));
+                throw std::runtime_error(fmt::format(
+                    "SetNode::emit: unsupported field store size {}", field_type->get_load_size()));
             }
         }
 
-        // Store: *(addr) = value.
+        // All Store* opcodes take: a = address, b = value.
         fn.add_instruction(store_op, addr_reg, value_reg, 0);
 
-        // The result of set! is the value that was stored.
         fn.set_temp_reg(this, value_reg);
         m_type = field_type;
     }

@@ -2,6 +2,7 @@
 #include "carbon/lib/StringIdManager.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FunctionCompiler.hpp"
+#include "sootc/node/CastNode.hpp"
 #include "sootc/node/DataDeclarationNode.hpp"
 #include "sootc/node/EnumDeclarationNode.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -9,11 +10,13 @@
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/StoreGlobalNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
-#include "sootc/node/CastNode.hpp"
 #include "type_system/Defenum.hpp"
 #include "type_system/Deftype.hpp"
+
 #include "fmt/format.h"
 
+#include <optional>
+#include <set>
 #include <sootc/node/MethodCallNode.hpp>
 #include <stdexcept>
 
@@ -152,7 +155,7 @@ namespace sootc {
 // Wrap forwarders — uniform signature for the dispatch table.
 // ============================================================================
 #define WRAP_FORWARD(wrap_name, target)                                                            \
-    std::unique_ptr<Node> NodeBuilder::wrap_name(const script::Object &form, Node *node) {           \
+    std::unique_ptr<Node> NodeBuilder::wrap_name(const script::Object &form, Node *node) {         \
         return target(form, node);                                                                 \
     }
 
@@ -174,7 +177,7 @@ namespace sootc {
     WRAP_FORWARD(build_new_wrap, build_new)
     WRAP_FORWARD(build_binary_wrap, build_binary)
     WRAP_FORWARD(build_compare_wrap, build_compare)
-    
+
     WRAP_FORWARD(build_abs_wrap, build_abs)
     WRAP_FORWARD(build_neg_wrap, build_neg)
     WRAP_FORWARD(build_not_wrap, build_not)
@@ -258,7 +261,7 @@ namespace sootc {
     // ============================================================================
 
     std::unique_ptr<Node> NodeBuilder::build_update_macro_metadata(const script::Object &form,
-                                                                   Node               *node) {
+                                                                   Node                 *node) {
         (void)form;
         (void)node;
         // No-op: metadata for tooling, not runtime code.
@@ -364,7 +367,8 @@ namespace sootc {
     // ============================================================================
     // cond
     // ============================================================================
-    std::unique_ptr<ExpressionNode> NodeBuilder::build_cond(const script::Object &form, Node *node) {
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_cond(const script::Object &form,
+                                                            Node                 *node) {
         auto rest = form.as_pair()->cdr;
 
         if (!rest.is_pair()) {
@@ -544,83 +548,108 @@ namespace sootc {
                 .got("empty form");
         }
 
+        // ---- 1. Collect all steps after the base expression ----
+        //
+        // (-> a b c d) → base = a, steps = [b, c, d].
+        // A single step (-> a b) is the trivial case: the loop runs
+        // once and resolves b on a's type.
         auto expr_form = rest.as_pair()->car;
-        auto field_form = rest.as_pair()->cdr.as_pair()->car;
 
-        if (!field_form.is_symbol()) {
-            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-                .expected("field or method name as a symbol")
-                .got(field_form.print());
+        std::vector<script::Object> steps;
+        auto                        cur = rest.as_pair()->cdr;
+        while (cur.is_pair()) {
+            steps.push_back(cur.as_pair()->car);
+            cur = cur.as_pair()->cdr;
         }
 
-        std::string name = field_form.as_symbol();
-
-        auto expr = build_expression(expr_form, node);
-
-        Type *expr_type = expr->get_type();
-        if (!expr_type) {
+        if (steps.empty()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-                .expected("base expression with a known type")
-                .got(fmt::format("{} (node type: {}, to_string: '{}')", "unknown",
-                                 expr->node_type(), expr->to_string()));
+                .expected("at least one field or method after the base expression")
+                .got("(-> <expr>)");
         }
 
-        // `expr` is the object itself, not a pointer wrapper around it.
-        // Its type is already the concrete struct type (cvector, vector,
-        // ...). get_deref_info is deliberately NOT called here: it is
-        // meant for wrapper types (pointer(T), inline-array(T),
-        // dynamic-array(T)) and, applied to a bare structure, wrongly
-        // returns the parent type.
-        Type *struct_type = expr_type;
+        // ---- 2. Build the base expression ----
+        auto current = build_expression(expr_form, node);
 
-        auto *st = dynamic_cast<StructureType *>(struct_type);
-        if (!st) {
-            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-                .expected("structure type")
-                .got(struct_type ? struct_type->get_name() : "unknown");
-        }
+        // ---- 3. Walk the chain ----
+        for (size_t i = 0; i < steps.size(); ++i) {
+            const auto &step = steps[i];
 
-        // ---- Field? ----
-        Field field;
-        if (st->lookup_field(name, &field)) {
-            Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
-            if (!field_type) {
+            if (!step.is_symbol()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-                    .expected("known field type")
-                    .got(field.type().print());
+                    .expected("field or method name as a symbol")
+                    .got(step.print());
             }
-            return std::make_unique<DerefNode>(std::move(expr), name,
-                                               static_cast<u32>(field.offset()), field_type);
+
+            const std::string name = step.as_symbol();
+
+            // The type of the current expression determines what we can do.
+            Type *expr_type = current->get_type();
+            if (!expr_type) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                    .expected("base expression with a known type")
+                    .got(fmt::format("unknown type before step '{}'", name));
+            }
+
+            auto *st = dynamic_cast<StructureType *>(expr_type);
+            if (!st) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                    .expected("structure type")
+                    .got(fmt::format("{} (while resolving '{}')", expr_type->get_name(), name));
+            }
+
+            // ---- 3a. Field? ----
+            Field field;
+            if (st->lookup_field(name, &field)) {
+                Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
+                if (!field_type) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                        .expected("known field type")
+                        .got(fmt::format("field '{}' has type '{}'", name, field.type().print()));
+                }
+                current = std::make_unique<DerefNode>(std::move(current), name,
+                                                      static_cast<u32>(field.offset()), field_type);
+                continue; // proceed to the next step
+            }
+
+            // ---- 3b. Method? ----
+            //
+            // A method consumes all remaining steps as its arguments.
+            // The chain stops here: (-> a b m x y) means "call m on a.b
+            // with x and y", not "resolve x on a.b.m".
+            MethodInfo method_info;
+            if (m_ts.try_lookup_method(expr_type->get_name(), name, &method_info)) {
+                std::vector<std::unique_ptr<ExpressionNode>> args;
+                for (size_t j = i + 1; j < steps.size(); ++j) {
+                    const auto &arg_form = steps[j];
+                    args.push_back(build_expression(arg_form, node));
+                }
+
+                Type *return_type = nullptr;
+                if (!method_info.type.empty()) {
+                    return_type =
+                        m_ts.lookup_type_no_throw(method_info.type.last_arg().base_type());
+                }
+
+                const std::string full_name = fmt::format("{}-{}", expr_type->get_name(), name);
+
+                auto method_call = std::make_unique<MethodCallNode>(std::move(current), full_name,
+                                                                    std::move(args), return_type);
+                method_call->set_is_native(m_compiler->is_native_function(full_name));
+
+                return method_call;
+            }
+
+            // ---- 3c. Neither ----
+            throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                .expected("a known field or method")
+                .got(fmt::format("(-> {} {} {})", expr_type->get_name(), name,
+                                 i + 1 < steps.size() ? "..." : ""));
         }
 
-        // ---- Method? ----
-        MethodInfo method_info;
-        if (m_ts.try_lookup_method(struct_type->get_name(), name, &method_info)) {
-            std::vector<std::unique_ptr<ExpressionNode>> args;
-            auto arg_forms = rest.as_pair()->cdr.as_pair()->cdr;
-            while (arg_forms.is_pair()) {
-                args.push_back(build_expression(arg_forms.as_pair()->car, node));
-                arg_forms = arg_forms.as_pair()->cdr;
-            }
-
-            Type *return_type = nullptr;
-            if (!method_info.type.empty()) {
-                return_type = m_ts.lookup_type_no_throw(method_info.type.last_arg().base_type());
-            }
-
-            // The full name of a method is "<type>-<method>". This is the
-            // name under which defmethod registers it in Globals.
-            const std::string full_name = fmt::format("{}-{}", struct_type->get_name(), name);
-
-            auto method_call = std::make_unique<MethodCallNode>(std::move(expr), full_name,
-                                                                std::move(args), return_type);
-            method_call->set_is_native(m_compiler->is_native_function(full_name));
-            return method_call;
-        }
-
-        throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-            .expected("a known field or method")
-            .got(fmt::format("(-> {} {})", struct_type->get_name(), name));
+        // The loop completed without hitting a method: the whole chain
+        // was field accesses, and `current` is the final DerefNode.
+        return current;
     }
 
     // ============================================================================
@@ -672,7 +701,7 @@ namespace sootc {
                     .got("end of form");
             }
 
-            const auto         &type_obj = rest.as_pair()->car;
+            const auto           &type_obj = rest.as_pair()->car;
             const script::Object *type_ptr = &type_obj;
             if (type_obj.is_pair() && type_obj.as_pair()->car.is_symbol() &&
                 type_obj.as_pair()->car.as_symbol() == "quote") {
@@ -719,7 +748,21 @@ namespace sootc {
             if (constructed_type) { new_node->set_type(constructed_type); }
         }
 
-         auto fields = rest.as_pair()->cdr;
+        auto fields = rest.as_pair()->cdr;
+
+        // Collect the set of valid field names for this type, if it is a
+        // structure. This is used below to catch typos in `:field` keywords
+        // — e.g. `:ro` instead of `:r0` — before they reach the binary and
+        // cause a confusing runtime error three levels down the call chain.
+        //
+        // For non-structure types (value types, enums, bitfields, ...) there
+        // are no fields to validate, so `allowed_fields` stays empty and the
+        // check is skipped.
+        std::optional<std::set<std::string>> allowed_fields;
+        if (auto *st = dynamic_cast<StructureType *>(type)) {
+            allowed_fields.emplace();
+            for (const auto &f : st->fields()) { allowed_fields->insert(f.name()); }
+        }
 
         // Two syntaxes are accepted for any allocation ('static', 'global',
         // 'heap'):
@@ -745,6 +788,22 @@ namespace sootc {
                 std::string field_name = field_name_obj.as_symbol().name_ptr;
                 if (!field_name.empty() && field_name[0] == ':') {
                     field_name = field_name.substr(1);
+                }
+
+                // ---- Validate the field name against the type ----
+                //
+                // Only structure types have named fields; for everything else
+                // `allowed_fields` is empty and the check is skipped.
+                if (allowed_fields && !allowed_fields->contains(field_name)) {
+                    std::string available;
+                    for (const auto &f : *allowed_fields) {
+                        if (!available.empty()) available += ", ";
+                        available += f;
+                    }
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected(fmt::format("a known field of type '{}'", type_name))
+                        .got(fmt::format(":{}", field_name))
+                        .note(fmt::format("Available fields: {}", available));
                 }
 
                 fields = fields.as_pair()->cdr;
@@ -774,7 +833,7 @@ namespace sootc {
     // body-as-sequence
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_body_as_sequence(const script::Object &body_forms,
-                                                              Node               *node) {
+                                                              Node                 *node) {
         if (body_forms.is_pair() && body_forms.as_pair()->cdr.is_null()) {
             return build_expression(body_forms.as_pair()->car, node);
         }
@@ -947,7 +1006,8 @@ namespace sootc {
     // ============================================================================
     // comparison
     // ============================================================================
-    std::unique_ptr<CompareNode> NodeBuilder::build_compare(const script::Object &form, Node *node) {
+    std::unique_ptr<CompareNode> NodeBuilder::build_compare(const script::Object &form,
+                                                            Node                 *node) {
         auto head = form.as_pair()->car.as_symbol();
         auto rest = form.as_pair()->cdr;
 
@@ -1049,9 +1109,9 @@ namespace sootc {
 
         std::string func_name = head.to_std_string();
         auto        args = parse_args(rest, node);
-   
 
-         // ---- Typecheck against known signature (if any) ----
+
+        // ---- Typecheck against known signature (if any) ----
         if (auto sig = m_compiler->lookup_function_signature(func_name)) {
             const size_t declared_args = sig->get_args_count() - 1;
 
@@ -1201,7 +1261,7 @@ namespace sootc {
     // expression
     // ============================================================================
     std::unique_ptr<ExpressionNode> NodeBuilder::build_expression(const script::Object &form,
-                                                                  Node               *node) {
+                                                                  Node                 *node) {
         auto child_node = build(form, node);
 
         if (!child_node) {
@@ -1225,7 +1285,7 @@ namespace sootc {
     // parse_args
     // ============================================================================
     std::vector<std::unique_ptr<Node>> NodeBuilder::parse_args(const script::Object &args_form,
-                                                               Node               *node) {
+                                                               Node                 *node) {
         std::vector<std::unique_ptr<Node>> args;
         auto                               current = args_form;
 
@@ -1356,7 +1416,7 @@ namespace sootc {
 
         auto macro_form =
             script::Object::make_pair(m_compiler->get_soot_interpreter().intern("macro"),
-                                    script::Object::make_pair(args_form, body_form));
+                                      script::Object::make_pair(args_form, body_form));
 
         auto define_form = script::Object::make_pair(
             m_compiler->get_soot_interpreter().intern("define"),
@@ -1506,9 +1566,8 @@ namespace sootc {
                               name, name, name));
     }
 
-    std::unique_ptr<Node> NodeBuilder::build_define_extern(const script::Object& form, Node* node) {
+    std::unique_ptr<Node> NodeBuilder::build_define_extern(const script::Object &form, Node *node) {
         return build_define_extern_or_native(form, node, false);
-
     }
 
     std::unique_ptr<Node> NodeBuilder::build_define_native(const script::Object &form, Node *node) {
@@ -1518,7 +1577,7 @@ namespace sootc {
     // (define-extern _format (function _varargs_ object))
     // (define-extern wait-animate (function string string object))
     std::unique_ptr<Node> NodeBuilder::build_define_extern_or_native(const script::Object &form,
-                                                               Node               *node, bool is_native) {
+                                                                     Node *node, bool is_native) {
         (void)node;
 
         auto rest = form.as_pair()->cdr;
@@ -1597,8 +1656,7 @@ namespace sootc {
             args.push_back(TypeSpec("object")); // native return type
             sig = TypeSpec("function", std::move(args));
         }
-        if (is_native)
-            m_compiler->define_native_signature(name, sig);
+        if (is_native) m_compiler->define_native_signature(name, sig);
         else
             m_compiler->define_function_signature(name, sig);
         lg::debug("Registered native signature: {} : {}", name, sig.print());
@@ -1764,8 +1822,8 @@ namespace sootc {
         try {
             MethodInfo info = m_ts.lookup_method(type_name, method_name);
             m_ts.define_method(type_name, method_name, info.type, std::nullopt);
-            lg::debug("defmethod {}-{}: registered (id {}, sig {})", type_name, method_name, info.id,
-                     info.type.print());
+            lg::debug("defmethod {}-{}: registered (id {}, sig {})", type_name, method_name,
+                      info.id, info.type.print());
         } catch (const std::exception &e) {
             throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("method declared in deftype :methods")
@@ -1806,11 +1864,11 @@ namespace sootc {
         return build_unary_common(form, node, UnaryNode::Op::NOT, "not");
     }
     std::unique_ptr<ExpressionNode> NodeBuilder::build_lognot(const script::Object &form,
-                                                              Node               *node) {
+                                                              Node                 *node) {
         return build_unary_common(form, node, UnaryNode::Op::BITNOT, "lognot");
     }
 
-        // (require "path/to/file.sc")
+    // (require "path/to/file.sc")
     //
     // Compile and load a dependency at compile time. The actual work
     // is done by Compiler::require_file, which resolves the path,

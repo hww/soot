@@ -24,24 +24,21 @@ namespace sootc {
         const std::string &name() const { return m_name; }
 
         void emit(FunctionNode &fn) override {
-            if (m_reg == 0xFF) {
-                if (auto *info = fn.lookup_variable(m_name)) {
-                    // Local variable or parameter: use its register.
-                    m_reg = info->reg();
-                } else {
-                    // Not a local. Treat as a top-level name (data declaration,
-                    // function, or native symbol) and load it by SID at runtime.
-                    //
-                    // This mirrors what CallNode::emit does for named calls:
-                    // put the SID in the constant pool, then LookupPointer.
-                    u16 sid_idx = fn.add_constant(static_cast<u64>(StringId(m_name).value),
-                                                  FunctionNode::ConstKind::SID);
-
-                    m_reg = fn.alloc_temp_reg(m_type);
-                    fn.add_instruction_imm_u16(Opcode::LookupPointer, m_reg, sid_idx);
-                }
+            // Do NOT cache m_reg across emits. A single VariableNode may be
+            // emitted multiple times if its enclosing AST is reused (which
+            // happens when FileNode is reused across REPL inputs). The
+            // register allocation for each emit is independent.
+            u8 reg;
+            if (auto *info = fn.lookup_variable(m_name)) {
+                reg = info->reg();
+            } else {
+                // Top-level name: emit LookupPointer by SID.
+                u16 sid_idx = fn.add_constant(static_cast<u64>(StringId(m_name).value),
+                                              FunctionNode::ConstKind::SID);
+                reg = fn.alloc_temp_reg(m_type);
+                fn.add_instruction_imm_u16(Opcode::LookupPointer, reg, sid_idx);
             }
-            fn.set_temp_reg(this, m_reg);
+            fn.set_temp_reg(this, reg);
         }
 
         std::string to_string() const override { return m_name; }

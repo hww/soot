@@ -445,64 +445,78 @@ namespace sootc {
         try {
             NodeBuilder builder(m_ts, this);
 
-            // ------------------------------------------------------------------
-            // Reuse the existing FileNode for this name if one is already
-            // registered.
+            // ---- Reuse or create the FileNode for this name ----
             //
-            // For the REPL, filename is always "<repl>", so this makes a
-            // `define` from an earlier input visible to later inputs:
-            // build_variable can look up the name in the same FileNode.
-            //
-            // For non-REPL names (real files), the map does not contain the
-            // name on the first (and only) compile, so behaviour is
-            // unchanged.
-            // ------------------------------------------------------------------
-            std::unique_ptr<FileNode> file_node_owned;
-            FileNode                 *file_node = nullptr;
+            // In REPL mode, the same filename ("<repl>") is used for every
+            // input. We keep a single FileNode for the session and append
+            // to it, so that declarations (data, functions, types) survive
+            // across inputs and the top-level function accumulates every
+            // top-level expression in order.
+            FileNode *file_node = nullptr;
+            bool      owns_file_node = false;
 
-            {
-                auto it = m_file_nodes.find(filename);
-                if (it != m_file_nodes.end()) {
-                    file_node = it->second.get();
-                } else {
-                    file_node_owned = std::make_unique<FileNode>(filename);
-                    file_node = file_node_owned.get();
-                }
+            auto it = m_file_nodes.find(filename);
+            if (it != m_file_nodes.end()) {
+                // Reuse the existing FileNode: its declarations and its
+                // top-level body are already there.
+                file_node = it->second.get();
+            } else {
+                auto owned = std::make_unique<FileNode>(filename);
+                file_node = owned.get();
+                m_file_nodes[filename] = std::move(owned);
+                owns_file_node = true;
             }
 
-            // Top-level is a sequence of forms. Functions and declarations
-            // become children of the FileNode; everything else goes into
-            // a synthetic "top-level" function body.
-            auto top_level_body = std::make_unique<SequenceNode>();
-            auto top_level = std::make_unique<FunctionNode>("top-level");
-            bool top_level_used = false;
+            // ---- Reuse or create the top-level function ----
+            //
+            // There is exactly ONE top-level function per FileNode. On the
+            // first expression, we create it and install it on the
+            // FileNode; on every subsequent expression, we append to its
+            // existing body. This is what keeps Globals["top-level"] a
+            // stable reference across REPL inputs.
+            FunctionNode *top_level = file_node->top_level();
+            if (!top_level) {
+                auto tl = std::make_unique<FunctionNode>("top-level");
+                auto body = std::make_unique<SequenceNode>();
+                top_level = tl.get();
 
+                file_node->add_child(std::move(tl));
+                file_node->set_top_level(top_level, body.get());
+
+                top_level->set_body(std::move(body));
+            }
+
+            SequenceNode *top_level_body = file_node->top_level_body();
+            if (!top_level_body) {
+                // Should not happen: set_top_level was called above.
+                throw CompilerError("Compiler::compile_internal")
+                    .expected("top-level body to be installed on the FileNode")
+                    .got("null SequenceNode*");
+            }
+
+            // ---- Process each top-level form in this input ----
             auto current = forms;
             while (current.is_pair()) {
                 auto node = builder.build(current.as_pair()->car, file_node);
                 if (node) {
                     if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
-                        // Top-level function: separate child of FileNode.
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr) {
-                        // Type/enum declaration: compile-time only, no code.
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
-                        // Top-level data declaration: (define name (new Type ...)).
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<NewNode *>(node.get()) != nullptr) {
-                        // A bare (new ...) at top level is not allowed;
-                        // it must be wrapped in (define ...).
                         throw CompilerError("Compiler::compile_internal")
                             .where(fmt::format("file '{}'", filename))
                             .expected("top-level 'new' to be wrapped in 'define'")
                             .got("bare (new ...)");
                     } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                        // Regular expression: goes into the top-level body.
+                        // Append to the SINGLE top-level body. Do not create a
+                        // new top-level: the module has exactly one, and its
+                        // body grows with each expression.
                         node.release();
                         top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
-                        top_level_used = true;
                     } else {
                         throw CompilerError("Compiler::compile_internal")
                             .where(fmt::format("file '{}'", filename))
@@ -514,25 +528,20 @@ namespace sootc {
                 current = current.as_pair()->cdr;
             }
 
-            if (top_level_used) {
-                top_level->set_body(std::move(top_level_body));
-                file_node->add_child(std::move(top_level));
-            }
-
-            // ------------------------------------------------------------------
-            // Persist the FileNode if it was newly created in this call.
+            // ---- Generate the binary ----
             //
-            // For repeated names (REPL "<repl>"), the existing FileNode was
-            // reused from the start; its children were added directly above
-            // and it is already stored in m_file_nodes.
-            // ------------------------------------------------------------------
-            FileNode *stored = nullptr;
-            if (file_node_owned) {
-                m_file_nodes[filename] = std::move(file_node_owned);
-                stored = m_file_nodes[filename].get();
-            } else {
-                stored = file_node;
-            }
+            // NOTE: the FileNode now contains, in order:
+            //   * all declarations accumulated since the session began
+            //   * the single top-level function
+            // and its body contains every top-level expression entered in
+            // the session, in order.
+            //
+            // Regenerating it on every input is deliberate: we are using the
+            // "compile the whole thing again" model for now. What makes it
+            // correct is that the top-level is a stable single function, so
+            // Globals["top-level"] is never pointing at a stale body.
+
+            FileNode *stored = file_node;
 
             StringsTable strings_table;
             auto         element = stored->generate(strings_table);
@@ -658,6 +667,7 @@ namespace sootc {
             "arg-ls",
             "gcls",
             "gc",
+            "ts-info"
         };
         return kCommands;
     }
@@ -720,6 +730,7 @@ namespace sootc {
         if (name == "arg-ls") return cmd_arg_list(form);
         if (name == "gcls") return cmd_gc_list(form);
         if (name == "gc") return cmd_gc_collect(form);
+        if (name == "ts-info") return cmd_ts_info(form);
 
         fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
         return ReplStatus::ERR;
@@ -1324,6 +1335,50 @@ namespace sootc {
     }
 
     // ===============================================================
+    // Type system
+    // ===============================================================
+
+ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (ts-info <type-name>) requires a type name\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_symbol() && !name_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (ts-info ...) name must be symbol or string\n");
+            return ReplStatus::ERR;
+        }
+
+        const std::string type_name = name_obj.to_std_string();
+
+        Type *type = m_ts.lookup_type_no_throw(type_name);
+        if (!type) {
+            fmt::print(fg(fmt::color::yellow), "; ts-info: unknown type '{}'\n", type_name);
+            return ReplStatus::ERR;
+        }
+
+        fmt::print("{}\n", type->inspect());
+
+        // Extras that inspect() does not print:
+        fmt::print("  is_reference:           {}\n", type->is_reference());
+        fmt::print("  load_size:              {}\n", type->get_load_size());
+        fmt::print("  preferred_reg_class:    {}\n",
+                   reg_kind_to_string(type->get_preferred_reg_class()));
+
+        const auto &states = type->get_states_declared_for_type();
+        if (!states.empty()) {
+            fmt::print("  states ({}):\n", states.size());
+            for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
+        }
+
+        return ReplStatus::OK;
+    }
+
+    // ===============================================================
     // REPL loop helpers
     // ===============================================================
 
@@ -1463,9 +1518,7 @@ namespace sootc {
                     // could compare against the function's declared return
                     // type, but for now the check below is enough.
                     const std::string printed = top_level_result.value.to_string();
-                    if (printed != "1" && printed != "null" && !printed.empty()) {
-                        fmt::print(fg(fmt::color::cyan), "; => {}\n", printed);
-                    }
+                    fmt::print(fg(fmt::color::cyan), "; => {}\n", printed);
                 } else {
                     fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
                                top_level_result.error);

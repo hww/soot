@@ -6,6 +6,7 @@
 #include "carbon/file/ProgramBinaryElement.hpp"
 #include "sootc/libs/StringsTable.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
+#include "sootc/node/SequenceNode.hpp"
 #include <expected>
 #include <string>
 #include <unordered_map>
@@ -41,6 +42,25 @@ namespace sootc {
         // ---- Symbol table ----
         Node *lookup(const std::string &name) override;
         void  bind(const std::string &name, Node *node);
+
+        /// @brief The module's top-level function, or nullptr if no
+        ///        top-level expression has been added yet.
+        FunctionNode *top_level() const { return m_top_level; }
+
+        /// @brief The mutable body of the top-level function, or nullptr.
+        /// @details New top-level expressions are appended here by the
+        ///          compiler. Only valid if top_level() != nullptr.
+        SequenceNode *top_level_body() const { return m_top_level_body; }
+
+        /// @brief Install the module's top-level function and its body.
+        /// @details Called by the compiler on the first top-level
+        ///          expression. The FileNode takes ownership of the
+        ///          FunctionNode via add_child; the body pointer is
+        ///          stored for later appends.
+        void set_top_level(FunctionNode *fn, SequenceNode *body) {
+            m_top_level = fn;
+            m_top_level_body = body;
+        }
 
         // ---- Imports ----
         void                           add_import(FileNode *file);
@@ -91,6 +111,21 @@ namespace sootc {
         ///                        were implemented by defmethod.
         ProgramBinaryElement build_ss_type(const TypeDeclarationNode                  *type_decl,
                       const std::unordered_map<std::string, u64> &type_lambdas);
+
+        /// @brief The single synthetic top-level function for this module.
+        ///
+        /// @details Unlike normal function nodes (which are created per
+        ///          `defun` and stored as children), the top-level function
+        ///          is a single container for all top-level expressions.
+        ///          It is created lazily on the first expression, and all
+        ///          subsequent expressions are appended to its body.
+        ///
+        ///          This is what makes `Globals["top-level"]` a stable
+        ///          reference across REPL inputs: there is exactly one
+        ///          top-level function per module, and it accumulates
+        ///          every expression in order.
+        FunctionNode *m_top_level = nullptr;
+        SequenceNode *m_top_level_body = nullptr;
     };
 
 } // namespace sootc

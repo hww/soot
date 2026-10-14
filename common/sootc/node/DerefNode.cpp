@@ -1,4 +1,4 @@
-#include "DerefNode.hpp"
+﻿#include "DerefNode.hpp"
 #include "FunctionNode.hpp"
 
 #include "carbon/vm/Instructions.hpp"
@@ -38,16 +38,25 @@ namespace sootc {
                                    static_cast<u8>(m_offset & 0xFF));
 
         // 3. Choose the load opcode based on the field's load size and signedness.
+        // 3. Choose the load opcode based on the field's type.
+        // 3. Choose the load opcode based on the field's load size and signedness.
+        // 3. Choose the load opcode based on the field's type.
         u8 dest_reg = fn.alloc_temp_reg(m_type);
 
-        const int  size = m_type->get_load_size();
-        const bool sign = m_type->get_load_signed();
-        const bool is_float = (m_type->get_preferred_reg_class() == RegClass::FPR);
-
         Opcode load_op;
-        if (is_float) {
+
+        if (m_type->is_reference()) {
+            // A reference-typed field holds an 8-byte pointer. Emit LoadPointer
+            // so the result carries RuntimeType::Pointer, not RuntimeType::Int.
+            // Without this, (-> m r0) on a `matrix` returns Int(0) instead of
+            // Pointer(nullptr), and any subsequent field access through it
+            // fails with "expected pointer".
+            load_op = Opcode::LoadPointer;
+        } else if (m_type->get_preferred_reg_class() == RegClass::FPR) {
             load_op = Opcode::LoadFloat;
         } else {
+            const int  size = m_type->get_load_size();
+            const bool sign = m_type->get_load_signed();
             switch (size) {
             case 1: load_op = sign ? Opcode::LoadI8 : Opcode::LoadU8; break;
             case 2: load_op = sign ? Opcode::LoadI16 : Opcode::LoadU16; break;
@@ -60,7 +69,6 @@ namespace sootc {
         }
 
         fn.add_instruction(load_op, dest_reg, addr_reg, 0);
-
         fn.set_temp_reg(this, dest_reg);
     }
 
@@ -74,7 +82,7 @@ namespace sootc {
 
         // 2. Compute the field address: r_addr = base_reg + offset.
         //
-        // Same reasoning as in DerefNode::emit � use the three-operand
+        // Same reasoning as in DerefNode::emit — use the three-operand
         // form so the base register actually reaches the VM.
         u8 addr_reg = fn.alloc_temp_reg(m_type);
         fn.add_instruction_imm_reg(Opcode::IAddImm, addr_reg, base_reg,

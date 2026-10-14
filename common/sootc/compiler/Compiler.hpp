@@ -405,6 +405,9 @@ namespace sootc {
         ReplStatus cmd_gc_list(const script::Object &form);
         ReplStatus cmd_gc_collect(const script::Object &form);
 
+        // --- Type system ---
+        ReplStatus cmd_ts_info(const script::Object &form);
+
         // --- State ---
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;

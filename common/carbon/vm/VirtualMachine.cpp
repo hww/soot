@@ -868,40 +868,51 @@ namespace carbon {
 
                 // ============================================================
                 // Indirect Store (разные размеры) — 0x7C..0x8B
+                //
+                // Register convention: ALL Store* opcodes follow the canonical
+                // VM rule, matching the documentation:
+                //
+                //     a = address
+                //     b = value
+                //
+                // This is the same convention used by StoreInt, StoreI32,
+                // StoreU32, StoreFloat, and StorePointer above. Do NOT swap
+                // the operands for the narrower stores: they must use the
+                // same order, or SetNode will write to the wrong address.
                 // ============================================================
                 case Opcode::StoreI8: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i8 *>(ptr) = static_cast<i8>(value);
                     break;
                 }
                 case Opcode::StoreU8: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u8 *>(ptr) = static_cast<u8>(value);
                     break;
                 }
                 case Opcode::StoreI16: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i16 *>(ptr) = static_cast<i16>(value);
                     break;
                 }
                 case Opcode::StoreU16: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u16 *>(ptr) = static_cast<u16>(value);
                     break;
                 }
                 case Opcode::StoreI64: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<i64 *>(ptr) = value;
                     break;
                 }
                 case Opcode::StoreU64: {
-                    void *ptr = current_frame->get_register(instr.b).get_ptr();
-                    i64   value = current_frame->get_register(instr.a).get_i64();
+                    void *ptr = current_frame->get_register(instr.a).get_ptr();
+                    i64   value = current_frame->get_register(instr.b).get_i64();
                     *reinterpret_cast<u64 *>(ptr) = static_cast<u64>(value);
                     break;
                 }

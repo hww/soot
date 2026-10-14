@@ -1,7 +1,8 @@
 ﻿#pragma once
 
-#include "ExpressionNode.hpp"
+#include "sootc/node/ExpressionNode.hpp"
 #include "sootc/node/Node.hpp"
+#include "sootc/node/FunctionNode.hpp"
 #include <memory>
 #include <vector>
 

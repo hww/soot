@@ -1196,7 +1196,7 @@ void TypeSystem::add_builtin_types() {
     auto function_type = add_builtin_basic("basic", "function");
 
     // Placeholder structure used by tests and by future matrix math.
-    auto matrix_type = add_builtin_structure("structure", "matrix");
+    //auto matrix_type = add_builtin_structure("structure", "matrix");
 
     // ---------------------------------------------------------------------
     // Numeric hierarchy
