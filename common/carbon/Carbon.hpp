@@ -263,6 +263,7 @@ namespace carbon {
 
         [[nodiscard]] VirtualMachine   *vm() noexcept;
         [[nodiscard]] Globals          *globals() noexcept;
+        [[nodiscard]] Globals          *globals() const noexcept;
         [[nodiscard]] ModuleRegistry   *modules() noexcept;
         [[nodiscard]] Scheduler        *scheduler() noexcept;
 

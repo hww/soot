@@ -731,23 +731,33 @@ namespace carbon {
                     dest = Variant(value);
                     break;
                 }
-
                 case Opcode::LookupPointer: {
                     Variant &dest = current_frame->get_register(instr.a);
                     u32      idx = instr.b;
 
                     // ST[idx] — это SID (или уже указатель).
-                    u64 raw = current_frame->get_static_int(idx);
+                    u64            raw = current_frame->get_static_int(idx);
+                    const StringId sid = static_cast<StringId>(raw);
 
-                    // Если это указатель (или уже PTR в ST) — вернуть как есть.
-                    // Если это SID — резолвить через NativeFunctionRegistry.
-                    auto native = find_native_function(static_cast<StringId>(raw));
-                    if (native) {
+                    // 1. Native function?
+                    if (auto native = find_native_function(sid)) {
                         dest = Variant(reinterpret_cast<void *>(native), RuntimeType::Pointer);
-                    } else {
-                        // Fallback: вернуть SID как int (для CallFf, который сам ищет).
-                        dest = Variant(raw);
+                        break;
                     }
+
+                    // 2. Symbol registered in Globals (data declarations, script
+                    //    functions, native symbols loaded from a module)?
+                    //
+                    // This is the path that makes top-level `define` names
+                    // (both `(define v (new ...))` and `(define foo (lambda ...))`)
+                    // resolvable from later top-level forms.
+                    if (auto *sym = carbon->globals()->find_symbol_ptr(sid)) {
+                        dest = Variant(sym, RuntimeType::Pointer);
+                        break;
+                    }
+
+                    // 3. Fallback: keep the SID as int. CallFf will look it up itself.
+                    dest = Variant(raw);
                     break;
                 }
 

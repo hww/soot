@@ -561,7 +561,8 @@ namespace sootc {
         if (!expr_type) {
             throw m_compiler->make_error(form, "NodeBuilder::build_deref")
                 .expected("base expression with a known type")
-                .got("unknown");
+                .got(fmt::format("{} (node type: {}, to_string: '{}')", "unknown",
+                                 expr->node_type(), expr->to_string()));
         }
 
         // `expr` is the object itself, not a pointer wrapper around it.
@@ -1114,7 +1115,7 @@ namespace sootc {
     // variable
     // ============================================================================
     std::unique_ptr<VariableNode> NodeBuilder::build_variable(const script::Object &form,
-                                                              Node               *node) {
+                                                              Node                 *node) {
         if (!form.is_symbol()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_variable")
                 .expected("symbol")
@@ -1122,10 +1123,64 @@ namespace sootc {
         }
 
         std::string name = form.as_symbol();
+        Type       *type = nullptr;
 
-        Type *type = nullptr;
+        // 1. Local variable or parameter?
         if (auto *fn = node->function()) {
             if (auto *info = fn->lookup_variable(name)) type = info->type();
+        }
+
+        // 2. Top-level declaration in the current file?
+        if (!type) {
+            if (auto *file = node->file()) {
+                if (auto *decl_node = file->lookup(name)) {
+                    if (auto *data_decl = dynamic_cast<DataDeclarationNode *>(decl_node)) {
+                        if (const NewNode *instance = data_decl->instance()) {
+                            type = m_ts.lookup_type_no_throw(instance->type().base_type());
+                        }
+                    }
+                    // If it's a FunctionNode, TypeDeclarationNode, etc., the
+                    // name is valid but not a value. Reading it as a value is
+                    // allowed only for data declarations; for others, use
+                    // object as a fallback type so downstream deref knows it
+                    // can't resolve fields.
+                    if (!type) { type = m_ts.lookup_type_no_throw("object"); }
+                }
+            }
+        }
+
+        // 3. Compiler-side function table (define-native, define-extern).
+        //    These are named callables, not values. If the user wrote the
+        //    bare name at top level, that's a "function reference" — its
+        //    type is the signature's return slot, but for our purposes
+        //    object is enough.
+        if (!type) {
+            if (m_compiler->lookup_function_signature(name)) {
+                type = m_ts.lookup_type_no_throw("object");
+            }
+        }
+
+        // 4. Nothing matched. This is a compile-time error.
+        //
+        //    Rationale: an unresolved name at REPL top level means the user
+        //    typed something wrong. We must not silently emit a LookupPointer
+        //    and return the SID as a value at runtime — that hides the bug.
+        //
+        //    Inside a function body, forward references within the same file
+        //    are legitimate: a `defun` may call a function defined later in
+        //    the same file. In that case, we allow the name to pass through
+        //    with type = object; the runtime resolves it via LookupPointer
+        //    when the call is actually made.
+        if (!type) {
+            const bool inside_function = (node->function() != nullptr);
+            if (!inside_function) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_variable")
+                    .expected("a defined variable, data declaration, or function")
+                    .got(fmt::format("undefined variable '{}'", name))
+                    .note("Define it with (define ...), or check for typos.");
+            }
+            // Forward reference inside a function body: allow, type = object.
+            type = m_ts.lookup_type_no_throw("object");
         }
 
         return std::make_unique<VariableNode>(name, type);
@@ -1414,8 +1469,13 @@ namespace sootc {
         // ---- Value is (new Type ...) ----
         if (auto *new_node = dynamic_cast<NewNode *>(value_node.get())) {
             value_node.release();
-            return std::make_unique<DataDeclarationNode>(name, std::unique_ptr<NewNode>(new_node),
-                                                         exported);
+            auto decl = std::make_unique<DataDeclarationNode>(
+                name, std::unique_ptr<NewNode>(new_node), exported);
+
+            if (auto *file = context->file()) {
+                file->bind(name, decl.get()); // ← вот этой строки не хватает
+            }
+            return decl;
         }
 
         // ---- Value is a compile-time constant ----

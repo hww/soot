@@ -55,6 +55,16 @@ namespace sootc {
         ///        declarations out of a (begin ...) form.
         void add_child(std::unique_ptr<Node> child) { m_children.push_back(std::move(child)); }
 
+        /// @brief Take ownership of children and symbols, leaving this FileNode empty.
+        /// Used by the REPL to merge a freshly-built FileNode into the
+        /// persistent session FileNode.
+        std::vector<std::unique_ptr<Node>> take_children() { return std::move(m_children); }
+
+        std::unordered_map<std::string, Node *> take_symbols() {
+            auto out = std::move(m_symbols);
+            m_ordered_symbols.clear();
+            return out;
+        }
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.

@@ -129,6 +129,14 @@ namespace sootc {
         //                loaded before this call).
         bool        require_file(const script::Object &form, const std::string &path);
 
+        /// @brief Look up the FileNode produced by a previous compile_file.
+        /// @details Used by build_require to attach the imported file to
+        ///          the current file's m_imports.
+        FileNode *find_file_node(const std::string &key) const {
+            auto it = m_file_nodes.find(key);
+            return it != m_file_nodes.end() ? it->second.get() : nullptr;
+        }
+
         // --- REPL ---
         ReplStatus  handle_repl_string(const std::string &input);
         void        save_repl_history();
@@ -407,8 +415,8 @@ namespace sootc {
         std::unique_ptr<GlobalNode> m_global_env;
         std::unique_ptr<NoneNode>   m_none;
 
-        std::string                                   m_current_file;
-        std::unordered_map<std::string, FunctionInfo> m_functions;
+        std::string                                     m_current_file;
+        std::unordered_map<std::string, FunctionInfo>   m_functions;
         std::unordered_map<std::string, script::Object> m_constants;
 
         // Per-instance set of already-loaded prelude paths.
@@ -477,5 +485,19 @@ namespace sootc {
         // to make requires idempotent, so a file that is required by
         // two of its dependents is compiled only once.
         std::set<std::filesystem::path> m_loaded_files;
+
+        // ------------------------------------------------------------------
+        // Loaded FileNodes
+        // ------------------------------------------------------------------
+        //
+        // Every file that has been compiled in this session leaves its
+        // FileNode here, keyed by the canonical path (or by the
+        // synthetic name for REPL inputs). The FileNode owns the
+        // symbol table of that file; `require` needs to keep it alive
+        // so that the requirer's FileNode can point at it through
+        // m_imports.
+        //
+        // The FileNode is destroyed only when the Compiler is destroyed.
+        std::unordered_map<std::string, std::unique_ptr<FileNode>> m_file_nodes;
     };
 } // namespace sootc

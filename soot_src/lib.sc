@@ -477,6 +477,12 @@
 (defmethod len ((this cvector))
   (+ (-> this x) (-> this y) (-> this z) (-> this w)))
 
+
+(deftype matrix (structure)
+ ((r0 vector)
+  (r1 vector)
+  (r2 vector)))
+
 ;; ----------------------------------------------------------------------------
 ;; Load marker
 ;; ----------------------------------------------------------------------------

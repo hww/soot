@@ -516,6 +516,7 @@ bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile
 
     VirtualMachine   *Carbon::vm() noexcept { return m_impl->vm.get(); }
     Globals          *Carbon::globals() noexcept { return m_impl->globals.get(); }
+    Globals          *Carbon::globals() const noexcept { return m_impl->globals.get(); }
     ModuleRegistry   *Carbon::modules() noexcept { return m_impl->modules.get(); }
     Scheduler        *Carbon::scheduler() noexcept { return m_impl->scheduler.get(); }
 

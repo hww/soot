@@ -444,7 +444,31 @@ namespace sootc {
     Compiler::compile_internal(script::Object &forms, const std::string &filename) {
         try {
             NodeBuilder builder(m_ts, this);
-            auto        file_node = std::make_unique<FileNode>(filename);
+
+            // ------------------------------------------------------------------
+            // Reuse the existing FileNode for this name if one is already
+            // registered.
+            //
+            // For the REPL, filename is always "<repl>", so this makes a
+            // `define` from an earlier input visible to later inputs:
+            // build_variable can look up the name in the same FileNode.
+            //
+            // For non-REPL names (real files), the map does not contain the
+            // name on the first (and only) compile, so behaviour is
+            // unchanged.
+            // ------------------------------------------------------------------
+            std::unique_ptr<FileNode> file_node_owned;
+            FileNode                 *file_node = nullptr;
+
+            {
+                auto it = m_file_nodes.find(filename);
+                if (it != m_file_nodes.end()) {
+                    file_node = it->second.get();
+                } else {
+                    file_node_owned = std::make_unique<FileNode>(filename);
+                    file_node = file_node_owned.get();
+                }
+            }
 
             // Top-level is a sequence of forms. Functions and declarations
             // become children of the FileNode; everything else goes into
@@ -455,7 +479,7 @@ namespace sootc {
 
             auto current = forms;
             while (current.is_pair()) {
-                auto node = builder.build(current.as_pair()->car, file_node.get());
+                auto node = builder.build(current.as_pair()->car, file_node);
                 if (node) {
                     if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
                         // Top-level function: separate child of FileNode.
@@ -495,9 +519,23 @@ namespace sootc {
                 file_node->add_child(std::move(top_level));
             }
 
-            // Generate the binary.
+            // ------------------------------------------------------------------
+            // Persist the FileNode if it was newly created in this call.
+            //
+            // For repeated names (REPL "<repl>"), the existing FileNode was
+            // reused from the start; its children were added directly above
+            // and it is already stored in m_file_nodes.
+            // ------------------------------------------------------------------
+            FileNode *stored = nullptr;
+            if (file_node_owned) {
+                m_file_nodes[filename] = std::move(file_node_owned);
+                stored = m_file_nodes[filename].get();
+            } else {
+                stored = file_node;
+            }
+
             StringsTable strings_table;
-            auto         element = file_node->generate(strings_table);
+            auto         element = stored->generate(strings_table);
 
             // Nothing to emit: the file contained only compile-time
             // declarations (deftype / defenum). The types are already
@@ -523,9 +561,7 @@ namespace sootc {
 
             // Copy data-struct layouts collected by FileNode into the BinaryFile
             // so that BinaryFileInspector can decode payloads without TypeSystem.
-            for (const auto &ds : file_node->data_structs()) {
-                binary->m_dataStructs.push_back(ds);
-            }
+            for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
             if (m_config.debug_print_asm) { color_binary_file(binary); }
 
