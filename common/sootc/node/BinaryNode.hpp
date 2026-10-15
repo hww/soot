@@ -5,6 +5,7 @@
 #include "Node.hpp"
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
+#include "type_system/TypeSystem.hpp"
 
 namespace sootc {
 
