@@ -44,6 +44,9 @@ namespace sootc {
         const std::string &allocation() const { return m_allocation; }
         void               set_allocation(std::string alloc) { m_allocation = std::move(alloc); }
         bool               is_static() const { return m_allocation == "static"; }
+        bool               is_gloabal() const {
+            return m_allocation == "global" || m_allocation == "heap" || m_allocation == "stack";
+        }
 
         // ---- static: fields ----
         void add_field(const std::string &name, std::unique_ptr<ExpressionNode> value) {
@@ -76,6 +79,9 @@ namespace sootc {
         /// @details Only valid for m_allocation == "static". Returns an empty
         ///          element otherwise (the top-level compiler reports an error).
         ProgramBinaryElement generate(StringsTable &state) override;
+
+    private:
+        void emit_field_init_stores(FunctionNode &fn, u8 base_ptr_reg, StructureType *st);
     };
 
 } // namespace sootc

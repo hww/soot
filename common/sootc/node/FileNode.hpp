@@ -1,4 +1,4 @@
-// FileNode.hpp
+﻿// FileNode.hpp
 #pragma once
 
 #include "Node.hpp"
@@ -24,6 +24,10 @@ namespace sootc {
         /// @brief Layouts of data-struct entries produced by make_binary.
         /// @details Read by Compiler after generate() to populate the BinaryFile.
         std::vector<DataStructEntry>            m_dataStructs;
+        /// @brief Names that need a placeholder entry in the binary.
+        /// @details See add_placeholder() for the rationale.
+        std::vector<std::string>                m_placeholders;
+
     protected:
         void update_self_cache() override { m_cached_file = this; }
 
@@ -40,8 +44,13 @@ namespace sootc {
         ProgramBinaryElement generate(StringsTable &strings_table) override;
 
         // ---- Symbol table ----
+        /// @brief Lookup binding
         Node *lookup(const std::string &name) override;
+        /// @brief Add binding
         void  bind(const std::string &name, Node *node);
+        /// @brief Remove any child FunctionNode or DataDeclarationNode
+        void  remove_named(const std::string &name);
+        /// @brief Check binding
         bool  has_local(const std::string &name) const {
             return m_symbols.find(name) != m_symbols.end();
         }
@@ -101,6 +110,111 @@ namespace sootc {
     private:
         /// @brief Export all file
         bool m_export_all = false;
+
+        // ---- Transaction support ----
+        // In REPL mode the same FileNode is reused across inputs. If a
+        // compilation throws (a bad DataDeclarationNode, a NodeBuilder error),
+        // the FileNode is left with a broken child that will re-throw on
+        // every subsequent compile. To prevent that, the caller takes a
+        // snapshot before compiling and rolls back on failure.
+        //
+        // The snapshot captures:
+        //   * the number of children (all children past this index are new),
+        //   * the number of ordered symbols,
+        //   * the set of top-level body expressions (the top-level function's
+        //     body is rebuilt on every input, so we just remember the previous
+        //     body and restore it on rollback — but actually the body is
+        //     replaced wholesale, so we do not need to snapshot it),
+        //   * data_structs (rebuilt on every generate()).
+        //
+        // What is NOT snapshotted, and why:
+        //   * m_symbols (the name -> Node* map) — entries added during the
+        //     failed compile are not removed, but they point at nodes that
+        //     were also added as children and will be removed by the resize.
+        //     Leaving stale keys is harmless: lookup() will find a pointer
+        //     to freed memory only if the key was bound to a node that is
+        //     now gone. To be safe we also erase the keys added since the
+        //     snapshot.
+        
+        // ---- Placeholders for heap-allocated top-level defines ----
+    public: 
+        //
+        // NodeBuilder::build_define calls add_placeholder(name) for
+        // each heap-allocated define. At make_binary time, FileNode
+        // emits an extra entry per such name: a valid DCEntry with an
+        // 8-byte payload of zeros. Globals::register_symbols_from_file
+        // indexes the name pointing at those zeros, so that
+        // StoreGlobalNode::emit can resolve it via LookupPointer and
+        // overwrite the pointer at runtime.
+        //
+        // One entry per name; add_placeholder deduplicates.
+        void add_placeholder(const std::string &name) {
+            if (std::find(m_placeholders.begin(), m_placeholders.end(), name) ==
+                m_placeholders.end()) {
+                m_placeholders.push_back(name);
+            }
+        }
+
+    private:
+        const std::vector<std::string> &placeholders() const { return m_placeholders; }
+    public:
+        // ---- Transaction support for REPL ----
+        //
+        // In REPL mode the Compiler reuses the same FileNode across inputs.
+        // If a compile throws (NodeBuilder error, DataDeclarationNode error),
+        // the FileNode is left with a broken child that re-throws on every
+        // subsequent compile, poisoning the session.
+        //
+        // The Compiler takes a snapshot before compiling an input and calls
+        // rollback() if compile_internal throws. This restores the FileNode
+        // to exactly the state it had before the input.
+        //
+        // Cost: copying m_symbols on every REPL input. For a human typing at
+        // a REPL this is negligible (< 1ms for thousands of symbols). For
+        // batch compilation it is not used at all: each file gets its own
+        // FileNode, which is discarded on error.
+        struct Snapshot {
+            std::size_t                             children = 0;
+            std::unordered_map<std::string, Node *> symbols;
+            std::vector<Node *>                     ordered_symbols;
+            bool                                    valid = false;
+            std::vector<std::string>                placeholders; 
+        };
+
+        [[nodiscard]] Snapshot take_snapshot() const {
+            Snapshot s;
+            s.children = m_children.size();
+            s.symbols = m_symbols;
+            s.ordered_symbols = m_ordered_symbols;
+            s.valid = true;
+            s.placeholders = m_placeholders;
+            return s;
+        }
+
+        void rollback(Snapshot &&s) {
+            if (!s.valid) return;
+            if (s.children < m_children.size()) { m_children.resize(s.children); }
+            m_symbols = std::move(s.symbols);
+            m_ordered_symbols = std::move(s.ordered_symbols);
+            m_dataStructs.clear();
+            m_placeholders = std::move(s.placeholders);
+            // m_top_level is a raw pointer into m_children. After a resize
+            // that removes children, it may dangle. Re-derive it from the
+            // children that survive: the top-level function, if it still
+            // exists, is the one with name "top-level".
+            m_top_level = nullptr;
+            for (auto &child : m_children) {
+                if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
+                    if (fn->name() == "top-level") {
+                        m_top_level = fn;
+                        break;
+                    }
+                }
+            }
+
+            s.valid = false;
+        }
+
 
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)

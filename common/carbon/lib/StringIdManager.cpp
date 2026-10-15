@@ -203,7 +203,7 @@ namespace carbon {
     // Serialization (dconstruct binary sidbase format)
     // ===========================================================================
 
-bool StringIdManager::save_dconstruct_sidbase(const std::string &filename) const {
+    bool StringIdManager::save_dconstruct_sidbase(const std::string &filename) const {
         std::shared_lock lock(mutex_);
 
         // Sort by hash so the result can be binary-searched by SIDBase.
@@ -322,4 +322,74 @@ bool StringIdManager::save_dconstruct_sidbase(const std::string &filename) const
         lg::debug("StringIdManager: cleared all entries");
     }
 
+    void StringIdManager::register_known_sids() {
+        static bool done = false;
+        if (done) { return; }
+        done = true;
+
+ 
+
+        // ---- Well-known SIDs used across the DC format ----
+        //
+        // These SIDs are computed at compile time by the SID() macro,
+        // which does NOT register the string. Any place that resolves
+        // a SID back to text (the inspector, the disassembler, runtime
+        // logs) would otherwise print "<unknown:0x...>". Registering
+        // them here gives them a canonical text form.
+        //
+        // The constants are defined in DCScript.hpp; the names below
+        // MUST match the strings used inside SID("...") there. If you
+        // rename one, rename both.
+        register_string("script-lambda"); // SCRIPT_LAMBDA_SID
+        register_string("array");         // ARRAY_SID
+        register_string("global");        // GLOBAL_SID
+        register_string("function");      // FUNCTION_SID
+        register_string("ss-type");       // SS_TYPE_SID
+
+        // ---- SsDeclaration type names ----
+        register_string("boolean");
+        register_string("int32");
+        register_string("uint64");
+        register_string("float");
+        register_string("timer");
+        register_string("bound-frame");
+        register_string("symbol");
+        register_string("string");
+        register_string("vector");
+        register_string("quat");
+        register_string("point");
+
+        // ---- DCEntry type names ----
+        register_string("map");
+        register_string("map-32");
+        register_string("vector3");
+        register_string("vector4");
+        register_string("transform");
+        register_string("matrix");
+        register_string("quaternion");
+        register_string("locator");
+        register_string("color");
+
+        // ---- BlockType names (SsOnBlock.m_blockType) ----
+        register_string("start");
+        register_string("end");
+        register_string("event");
+        register_string("update");
+        register_string("virtual");
+        register_string("code");
+        register_string("exit");
+        register_string("post");
+
+        // ---- Common SIDs ----
+        register_string("none");
+        register_string("unknown");
+        register_string("unnamed");
+        register_string("int");
+        register_string("object");
+        register_string("structure");
+        register_string("basic");
+        register_string("type");
+        register_string("null");
+        register_string("cvector");
+    }
 } // namespace carbon

@@ -10,6 +10,7 @@
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/StoreGlobalNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
+#include "sootc/node/HeapDefineNode.hpp"
 #include "type_system/Defenum.hpp"
 #include "type_system/Deftype.hpp"
 
@@ -1190,6 +1191,7 @@ namespace sootc {
 
         std::string name = form.as_symbol();
         Type       *type = nullptr;
+        bool        is_heap = false;
 
         // 1. Local variable or parameter?
         if (auto *fn = node->function()) {
@@ -1204,22 +1206,14 @@ namespace sootc {
                         if (const NewNode *instance = data_decl->instance()) {
                             type = m_ts.lookup_type_no_throw(instance->type().base_type());
                         }
+                        is_heap = data_decl->is_heap(); // ← NEW
                     }
-                    // If it's a FunctionNode, TypeDeclarationNode, etc., the
-                    // name is valid but not a value. Reading it as a value is
-                    // allowed only for data declarations; for others, use
-                    // object as a fallback type so downstream deref knows it
-                    // can't resolve fields.
                     if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
             }
         }
-        // 2b. Global (exported) name from any module?
-        //
-        // In export-all mode (REPL), every define is registered in the
-        // compiler's global environment. A later input compiles as its own
-        // FileNode, so it cannot find earlier names in file->lookup; this
-        // is where it finds them.
+
+        // 2b. Global (exported) from any module.
         if (!type) {
             if (auto *global = m_compiler->global_env()) {
                 if (auto *decl_node = global->lookup(name)) {
@@ -1227,46 +1221,14 @@ namespace sootc {
                         if (const NewNode *instance = data_decl->instance()) {
                             type = m_ts.lookup_type_no_throw(instance->type().base_type());
                         }
+                        is_heap = data_decl->is_heap(); // ← NEW
                     }
                     if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
             }
         }
-        // 3. Compiler-side function table (define-native, define-extern).
-        //    These are named callables, not values. If the user wrote the
-        //    bare name at top level, that's a "function reference" — its
-        //    type is the signature's return slot, but for our purposes
-        //    object is enough.
-        if (!type) {
-            if (m_compiler->lookup_function_signature(name)) {
-                type = m_ts.lookup_type_no_throw("object");
-            }
-        }
 
-        // 4. Nothing matched. This is a compile-time error.
-        //
-        //    Rationale: an unresolved name at REPL top level means the user
-        //    typed something wrong. We must not silently emit a LookupPointer
-        //    and return the SID as a value at runtime — that hides the bug.
-        //
-        //    Inside a function body, forward references within the same file
-        //    are legitimate: a `defun` may call a function defined later in
-        //    the same file. In that case, we allow the name to pass through
-        //    with type = object; the runtime resolves it via LookupPointer
-        //    when the call is actually made.
-        if (!type) {
-            const bool inside_function = (node->function() != nullptr);
-            if (!inside_function) {
-                throw m_compiler->make_error(form, "NodeBuilder::build_variable")
-                    .expected("a defined variable, data declaration, or function")
-                    .got(fmt::format("undefined variable '{}'", name))
-                    .note("Define it with (define ...), or check for typos.");
-            }
-            // Forward reference inside a function body: allow, type = object.
-            type = m_ts.lookup_type_no_throw("object");
-        }
-
-        return std::make_unique<VariableNode>(name, type);
+        return std::make_unique<VariableNode>(name, type, is_heap);
     }
 
     // ============================================================================
@@ -1458,10 +1420,7 @@ namespace sootc {
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_define(const script::Object &form, Node *context) {
         bool exported = form.as_pair()->car.is_symbol("define-export");
-        
-        // In an export-all file (the REPL), every define is exported.
-        // This is what makes the interactive session work: the user types
-        // `(define x 5)` and x is immediately visible to the next input.
+
         if (!exported) {
             if (auto *file = context->file()) {
                 if (file->export_all()) { exported = true; }
@@ -1514,40 +1473,26 @@ namespace sootc {
 
         script::Object value_form = after_name.as_pair()->car;
 
-        //if (value_form.is_string()) {
-        //    auto after_doc = after_name.as_pair()->cdr;
-        //    if (!after_doc.is_pair()) {
-        //        throw m_compiler->make_error(form, "NodeBuilder::build_define")
-        //            .expected("value after docstring")
-        //            .got("end of form");
-        //    }
-        //    value_form = after_doc.as_pair()->car;
-        //}
-
-        // Optional docstring: a string may be followed by the actual value.
-        // If there is no value after the string, the string itself IS the value.
         if (value_form.is_string()) {
             auto after_doc = after_name.as_pair()->cdr;
-            if (after_doc.is_pair()) {
-                // Docstring followed by value.
-                value_form = after_doc.as_pair()->car;
-            }
-            // Else: the string is the value itself. Fall through.
+            if (after_doc.is_pair()) { value_form = after_doc.as_pair()->car; }
         }
 
         std::string name = def_form.to_std_string();
-        
-        // Reject redefinition. Until chunk versioning lands, a name may be
-        // defined only once per module. Silent rebinding would leave the
-        // previous object alive in Globals (dangling for anyone who held a
-        // reference), and would emit duplicate entries in the binary.
+
+        // Reject redefinition in NON-REPL files.
+        //
+        // In REPL (export_all) redefinition is a normal operation: the
+        // user types a new definition of an existing name and it takes
+        // effect immediately. Normal modules reject it — see the note
+        // in the original error message about chunk versioning.
         if (auto *file = context->file()) {
             if (file->has_local(name) && !file->export_all()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_define")
                     .expected("a fresh name")
                     .got(fmt::format("'{}' is already defined in this module", name))
-                    .note("Redefinition is not supported yet. Restart the session "
-                          "or use a different name.");
+                    .note("Redefinition is not supported in modules yet. "
+                          "Restart the session or use a different name.");
             }
         }
 
@@ -1573,17 +1518,18 @@ namespace sootc {
             fn->set_name(name);
             fn->set_exported(exported);
 
-            // ---- Register the function's signature ----
             TypeSpec sig = build_function_signature(fn, name);
             m_compiler->define_function_signature(name, sig);
             lg::info("Registered function: {} : {}", name, sig.print());
 
-            if (auto *file = context->file()) { file->bind(name, fn); }
-
-            // If this name is exported, also register it in the compiler's
-            // global environment. That is the table consulted by build_variable
-            // when a name is not found in the current FileNode — which is what
-            // makes a name defined in one REPL input visible to the next.
+            if (auto *file = context->file()) {
+                // REPL redefinition: drop any existing child with this
+                // name before binding the new one. The old child's
+                // destructor runs; for a plain FunctionNode that is
+                // sufficient — no shared state to worry about.
+                file->remove_named(name);
+                file->bind(name, fn);
+            }
             if (exported) { m_compiler->global_env()->bind(name, fn); }
 
             lg::info("build_define: '{}' -> FunctionNode", name);
@@ -1592,33 +1538,72 @@ namespace sootc {
 
         // ---- Value is (new Type ...) ----
         if (auto *new_node = dynamic_cast<NewNode *>(value_node.get())) {
+            if (new_node->is_static()) {
+                if (context->function() != nullptr) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_define")
+                        .expected("'heap' allocation inside a function")
+                        .got("'static' allocation inside a function")
+                        .note("'static' means a compile-time payload in the binary. "
+                              "Inside a function the payload cannot be baked in, so "
+                              "use (new 'heap ...) for runtime construction.");
+                }
+
+                value_node.release();
+                std::unique_ptr<NewNode> new_node_uptr(new_node);
+                std::shared_ptr<NewNode> shared_new = std::move(new_node_uptr);
+                auto decl = std::make_unique<DataDeclarationNode>(name, shared_new, exported,
+                                                                  /*heap=*/false);
+
+                if (auto *file = context->file()) {
+                    file->remove_named(name);
+                    file->bind(name, decl.get());
+                }
+                if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
+                return decl;
+            }
+
+            // ---- Non-static: heap ----
+            //
+            // Two nodes with different lifetimes, sharing ownership of
+            // the NewNode via shared_ptr:
+            //
+            //   DataDeclarationNode — the declaration. In FileNode::m_children,
+            //     survives REPL input boundaries. build_variable reads the
+            //     type from it.
+            //
+            //   StoreGlobalNode — the runtime action. In the top-level body,
+            //     runs once. Holds a shared_ptr to the same NewNode, so on
+            //     REPL redefinition the NewNode is not freed while the
+            //     StoreGlobalNode still references it.
+            //
+            // Both go back to compile_internal inside a HeapDefineNode.
             value_node.release();
-            auto decl = std::make_unique<DataDeclarationNode>(
-                name, std::unique_ptr<NewNode>(new_node), exported);
+
+            std::unique_ptr<NewNode> new_node_uptr(new_node);
+            std::shared_ptr<NewNode> shared_new = std::move(new_node_uptr);
+
+            auto decl =
+                std::make_unique<DataDeclarationNode>(name, shared_new, exported, /*heap=*/true);
+
+            auto store = std::make_unique<StoreGlobalNode>(name, shared_new);
 
             if (auto *file = context->file()) {
-                file->bind(name, decl.get()); // ← вот этой строки не хватает
+                file->remove_named(name);
+                file->bind(name, decl.get());
+                file->add_placeholder(name);
             }
             if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
-            return decl;
+
+            return std::make_unique<HeapDefineNode>(std::move(decl), std::move(store));
         }
 
         // ---- Value is a compile-time constant ----
-        //
-        // (define x 1) — treat the value as a constant known to the
-        // compiler. The name is registered in the constant pool and
-        // resolved wherever it appears. Nothing is emitted to the binary.
-        //
-        // This covers literals (numbers, strings, symbols) and, more
-        // generally, any ConstNode the builder produced. Complex
-        // expressions are not folded here; if you want a runtime value,
-        // wrap it in (new ...).
         if (dynamic_cast<ConstNode *>(value_node.get()) != nullptr) {
             m_compiler->define_constant(name, value_form);
             lg::info("Registered constant: {} = {}", name, value_form.print());
             return std::make_unique<SequenceNode>();
         }
-        // ---- Anything else ----
+
         throw m_compiler->make_error(form, "NodeBuilder::build_define")
             .expected("(define name (lambda ...)), (define name (new Type ...)), "
                       "or (define name (macro ...))")

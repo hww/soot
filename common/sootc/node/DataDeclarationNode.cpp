@@ -1,5 +1,6 @@
 ﻿#include "DataDeclarationNode.hpp"
-#include "ConstNode.hpp"
+#include "sootc/node/ConstNode.hpp"
+#include "sootc/node/ConstFold.hpp"
 
 #include "carbon/lib/StringId.hpp"
 #include "carbon/lib/StringIdManager.hpp"
@@ -47,6 +48,20 @@ namespace sootc {
             lg::warn("DataDeclarationNode '{}' has no instance", m_name);
             return ProgramBinaryElement(0);
         }
+        
+        // Heap-allocated declarations have no compile-time payload.
+        // The slot in the file is a placeholder (8 zero bytes), emitted
+        // by FileNode::make_binary from FileNode::placeholders(). The
+        // actual pointer is written at runtime by a StoreGlobalNode that
+        // lives in the top-level body.
+        //
+        // Returning an empty element here is correct: collect_all() will
+        // skip it, and the placeholder entry will carry the name.
+        if (m_heap) {
+            lg::debug("DataDeclarationNode '{}': heap, no payload", m_name);
+            return ProgramBinaryElement(0);
+        }
+
 
         // Only static initialization is valid at top level.
         if (!m_instance->is_static()) {
@@ -99,15 +114,23 @@ namespace sootc {
             // No init: leave as zero.
             if (!init || !init->value) { continue; }
 
-            // Only ConstNode is supported for now. Anything else (arithmetic,
-            // function call) would require compile-time evaluation, which we
-            // do not do yet.
-            const auto *cn = dynamic_cast<const ConstNode *>(init->value.get());
-            if (!cn) {
-                lg::warn("DataDeclarationNode '{}': field '{}' has non-const init ({}), skipped",
-                         m_name, field_name, init->value->node_type());
-                continue;
+
+            // Try to fold the initializer to a compile-time constant.
+            // This handles not only literals but also simple arithmetic
+            // like (+ 1 2) → 3.
+            //
+            // If the expression cannot be folded, this is a hard error:
+            // a static structure can only contain compile-time constants.
+            // Use (new 'heap ...) for runtime initialization.
+            auto cn_owned = try_fold_const(init->value.get());
+            if (!cn_owned) {
+                throw std::runtime_error(fmt::format(
+                    "DataDeclarationNode '{}': field '{}' has non-constant initializer '{}'. "
+                    "Static structures require compile-time constants. "
+                    "Use (new 'heap ...) for runtime initialization.",
+                    m_name, field_name, init->value->to_string()));
             }
+            const ConstNode *cn = cn_owned.get();
 
             // Resolve the field's type from TypeSystem.
             Type *field_type = ts.lookup_type_no_throw(field.type().base_type());

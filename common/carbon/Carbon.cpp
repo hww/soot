@@ -18,6 +18,46 @@
 namespace carbon {
 
     namespace {
+
+        /// @brief Read every named entry from `file` and register it in
+        ///        `globals` under `module_path_id`.
+        ///
+        /// @details This is the ONLY place in the codebase that knows both
+        ///          the DC file format (DCEntry, m_nameID, m_entryPtr) and
+        ///          the Globals primitive (register_symbol). Globals itself
+        ///          stays format-agnostic; BinaryFile stays globals-agnostic.
+        ///
+        ///          No return value: the operation is a bulk insert. If the
+        ///          file is malformed (null header, null entries), that is
+        ///          a programmer error and throws.
+        void register_file_symbols(Globals &globals, const BinaryFile &file,
+                                   const StringId &module_path_id) {
+            const DC_Header *hdr = file.m_dcheader;
+            if (!hdr) { throw std::runtime_error("register_file_symbols: null header"); }
+
+            const DCEntry *table = file.entries();
+            if (!table) { throw std::runtime_error("register_file_symbols: null entry table"); }
+
+            for (u32 i = 0; i < hdr->m_numEntries; ++i) {
+                const DCEntry &e = table[i];
+                if (e.m_nameID == 0) { continue; }
+
+                const StringId name(e.m_nameID);
+                const StringId type(e.m_typeId);
+
+                fmt::print("; [Globals] register: name='{}' type='{}' ptr={} module='{}'\n",
+                           name.to_string(), type.to_string(), e.m_entryPtr,
+                           module_path_id.to_string());
+
+                globals.register_symbol(name, const_cast<void *>(e.m_entryPtr), type,
+                                        module_path_id);
+            }
+        }
+
+    } // namespace
+
+
+    namespace {
         thread_local Carbon *t_current = nullptr;
     }
 
@@ -42,8 +82,7 @@ namespace carbon {
             std::filesystem::path       path;
             std::string                 logical_name;
             std::unique_ptr<BinaryFile> file;
-            std::vector<sid64>          symbol_sids;
-            std::vector<sid64>          ss_type_sids;
+            std::vector<sid64>          ss_type_sids;  
         };
 
         bool contains(const std::string &logical_name) const {
@@ -235,54 +274,42 @@ namespace carbon {
 
         auto file = std::make_unique<BinaryFile>(std::move(*result));
 
-        // Build the logical name. For now, stem of the path. When the
-        // .dci manifest is available, its logical_path takes priority.
         std::string logical_name = path.stem().string();
 
-        std::vector<sid64> symbol_sids;
         std::vector<sid64> ss_type_sids;
 
         const DCEntry *table = file->entries();
         const u32      n = file->entry_count();
 
+        // 1. SsTypes: Carbon-level concern, Globals knows nothing about GC.
         for (u32 i = 0; i < n; ++i) {
             const DCEntry &e = table[i];
-
-            // Register SsType entries in the GC TypeRegistry so that
-            // gc::alloc knows the layout and mark can find the pointers.
             if (BinaryFile::entry_kind(e) == BinaryFile::EntryKind::SsType) {
-                if (const SsType *st = file->entry_as_ss_type(e)) {
+                if (const SsType *st = file->entry_as_ss_type(e)) { // ← file, не owned
                     register_ss_type_in_gc(*st);
                     ss_type_sids.push_back(st->m_name);
                 }
             }
-
-            // Register every named entry in THIS context's Globals.
-            if (e.m_nameID != 0) {
-                m_impl->globals->register_symbol(StringId(e.m_nameID),
-                                                 const_cast<void *>(e.m_entryPtr),
-                                                 StringId(e.m_typeId), StringId(logical_name));
-                symbol_sids.push_back(e.m_nameID);
-            }
         }
+
+        // 2. Named symbols — the ONLY registration path.
+        register_file_symbols(*m_impl->globals, *file, StringId(logical_name));
 
         ModuleRegistry::Entry entry;
         entry.path = path;
         entry.logical_name = logical_name;
         entry.file = std::move(file);
-        entry.symbol_sids = std::move(symbol_sids);
         entry.ss_type_sids = std::move(ss_type_sids);
+        // entry.symbol_sids — больше нет
 
         m_impl->modules->insert(std::move(entry));
 
-        lg::info("Carbon: loaded '{}' as '{}' ({} symbols, {} ss-types)", path.string(),
-                 logical_name, m_impl->modules->find(logical_name)->symbol_sids.size(),
-                 m_impl->modules->find(logical_name)->ss_type_sids.size());
+        lg::info("Carbon: loaded '{}' as '{}'", path.string(), logical_name);
 
         return true;
     }
 
-bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
+        bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
         if (!m_impl->initialized) {
             lg::error("Carbon::load_module_from_binary: not initialized");
             return false;
@@ -290,45 +317,39 @@ bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile
 
         auto owned = std::make_unique<BinaryFile>(std::move(file));
 
-        std::vector<sid64> symbol_sids;
         std::vector<sid64> ss_type_sids;
 
         const DCEntry *table = owned->entries();
         const u32      n = owned->entry_count();
 
+        // 1. SsTypes: Carbon-level concern.
         for (u32 i = 0; i < n; ++i) {
             const DCEntry &e = table[i];
-
             if (BinaryFile::entry_kind(e) == BinaryFile::EntryKind::SsType) {
                 if (const SsType *st = owned->entry_as_ss_type(e)) {
                     register_ss_type_in_gc(*st);
                     ss_type_sids.push_back(st->m_name);
                 }
             }
-
-            if (e.m_nameID != 0) {
-                m_impl->globals->register_symbol(StringId(e.m_nameID),
-                                                 const_cast<void *>(e.m_entryPtr),
-                                                 StringId(e.m_typeId), StringId(logical_name));
-                symbol_sids.push_back(e.m_nameID);
-            }
         }
 
-        // Drop any previous symbols registered under the same logical name.
-        // Without this, an old ModuleRegistry entry is overwritten by the
-        // insert below, its BinaryFile is freed, and every pointer Globals
-        // holds into that file becomes dangling. On the next call, the VM
-        // dereferences that pointer and crashes.
+        // 2. Named symbols — the ONLY registration path.
+        register_file_symbols(*m_impl->globals, *owned, StringId(logical_name));
+
+        // Drop any previous symbols registered under the same logical
+        // name. Without this, an old ModuleRegistry entry is overwritten
+        // by the insert below, its BinaryFile is freed, and every pointer
+        // Globals holds into that file becomes dangling.
         if (ModuleRegistry::Entry *old = m_impl->modules->find(logical_name)) {
-            for (sid64 sid : old->symbol_sids) { m_impl->globals->remove_symbol(StringId(sid)); }
+            m_impl->globals->remove_module_symbols(StringId(logical_name));
         }
 
         ModuleRegistry::Entry entry;
         entry.path = owned->m_path;
         entry.logical_name = logical_name;
         entry.file = std::move(owned);
-        entry.symbol_sids = std::move(symbol_sids);
         entry.ss_type_sids = std::move(ss_type_sids);
+        // entry.symbol_sids — больше нет
 
         m_impl->modules->insert(std::move(entry));
         return true;
@@ -426,7 +447,7 @@ bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile
         }
 
         // 2. Drop every symbol the module contributed.
-        for (sid64 sid : entry->symbol_sids) { m_impl->globals->remove_symbol(StringId(sid)); }
+        m_impl->globals->remove_module_symbols(StringId(logical_name));
 
         // 3. Drop every SsType the module contributed.
         //    (TypeRegistry does not yet have a remove() method; see the

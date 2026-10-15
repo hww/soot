@@ -83,6 +83,10 @@ public:
             }
         return "(" + m_left->to_string() + " " + op_str + " " + m_right->to_string() + ")";
     }
+
+    Op              op() const { return m_op; }
+    ExpressionNode *left() const { return m_left.get(); }
+    ExpressionNode *right() const { return m_right.get(); }
 };
 
 

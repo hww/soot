@@ -98,7 +98,30 @@ namespace carbon {
         void clear();
 
     private:
-        StringIdManager() = default;
+        StringIdManager() {
+            // register_known_sids is a static method that writes
+            // through instance(). Since instance() has already
+            // returned this object, the recursive call is harmless.
+            register_known_sids();
+        }
+
+        /// @brief Register the well-known SID strings used by the DC
+        ///        file format: type names (script-lambda, ss-type, ...),
+        ///        SsDeclaration types (int32, float, ...), DCEntry
+        ///        types (map, vector3, ...), BlockType names, and
+        ///        common SIDs (int, object, structure, ...).
+        ///
+        /// @details Called once by the static initializer of the
+        ///          StringIdManager singleton, so every process that
+        ///          uses the manager has these names available for
+        ///          reverse lookup. Without it, any SID computed by the
+        ///          compile-time SID() macro (which does not register
+        ///          anything) would print as "<unknown:0x...>".
+        ///
+        ///          The list is canonical: it is the single source of
+        ///          truth for the human-readable form of every built-in
+        ///          SID. If you add a new one, add it here.
+        void register_known_sids();
 
         /// @brief Print all entries to the log (debug only).
         void debug_dump() const;

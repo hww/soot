@@ -654,28 +654,29 @@ namespace carbon {
                     Variant &dest = current_frame->get_register(instr.a);
                     u32      idx = instr.b;
 
-                    // ST[idx] — это SID (или уже указатель).
                     u64            raw = current_frame->get_static_int(idx);
                     const StringId sid = static_cast<StringId>(raw);
 
+                    fmt::print("; [LookupPointer] r{} <- SID '{}' (0x{:016X})\n",
+                               static_cast<unsigned>(instr.a), sid.to_string(), raw);
+
                     // 1. Native function?
                     if (auto native = find_native_function(sid)) {
+                        fmt::print(";   -> native function {}\n", (void *)native);
                         dest = Variant(reinterpret_cast<void *>(native), RuntimeType::Pointer);
                         break;
                     }
 
-                    // 2. Symbol registered in Globals (data declarations, script
-                    //    functions, native symbols loaded from a module)?
-                    //
-                    // This is the path that makes top-level `define` names
-                    // (both `(define v (new ...))` and `(define foo (lambda ...))`)
-                    // resolvable from later top-level forms.
+                    // 2. Symbol registered in Globals?
                     if (auto *sym = carbon->globals()->find_symbol_ptr(sid)) {
+                        fmt::print(";   -> Globals slot {}\n", sym);
                         dest = Variant(sym, RuntimeType::Pointer);
                         break;
                     }
 
-                    // 3. Fallback: keep the SID as int. CallFf will look it up itself.
+                    fmt::print(";   -> NOT FOUND, returning SID as int\n");
+
+                    // 3. Fallback: keep the SID as int.
                     dest = Variant(raw);
                     break;
                 }

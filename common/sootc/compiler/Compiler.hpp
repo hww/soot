@@ -97,11 +97,26 @@ namespace sootc {
         ~Compiler();
 
         // --- Compilation ---
+
+        /// @brief Compile forms as a regular file (not a REPL input).
+        /// @details Sets is_repl = false in the underlying call. Used
+        ///          by require_file, load_soc_prelude, and anything
+        ///          that compiles a .sc file from disk.
+        std::expected<std::unique_ptr<BinaryFile>, std::string>
+        compile_file(script::Object &forms, const std::string &filename);
+
+        /// @brief Compile a file by path. Reads, parses, and compiles.
+        /// @details Convenience overload for file-based compilation.
+        ///          Non-REPL: is_repl = false.
         std::expected<std::unique_ptr<BinaryFile>, std::string>
         compile_file(const std::filesystem::path &path);
 
+        /// @brief Compile forms as a REPL input.
+        /// @details Sets is_repl = true. Used only by compile_and_report.
+        ///          A REPL input gets a unique logical name and its
+        ///          FileNode is set to export_all.
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-        compile_file(script::Object &forms, const std::string &filename);
+                    compile_file_repl(script::Object &forms, const std::string &filename);
 
         // --- Require (language form) ---
         //
@@ -319,8 +334,30 @@ namespace sootc {
         void setup_soot_forms();
 
         // --- Compilation ---
+        /// @brief The core compilation driver.
+        ///
+        /// @param forms     Top-level forms of the input.
+        /// @param filename  Display name and file key.
+        /// @param is_repl   True when this input comes from the REPL.
+        ///                  Controls three things:
+        ///                    * The module's logical name is made unique
+        ///                      ("<repl-N>") so that subsequent REPL
+        ///                      inputs do not unload it via
+        ///                      load_module_from_binary's same-name
+        ///                      replacement.
+        ///                    * Every name defined by the input is
+        ///                      exported (set_export_all on the
+        ///                      FileNode), so that later inputs can
+        ///                      resolve it.
+        ///                    * Redefinition of an existing name is
+        ///                      allowed: the old child is removed
+        ///                      from m_children before the new one is
+        ///                      bound.
+        ///
+        ///                  For non-REPL files, all three are false.
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-             compile_internal(script::Object &forms, const std::string &filename);
+             compile_internal(script::Object &forms, const std::string &filename, bool is_repl);
+
         void render_internal_error(const std::exception &e);
 
         // --- Helpers ---
@@ -510,6 +547,20 @@ namespace sootc {
         //
         // The FileNode is destroyed only when the Compiler is destroyed.
         std::unordered_map<std::string, std::unique_ptr<FileNode>> m_file_nodes;
+
+        // ------------------------------------------------------------------
+        // REPL File Counter
+        // ------------------------------------------------------------------
+        /// @brief Monotonic counter for REPL module names.
+        ///
+        /// @details Every REPL input is compiled as its own module with
+        ///          a unique logical name "<repl-N>". This is what makes
+        ///          Globals accumulate symbols across inputs instead of
+        ///          replacing them: load_module_from_binary unloads any
+        ///          existing module with the same logical name, so
+        ///          reusing "<repl>" for every input would erase every
+        ///          previous input's slots on each new input.
+        u64 m_repl_counter = 0;
 
     };
 } // namespace sootc

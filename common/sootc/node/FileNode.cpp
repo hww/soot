@@ -80,6 +80,16 @@ namespace sootc {
                 if (payload_size > 0) {
                     entries.push_back(std::move(element));
                     lg::debug("Data declaration '{}': {} bytes", decl->name(), payload_size);
+                } else if (decl->is_heap()) {
+                    // Heap-allocated declarations have no payload by
+                    // design. The slot in the file is a placeholder
+                    // emitted by make_binary from m_placeholders, and
+                    // the pointer is written at runtime by a
+                    // StoreGlobalNode in the top-level body. Silence
+                    // is correct here, and it also avoids spamming the
+                    // log on every REPL input (this child is visited
+                    // on every generate() call for the whole session).
+                    lg::debug("Data declaration '{}': heap, no payload", decl->name());
                 } else {
                     lg::warn("Data declaration '{}' produced empty element", decl->name());
                 }
@@ -277,6 +287,28 @@ namespace sootc {
         for (auto &ti : type_infos) {
             ProgramBinaryElement ss_el = build_ss_type(ti.decl, ti.method_offsets);
             if (!ss_el.m_rawData.empty()) { program_elements.push_back(std::move(ss_el)); }
+        }
+
+        // ------------------------------------------------------------------
+        // Placeholder entries for heap-allocated top-level defines.
+        //
+        // Each placeholder is a DCEntry with a name (so Globals indexes
+        // it), a type tag of "global", and an 8-byte payload of zeros.
+        // At runtime, StoreGlobalNode::emit resolves the name through
+        // LookupPointer and writes the constructed pointer into this
+        // payload. No special opcode is needed — the slot IS the global.
+        // ------------------------------------------------------------------
+        for (const std::string &pname : m_placeholders) {
+            ProgramBinaryElement placeholder(8);
+            placeholder.m_entry = {
+                .m_nameID = StringId(pname).value,
+                .m_typeId = StringId("global").value,
+                .m_entryPtr = nullptr,
+            };
+            const u64 zero = 0;
+            placeholder.push_blob(&zero, sizeof(zero), /*relocation_bit=*/0);
+            program_elements.push_back(std::move(placeholder));
+            lg::debug("make_binary: placeholder entry '{}'", pname);
         }
 
         // ------------------------------------------------------------------
@@ -522,6 +554,44 @@ namespace sootc {
     void FileNode::bind(const std::string &name, Node *node) {
         if (m_symbols.find(name) == m_symbols.end()) { m_ordered_symbols.push_back(node); }
         m_symbols[name] = node;
+    }
+
+    /// @brief Remove any child FunctionNode or DataDeclarationNode
+    ///        with the given name, and drop its binding.
+    ///
+    /// @details Used by build_define for redefinition in REPL mode.
+    ///          The child's destructor runs, but any shared_ptr to
+    ///          the same NewNode (held by a StoreGlobalNode) keeps
+    ///          the NewNode alive.
+    ///
+    ///          m_ordered_symbols is rebuilt from scratch after the
+    ///          erase. It is a small vector and only used by
+    ///          take_symbols() at the very end of a session, so the
+    ///          rebuild cost is irrelevant.
+    void FileNode::remove_named(const std::string &name) {
+        m_children.erase(std::remove_if(m_children.begin(), m_children.end(),
+                                        [&](const std::unique_ptr<Node> &c) {
+                                            if (auto *fn = dynamic_cast<FunctionNode *>(c.get())) {
+                                                return fn->name() == name;
+                                            }
+                                            if (auto *dd =
+                                                    dynamic_cast<DataDeclarationNode *>(c.get())) {
+                                                return dd->name() == name;
+                                            }
+                                            return false;
+                                        }),
+                         m_children.end());
+
+        m_symbols.erase(name);
+
+        // Rebuild m_ordered_symbols from m_symbols. The old vector
+        // may contain dangling Node* to children just erased.
+        m_ordered_symbols.clear();
+        m_ordered_symbols.reserve(m_symbols.size());
+        for (auto &[n, p] : m_symbols) {
+            (void)n;
+            m_ordered_symbols.push_back(p);
+        }
     }
 
     void FileNode::add_import(FileNode *file) { m_imports.push_back(file); }

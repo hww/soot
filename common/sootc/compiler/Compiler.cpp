@@ -1,21 +1,19 @@
 // sootc/compiler/Compiler.cpp
+#include "sootc/compiler/Compiler.hpp"
+#include "carbon/file/BinaryFileInspector.hpp"
+#include "carbon/file/DCIFile.hpp"
+#include "carbon/file/Globals.hpp"
+#include "carbon/file/SizeAssertions.hpp"
+#include "carbon/lib/StringIdManager.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
-#include "third_party/replxx/include/replxx.hxx"
-#include "carbon/file/DCIFile.hpp"
-#include "carbon/file/Globals.hpp"
-#include "carbon/file/BinaryFileInspector.hpp"
-#include "carbon/file/SizeAssertions.hpp"
-#include "carbon/vm/VirtualMachine.hpp"
-#include "carbon/file/SizeAssertions.hpp"
-#include "carbon/lib/StringIdManager.hpp"
 #include "script/Interpreter.hpp"
 #include "script/Object.hpp"
 #include "script/ParseHelpers.hpp"
 #include "script/Reader.hpp"
-#include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/Macro.hpp"
@@ -23,14 +21,16 @@
 #include "sootc/node/DataDeclarationNode.hpp"
 #include "sootc/node/EnumDeclarationNode.hpp"
 #include "sootc/node/FileNode.hpp"
+#include "sootc/node/HeapDefineNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
 #include "sootc/runtime/RemoteRuntime.hpp"
+#include "third_party/replxx/include/replxx.hxx"
+#include "type_system/TypeSystem.hpp"
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
-#include "type_system/TypeSystem.hpp"
 
 namespace sootc {
 
@@ -167,7 +167,7 @@ namespace sootc {
         setup_soot_forms();
     }
 
-   Compiler::~Compiler() {
+    Compiler::~Compiler() {
         // SIDBase saving is the caller's responsibility, not ours.
         //
         // We deliberately do NOT save the sidbase here. Reasons:
@@ -264,13 +264,14 @@ namespace sootc {
     // if parsing fails.
     script::Arguments Compiler::get_va(const script::Object &form, const script::Object &rest) {
         script::Arguments args;
-        std::string     err;
+        std::string       err;
         if (!script::get_va(rest, &err, &args)) { throw_compiler_error(form, "{}", err); }
         return args;
     }
 
     // Same as get_va, but does not handle named arguments.
-    script::Arguments Compiler::get_va_no_named(const script::Object &form, const script::Object &rest) {
+    script::Arguments Compiler::get_va_no_named(const script::Object &form,
+                                                const script::Object &rest) {
         (void)form;
         script::Arguments args;
         script::get_va_no_named(rest, &args);
@@ -285,7 +286,9 @@ namespace sootc {
         const std::unordered_map<std::string, std::pair<bool, std::optional<script::ObjectType>>>
             &named) {
         std::string err;
-        if (!script::va_check(args, unnamed, named, &err)) { throw_compiler_error(form, "{}", err); }
+        if (!script::va_check(args, unnamed, named, &err)) {
+            throw_compiler_error(form, "{}", err);
+        }
     }
 
     // Walk a proper list and invoke f on each element. Throws a compiler
@@ -304,8 +307,20 @@ namespace sootc {
 
     // ========== Compilation ==========
 
-    // Compile a file by path. Reads the source, parses it, then delegates
-    // to the Object-based overload.
+
+    std::expected<std::unique_ptr<BinaryFile>, std::string>
+    Compiler::compile_file(script::Object &forms, const std::string &filename) {
+        m_current_file = filename;
+        auto result = compile_internal(forms, filename, /*is_repl=*/false);
+
+        if (result && m_config.debug_print_ir) {
+            lg::info("Compilation successful for: {}", filename);
+            BinaryFileInspector inspector(result->get());
+            inspector.inspect();
+        }
+        return result;
+    }
+
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file(const std::filesystem::path &path) {
         std::string content = read_file_content(path.string());
@@ -315,19 +330,16 @@ namespace sootc {
         }
         return compile_file(forms, path.string());
     }
-
-    // Compile already-parsed forms. Optionally prints IR if configured.
     std::expected<std::unique_ptr<BinaryFile>, std::string>
-    Compiler::compile_file(script::Object &forms, const std::string &filename) {
+    Compiler::compile_file_repl(script::Object &forms, const std::string &filename) {
         m_current_file = filename;
-        auto result = compile_internal(forms, filename);
+        auto result = compile_internal(forms, filename, /*is_repl=*/true);
 
         if (result && m_config.debug_print_ir) {
             lg::info("Compilation successful for: {}", filename);
             BinaryFileInspector inspector(result->get());
             inspector.inspect();
         }
-
         return result;
     }
 
@@ -441,45 +453,55 @@ namespace sootc {
     // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
     // if the input produced no binary output (compile-time-only declarations).
     std::expected<std::unique_ptr<BinaryFile>, std::string>
-    Compiler::compile_internal(script::Object &forms, const std::string &filename) {
+    Compiler::compile_internal(script::Object &forms, const std::string &filename, bool is_repl) {
+
+        // ---- Effective name ----
+        //
+        // For REPL inputs, generate a unique logical name. The name
+        // is used as the FileNode key, the BinaryFile path, and (via
+        // LocalVmRuntime) the module's logical name in the runtime.
+        //
+        // Uniqueness is essential: load_module_from_binary unloads any
+        // existing module whose logical name matches. If every REPL
+        // input were called "<repl>", each new input would unload the
+        // previous one, dropping its symbols from Globals and freeing
+        // its bytes. The slot of a heap-defined variable would then
+        // dangle, and a later (-> v x) would read zero.
+        std::string effective_filename = filename;
+        if (is_repl) { effective_filename = fmt::format("<repl-{}>", m_repl_counter++); }
+
+        FileNode          *file_node = nullptr;
+        bool               owns_file_node = false;
+        FileNode::Snapshot snapshot;
+
         try {
             NodeBuilder builder(m_ts, this);
 
             // ---- Reuse or create the FileNode for this name ----
             //
-            // In REPL mode, the same filename ("<repl>") is used for every
-            // input. We keep a single FileNode for the session and append
-            // to it, so that declarations (data, functions, types) survive
-            // across inputs and the top-level function accumulates every
-            // top-level expression in order.
-            FileNode *file_node = nullptr;
-            bool      owns_file_node = false;
-
-            auto it = m_file_nodes.find(filename);
+            // For a REPL input, effective_filename is unique, so this
+            // never finds an existing entry: every REPL input gets a
+            // fresh FileNode. For a normal file (compiled once per
+            // process, or recompiled after (require) skipped it), the
+            // same FileNode is reused.
+            auto it = m_file_nodes.find(effective_filename);
             if (it != m_file_nodes.end()) {
-                // Reuse the existing FileNode: its declarations and its
-                // top-level body are already there.
                 file_node = it->second.get();
             } else {
-                auto owned = std::make_unique<FileNode>(filename);
-                // The REPL compiles each input as a virtual file that exports
-                // everything. This makes `define` behave like `define-export`,
-                // which is what an interactive session needs.
-                if (filename.rfind("<repl", 0) == 0) { owned->set_export_all(true); }
+                auto owned = std::make_unique<FileNode>(effective_filename);
+                if (is_repl) { owned->set_export_all(true); }
                 file_node = owned.get();
-                m_file_nodes[filename] = std::move(owned);
+                m_file_nodes[effective_filename] = std::move(owned);
                 owns_file_node = true;
             }
 
-            // ---- Reuse or create the top-level function ----
+            snapshot = file_node->take_snapshot();
+
+            // ---- Top-level function ----
             //
-            // There is exactly ONE top-level function per FileNode.
-            // Globals["top-level"] stays a stable reference across REPL inputs.
-            //
-            // The body, however, is replaced on every input: expressions are
-            // one-shot. Only the body of the current input is emitted; previous
-            // inputs' expressions are discarded. Declarations (define, defun,
-            // deftype) live in FileNode children separately and are unaffected.
+            // Every FileNode has exactly one top-level function. For
+            // a fresh REPL FileNode it is created here; for a reused
+            // FileNode (non-REPL) it may already exist.
             FunctionNode *top_level = file_node->top_level();
             if (!top_level) {
                 auto tl = std::make_unique<FunctionNode>("top-level");
@@ -488,7 +510,10 @@ namespace sootc {
                 file_node->set_top_level(top_level);
             }
 
-            // Fresh body for THIS input.
+            // Fresh body for THIS input. The top-level body is
+            // one-shot: expressions are not accumulated across
+            // inputs. Declarations live in m_children and do
+            // accumulate.
             auto          fresh_body = std::make_unique<SequenceNode>();
             SequenceNode *top_level_body = fresh_body.get();
             top_level->set_body(std::move(fresh_body));
@@ -498,7 +523,13 @@ namespace sootc {
             while (current.is_pair()) {
                 auto node = builder.build(current.as_pair()->car, file_node);
                 if (node) {
-                    if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
+                    if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
+                        // Two children, two destinations:
+                        //   decl  -> m_children (survives input boundaries)
+                        //   store -> top_level_body (runs once)
+                        file_node->add_child(hd->take_decl());
+                        top_level_body->add(hd->take_store());
+                    } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr) {
@@ -507,18 +538,15 @@ namespace sootc {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<NewNode *>(node.get()) != nullptr) {
                         throw CompilerError("Compiler::compile_internal")
-                            .where(fmt::format("file '{}'", filename))
+                            .where(fmt::format("file '{}'", effective_filename))
                             .expected("top-level 'new' to be wrapped in 'define'")
                             .got("bare (new ...)");
                     } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                        // Append to the SINGLE top-level body. Do not create a
-                        // new top-level: the module has exactly one, and its
-                        // body grows with each expression.
                         node.release();
                         top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
                     } else {
                         throw CompilerError("Compiler::compile_internal")
-                            .where(fmt::format("file '{}'", filename))
+                            .where(fmt::format("file '{}'", effective_filename))
                             .expected("top-level form to be FunctionNode, TypeDeclarationNode, "
                                       "EnumDeclarationNode, or ExpressionNode")
                             .got(node->get_node_type_string());
@@ -528,26 +556,11 @@ namespace sootc {
             }
 
             // ---- Generate the binary ----
-            //
-            // NOTE: the FileNode now contains, in order:
-            //   * all declarations accumulated since the session began
-            //   * the single top-level function
-            // and its body contains every top-level expression entered in
-            // the session, in order.
-            //
-            // Regenerating it on every input is deliberate: we are using the
-            // "compile the whole thing again" model for now. What makes it
-            // correct is that the top-level is a stable single function, so
-            // Globals["top-level"] is never pointing at a stale body.
-
             FileNode *stored = file_node;
 
             StringsTable strings_table;
             auto         element = stored->generate(strings_table);
 
-            // Nothing to emit: the file contained only compile-time
-            // declarations (deftype / defenum). The types are already
-            // registered in the TypeSystem, so there is nothing to write.
             if (element.m_rawData.empty()) {
                 lg::info("No binary output (only type/enum declarations)");
                 return std::unique_ptr<BinaryFile>(nullptr);
@@ -558,8 +571,8 @@ namespace sootc {
             auto bytes = make_aligned_buffer(element.m_rawData.size());
             std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
 
-            auto binary_result =
-                BinaryFile::from_buffer(filename, std::move(bytes), element.m_rawData.size());
+            auto binary_result = BinaryFile::from_buffer(effective_filename, std::move(bytes),
+                                                         element.m_rawData.size());
             if (!binary_result) {
                 return std::unexpected("Failed to create binary from buffer: " +
                                        binary_result.error());
@@ -567,8 +580,6 @@ namespace sootc {
 
             auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
 
-            // Copy data-struct layouts collected by FileNode into the BinaryFile
-            // so that BinaryFileInspector can decode payloads without TypeSystem.
             for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
             if (m_config.debug_print_asm) { color_binary_file(binary); }
@@ -576,13 +587,24 @@ namespace sootc {
             return binary;
 
         } catch (const script::EvalException &e) {
-            fmt::print(fg(fmt::color::orange), "SOOT error while compiling {}: {}\n", filename,
-                       e.what());
+            if (file_node && snapshot.valid) {
+                file_node->rollback(std::move(snapshot));
+                if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+            }
             return std::unexpected(std::string("SOOT error: ") + e.what());
+
         } catch (const CompilerError &e) {
-            e.render();
+            if (file_node && snapshot.valid) {
+                file_node->rollback(std::move(snapshot));
+                if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+            }
             return std::unexpected(std::string(e.what()));
+
         } catch (const std::exception &e) {
+            if (file_node && snapshot.valid) {
+                file_node->rollback(std::move(snapshot));
+                if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+            }
             render_internal_error(e);
             return std::unexpected(std::string("Internal compiler error: ") + e.what());
         }
@@ -591,19 +613,8 @@ namespace sootc {
     // Render a C++ exception that escaped NodeBuilder/Compiler internals.
     // This is a bug in the compiler, not in user code.
     void Compiler::render_internal_error(const std::exception &e) {
-        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                   "\n╔══════════════════════════════════════════════════╗\n");
-        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                   "║       INTERNAL COMPILER ERROR (BUG)              ║\n");
-        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                   "╚══════════════════════════════════════════════════╝\n\n");
-        fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,
-                   "This is a bug in the compiler, not in your code.\n\n");
         fmt::print(fg(fmt::color::dim_gray), "Exception: {}\n", e.what());
         fmt::print(fg(fmt::color::dim_gray), "Type:      {}\n", typeid(e).name());
-        fmt::print("\n");
-        fmt::print(fg(fmt::color::dim_gray),
-                   "Please report this with the .sc file that triggered it.\n\n");
     }
 
     // ===============================================================
@@ -648,26 +659,24 @@ namespace sootc {
     // The set of names recognised as REPL commands. Kept as a
     // function-local static so it is built exactly once per process.
     const std::set<std::string> &Compiler::repl_commands() {
-        static const std::set<std::string> kCommands = {
-            "help",
-            "clear",
-            "e",
-            "reload",
-            "sizes",
-            "inspect-env",
-            "inspect-env-soots",
-            "has-macro",
-            "list-symbols",
-            "save-session",
-            "sc-run",
-            "sc-eval",
-            "arg-set",
-            "arg-get",
-            "arg-ls",
-            "gcls",
-            "gc",
-            "ts-info"
-        };
+        static const std::set<std::string> kCommands = {"help",
+                                                        "clear",
+                                                        "e",
+                                                        "reload",
+                                                        "sizes",
+                                                        "inspect-env",
+                                                        "inspect-env-soots",
+                                                        "has-macro",
+                                                        "list-symbols",
+                                                        "save-session",
+                                                        "sc-run",
+                                                        "sc-eval",
+                                                        "arg-set",
+                                                        "arg-get",
+                                                        "arg-ls",
+                                                        "gcls",
+                                                        "gc",
+                                                        "ts-info"};
         return kCommands;
     }
 
@@ -711,7 +720,8 @@ namespace sootc {
         return dispatch_repl_command(name, form);
     }
 
-    ReplStatus Compiler::dispatch_repl_command(const std::string &name, const script::Object &form) {
+    ReplStatus Compiler::dispatch_repl_command(const std::string    &name,
+                                               const script::Object &form) {
         if (name == "help") return cmd_help(form);
         if (name == "clear") return cmd_clear(form);
         if (name == "e") return cmd_e(form);
@@ -1090,7 +1100,7 @@ namespace sootc {
         return ReplStatus::ERR;
     }
 
-      // (arg-get "key")
+    // (arg-get "key")
     //
     // Read a compiler runtime parameter. Values are read directly
     // from m_config, which is the single source of truth for every
@@ -1240,7 +1250,7 @@ namespace sootc {
         return ReplStatus::OK;
     }
     // ===============================================================
-    // Garbage collector 
+    // Garbage collector
     // ===============================================================
 
     namespace {
@@ -1337,7 +1347,7 @@ namespace sootc {
     // Type system
     // ===============================================================
 
-ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
+    ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson),
@@ -1444,8 +1454,9 @@ ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
         try {
             auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
             if (forms.is_null()) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: failed to read input\n");
+                // Do not print here!
+                // fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                //            "; ERROR: failed to read input\n");
                 return ReplStatus::ERR;
             }
             // Remember every top-level form for :save. The forms are stored
@@ -1459,7 +1470,7 @@ ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
                 }
             }
 
-            auto result = compile_file(forms, "<repl>");
+            auto result = compile_file_repl(forms, "<repl>");
 
             // `result` is std::expected<unique_ptr<BinaryFile>, string>.
             // `!result` is true when the expected holds an error, NOT when
@@ -1893,7 +1904,7 @@ ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
         return true;
     }
 
-        bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
+    bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
         namespace fs = std::filesystem;
 
         // Resolve the output directory against the project root.
