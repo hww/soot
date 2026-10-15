@@ -524,6 +524,14 @@ namespace sootc {
             target_form.as_pair()->car.as_symbol() == "->") {
             auto deref_expr = build_deref(target_form, node);
 
+            // (-> arr N) may produce an AtNode (numeric index on an
+            // inline array). Handle it like (at arr N) — same runtime
+            // store, just a different syntactic path.
+            if (auto *at_raw = dynamic_cast<AtNode *>(deref_expr.get())) {
+                deref_expr.release();
+                return std::make_unique<SetNode>(std::unique_ptr<AtNode>(at_raw), std::move(value));
+            }
+
             auto *deref_raw = dynamic_cast<DerefNode *>(deref_expr.release());
             if (!deref_raw) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_set")
@@ -594,9 +602,38 @@ namespace sootc {
         for (size_t i = 0; i < steps.size(); ++i) {
             const auto &step = steps[i];
 
+            // ---- Numeric step: array index ----
+            //
+            // (-> arr N) is the inline-array access form used by GOAL.
+            // It requires the current expression to be a variable that
+            // names an inline array, and N to be an integer literal.
+            // We build an AtNode with a constant index.
+            if (step.is_integer()) {
+                // Check that the current expression is a VariableNode
+                // that names an inline array.
+                auto *var = dynamic_cast<VariableNode *>(current.get());
+                if (!var || !var->elem_type()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_deref")
+                        .expected("an inline-array variable before a numeric index")
+                        .got(fmt::format("'{}' before {}", current->to_string(), step.print()))
+                        .note("(-> arr N) works only on variables declared with "
+                              "(new 'static 'inline-array T N ...) or "
+                              "(new 'heap 'inline-array T N ...).");
+                }
+
+                Type *elem_type = var->elem_type();
+
+                // Build a ConstantNode for the index.
+                auto index_const = ConstNode::make_int(step.as_integer());
+
+                current =
+                    std::make_unique<AtNode>(std::move(current), std::move(index_const), elem_type);
+                continue;
+            }
+
             if (!step.is_symbol()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_deref")
-                    .expected("field or method name as a symbol")
+                    .expected("field or method name as a symbol, or integer index")
                     .got(step.print());
             }
 
