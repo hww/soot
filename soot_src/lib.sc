@@ -487,6 +487,19 @@
   (rows vector 4 :inline :offset 0) ; array of vectors from 0 
   ))
 
+
+;; Простой anon — работает
+;(define v (new 'static 'vector :x 1 :y 2 :z 3 :w 4))
+;(define m (new 'static 'matrix :ptr v))  ;; named → named
+
+;; Heap target — работает
+;(define v (new 'global 'vector :x 1 :y 2 :z 3 :w 4))
+;(define m (new 'static 'matrix :ptr v))  ;; named → heap
+
+;; Nested named — работает
+;(define inner (new 'static 'matrix :ptr (new 'static 'vector :x 1 :y 2 :z 3 :w 4)))
+;(define m (new 'static 'matrix :ptr inner))  ;; named → named, оба named
+
 ;; ----------------------------------------------------------------------------
 ;; Load marker
 ;; ----------------------------------------------------------------------------

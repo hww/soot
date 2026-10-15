@@ -562,5 +562,13 @@ namespace sootc {
         ///          previous input's slots on each new input.
         u64 m_repl_counter = 0;
 
+        // ------------------------------------------------------------------
+        // Snapshot
+        // ------------------------------------------------------------------
+        /// @brief Снимок GlobalNode на время компиляции одного ввода.
+        /// @details Снимается в начале compile_internal, откатывается
+        ///          при исключении. Гарантирует, что global_env не
+        ///          удержит висячий указатель после rollback FileNode.
+        GlobalNode::Snapshot m_global_snapshot;
     };
 } // namespace sootc

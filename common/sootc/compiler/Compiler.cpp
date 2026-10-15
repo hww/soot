@@ -474,6 +474,14 @@ namespace sootc {
         FileNode          *file_node = nullptr;
         bool               owns_file_node = false;
         FileNode::Snapshot snapshot;
+        
+        // ← ВСТАВИТЬ ЗДЕСЬ:
+        // Снимок global_env до компиляции. build_define может успеть
+        // сделать global_env()->bind(...) для узла, который затем
+        // уничтожится вместе с FileNode при rollback. Без этого
+        // global_env удержит висячий указатель, и следующий ввод
+        // упадёт на build_variable.
+        m_global_snapshot = m_global_env->take_snapshot();
 
         try {
             NodeBuilder builder(m_ts, this);
@@ -593,6 +601,8 @@ namespace sootc {
             for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
             if (m_config.debug_print_asm) { color_binary_file(binary); }
+            
+            m_global_snapshot = GlobalNode::Snapshot{};
 
             return binary;
 
@@ -601,6 +611,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
+            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
             return std::unexpected(std::string("SOOT error: ") + e.what());
 
         } catch (const CompilerError &e) {
@@ -608,6 +619,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
+            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
             return std::unexpected(std::string(e.what()));
 
         } catch (const std::exception &e) {
@@ -615,6 +627,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
+            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
             render_internal_error(e);
             return std::unexpected(std::string("Internal compiler error: ") + e.what());
         }

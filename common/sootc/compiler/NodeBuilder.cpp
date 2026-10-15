@@ -1413,16 +1413,20 @@ namespace sootc {
                     if (auto *data_decl = dynamic_cast<DataDeclarationNode *>(decl_node)) {
                         if (const NewNode *instance = data_decl->instance()) {
                             type = m_ts.lookup_type_no_throw(instance->type().base_type());
-
-                            // If the declaration was an inline array, remember
-                            // the element type. AtNode uses it.
                             if (instance->is_inline_array()) {
                                 elem_type = m_ts.lookup_type_no_throw(instance->elem_type_name());
                             }
                         }
                         is_heap = data_decl->is_heap();
+                        if (!type) {
+                            type = m_ts.lookup_type_no_throw("object");
+                        } // ← ВНУТРИ data_decl
+                    } else {
+                        throw m_compiler->make_error(form, "NodeBuilder::build_variable")
+                            .expected("DataDeclarationNode")
+                            .got("symbol '" + name + "' found in global env, but has type '" +
+                                 typeid(*decl_node).name() + "'");
                     }
-                    if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
             }
         }
@@ -1440,8 +1444,13 @@ namespace sootc {
                             }
                         }
                         is_heap = data_decl->is_heap();
+                        if (!type) { type = m_ts.lookup_type_no_throw("object"); }
+                    } else {
+                        throw m_compiler->make_error(form, "NodeBuilder::build_variable")
+                            .expected("DataDeclarationNode")
+                            .got("symbol '" + name + "' found in global env, but has type '" +
+                                 std::string(typeid(*decl_node).name()) + "'");
                     }
-                    if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
             }
         }
@@ -1919,6 +1928,7 @@ namespace sootc {
                         if (!ft || !ft->is_reference()) { continue; }
 
                         // Skip compile-time-resolvable values.
+                        // Skip compile-time-resolvable values.
                         if (init_form.is_pair() && init_form.as_pair()->car.is_symbol() &&
                             init_form.as_pair()->car.as_symbol() == "new") {
                             // (new 'static X ...) → blob pool.
@@ -1926,8 +1936,18 @@ namespace sootc {
                             auto after_new = init_form.as_pair()->cdr;
                             if (after_new.is_pair()) {
                                 const auto &alloc = after_new.as_pair()->car;
-                                if (alloc.is_symbol() && alloc.as_symbol() == "static") {
-                                    continue; // handled by write_value
+
+                                // Reader SOOT превращает 'static в (quote static), т.е. в ПАРУ.
+                                // Разворачиваем quote, чтобы сравнение с "static" работало.
+                                const script::Object *alloc_ptr = &alloc;
+                                if (alloc.is_pair() && alloc.as_pair()->car.is_symbol() &&
+                                    alloc.as_pair()->car.as_symbol() == "quote") {
+                                    const auto &quoted = alloc.as_pair()->cdr;
+                                    if (quoted.is_pair()) { alloc_ptr = &quoted.as_pair()->car; }
+                                }
+
+                                if (alloc_ptr->is_symbol() && alloc_ptr->as_symbol() == "static") {
+                                    continue; // обработается в write_value → blob pool
                                 }
                             }
                         } else if (init_form.is_symbol()) {
