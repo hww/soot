@@ -2,7 +2,7 @@
 #include "sootc/node/ConstFold.hpp"
 #include "sootc/node/ConstNode.hpp"
 #include "sootc/libs/DataSegment.hpp"
-
+#include "sootc/node/VariableNode.hpp"
 #include "carbon/lib/StringId.hpp"
 #include "carbon/lib/StringIdManager.hpp"
 #include "type_system/Type.hpp"
@@ -140,30 +140,43 @@ namespace sootc {
             // (:ptr (new 'global X)) are not yet supported; they will be
             // handled by a StoreGlobalNode companion in a later step.
             if (!is_inline && type->is_reference()) {
+                // ---- 0a. Anonymous static structure in the blob pool ----
                 if (auto *new_init = dynamic_cast<const NewNode *>(init)) {
                     if (new_init->is_static()) {
-                        // Generate the anonymous struct's payload
-                        // recursively. It may contain its own pointer
-                        // fields; those are added to the same segment
-                        // and recorded in the anon element's own
-                        // m_structPointerSlots — but since the blob is
-                        // just bytes in the pool, we currently do not
-                        // carry those slots forward. Nested pointers
-                        // inside anonymous structs will be a later step.
                         ProgramBinaryElement anon_el =
                             generate_static_element(new_init, ts, segment, owner_name);
 
                         u32 blob_off =
                             segment.add_blob(anon_el.m_rawData.data(), anon_el.m_rawData.size());
 
-                        deferred.push_back({base_off, blob_off});
+                        ProgramBinaryElement::StructPointerSlot slot{};
+                        slot.kind = ProgramBinaryElement::StructPointerSlot::Kind::Blob;
+                        slot.slot_offset = base_off;
+                        slot.blob_offset = blob_off;
+                        deferred.push_back(std::move(slot));
                         return;
                     }
                 }
 
+                // ---- 0b. Named static structure in the same file ----
+                //
+                // (define v (new 'static 'vector ...))
+                // (define m (new 'static 'matrix :ptr v))
+                //
+                // The init is a VariableNode naming v. We do not know
+                // v's file offset here; we record the name and let
+                // make_binary resolve it after layout.
+                if (auto *var_init = dynamic_cast<const VariableNode *>(init)) {
+                    ProgramBinaryElement::StructPointerSlot slot{};
+                    slot.kind = ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic;
+                    slot.slot_offset = base_off;
+                    slot.target_name = var_init->name();
+                    deferred.push_back(std::move(slot));
+                    return;
+                }
+
                 throw std::runtime_error(
-                    fmt::format("pointer field of type '{}' has non-static initializer '{}'; "
-                                "only (new 'static ...) is supported for now",
+                    fmt::format("pointer field of type '{}' has unsupported initializer '{}'",
                                 type_name, init ? init->to_string() : "<null>"));
             }
 

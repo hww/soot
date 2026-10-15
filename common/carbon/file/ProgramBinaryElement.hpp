@@ -168,29 +168,33 @@ namespace carbon {
             u32 str_offset_in_table; // index into StringsTable::offsets()
         };
         std::vector<StringConstantSlot> m_stringConstantSlots;
-        // Slots in m_rawData whose value must be patched to the
-        // absolute file offset of a blob in the DataSegment's BlobPool.
-        //
-        // Filled in by DataDeclarationNode::generate when it meets a
-        // pointer field whose initializer is (new 'static X), where X
-        // is a structure. The initializer has no name in the source, so
-        // its payload is appended to the BlobPool and identified by the
-        // offset returned from BlobPool::append. That offset is what
-        // blob_offset stores.
-        //
-        // make_binary later writes (blobs_start + blob_offset) into the
-        // slot at slot_offset, and marks the slot as relocatable, so the
-        // loader turns the file offset into an absolute pointer.
-        //
-        // Two fields, two roles:
-        //   slot_offset — where to write (inside this element's payload)
-        //   blob_offset — what to write (which blob in the pool)
-        //
-        // This mirrors StringConstantSlot: one field is the destination
-        // in the payload, the other identifies the value in the pool.
+        /// @brief One pointer slot that make_binary must patch.
+        ///
+        /// @details Two kinds of target:
+        ///
+        ///            Blob        — an anonymous static structure that
+        ///                          lives in DataSegment::blobs(). The
+        ///                          value to write is
+        ///                          blobs_start + blob_offset.
+        ///
+        ///            NamedStatic — a named static entry in the same
+        ///                          file. The value to write is the
+        ///                          entry's file offset. The name is
+        ///                          resolved after layout.
+        ///
+        ///          Both kinds are stored in one vector; the kind
+        ///          selects which field (blob_offset or target_name)
+        ///          is meaningful.
         struct StructPointerSlot {
-            u64 slot_offset; ///< offset in m_rawData of the pointer slot
-            u32 blob_offset; ///< offset inside DataSegment::blobs()
+            enum class Kind {
+                Blob,        ///< points into DataSegment::blobs()
+                NamedStatic, ///< points at another entry in this file
+            };
+
+            Kind        kind;
+            u64         slot_offset; ///< offset in m_rawData of the pointer slot
+            u32         blob_offset; ///< valid when kind == Blob
+            std::string target_name; ///< valid when kind == NamedStatic
         };
         std::vector<StructPointerSlot> m_structPointerSlots;
 

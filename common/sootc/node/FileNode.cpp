@@ -13,6 +13,7 @@
 #include <cstring>
 #include <numeric>
 #include <type_system/TypeSystem.hpp>
+#include <unordered_map>
 
 using namespace carbon;
 
@@ -371,9 +372,17 @@ namespace sootc {
 
         out_data_structs.clear();
 
+        // Map entry name -> file offset, filled during the entry-table
+        // pass. Used by the NamedStatic struct-pointer resolver below.
+        std::unordered_map<std::string, u64> entry_offsets;
+
         for (auto &fn : program_elements) {
             DCEntry entry = fn.m_entry;
             entry.m_entryPtr = reinterpret_cast<void *>(first_function_start + prev_entry_size);
+
+            const std::string entry_name = StringIdManager::instance().get_string(entry.m_nameID);
+            entry_offsets[entry_name] = first_function_start + prev_entry_size;
+
             element.push_value_with_ptr(entry, PTR_FIELD(DCEntry, m_entryPtr));
             prev_entry_size += fn.m_rawData.size();
 
@@ -417,7 +426,26 @@ namespace sootc {
             // Leave the reloc bit clear for now — adjust_offsets() must not
             // touch these; we set the bit after adjust_offsets() runs.
             for (const auto &slot : fn.m_structPointerSlots) {
-                const u64 absolute = blobs_start + slot.blob_offset;
+                u64 absolute = 0;
+
+                switch (slot.kind) {
+                case ProgramBinaryElement::StructPointerSlot::Kind::Blob:
+                    absolute = blobs_start + slot.blob_offset;
+                    break;
+
+                case ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic: {
+                    auto it = entry_offsets.find(slot.target_name);
+                    if (it == entry_offsets.end()) {
+                        throw std::runtime_error(
+                            fmt::format("FileNode::make_binary: named pointer target '{}' "
+                                        "not found in this file's entry table",
+                                        slot.target_name));
+                    }
+                    absolute = it->second;
+                    break;
+                }
+                }
+
                 *reinterpret_cast<u64 *>(&fn.m_rawData[slot.slot_offset]) = absolute;
 
                 const size_t slot_bit = slot.slot_offset / 8;

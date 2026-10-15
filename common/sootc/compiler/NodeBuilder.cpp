@@ -519,14 +519,12 @@ namespace sootc {
             std::string name = target_form.as_symbol();
             return std::make_unique<SetNode>(name, std::move(value));
         }
-
         if (target_form.is_pair() && target_form.as_pair()->car.is_symbol() &&
             target_form.as_pair()->car.as_symbol() == "->") {
             auto deref_expr = build_deref(target_form, node);
 
-            // (-> arr N) may produce an AtNode (numeric index on an
-            // inline array). Handle it like (at arr N) — same runtime
-            // store, just a different syntactic path.
+            // (-> arr N) with a numeric index produces an AtNode.
+            // Treat it as the same lvalue as (at arr N).
             if (auto *at_raw = dynamic_cast<AtNode *>(deref_expr.get())) {
                 deref_expr.release();
                 return std::make_unique<SetNode>(std::unique_ptr<AtNode>(at_raw), std::move(value));
@@ -535,8 +533,8 @@ namespace sootc {
             auto *deref_raw = dynamic_cast<DerefNode *>(deref_expr.release());
             if (!deref_raw) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_set")
-                    .expected("DerefNode as lvalue")
-                    .got("non-DerefNode");
+                    .expected("DerefNode or AtNode as lvalue")
+                    .got("non-DerefNode/non-AtNode");
             }
 
             return std::make_unique<SetNode>(std::unique_ptr<DerefNode>(deref_raw),
