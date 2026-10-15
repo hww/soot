@@ -33,21 +33,34 @@ namespace carbon {
     ///            0x20  sid64 SID("array")   (8-byte array marker)
     ///            0x28  DCEntry[m_numEntries]
     ///            ...   function bodies (ScriptLambda + instructions + symbol tables)
-    ///            m_stringsOffset  string table
-    ///            m_textSize       relocation table (u32 size + bitmap)
+    ///            m_stringsOffset   string pool
+    ///            m_blobsOffset     blob pool (anonymous static structures),
+    ///                              or 0 if there are none
+    ///            m_textSize        relocation table (u32 size + bitmap)
     struct DC_Header {
-        uint32_t m_magic;           ///< <c>0x00</c>: magic, must be 0x44433030 ("DC00")
-        uint32_t m_versionNumber;   ///< <c>0x04</c>: format version, always 0x1
-        uint32_t m_textSize;        ///< <c>0x08</c>: size of the whole relocatable block (header + entries
-                                    ///< + bodies + strings + padding);
-                                    ///<                  the relocation table starts exactly at this offset
-        uint32_t m_stringsOffset;   ///< <c>0x0C</c>: absolute offset of the string table from the
-                                    ///< start of the file (== data_size)
+        uint32_t m_magic;         ///< <c>0x00</c>: magic, must be 0x44433030 ("DC00")
+        uint32_t m_versionNumber; ///< <c>0x04</c>: format version, always 0x1
+        uint32_t m_textSize;      ///< <c>0x08</c>: size of the whole relocatable block
+                                  ///< (header + entries + bodies + strings + blobs
+                                  ///< + padding); the relocation table starts
+                                  ///< exactly at this offset
+        uint32_t m_stringsOffset; ///< <c>0x0C</c>: absolute offset of the string pool
+                                  ///< from the start of the file (== data_size)
 
-        uint32_t m_always1;         ///< <c>0x10</c>: always 1
-        uint32_t m_numEntries;      ///< <c>0x14</c>: number of DCEntry records
-        DCEntry *m_pStartOfData;    ///< <c>0x18</c>: pointer to Entry[0] (the entry table), not to the
-                                    ///< payload
+        uint32_t m_blobsOffset; ///< <c>0x10</c>: absolute offset of the blob pool
+                                ///< (anonymous static structures) from the start
+                                ///< of the file. 0 means "no blobs in this file".
+                                ///< When non-zero, the region
+                                ///< [m_stringsOffset, m_blobsOffset) is the
+                                ///< string pool and [m_blobsOffset, m_textSize)
+                                ///< is the blob pool. When zero, the whole
+                                ///< [m_stringsOffset, m_textSize) is the string
+                                ///< pool (old files and files without anonymous
+                                ///< structures).
+
+        uint32_t m_numEntries;   ///< <c>0x14</c>: number of DCEntry records
+        DCEntry *m_pStartOfData; ///< <c>0x18</c>: pointer to Entry[0] (the entry table), not to the
+                                 ///< payload
     };
 
     static constexpr u32 DC_FILE_MAGIC = 0x44433030;

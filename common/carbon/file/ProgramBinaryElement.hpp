@@ -76,9 +76,11 @@ namespace carbon {
             : m_entry(std::move(other.m_entry)), m_rawData(std::move(other.m_rawData)),
               m_stringOffsets(std::move(other.m_stringOffsets)),
               m_relocTable(std::move(other.m_relocTable)),
-              m_structLayout(std::move(other.m_structLayout)),
               m_stringConstantSlots(std::move(other.m_stringConstantSlots)),
-              m_byteOffset(other.m_byteOffset), m_bitOffset(other.m_bitOffset) {
+              m_structPointerSlots(std::move(other.m_structPointerSlots)),
+              m_structLayout(std::move(other.m_structLayout)), 
+              m_byteOffset(other.m_byteOffset),
+              m_bitOffset(other.m_bitOffset) {
             other.m_entry.m_entryPtr = nullptr;
             other.m_byteOffset = 0;
             other.m_bitOffset = 0;
@@ -166,6 +168,31 @@ namespace carbon {
             u32 str_offset_in_table; // index into StringsTable::offsets()
         };
         std::vector<StringConstantSlot> m_stringConstantSlots;
+        // Slots in m_rawData whose value must be patched to the
+        // absolute file offset of a blob in the DataSegment's BlobPool.
+        //
+        // Filled in by DataDeclarationNode::generate when it meets a
+        // pointer field whose initializer is (new 'static X), where X
+        // is a structure. The initializer has no name in the source, so
+        // its payload is appended to the BlobPool and identified by the
+        // offset returned from BlobPool::append. That offset is what
+        // blob_offset stores.
+        //
+        // make_binary later writes (blobs_start + blob_offset) into the
+        // slot at slot_offset, and marks the slot as relocatable, so the
+        // loader turns the file offset into an absolute pointer.
+        //
+        // Two fields, two roles:
+        //   slot_offset — where to write (inside this element's payload)
+        //   blob_offset — what to write (which blob in the pool)
+        //
+        // This mirrors StringConstantSlot: one field is the destination
+        // in the payload, the other identifies the value in the pool.
+        struct StructPointerSlot {
+            u64 slot_offset; ///< offset in m_rawData of the pointer slot
+            u32 blob_offset; ///< offset inside DataSegment::blobs()
+        };
+        std::vector<StructPointerSlot> m_structPointerSlots;
 
         std::optional<StructLayoutInfo> m_structLayout;
 

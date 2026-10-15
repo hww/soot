@@ -558,7 +558,7 @@ namespace sootc {
             // ---- Generate the binary ----
             FileNode *stored = file_node;
 
-            StringsTable strings_table;
+            DataSegment strings_table;
             auto         element = stored->generate(strings_table);
 
             if (element.m_rawData.empty()) {
@@ -1955,7 +1955,7 @@ namespace sootc {
                 file_node->add_child(std::move(top_level));
             }
 
-            StringsTable strings_table;
+            DataSegment strings_table;
             auto         element = file_node->generate(strings_table);
             if (element.m_rawData.empty()) {
                 fmt::print(fg(fmt::color::yellow), "; WARN: session produced no binary output\n");

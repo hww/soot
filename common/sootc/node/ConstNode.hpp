@@ -5,13 +5,14 @@
 #include "Node.hpp"
 #include "FunctionNode.hpp"
 #include "ExpressionNode.hpp"
+#include "sootc/libs/DataSegment.hpp"
 #include "type_system/TypeSystem.hpp"
-#include "sootc/libs/StringsTable.hpp"
 #include <stdexcept>
 
 namespace sootc {
 
 class FunctionNode;
+struct StringsTable;
 
 class ConstNode : public ExpressionNode {
 
@@ -100,7 +101,7 @@ public:
                     "ConstNode::emit: FunctionNode has no GlobalState; "
                     "call FunctionNode::set_global_state() before emit_body().");
             }
-            u32 str_offset = fn.global_state()->lookup_or_add(m_string_value);
+            u32 str_offset = fn.global_state()->add_string(m_string_value);
             u16 idx =
                 fn.add_constant(static_cast<u64>(str_offset), FunctionNode::ConstKind::STRING);
             u8 reg = fn.alloc_temp_reg(m_type);

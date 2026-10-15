@@ -223,7 +223,7 @@ namespace sootc {
         return result + ")";
     }
 
-    ProgramBinaryElement NewNode::generate(StringsTable &state) {
+    ProgramBinaryElement NewNode::generate(DataSegment &state) {
         // Static initialization is handled by DataDeclarationNode, not
         // by NewNode directly. A bare NewNode never produces a binary.
         // Returning an empty element keeps the interface satisfied;

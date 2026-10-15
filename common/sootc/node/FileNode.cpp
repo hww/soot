@@ -33,7 +33,7 @@ namespace sootc {
     // ============================================================================
     // generate - главный метод генерации бинарника (интерфейс Node)
     // ============================================================================
-    ProgramBinaryElement FileNode::generate(StringsTable &strings_table) {
+    ProgramBinaryElement FileNode::generate(DataSegment &strings_table) {
         auto entries = collect_all(strings_table);
 
         bool has_types = false;
@@ -64,18 +64,18 @@ namespace sootc {
     // ============================================================================
     // collect_all - собирает ProgramBinaryElement для всех функций
     // ============================================================================
-    std::vector<ProgramBinaryElement> FileNode::collect_all(StringsTable &state) {
+    std::vector<ProgramBinaryElement> FileNode::collect_all(DataSegment &data_segment) {
         std::vector<ProgramBinaryElement> entries;
 
         for (auto &child : m_children) {
             if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
-                fn->set_global_state(&state);
+                fn->set_global_state(&data_segment);
                 fn->emit_body();
-                entries.push_back(fn->generate(state));
+                entries.push_back(fn->generate(data_segment));
                 lg::debug("Function '{}': {} instructions, {} constants", fn->name(),
                           fn->instructions().size(), fn->constants().size());
             } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
-                ProgramBinaryElement element = decl->generate(state);
+                ProgramBinaryElement element = decl->generate(data_segment);
                 const size_t         payload_size = element.m_rawData.size();
                 if (payload_size > 0) {
                     entries.push_back(std::move(element));
@@ -217,14 +217,9 @@ namespace sootc {
     // make_binary - сборка финального бинарника
     // ============================================================================
     ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
-                                               StringsTable                     &strings_table,
+                                               DataSegment                      &data_segment,
                                                std::vector<DataStructEntry>     &out_data_structs) {
         lg::debug("make_binary: program_elements.size()={}", program_elements.size());
-        for (auto &fn : program_elements) {
-            lg::debug("  fn '{}': rawData={}, relocTable={}, stringOffsets={}",
-                     StringIdManager::instance().get_string(fn.m_entry.m_nameID),
-                     fn.m_rawData.size(), fn.m_relocTable.size(), fn.m_stringOffsets.size());
-        }
 
         constexpr sid64 ARRAY_SID = SID("array");
         constexpr u64   first_entry_offset = 0x28;
@@ -248,11 +243,10 @@ namespace sootc {
             }
         }
 
-        // Nothing at all to emit: no functions, no data, no types.
         if (program_elements.empty() && type_infos.empty()) { return ProgramBinaryElement(0); }
 
         // ------------------------------------------------------------------
-        // Pad every program element's raw data to a multiple of 8 bytes.
+        // Pad every element's raw data to a multiple of 8 bytes.
         // ------------------------------------------------------------------
         for (auto &el : program_elements) {
             while (el.m_rawData.size() % 8 != 0) { el.m_rawData.push_back(std::byte{0}); }
@@ -263,6 +257,9 @@ namespace sootc {
 
         const u64 total_entries = program_elements.size() + type_infos.size();
 
+        // ------------------------------------------------------------------
+        // Pass 1: method offsets for SsType entries.
+        // ------------------------------------------------------------------
         {
             u64 running_offset = header_size + total_entries * sizeof(DCEntry);
 
@@ -284,6 +281,9 @@ namespace sootc {
             }
         }
 
+        // ------------------------------------------------------------------
+        // Append SsType entries.
+        // ------------------------------------------------------------------
         for (auto &ti : type_infos) {
             ProgramBinaryElement ss_el = build_ss_type(ti.decl, ti.method_offsets);
             if (!ss_el.m_rawData.empty()) { program_elements.push_back(std::move(ss_el)); }
@@ -291,12 +291,6 @@ namespace sootc {
 
         // ------------------------------------------------------------------
         // Placeholder entries for heap-allocated top-level defines.
-        //
-        // Each placeholder is a DCEntry with a name (so Globals indexes
-        // it), a type tag of "global", and an 8-byte payload of zeros.
-        // At runtime, StoreGlobalNode::emit resolves the name through
-        // LookupPointer and writes the constructed pointer into this
-        // payload. No special opcode is needed — the slot IS the global.
         // ------------------------------------------------------------------
         for (const std::string &pname : m_placeholders) {
             ProgramBinaryElement placeholder(8);
@@ -311,9 +305,21 @@ namespace sootc {
             lg::debug("make_binary: placeholder entry '{}'", pname);
         }
 
-        // ------------------------------------------------------------------
-        // Pass 2: final layout.
-        // ------------------------------------------------------------------
+        // ================================================================
+        // Pass 2: file layout.
+        // ================================================================
+        //
+        // Layout from start of file:
+        //     [header]
+        //     [ARRAY_SID]
+        //     [entry table]
+        //     [entry payloads]
+        //     [string pool]      <- m_stringsOffset
+        //     [pad to 8]
+        //     [blob pool]        <- m_blobsOffset (0 if empty)
+        //     [pad to 4]
+        //     [reloc table]      <- m_textSize
+        //
         const u64 num_entries = program_elements.size();
         const u64 entries_size = sizeof(DCEntry) * num_entries;
 
@@ -323,35 +329,37 @@ namespace sootc {
                                 return acc + element.m_rawData.size();
                             });
 
-        const auto &strings_table_characters = strings_table.bytes();
+        const auto &string_pool_bytes = data_segment.strings().bytes();
+        const auto &blob_pool_bytes = data_segment.blobs().bytes();
 
-        const u64 strings_size = strings_table_characters.size();
+        const u64 strings_size = string_pool_bytes.size();
+        const u64 blobs_size = blob_pool_bytes.size();
+
         const u64 data_size = header_size + entries_size + entries_data_size;
-
-        // The string table is padded to a 4-byte boundary, and the
-        // relocation table starts right after the padding. The bitmap
-        // has one bit per 8-byte slot of the relocatable region,
-        // rounded up to whole bytes.
-        const u64 string_padding = (4 - (strings_size % 4)) % 4;
-        const u64 relocatable_size = data_size + strings_size + string_padding;
+        const u64 strings_start = data_size;
+        const u64 strings_pad = (8 - (strings_size % 8)) % 8;
+        const u64 blobs_start = strings_start + strings_size + strings_pad;
+        const u64 blobs_pad = (4 - (blobs_size % 4)) % 4;
+        const u64 relocatable_size = blobs_start + blobs_size + blobs_pad;
         const u64 reloc_bytes = (relocatable_size + 7) / 8;
         const u64 total_size = relocatable_size + 4 + reloc_bytes;
 
-        lg::debug("make_binary total_size = %lu\n", (unsigned long)total_size);
+        lg::debug("make_binary: total_size={}, strings_start={}, blobs_start={}", total_size,
+                  strings_start, blobs_start);
 
         ProgramBinaryElement element(total_size);
 
         // ========================================
         // 1. HEADER
         // ========================================
-        DC_Header header{
-            DC_FILE_MAGIC,
-            DC_FILE_VERSION,
-            static_cast<uint32_t>(relocatable_size), // text size (data + strings + padding)
-            static_cast<uint32_t>(data_size),        // strings offset
-            0x1,
-            static_cast<uint32_t>(num_entries),
-            reinterpret_cast<DCEntry *>(first_entry_offset)};
+        DC_Header header{DC_FILE_MAGIC,
+                         DC_FILE_VERSION,
+                         static_cast<uint32_t>(relocatable_size),                 // m_textSize
+                         static_cast<uint32_t>(strings_start),                    // m_stringsOffset
+                         static_cast<uint32_t>(blobs_size > 0 ? blobs_start : 0), // m_blobsOffset
+                         static_cast<uint32_t>(num_entries),                      // m_numEntries
+                         reinterpret_cast<DCEntry *>(first_entry_offset)};
+
         element.push_value_with_ptr(header, PTR_FIELD(DC_Header, m_pStartOfData));
         element.push_value(ARRAY_SID);
 
@@ -368,7 +376,6 @@ namespace sootc {
             entry.m_entryPtr = reinterpret_cast<void *>(first_function_start + prev_entry_size);
             element.push_value_with_ptr(entry, PTR_FIELD(DCEntry, m_entryPtr));
             prev_entry_size += fn.m_rawData.size();
-            lg::debug("FileNode::make_binary entry {}", entry.to_string());
 
             if (fn.m_structLayout) {
                 DataStructEntry ds;
@@ -383,53 +390,18 @@ namespace sootc {
         // ========================================
         // 3. PAYLOADS
         // ========================================
-        //
-        // We also build the file-level relocation bitmap here. The DC
-        // relocation table has exactly ONE BIT PER 8-BYTE SLOT of the
-        // whole file, so we cannot simply concatenate per-function bit
-        // vectors: a bit at index N means "the u64 at file offset N*8 is
-        // a pointer that must be relocated by the loader".
-        //
-        // For every function we know its absolute start offset in the
-        // file (element.m_rawData.size() before we append its payload).
-        // Each per-function reloc bit therefore maps to the file-level
-        // bit at (function_start / 8) + per_function_bit.
-        //
-        // IMPORTANT: every write into element.m_rawData must go through
-        // push_blob / push_value / push_value_with_ptr, or the
-        // ProgramBinaryElement invariant (relocTable.size() ==
-        // (rawData.size() + 7) / 8) is broken and check_size() throws.
         std::vector<bool> file_reloc_table(relocatable_size, false);
 
         for (auto &fn : program_elements) {
-            // Patch string-constant slots: replace the string index with
-            // the absolute file offset of the string in the global string
-            // table, and mark the slot as relocatable so the loader turns
-            // it into an absolute pointer at load time.
+            // ---- 3a. String slots ----
             //
-            // The absolute offset is data_size (start of the string table
-            // in the file) plus the string's offset inside the table.
+            // Write the absolute file offset (strings_start + in-pool offset),
+            // then temporarily clear the reloc bit so adjust_offsets() does
+            // not add function_start to the value.
             for (const auto &slot : fn.m_stringConstantSlots) {
-                // slot.str_index is already the byte offset of the string
-                // inside the string table (returned by lookup_or_add), not
-                // an index into offsets(). So the absolute file offset is
-                // simply data_size + that offset.
-                const u32 str_offset_in_table = slot.str_offset_in_table;
-                const u64 absolute_offset = data_size + str_offset_in_table;
-
-                *reinterpret_cast<u64 *>(&fn.m_rawData[slot.slot_offset]) = absolute_offset;
-
-                lg::debug("make_binary: string slot at payload+0x{:X} -> abs 0x{:X} "
-                         "(str_index={}, table_offset=0x{:X})",
-                         slot.slot_offset, absolute_offset, slot.str_offset_in_table,
-                         str_offset_in_table);
+                const u64 absolute = strings_start + slot.str_offset_in_table;
+                *reinterpret_cast<u64 *>(&fn.m_rawData[slot.slot_offset]) = absolute;
             }
-
-            // The string slots already contain absolute file offsets, so
-            // adjust_offsets() must NOT add function_start to them. But they
-            // still need to be marked in the final bitmap so the loader
-            // converts them to absolute pointers. Temporarily clear their
-            // bits for adjust_offsets, then restore them.
             std::vector<bool> saved_string_bits(fn.m_stringConstantSlots.size(), false);
             for (size_t i = 0; i < fn.m_stringConstantSlots.size(); ++i) {
                 const size_t slot_bit = fn.m_stringConstantSlots[i].slot_offset / 8;
@@ -439,10 +411,24 @@ namespace sootc {
                 }
             }
 
-            const u64 function_start = element.m_rawData.size();
+            // ---- 3b. Struct pointer slots ----
+            //
+            // Write the absolute file offset (blobs_start + in-pool offset).
+            // Leave the reloc bit clear for now — adjust_offsets() must not
+            // touch these; we set the bit after adjust_offsets() runs.
+            for (const auto &slot : fn.m_structPointerSlots) {
+                const u64 absolute = blobs_start + slot.blob_offset;
+                *reinterpret_cast<u64 *>(&fn.m_rawData[slot.slot_offset]) = absolute;
 
+                const size_t slot_bit = slot.slot_offset / 8;
+                if (slot_bit < fn.m_relocTable.size()) { fn.m_relocTable[slot_bit] = false; }
+            }
+
+            // ---- 3c. adjust_offsets ----
+            const u64 function_start = element.m_rawData.size();
             fn.adjust_offsets(function_start);
 
+            // ---- 3d. Restore string bits ----
             for (size_t i = 0; i < fn.m_stringConstantSlots.size(); ++i) {
                 const size_t slot_bit = fn.m_stringConstantSlots[i].slot_offset / 8;
                 if (slot_bit < fn.m_relocTable.size() && saved_string_bits[i]) {
@@ -450,15 +436,17 @@ namespace sootc {
                 }
             }
 
-            // Append the payload through push_blob so that element's
-            // relocation bitmap grows by exactly ceil(fn.m_rawData.size() / 8)
-            // new zero bits. We then overwrite the relevant bits with the
-            // function's own reloc bits.
+            // ---- 3e. Set struct pointer bits (they contain absolute
+            //          offsets already, and must be relocated by the loader) ----
+            for (const auto &slot : fn.m_structPointerSlots) {
+                const size_t slot_bit = slot.slot_offset / 8;
+                if (slot_bit < fn.m_relocTable.size()) { fn.m_relocTable[slot_bit] = true; }
+            }
+
+            // ---- 3f. Append payload ----
             element.push_blob(fn.m_rawData.data(), fn.m_rawData.size(), /*relocation_bit=*/0);
 
-            // Fold this function's per-slot reloc bits into element's
-            // bitmap. fn.m_relocTable[i] corresponds to the u64 slot at
-            // (function_start / 8) + i in the file.
+            // ---- 3g. Fold per-element bits into file-level bitmap ----
             const size_t function_slot = function_start / 8;
             for (size_t i = 0; i < fn.m_relocTable.size(); ++i) {
                 if (!fn.m_relocTable[i]) { continue; }
@@ -471,41 +459,38 @@ namespace sootc {
         }
 
         // ========================================
-        // 4. STRING TABLE
+        // 4. STRING POOL
         // ========================================
-        //
-        // Use push_blob so the invariant relocTable.size() ==
-        // (rawData.size() + 7) / 8 keeps holding. Strings are never
-        // pointers, so the relocation_bit is 0.
         if (strings_size > 0) {
-            element.push_blob(strings_table_characters.data(), strings_size,
+            element.push_blob(string_pool_bytes.data(), strings_size,
                               /*relocation_bit=*/0);
         }
-
-        const size_t padding = (4 - (strings_size % 4)) % 4;
-        if (string_padding > 0) {
+        for (u64 i = 0; i < strings_pad; ++i) {
             const std::byte zero = std::byte{0};
-            for (u64 i = 0; i < string_padding; ++i) {
-                element.push_blob(&zero, 1, /*relocation_bit=*/0);
-            }
+            element.push_blob(&zero, 1, /*relocation_bit=*/0);
         }
 
         // ========================================
-        // 5. RELOCATION TABLE
+        // 5. BLOB POOL
         // ========================================
-        // Before writing the bitmap, copy every relocatable bit from the
-        // in-memory element into file_reloc_table. push_value_with_ptr()
-        // already marked the header (m_pStartOfData), each DCEntry
-        // (m_entryPtr), and any other pointers; those bits live in
-        // element.m_relocTable and must be preserved in the output bitmap.
+        if (blobs_size > 0) {
+            element.push_blob(blob_pool_bytes.data(), blobs_size,
+                              /*relocation_bit=*/0);
+        }
+        for (u64 i = 0; i < blobs_pad; ++i) {
+            const std::byte zero = std::byte{0};
+            element.push_blob(&zero, 1, /*relocation_bit=*/0);
+        }
+
+        // ========================================
+        // 6. RELOCATION TABLE
+        // ========================================
         for (size_t i = 0; i < element.m_relocTable.size() && i < file_reloc_table.size(); ++i) {
             if (element.m_relocTable[i]) { file_reloc_table[i] = true; }
         }
 
         const u32 reloc_size = static_cast<u32>(reloc_bytes);
-
         element.push_value(reloc_size);
-        lg::debug("Construct reloc table with size {}", reloc_size);
 
         for (u64 i = 0; i < reloc_bytes; ++i) {
             uint8_t byte = 0;
@@ -516,23 +501,12 @@ namespace sootc {
             element.push_value(byte);
         }
 
-        // Sanity check: the assembled element must be exactly total_size
-        // bytes. If it is not, the header's text/string offsets won't match
-        // the actual layout and BinaryFile::read_reloc_table will read past
-        // the end of the buffer.
-        //
-        // Do NOT call element.check_size() here — the ProgramBinaryElement
-        // invariant (relocTable.size() == (rawData.size() + 7) / 8) is
-        // checked after every push_* call, and push_value for the reloc
-        // table itself adds bits after the fact.
         if (element.m_rawData.size() != total_size) {
             throw std::runtime_error(
                 fmt::format("FileNode::make_binary: assembled {} bytes but expected {}. "
                             "Header text/string offsets will be wrong.",
                             element.m_rawData.size(), total_size));
         }
-        lg::debug("make_binary: assembled {} bytes (expected {})", element.m_rawData.size(),
-                 total_size);
 
         return element;
     }

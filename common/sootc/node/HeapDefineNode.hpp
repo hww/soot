@@ -69,7 +69,7 @@ namespace sootc {
 
         /// @brief Not emittable. compile_internal takes the children and
         ///        drops the wrapper before any codegen step runs.
-        ProgramBinaryElement generate(StringsTable &) override {
+        ProgramBinaryElement generate(DataSegment &) override {
             throw std::runtime_error(
                 "HeapDefineNode::generate: this node is a compile-time wrapper; "
                 "it must be unpacked by compile_internal, not emitted");

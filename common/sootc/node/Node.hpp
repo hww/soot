@@ -14,7 +14,7 @@ namespace sootc {
     class GlobalNode;
     class FileNode;
     class FunctionNode;
-    struct StringsTable;
+    class DataSegment;
     
 enum class NodeType {
     Node,
@@ -210,7 +210,7 @@ public:
  
     virtual std::string to_string() const = 0;
     virtual const char* node_type() const = 0;
-    virtual ProgramBinaryElement generate(StringsTable&) = 0;
+    virtual ProgramBinaryElement generate(DataSegment &) = 0;
 };
 
 } // namespace sootc

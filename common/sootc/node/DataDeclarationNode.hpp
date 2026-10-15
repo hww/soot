@@ -60,7 +60,7 @@ namespace sootc {
         ///          redefinition safe.
         std::shared_ptr<NewNode> instance_shared() const { return m_instance; }
 
-        ProgramBinaryElement generate(StringsTable &) override;
+        ProgramBinaryElement generate(DataSegment &) override;
     };
 
 } // namespace sootc

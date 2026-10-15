@@ -78,7 +78,7 @@ namespace sootc {
         /// @brief Static initialization: serialize into a data-instance entry.
         /// @details Only valid for m_allocation == "static". Returns an empty
         ///          element otherwise (the top-level compiler reports an error).
-        ProgramBinaryElement generate(StringsTable &state) override;
+        ProgramBinaryElement generate(DataSegment &state) override;
 
     private:
         void emit_field_init_stores(FunctionNode &fn, u8 base_ptr_reg, StructureType *st);

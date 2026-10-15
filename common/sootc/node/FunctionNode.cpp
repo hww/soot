@@ -10,7 +10,7 @@
 #include "util/Log.hpp"
 #include "sootc/libs/CompareOp.hpp"
 #include "sootc/node/Node.hpp"
-#include "sootc/libs/StringsTable.hpp"
+#include "sootc/libs/DataSegment.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -255,7 +255,7 @@ namespace sootc {
     ///              must be relocated. They live at 8-byte slots 1 and 2.
     ///            - Instructions and constants: no relocations.
     ProgramBinaryElement FunctionNode::build_binary(const std::string &module_name,
-                                                    StringsTable       &strings_table) {
+                                                    DataSegment       &strings_table) {
         (void)module_name;
         (void)strings_table;
 

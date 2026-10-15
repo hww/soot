@@ -18,7 +18,7 @@ public:
         return "none";
     }
     
-    ProgramBinaryElement generate(StringsTable& sttings_table) override {
+    ProgramBinaryElement generate(DataSegment& sttings_table) override {
         // NoneNode не генерирует код
         (void)sttings_table;
         return ProgramBinaryElement(0);

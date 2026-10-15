@@ -17,7 +17,7 @@ using namespace carbon;
 
 namespace sootc {
 
-    struct StringsTable;
+    class DataSegment;
     class ExpressionNode;
 
     /*
@@ -88,7 +88,7 @@ namespace sootc {
 
         // Тело функции
         std::unique_ptr<ExpressionNode> m_body;
-        StringsTable                    *m_state = nullptr;
+        DataSegment                    *m_state = nullptr;
     protected:
         void update_self_cache() override { m_cached_function = this; }
 
@@ -166,8 +166,8 @@ namespace sootc {
         void  set_return_type(Type *type) { m_return_type = type; }
         Type *get_return_type() const { return m_return_type; }
 
-        void         set_global_state(StringsTable *s) { m_state = s; }
-        StringsTable *global_state() const { return m_state; }
+        void         set_global_state(DataSegment *s) { m_state = s; }
+        DataSegment *global_state() const { return m_state; }
 
         // ========================================================================
         // Константы
@@ -209,12 +209,12 @@ namespace sootc {
         // ========================================================================
         // Сериализация
         // ========================================================================
-        ProgramBinaryElement generate(StringsTable &state) override {
+        ProgramBinaryElement generate(DataSegment &state) override {
             return build_binary(m_name, state);
         }
 
     private:
-        ProgramBinaryElement build_binary(const std::string &module_name, StringsTable &state);
+        ProgramBinaryElement build_binary(const std::string &module_name, DataSegment &state);
 
         // ========================================================================
         // Доступ к результатам

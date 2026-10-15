@@ -264,7 +264,10 @@ namespace carbon {
         }
 
         const u32 offset = hdr->m_stringsOffset;
-        const u32 end = hdr->m_textSize;
+        // If the file has a blob section, the string pool ends where the
+        // blobs begin. Otherwise it runs to m_textSize (old files, or
+        // files without anonymous static structures).
+        const u32 end = (hdr->m_blobsOffset != 0) ? hdr->m_blobsOffset : hdr->m_textSize;
 
         if (offset == 0 || offset >= end) {
             m_formatter->print("(empty, offset=0x{:X}, end=0x{:X})\n", offset, end);
@@ -282,6 +285,17 @@ namespace carbon {
             p += len + 1;
         }
         if (idx == 0) m_formatter->print("  (empty)\n");
+
+        // If there is a blob section, print a summary. We do not attempt
+        // to decode it: blobs are anonymous structures whose layout is
+        // described by the pointer slot that refers to them, not by the
+        // header.
+        if (hdr->m_blobsOffset != 0 && hdr->m_blobsOffset < hdr->m_textSize) {
+            const u64 blob_size = hdr->m_textSize - hdr->m_blobsOffset;
+            m_formatter->print(
+                "\nBlob pool: {} bytes at 0x{:X} (anonymous static data, not decoded)\n", blob_size,
+                hdr->m_blobsOffset);
+        }
     }
 
     std::string BinaryFileInspector::type_name(symbol_type type) {
@@ -418,7 +432,11 @@ namespace carbon {
         m_formatter->print("Version:        {}\n", hdr->m_versionNumber);
         m_formatter->print("Text Size:      0x{:X} ({} bytes)\n", hdr->m_textSize, hdr->m_textSize);
         m_formatter->print("Strings Offset: 0x{:X}\n", hdr->m_stringsOffset);
-        m_formatter->print("Field 10:       {}\n", hdr->m_always1);
+        if (hdr->m_blobsOffset != 0) {
+            m_formatter->print("Blobs Offset:   0x{:X}\n", hdr->m_blobsOffset);
+        } else {
+            m_formatter->print("Blobs Offset:   (none)\n");
+        }
         m_formatter->print("Num Entries:    {}\n", hdr->m_numEntries);
         m_formatter->print("Data Start:     0x{:X} (offset from file start)\n", data_start_offset);
     }
@@ -733,7 +751,6 @@ namespace carbon {
             os << "    \"version\": " << hdr->m_versionNumber << ",\n";
             os << "    \"textSize\": " << hdr->m_textSize << ",\n";
             os << "    \"stringsOffset\": " << hdr->m_stringsOffset << ",\n";
-            os << "    \"always1\": " << hdr->m_always1 << ",\n";
             os << "    \"numEntries\": " << hdr->m_numEntries << "\n";
         } else {
             os << "    \"valid\": false\n";

@@ -45,7 +45,7 @@ public:
     }
 
     const std::unordered_map<std::string, Node*>& symbols() const { return m_symbols; }
-    ProgramBinaryElement generate(StringsTable& state) override { (void)state; return ProgramBinaryElement{0}; };
+    ProgramBinaryElement generate(DataSegment& state) override { (void)state; return ProgramBinaryElement{0}; };
 
 };
 

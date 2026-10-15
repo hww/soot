@@ -4,7 +4,7 @@
 #include "Node.hpp"
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/file/ProgramBinaryElement.hpp"
-#include "sootc/libs/StringsTable.hpp"
+#include "sootc/libs/DataSegment.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include <expected>
@@ -41,7 +41,7 @@ namespace sootc {
         const std::string &name() const { return m_name; }
 
         // ---- Binary generation (Node interface) ----
-        ProgramBinaryElement generate(StringsTable &strings_table) override;
+        ProgramBinaryElement generate(DataSegment &strings_table) override;
 
         // ---- Symbol table ----
         /// @brief Lookup binding
@@ -219,7 +219,7 @@ namespace sootc {
     private:
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.
-        std::vector<ProgramBinaryElement> collect_all(StringsTable &state);
+        std::vector<ProgramBinaryElement> collect_all(DataSegment &state);
         /// @brief Assemble the final binary from per-element payloads.
         /// @param program_elements  Payloads (functions, data-structs, ...).
         /// @param state             Global compilation state (strings, etc).
@@ -227,7 +227,7 @@ namespace sootc {
         ///                          order they appear in the entry table. The caller
         ///                          (Compiler) stores them in the resulting BinaryFile.
         ProgramBinaryElement make_binary(std::vector<ProgramBinaryElement> program_elements,
-                                         StringsTable                      &state,
+                                         DataSegment                      &state,
                                          std::vector<DataStructEntry>     &out_data_structs);
 
 
