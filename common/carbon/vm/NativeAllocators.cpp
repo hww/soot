@@ -90,6 +90,51 @@ namespace carbon {
         return allocate_impl(argc, argv, /*silent=*/true);
     } 
 
+
+    // ========================================================================
+    // allocate-bytes — allocate raw bytes in the GC heap
+    // ========================================================================
+    //
+    // Unlike `allocate`, which takes a type SID and looks up the size
+    // in the GC type registry, `allocate-bytes` takes an explicit size
+    // and alignment. It is used for values whose size is not the size
+    // of a registered type: notably, inline arrays in heap mode, where
+    // the total byte count is elem_size * count.
+    //
+    // The block is registered with the GC under SID 0 ("untyped"): the
+    // sweep will reclaim it, but the mark phase will not scan it for
+    // pointers. That is correct for arrays of scalars, and it is what
+    // we want for arrays of inline structs whose fields are themselves
+    // scalars.
+    //
+    // When arrays of pointers are supported, a proper registered type
+    // will be needed; that is a later step.
+    Variant allocate_bytes(u32 argc, const Variant *argv) {
+        if (argc < 2) {
+            lg::error("allocate-bytes: expected (size, align), got {}", argc);
+            return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+        }
+
+        const i64 size_i = argv[0].to_int();
+        const i64 align_i = argv[1].to_int();
+
+        if (size_i <= 0) {
+            lg::error("allocate-bytes: size must be > 0, got {}", size_i);
+            return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+        }
+
+        const std::size_t size = static_cast<std::size_t>(size_i);
+        const std::size_t align =
+            (align_i > 0) ? static_cast<std::size_t>(align_i) : std::size_t{8};
+
+        void *ptr = gc::alloc(/*sid=*/0, size, align);
+        if (!ptr) {
+            lg::error("allocate-bytes: gc::alloc failed (size={}, align={})", size, align);
+            return Variant(static_cast<void *>(nullptr), RuntimeType::Pointer);
+        }
+        return Variant(ptr, RuntimeType::Pointer);
+    }
+
     // ========================================================================
     // Type registration
     // ========================================================================
@@ -158,6 +203,7 @@ namespace carbon {
         auto &reg = NativeFunctionRegistry::get_instance();
         reg.register_function("allocate", &allocate);
         reg.register_function("allocate-silent", &allocate_silent);
+        reg.register_function("allocate-bytes", &allocate_bytes);  
 
         NativeString::initialize_builtins();
         NativeMap::initialize_builtins();

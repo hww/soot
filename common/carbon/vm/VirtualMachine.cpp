@@ -246,7 +246,24 @@ namespace carbon {
                     Variant &dest = current_frame->get_register(instr.a);
                     Variant &src1 = current_frame->get_register(instr.b);
                     Variant &src2 = current_frame->get_register(instr.c);
-                    dest = Variant(src1.to_int() + src2.to_int());
+
+                    // Pointer arithmetic: if one operand is a pointer and
+                    // the other is an integer, the result is a pointer
+                    // shifted by that many bytes. This is what makes
+                    // (at arr i) work: the base pointer is offset by
+                    // i * elem_size, and the result must stay a Pointer
+                    // for the following Load*/Store* to accept it.
+                    if (src1.is_ptr() && src2.is_int()) {
+                        auto *bytes = static_cast<std::byte *>(src1.get_ptr());
+                        dest = Variant(static_cast<void *>(bytes + src2.to_int()),
+                                       RuntimeType::Pointer);
+                    } else if (src2.is_ptr() && src1.is_int()) {
+                        auto *bytes = static_cast<std::byte *>(src2.get_ptr());
+                        dest = Variant(static_cast<void *>(bytes + src1.to_int()),
+                                       RuntimeType::Pointer);
+                    } else {
+                        dest = Variant(src1.to_int() + src2.to_int());
+                    }
                     break;
                 }
 

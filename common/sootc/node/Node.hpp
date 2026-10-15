@@ -44,6 +44,7 @@ enum class NodeType {
     NewNode,
     DataDeclarationNode,
     HeapDefineNode,
+    AtNode,
     };
 
 inline const char* node_type_to_string(NodeType type) {
@@ -73,6 +74,7 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::NewNode: return "NewNode";
         case NodeType::DataDeclarationNode: return "DataDeclarationNode";
         case NodeType::HeapDefineNode: return "HeapDefineNode";
+        case NodeType::AtNode: return "AtNode";
         }
     // Если добавили NodeType, а case не написали — сюда не попадём, компилятор предупредит.
     return "UnknownNode";

@@ -456,7 +456,7 @@ namespace carbon {
          StaticType::NONE},
         {Opcode::LoadParamCnt, "LoadParamCnt", OperandType::REG, OperandType::NONE,
          OperandType::NONE, StaticType::NONE},
-        {Opcode::IAddImm, "IAddImm", OperandType::REG, OperandType::REG, OperandType::IMM_I16,
+        {Opcode::IAddImm, "IAddImm", OperandType::REG, OperandType::REG, OperandType::IMM_U8,
          StaticType::NONE},
         {Opcode::ISubImm, "ISubImm", OperandType::REG, OperandType::REG, OperandType::IMM_I16,
          StaticType::NONE},

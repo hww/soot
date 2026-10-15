@@ -35,6 +35,27 @@ namespace sootc {
         TypeSpec                                     m_type;
         std::vector<FieldInit>                       m_fields; ///< only for 'static'
         std::vector<std::unique_ptr<ExpressionNode>> m_args;   ///< only for non-static
+        // ---- Inline-array mode ----
+        //
+        // When the second token after the allocation is 'inline-array,
+        // the form is:
+        //
+        //     (new 'static 'inline-array T N e0 e1 ... eK)
+        //
+        // and this NewNode represents an anonymous inline array, not a
+        // structure. In that case:
+        //   * m_type is set to T (element type), not to a structure,
+        //   * m_elem_type_name repeats T as a string,
+        //   * m_array_size is N (the declared capacity),
+        //   * m_elements holds the K+1 init expressions (K+1 <= N).
+        //
+        // Both 'static and 'heap are allowed. 'static writes the
+        // elements inline into the parent's payload; 'heap emits a
+        // runtime allocation of sizeof(T) * N bytes with alignof(T) * N.
+        bool                                         m_is_inline_array = false;
+        std::string                                  m_elem_type_name;
+        u32                                          m_array_size = 0;
+        std::vector<std::unique_ptr<ExpressionNode>> m_elements;
 
     public:
         explicit NewNode(TypeSpec type)
@@ -59,6 +80,28 @@ namespace sootc {
         const TypeSpec                                     &type() const { return m_type; }
         const std::vector<FieldInit>                       &fields() const { return m_fields; }
         const std::vector<std::unique_ptr<ExpressionNode>> &arguments() const { return m_args; }
+
+        // ---- Inline-array accessors ----
+
+        bool               is_inline_array() const noexcept { return m_is_inline_array; }
+        const std::string &elem_type_name() const noexcept { return m_elem_type_name; }
+        u32                array_size() const noexcept { return m_array_size; }
+
+        const std::vector<std::unique_ptr<ExpressionNode>> &elements() const noexcept {
+            return m_elements;
+        }
+
+        /// @brief Configure this node as an inline-array.
+        /// @details Called by NodeBuilder::build_new when it sees
+        ///          'inline-array as the second token.
+        void set_inline_array(std::string elem_type, u32 size) {
+            m_is_inline_array = true;
+            m_elem_type_name = std::move(elem_type);
+            m_array_size = size;
+        }
+
+        /// @brief Append one element init expression.
+        void add_element(std::unique_ptr<ExpressionNode> e) { m_elements.push_back(std::move(e)); }
 
         /// @brief Emit code for a constructor call ('global' / 'heap' / 'stack').
         /// @details

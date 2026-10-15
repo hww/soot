@@ -59,6 +59,7 @@ namespace sootc {
         std::unique_ptr<LetNode>        build_let(const script::Object &form, Node *node);
         std::unique_ptr<SetNode>        build_set(const script::Object &form, Node *node);
         std::unique_ptr<ExpressionNode> build_deref(const script::Object &form, Node *node);
+        std::unique_ptr<ExpressionNode> build_at(const script::Object &form, Node *node);
         std::unique_ptr<NewNode>        build_new(const script::Object &form, Node *node);
         std::unique_ptr<BinaryNode>     build_binary(const script::Object &form, Node *node);
         std::unique_ptr<CompareNode>    build_compare(const script::Object &form, Node *node);
@@ -119,6 +120,7 @@ namespace sootc {
         std::unique_ptr<Node> build_let_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_set_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_deref_wrap(const script::Object &form, Node *node);
+        std::unique_ptr<Node> build_at_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_new_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_binary_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_compare_wrap(const script::Object &form, Node *node);

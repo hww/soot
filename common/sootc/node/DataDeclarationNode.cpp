@@ -117,7 +117,7 @@ namespace sootc {
         /// @brief Recursively write a compile-time value at `base_off`.
         ///
         /// @param payload    Byte buffer, already zeroed, exact size.
-        ...
+    
         void write_value(std::vector<std::byte> &payload, size_t base_off, Type *type,
                          const ExpressionNode *init, TypeSystem &ts, DataSegment &segment,
                          std::vector<ProgramBinaryElement::StructPointerSlot> &deferred,

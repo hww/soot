@@ -11,6 +11,7 @@
 #include "sootc/node/StoreGlobalNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/HeapDefineNode.hpp"
+#include "sootc/node/AtNode.hpp"
 #include "type_system/Defenum.hpp"
 #include "type_system/Deftype.hpp"
 
@@ -47,6 +48,7 @@ namespace sootc {
         m_form_table["set!"] = &NodeBuilder::build_set_wrap;
         m_form_table["new"] = &NodeBuilder::build_new_wrap;
         m_form_table["->"] = &NodeBuilder::build_deref_wrap;
+        m_form_table["at"] = &NodeBuilder::build_at_wrap;
 
         // Arithmetic
         m_form_table["+"] = &NodeBuilder::build_binary_wrap;
@@ -184,6 +186,7 @@ namespace sootc {
     WRAP_FORWARD(build_neg_wrap, build_neg)
     WRAP_FORWARD(build_not_wrap, build_not)
     WRAP_FORWARD(build_lognot_wrap, build_lognot)
+    WRAP_FORWARD(build_at_wrap, build_at)
 
 #undef WRAP_FORWARD
 
@@ -531,9 +534,23 @@ namespace sootc {
             return std::make_unique<SetNode>(std::unique_ptr<DerefNode>(deref_raw),
                                              std::move(value));
         }
+        
+        if (target_form.is_pair() && target_form.as_pair()->car.is_symbol() &&
+            target_form.as_pair()->car.as_symbol() == "at") {
+            auto at_expr = build_at(target_form, node);
+
+            auto *at_raw = dynamic_cast<AtNode *>(at_expr.release());
+            if (!at_raw) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_set")
+                    .expected("AtNode as lvalue")
+                    .got("non-AtNode");
+            }
+
+            return std::make_unique<SetNode>(std::unique_ptr<AtNode>(at_raw), std::move(value));
+        }
 
         throw m_compiler->make_error(form, "NodeBuilder::build_set")
-            .expected("variable name or (-> obj field) as target")
+            .expected("variable name, (-> obj field), or (at arr i) as target")
             .got(target_form.print());
     }
 
@@ -659,6 +676,47 @@ namespace sootc {
         return current;
     }
 
+    // Access to the array 
+    std::unique_ptr<ExpressionNode> NodeBuilder::build_at(const script::Object &form, Node *node) {
+        auto rest = form.as_pair()->cdr;
+
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_at")
+                .expected("(at array index)")
+                .got("missing array expression");
+        }
+        auto base_form = rest.as_pair()->car;
+        auto after_base = rest.as_pair()->cdr;
+
+        if (!after_base.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_at")
+                .expected("(at array index)")
+                .got("missing index");
+        }
+        auto index_form = after_base.as_pair()->car;
+
+        auto base_expr = build_expression(base_form, node);
+
+        // Determine the element type from the base expression.
+        //
+        // The base must be a variable that names an inline array.
+        // We rely on VariableNode::elem_type() being set by build_variable.
+        Type *elem_type = nullptr;
+        if (auto *var = dynamic_cast<VariableNode *>(base_expr.get())) {
+            elem_type = var->elem_type();
+        }
+        if (!elem_type) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_at")
+                .expected("base to name an inline array")
+                .got(base_form.print())
+                .note("Declare the array with (new 'static 'inline-array T N ...) "
+                      "or (new 'heap 'inline-array T N ...).");
+        }
+
+        auto index_expr = build_expression(index_form, node);
+
+        return std::make_unique<AtNode>(std::move(base_expr), std::move(index_expr), elem_type);
+    }
     // ============================================================================
     // new
     // ============================================================================
@@ -737,6 +795,119 @@ namespace sootc {
         } else {
             type_name = first_str;
         }
+
+        // =====================================================================
+        // Inline-array form
+        // =====================================================================
+        //
+        // (new 'static 'inline-array T N e0 e1 ... eK)
+        //
+        // The second token, where a type name would normally appear, is the
+        // literal symbol 'inline-array. What follows:
+        //
+        //     T   — element type (a symbol, required)
+        //     N   — declared capacity (an integer literal, required)
+        //     e*  — element initializers (K+1 may be less than or equal to N)
+        //
+        // Both 'static and 'heap are syntactically accepted. Only 'static is
+        // implemented so far; 'heap is rejected with a clear message until
+        // the runtime byte allocator lands.
+        //
+        // The resulting NewNode is configured as an inline array (see
+        // NewNode::set_inline_array). Its m_type is set to the element type
+        // so that any downstream code that reads type() gets the element
+        // type, not the array.
+        if (type_name == "inline-array") {
+            if (allocation != "static" && allocation != "heap") {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("'static or 'heap 'inline-array")
+                    .got(fmt::format("'{} 'inline-array", allocation));
+            }
+
+            auto after_marker = rest.as_pair()->cdr;
+            if (!after_marker.is_pair()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("element type after 'inline-array")
+                    .got("end of form");
+            }
+
+            // Element type.
+            const auto           &elem_obj = after_marker.as_pair()->car;
+            const script::Object *elem_ptr = &elem_obj;
+            if (elem_obj.is_pair() && elem_obj.as_pair()->car.is_symbol() &&
+                elem_obj.as_pair()->car.as_symbol() == "quote") {
+                const auto &quoted = elem_obj.as_pair()->cdr;
+                if (!quoted.is_pair() || !quoted.as_pair()->car.is_symbol()) {
+                    throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                        .expected("symbol after quote")
+                        .got(elem_obj.print());
+                }
+                elem_ptr = &quoted.as_pair()->car;
+            }
+            if (!elem_ptr->is_symbol()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("symbol as element type")
+                    .got(elem_ptr->print());
+            }
+            const std::string elem_type_name = elem_ptr->to_std_string();
+
+            Type *elem_type = m_ts.lookup_type_no_throw(elem_type_name);
+            if (!elem_type) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected(fmt::format("known element type (got '{}')", elem_type_name))
+                    .got("unknown type");
+            }
+
+            // Array size (integer literal).
+            auto after_elem = after_marker.as_pair()->cdr;
+            if (!after_elem.is_pair()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("array size after element type")
+                    .got("end of form");
+            }
+            const auto &size_obj = after_elem.as_pair()->car;
+            if (!size_obj.is_integer()) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("integer literal as array size")
+                    .got(size_obj.print());
+            }
+            const i64 size_val = size_obj.as_integer();
+            if (size_val <= 0 || size_val > 0xFFFF) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected("array size in range 1..65535")
+                    .got(std::to_string(size_val));
+            }
+            const u32 array_size = static_cast<u32>(size_val);
+
+            auto new_node = std::make_unique<NewNode>(TypeSpec(elem_type_name));
+            new_node->set_allocation(allocation);
+            new_node->set_inline_array(elem_type_name, array_size);
+            new_node->set_type(elem_type);
+
+            // Element initializers. May be fewer than array_size; the
+            // remaining elements stay zero.
+            auto after_size = after_elem.as_pair()->cdr;
+            u32  count = 0;
+            auto cur = after_size;
+            while (cur.is_pair()) {
+                auto elem_expr = build_expression(cur.as_pair()->car, node);
+                new_node->add_element(std::move(elem_expr));
+                ++count;
+                cur = cur.as_pair()->cdr;
+            }
+
+            if (count > array_size) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_new")
+                    .expected(fmt::format("at most {} element initializers", array_size))
+                    .got(std::to_string(count));
+            }
+
+            return new_node;
+        }
+
+        // =====================================================================
+        // Ordinary struct form
+        // =====================================================================
 
         Type *type = m_ts.lookup_type_no_throw(type_name);
         if (!type) {
@@ -1192,6 +1363,7 @@ namespace sootc {
         std::string name = form.as_symbol();
         Type       *type = nullptr;
         bool        is_heap = false;
+        Type       *elem_type = nullptr; // non-null if this names an inline array
 
         // 1. Local variable or parameter?
         if (auto *fn = node->function()) {
@@ -1205,8 +1377,14 @@ namespace sootc {
                     if (auto *data_decl = dynamic_cast<DataDeclarationNode *>(decl_node)) {
                         if (const NewNode *instance = data_decl->instance()) {
                             type = m_ts.lookup_type_no_throw(instance->type().base_type());
+
+                            // If the declaration was an inline array, remember
+                            // the element type. AtNode uses it.
+                            if (instance->is_inline_array()) {
+                                elem_type = m_ts.lookup_type_no_throw(instance->elem_type_name());
+                            }
                         }
-                        is_heap = data_decl->is_heap(); // ← NEW
+                        is_heap = data_decl->is_heap();
                     }
                     if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
@@ -1220,15 +1398,19 @@ namespace sootc {
                     if (auto *data_decl = dynamic_cast<DataDeclarationNode *>(decl_node)) {
                         if (const NewNode *instance = data_decl->instance()) {
                             type = m_ts.lookup_type_no_throw(instance->type().base_type());
+
+                            if (instance->is_inline_array()) {
+                                elem_type = m_ts.lookup_type_no_throw(instance->elem_type_name());
+                            }
                         }
-                        is_heap = data_decl->is_heap(); // ← NEW
+                        is_heap = data_decl->is_heap();
                     }
                     if (!type) { type = m_ts.lookup_type_no_throw("object"); }
                 }
             }
         }
 
-        return std::make_unique<VariableNode>(name, type, is_heap);
+        return std::make_unique<VariableNode>(name, type, is_heap, elem_type);
     }
 
     // ============================================================================

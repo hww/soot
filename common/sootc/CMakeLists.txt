@@ -15,7 +15,8 @@ add_library(libsootc
     common/sootc/node/CastNode.cpp
     common/sootc/node/UnaryNode.cpp
     common/sootc/node/StoreGlobalNode.cpp
-    
+    common/sootc/node/AtNode.cpp
+
     common/sootc/runtime/LocalVmRuntime.cpp
     common/sootc/runtime/RemoteRuntime.cpp
 
