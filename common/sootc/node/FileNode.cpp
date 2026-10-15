@@ -434,12 +434,15 @@ namespace sootc {
                     break;
 
                 case ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic: {
+                    // Try to resolve the target name to a file offset
+                    // in this entry table. If the name is not present,
+                    // the pointer is a cross-module reference: the
+                    // compiler already created a StoreFieldNode to
+                    // write it at runtime, and the slot stays 0 here.
                     auto it = entry_offsets.find(slot.target_name);
                     if (it == entry_offsets.end()) {
-                        throw std::runtime_error(
-                            fmt::format("FileNode::make_binary: named pointer target '{}' "
-                                        "not found in this file's entry table",
-                                        slot.target_name));
+                        absolute = 0;
+                        break;
                     }
                     absolute = it->second;
                     break;

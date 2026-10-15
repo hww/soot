@@ -24,6 +24,7 @@
 #include "sootc/node/HeapDefineNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
+#include "sootc/node/StaticDefineNode.hpp"
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
 #include "sootc/runtime/RemoteRuntime.hpp"
@@ -523,7 +524,16 @@ namespace sootc {
             while (current.is_pair()) {
                 auto node = builder.build(current.as_pair()->car, file_node);
                 if (node) {
-                    if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
+                    if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
+                        // Static declaration with deferred pointer fields.
+                        //
+                        //   decl   -> m_children (survives input boundaries)
+                        //   stores -> top_level_body (run once each)
+                        file_node->add_child(sd->take_decl());
+                        for (auto &store : sd->take_stores()) {
+                            top_level_body->add(std::move(store));
+                        }
+                    } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
                         // Two children, two destinations:
                         //   decl  -> m_children (survives input boundaries)
                         //   store -> top_level_body (runs once)

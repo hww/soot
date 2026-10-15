@@ -9,6 +9,7 @@
 #include "sootc/node/FunctionNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/StoreGlobalNode.hpp"
+#include "sootc/node/StaticDefineNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/HeapDefineNode.hpp"
 #include "sootc/node/AtNode.hpp"
@@ -1768,6 +1769,7 @@ namespace sootc {
                 value_node.release();
                 std::unique_ptr<NewNode> new_node_uptr(new_node);
                 std::shared_ptr<NewNode> shared_new = std::move(new_node_uptr);
+
                 auto decl = std::make_unique<DataDeclarationNode>(name, shared_new, exported,
                                                                   /*heap=*/false);
 
@@ -1776,7 +1778,176 @@ namespace sootc {
                     file->bind(name, decl.get());
                 }
                 if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
-                return decl;
+
+                // ---- StoreFieldNode companions ----
+                //
+                // For every pointer field of the constructed type whose
+                // initializer is NOT a compile-time constant, create a
+                // StoreFieldNode that writes the real value at runtime.
+                //
+                // DataDeclarationNode::generate leaves such fields at 0 in
+                // the payload (it does not know what to write). The
+                // StoreFieldNode, placed in the top-level body by
+                // compile_internal, fills them in.
+                //
+                // "Compile-time constant" here means:
+                //   * a static NewNode     — an anonymous blob, handled by
+                //                            write_value via the BlobPool.
+                //   * a VariableNode whose name is already known in this
+                //                            file — handled by write_value
+                //                            via a NamedStatic slot.
+                //
+                // Everything else (heap NewNode, cross-module VariableNode,
+                // …) is deferred to runtime.
+                std::vector<std::unique_ptr<StoreFieldNode>> stores;
+
+                if (Type *type = m_ts.lookup_type_no_throw(new_node->type().base_type())) {
+                    if (auto *st = dynamic_cast<StructureType *>(type)) {
+                        for (const auto &field : st->fields()) {
+                            // Only pointer fields are candidates.
+                            if (field.is_inline()) { continue; }
+                            Type *field_type = m_ts.lookup_type_no_throw(field.type().base_type());
+                            if (!field_type || !field_type->is_reference()) { continue; }
+
+                            // Find the init expression for this field.
+                            const NewNode::FieldInit *init = nullptr;
+                            for (const auto &fi : new_node->fields()) {
+                                if (fi.name == field.name()) {
+                                    init = &fi;
+                                    break;
+                                }
+                            }
+                            if (!init || !init->value) { continue; }
+
+                            // Case 1: (new 'static X ...) — compile-time anon
+                            // blob. write_value handles it.
+                            if (auto *sub_new = dynamic_cast<NewNode *>(init->value.get())) {
+                                if (sub_new->is_static()) { continue; }
+                            }
+
+                            // Case 2: a VariableNode whose name is known in
+                            // this file — write_value produces a NamedStatic
+                            // slot, and make_binary resolves it to a file
+                            // offset. No runtime code needed.
+                            if (auto *var = dynamic_cast<VariableNode *>(init->value.get())) {
+                                if (auto *file = context->file()) {
+                                    if (file->lookup(var->name()) != nullptr) { continue; }
+                                }
+                            }
+
+                            // Everything else: leave the slot at 0 in the
+                            // payload, and write the real value at runtime.
+                            //
+                            // The value expression is cloned conceptually —
+                            // we cannot share ownership of the ExpressionNode
+                            // between the NewNode (which owns it in m_fields)
+                            // and the StoreFieldNode. So we rebuild it here
+                            // from the same source form. For the two cases
+                            // that actually reach this point (heap NewNode
+                            // and cross-module VariableNode) we can just
+                            // build a fresh expression from the original
+                            // init node by asking the builder to compile it
+                            // again.
+                            //
+                            // The simplest way is to remember the source
+                            // form alongside the compiled node. We do that
+                            // by walking the source form's field list in
+                            // parallel; see below.
+                            (void)field_type;
+                            // Placeholder — filled by the loop below.
+                            stores.push_back(nullptr);
+                        }
+                    }
+                }
+
+                // If there were any non-constant pointer fields, we need to
+                // build StoreFieldNodes. The form of each is:
+                //
+                //     StoreFieldNode(name, field.offset, value_expr)
+                //
+                // where value_expr is a fresh ExpressionNode built from the
+                // source of that field's init. We do this by walking the
+                // original value_form's fields again, in the same order,
+                // and building each one through the builder.
+                //
+                // Because we cannot easily re-derive which source form
+                // corresponds to which field here, we take a simpler route:
+                // we walk the source form's keyword list, and for each
+                // keyword whose field is a non-inline reference with a
+                // non-constant init, we compile that init as an expression
+                // and add a StoreFieldNode.
+                //
+                // The common case is a single pointer field, so this is
+                // cheap; even with many fields it is one extra compile per
+                // deferred field.
+                stores.clear();
+
+                if (auto *st = dynamic_cast<StructureType *>(
+                        m_ts.lookup_type_no_throw(new_node->type().base_type()))) {
+
+                    // value_form for a static define is always
+                    // (new 'static Type :field init ...). Walk its keyword
+                    // arguments in order.
+                    auto vf = value_form;
+                    if (vf.is_pair()) { vf = vf.as_pair()->cdr; } // drop "new"
+                    if (vf.is_pair()) { vf = vf.as_pair()->cdr; } // drop 'static
+                    if (vf.is_pair()) { vf = vf.as_pair()->cdr; } // drop Type
+
+                    auto cur = vf;
+                    while (cur.is_pair() && cur.as_pair()->car.is_keyword()) {
+                        const auto &kw = cur.as_pair()->car;
+                        std::string fname = kw.as_symbol().name_ptr;
+                        if (!fname.empty() && fname[0] == ':') { fname = fname.substr(1); }
+
+                        cur = cur.as_pair()->cdr;
+                        if (!cur.is_pair()) { break; }
+                        const auto init_form = cur.as_pair()->car;
+                        cur = cur.as_pair()->cdr;
+
+                        // Look up the field.
+                        const Field *fld = nullptr;
+                        for (const auto &f : st->fields()) {
+                            if (f.name() == fname) {
+                                fld = &f;
+                                break;
+                            }
+                        }
+                        if (!fld) { continue; }
+                        if (fld->is_inline()) { continue; }
+
+                        Type *ft = m_ts.lookup_type_no_throw(fld->type().base_type());
+                        if (!ft || !ft->is_reference()) { continue; }
+
+                        // Skip compile-time-resolvable values.
+                        if (init_form.is_pair() && init_form.as_pair()->car.is_symbol() &&
+                            init_form.as_pair()->car.as_symbol() == "new") {
+                            // (new 'static X ...) → blob pool.
+                            // (new 'heap|global X ...) → runtime.
+                            auto after_new = init_form.as_pair()->cdr;
+                            if (after_new.is_pair()) {
+                                const auto &alloc = after_new.as_pair()->car;
+                                if (alloc.is_symbol() && alloc.as_symbol() == "static") {
+                                    continue; // handled by write_value
+                                }
+                            }
+                        } else if (init_form.is_symbol()) {
+                            if (auto *file = context->file()) {
+                                if (file->lookup(init_form.as_symbol()) != nullptr) {
+                                    continue; // NamedStatic, handled by write_value
+                                }
+                            }
+                        }
+
+                        // Deferred: build the value expression and the store.
+                        auto value_expr = build_expression(init_form, context);
+                        stores.push_back(std::make_unique<StoreFieldNode>(
+                            name, static_cast<u32>(fld->offset()), std::move(value_expr)));
+                    }
+                }
+
+                if (stores.empty()) { return decl; }
+
+                return std::make_unique<StaticDefineNode>(std::move(decl), std::move(stores));
             }
 
             // ---- Non-static: heap ----

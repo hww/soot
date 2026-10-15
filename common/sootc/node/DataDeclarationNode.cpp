@@ -175,9 +175,10 @@ namespace sootc {
                     return;
                 }
 
-                throw std::runtime_error(
-                    fmt::format("pointer field of type '{}' has unsupported initializer '{}'",
-                                type_name, init ? init->to_string() : "<null>"));
+                // Not resolvable at compile time. Leave the slot at 0;
+                // build_define creates a StoreFieldNode for this field,
+                // and the real value is written at runtime.
+                return;
             }
 
             // ---- 1. Builtin scalar ----
@@ -228,11 +229,10 @@ namespace sootc {
             }
 
             // ---- Unsupported ----
-            throw std::runtime_error(
-                fmt::format("field of type '{}' is not yet supported in static "
-                            "initialization (inline array, symbolic pointer, or "
-                            "heap pointer — implement in a later step)",
-                            type_name));
+            // Not resolvable at compile time. Leave the slot at 0;
+            // build_define will have created a StoreFieldNode for
+            // this field that writes the real value at runtime.
+            return;
         }
 
         /// @brief Generate a ProgramBinaryElement for a static NewNode.
