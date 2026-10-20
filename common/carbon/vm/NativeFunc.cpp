@@ -1,10 +1,12 @@
 ﻿
 #include "carbon/vm/NativeFunc.hpp"
+#include "carbon/vm/NativeProcess.hpp"
 #include "CommonTypes.hpp"
 #include "util/Log.hpp"
 #include "lib/StringId.hpp"
-#include "fmt/args.h"        // ← ДОБАВЬ ЭТУ СТРОКУ
-#include "fmt/format.h"      // ← если ещё нет
+#include "fmt/format.h"       // fmt::format, fmt::vformat, fmt::dynamic_format_arg_store
+#include "fmt/args.h"         // fmt::dynamic_format_arg_store (в некоторых версиях fmt)
+#include "fmt/core.h"         // базовые функции fmt (fmt::print)     
 #include <iostream>
 
 namespace carbon {
@@ -44,18 +46,20 @@ namespace carbon {
     // ============================================================================
     // Built-in Native Functions
     // ============================================================================
-    Variant native_print(u32 argc, const Variant *argv) {
-        if (argc == 0) { return Variant(true); }
+    // ---- Общая функция для форматирования аргументов ----
+    static std::string format_impl(u32 argc, const Variant *argv, const char *func_name) {
+        if (argc == 0) { return std::string(); }
 
         // ---- argv[0] — format string ----
         if (!argv[0].is_ptr()) {
             // Если первый аргумент не строка — печатаем всё как есть
             // (чтобы не падать на (print 42)).
+            std::string result;
             for (u32 i = 0; i < argc; ++i) {
-                if (i > 0) fmt::print(" ");
-                fmt::print("{}", argv[i]);
+                if (i > 0) result += " ";
+                result += fmt::format("{}", argv[i]);
             }
-            return Variant(true);
+            return result;
         }
 
         const char *fmt_str = static_cast<const char *>(argv[0].get_ptr());
@@ -81,22 +85,31 @@ namespace carbon {
             }
         }
 
-        // ---- Один вызов fmt::vprint — печатает всё скопом ----
+        // ---- Один вызов fmt::vformat — формирует строку целиком ----
         try {
-            fmt::vprint(fmt_str, store);
+            return fmt::vformat(fmt_str, store);
         } catch (const fmt::format_error &e) {
-            // Если формат сломан — печатаем как есть + сообщение.
-            fmt::print(stderr, "[print format error: {}]\n", e.what());
-            fmt::print("{}", fmt_str);
+            // Если формат сломан — бросаем исключение с сообщением.
+            throw std::runtime_error(fmt::format("[{}] format string `{}` contains error: {}\n",
+                                                     func_name, fmt_str, e.what()));
         }
+    }
 
+    // ---- native_print: использует format_impl и печатает результат ----
+    Variant native_print(u32 argc, const Variant *argv) {
+        fmt::print("{}", format_impl(argc, argv, "print"));
         return Variant(true);
     }
 
+    // ---- native_println: печатает результат + перевод строки ----
     Variant native_println(u32 argc, const Variant *argv) {
-        native_print(argc, argv);
-        fmt::print("\n");
+        fmt::print("{}\n", format_impl(argc, argv, "println"));
         return Variant(true);
+    }
+
+    // ---- native_format: возвращает отформатированную строку ----
+    Variant native_format(u32 argc, const Variant *argv) {
+        return Variant(format_impl(argc, argv, "format"));
     }
 
     // ============================================================================
@@ -105,10 +118,13 @@ namespace carbon {
 
     void NativeFunctionRegistry::initialize_builtins() {
         // Basic I/O
-        register_function("_print", native_print);
-        register_function("_println", native_println);
+        register_function("print", native_print);
+        register_function("println", native_println);
+        register_function("format", native_println);
 
-     
+        // Process control
+        initialize_process_natives();
+
         lg::info("Initialized {} built-in native functions", functions_.size());
     }
 

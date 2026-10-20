@@ -51,7 +51,7 @@ namespace carbon {
     Process::~Process() {
         lg::debug("Process destroyed: pid={}, name='{}'", pid, get_name_string());
 
-        disconnect_all();
+        // disconnect_all();
 
         // Очищаем стек фреймов
         while (stack_frame_top) {
@@ -102,72 +102,29 @@ namespace carbon {
         return go_state(new_state);
     }
 
-    bool Process::go_state(SsState* new_state) {
-
-        // Проверить что состояние валидное
+    bool Process::go_state(SsState *new_state) {
         if (!new_state) {
-            lg::error("Process '{}': state not found (nullptr)",
-                get_name_string());
+            lg::error("Process '{}': go_state(null)", get_name_string());
             return false;
         }
-        
-        // Проверяем возможность перехода
+
         if (new_state->is_virtual() && !new_state->is_override()) {
-            lg::error("Process '{}': cannot activate virtual state '{}'",
-                get_name_string(), new_state != nullptr ? new_state->name() : "null");
+            lg::error("Process '{}': cannot activate virtual state '{}'", get_name_string(),
+                      new_state->name());
             return false;
         }
 
-        auto &vm = *Carbon::current()->vm();
+        // If the process is not currently running, run the transition
+        // immediately. If it is running, defer it to the next quantum,
+        // so we do not tear down the current state in the middle of its
+        // own code.
+        if (status == ProcessStatus::RUNNING) {
+            next_state = new_state;
+            add_mask(ProcessMask::GOING);
+            return true;
+        }
 
-        // Если уже есть текущее состояние, нужно выйти из него
-        if (current_state) {
-            // Exit текущего состояния (через StateFrame)
-            if (current_state_frame) {
-                // Удаляем текущий StateFrame, что вызовет exit
-                pop_frame();  // StateFrame вызовет exit при разрушении
-                current_state_frame = nullptr;
-            }
-            
-            // Очищаем хуки текущего состояния
-            trans_hook = nullptr;
-            post_hook = nullptr;
-        }
-        
-        // Устанавливаем новое состояние
-        current_state = new_state;
-        
-        // Копируем делегаты из SsState в процесс (как в SOOT)
-        trans_hook = new_state->get_trans_function();
-        post_hook = new_state->get_post_function();
-        
-        // Создаём новый StateFrame (будет вызывать exit при выходе)
-        current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
-        push_frame(current_state_frame);
-        
-        // Выполняем enter-обработчик нового состояния
-        auto enter = new_state->get_enter_function();
-        if (enter) {
-            // Создаём временный фрейм для enter
-            auto enter_frame = std::make_shared<StackFrame>(
-                enter,
-                nullptr,
-                StackFrame::FrameType::GENERIC,
-                StringId("state_enter")
-            );
-            
-            auto saved_top_thread = top_thread;
-            top_thread = enter_frame;
-            vm.execute(enter_frame);
-            top_thread = saved_top_thread;
-            
-            enter_frame.reset();
-        }
-        
-        lg::debug("Process '{}': transitioned to state '{}'",
-            get_name_string(), new_state != nullptr ? new_state->name() : "null");
-        
-        return true;
+        return execute_deferred_transition(new_state);
     }
 
     // ============================================================================
@@ -253,6 +210,7 @@ namespace carbon {
         event_frame->set_argument(1, Variant(argc));
         event_frame->set_argument(2, Variant(event));
         event_frame->set_argument(3, Variant(message));
+        event_frame->argc = 4;
 
         auto result = vm.execute(event_frame);
         
@@ -356,21 +314,21 @@ namespace carbon {
     // ============================================================================
 
     bool Process::execute_quantum() {
-        if (!is_runnable()) {
-            return false;
-        }
+        if (!is_runnable()) { return false; }
 
         auto &vm = *Carbon::current()->vm();
 
+        // 1. Apply any deferred state transition first.
         if (has_pending_transition()) {
             if (!execute_deferred_transition(next_state)) {
-                lg::error("Process '{}': failed to execute deferred transition", get_name_string());
+                lg::error("Process '{}': deferred transition failed", get_name_string());
                 return false;
             }
             next_state = nullptr;
             remove_mask(ProcessMask::GOING);
         }
 
+        // 2. SLEEP_CODE: only run trans/post, not main code.
         if (has_mask(ProcessMask::SLEEP_CODE)) {
             execute_trans_handler(vm);
             execute_post_handler(vm);
@@ -379,25 +337,30 @@ namespace carbon {
 
         status = ProcessStatus::RUNNING;
 
-        // 1. Execute trans handler
+        // 3. trans handler (the state's Update block).
         execute_trans_handler(vm);
 
-        // 2. Execute main code
+        // 4. main code. This is where a native may call Suspend() or
+        //    RequestYield(): the VM stops after the native returns,
+        //    leaving current_frame pointing at the suspended position.
         if (main_thread && main_thread->byte_code) {
-            top_thread = main_thread;
-
-            auto result = vm.execute(main_thread);
-            
-            if (vm.is_suspended) {  // Исправлено пустое условие
-                status = ProcessStatus::SUSPENDED;
-            }
+            vm.current_frame = main_thread;
+            vm.execute(RunMode::Run);
+            main_thread = vm.current_frame; // pick up where we left off
         }
 
-        // 3. Execute post handler
-        execute_post_handler(vm);  // Добавлен аргумент vm
+        // 5. post handler.
+        execute_post_handler(vm);
 
-        if (status == ProcessStatus::RUNNING) {
-            status = ProcessStatus::SUSPENDED;
+        // 6. Decide the next status.
+        if (should_yield) {
+            // A native asked for a yield or suspend. Suspend() already
+            // set status; RequestYield() did not.
+            if (status == ProcessStatus::RUNNING) { status = ProcessStatus::READY; }
+            should_yield = false;
+        } else if (status == ProcessStatus::RUNNING) {
+            // Nothing parked us. The process will run again next tick.
+            status = ProcessStatus::READY;
         }
 
         return true;
@@ -598,52 +561,44 @@ namespace carbon {
         return true;
     }
 
-    bool Process::execute_deferred_transition(SsState* new_state) {
+    bool Process::execute_deferred_transition(SsState *new_state) {
+        if (!new_state) return false;
+
         auto &vm = *Carbon::current()->vm();
-        
-        // Удаляем текущий StateFrame (вызовет exit-обработчик)
-        if (current_state_frame) {
-            // Ищем StateFrame в стеке
-            auto frame = stack_frame_top;
-            while (frame && frame != current_state_frame) {
-                frame = frame->parent;
-            }
 
-            if (frame == current_state_frame) {
-                pop_frame(); // Вызовет exit-обработчик
-            }
-
-            current_state_frame = nullptr;
+        // 1. Pop every frame that belongs to the old state.
+        //
+        //    StateFrame::exit() (called by pop_frame) runs the old
+        //    state's on-exit handler.
+        while (stack_frame_top && stack_frame_top->frame_type == StackFrame::FrameType::STATE) {
+            pop_frame();
         }
 
-        // Обновляем текущее состояние
-        SsState* old_state = current_state;
+        // 2. Switch state and hooks.
+        SsState *old_state = current_state;
         current_state = new_state;
-        
-        // Копируем делегаты из SsState в процесс
         trans_hook = new_state->get_trans_function();
         post_hook = new_state->get_post_function();
 
-        // Создаем новый StateFrame
+        // 3. Push the new StateFrame.
         current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
         push_frame(current_state_frame);
 
-        // Выполняем enter-обработчик нового состояния
-        auto enter = new_state->get_enter_function();
-        if (enter) {
-            execute_enter_handler(vm, enter);
+        // 4. Run the on-enter handler.
+        if (auto *enter = new_state->get_enter_function()) { execute_enter_handler(vm, enter); }
+
+        // 5. Rebuild main_thread from the new state's code block.
+        if (auto *code = new_state->get_code_function()) {
+            main_thread = std::make_shared<StackFrame>(
+                code, nullptr, StackFrame::FrameType::GENERIC, StringIds::code);
+            top_thread = main_thread;
+        } else {
+            main_thread.reset();
+            top_thread.reset();
         }
 
-        // Обновляем главный поток если нужно
-        if (main_thread && new_state->get_code_function()) {
-            // Обновляем байткод главного потока
-            main_thread->byte_code = new_state->get_code_function();
-        }
-
-        lg::debug("Process '{}': transitioned from '{}' to '{}'",
-            get_name_string(),
-            old_state ? old_state->name() : "null",
-            new_state->name());
+        lg::debug("Process '{}': '{}' -> '{}'", get_name_string(),
+                  old_state ? old_state->name() : "null", new_state->name());
 
         return true;
     }

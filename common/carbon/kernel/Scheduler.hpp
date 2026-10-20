@@ -1,277 +1,126 @@
 ﻿#pragma once
 
-/**
- * @file Scheduler.hpp
- * @brief Планировщик процессов - управление древовидной структурой процессов
- * @ingroup kernel
- */
-
+#include "CommonTypes.hpp"
 #include "carbon/ForwardDeclarations.hpp"
-#include "carbon/kernel/Types.hpp"
 #include "carbon/kernel/Process.hpp"
-#include <vector>
+
+#include <deque>
 #include <memory>
 #include <unordered_map>
-#include <functional>
+#include <vector>
 
 namespace carbon {
+    
+    class Carbon;
 
-    /**
-     * @class Scheduler
-     * @brief Планировщик процессов - отвечает за организацию дерева процессов
-     *
-     * Управляет:
-     * - Древовидной структурой процессов (родитель-потомок)
-     * - Поиском процессов по различным критериям
-     * - Статистикой выполнения процессов
-     * - Очисткой завершенных процессов
-     *
-     * @note Не содержит глобального состояния выполнения
-     * @note Работает только с организацией структуры, не с выполнением
-     *
-     * @see Process, Kernel
-     *
-     * @code
-     * // Пример использования:
-     * Scheduler scheduler;
-     * auto* proc = scheduler.create_process(SID("child"));
-     * scheduler.add_to_tree(proc, parent);
-     * scheduler.iterate_tree(root, [](Process* p) {
-     *     // Обработка каждого процесса
-     *     return true;
-     * });
-     * @endcode
-     */
+    /// @brief Round-robin scheduler for Process instances.
+    ///
+    /// Owns every Process object. A process is created by spawn(),
+    /// advanced by tick(), and destroyed by kill() (or by returning
+    /// from its entry function).
+    ///
+    /// The scheduler keeps three lists:
+    ///   - m_ready      : processes ready to run this tick
+    ///   - m_suspended  : processes waiting for an external wake-up
+    ///                    (animation end, timer, event, ...)
+    ///   - m_all        : every live process, for lookup and shutdown
+    ///
+    /// A suspended process is NOT in m_ready. When something calls
+    /// Process::WakeUp() (or resume(pid)), the scheduler moves it
+    /// back into m_ready at the next tick.
     class Scheduler {
     public:
+        explicit Scheduler(Carbon *carbon);
+        ~Scheduler();
 
-        // ============================================================================
-        // Constructor & Destructor
-        // ============================================================================
+        Scheduler(const Scheduler &) = delete;
+        Scheduler &operator=(const Scheduler &) = delete;
 
-        /**
-         * @brief Конструктор планировщика
-         *
-         * Создает корневой процесс с именем "root" и устанавливает
-         * ему маску PROCESS_TREE.
-         */
-        Scheduler();
+        // -------------------------------------------------------------------
+        // Lifecycle
+        // -------------------------------------------------------------------
 
-        /// Деструктор по умолчанию
-        ~Scheduler() = default;
+        /// @brief Create a process that starts executing `entry`.
+        ///
+        /// Looks up `entry` in Carbon's Globals, resolves the initial
+        /// state, creates a Process, pushes a StateFrame for it, runs
+        /// the on-enter handler, and queues the process for the next
+        /// tick.
+        ///
+        /// @return pid on success, 0 on failure.
+        u64 spawn(const std::string &entry, const std::vector<Variant> &args = {});
 
-        // ============================================================================
-        // Tree Structure Management
-        // ============================================================================
+        /// @brief Kill a process and all its children.
+        ///
+        /// Runs the exit handler of the current state, tears down the
+        /// process tree, and removes the process from every scheduler
+        /// list.
+        void kill(u64 pid);
 
-        Process* root = nullptr; ///< Корневой узел дерева процессов
+        /// @brief Advance every ready process by one quantum.
+        ///
+        /// One call == one "frame". Processes that yield go back to
+        /// ready; processes that suspend go to suspended; processes
+        /// that finish are removed.
+        void tick();
 
-        /**
-         * @brief Создать новый процесс
-         * @param name Имя процесса
-         * @return Указатель на созданный процесс или nullptr при ошибке
-         *
-         * Генерирует уникальный PID и регистрирует процесс во внутренних
-         * структурах для быстрого поиска.
-         *
-         * @post Процесс добавлен в all_processes_
-         * @post Процесс зарегистрирован в pid_to_process_ и name_to_process_
-         */
-        Process* create_process(StringId name);
+        // -------------------------------------------------------------------
+        // Wake-up
+        // -------------------------------------------------------------------
 
-        /**
-         * @brief Добавить процесс в дерево
-         * @param process Процесс для добавления
-         * @param parent Родительский процесс
-         *
-         * Добавляет процесс как первого ребенка родителя (LIFO порядок).
-         * Если процесс уже был в другом месте дерева, он сначала удаляется оттуда.
-         *
-         * @pre process и parent не nullptr
-         * @post process->parent = parent
-         * @post process добавлен в начало списка детей parent
-         */
-        void add_to_tree(Process* process, Process* parent);
+        /// @brief Move a suspended process back to the ready queue.
+        /// @return true if the process was found and was suspended.
+        bool resume(u64 pid);
 
-        /**
-         * @brief Удалить процесс из дерева
-         * @param process Процесс для удаления
-         *
-         * Удаляет процесс из дерева и освобождает связанные с ним ресурсы.
-         * Корневой процесс не может быть удален.
-         *
-         * @note Для корневого процесса удаляется только из дерева, но не из памяти
-         */
-        void remove_from_tree(Process* process);
+        /// @brief Wake every suspended process whose sleep timer has
+        ///        expired. Called automatically at the start of tick().
+        void tick_sleepers();
 
-        /**
-         * @brief Переместить процесс к новому родителю
-         * @param process Перемещаемый процесс
-         * @param new_parent Новый родительский процесс
-         *
-         * Изменяет родителя процесса в дереве. Процесс сначала удаляется
-         * из текущего положения, затем добавляется к новому родителю.
-         *
-         * @pre process и new_parent не nullptr
-         * @pre process не является корневым процессом
-         */
-        void reparent_process(Process* process, Process* new_parent);
+        // -------------------------------------------------------------------
+        // Lookup
+        // -------------------------------------------------------------------
 
-        // ============================================================================
-        // Tree Traversal
-        // ============================================================================
+        [[nodiscard]] Process    *find(u64 pid) const noexcept;
+        [[nodiscard]] bool        empty() const noexcept;
+        [[nodiscard]] std::size_t live_count() const noexcept { return m_all.size(); }
 
-        /// Тип функции-посетителя для обхода дерева
-        using TreeVisitor = std::function<bool(Process*)>;
+        // -------------------------------------------------------------------
+        // Diagnostics
+        // -------------------------------------------------------------------
 
-        /**
-         * @brief Рекурсивный обход дерева процессов
-         * @param node Начальный узел для обхода
-         * @param visitor Функция-посетитель для применения к каждому процессу
-         * @return true если обход завершен полностью, false если прерван
-         *
-         * Обходит дерево в глубину. Для каждого узла вызывает visitor(node).
-         * Если visitor возвращает false, обход прерывается.
-         *
-         * @note Безопасен к изменению дерева во время обхода
-         * @note Сохраняет указатели на следующих братьев перед рекурсией
-         *
-         * @code
-         * // Пример: поиск процесса по имени
-         * Process* found = nullptr;
-         * scheduler.iterate_tree(root, [&](Process* p) {
-         *     if (p->name == target_name) {
-         *         found = p;
-         *         return false; // Прервать обход
-         *     }
-         *     return true; // Продолжить обход
-         * });
-         * @endcode
-         */
-        bool iterate_tree(Process* node, TreeVisitor visitor) const;
-
-        // ============================================================================
-        // Process Search
-        // ============================================================================
-
-        /**
-         * @brief Найти процесс по PID
-         * @param pid Идентификатор процесса
-         * @return Указатель на процесс или nullptr если не найден
-         *
-         * Использует хэш-таблицу для быстрого поиска O(1).
-         */
-        Process* find_process_by_pid(u32 pid) const;
-
-        /**
-         * @brief Найти процесс по имени
-         * @param name Имя процесса
-         * @return Указатель на процесс или nullptr если не найден
-         *
-         * Использует хэш-таблицу для быстрого поиска O(1).
-         */
-        Process* find_process_by_name(StringId name) const;
-
-        /// Тип предиката для поиска процессов
-        using ProcessPredicate = std::function<bool(const Process*)>;
-
-        /**
-         * @brief Найти первый процесс удовлетворяющий условию
-         * @param predicate Функция-предикат для фильтрации
-         * @return Указатель на процесс или nullptr если не найден
-         *
-         * Линейный поиск по всем процессам. predicate вызывается для
-         * каждого процесса до первого совпадения.
-         */
-        Process* find_process_if(ProcessPredicate predicate) const;
-
-        // ============================================================================
-        // Statistics
-        // ============================================================================
-
-        /// Получить общее количество процессов
-        u32 get_process_count() const { return all_processes_.size(); }
-
-        /// Получить количество активных процессов (не DEAD)
-        u32 get_active_count() const;
-
-        /// Получить количество приостановленных процессов
-        u32 get_suspended_count() const;
-
-        /// Получить количество мертвых процессов
-        u32 get_dead_count() const;
-
-        // ============================================================================
-        // Cleanup Methods
-        // ============================================================================
-
-        /**
-         * @brief Очистить все процессы (кроме корневого)
-         *
-         * Удаляет все процессы из системы, оставляя только корневой.
-         * Используется при завершении работы ядра.
-         */
-        void cleanup_all_processes();
-
-        /**
-         * @brief Получить процессы
-         */
-        [[nodiscard]] const std::vector<std::unique_ptr<Process>> &
-        get_all_process() const noexcept {
-            return all_processes_;
-        }
-
-        // ============================================================================
-        // Utility Methods
-        // ============================================================================
-
-        /**
-         * @brief Получить строковое представление планировщика
-         * @return Строка с отладочной информацией
-         */
-        std::string to_string() const;
-
-        /**
-         * @brief Вывести отладочную информацию о дереве процессов в лог
-         *
-         * Выводит:
-         * - Общую статистику процессов
-         * - Древовидную структуру с отступами
-         * - PID и статус каждого процесса
-         */
-        void dump_tree_info() const;
+        void dump() const;
 
     private:
-        // ============================================================================
-        // Member Variables
-        // ============================================================================
+        // -------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------
 
-        std::vector<std::unique_ptr<Process>> all_processes_; ///< Все процессы управляемые планировщиком
-        std::unordered_map<u32, Process*> pid_to_process_;    ///< Быстрый поиск по PID
-        std::unordered_map<StringId, Process*> name_to_process_; ///< Быстрый поиск по имени
+        /// @brief Resolve a StateScript* from a logical entry name.
+        /// @return nullptr if the name is not registered in Globals, or
+        ///         if the entry is not a StateScript.
+        StateScript *resolve_entry(const std::string &entry) const;
 
+        /// @brief Remove a process from every scheduler list (does not
+        ///        delete it; m_all owns it).
+        void detach(Process *p);
 
-        // ============================================================================
-        // Helper Methods
-        // ============================================================================
+        /// @brief Recursively kill a process and its children.
+        void kill_recursive(Process *p);
 
+        // -------------------------------------------------------------------
+        // State
+        // -------------------------------------------------------------------
 
-        /**
-         * @brief Очистить мертвые процессы
-         *
-         * Удаляет процессы в состоянии DEAD (кроме корневого) из всех
-         * внутренних структур и освобождает память.
-         */
-        void cleanup_dead_processes();
+        Carbon *m_carbon = nullptr;
 
-        /**
-         * @brief Внутренняя реализация удаления из дерева
-         * @param process Процесс для удаления
-         *
-         * Удаляет процесс из списка детей его родителя, но не освобождает память.
-         * Используется для реструктуризации дерева.
-         */
-        void remove_from_tree_internal(Process* process);
+        std::deque<Process *>                 m_ready;     ///< round-robin queue
+        std::vector<Process *>                m_suspended; ///< waiting for wake-up
+        std::vector<std::unique_ptr<Process>> m_all;       ///< owner of every process
+        std::unordered_map<u64, Process *>    m_by_pid;    ///< pid -> Process*
+
+        Process *m_current = nullptr; ///< process currently executing (if any)
+
+        u64 m_next_pid = 1; ///< pid generator
     };
 
 } // namespace carbon

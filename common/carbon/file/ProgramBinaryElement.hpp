@@ -86,6 +86,50 @@ namespace carbon {
             other.m_bitOffset = 0;
         }
 
+                template <typename PtrSlotT>
+        void verify_and_mark_ptr_if_nonnull(size_t base_offset, const PtrSlotT &slot) {
+            const size_t field_offset = base_offset + slot.offset;
+            const size_t field_size = slot.size;
+
+            if (field_size != 8) {
+                throw std::runtime_error(fmt::format(
+                    "[ProgramBinaryElement] pointer field at byte offset {} has size {} "
+                    "bytes; expected 8. Only 8-byte pointers can be relocated.",
+                    field_offset, field_size));
+            }
+
+            if (field_offset % 8 != 0) {
+                throw std::runtime_error(
+                    fmt::format("[ProgramBinaryElement] pointer field at byte offset {} is not "
+                                "8-byte aligned; a relocation bit cannot describe it.",
+                                field_offset));
+            }
+
+            if (field_offset + field_size > m_rawData.size()) {
+                throw std::runtime_error(
+                    fmt::format("[ProgramBinaryElement] pointer field at byte offset {} (size {}) "
+                                "extends past the payload end ({}).",
+                                field_offset, field_size, m_rawData.size()));
+            }
+
+            // Read the just-written pointer value. If it is nullptr, do NOT
+            // mark the slot as relocatable: the loader would turn 0 into
+            // m_bytes, which is a valid address (the header) but not a
+            // valid pointer to the pointee type. That is exactly the bug
+            // that made the StateScript inspector crash on SymbolArray2/3/4.
+            const auto *ptr_value =
+                reinterpret_cast<const void *const *>(m_rawData.data() + field_offset);
+            if (*ptr_value == nullptr) { return; }
+
+            const size_t slot_index = field_offset / 8;
+            if (slot_index >= m_relocTable.size()) {
+                throw std::runtime_error(
+                    fmt::format("[ProgramBinaryElement] internal error — slot index {} is out of "
+                                "range (relocTable has {} entries).",
+                                slot_index, m_relocTable.size()));
+            }
+            m_relocTable[slot_index] = true;
+        }
         // =====================================================================
         // Public API: append a value.
         // =====================================================================
@@ -122,11 +166,10 @@ namespace carbon {
             const std::byte *p = reinterpret_cast<const std::byte *>(std::addressof(data));
             m_rawData.insert(m_rawData.end(), p, p + sizeof(T));
 
-            // Довести m_relocTable ровно до (m_rawData.size() + 7) / 8.
             const size_t needed = (m_rawData.size() + 7) / 8;
             while (m_relocTable.size() < needed) { m_relocTable.push_back(false); }
 
-            (verify_and_mark_ptr(base_offset, slots), ...);
+            (verify_and_mark_ptr_if_nonnull(base_offset, slots), ...);
 
             check_size();
         }

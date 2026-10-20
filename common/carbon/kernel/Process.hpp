@@ -141,6 +141,47 @@ namespace carbon {
 
         static u32 next_pid_; ///< Счетчик для генерации PID
 
+        // ============================================================================
+        // Cooperative yield / sleep
+        // ============================================================================
+        //
+        // A native function calls RequestYield() (or Suspend()) to ask the
+        // VM to stop after the current instruction. The VM checks
+        // should_yield after every CallFf and, if set, exits execute()
+        // without running the next instruction. The frame is preserved
+        // in main_thread, so the next tick resumes exactly where the
+        // process left off.
+        //
+        // This is the Naughty Dog pattern: the native function returns
+        // normally, but the process is parked until something calls
+        // WakeUp() (or the sleep timer expires).
+
+        /// Set by Suspend()/sleep. Cleared by the VM after the check.
+        bool should_yield = false;
+
+        /// Frames remaining before the scheduler wakes the process up.
+        /// 0 means "not sleeping by timer"; >0 means "wake up in N ticks".
+        i64 sleep_frames = 0;
+
+        /// Ask the VM to stop after the current instruction, without
+        /// changing the process status. The scheduler will re-queue the
+        /// process on the next tick.
+        void RequestYield() { should_yield = true; }
+
+        /// Park the process. The scheduler will not tick it until
+        /// WakeUp() is called (or sleep_frames expires).
+        void Suspend() {
+            status = ProcessStatus::SUSPENDED;
+            should_yield = true;
+        }
+
+        /// Wake the process up. It goes back into the ready queue on
+        /// the next tick.
+        void WakeUp() {
+            if (status == ProcessStatus::SUSPENDED) { status = ProcessStatus::READY; }
+            sleep_frames = 0;
+        }
+
 
         // ============================================================================
         // Constructors & Destructor

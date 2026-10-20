@@ -93,6 +93,7 @@ void add_field(StructureType *structure, TypeSystem *ts, const script::Object &d
     int                     array_size = -1;
     bool                    is_inline = false;
     bool                    is_dynamic = false;
+    bool                    is_const = false;
     int                     offset_override = -1;
     int                     offset_assert = -1;
     double                  score = 0;
@@ -207,6 +208,13 @@ void add_field(StructureType *structure, TypeSystem *ts, const script::Object &d
                 rest = cdr(rest);
             } else if (opt_name == ":do-not-decompile") {
                 skip_in_decomp = true;
+            } else if (opt_name == ":const") {
+                if (!car(rest).is_symbol() || car(rest).as_symbol() != "#t") {
+                    throw std::runtime_error(
+                        fmt::format(":const must be followed by #t, got: {}", car(rest).print()));
+                }
+                is_const = true;
+                rest = cdr(rest);
             } else {
                 throw std::runtime_error("Invalid option in field specification: " + opt_name);
             }
@@ -232,7 +240,8 @@ void add_field(StructureType *structure, TypeSystem *ts, const script::Object &d
         // new unique field
         int actual_offset =
             ts->add_field_to_type(structure, name, type, is_inline, is_dynamic, array_size,
-                                  offset_override, skip_in_decomp, score, decomp_as_ts);
+                                  offset_override, skip_in_decomp, score, decomp_as_ts, is_const);
+
         if (offset_assert != -1 && actual_offset != offset_assert) {
             throw std::runtime_error(
                 "Field " + name + " was placed at " + std::to_string(actual_offset) +
@@ -323,7 +332,7 @@ StateHandler handler_keyword_to_kind(const std::string &name) {
     } else if (name == ":event") {
         return StateHandler::EVENT;
     } else if (name == ":trans") {
-        return StateHandler::TRANS;
+        return StateHandler::UPDATE;
     } else if (name == ":post") {
         return StateHandler::POST;
     } else {
@@ -505,57 +514,252 @@ void declare_state_methods(Type *type, TypeSystem *type_system, const script::Ob
         type_system->declare_method(type, method_name, docstring, false, function_typespec, false);
     });
 }
+// Parse a single track:
+//
+//   (name main-form... (frame N body) (frames (N body) ...))
+//
+// The main-form* are the main routine (one SsLambda each, counter = -1).
+// Each (frame N body) is a frame-bound SsLambda (counter = N).
+// Each (frames (N body) ...) expands to several such entries.
+//
+// The track is attached to the StateHandlerBody of the enclosing
+// handler. The state_name identifies which handler.
+void parse_track(Type *type, const std::string &state_name, const script::Object &track_form) {
+    if (!track_form.is_pair()) { throw std::runtime_error("track must be a list: (name body...)"); }
 
+    TrackInfo             track;
+    const script::Object &name_obj = car(&track_form);
+    if (name_obj.is_symbol()) {
+        track.name = name_obj.as_symbol().name_ptr;
+    } else if (name_obj.is_string()) {
+        track.name = name_obj.as_string()->data;
+    } else {
+        throw std::runtime_error(
+            fmt::format("track name must be a symbol or string, got: {}", name_obj.print()));
+    }
+
+    const script::Object *rest = &track_form.as_pair()->cdr;
+    while (rest->is_pair()) {
+        const script::Object &item = rest->as_pair()->car;
+
+        if (!item.is_pair()) {
+            track.steps.push_back(item);
+            rest = &rest->as_pair()->cdr;
+            continue;
+        }
+
+        const script::Object &head = item.as_pair()->car;
+        if (head.is_symbol() && head.as_symbol() == "frame") {
+            const script::Object *tail = &item.as_pair()->cdr;
+            if (tail->is_null() || !tail->as_pair()->car.is_integer()) {
+                throw std::runtime_error("(frame N body): N must be an integer");
+            }
+            const i64 N = tail->as_pair()->car.as_integer();
+            tail = &tail->as_pair()->cdr;
+            if (tail->is_null()) { throw std::runtime_error("(frame N body): missing body"); }
+            track.frame_forms.emplace_back(N, tail->as_pair()->car);
+            rest = &rest->as_pair()->cdr;
+        } else if (head.is_symbol() && head.as_symbol() == "frames") {
+            const script::Object *tail = &item.as_pair()->cdr;
+            while (tail->is_pair()) {
+                const script::Object &pair = tail->as_pair()->car;
+                if (!pair.is_pair()) {
+                    throw std::runtime_error("(frames ...): each entry must be (N body)");
+                }
+                const script::Object *ft = &pair.as_pair()->cdr;
+                if (ft->is_null() || !ft->as_pair()->car.is_integer()) {
+                    throw std::runtime_error("(frames (N body)): N must be an integer");
+                }
+                const i64 N = ft->as_pair()->car.as_integer();
+                ft = &ft->as_pair()->cdr;
+                if (ft->is_null()) { throw std::runtime_error("(frames (N body)): missing body"); }
+                track.frame_forms.emplace_back(N, ft->as_pair()->car);
+                tail = &tail->as_pair()->cdr;
+            }
+            rest = &rest->as_pair()->cdr;
+        } else {
+            track.steps.push_back(item);
+            rest = &rest->as_pair()->cdr;
+        }
+    }
+
+    // Attach the track to the first non-event handler of the state.
+    auto *handlers = type->state_handlers_ptr(state_name);
+    if (!handlers || handlers->empty()) {
+        throw std::runtime_error(fmt::format("track '{}' in state '{}': no handler to attach to",
+                                             track.name, state_name));
+    }
+
+    // Pick the first non-event handler.
+    StateHandlerBody *anchor = nullptr;
+    for (auto &h : *handlers) {
+        if (h.kind != StateHandler::EVENT) {
+            anchor = &h;
+            break;
+        }
+    }
+    if (!anchor) { anchor = &(*handlers)[0]; }
+    anchor->tracks.push_back(std::move(track));
+}
+// Parse a single state declaration.
+//
+// Two forms are accepted:
+//
+//   (name)                          -- no args, no handlers
+//   (name type1 type2 ...)          -- with argument types
+//   (name "docstring" type1 ...)    -- with docstring
+//
+// Handlers are declared inside the same form:
+//
+//   (name type1 ...
+//     :enter body
+//     :exit  body
+//     :trans body
+//     :post  body
+//     :code  body
+//     :event ((event-id body) (event-id body) ...))
+//
+// A body is any script::Object that the compiler can compile as a
+// function. It is NOT evaluated here: it is stored as an AST form and
+// compiled later, when the enclosing StateScriptNode generates the
+// .bin payload.
 void declare_state(Type *type, TypeSystem *type_system, const script::Object &def,
                    StructureDefResult &struct_def) {
     for_each_in_list(def, [&](const script::Object &_obj) {
         auto obj = &_obj;
-        if (obj->is_list()) {
-            // (name [(:event "docstring"...)] ,@args)
-            auto state_name = symbol_string(car(obj));
 
-            if (!cdr(obj)->is_null() && car(cdr(obj)).is_list()) {
-                obj = cdr(obj);
-                auto docstring_list = &car(obj);
-                auto elem = docstring_list;
-                while (!elem->is_null() && car(elem).is_symbol()) {
-                    const auto &handler = car(elem).as_symbol();
-                    const auto  handler_kind = handler_keyword_to_kind(handler.name_ptr);
+        // ---- State name ----
+        if (obj->is_symbol()) {
+            // (name) — no args, no handlers
+            auto     state_name = symbol_string(*obj);
+            TypeSpec state_typespec("state");
+            state_typespec.add_arg(TypeSpec(type->get_name()));
+            type->add_state(state_name, state_typespec);
+            return;
+        }
 
-                    // Get the docstring
-                    elem = cdr(elem);
-                    if (!car(elem).is_string()) {
-                        throw std::runtime_error("Missing a docstring for a state handler!");
-                    }
-                    DefinitionMetadata def_meta;
-                    // TODO - definition location info
-                    def_meta.docstring = car(elem).as_string()->data;
-                    struct_def.append_state_def(state_name, handler_kind, def_meta);
+        if (!obj->is_list()) {
+            throw std::runtime_error(
+                fmt::format("state declaration must be a symbol or a list, got: {}", obj->print()));
+        }
 
-                    elem = cdr(elem);
-                }
+        auto state_name = symbol_string(car(obj));
+        obj = cdr(obj);
+
+        // ---- Optional docstring ----
+        std::optional<std::string> docstring;
+        if (!obj->is_null() && car(obj).is_string()) {
+            docstring = car(obj).as_string()->data;
+            obj = cdr(obj);
+        }
+
+        // ---- Argument types (before the first keyword) ----
+        TypeSpec state_typespec("state");
+        while (!obj->is_null() && !car(obj).is_keyword()) {
+            state_typespec.add_arg(parse_typespec(type_system, car(obj)));
+            obj = cdr(obj);
+        }
+        state_typespec.add_arg(TypeSpec(type->get_name()));
+        type->add_state(state_name, state_typespec);
+
+        // ---- Handlers ----
+        while (!obj->is_null()) {
+            if (!car(obj).is_keyword()) {
+                throw std::runtime_error(fmt::format(
+                    "state {}: expected a handler keyword, got: {}", state_name, car(obj).print()));
             }
+            const std::string kw = symbol_string(car(obj));
+            obj = cdr(obj);
 
-            auto args = cdr(obj);
+            if (kw == ":enter" || kw == ":exit" || kw == ":trans" || kw == ":post" ||
+                kw == ":code") {
+                if (obj->is_null()) {
+                    throw std::runtime_error(
+                        fmt::format("state {}: {} requires a body", state_name, kw));
+                }
+                const StateHandler kind = handler_keyword_to_kind(kw);
+                DefinitionMetadata meta;
+                meta.docstring = docstring;
+                type->add_state_handler(state_name, kind, /*event_id=*/std::string(), car(obj),
+                                        std::move(meta));
+                obj = cdr(obj);
+            } else if (kw == ":event") {
+                if (obj->is_null()) {
+                    throw std::runtime_error(fmt::format(
+                        "state {}: :event requires a list of (event-id body)", state_name));
+                }
+                const script::Object &events = car(obj);
+                for_each_in_list(events, [&](const script::Object &ev) {
+                    if (!ev.is_pair()) {
+                        throw std::runtime_error(fmt::format(
+                            "state {}: each :event entry must be (event-id body)", state_name));
+                    }
+                    const std::string     event_id = symbol_string(car(&ev));
+                    const script::Object *body = cdr(&ev);
+                    if (body->is_null() || !body->is_pair()) {
+                        throw std::runtime_error(
+                            fmt::format("state {}: event {} has no body", state_name, event_id));
+                    }
+                    DefinitionMetadata emeta;
+                    emeta.docstring = docstring;
+                    type->add_state_handler(state_name, StateHandler::EVENT, event_id,
+                                            car(body), std::move(emeta));
+                });
+                obj = cdr(obj);
+            } else if (kw == ":track") {
+                // NEW: parse a track
+                if (obj->is_null()) {
+                    throw std::runtime_error(
+                        fmt::format("state {}: :track requires (name body...)", state_name));
+                }
+                parse_track(type, state_name, car(obj));
+                obj = cdr(obj);
+            } else {
+                throw std::runtime_error(
+                    fmt::format("state {}: unknown handler keyword {}", state_name, kw));
+            }
+        }
 
-            TypeSpec state_typespec("state");
-
-            for_each_in_list(*args, [&](const script::Object &o) {
-                state_typespec.add_arg(parse_typespec(type_system, o));
-            });
-            state_typespec.add_arg(TypeSpec(type->get_name()));
-
-            type->add_state(state_name, state_typespec);
-        } else {
-            // name
-            auto state_name = symbol_string(*obj);
-
-            TypeSpec state_typespec("state");
-            state_typespec.add_arg(TypeSpec(type->get_name()));
-
-            type->add_state(state_name, state_typespec);
+        // Record the docstring for the handler metadata map. This is
+        // separate from m_state_handlers (which stores bodies); it is
+        // kept for the decompiler and for inspection tools.
+        if (docstring) {
+            DefinitionMetadata meta;
+            meta.docstring = docstring;
+            struct_def.append_state_def(state_name, StateHandler::ENTER, meta);
         }
     });
+}
+
+void parse_type_options(Type *type, const script::Object &options) {
+    const script::Object *it = &options;
+    while (it->is_pair()) {
+        const script::Object &first = it->as_pair()->car;
+
+        if (first.is_pair()) {
+            auto key = symbol_string(first.as_pair()->car);
+            if (!key.empty() && key[0] == ':') { key = key.substr(1); }
+            auto rest = &first.as_pair()->cdr;
+            if (rest->is_null() || !rest->as_pair()->car.is_string()) {
+                throw std::runtime_error(
+                    fmt::format(":options entry must be (:key \"value\"), got: {}", first.print()));
+            }
+            type->set_option(key, rest->as_pair()->car.as_string()->data);
+            it = &it->as_pair()->cdr;
+        } else if (first.is_keyword()) {
+            std::string key = symbol_string(first);
+            if (!key.empty() && key[0] == ':') { key = key.substr(1); }
+            it = &it->as_pair()->cdr;
+            if (it->is_null() || !it->as_pair()->car.is_string()) {
+                throw std::runtime_error(
+                    fmt::format(":options entry :{} must be followed by a string", key));
+            }
+            type->set_option(key, it->as_pair()->car.as_string()->data);
+            it = &it->as_pair()->cdr;
+        } else {
+            throw std::runtime_error(fmt::format("Invalid :options entry: {}", first.print()));
+        }
+    }
 }
 
 StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
@@ -588,6 +792,8 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
                 declare_state(type, ts, *opt_list, result);
             } else if (list_name == ":state-methods") {
                 declare_state_methods(type, ts, *opt_list, result);
+            } else if (list_name == ":options") {
+                parse_type_options(type, *opt_list);
             } else {
                 throw std::runtime_error("Invalid option list in field specification: " +
                                          car(rest).print());

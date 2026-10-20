@@ -6,7 +6,7 @@
 #include "carbon/lib/StringId.hpp"
 #include "carbon/lib/Variant.hpp"
 #include "carbon/Carbon.hpp"
-
+#include "carbon/kernel/Process.hpp"
 #include "util/Log.hpp"
 
 using namespace carbon;
@@ -219,7 +219,23 @@ namespace carbon {
                     Variant *argv = &current_frame->get_register(ARG_REGISTERS_OFFSET);
                     result_reg = native_func(argc, argv);
 
+                    // Cooperative yield / suspend check.
+                    //
+                    // A native function (e.g. wait-animate, sleep) calls
+                    // Suspend() or RequestYield() on the current process.
+                    // The VM must stop here, before the next instruction
+                    // runs, and leave current_frame intact so the next
+                    // tick resumes at the same pc.
+                    if (Process *self = Carbon::current_process()) {
+                        if (self->should_yield) {
+                            self->should_yield = false;
+                            is_yielded = true;
+                            return result_reg;
+                        }
+                    }
+
                     if (mode == RunMode::StepIn) is_break = true;
+
                     break;
                 }
                 case Opcode::Branch: {

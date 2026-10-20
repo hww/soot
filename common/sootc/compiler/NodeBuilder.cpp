@@ -1,5 +1,4 @@
 #include "sootc/compiler/NodeBuilder.hpp"
-#include "carbon/lib/StringIdManager.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FunctionCompiler.hpp"
 #include "sootc/node/CastNode.hpp"
@@ -13,8 +12,12 @@
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/HeapDefineNode.hpp"
 #include "sootc/node/AtNode.hpp"
+#include "sootc/node/StateScriptNode.hpp"
+
 #include "type_system/Defenum.hpp"
 #include "type_system/Deftype.hpp"
+
+#include "carbon/lib/StringIdManager.hpp"
 
 #include "fmt/format.h"
 #include "util/Log.hpp"
@@ -2131,6 +2134,23 @@ namespace sootc {
             DeftypeResult result = parse_deftype(rest, &m_ts);
             StringIdManager::instance().register_string(result.type.base_type());
             lg::debug("Registered type: {}", result.type.print());
+
+            // If the type declares states, it becomes a StateScript: the
+            // file will emit both an SsType (for the layout) and a
+            // StateScript (for the FSM). The StateScriptNode is the
+            // marker that triggers build_state_script in FileNode.
+            //
+            // Otherwise it is a plain structure: only SsType is emitted,
+            // exactly as before.
+            Type      *t = result.type_info;
+            const bool has_states = (t && t->states_count() > 0);
+
+            if (has_states) {
+                lg::debug("deftype '{}': has {} states -> StateScriptNode", result.type.base_type(),
+                          t->states_count());
+                return std::make_unique<StateScriptNode>(result.type);
+            }
+
             return std::make_unique<TypeDeclarationNode>(result.type);
         } catch (const std::exception &e) {
             throw m_compiler->make_error(form, "NodeBuilder::build_deftype")

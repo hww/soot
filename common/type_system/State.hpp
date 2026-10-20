@@ -2,13 +2,13 @@
 
 #include <optional>
 
-#include "type_system/TypeSystem.hpp"
+#include "type_system/Type.hpp"
+#include "type_system/TypeSpec.hpp"
 #include "type_system/TypeSpec.hpp"
 
 // This contains type system utilities related to state and process
 
-enum class StateHandler { ENTER, EXIT, CODE, TRANS, POST, EVENT };
-
+enum class StateHandler : int;
 class TypeSystem;
 
 TypeSpec state_to_go_function(const TypeSpec& state_type, const TypeSpec& return_type);

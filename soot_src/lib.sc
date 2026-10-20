@@ -411,8 +411,9 @@
 ;; Native
 ;; ----------------------------------------------------------------------------
 ; --- I/O ---
-(define-native _print   (function _varargs_ object))
-(define-native _println (function _varargs_ object))
+(define-native print   (function _varargs_ object))
+(define-native println (function _varargs_ object))
+(define-native format  (function _varargs_ object))
 
 ; --- Allocator ---
 ; Signature is (where, type-id) -> pointer. Both args are SIDs or values.

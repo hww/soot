@@ -39,6 +39,7 @@ enum class NodeType {
     StoreGlobalNode,
     // Compile-time-only declarations:
     TypeDeclarationNode,
+    StateScriptNode, 
     EnumDeclarationNode,
     // Data instances:
     NewNode,
@@ -72,6 +73,7 @@ inline const char* node_type_to_string(NodeType type) {
         case NodeType::WhileNode:      return "WhileNode";
         case NodeType::StoreGlobalNode: return "StoreGlobalNode";
         case NodeType::TypeDeclarationNode: return "TypeDeclarationNode";
+        case NodeType::StateScriptNode: return "StateScriptNode";
         case NodeType::EnumDeclarationNode: return "EnumDeclarationNode";
         case NodeType::NewNode: return "NewNode";
         case NodeType::DataDeclarationNode: return "DataDeclarationNode";

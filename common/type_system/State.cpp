@@ -1,4 +1,5 @@
 #include "type_system/State.hpp"
+#include "type_system/TypeSystem.hpp"
 #include "util/Assert.hpp"
 
 /*!
@@ -36,7 +37,7 @@ StateHandler handler_name_to_kind(const std::string& name) {
         return StateHandler::EVENT;
     }
     else if (name == "trans") {
-        return StateHandler::TRANS;
+        return StateHandler::UPDATE;
     }
     else if (name == "post") {
         return StateHandler::POST;
@@ -56,7 +57,7 @@ std::string handler_kind_to_name(StateHandler kind) {
         return "code";
     case StateHandler::EVENT:
         return "event";
-    case StateHandler::TRANS:
+    case StateHandler::UPDATE:
         return "trans";
     case StateHandler::POST:
         return "post";
@@ -77,7 +78,7 @@ TypeSpec get_state_handler_type(StateHandler kind, const TypeSpec& state_type) {
         result = state_to_go_function(state_type, TypeSpec("none"));
         break;
 
-    case StateHandler::TRANS:
+    case StateHandler::UPDATE:
     case StateHandler::POST:
     case StateHandler::EXIT:
         result = TypeSpec("function", { TypeSpec("none") });
@@ -100,7 +101,7 @@ std::vector<std::string> get_state_handler_arg_names(StateHandler kind) {
     case StateHandler::CODE:
         // can have args, but are arbitrary
     case StateHandler::ENTER:
-    case StateHandler::TRANS:
+    case StateHandler::UPDATE:
     case StateHandler::POST:
     case StateHandler::EXIT:
         return {};

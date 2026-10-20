@@ -296,7 +296,7 @@ Few more complicated examples:
 ;; ---------------------------------------------------------------------
 (define-state-script ("kickable-gate")
     :initial-state "closed"
-
+    :options (kickable tackable)
     ;; --- Объявление переменных состояния ---
     ;; num-attempts — счётчик попыток открыть/сломать ворота
     ;; is-locked    — флаг, заблокированы ли ворота

@@ -16,6 +16,7 @@ namespace carbon {
      */
     enum class RuntimeType : u8 {
         Null,
+        Bool,
         Int,     // 64-bit целое + bool + char
         Float,   // 64-bit float
         Pointer, // указатель на что угодно
@@ -25,6 +26,7 @@ namespace carbon {
     inline const char *value_type_to_string(RuntimeType type) {
         switch (type) {
         case RuntimeType::Null: return "null";
+        case RuntimeType::Bool: return "bool";
         case RuntimeType::Int: return "int";
         case RuntimeType::Float: return "float";
         case RuntimeType::Pointer: return "pointer";
@@ -164,7 +166,7 @@ namespace carbon {
 
         Variant(f64 value) : type_(RuntimeType::Float), float_value(value) {}
 
-        Variant(bool value) : type_(RuntimeType::Int), int_value(value ? 1 : 0) {}
+        Variant(bool value) : type_(RuntimeType::Bool), int_value(value ? 1 : 0) {}
 
         Variant(void *ptr, RuntimeType type) : type_(type), ptr_value(ptr) {}
 
@@ -192,82 +194,70 @@ namespace carbon {
         // =========================================================================
 
         Variant(const Variant &other) : type_(other.type_) {
-            if (other.is_number()) {
-                if (other.is_int() || other.is_sid() || other.is_bool()) {
-                    int_value = other.int_value;
-                } else if (other.is_float()) {
-                    float_value = other.float_value;
-                }
+            if (other.is_int() || other.is_bool()) {
+                int_value = other.int_value;           
+            } else if (other.is_float()) {
+                float_value = other.float_value;
             } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
                 ptr_value = other.ptr_value;
             } else {
-                int_value = 0;
+                int_value = 0; /* null */
             }
         }
 
         Variant &operator=(const Variant &other) {
             if (this != &other) {
-                cleanup();
 
                 type_ = other.type_;
 
-                if (other.is_number()) {
-                    if (other.is_int() || other.is_sid() || other.is_bool()) {
-                        int_value = other.int_value;
-                    } else if (other.is_float()) {
-                        float_value = other.float_value;
-                    }
-                } else if (other.type_ == RuntimeType::Pointer ||
-                           other.type_ == RuntimeType::String) {
+                if (other.is_int() || other.is_bool()) {
+                    int_value = other.int_value;
+                } else if (other.is_float()) {
+                    float_value = other.float_value;
+                } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
                     ptr_value = other.ptr_value;
                 } else {
-                    int_value = 0;
+                    int_value = 0; /* null */
                 }
             }
             return *this;
         }
 
         Variant(Variant &&other) noexcept : type_(other.type_) {
-            if (other.is_number()) {
-                if (other.is_int() || other.is_sid() || other.is_bool()) {
-                    int_value = other.int_value;
-                } else if (other.is_float()) {
-                    float_value = other.float_value;
-                }
+            if (other.is_int() || other.is_bool()) {
+                int_value = other.int_value;
+            } else if (other.is_float()) {
+                float_value = other.float_value;
             } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
                 ptr_value = other.ptr_value;
                 other.ptr_value = nullptr;
                 other.type_ = RuntimeType::Null;
             } else {
-                int_value = 0;
+                int_value = 0; /* null */
             }
         }
 
         Variant &operator=(Variant &&other) noexcept {
             if (this != &other) {
-                cleanup();
 
                 type_ = other.type_;
 
-                if (other.is_number()) {
-                    if (other.is_int() || other.is_sid() || other.is_bool()) {
-                        int_value = other.int_value;
-                    } else if (other.is_float()) {
-                        float_value = other.float_value;
-                    }
-                } else if (other.type_ == RuntimeType::Pointer ||
-                           other.type_ == RuntimeType::String) {
+                if (other.is_int() || other.is_bool()) {
+                    int_value = other.int_value;
+                } else if (other.is_float()) {
+                    float_value = other.float_value;
+                } else if (other.type_ == RuntimeType::Pointer || other.type_ == RuntimeType::String) {
                     ptr_value = other.ptr_value;
                     other.ptr_value = nullptr;
                     other.type_ = RuntimeType::Null;
                 } else {
-                    int_value = 0;
+                    int_value = 0; /* null */
                 }
             }
             return *this;
         }
 
-        ~Variant() { cleanup(); }
+        ~Variant() {  }
 
         // =========================================================================
         // VALUE SETTERS
@@ -294,7 +284,7 @@ namespace carbon {
         }
 
         void set_bool(bool value) {
-            type_ = RuntimeType::Int;
+            type_ = RuntimeType::Bool;
             int_value = value;
         }
 
@@ -412,7 +402,7 @@ namespace carbon {
         }
 
         bool get_bool() const {
-            if (type_ != RuntimeType::Int) {
+            if (type_ != RuntimeType::Int && type_ != RuntimeType::Bool) {
                 throw TypeError("get_bool()", RuntimeType::Int, type_);
             }
             return int_value;
@@ -457,16 +447,19 @@ namespace carbon {
             if (type_ == RuntimeType::Int) return int_value;
             if (type_ == RuntimeType::Float) return static_cast<i32>(float_value);
             if (type_ == RuntimeType::Pointer) return (u64)(void *)ptr_value;
+            if (type_ == RuntimeType::Bool) return int_value;
             throw TypeError("to_int() cannot convert from", type_);
         }
 
         f32 to_float() const {
             if (type_ == RuntimeType::Int) return static_cast<float>(int_value);
             if (type_ == RuntimeType::Float) return float_value;
+            if (type_ == RuntimeType::Bool) return static_cast<float>(int_value);
             throw TypeError("to_float() cannot convert from", type_);
         }
 
         bool to_bool() const {
+            if (type_ == RuntimeType::Bool) return int_value != 0;
             if (type_ == RuntimeType::Int) return int_value != 0;
             if (type_ == RuntimeType::Float) return float_value != 0;
             if (type_ == RuntimeType::Pointer) return ptr_value != nullptr;
@@ -480,16 +473,17 @@ namespace carbon {
 
         RuntimeType get_type() const { return type_; }
 
-        bool        is_null() const { return type_ == RuntimeType::Null; }
-        bool        is_int() const { return type_ == RuntimeType::Int; }
-        bool        is_float() const { return type_ == RuntimeType::Float; }
-        inline bool is_ptr() const { return type_ == RuntimeType::Pointer; }
+        inline bool is_null()   const { return type_ == RuntimeType::Null; }
+        inline bool is_bool()   const { return type_ == RuntimeType::Bool; }
+        inline bool is_int() const { return type_ == RuntimeType::Int; }
+        inline bool is_float()  const { return type_ == RuntimeType::Float; }
         inline bool is_string() const { return type_ == RuntimeType::String; }
+        inline bool is_ptr() const { return type_ == RuntimeType::Pointer; }
 
-        inline bool is_number() const { return is_int() || is_float(); }
-
-        bool is_bool() const { return type_ == RuntimeType::Int; }
-        bool is_sid() const { return type_ == RuntimeType::Int; }
+        inline bool is_number() const {
+            return type_ == RuntimeType::Int || type_ == RuntimeType::Float;
+        }
+  
 
         // =========================================================================
         // STRING REPRESENTATION
@@ -497,8 +491,9 @@ namespace carbon {
 
         std::string to_string() const {
             switch (type_) {
-            case RuntimeType::Null: return "null";
-            case RuntimeType::Int: return std::to_string(get_i64());
+            case RuntimeType::Null:  return "null";
+            case RuntimeType::Bool:  return int_value ? "true" : "false";
+            case RuntimeType::Int:   return std::to_string(get_i64());
             case RuntimeType::Float: return std::to_string(get_f64());
             case RuntimeType::String:
                 if (ptr_value == nullptr) return "";
@@ -523,10 +518,9 @@ namespace carbon {
         bool operator==(const Variant &other) const {
             if (type_ != other.type_) return false;
 
-            if (is_number()) {
-                if (is_int()) return int_value == other.int_value;
-                if (is_float()) return float_value == other.float_value;
-            }
+            if (is_bool())  return int_value == other.int_value;
+            if (is_int())   return int_value == other.int_value;
+            if (is_float()) return float_value == other.float_value;
             if (is_string()) {
                 if (ptr_value == nullptr && other.ptr_value == nullptr) return true;
                 if (ptr_value == nullptr || other.ptr_value == nullptr) return false;
@@ -541,10 +535,9 @@ namespace carbon {
         bool operator<(const Variant &other) const {
             if (type_ != other.type_) return type_ < other.type_;
 
-            if (is_number()) {
-                if (is_int()) return int_value < other.int_value;
-                if (is_float()) return float_value < other.float_value;
-            }
+            if (is_bool()) return int_value < other.int_value;
+            if (is_int()) return int_value < other.int_value;
+            if (is_float()) return float_value < other.float_value;
             if (is_string()) {
                 const char *a = static_cast<const char *>(ptr_value);
                 const char *b = static_cast<const char *>(other.ptr_value);
@@ -565,10 +558,6 @@ namespace carbon {
             return static_cast<const char *>(payload);
         }
 
-        void cleanup() {
-            type_ = RuntimeType::Null;
-            int_value = 0;
-        }
         RuntimeType type_;
 
         union {

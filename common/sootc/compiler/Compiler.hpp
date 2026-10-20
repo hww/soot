@@ -11,7 +11,9 @@
 #include "fmt/color.h"
 #include "fmt/format.h"
 
+#include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/compiler/CompilerError.hpp"
+
 #include "sootc/runtime/Runtime.hpp"
 
 #include "sootc/node/GlobalNode.hpp"
@@ -22,13 +24,17 @@
 #include "script/Object.hpp"
 #include "script/Reader.hpp"
 
+#include "carbon/vm/VirtualMachine.hpp"
+
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/file/Globals.hpp"
-#include "carbon/vm/VirtualMachine.hpp"
 #include "type_system/Deftype.hpp"
 #include "type_system/TypeSystem.hpp"
 
 namespace sootc {
+    
+    class NodeBuilder;
+    class StateScriptNode;
 
     // Compiler operation mode.
     enum class CompilerMode {
@@ -359,6 +365,21 @@ namespace sootc {
              compile_internal(script::Object &forms, const std::string &filename, bool is_repl);
 
         void render_internal_error(const std::exception &e);
+
+        /// @brief Compile every state handler body and every track step
+        ///        of a StateScriptNode into FunctionNode children of
+        ///        `file`, so that FileNode::collect_all picks them up
+        ///        and assigns them file offsets.
+        ///
+        /// @details Called from compile_internal after all top-level
+        ///          forms have been processed and before file->generate().
+        ///
+        ///          Naming convention (must match build_state_script):
+        ///            <type>-<state>-<kind>            for enter/exit/...
+        ///            <type>-<state>-event-<event-id>  for events
+        ///            <type>-<state>-<kind>-track-<track>-main-<i>     for main steps
+        ///            <type>-<state>-<kind>-track-<track>-frame-<N>    for frame steps
+        void compile_state_script_bodies(StateScriptNode *ss, FileNode *file, NodeBuilder &builder);
 
         // --- Helpers ---
         ReplStatus interpret_and_print(const std::string &script);

@@ -10,10 +10,14 @@
  * removed.
  */
 
-#include "Config.hpp"
+#include "type_system/Config.hpp"
 #include "type_system/TypeSpec.hpp"
-#include "util/StringIdHash.hpp"
+
 #include "script/TextDb.hpp"
+#include "script/Object.hpp"
+
+#include "util/StringIdHash.hpp"
+
 #include <cstdint>
 #include <fmt/format.h>
 #include <map>
@@ -134,6 +138,9 @@ class Field {
     bool is_inline() const { return m_inline; }
     bool is_array() const { return m_array; }
     bool is_dynamic() const { return m_dynamic; }
+    bool is_const() const { return m_const; }  
+
+    void set_const() { m_const = true; } 
 
     bool user_placed() const { return m_placed_by_user; }
     bool skip_in_decomp() const { return m_skip_in_static_decomp; }
@@ -147,8 +154,8 @@ class Field {
     const std::optional<TypeSpec> decomp_as_type() const { return m_decomp_as_ts; }
     void                          set_decomp_as_ts(const TypeSpec &ts) { m_decomp_as_ts = ts; }
 
-    void               set_comment(const std::string &comment) { m_comment = comment; }
     const std::string &comment() const { return m_comment; }
+    void               set_comment(const std::string &comment) { m_comment = comment; }
     bool               has_comment() const { return !m_comment.empty(); }
 
     // ---- Comparison ----
@@ -181,6 +188,7 @@ class Field {
     bool                    m_placed_by_user = false;
     std::string             m_comment;
     double                  m_field_score = 0.0;
+    bool                    m_const = false; 
     std::optional<TypeSpec> m_decomp_as_ts = std::nullopt;
 };
 
@@ -219,10 +227,66 @@ class BitField {
 };
 
 // ============================================================================
+// State handler and track metadata
+// ============================================================================
+//
+// This is the LOWEST layer: pure data. TypeSystem does not depend on
+// StringId, ScriptLambda, or the DC file format. Handler bodies are
+// stored as AST forms (script::Object) here; the compiler compiles them
+// to bytecode later and stashes the result in body_compiled as an
+// opaque void*.
+//
+// A state handler is one body attached to a state: enter, exit, trans,
+// post, code, or a single event. A track is an ordered list of forms
+// attached to one handler; each step is compiled separately and the
+// runtime runs them in order.
+
+struct TrackInfo {
+    std::string                 name;
+    std::vector<script::Object> steps;            ///< main routine forms (counter = -1)
+    std::vector<void *>         steps_compiled;   ///< opaque; filled by the compiler
+    u16                         frame_offset = 0; ///< unused in Step 3
+
+    /// @brief Frame-bound lambdas. Each entry is (N, body), where N is
+    ///        the animation frame at which the body runs. The body is
+    ///        compiled to its own ScriptLambda, with
+    ///        m_someSortOfCounter = N.
+    std::vector<std::pair<i64, script::Object>> frame_forms;
+    std::vector<void *>                         frame_compiled; ///< opaque, same order
+};
+
+    enum class StateHandler : int { ENTER, EXIT, CODE, UPDATE, POST, EVENT };
+
+namespace {
+    const char *state_handler_to_string(StateHandler kind) {
+    switch (kind) {
+    case StateHandler::ENTER: return "enter";
+    case StateHandler::EXIT: return "exit";
+    case StateHandler::UPDATE: return "update";
+    case StateHandler::POST: return "post";
+    case StateHandler::CODE: return "code";
+    case StateHandler::EVENT: return "event";
+    }
+    return "unknown";
+}
+} // namespace
+
+struct StateHandlerBody {
+    StateHandler           kind = StateHandler::ENTER;
+    std::string            event_id;                ///< empty unless kind == EVENT
+    script::Object         body_ast;                ///< the form to compile
+    void                  *body_compiled = nullptr; ///< opaque; filled by the compiler
+    DefinitionMetadata     meta;
+    std::vector<TrackInfo> tracks;
+};
+;
+
+// ============================================================================
 // Base Type
 // ============================================================================
 
 class Type : public std::enable_shared_from_this<Type>  {
+  friend class TypeSystem; // <-- access to m_state_handlers
   public:
     static int verbose;
 
@@ -288,13 +352,43 @@ class Type : public std::enable_shared_from_this<Type>  {
     size_t methods_max_id() const;
 
     // ---- State system ----
-    void add_state(const std::string &name, const TypeSpec &type);
-    bool get_my_state(const std::string &name, TypeSpec *out) const;
+    void   add_state(const std::string &name, const TypeSpec &type);
+    bool   get_my_state(const std::string &name, TypeSpec *out) const;
     size_t states_count() const { return m_states.size(); }
+    const std::map<std::string, TypeSpec> &get_states_declared_for_type() const { return m_states; }
 
-    const std::map<std::string, TypeSpec> &get_states_declared_for_type() const {
-        return m_states;
+    std::vector<StateHandlerBody> *state_handlers_ptr(const std::string &state_name) {
+        auto it = m_state_handlers.find(state_name);
+        return it != m_state_handlers.end() ? &it->second : nullptr;
     }
+    const std::unordered_map<std::string, std::vector<StateHandlerBody>> &state_handlers() const {
+        return m_state_handlers;
+    }
+
+    // ---- Type options ----
+    //
+    // Free-form key-value map attached to a type. Used by StateScript
+    // to carry :initial, :declarations, and other compile-time knobs.
+    // The runtime interprets the keys; the type system just stores them.
+
+    void        set_option(const std::string &key, const std::string &value);
+    bool        has_option(const std::string &key) const;
+    std::string get_option(const std::string &key) const;
+    const std::map<std::string, std::string> &options() const { return m_options; }
+
+    // ---- State handlers ----
+    //
+    // One entry per attached body. Non-event kinds are unique per
+    // state; events may repeat (one entry per event id).
+    StateHandlerBody *add_state_handler(const std::string &state_name, StateHandler kind,
+                                        std::string event_id, script::Object body_ast,
+                                        DefinitionMetadata meta);
+
+    StateHandlerBody *find_state_handler(const std::string &state_name, StateHandler kind,
+                                         std::string event_id = {});
+
+    const std::vector<StateHandlerBody> *get_state_handlers(const std::string &state_name) const;
+
     // ---- Metadata ----
     DefinitionMetadata m_metadata;
 
@@ -327,7 +421,9 @@ class Type : public std::enable_shared_from_this<Type>  {
     MethodInfo              m_new_method_info;
     bool                    m_new_method_info_defined = false;
 
-    std::map<std::string, TypeSpec> m_states;
+    std::map<std::string, TypeSpec>                                m_states;
+    std::map<std::string, std::string>                             m_options;
+    std::unordered_map<std::string, std::vector<StateHandlerBody>> m_state_handlers;
 };
 
 // ============================================================================

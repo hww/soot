@@ -44,6 +44,10 @@ namespace carbon {
         bool is_suspended;
         bool is_break;
         bool is_error;
+        /// Set by the VM when a native function requested a yield.
+        /// Reset by the host (Scheduler) before the next execute().
+        bool                        is_yielded = false;
+
         std::string break_reason;
         std::shared_ptr<StackFrame> current_frame;
         NativeAllocators            m_allocators;
@@ -89,6 +93,12 @@ namespace carbon {
             break_reason.clear();
             current_frame = nullptr;
         }        
+
+        /// Reset per-run flags. Called by the Scheduler before each quantum.
+        void reset_run_flags() {
+            is_yielded = false;
+            is_break = false;
+        }
 
         // ------------------------------------------------------------------------
         // Native Function Management

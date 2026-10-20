@@ -32,6 +32,7 @@ add_library(libcarbon
     common/carbon/vm/NativeMap.cpp   
     common/carbon/vm/NativeString.cpp
     common/carbon/vm/NativeArray.cpp
+    common/carbon/vm/NativeProcess.cpp
     common/carbon/vm/VmError.cpp
 
     ## Kernel
@@ -55,13 +56,19 @@ add_library(libcarbon
     common/carbon/Carbon.cpp
 
 )
-
+target_link_libraries(libcarbon
+    PUBLIC
+        libscript
+        libscriptcore
+        libtypesys
+        libsootutils
+)
 
 # Исполняемый файл для тестирования VM
 add_executable(carbon common/carbon/Main.cpp)
 
 
-target_link_libraries(carbon PRIVATE 
+target_link_libraries(carbon PUBLIC 
     libscript 
     libscriptcore 
     libtypesys

@@ -1,8 +1,10 @@
 #include "type_system/Type.hpp"
-
 #include "type_system/TypeSystem.hpp"
+#include "type_system/State.hpp"
+
 #include "util/Assert.hpp"
 #include "util/StringIdHash.hpp"
+
 #include "fmt/format.h"
 
 #include <algorithm>
@@ -132,7 +134,8 @@ void Field::mark_as_user_placed() {
 bool Field::operator==(const Field &other) const {
     return m_name == other.m_name && m_type == other.m_type && m_offset == other.m_offset &&
            m_inline == other.m_inline && m_dynamic == other.m_dynamic && m_array == other.m_array &&
-           m_array_size == other.m_array_size && m_alignment == other.m_alignment;
+           m_array_size == other.m_array_size && m_alignment == other.m_alignment &&
+           m_const == other.m_const; // <-- NEW
 }
 
 bool Field::operator!=(const Field &other) const {
@@ -181,6 +184,8 @@ std::string Field::diff(const Field &other) const {
     if (m_skip_in_static_decomp != other.m_skip_in_static_decomp)
         result += fmt::format("skip_in_static_decomp: {} vs. {}\n", m_skip_in_static_decomp,
                               other.m_skip_in_static_decomp);
+    if (m_const != other.m_const)
+        result += fmt::format("const: {} vs. {}\n", m_const, other.m_const);
     return result;
 }
 
@@ -446,6 +451,65 @@ bool Type::get_my_state(const std::string &name, TypeSpec *out) const {
         return true;
     }
     return false;
+}
+
+// ============================================================================
+// Type options
+// ============================================================================
+
+void Type::set_option(const std::string &key, const std::string &value) { m_options[key] = value; }
+
+bool Type::has_option(const std::string &key) const {
+    return m_options.find(key) != m_options.end();
+}
+
+std::string Type::get_option(const std::string &key) const {
+    auto it = m_options.find(key);
+    return it != m_options.end() ? it->second : std::string();
+}
+
+// ============================================================================
+// State handlers
+// ============================================================================
+
+StateHandlerBody *Type::add_state_handler(const std::string &state_name, StateHandler kind,
+                                          std::string event_id, script::Object body_ast,
+                                          DefinitionMetadata meta) {
+    auto &handlers = m_state_handlers[state_name];
+
+    // Non-event kinds are unique per state: replace if already present.
+    if (kind != StateHandler::EVENT) {
+        for (auto &h : handlers) {
+            if (h.kind == kind) {
+                h.event_id = std::move(event_id);
+                h.body_ast = std::move(body_ast);
+                h.meta = std::move(meta);
+                return &h;
+            }
+        }
+    }
+
+    handlers.push_back(StateHandlerBody{
+        kind, std::move(event_id), std::move(body_ast), nullptr, std::move(meta), {}});
+    return &handlers.back();
+}
+
+StateHandlerBody *Type::find_state_handler(const std::string &state_name, StateHandler kind,
+                                           std::string event_id) {
+    auto it = m_state_handlers.find(state_name);
+    if (it == m_state_handlers.end()) return nullptr;
+
+    for (auto &h : it->second) {
+        if (h.kind == kind && (kind != StateHandler::EVENT || h.event_id == event_id)) {
+            return &h;
+        }
+    }
+    return nullptr;
+}
+
+const std::vector<StateHandlerBody> *Type::get_state_handlers(const std::string &state_name) const {
+    auto it = m_state_handlers.find(state_name);
+    return it != m_state_handlers.end() ? &it->second : nullptr;
 }
 
 // ============================================================================

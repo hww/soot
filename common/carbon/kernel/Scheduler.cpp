@@ -1,244 +1,292 @@
 ﻿#include "carbon/kernel/Scheduler.hpp"
+
+#include "carbon/Carbon.hpp"
+#include "carbon/file/DCScript.hpp"
+#include "carbon/file/Globals.hpp"
+#include "carbon/kernel/StateFrame.hpp"
+#include "carbon/vm/VirtualMachine.hpp"
+
 #include "util/Log.hpp"
-#include "lib/StringId.hpp"
-#include <algorithm>
-#include <format>
 
 namespace carbon {
 
-    Scheduler::Scheduler() {
-        // Создаем корневой процесс
-        root = create_process(StringId("root"));
-        if (root) {
-            root->add_mask(ProcessMask::PROCESS_TREE);
-            lg::debug("Scheduler initialized with root process");
-        }
+    // ========================================================================
+    // Lifecycle
+    // ========================================================================
+
+    Scheduler::Scheduler(Carbon *carbon) : m_carbon(carbon) { lg::debug("Scheduler: constructed"); }
+
+    Scheduler::~Scheduler() {
+        // m_all owns the processes; unique_ptr handles the rest.
+        m_ready.clear();
+        m_suspended.clear();
+        m_by_pid.clear();
+        m_all.clear();
+        lg::debug("Scheduler: destroyed");
     }
 
-    Process* Scheduler::create_process(StringId name) {
+    // ========================================================================
+    // Spawn
+    // ========================================================================
+
+    u64 Scheduler::spawn(const std::string &entry, const std::vector<Variant> &args) {
+        // 1. Resolve the StateScript from Globals.
+        StateScript *state_script = resolve_entry(entry);
+        if (!state_script) {
+            lg::error("Scheduler::spawn: '{}' is not a valid StateScript entry", entry);
+            return 0;
+        }
+
+        // 2. Create the process.
         auto process = std::make_unique<Process>();
-        Process* process_ptr = process.get();
+        process->pid = m_next_pid++;
+        process->name = StringId(entry);
+        process->type = state_script;
 
-        all_processes_.push_back(std::move(process));
-        pid_to_process_[process_ptr->pid] = process_ptr;
-        name_to_process_[name] = process_ptr;
+        // 3. Resolve the initial state.
+        SsState *initial = state_script->resolve_state(StringId(state_script->m_initialStateId));
+        if (!initial) {
+            lg::error("Scheduler::spawn: initial state of '{}' not found", entry);
+            return 0;
+        }
+        process->current_state = initial;
 
-        lg::debug("Created process '{}' with PID {}", name, process_ptr->pid);
-        return process_ptr;
+        // 4. Copy the state hooks.
+        process->trans_hook = initial->get_trans_function();
+        process->post_hook = initial->get_post_function();
+
+        // 5. Push the StateFrame for the initial state.
+        //
+        //    StateFrame is a ProtectFrame subclass: destroying it calls
+        //    the state's on-exit handler. The Process stack owns the frame.
+        auto state_frame = std::make_shared<StateFrame>(initial, nullptr);
+        process->push_frame(state_frame);
+
+        // 6. Run the on-enter handler, if any.
+        //
+        //    This must run under the scheduler's current_process pointer,
+        //    so that any native called from it sees the right process.
+        Process *raw = process.get();
+        m_carbon->set_current_process(raw);
+
+        if (auto *enter = initial->get_enter_function()) {
+            auto &vm = *m_carbon->vm();
+            auto  enter_frame = std::make_shared<StackFrame>(
+                enter, nullptr, StackFrame::FrameType::GENERIC, StringIds::enter);
+            // Pass self as argument 0, so the script can access the process.
+            enter_frame->set_argument(0, Variant(static_cast<void *>(raw)));
+            enter_frame->argc = 1;
+            vm.execute(enter_frame);
+        }
+
+        m_carbon->set_current_process(nullptr);
+
+        // 7. Create the main thread from the state's code function.
+        if (auto *code = initial->get_code_function()) {
+            process->main_thread = std::make_shared<StackFrame>(
+                code, nullptr, StackFrame::FrameType::GENERIC, StringIds::code);
+            process->main_thread->argc = static_cast<u32>(args.size());
+            for (std::size_t i = 0; i < args.size(); ++i) {
+                process->main_thread->get_register(ARG_REGISTERS_OFFSET + i) = args[i];
+            }
+            process->top_thread = process->main_thread;
+        }
+
+        // 8. Mark the process ready.
+        process->status = ProcessStatus::READY;
+
+        // 9. Register and queue.
+        const u64 pid = process->pid;
+        m_by_pid[pid] = raw;
+        m_ready.push_back(raw);
+        m_all.push_back(std::move(process));
+
+        lg::info("Scheduler: spawned '{}' (pid={}, state={})", entry, pid, initial->name());
+
+        return pid;
     }
 
-    void Scheduler::add_to_tree(Process* process, Process* parent) {
-        if (!process || !parent) {
-            lg::error("Cannot add to tree - invalid process or parent");
+    // ========================================================================
+    // Kill
+    // ========================================================================
+
+    void Scheduler::kill(u64 pid) {
+        Process *p = find(pid);
+        if (!p) {
+            lg::warn("Scheduler::kill: pid {} not found", pid);
             return;
         }
-
-        remove_from_tree_internal(process);
-
-        process->parent = parent;
-        process->brother = parent->child;
-        parent->child = process;
-
-        lg::debug("Added process '{}' to tree under parent '{}'",
-            process->get_name_string(), parent->get_name_string());
+        kill_recursive(p);
     }
 
-    void Scheduler::remove_from_tree(Process* process) {
-        if (!process) return;
+    void Scheduler::kill_recursive(Process *p) {
+        if (!p || p->is_dead()) return;
 
-        remove_from_tree_internal(process);
+        // Detach from every list first, so the process cannot be ticked
+        // again while we tear it down.
+        detach(p);
 
-        if (process != root) {
-            auto it = std::find_if(all_processes_.begin(), all_processes_.end(),
-                [process](const std::unique_ptr<Process>& p) {
-                    return p.get() == process;
-                });
-            if (it != all_processes_.end()) {
-                pid_to_process_.erase(process->pid);
-                name_to_process_.erase(process->name);
-                all_processes_.erase(it);
+        // Kill children depth-first.
+        while (p->child) {
+            Process *child = p->child;
+            p->remove_child(child);
+            kill_recursive(child);
+        }
+
+        // Run the exit handler of the current state (via StateFrame).
+        // push_frame stored the frame; pop_frame calls exit().
+        while (p->stack_frame_top) { p->pop_frame(); }
+
+        // Mark dead and drop from lookup.
+        p->status = ProcessStatus::DEAD;
+        m_by_pid.erase(p->pid);
+
+        // Remove from m_all (this is what actually deletes the Process).
+        for (auto it = m_all.begin(); it != m_all.end(); ++it) {
+            if (it->get() == p) {
+                m_all.erase(it);
+                break;
             }
         }
 
-        lg::debug("Removed process '{}' from tree", process->get_name_string());
+        lg::info("Scheduler: killed pid {}", p->pid);
     }
 
-    void Scheduler::cleanup_all_processes() {
-        // Удаляем все процессы кроме корневого
-        auto it = all_processes_.begin();
-        while (it != all_processes_.end()) {
-            if ((*it).get() != root) {
-                Process* process = (*it).get();
-                pid_to_process_.erase(process->pid);
-                name_to_process_.erase(process->name);
-                it = all_processes_.erase(it);
+    void Scheduler::detach(Process *p) {
+        if (!p) return;
+
+        // Remove from ready queue.
+        for (auto it = m_ready.begin(); it != m_ready.end(); ++it) {
+            if (*it == p) {
+                m_ready.erase(it);
+                break;
             }
-            else {
-                ++it;
+        }
+
+        // Remove from suspended list.
+        for (auto it = m_suspended.begin(); it != m_suspended.end(); ++it) {
+            if (*it == p) {
+                m_suspended.erase(it);
+                break;
             }
         }
     }
 
-    void Scheduler::reparent_process(Process* process, Process* new_parent) {
-        if (!process || !new_parent) {
-            lg::error("Cannot reparent process - invalid parameters");
-            return;
+    // ========================================================================
+    // Tick
+    // ========================================================================
+
+    void Scheduler::tick() {
+        // 1. Wake any process whose sleep timer expired.
+        tick_sleepers();
+
+        // 2. Snapshot the current ready queue. Processes may be spawned
+        //    or killed during the tick; the snapshot guarantees that
+        //    each process is visited exactly once per tick.
+        const std::size_t count = m_ready.size();
+        if (count == 0) return;
+
+        std::vector<Process *> this_tick(m_ready.begin(), m_ready.begin() + count);
+        m_ready.erase(m_ready.begin(), m_ready.begin() + count);
+
+        for (Process *p : this_tick) {
+            if (!p || p->is_dead()) continue;
+
+            m_current = p;
+            m_carbon->set_current_process(p);
+
+            p->execute_quantum();
+
+            m_carbon->set_current_process(nullptr);
+            m_current = nullptr;
+
+            if (p->is_dead()) {
+                // Process is done. Remove from m_all and lookup.
+                m_by_pid.erase(p->pid);
+                for (auto it = m_all.begin(); it != m_all.end(); ++it) {
+                    if (it->get() == p) {
+                        m_all.erase(it);
+                        break;
+                    }
+                }
+            } else if (p->status == ProcessStatus::SUSPENDED) {
+                // Waiting for an external wake-up.
+                m_suspended.push_back(p);
+            } else if (p->status == ProcessStatus::READY) {
+                // Still running. Put it back for the next tick.
+                m_ready.push_back(p);
+            }
         }
-
-        if (process == root) {
-            lg::error("Cannot reparent root process");
-            return;
-        }
-
-        remove_from_tree_internal(process);
-        add_to_tree(process, new_parent);
-
-        lg::debug("Reparented process '{}' to new parent '{}'",
-            process->get_name_string(), new_parent->get_name_string());
     }
 
-    bool Scheduler::iterate_tree(Process* node, TreeVisitor visitor) const{
-        if (!node) return true;
-
-        // Вызываем функцию для текущего узла
-        if (!visitor(node)) {
-            return false; // Обход прерван
-        }
-
-        // Рекурсивно обходим детей
-        Process* child = node->child;
-        while (child) {
-            // Сохраняем следующего брата перед рекурсией (на случай изменения дерева)
-            Process* next_brother = child->brother;
-            if (!iterate_tree(child, visitor)) {
-                return false;
+    void Scheduler::tick_sleepers() {
+        for (auto it = m_suspended.begin(); it != m_suspended.end();) {
+            Process *p = *it;
+            if (p && !p->is_dead() && p->sleep_frames > 0) {
+                if (--p->sleep_frames == 0) {
+                    p->status = ProcessStatus::READY;
+                    m_ready.push_back(p);
+                    it = m_suspended.erase(it);
+                    continue;
+                }
             }
-            child = next_brother;
+            ++it;
         }
+    }
 
+    bool Scheduler::resume(u64 pid) {
+        Process *p = find(pid);
+        if (!p) return false;
+        if (p->status != ProcessStatus::SUSPENDED) return false;
+
+        // Remove from suspended list, push into ready.
+        for (auto it = m_suspended.begin(); it != m_suspended.end(); ++it) {
+            if (*it == p) {
+                m_suspended.erase(it);
+                break;
+            }
+        }
+        p->status = ProcessStatus::READY;
+        m_ready.push_back(p);
         return true;
     }
 
-    Process* Scheduler::find_process_if(ProcessPredicate predicate) const {
-        for (const auto& process : all_processes_) {
-            if (predicate(process.get())) {
-                return process.get();
-            }
+    // ========================================================================
+    // Lookup
+    // ========================================================================
+
+    Process *Scheduler::find(u64 pid) const noexcept {
+        auto it = m_by_pid.find(pid);
+        return it != m_by_pid.end() ? it->second : nullptr;
+    }
+
+    bool Scheduler::empty() const noexcept {
+        return m_ready.empty() && m_suspended.empty() && m_all.empty();
+    }
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
+
+    StateScript *Scheduler::resolve_entry(const std::string &entry) const {
+        void *sym = m_carbon->globals()->find_symbol_ptr(StringId(entry));
+        if (!sym) return nullptr;
+
+        // The symbol must be a StateScript. We cannot verify the type
+        // here without the TypeRegistry lookup, so we trust the loader:
+        // only StateScript entries are registered under their name.
+        return reinterpret_cast<StateScript *>(sym);
+    }
+
+    void Scheduler::dump() const {
+        lg::info("=== Scheduler dump ===");
+        lg::info("  ready:     {}", m_ready.size());
+        lg::info("  suspended: {}", m_suspended.size());
+        lg::info("  all:       {}", m_all.size());
+        for (const auto &p : m_all) {
+            lg::info("  pid={} name='{}' status={}", p->pid, p->name.to_string(),
+                     static_cast<int>(p->status));
         }
-        return nullptr;
-    }
-
-    void Scheduler::remove_from_tree_internal(Process* process) {
-        if (!process || !process->parent) return;
-
-        Process* parent = process->parent;
-        Process* prev = nullptr;
-        Process* current = parent->child;
-
-        while (current) {
-            if (current == process) {
-                if (prev) {
-                    prev->brother = current->brother;
-                }
-                else {
-                    parent->child = current->brother;
-                }
-
-                process->parent = nullptr;
-                process->brother = nullptr;
-                break;
-            }
-
-            prev = current;
-            current = current->brother;
-        }
-    }
-
-    Process* Scheduler::find_process_by_pid(u32 pid) const {
-        auto it = pid_to_process_.find(pid);
-        return it != pid_to_process_.end() ? it->second : nullptr;
-    }
-
-    Process* Scheduler::find_process_by_name(StringId name) const {
-        auto it = name_to_process_.find(name);
-        return it != name_to_process_.end() ? it->second : nullptr;
-    }
-
-    u32 Scheduler::get_active_count() const {
-        u32 count = 0;
-        for (const auto& process : all_processes_) {
-            if (process->status != ProcessStatus::DEAD) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    u32 Scheduler::get_suspended_count() const {
-        u32 count = 0;
-        for (const auto& process : all_processes_) {
-            if (process->status == ProcessStatus::SUSPENDED) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    u32 Scheduler::get_dead_count() const {
-        u32 count = 0;
-        for (const auto& process : all_processes_) {
-            if (process->status == ProcessStatus::DEAD) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-
-    void Scheduler::cleanup_dead_processes() {
-        auto it = all_processes_.begin();
-        while (it != all_processes_.end()) {
-            if ((*it)->status == ProcessStatus::DEAD && (*it).get() != root) {
-                Process* process = (*it).get();
-                pid_to_process_.erase(process->pid);
-                name_to_process_.erase(process->name);
-                remove_from_tree_internal(process);
-                it = all_processes_.erase(it);
-                lg::debug("Cleaned up dead process '{}'", process->get_name_string());
-            }
-            else {
-                ++it;
-            }
-        }
-    }
-
-    std::string Scheduler::to_string() const {
-        return std::format("Scheduler(processes:{}, active:{}, suspended:{}, dead:{})",
-            get_process_count(), get_active_count(),
-            get_suspended_count(), get_dead_count());
-    }
-
-    void Scheduler::dump_tree_info() const {
-        lg::info("=== Scheduler Tree Info ===");
-        lg::info("Total Processes: {}", get_process_count());
-        lg::info("Active: {}, Suspended: {}, Dead: {}",
-            get_active_count(), get_suspended_count(), get_dead_count());
-
-        lg::info("Process Tree Structure:");
-        iterate_tree(root, [](Process* proc) {
-            int level = 0;
-            Process* p = proc;
-            while (p->parent && p->parent->parent) {
-                level++;
-                p = p->parent;
-            }
-
-            std::string indent(level * 2, ' ');
-            lg::info("{}{} (PID: {}, Status: {})",
-                indent, proc->get_name_string(), proc->pid,
-                static_cast<int>(proc->status));
-            return true;
-            });
     }
 
 } // namespace carbon

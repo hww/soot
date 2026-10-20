@@ -9,6 +9,8 @@
 #include "carbon/gc/GC.hpp"
 #include "carbon/lib/StringIdManager.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
+#include "carbon/kernel/Scheduler.hpp"
+#include "carbon/kernel/Process.hpp"
 
 #include "util/Log.hpp"
 
@@ -56,13 +58,17 @@ namespace carbon {
 
     } // namespace
 
-
+    
     namespace {
-        thread_local Carbon *t_current = nullptr;
-    }
+        thread_local Carbon  *t_current = nullptr;
+        thread_local Process *t_current_process = nullptr;
+    } // namespace
 
     Carbon *Carbon::current() noexcept { return t_current; }
     bool    Carbon::has_current() noexcept { return t_current != nullptr; }
+
+    Process *Carbon::current_process() noexcept { return t_current_process; }
+    void     Carbon::set_current_process(Process *p) noexcept { t_current_process = p; }
 
     Carbon::Scope::Scope(Carbon &c) noexcept : m_previous(t_current) { t_current = &c; }
 
@@ -123,25 +129,6 @@ namespace carbon {
     private:
         std::unordered_map<std::string, Entry>                 m_by_name;
         std::unordered_map<std::filesystem::path, std::string> m_by_path;
-    };
-
-    // ------------------------------------------------------------------------
-    // Scheduler (stub for now)
-    // ------------------------------------------------------------------------
-    //
-    // The process model is deliberately not implemented yet. The API
-    // exists so that Carbon::spawn_process / tick / kill_process do not
-    // have to change when the real scheduler lands.
-    class Scheduler {
-    public:
-        u64 spawn(const std::string &entry, const std::vector<Variant> &args) {
-            (void)entry;
-            (void)args;
-            return 0; // not implemented yet
-        }
-        void kill(u64) {}
-        void tick() {}
-        bool empty() const { return true; }
     };
 
     // ------------------------------------------------------------------------
@@ -215,7 +202,7 @@ namespace carbon {
 
         // 6. ModuleRegistry and Scheduler.
         m_impl->modules = std::make_unique<ModuleRegistry>();
-        m_impl->scheduler = std::make_unique<Scheduler>();
+        m_impl->scheduler = std::make_unique<Scheduler>(this);
 
         m_impl->initialized = true;
         m_impl->exit_requested = false;
@@ -245,6 +232,8 @@ namespace carbon {
         m_impl->initialized = false;
 
         if (t_current == this) t_current = nullptr;
+
+        t_current_process = nullptr; // <-- ADD
 
         lg::info("Carbon: shutdown");
     }

@@ -16,7 +16,7 @@
 #include <vector>
 #include <map>
 #include <lib/Variant.hpp>
-
+#include "fmt/format.h"
 using namespace util;
 using namespace carbon;
 
@@ -655,10 +655,10 @@ namespace carbon {
             return;
         }
 
-        SidCountMap entry_types;
-        SidCountMap decl_types;
-        SidCountMap block_types;
-        SidCountMap lambda_func_names;
+        SidCountMap entry_types;      // entry.m_typeId -> count
+        SidCountMap field_types;      // SsField.m_type -> count
+        SidCountMap block_types;      // BlockType -> count
+        SidCountMap state_vars_types; // SsType.m_flags & 0x4 -> count (is_state_vars)
 
         for (u32 i = 0; i < n; ++i) {
             const DCEntry &e = table[i];
@@ -666,27 +666,40 @@ namespace carbon {
             // Entry type.
             if (e.m_typeId != 0) { entry_types[e.m_typeId]++; }
 
-            // State-script: walk declarations and blocks.
+            // SsType: walk fields. This is the only place where field types
+            // live now — StateScript no longer carries declarations, it points
+            // at its SsType via m_pVarType.
+            if (BinaryFile::entry_kind(e) == BinaryFile::EntryKind::SsType) {
+                const auto *st = m_file->entry_as_ss_type(e);
+                if (!st) continue;
+
+                // SsType::m_flags bit 2 = is_state_vars.
+                if (st->m_flags & 0x4) { state_vars_types[e.m_nameID]++; }
+
+                if (st->m_pFields && st->m_numFields > 0) {
+                    for (u32 j = 0; j < st->m_numFields; ++j) {
+                        const SsField &f = st->m_pFields[j];
+                        if (f.m_type != 0) { field_types[f.m_type]++; }
+                    }
+                }
+            }
+
+            // State-script: walk blocks. Fields are NOT here anymore — they
+            // live in the SsType that m_pVarType points at.
             if (BinaryFile::entry_kind(e) == BinaryFile::EntryKind::StateScript) {
                 const auto *ss = m_file->entry_as_state_script(e);
                 if (!ss) continue;
 
-                // Declarations.
-                if (ss->m_pSsDeclList && ss->m_pSsDeclList->m_pDeclarations) {
-                    for (u32 j = 0; j < ss->m_pSsDeclList->m_numDeclarations; ++j) {
-                        const auto &d = ss->m_pSsDeclList->m_pDeclarations[j];
-                        if (d.m_declTypeId != 0) { decl_types[d.m_declTypeId]++; }
-                    }
-                }
+                // Optional: report the associated variable layout.
+                if (ss->m_pVarType) { state_vars_types[ss->m_pVarType->m_name]++; }
 
                 // Blocks.
                 if (ss->m_pSsStateTable) {
                     for (i16 k = 0; k < ss->m_stateCount; ++k) {
-                        const auto &st = ss->m_pSsStateTable[k];
-                        if (!st.m_pSsOnBlocks) continue;
-                        for (i64 b = 0; b < st.m_numSsOnBlocks; ++b) {
-                            const auto &blk = st.m_pSsOnBlocks[b];
-                            // BlockType is an enum, not a SID — convert to a pseudo-SID.
+                        const auto &stt = ss->m_pSsStateTable[k];
+                        if (!stt.m_pSsOnBlocks) continue;
+                        for (i64 b = 0; b < stt.m_numSsOnBlocks; ++b) {
+                            const auto &blk = stt.m_pSsOnBlocks[b];
                             const sid64 bt = static_cast<sid64>(blk.m_blockType);
                             block_types[bt]++;
                         }
@@ -695,7 +708,7 @@ namespace carbon {
             }
         }
 
-        // Now print.
+        // ---- Print ----
         m_formatter->print("Type summary:\n");
 
         if (!entry_types.empty()) {
@@ -705,9 +718,16 @@ namespace carbon {
             }
         }
 
-        if (!decl_types.empty()) {
-            m_formatter->print("\n  Declaration types ({} distinct):\n", decl_types.size());
-            for (const auto &[sid, count] : decl_types) {
+        if (!field_types.empty()) {
+            m_formatter->print("\n  Field types ({} distinct):\n", field_types.size());
+            for (const auto &[sid, count] : field_types) {
+                m_formatter->print("    {:<32}  x{}\n", sid_str(sid), count);
+            }
+        }
+
+        if (!state_vars_types.empty()) {
+            m_formatter->print("\n  State-variable layouts ({}):\n", state_vars_types.size());
+            for (const auto &[sid, count] : state_vars_types) {
                 m_formatter->print("    {:<32}  x{}\n", sid_str(sid), count);
             }
         }
@@ -717,7 +737,7 @@ namespace carbon {
             for (const auto &[v, count] : block_types) {
                 const char *name = "unknown";
                 switch (static_cast<BlockType>(v)) {
-                case BlockType::Start: name = "start"; break;
+                case BlockType::Enter: name = "start"; break;
                 case BlockType::End: name = "end"; break;
                 case BlockType::Event: name = "event"; break;
                 case BlockType::Update: name = "update"; break;
@@ -877,7 +897,7 @@ namespace carbon {
         }
     }
 
-    void BinaryFileInspector::inspect_state_script(const StateScript *ss) {
+void BinaryFileInspector::inspect_state_script(const StateScript *ss) {
         if (!ss) {
             m_formatter->print("StateScript: NULL\n");
             return;
@@ -886,9 +906,9 @@ namespace carbon {
         // Summary first.
         inspect_state_script_summary(ss);
 
-        // Declarations.
+        // Variable layout (the new home for what used to be declarations).
         m_formatter->print("\n");
-        inspect_declaration_list(ss->m_pSsDeclList);
+        inspect_state_vars(ss->m_pVarType, ss->m_pVarDefaults);
 
         // Options.
         m_formatter->print("\n");
@@ -901,12 +921,13 @@ namespace carbon {
 
             if (m_mode == InspectMode::Full) {
                 m_formatter->print("\nState details:\n");
+
                 inspect_state_detail_summary(ss);
             }
         }
     }
 
-    void BinaryFileInspector::inspect_state_script_summary(const StateScript *ss) {
+void BinaryFileInspector::inspect_state_script_summary(const StateScript *ss) {
         if (!ss) {
             m_formatter->print("(null state-script)\n");
             return;
@@ -915,7 +936,10 @@ namespace carbon {
         const std::string id = sid_str(ss->m_stateScriptId);
         const std::string initial = sid_str(ss->m_initialStateId);
 
-        const u32 num_decls = ss->m_pSsDeclList ? ss->m_pSsDeclList->m_numDeclarations : 0;
+        // Variable layout: number of fields comes from the SsType the
+        // StateScript points at, not from a declaration list.
+        const u32 num_vars =
+            (ss->m_pVarType && ss->m_pVarType->m_pFields) ? ss->m_pVarType->m_numFields : 0;
         const u32 num_states = static_cast<u32>(ss->m_stateCount);
 
         // Collect the option list, if any.
@@ -930,7 +954,8 @@ namespace carbon {
 
         m_formatter->print("StateScript {}:\n", id);
         m_formatter->print("  initial state:    {}\n", initial);
-        m_formatter->print("  declarations:     {}\n", num_decls);
+        m_formatter->print("  variables:        {} (from {})\n", num_vars,
+                           ss->m_pVarType ? sid_str(ss->m_pVarType->m_name) : "(no layout)");
         m_formatter->print("  states:           {}\n", num_states);
         m_formatter->print("  options:          {}\n", options.empty() ? "(none)" : options);
         m_formatter->print("  line:             {}\n", ss->m_line);
@@ -1095,6 +1120,91 @@ namespace carbon {
         }
     }
 
+    // ============================================================================
+    // inspect_state_vars
+    // ============================================================================
+    //
+    // Prints the variable layout of a StateScript: the SsType that describes
+    // the fields, and the default instance that the runtime copies into the
+    // process block at startup.
+    //
+    // If `st` is null, prints "(no layout)". If `defaults` is non-null,
+    // dumps the raw bytes of the default instance as hex so that the
+    // reader can see what will be copied into every new process.
+
+    void BinaryFileInspector::inspect_state_vars(const SsType *st, const void *defaults) {
+        if (!st) {
+            m_formatter->print("Variables: (no layout)\n");
+            return;
+        }
+
+        m_formatter->print("Variables ({}):\n", st->m_numFields);
+        m_formatter->print("  layout:   {}\n", sid_str(st->m_name));
+        m_formatter->print("  size:     {} bytes\n", st->m_size);
+        m_formatter->print("  align:    {} bytes\n", st->m_align);
+
+        if (!st->m_pFields || st->m_numFields == 0) {
+            m_formatter->print("  (no fields)\n");
+            return;
+        }
+
+        m_formatter->print("\n  {:<4}  {:<24}  {:<16}  {:>6}  {:>6}  {}\n", "idx", "name", "type",
+                           "offset", "size", "flags");
+
+        IFormatter::Block field_block(*m_formatter, m_indent);
+
+        for (u32 i = 0; i < st->m_numFields; ++i) {
+            const SsField &f = st->m_pFields[i];
+
+            std::string flags;
+            if (f.m_flags & 0x1) flags += "inline ";
+            if (f.m_flags & 0x2) flags += "dynamic ";
+            if (f.m_flags & 0x4) flags += "array ";
+            if (f.m_flags & 0x8) flags += "const ";
+            if (flags.empty()) flags = "-";
+
+            // m_nameString is a relocated pointer into the string pool;
+            // prefer it over the SID lookup so that names appear even for
+            // anonymous or generated fields.
+            const char *name_str = f.m_nameString ? f.m_nameString : sid_str(f.m_name).c_str();
+
+            m_formatter->print("  {:<4}  {:<24}  {:<16}  {:>6}  {:>6}  {}\n", i, name_str,
+                               sid_str(f.m_type), f.m_offset, f.m_size, flags);
+        }
+
+        // Default instance, if present.
+        if (defaults) {
+            m_formatter->print("\n  Defaults ({} bytes):\n", st->m_size);
+
+            const auto   *bytes = static_cast<const u8 *>(defaults);
+            constexpr u32 PER_LINE = 16;
+
+            for (u32 off = 0; off < st->m_size; off += PER_LINE) {
+                m_formatter->print("    {:04X}  ", off);
+
+                const u32 count = std::min<u32>(PER_LINE, st->m_size - off);
+
+                for (u32 j = 0; j < PER_LINE; ++j) {
+                    if (j < count) {
+                        m_formatter->print("{:02X} ", bytes[off + j]);
+                    } else {
+                        m_formatter->print("   ");
+                    }
+                    if (j == 7) m_formatter->print(" ");
+                }
+
+                m_formatter->print(" |");
+
+                for (u32 j = 0; j < count; ++j) {
+                    const u8 c = bytes[off + j];
+                    m_formatter->print("{}", (c >= 32 && c < 127) ? static_cast<char>(c) : '.');
+                }
+
+                m_formatter->print("|\n");
+            }
+        }
+    }
+
     void BinaryFileInspector::inspect_declarations_only() {
         const DCEntry *table = m_file->entries();
         const u32      n = m_file->entry_count();
@@ -1114,7 +1224,7 @@ namespace carbon {
             any = true;
 
             m_formatter->print("StateScript {}:\n", sid_str(ss->m_stateScriptId));
-            inspect_declaration_list(ss->m_pSsDeclList);
+            inspect_state_vars(ss->m_pVarType, ss->m_pVarDefaults);
             m_formatter->print("\n");
         }
 
@@ -1180,7 +1290,7 @@ namespace carbon {
         std::string type_str;
 
         switch (block->m_blockType) {
-        case BlockType::Start: type_str = "Start"; break;
+        case BlockType::Enter: type_str = "Start"; break;
         case BlockType::End: type_str = "End"; break;
         case BlockType::Event: type_str = "Event"; break;
         case BlockType::Update: type_str = "Update"; break;
@@ -1225,7 +1335,7 @@ namespace carbon {
                 const SsOnBlock &block = state.m_pSsOnBlocks[j];
                 if (!types.empty()) { types += ", "; }
                 switch (block.m_blockType) {
-                case BlockType::Start: types += "start"; break;
+                case BlockType::Enter: types += "start"; break;
                 case BlockType::End: types += "end"; break;
                 case BlockType::Event: types += "event " + sid_str(block.m_blockEventId); break;
                 case BlockType::Update: types += "update"; break;
@@ -1244,6 +1354,7 @@ namespace carbon {
     }
 
     void BinaryFileInspector::inspect_state_detail_summary(const StateScript *ss) {
+
         if (!ss || !ss->m_pSsStateTable || ss->m_stateCount <= 0) {
             m_formatter->print("(no states)\n");
             return;
@@ -1259,7 +1370,7 @@ namespace carbon {
                 // Block type name.
                 std::string block_name;
                 switch (block.m_blockType) {
-                case BlockType::Start: block_name = "start"; break;
+                case BlockType::Enter: block_name = "start"; break;
                 case BlockType::End: block_name = "end"; break;
                 case BlockType::Event: block_name = "event " + sid_str(block.m_blockEventId); break;
                 case BlockType::Update: block_name = "update"; break;
@@ -1275,7 +1386,9 @@ namespace carbon {
                 m_formatter->print("  block[{}] {}\n", j, block_name);
 
                 const SsTrackGroup &tg = block.m_trackGroup;
-
+                fmt::print(stderr,
+                           "DEBUG inspect: block='{}', tg.m_aTracks={}, tg.m_numTracks={}\n",
+                           block_name, (void *)tg.m_aTracks, static_cast<int>(tg.m_numTracks));
                 // Individual tracks with lambda summary.
                 if (tg.m_aTracks && tg.m_numTracks > 0) {
                     for (i16 t = 0; t < tg.m_numTracks; ++t) {

@@ -27,6 +27,8 @@ namespace carbon {
         }
     };
 
+    static_assert(sizeof(DCEntry) == 0x18, "DCEntry must be 0x18 bytes");
+
     /// @brief DC container header. Always located at the start of a .bin DC file.
     /// @details File layout (offsets from file start):
     ///            0x00  DC_Header            (0x20 bytes)
@@ -62,6 +64,8 @@ namespace carbon {
         DCEntry *m_pStartOfData; ///< <c>0x18</c>: pointer to Entry[0] (the entry table), not to the
                                  ///< payload
     };
+    
+    static_assert(sizeof(DC_Header) == 0x20, "DC_Header must be 0x20 bytes");
 
     static constexpr u32 DC_FILE_MAGIC = 0x44433030;
     static constexpr u32 DC_FILE_VERSION = 0x01;

@@ -299,7 +299,7 @@ class TypeSystem {
                           const TypeSpec &field_type, bool is_inline = false,
                           bool is_dynamic = false, int array_size = -1, int offset_override = -1,
                           bool skip_in_static_decomp = false, double score = 0.0,
-                          const std::optional<TypeSpec> decomp_as_ts = std::nullopt);
+                          const std::optional<TypeSpec> decomp_as_ts = std::nullopt, bool is_const = false);
 
     // ========================================================================
     // BitField System

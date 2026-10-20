@@ -263,6 +263,17 @@ namespace carbon {
         void request_exit();
 
         // ----------------------------------------------------------------
+        // Current process (thread-local)
+        // ----------------------------------------------------------------
+        //
+        // The scheduler sets these around each quantum, so that a native
+        // function called from script code can find the process that is
+        // currently executing. Outside a tick() the pointer is null.
+
+        static Process *current_process() noexcept;
+        static void     set_current_process(Process *p) noexcept;
+
+        // ----------------------------------------------------------------
         // Accessors (for advanced clients and for tests)
         // ----------------------------------------------------------------
 

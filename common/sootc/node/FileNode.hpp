@@ -7,6 +7,7 @@
 #include "sootc/libs/DataSegment.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/SequenceNode.hpp"
+#include "sootc/node/StateScriptNode.hpp"
 #include <expected>
 #include <string>
 #include <unordered_map>
@@ -243,6 +244,45 @@ namespace sootc {
         ProgramBinaryElement build_ss_type(const TypeDeclarationNode                  *type_decl,
                       const std::unordered_map<std::string, u64> &type_lambdas);
 
+        /// @brief Build the SsType entry that describes the variable layout
+        ///        of a StateScript.
+        ///
+        /// @details Identical to build_ss_type except:
+        ///            * the entry name is "<type>$vars";
+        ///            * m_flags has bit 2 (is_state_vars) set.
+        ///
+        ///          This is the SsType that StateScript::m_pVarType points
+        ///          at. It is a separate entry from the StateScript itself
+        ///          because layout and behaviour are different concerns.
+        ProgramBinaryElement
+        build_ss_type_for_script(const StateScriptNode                      *node,
+                                 const std::unordered_map<std::string, u64> &type_lambdas);
+
+        /// @brief Build a StateScript ProgramBinaryElement for one type.
+        ///
+        /// @details Emits:
+        ///            - StateScript header (0x50)
+        ///            - SsOptions (from Type::options())
+        ///            - SsState[]
+        ///            - SsOnBlock[] (per state handler)
+        ///            - SsTrackGroup[] / SsTrack[] / SsLambda[] (per track)
+        ///            - m_pVarDefaults (blob instance from blob pool)
+        ///            - the associated SsType (layout) — emitted separately
+        ///              by build_ss_type; this method only references it.
+        ///
+        ///          ScriptLambda pointers inside SsOnBlock / SsLambda are
+        ///          resolved via `entry_offsets` (name -> file offset).
+        ///
+        ///          Naming convention (must match compile_state_script_bodies):
+        ///            <type>-<state>-<kind>
+        ///            <type>-<state>-event-<event-id>
+        ///            <type>-<state>-<kind>-track-<track>-main-<i>
+        ///            <type>-<state>-<kind>-track-<track>-frame-<N>
+        ProgramBinaryElement
+        build_state_script(const StateScriptNode                      *node,
+                           const std::unordered_map<std::string, u64> &entry_offsets,
+                           u64 ss_type_file_offset, u64 ss_payload_offset);
+     
         /// @brief The single synthetic top-level function for this module.
         ///
         /// @details Unlike normal function nodes (which are created per

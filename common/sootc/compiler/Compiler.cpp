@@ -1,19 +1,17 @@
 // sootc/compiler/Compiler.cpp
-#include "sootc/compiler/Compiler.hpp"
 #include "carbon/file/BinaryFileInspector.hpp"
 #include "carbon/file/DCIFile.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/file/SizeAssertions.hpp"
 #include "carbon/lib/StringIdManager.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
-#include "fmt/color.h"
-#include "fmt/core.h"
-#include "fmt/format.h"
-#include "fmt/ranges.h"
+
 #include "script/Interpreter.hpp"
 #include "script/Object.hpp"
 #include "script/ParseHelpers.hpp"
 #include "script/Reader.hpp"
+
+#include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/Macro.hpp"
@@ -25,11 +23,21 @@
 #include "sootc/node/SequenceNode.hpp"
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/StaticDefineNode.hpp"
+#include "sootc/node/StateScriptNode.hpp"
+
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
 #include "sootc/runtime/RemoteRuntime.hpp"
-#include "third_party/replxx/include/replxx.hxx"
+
 #include "type_system/TypeSystem.hpp"
+
+#include "fmt/color.h"
+#include "fmt/core.h"
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
+#include "third_party/replxx/include/replxx.hxx"
+
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
 
@@ -550,7 +558,8 @@ namespace sootc {
                     } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
-                               dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr) {
+                               dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
+                               dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
@@ -571,6 +580,31 @@ namespace sootc {
                     }
                 }
                 current = current.as_pair()->cdr;
+            }
+            
+             // ---- Compile state-script handler bodies ----
+            //
+            // Each handler body and each track step is compiled into its
+            // own FunctionNode, added to the file, and later laid out by
+            // FileNode::make_binary. build_state_script reads the names
+            // back from entry_offsets to fill SsOnBlock::m_pScriptLambda
+            // and SsLambda::m_pScriptLambda.
+            //
+            // IMPORTANT: compile_state_script_bodies calls file->add_child(),
+            // which may reallocate m_children and invalidate every iterator
+            // and reference into it. We therefore:
+            //   1. take a snapshot of the StateScriptNode* pointers first;
+            //   2. then iterate the snapshot, calling add_child on the file.
+            {
+                std::vector<StateScriptNode *> state_scripts;
+                for (auto &child : file_node->children()) {
+                    if (auto *ss = dynamic_cast<StateScriptNode *>(child.get())) {
+                        state_scripts.push_back(ss);
+                    }
+                }
+                for (auto *ss : state_scripts) {
+                    compile_state_script_bodies(ss, file_node, builder);
+                }
             }
 
             // ---- Generate the binary ----
@@ -2151,6 +2185,144 @@ namespace sootc {
         // so on. The counter is never reset, so names are unique for
         // the lifetime of this Compiler instance.
         return fmt::format("{}::lambda#{}", effective_base, m_lambda_counter++);
+    }
+
+    // ========================================================================
+    // State-script body compilation
+    // ========================================================================
+
+    namespace {
+
+        // Build a (lambda () body) form from an arbitrary body form.
+        // If the form is already a lambda, use it as-is.
+        script::Object ensure_lambda(script::Interpreter &soot, const script::Object &body) {
+            if (body.is_pair() && body.as_pair()->car.is_symbol()) {
+                const std::string head = body.as_pair()->car.as_symbol();
+                if (head == "lambda" || head == "function") { return body; }
+            }
+            // Wrap: (lambda () body)
+            return script::Object::make_pair(
+                soot.intern("lambda"),
+                script::Object::make_pair(
+                    script::Object::make_null(),
+                    script::Object::make_pair(body, script::Object::make_null())));
+        }
+
+        std::string handler_kind_name(StateHandler kind) {
+            switch (kind) {
+            case StateHandler::ENTER: return "enter";
+            case StateHandler::EXIT: return "exit";
+            case StateHandler::CODE: return "code";
+            case StateHandler::UPDATE: return "trans";
+            case StateHandler::POST: return "post";
+            case StateHandler::EVENT: return "event";
+            }
+            return "unknown";
+        }
+
+    } // namespace
+
+    void Compiler::compile_state_script_bodies(StateScriptNode *ss, FileNode *file,
+                                               NodeBuilder &builder) {
+        const std::string &type_name = ss->type().base_type();
+
+        Type *t = m_ts.lookup_type_no_throw(type_name);
+        if (!t) {
+            lg::warn("compile_state_script_bodies: unknown type '{}'", type_name);
+            return;
+        }
+
+        for (const auto &[state_name, handlers] : t->state_handlers()) {
+            for (const auto &h : handlers) {
+                // ---- Handler body ----
+                if (!h.body_ast.is_null()) {
+                    const std::string base =
+                        fmt::format("{}-{}-{}", type_name, state_name, handler_kind_name(h.kind));
+                    const std::string name = (h.kind == StateHandler::EVENT)
+                                                 ? fmt::format("{}-event-{}", base, h.event_id)
+                                                 : base;
+
+                    script::Object lambda_form = ensure_lambda(m_soot, h.body_ast);
+
+                    try {
+                        auto  node = builder.build_lambda(lambda_form, file);
+                        auto *fn = dynamic_cast<FunctionNode *>(node.get());
+                        if (!fn) {
+                            lg::warn(
+                                "compile_state_script_bodies: '{}' did not produce a FunctionNode",
+                                name);
+                            continue;
+                        }
+                        fn->set_name(name);
+
+                        FunctionNode *raw = fn;
+                        node.release();
+                        file->add_child(std::unique_ptr<Node>(raw));
+                        file->bind(name, raw);
+                    } catch (const std::exception &e) {
+                        throw make_error(h.body_ast, fmt::format("compiling handler '{}'", name))
+                            .expected("a compilable lambda body")
+                            .got(e.what());
+                    }
+                }
+
+                // ---- Tracks ----
+                for (const auto &tr : h.tracks) {
+                    // Main routine: each form is its own SsLambda (counter = -1).
+                    for (size_t i = 0; i < tr.steps.size(); ++i) {
+                        const std::string name =
+                            fmt::format("{}-{}-{}-track-{}-main-{}", type_name, state_name,
+                                        handler_kind_name(h.kind), tr.name, i);
+
+                        script::Object lambda_form = ensure_lambda(m_soot, tr.steps[i]);
+                        try {
+                            auto  node = builder.build_lambda(lambda_form, file);
+                            auto *fn = dynamic_cast<FunctionNode *>(node.get());
+                            if (!fn) continue;
+                            fn->set_name(name);
+
+                            FunctionNode *raw = fn;
+                            node.release();
+                            file->add_child(std::unique_ptr<Node>(raw));
+                            file->bind(name, raw);
+                        } catch (const std::exception &e) {
+                            throw make_error(
+                                tr.steps[i],
+                                fmt::format("compiling track '{}' main step {}", tr.name, i))
+                                .expected("a compilable lambda body")
+                                .got(e.what());
+                        }
+                    }
+
+                    // Frame-bound steps: (N, body) pairs.
+                    for (const auto &[N, body] : tr.frame_forms) {
+                        const std::string name =
+                            fmt::format("{}-{}-{}-track-{}-frame-{}", type_name, state_name,
+                                        handler_kind_name(h.kind), tr.name, N);
+
+                        script::Object lambda_form = ensure_lambda(m_soot, body);
+                        try {
+                            auto  node = builder.build_lambda(lambda_form, file);
+                            auto *fn = dynamic_cast<FunctionNode *>(node.get());
+                            if (!fn) continue;
+                            fn->set_name(name);
+
+                            FunctionNode *raw = fn;
+                            node.release();
+                            file->add_child(std::unique_ptr<Node>(raw));
+                            file->bind(name, raw);
+                        } catch (const std::exception &e) {
+                            throw make_error(
+                                body, fmt::format("compiling track '{}' frame {}", tr.name, N))
+                                .expected("a compilable lambda body")
+                                .got(e.what());
+                        }
+                    }
+                }
+            }
+        }
+
+        lg::debug("compile_state_script_bodies: '{}' compiled", type_name);
     }
 
     // ===============================================================

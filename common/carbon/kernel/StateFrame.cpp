@@ -1,150 +1,59 @@
-﻿// StateFrame.cpp
-#include "carbon/ForwardDeclarations.hpp"
-#include "carbon/kernel/StateFrame.hpp"
+﻿#include "carbon/kernel/StateFrame.hpp"
+
+#include "carbon/Carbon.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
-#include "carbon/kernel/Process.hpp"
-#include "lib/StringId.hpp"
+
+#include "util/Log.hpp"
 
 namespace carbon {
 
-// ============================================================================
-// Конструктор
-// ============================================================================
-
-StateFrame::StateFrame(SsState* state_desc, std::shared_ptr<StackFrame> parent)
-    : ProtectFrame(
-        nullptr,  // нет основного кода во фрейме
-        parent,
-        [this]() { this->exit(); }  // cleanup function для ProtectFrame
-    )
-{
-    if (state_desc) {
-        // Устанавливаем имя фрейма
-        name = state_desc->state_id();
+    StateFrame::StateFrame(SsState *state_desc, std::shared_ptr<StackFrame> parent)
+        : ProtectFrame(nullptr, parent, nullptr) {
         frame_type = FrameType::STATE;
-        
-        // Копируем обработчики из StateDesc (как в SOOT)
-        enter_function_ = state_desc->get_enter_function();
-        trans_function_ = state_desc->get_trans_function();
-        code_function_ = state_desc->get_code_function();
-        post_function_ = state_desc->get_post_function();
-        exit_function_ = state_desc->get_exit_function();
-    }
-    
-    lg::debug("StateFrame created for state '{}'", name.to_string());
-}
 
-// ============================================================================
-// Выполнение exit-обработчика
-// ============================================================================
-
-void StateFrame::execute_exit() {
-    if (!exit_function_) {
-        return;
-    }
-    
-    lg::debug("StateFrame::execute_exit for state '{}'", name);
-    
-    // Создаём временный фрейм для exit-обработчика
-    StackFrame* exit_frame = new StackFrame(
-        exit_function_,
-        nullptr,
-        StackFrame::FrameType::GENERIC,
-        StringId("state_exit")
-    );
-;
-    // Выполняем через VM
-    // TODO: Получить VM из процесса или глобального контекста
-    // VirtualMachine::instance().execute(exit_frame, owner_process_);
-    
-    delete exit_frame;
-}
-
-// ============================================================================
-// Переопределенные методы ProtectFrame
-// ============================================================================
-
-void StateFrame::exit() {
-    lg::debug("StateFrame::exit called for state '{}'", name);
-    execute_exit();
-}
-
-void StateFrame::on_throw() {
-    lg::warn("Exception in state '{}', calling exit handler", name);
-    execute_exit();
-}
-
-// ============================================================================
-// Отладочная информация
-// ============================================================================
-
-std::string StateFrame::to_string() const {
-    return fmt::format(
-        "StateFrame(state:'{}', handlers:[{}])",
-        name,
-        get_handler_hames()
-    );
-}
-
-std::string StateFrame::inspect() const {
-    return fmt::format(
-        "StateFrame(state:'{}', handlers:[enter:{}, trans:{}, update:{}, post:{}, exit:{}], pc:{}, parent:{})",
-        name,
-        has_enter() ? "yes" : "no",
-        has_trans() ? "yes" : "no",
-        has_code() ? "yes" : "no",
-        has_post() ? "yes" : "no",
-        has_exit() ? "yes" : "no",
-        pc,
-        parent ? "yes" : "no"
-    );
-}
-
-    std::string StateFrame::get_handler_hames() const {
-        std::string result;
-        
-        if (has_enter()) result += " enter";
-        if (has_trans()) result += " trans";
-        if (has_code()) result += " code";
-        if (has_post()) result += " post";
-        if (has_exit()) result += " exit";
-        return result.empty() ? "none" : result.substr(1);
-    }
-
-// ============================================================================
-// Вспомогательные функции
-// ============================================================================
-
-StateFrame* create_state_frame(SsState* state_desc, std::shared_ptr<StackFrame> parent) {
-    return new StateFrame(state_desc, parent);
-}
-
-void destroy_state_frame(StateFrame* frame) {
-    delete frame;
-}
-
-// Функция с shared_ptr
-std::shared_ptr<StateFrame> find_current_state_frame(std::shared_ptr<StackFrame> top_frame) {
-    auto current = top_frame;
-    while (current) {
-        if (current->frame_type == StackFrame::FrameType::STATE) {
-            return std::dynamic_pointer_cast<StateFrame>(current);
+        if (state_desc) {
+            name = state_desc->state_id();
+            enter_function_ = state_desc->get_enter_function();
+            trans_function_ = state_desc->get_trans_function();
+            code_function_ = state_desc->get_code_function();
+            post_function_ = state_desc->get_post_function();
+            exit_function_ = state_desc->get_exit_function();
         }
-        current = current->parent;  
     }
-    return nullptr;
-}
 
-// Если нужно вернуть сырой указатель (не рекомендуется)
-StateFrame* find_current_state_frame_raw(std::shared_ptr<StackFrame> top_frame) {
-    auto current = top_frame;
-    while (current) {
-        if (current->frame_type == StackFrame::FrameType::STATE) {
-            return dynamic_cast<StateFrame*>(current.get());
-        }
-        current = current->parent;
+    void StateFrame::exit() { execute_exit(); }
+
+    void StateFrame::on_throw() { execute_exit(); }
+
+    void StateFrame::execute_exit() {
+        if (!exit_function_) return;
+
+        // Run the exit handler on the VM. The frame has already been
+        // unlinked from the process stack by pop_frame(), so we use the
+        // Carbon singleton to reach the VM.
+        Carbon *carbon = Carbon::current();
+        if (!carbon) return;
+
+        VirtualMachine &vm = *carbon->vm();
+
+        auto exit_frame = std::make_shared<StackFrame>(exit_function_, nullptr, FrameType::GENERIC,
+                                                       StringIds::exit);
+
+        // Do NOT suspend during exit: it is a cleanup path.
+        exit_frame->argc = 0;
+        vm.execute(exit_frame);
+
+        lg::debug("StateFrame: ran exit handler '{}'", name.to_string());
     }
-    return nullptr;
-}
+
+    std::string StateFrame::to_string() const {
+        return fmt::format("StateFrame(state='{}', pc={})", name.to_string(), pc);
+    }
+
+    std::string StateFrame::inspect() const {
+        return fmt::format("StateFrame(name='{}', type=STATE, pc={}, has_enter={}, has_exit={})",
+                           name.to_string(), pc, enter_function_ != nullptr,
+                           exit_function_ != nullptr);
+    }
 
 } // namespace carbon

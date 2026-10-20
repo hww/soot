@@ -34,123 +34,26 @@ namespace carbon {
     struct SsTrack;
     struct SsLambda;
     struct ScriptLambda;
-
-    // ---------------------------------------------------------------------------
-    // State script
-    // ---------------------------------------------------------------------------
-    /// @brief State script — a finite-state machine used for gameplay logic.
-    /// @example (state-script npc-ai (initial idle) ...)
-    struct StateScript // 0x50
-    {
-        sid64 m_stateScriptId;               ///< <c>0x08</c>: SID64 of the state-script name
-        SsDeclarationList *m_pSsDeclList;    ///< <c>0x10</c>: pointer to the declaration list, or null
-        sid64              m_initialStateId; ///< <c>0x18</c>: SID64 of the initial state
-        SsOptions         *m_pSsOptions;     ///< <c>0x20</c>: pointer to the options block, or null
-        u64                m_always0_1;      ///< <c>0x28</c>: reserved, always 0
-        SsState           *m_pSsStateTable;  ///< <c>0x30</c>: pointer to the SsState array
-        i16                m_stateCount;     ///< <c>0x38</c>: number of states in m_pSsStateTable
-        i16                m_line;           ///< <c>0x3A</c>: source line number shown in the debug overlay
-        u32                m_always0_2;      ///< <c>0x3C</c>: reserved, always 0
-        const char        *m_pDebugFileName; ///< <c>0x40</c>: source path, e.g.
-                                             ///< "t2r/src/game/scriptx/ss/ss-tag-as-hero.dcx"
-        const char        *m_pErrorName;     ///< <c>0x48</c>: runtime error string, or null
-        u64                m_padding;        ///< <c>0x50</c>: reserved, always 0
-
-        SsState *resolve_state(StringId name);
-    };
-
-
-    // ---------------------------------------------------------------------------
-    // State-script declarations
-    // ---------------------------------------------------------------------------
-    
-    /// @brief List of variables declared in a state script.
-    struct SsDeclarationList // 0x10
-    {
-        u32 m_totalDeclarationSize;     ///< <c>0x00</c>: total size in bytes of all declared variables
-        u32 m_numDeclarations;          ///< <c>0x04</c>: number of entries in m_pDeclarations
-        SsDeclaration *m_pDeclarations; ///< <c>0x08</c>: pointer to SsDeclaration[m_numDeclarations]
-    };
-
-    /// @brief One variable declared in a state script.
-    /// @example (define health 100)  →  health: int32 = 100
-    /// @details m_declTypeId selects how to interpret m_pDeclValue. Known types:
-    ///            "boolean"      1 byte   (u8, printed as true/false)
-    ///            "int32"        4 bytes  (i32)
-    ///            "uint64"       8 bytes  (u64)
-    ///            "float"        4 bytes  (f32)
-    ///            "timer"        4 bytes  (f32)
-    ///            "bound-frame"  4 bytes  (f32)
-    ///            "symbol"       8 bytes  (sid64)
-    ///            "string"       8 bytes  (const char*, relocated)
-    ///            "vector"      16 bytes  (4 x f32)
-    ///            "quat"        16 bytes  (4 x f32)
-    ///            "point"       12 bytes  (3 x f32)
-    ///          Unknown types must be inspected manually — the inspector prints
-    ///          the first 16 bytes as raw hex when the type is not recognised.
-    ///          See common/carbon/file/DeclarationTypes.hpp for the authoritative list.
-    struct SsDeclaration // 0x30
-    {
-        sid64 m_declId;         ///< <c>0x00</c>: SID64 of the variable name (e.g. SID("#health"))
-        const char
-             *m_declIdString;   ///< <c>0x08</c>: source-string of the variable name (debug), or null
-        sid64 m_declTypeId;     ///< <c>0x10</c>: SID64 of the type; see the type table above
-        u16   m_varSizeSum;     ///< <c>0x18</c>: cumulative size in bytes of all declarations up to and
-                                ///< including this one
-        u16   m_isVar;          ///< <c>0x1A</c>: 1 if this is a variable, 0 otherwise
-        u32   m_always0;        ///< <c>0x1C</c>: reserved, always 0
-        void *m_pDeclValue;     ///< <c>0x20</c>: pointer to the initial value in the data segment, or
-                                ///< null
-        u64   m_always0x80;     ///< <c>0x28</c>: reserved; observed as 0x80 in practice
-    };
-
-    // ---------------------------------------------------------------------------
-    // State-script options
-    // ---------------------------------------------------------------------------
-    
-    /// @brief Options block attached to a state script.
-    struct SsOptions // 0x50
-    {
-        const char  *m_optionString; ///< <c>0x00</c>: debug string of options, or null
-        u64          m_unknownFlags; ///< <c>0x08</c>: unknown flags; purpose not confirmed
-        u64          m_always0_1;    ///< <c>0x10</c>: reserved, always 0
-        SymbolArray *m_pSymbolArray; ///< <c>0x18</c>: primary symbol array (the options list)
-        SymbolArray *m_symbolArray2; ///< <c>0x20</c>: secondary symbol array, overwhelmingly null
-                                     ///< in practice
-        SymbolArray *
-            m_symbolArray3; ///< <c>0x28</c>: tertiary symbol array, overwhelmingly null in practice
-        SymbolArray *m_symbolArray4; ///< <c>0x30</c>: quaternary symbol array, overwhelmingly null
-                                     ///< in practice
-        u32          m_always5;      ///< <c>0x38</c>: unknown, observed as 5
-        u32          m_mostly0;      ///< <c>0x3C</c>: usually 0; occasionally 16, 32, 1, 13, 21, or 8
-        u64          m_mostly0Rarely1; ///< <c>0x40</c>: usually 0, rarely 1
-        u64          m_always0_2;    ///< <c>0x48</c>: reserved, always 0
-    };
-
-    /// @brief Array of SID64 values (e.g. the options list of a state script).
-    struct SymbolArray // 0x10
-    {
-        u32    m_numEntries; ///< <c>0x00</c>: number of entries in m_pSymbols
-        u32    m_unk;        ///< <c>0x04</c>: reserved, always 0
-        sid64 *m_pSymbols;   ///< <c>0x08</c>: pointer to sid64[m_numEntries]
-    };
+    struct SsType;
 
     // ---------------------------------------------------------------------------
     // Tracks (animation / audio / VFX lanes)
     // ---------------------------------------------------------------------------
-    
+
     /// @brief Group of parallel tracks belonging to one SsOnBlock.
     struct SsTrackGroup {
-        u64         m_always0;                  ///< <c>0x00</c>: reserved, always 0
-        u16         m_totalLambdaCount;         ///< <c>0x08</c>: total number of lambdas across all tracks
-        i16         m_numTracks;                ///< <c>0x0A</c>: number of tracks in m_aTracks
-        u32         m_padding;                  ///< <c>0x0C</c>: reserved, always 0
-        SsTrack    *m_aTracks;                  ///< <c>0x10</c>: pointer to SsTrack[m_numTracks]
-        const char *m_name;                     ///< <c>0x18</c>: debug name, e.g. "ss-fp-test initial (on (start))"
+        u64         m_always0;          ///< <c>0x00</c>: reserved, always 0
+        u16         m_totalLambdaCount; ///< <c>0x08</c>: total number of lambdas across all tracks
+        i16         m_numTracks;        ///< <c>0x0A</c>: number of tracks in m_aTracks
+        u32         m_padding;          ///< <c>0x0C</c>: reserved, always 0
+        SsTrack    *m_aTracks;          ///< <c>0x10</c>: pointer to SsTrack[m_numTracks]
+        const char *m_name; ///< <c>0x18</c>: debug name, e.g. "ss-fp-test initial (on (start))"
         u64         m_always0_1;                ///< <c>0x20</c>: reserved, always 0
         u64         m_always0_2;                ///< <c>0x28</c>: reserved, always 0
         const ScriptLambda *m_rareScriptLambda; ///< <c>0x30</c>: rarely used script-lambda, or null
     };
+
+    static_assert(sizeof(SsTrackGroup) == 0x38, "SsTrackGroup must be 0x38 bytes");
 
     // ---------------------------------------------------------------------------
     // States and transitions
@@ -160,7 +63,7 @@ namespace carbon {
     /// @details Start/End/Event/Update/Virtual are canonical (see icemesh).
     ///          Code/Exit/Post are extensions observed in some state scripts.
     enum class BlockType : i32 {
-        Start,
+        Enter,
         End,
         Event,
         Update,
@@ -197,9 +100,11 @@ namespace carbon {
         ScriptLambda *get_event_handler(StringId event_id);
     };
 
+    static_assert(sizeof(SsState) == 0x18, "SsState must be 0x18 bytes");
+
     inline const char *block_type_to_string(BlockType type) {
         switch (type) {
-        case BlockType::Start: return "start";
+        case BlockType::Enter: return "enter";
         case BlockType::End: return "end";
         case BlockType::Event: return "event";
         case BlockType::Update: return "update";
@@ -215,12 +120,13 @@ namespace carbon {
     /// @example (on (start) (lambda () (print "entered idle")))
     struct SsOnBlock // 0x40 (plus SsTrackGroup)
     {
-        BlockType     m_blockType;      ///< <c>0x00</c>: block type (start / end / event / update / virtual
-                                        ///< / code / exit / post)
-        u32           m_always0;        ///< <c>0x04</c>: reserved, always 0
-        sid64         m_blockEventId;   ///< <c>0x08</c>: SID64 of the event; 0 if not an Event block
-        ScriptLambda *m_pScriptLambda;  ///< <c>0x10</c>: pointer to the block's script-lambda, or null
-        SsTrackGroup  m_trackGroup;     ///< <c>0x18</c>: parallel track group attached to this block
+        BlockType m_blockType; ///< <c>0x00</c>: block type (start / end / event / update / virtual
+                               ///< / code / exit / post)
+        u32       m_always0;   ///< <c>0x04</c>: reserved, always 0
+        sid64     m_blockEventId; ///< <c>0x08</c>: SID64 of the event; 0 if not an Event block
+        ScriptLambda
+            *m_pScriptLambda;      ///< <c>0x10</c>: pointer to the block's script-lambda, or null
+        SsTrackGroup m_trackGroup; ///< <c>0x18</c>: parallel track group attached to this block
 
         ScriptLambda *lambda() { return m_pScriptLambda; }
 
@@ -230,6 +136,126 @@ namespace carbon {
                                StringId(m_blockEventId));
         }
     };
+
+    static_assert(sizeof(SsOnBlock) == 0x50, "SsOnBlock must be 0x50 bytes");
+
+    // ---------------------------------------------------------------------------
+    // State script
+    // ---------------------------------------------------------------------------
+    /// @brief State script — a finite-state machine used for gameplay logic.
+    /// @example (state-script npc-ai (initial idle) ...)
+    struct StateScript // 0x50
+    {
+        sid64 m_stateScriptId;        ///< 0x00
+        SsType     *m_pVarType;       ///< 0x08: раскладка переменных автомата (relocated)
+        sid64       m_initialStateId; ///< 0x10
+        SsOptions  *m_pSsOptions;     ///< 0x18 (relocated)
+        void       *m_pVarDefaults;   ///< 0x20: экземпляр со значениями по умолчанию (relocated, blob pool)
+        SsState    *m_pSsStateTable;  ///< 0x28 (relocated)
+        i16         m_stateCount;     ///< 0x30
+        i16         m_line;           ///< 0x32
+        u32         m_always0_2;      ///< 0x34
+        const char *m_pDebugFileName; ///< 0x38 (relocated, string pool)
+        const char *m_pErrorName;     ///< 0x40 (relocated, string pool)
+        u64         m_padding;        ///< 0x48
+    
+          
+
+        inline SsState *resolve_state(StringId state_id) {
+            for (i16 i = 0; i < m_stateCount; ++i) {
+                if (m_pSsStateTable[i].state_id() == state_id) { return &m_pSsStateTable[i]; }
+            }
+            return nullptr;
+        }
+    
+    };                                // 0x50
+
+
+
+    static_assert(sizeof(StateScript) == 0x50, "StateScript must be 0x50 bytes");
+
+
+    // ---------------------------------------------------------------------------
+    // State-script declarations
+    // ---------------------------------------------------------------------------
+    
+    /// @brief List of variables declared in a state script.
+    struct SsDeclarationList // 0x10
+    {
+        u32 m_totalDeclarationSize;     ///< <c>0x00</c>: total size in bytes of all declared variables
+        u32 m_numDeclarations;          ///< <c>0x04</c>: number of entries in m_pDeclarations
+        SsDeclaration *m_pDeclarations; ///< <c>0x08</c>: pointer to SsDeclaration[m_numDeclarations]
+    };
+
+    static_assert(sizeof(SsDeclarationList) == 0x10, "SsDeclarationList must be 0x10 bytes");
+
+    /// @brief One variable declared in a state script.
+    /// @example (define health 100)  →  health: int32 = 100
+    /// @details m_declTypeId selects how to interpret m_pDeclValue. Known types:
+    ///            "boolean"      1 byte   (u8, printed as true/false)
+    ///            "int32"        4 bytes  (i32)
+    ///            "uint64"       8 bytes  (u64)
+    ///            "float"        4 bytes  (f32)
+    ///            "timer"        4 bytes  (f32)
+    ///            "bound-frame"  4 bytes  (f32)
+    ///            "symbol"       8 bytes  (sid64)
+    ///            "string"       8 bytes  (const char*, relocated)
+    ///            "vector"      16 bytes  (4 x f32)
+    ///            "quat"        16 bytes  (4 x f32)
+    ///            "point"       12 bytes  (3 x f32)
+    ///          Unknown types must be inspected manually — the inspector prints
+    ///          the first 16 bytes as raw hex when the type is not recognised.
+    ///          See common/carbon/file/DeclarationTypes.hpp for the authoritative list.
+    struct SsDeclaration // 0x30
+    {
+        sid64 m_declId;               ///< <c>0x00</c>: SID64 of the variable name (e.g. SID("#health"))
+        const char *m_declIdString;   ///< <c>0x08</c>: source-string of the variable name (debug), or null
+        sid64 m_declTypeId;           ///< <c>0x10</c>: SID64 of the type; see the type table above
+        u16   m_varSizeSum;           ///< <c>0x18</c>: cumulative size in bytes of all declarations up to and
+                                      ///< including this one
+        u16   m_isVar;                ///< <c>0x1A</c>: 1 if this is a variable, 0 otherwise
+        u32   m_always0;              ///< <c>0x1C</c>: reserved, always 0
+        void *m_pDeclValue;           ///< <c>0x20</c>: pointer to the initial value in the data segment, or
+                                      ///< null
+        u64   m_always0x80;           ///< <c>0x28</c>: reserved; observed as 0x80 in practice
+    };
+
+    static_assert(sizeof(SsDeclaration) == 0x30, "SsDeclaration must be 0x30 bytes");
+
+    // ---------------------------------------------------------------------------
+    // State-script options
+    // ---------------------------------------------------------------------------
+    
+    /// @brief Options block attached to a state script.
+    struct SsOptions // 0x50
+    {
+        const char  *m_optionString; ///< <c>0x00</c>: debug string of options, or null
+        u64          m_unknownFlags; ///< <c>0x08</c>: unknown flags; purpose not confirmed
+        u64          m_always0_1;    ///< <c>0x10</c>: reserved, always 0
+        SymbolArray *m_pSymbolArray; ///< <c>0x18</c>: primary symbol array (the options list)
+        SymbolArray *m_symbolArray2; ///< <c>0x20</c>: secondary symbol array, overwhelmingly null
+                                     ///< in practice
+        SymbolArray *
+            m_symbolArray3; ///< <c>0x28</c>: tertiary symbol array, overwhelmingly null in practice
+        SymbolArray *m_symbolArray4; ///< <c>0x30</c>: quaternary symbol array, overwhelmingly null
+                                     ///< in practice
+        u32          m_always5;      ///< <c>0x38</c>: unknown, observed as 5
+        u32          m_mostly0;      ///< <c>0x3C</c>: usually 0; occasionally 16, 32, 1, 13, 21, or 8
+        u64          m_mostly0Rarely1; ///< <c>0x40</c>: usually 0, rarely 1
+        u64          m_always0_2;    ///< <c>0x48</c>: reserved, always 0
+    };
+    
+    static_assert(sizeof(SsOptions) == 0x50, "SsOptions must be 0x50 bytes");
+
+    /// @brief Array of SID64 values (e.g. the options list of a state script).
+    struct SymbolArray // 0x10
+    {
+        u32    m_numEntries; ///< <c>0x00</c>: number of entries in m_pSymbols
+        u32    m_unk;        ///< <c>0x04</c>: reserved, always 0
+        sid64 *m_pSymbols;   ///< <c>0x08</c>: pointer to sid64[m_numEntries]
+    };
+
+    static_assert(sizeof(SymbolArray) == 0x10, "SymbolArray must be 0x10 bytes");
 
     // ---------------------------------------------------------------------------
     // Tracks (animation / audio / VFX lanes)
@@ -245,6 +271,8 @@ namespace carbon {
         SsLambda *m_pSsLambda;        ///< <c>0x10</c>: pointer to SsLambda[m_totalLambdaCount]
     };
 
+    static_assert(sizeof(SsTrack) == 0x18, "SsTrack must be 0x18 bytes");
+
     /// @brief One lambda entry inside an SsTrack.
     struct SsLambda // 0x10
     {
@@ -252,6 +280,8 @@ namespace carbon {
         u64 m_someSortOfCounter; ///< <c>0x08</c>: monotonically increasing counter across the file;
                                  ///< may have gaps
     };
+
+    static_assert(sizeof(SsLambda) == 0x10, "SsLambda must be 0x10 bytes");
 
     // ---------------------------------------------------------------------------
     // SsType — self-describing type information stored inside the .bin file.
@@ -275,15 +305,18 @@ namespace carbon {
     //                       bit 1: is_structure (no runtime type info)
     //   0x38  m_reserved    reserved, always 0
 
-    struct SsField // 0x20
+    struct SsField // 0x28
     {
-        sid64 m_name;   ///< <c>0x00</c>: SID64 of the field name (e.g. SID("x"))
-        sid64 m_type;   ///< <c>0x08</c>: SID64 of the field type (e.g. SID("float"))
-        u32   m_offset; ///< <c>0x10</c>: byte offset of the field within the struct
-        u32   m_size;   ///< <c>0x14</c>: size of the field in bytes
-        u32   m_flags;  ///< <c>0x18</c>: bit 0: inline, bit 1: dynamic, bit 2: array
-        u32   m_count;  ///< <c>0x1C</c>: number of elements if array, 0 otherwise
-    };
+        sid64 m_name; ///< 0x00: SID64 имени поля
+        const char *m_nameString; ///< 0x08: ptr на исходную строку имени в string pool (debug)
+        sid64 m_type;   ///< 0x10: SID64 типа данных
+        u32   m_offset; ///< 0x18: байт-офсет поля внутри инстанса
+        u32   m_size;   ///< 0x1C: размер поля в байтах
+        u32   m_flags;  ///< 0x20: bit 0: inline, bit 1: dynamic, bit 2: array, bit 3: is_const
+        u32   m_count;  ///< 0x24: кол-во элементов, если array
+    };                  // 0x28
+
+    static_assert(sizeof(SsField) == 0x28, "SsField must be 0x28 bytes");
 
     struct SsType // 0x40
     {
@@ -295,11 +328,10 @@ namespace carbon {
         u32      m_numMethods; ///< <c>0x1C</c>: number of methods (0 for now)
         SsField *m_pFields;    ///< <c>0x20</c>: pointer to SsField[m_numFields] (relocated)
         void    *m_pMethods;   ///< <c>0x28</c>: reserved for SsMethod[] (relocated, may be null)
-        u64      m_flags;      ///< <c>0x30</c>: bit 0: is_basic, bit 1: is_structure
+        u64      m_flags;      ///< 0x30: bit 0: basic, bit 1: structure, bit 2: is_state_vars
         u64      m_reserved;   ///< <c>0x38</c>: reserved, always 0
     };
 
-    static_assert(sizeof(SsField) == 0x20, "SsField must be 0x20 bytes");
     static_assert(sizeof(SsType)  == 0x40, "SsType must be 0x40 bytes");
 
     // ---------------------------------------------------------------------------
@@ -386,8 +418,12 @@ namespace carbon {
         }
         u64 *get_symbols_ptr() const { return m_pSymbols; }
     };
-    
-     inline SsOnBlock *SsState::lookup(BlockType type) {
+
+    // ScriptLambda is 0x58 in the carbon format (two extra fields not present
+    // in the icemesh reference layout, where it is 0x50).
+    static_assert(sizeof(ScriptLambda) == 0x58, "ScriptLambda must be 0x58 bytes");
+
+    inline SsOnBlock *SsState::lookup(BlockType type) {
         for (i64 i = 0; i < m_numSsOnBlocks; ++i) {
             if (m_pSsOnBlocks[i].m_blockType == type) { return &m_pSsOnBlocks[i]; }
         }
@@ -409,7 +445,7 @@ namespace carbon {
         return e ? e->m_pScriptLambda : nullptr;
     }
     inline ScriptLambda *SsState::get_enter_function() {
-        const auto *e = lookup(BlockType::Start);
+        const auto *e = lookup(BlockType::Enter);
         return e ? e->m_pScriptLambda : nullptr;
     }
     inline ScriptLambda *SsState::get_exit_function() {
@@ -429,18 +465,12 @@ namespace carbon {
         return e ? e->m_pScriptLambda : nullptr;
     }
 
-    inline SsState *StateScript::resolve_state(StringId state_id) {
-        for (i16 i = 0; i < m_stateCount; ++i) {
-            if (m_pSsStateTable[i].state_id() == state_id) { return &m_pSsStateTable[i]; }
-        }
-        return nullptr;
-    }
 
     // ---------------------------------------------------------------------------
     // On-disk representation of `map` (used by BinaryFileInspector).
     // ---------------------------------------------------------------------------
  
-        // On-disk representation of `map`.
+    // On-disk representation of `map`.
     //
     // DcMap:
     //   m_typeId   = SID("map") or SID("map-32")
@@ -475,7 +505,7 @@ namespace carbon {
     static_assert(sizeof(DcMap) == 0x20, "DcMap must be 0x20 bytes");
     static_assert(sizeof(DcMapValue) == 0x10, "DcMapValue must be 0x10 bytes");
 
-        // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
     // DcArray — standalone array on disk.
     // ---------------------------------------------------------------------------
     //

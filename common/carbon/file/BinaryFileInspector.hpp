@@ -84,6 +84,7 @@ namespace carbon {
         void inspect_state_script_summary(const StateScript *ss);
         void inspect_declaration_list(const SsDeclarationList *list);
         void inspect_declaration(const SsDeclaration *decl);
+        void inspect_state_vars(const SsType *st, const void *defaults);
         /// @brief Print a compact one-line-per-declaration summary table.
         /// @details Columns: index, name, type, size, value (or ??? for unknown types).
         void inspect_declaration_summary(const SsDeclarationList *list);

@@ -906,7 +906,7 @@ FieldLookupInfo TypeSystem::lookup_field_info(const std::string &type_name,
 int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_name,
                                   const TypeSpec &field_type, bool is_inline, bool is_dynamic,
                                   int array_size, int offset_override, bool skip_in_static_decomp,
-                                  double score, const std::optional<TypeSpec> decomp_as_ts) {
+                                  double score, const std::optional<TypeSpec> decomp_as_ts, bool is_const) {
 
     // Проверяем существование поля
     Field existing_field;
@@ -923,6 +923,8 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
         field.set_dynamic();
         type->set_dynamic();
     }
+    if (is_const) 
+    { field.set_const(); }
     if (array_size != -1)
         field.set_array(array_size);
 

@@ -82,24 +82,21 @@ namespace sootc {
                     entries.push_back(std::move(element));
                     lg::debug("Data declaration '{}': {} bytes", decl->name(), payload_size);
                 } else if (decl->is_heap()) {
-                    // Heap-allocated declarations have no payload by
-                    // design. The slot in the file is a placeholder
-                    // emitted by make_binary from m_placeholders, and
-                    // the pointer is written at runtime by a
-                    // StoreGlobalNode in the top-level body. Silence
-                    // is correct here, and it also avoids spamming the
-                    // log on every REPL input (this child is visited
-                    // on every generate() call for the whole session).
                     lg::debug("Data declaration '{}': heap, no payload", decl->name());
                 } else {
                     lg::warn("Data declaration '{}' produced empty element", decl->name());
                 }
             }
+            // StateScriptNode: no payload of its own. Handler bodies and
+            // track steps were compiled into FunctionNode children by
+            // Compiler::compile_state_script_bodies BEFORE generate().
+            // The StateScript entry itself is emitted by make_binary
+            // from the StateScriptNode's Type (see build_state_script).
         }
 
         return entries;
     }
-
+    
     // ============================================================================
     // build_ss_type - emit one SsType element (header + SsField[] + SsMethod[])
     // ============================================================================
@@ -215,6 +212,488 @@ namespace sootc {
     }
 
     // ============================================================================
+    // build_ss_type_for_script
+    // ============================================================================
+    //
+    // Emit the SsType entry for the variable layout of a StateScript.
+    // Identical to build_ss_type, except:
+    //   * entry name is "<type>$vars";
+    //   * m_flags has bit 2 (is_state_vars) set;
+    //   * the Field::is_const bit is propagated into SsField::m_flags.
+    ProgramBinaryElement
+    FileNode::build_ss_type_for_script(const StateScriptNode                      *node,
+                                       const std::unordered_map<std::string, u64> &type_lambdas) {
+        TypeSystem        &ts = TypeSystem::instance();
+        const std::string &type_name = node->type().base_type();
+
+        Type *type = ts.lookup_type_no_throw(type_name);
+        if (!type) {
+            lg::error("build_ss_type_for_script: unknown type '{}'", type_name);
+            return ProgramBinaryElement(0);
+        }
+
+        auto *st = dynamic_cast<StructureType *>(type);
+        if (!st) {
+            lg::error("build_ss_type_for_script: '{}' is not a structure", type_name);
+            return ProgramBinaryElement(0);
+        }
+
+        const auto &fields = st->fields();
+        const u32   num_fields = static_cast<u32>(fields.size());
+
+        std::vector<SsField> ss_fields(num_fields);
+        for (u32 i = 0; i < num_fields; ++i) {
+            const Field &f = fields[i];
+            SsField     &sf = ss_fields[i];
+
+            sf.m_name = StringId(f.name()).value;
+            sf.m_type = StringId(f.type().base_type()).value;
+            sf.m_offset = static_cast<u32>(f.offset());
+            sf.m_size = static_cast<u32>(ts.get_size_in_type(f));
+            sf.m_flags = 0;
+            if (f.is_inline()) sf.m_flags |= 0x1;
+            if (f.is_dynamic()) sf.m_flags |= 0x2;
+            if (f.is_array()) sf.m_flags |= 0x4;
+            if (f.is_const()) sf.m_flags |= 0x8;
+            sf.m_count = static_cast<u32>(f.array_size());
+        }
+
+        const int max_method_id = ts.get_type_method_count(type_name) - 1;
+        const u32 num_methods = (max_method_id >= 0) ? static_cast<u32>(max_method_id + 1) : 0;
+
+        std::vector<SsMethod> ss_methods(num_methods);
+        for (u32 id = 0; id < num_methods; ++id) {
+            MethodInfo info;
+            if (!ts.try_lookup_method(type_name, static_cast<int>(id), &info)) {
+                ss_methods[id] = {0, 0, nullptr};
+                continue;
+            }
+
+            SsMethod &sm = ss_methods[id];
+            sm.m_name = StringId(info.name).value;
+
+            const std::string full_name = fmt::format("{}-{}", type_name, info.name);
+            sm.m_fullName = StringId(full_name).value;
+
+            auto it = type_lambdas.find(info.name);
+            sm.m_pLambda =
+                (it != type_lambdas.end()) ? reinterpret_cast<ScriptLambda *>(it->second) : nullptr;
+        }
+
+        const u64 fields_offset = sizeof(SsType);
+        const u64 methods_offset = fields_offset + num_fields * sizeof(SsField);
+        const u64 payload_size = methods_offset + num_methods * sizeof(SsMethod);
+
+        ProgramBinaryElement element(payload_size);
+
+        const std::string vars_name = type_name + "$vars";
+
+        element.m_entry = {
+            .m_nameID = StringId(vars_name).value,
+            .m_typeId = SS_TYPE_SID,
+            .m_entryPtr = nullptr,
+        };
+
+        SsType ss_type{};
+        ss_type.m_name = StringId(vars_name).value;
+        ss_type.m_parent = StringId(type->get_parent()).value;
+        ss_type.m_size = static_cast<u32>(st->get_size_in_memory());
+        ss_type.m_align = static_cast<u32>(st->get_in_memory_alignment());
+        ss_type.m_numFields = num_fields;
+        ss_type.m_numMethods = num_methods;
+        ss_type.m_pFields = reinterpret_cast<SsField *>(fields_offset);
+        ss_type.m_pMethods = (num_methods > 0) ? reinterpret_cast<void *>(methods_offset) : nullptr;
+        ss_type.m_flags = 0x2 | 0x4; // structure | is_state_vars
+        ss_type.m_reserved = 0;
+
+        element.push_value_with_ptr(ss_type, PTR_FIELD(SsType, m_pFields),
+                                    PTR_FIELD(SsType, m_pMethods));
+
+        for (const auto &sf : ss_fields) { element.push_value(sf); }
+        for (const auto &sm : ss_methods) { element.push_value(sm); }
+
+        lg::info("build_ss_type_for_script '{}': {} fields, {} methods, {} bytes", vars_name,
+                 num_fields, num_methods, element.m_rawData.size());
+
+        return element;
+    }
+    // ============================================================================
+
+    namespace {
+
+        BlockType handler_kind_to_block_type(StateHandler kind) {
+            switch (kind) {
+            case StateHandler::ENTER: return BlockType::Enter;
+            case StateHandler::EXIT: return BlockType::Exit;
+            case StateHandler::CODE: return BlockType::Code;
+            case StateHandler::UPDATE: return BlockType::Update;
+            case StateHandler::POST: return BlockType::Post;
+            case StateHandler::EVENT: return BlockType::Event;
+            }
+            return BlockType::Enter;
+        }
+
+    } // namespace
+
+    // ============================================================================
+    // build_state_script
+    // ============================================================================
+    //
+    // Emit a StateScript entry and all of its nested arrays. The layout is:
+    //
+    //   StateScript               (0x50)
+    //   SsOptions                 (0x50)
+    //   SymbolArray               (0x10)
+    //   sid64 options_data[]      (variable)
+    //   SsState[]                 (0x18 * num_states)
+    //   SsOnBlock[]               (0x50 * num_blocks)         <- all states, flat
+    //   SsTrackGroup[]            (0x38 * num_blocks)         <- one per on-block
+    //   SsTrack[]                 (0x18 * num_tracks)         <- flat
+    //   SsLambda[]                (0x10 * num_lambdas)        <- flat
+    //
+    // Every pointer is an offset from the start of the file, with a relocation
+    // bit set in the file-level bitmap. The ScriptLambda pointers are resolved
+    // by name from entry_offsets.
+    ProgramBinaryElement
+    FileNode::build_state_script(const StateScriptNode                      *node,
+                                 const std::unordered_map<std::string, u64> &entry_offsets,
+                                 u64 ss_type_file_offset, u64 ss_payload_offset) {
+        TypeSystem        &ts = TypeSystem::instance();
+        const std::string &type_name = node->type().base_type();
+
+        Type *type = ts.lookup_type_no_throw(type_name);
+        if (!type) {
+            lg::error("build_state_script: unknown type '{}'", type_name);
+            return ProgramBinaryElement(0);
+        }
+
+        auto *st = dynamic_cast<StructureType *>(type);
+        if (!st) {
+            lg::error("build_state_script: '{}' is not a structure", type_name);
+            return ProgramBinaryElement(0);
+        }
+
+        const auto &state_handlers = type->state_handlers();
+        const auto &opts = type->options();
+
+        // ---- 1. Flatten the state list ----
+        //
+        // A state is "used" if it has at least one handler. Only used states
+        // appear in SsState[]. Handlers are keyed by (state_name, kind,
+        // event_id). We do not sort by name: the order is the map's natural
+        // (hash) order, which is stable within a build.
+        struct StateEntry {
+            std::string                           name;
+            std::vector<const StateHandlerBody *> handlers;
+        };
+        std::vector<StateEntry> states;
+        states.reserve(state_handlers.size());
+        for (const auto &[sname, hlist] : state_handlers) {
+            if (hlist.empty()) continue;
+            StateEntry e;
+            e.name = sname;
+            for (const auto &h : hlist) e.handlers.push_back(&h);
+            states.push_back(std::move(e));
+        }
+
+        // ---- 2. Count blocks, tracks, lambdas ----
+        u32 num_blocks = 0;
+        u32 num_tracks = 0;
+        u32 num_lambdas = 0;
+
+        for (const auto &se : states) {
+            num_blocks += static_cast<u32>(se.handlers.size());
+            for (const auto *h : se.handlers) {
+                for (const auto &tr : h->tracks) {
+                    ++num_tracks;
+                    num_lambdas += static_cast<u32>(tr.steps.size());
+                    num_lambdas += static_cast<u32>(tr.frame_forms.size());
+                }
+            }
+        }
+
+        // ---- 3. Compute offsets ----
+        //
+        // All pointers are offsets from the start of THIS element's payload.
+        // The caller (make_binary) adds the file-relative base later via
+        // adjust_offsets().
+        const u64 ss_offset = 0;
+        const u64 options_offset = ss_offset + sizeof(StateScript);
+        const u64 symarray_offset = options_offset + sizeof(SsOptions);
+
+        // Options data: pairs of (key, value) SIDs for every option entry,
+        // plus the "initial" value promoted to m_initialStateId.
+        std::vector<sid64> option_sids;
+        std::string        initial_state;
+        {
+            auto it = opts.find("initial");
+            if (it != opts.end()) initial_state = it->second;
+            for (const auto &[k, v] : opts) {
+                if (k == "initial") continue;
+                option_sids.push_back(static_cast<sid64>(StringId(k)));
+                option_sids.push_back(static_cast<sid64>(StringId(v)));
+            }
+        }
+        const u64 options_data_size = option_sids.size() * sizeof(sid64);
+        const u64 options_data_offset = symarray_offset + sizeof(SymbolArray);
+
+        const u64 states_offset = options_data_offset + options_data_size;
+        const u64 blocks_offset = states_offset + states.size() * sizeof(SsState);
+
+        // SsTrackGroup is inline inside SsOnBlock, so no separate groups region.
+        const u64 tracks_offset = blocks_offset + num_blocks * sizeof(SsOnBlock);
+        const u64 lambdas_offset = tracks_offset + num_tracks * sizeof(SsTrack);
+        const u64 payload_size = lambdas_offset + num_lambdas * sizeof(SsLambda);
+
+        ProgramBinaryElement element(payload_size);
+
+        element.m_entry = {
+            .m_nameID = StringId(type_name).value,
+            .m_typeId = StringId("state-script").value,
+            .m_entryPtr = nullptr,
+        };
+
+        // ---- 4. SsOptions ----
+        SsOptions ss_options{};
+        ss_options.m_optionString = nullptr;
+        ss_options.m_unknownFlags = 0;
+        ss_options.m_always0_1 = 0;
+        ss_options.m_pSymbolArray = reinterpret_cast<SymbolArray *>(symarray_offset);
+        ss_options.m_symbolArray2 = nullptr;
+        ss_options.m_symbolArray3 = nullptr;
+        ss_options.m_symbolArray4 = nullptr;
+        ss_options.m_always5 = 5;
+        ss_options.m_mostly0 = 0;
+        ss_options.m_mostly0Rarely1 = 0;
+        ss_options.m_always0_2 = 0;
+
+        SymbolArray symarray{};
+        symarray.m_numEntries = static_cast<u32>(option_sids.size());
+        symarray.m_unk = 0;
+        symarray.m_pSymbols =
+            option_sids.empty() ? nullptr : reinterpret_cast<sid64 *>(options_data_offset);
+
+        // ---- 5. SsState[] ----
+        std::vector<SsState> ss_states(states.size());
+        u32                  block_cursor = 0;
+        u32                  track_cursor = 0;
+        u32                  lambda_cursor = 0;
+
+        for (size_t si = 0; si < states.size(); ++si) {
+            const auto &se = states[si];
+            SsState    &sss = ss_states[si];
+
+            sss.m_stateId = static_cast<sid64>(StringId(se.name));
+            sss.m_numSsOnBlocks = static_cast<i64>(se.handlers.size());
+            sss.m_pSsOnBlocks = reinterpret_cast<SsOnBlock *>(
+                blocks_offset + si * 0 /* replaced below */); // set after all states are sized
+
+            // Blocks for this state start at block_cursor. The pointer above is
+            // recomputed once we know the actual global block index. For now,
+            // stash the per-state block start in a parallel array.
+        }
+
+        // Compute per-state block starts (blocks are laid out in state order).
+        std::vector<u64> state_block_starts(states.size());
+        {
+            u32 cursor = 0;
+            for (size_t si = 0; si < states.size(); ++si) {
+                state_block_starts[si] = blocks_offset + cursor * sizeof(SsOnBlock);
+                cursor += static_cast<u32>(states[si].handlers.size());
+            }
+        }
+
+        for (size_t si = 0; si < states.size(); ++si) {
+            ss_states[si].m_pSsOnBlocks = reinterpret_cast<SsOnBlock *>(state_block_starts[si]);
+        }
+
+        // ---- 6. SsOnBlock[], SsTrackGroup[], SsTrack[], SsLambda[] ----
+        std::vector<SsOnBlock>    ss_blocks(num_blocks);
+        std::vector<SsTrack>      ss_tracks(num_tracks);
+        std::vector<SsLambda>     ss_lambdas(num_lambdas);
+
+        auto lookup_lambda = [&](const std::string &name) -> ScriptLambda * {
+            auto it = entry_offsets.find(name);
+            if (it == entry_offsets.end()) {
+                fmt::print(stderr, "DEBUG lookup_lambda: '{}' NOT FOUND\n", name);
+                return nullptr;
+            }
+            // entry_offsets gives ABSOLUTE file offsets. The slot must contain
+            // a RELATIVE offset (from the start of this StateScript payload),
+            // because adjust_offsets() will add the payload base and the loader
+            // will add the file base. Subtract the payload offset here.
+            const u64 absolute = it->second;
+            return reinterpret_cast<ScriptLambda *>(absolute - ss_payload_offset);
+        };
+
+        block_cursor = 0;
+        track_cursor = 0;
+        lambda_cursor = 0;
+
+        for (size_t si = 0; si < states.size(); ++si) {
+            const auto &se = states[si];
+            for (size_t hi = 0; hi < se.handlers.size(); ++hi) {
+                const StateHandlerBody *h = se.handlers[hi];
+
+                SsOnBlock    &blk = ss_blocks[block_cursor];
+                SsTrackGroup &grp = blk.m_trackGroup;  
+
+                blk.m_blockType = handler_kind_to_block_type(h->kind);
+                blk.m_always0 = 0;
+                blk.m_blockEventId =
+                    h->kind == StateHandler::EVENT ? static_cast<sid64>(StringId(h->event_id)) : 0;
+                blk.m_pScriptLambda = nullptr;
+
+                // Handler body: <type>-<state>-<kind>[-<event>]
+                {
+                    std::string body_name =
+                        type_name + "-" + se.name + "-" + state_handler_to_string(h->kind);
+                    if (h->kind == StateHandler::EVENT) body_name += "-event-" + h->event_id;
+                    blk.m_pScriptLambda = lookup_lambda(body_name);
+                }
+
+                // Tracks.
+                const u32 tracks_for_block = static_cast<u32>(h->tracks.size());
+                u32       block_lambdas = 0;
+                for (const auto &tr : h->tracks) {
+                    block_lambdas += static_cast<u32>(tr.steps.size());
+                    block_lambdas += static_cast<u32>(tr.frame_forms.size());
+                }
+
+                grp.m_always0 = 0;
+                grp.m_totalLambdaCount = static_cast<u16>(block_lambdas);
+                grp.m_numTracks = static_cast<i16>(tracks_for_block);
+                grp.m_padding = 0;
+                grp.m_aTracks = tracks_for_block > 0
+                                    ? reinterpret_cast<SsTrack *>(tracks_offset +
+                                                                  track_cursor * sizeof(SsTrack))
+                                    : nullptr;
+                grp.m_name = nullptr;
+                grp.m_always0_1 = 0;
+                grp.m_always0_2 = 0;
+                grp.m_rareScriptLambda = nullptr;
+
+                fmt::print(stderr,
+                           "DEBUG block: state='{}', kind={}, tracks_for_block={}, m_aTracks={}, "
+                           "m_numTracks={}\n",
+                           se.name, static_cast<int>(h->kind), tracks_for_block,
+                           (void *)grp.m_aTracks, static_cast<int>(grp.m_numTracks));
+
+                // Tracks.
+                u32 local_lambda = 0;
+                for (size_t ti = 0; ti < h->tracks.size(); ++ti) {
+                    const auto &tr = h->tracks[ti];
+                    SsTrack    &t = ss_tracks[track_cursor];
+
+                    const u32 n_steps = static_cast<u32>(tr.steps.size());
+                    const u32 n_frames = static_cast<u32>(tr.frame_forms.size());
+
+                    t.m_trackId = static_cast<sid64>(StringId(tr.name));
+                    t.m_trackIdx = static_cast<u16>(ti);
+                    t.m_totalLambdaCount = static_cast<i16>(n_steps + n_frames);
+                    t.m_padding = 0;
+                    t.m_pSsLambda = (n_steps + n_frames) > 0
+                                        ? reinterpret_cast<SsLambda *>(
+                                              lambdas_offset +
+                                              (lambda_cursor + local_lambda) * sizeof(SsLambda))
+                                        : nullptr;
+
+                    // Main routine steps: counter = -1.
+                    for (u32 i = 0; i < n_steps; ++i) {
+                        std::string step_name =
+                            type_name + "-" + se.name + "-" + state_handler_to_string(h->kind) +
+                                                "-track-" + tr.name + "-main-" + std::to_string(i);
+
+                        ss_lambdas[lambda_cursor + local_lambda + i] = {lookup_lambda(step_name),
+                                                                        static_cast<u64>(-1)};
+                    }
+                    local_lambda += n_steps;
+
+                    // Frame steps: counter = N.
+                    for (u32 i = 0; i < n_frames; ++i) {
+                        const i64   N = tr.frame_forms[i].first;
+                        std::string step_name =
+                            type_name + "-" + se.name + "-" + state_handler_to_string(h->kind) +
+                                                "-track-" + tr.name + "-frame-" + std::to_string(N);
+
+                        ss_lambdas[lambda_cursor + local_lambda + i] = {lookup_lambda(step_name),
+                                                                        static_cast<u64>(N)};
+                    }
+                    local_lambda += n_frames;
+
+                    ++track_cursor;
+                }
+                lambda_cursor += block_lambdas;
+                ++block_cursor;
+            }
+        }
+
+        // ---- 7. StateScript header ----
+        StateScript ss{};
+        ss.m_stateScriptId = static_cast<sid64>(StringId(type_name));
+        // m_pVarType is patched by make_binary after all payloads are laid out.
+        // Storing 0 here keeps the reloc bit meaningful: adjust_offsets will add
+        // the StateScript payload base to whatever relative value we write there.
+        ss.m_pVarType = reinterpret_cast<SsType *>(0);
+        ss.m_initialStateId =
+            initial_state.empty() ? 0 : static_cast<sid64>(StringId(initial_state));
+        ss.m_pSsOptions = reinterpret_cast<SsOptions *>(options_offset);
+        ss.m_pVarDefaults = nullptr; // filled by make_binary via blob pool
+        ss.m_pSsStateTable = states.empty() ? nullptr : reinterpret_cast<SsState *>(states_offset);
+        ss.m_stateCount = static_cast<i16>(states.size());
+        ss.m_line = 0;
+        ss.m_always0_2 = 0;
+        ss.m_pDebugFileName = nullptr; // filled by make_binary
+        ss.m_pErrorName = nullptr;
+        ss.m_padding = 0;
+
+        // ---- 8. Serialize ----
+        element.push_value_with_ptr(
+            ss, PTR_FIELD(StateScript, m_pVarType), PTR_FIELD(StateScript, m_pSsOptions),
+            PTR_FIELD(StateScript, m_pVarDefaults), PTR_FIELD(StateScript, m_pSsStateTable),
+            PTR_FIELD(StateScript, m_pDebugFileName), PTR_FIELD(StateScript, m_pErrorName));
+
+        element.push_value_with_ptr(
+            ss_options, PTR_FIELD(SsOptions, m_pSymbolArray), PTR_FIELD(SsOptions, m_symbolArray2),
+            PTR_FIELD(SsOptions, m_symbolArray3), PTR_FIELD(SsOptions, m_symbolArray4));
+
+        element.push_value_with_ptr(symarray, PTR_FIELD(SymbolArray, m_pSymbols));
+
+        for (sid64 s : option_sids) { element.push_value(s); }
+
+        for (const auto &s : ss_states) {
+            element.push_value_with_ptr(s, PTR_FIELD(SsState, m_pSsOnBlocks));
+        }
+
+        for (const auto &b : ss_blocks) {
+            element.push_value_with_ptr(
+                b, 
+                PTR_FIELD(SsOnBlock, m_pScriptLambda),
+                PtrSlot{offsetof(SsOnBlock, m_trackGroup) + offsetof(SsTrackGroup, m_aTracks),
+                        sizeof(SsTrack *)},
+                PtrSlot{offsetof(SsOnBlock, m_trackGroup) + offsetof(SsTrackGroup, m_name),
+                        sizeof(const char *)},
+                PtrSlot{offsetof(SsOnBlock, m_trackGroup) +
+                            offsetof(SsTrackGroup, m_rareScriptLambda),
+                        sizeof(const ScriptLambda *)});
+        }
+
+        for (const auto &t : ss_tracks) {
+            element.push_value_with_ptr(t, PTR_FIELD(SsTrack, m_pSsLambda));
+        }
+
+        for (const auto &l : ss_lambdas) {
+            element.push_value_with_ptr(l, PTR_FIELD(SsLambda, m_pScriptLambda));
+        }
+
+        lg::info("build_state_script '{}': {} states, {} blocks, {} tracks, {} lambdas, {} bytes",
+                 type_name, states.size(), num_blocks, num_tracks, num_lambdas,
+                 element.m_rawData.size());
+
+        return element;
+    }
+
+    // ============================================================================
     // make_binary - сборка финального бинарника
     // ============================================================================
     ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
@@ -244,7 +723,25 @@ namespace sootc {
             }
         }
 
-        if (program_elements.empty() && type_infos.empty()) { return ProgramBinaryElement(0); }
+        // State-script nodes: each produces TWO entries — SsType (under
+        // "<type>$vars") and StateScript (under "<type>").
+        struct StateScriptInfo {
+            const StateScriptNode               *node;
+            std::unordered_map<std::string, u64> method_offsets;
+            u64                                  ss_type_offset = 0;
+        };
+        std::vector<StateScriptInfo> state_script_infos;
+        for (auto &child : m_children) {
+            if (auto *ss = dynamic_cast<StateScriptNode *>(child.get())) {
+                StateScriptInfo si;
+                si.node = ss;
+                state_script_infos.push_back(std::move(si));
+            }
+        }
+
+        if (program_elements.empty() && type_infos.empty() && state_script_infos.empty()) {
+            return ProgramBinaryElement(0);
+        }
 
         // ------------------------------------------------------------------
         // Pad every element's raw data to a multiple of 8 bytes.
@@ -256,7 +753,8 @@ namespace sootc {
             el.check_size();
         }
 
-        const u64 total_entries = program_elements.size() + type_infos.size();
+        const u64 total_entries = program_elements.size() + type_infos.size() +
+                                  state_script_infos.size() * 2; // SsType + StateScript
 
         // ------------------------------------------------------------------
         // Pass 1: method offsets for SsType entries.
@@ -271,10 +769,16 @@ namespace sootc {
                 for (auto &ti : type_infos) {
                     const std::string &tname = ti.decl->type().base_type();
                     const std::string  prefix = tname + "-";
-
                     if (el_name.rfind(prefix, 0) == 0) {
-                        const std::string method_name = el_name.substr(prefix.size());
-                        ti.method_offsets[method_name] = running_offset;
+                        ti.method_offsets[el_name.substr(prefix.size())] = running_offset;
+                    }
+                }
+
+                for (auto &si : state_script_infos) {
+                    const std::string &tname = si.node->type().base_type();
+                    const std::string  prefix = tname + "-";
+                    if (el_name.rfind(prefix, 0) == 0) {
+                        si.method_offsets[el_name.substr(prefix.size())] = running_offset;
                     }
                 }
 
@@ -283,11 +787,70 @@ namespace sootc {
         }
 
         // ------------------------------------------------------------------
-        // Append SsType entries.
+        // Append SsType entries for plain TypeDeclarationNodes.
         // ------------------------------------------------------------------
         for (auto &ti : type_infos) {
             ProgramBinaryElement ss_el = build_ss_type(ti.decl, ti.method_offsets);
             if (!ss_el.m_rawData.empty()) { program_elements.push_back(std::move(ss_el)); }
+        }
+
+        // ------------------------------------------------------------------
+        // Append SsType entries for StateScriptNodes (under "<type>$vars").
+        // Record each one's position in program_elements so we can turn it
+        // into a file offset before emitting the StateScript entries.
+        // ------------------------------------------------------------------
+        for (auto &si : state_script_infos) {
+            ProgramBinaryElement ss_el = build_ss_type_for_script(si.node, si.method_offsets);
+            if (!ss_el.m_rawData.empty()) {
+                si.ss_type_offset = program_elements.size(); // index, resolved below
+                program_elements.push_back(std::move(ss_el));
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Convert the recorded indices into file offsets.
+        // ------------------------------------------------------------------
+        {
+            const u64 current_num_entries = program_elements.size();
+            u64       running = header_size + current_num_entries * sizeof(DCEntry);
+
+            for (size_t i = 0; i < program_elements.size(); ++i) {
+                for (auto &si : state_script_infos) {
+                    if (si.ss_type_offset == i) { si.ss_type_offset = running; }
+                }
+                running += program_elements[i].m_rawData.size();
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Append StateScript entries.
+        // ------------------------------------------------------------------
+        {
+            // Compute entry offsets for all entries that exist NOW (functions,
+            // data, plain SsTypes, and SsType-for-script). StateScript entries
+            // are appended next and do not participate in this map, because
+            // ScriptLambda references from SsOnBlock/SsLambda always point to
+            // function entries that are already placed.
+            std::unordered_map<std::string, u64> tmp_entry_offsets;
+            u64 running = header_size + program_elements.size() * sizeof(DCEntry);
+            for (auto &el : program_elements) {
+                const std::string name =
+                    StringIdManager::instance().get_string(el.m_entry.m_nameID);
+                tmp_entry_offsets[name] = running;
+                running += el.m_rawData.size();
+            }
+
+            for (auto &si : state_script_infos) {
+                // ss_payload_offset is the offset at which this StateScript's payload
+                // will start in the final file. It is exactly the current running
+                // offset, because the element is appended next.
+                ProgramBinaryElement ss_el =
+                    build_state_script(si.node, tmp_entry_offsets, si.ss_type_offset, running);
+                if (!ss_el.m_rawData.empty()) {
+                    running += ss_el.m_rawData.size();
+                    program_elements.push_back(std::move(ss_el));
+                }
+            }
         }
 
         // ------------------------------------------------------------------
@@ -395,7 +958,46 @@ namespace sootc {
                 out_data_structs.push_back(std::move(ds));
             }
         }
+        // ------------------------------------------------------------------
+        // Patch StateScript::m_pVarType with the final SsType offset.
+        // ------------------------------------------------------------------
+        //
+        // At this point entry_offsets holds the final file offset of every
+        // entry (including StateScripts). For each StateScript entry we
+        // look up the associated "<type>$vars" SsType entry and the
+        // StateScript's own payload offset, then write the relative
+        // (ss_type - payload) into the m_pVarType slot. adjust_offsets()
+        // below will add the payload base back, yielding the absolute
+        // pointer the runtime expects.
+        for (auto &el : program_elements) {
+            if (el.m_entry.m_typeId != StringId("state-script").value) continue;
 
+            const std::string entry_name =
+                StringIdManager::instance().get_string(el.m_entry.m_nameID);
+            const std::string vars_name = entry_name + "$vars";
+
+            auto ss_it = entry_offsets.find(entry_name);
+            auto vars_it = entry_offsets.find(vars_name);
+            if (ss_it == entry_offsets.end() || vars_it == entry_offsets.end()) continue;
+
+            const u64 payload_absolute = ss_it->second;
+            const u64 ss_type_absolute = vars_it->second;
+
+            constexpr size_t var_type_offset = offsetof(StateScript, m_pVarType);
+            if (var_type_offset + sizeof(u64) > el.m_rawData.size()) continue;
+
+            *reinterpret_cast<u64 *>(&el.m_rawData[var_type_offset]) =
+                ss_type_absolute - payload_absolute;
+
+            // build_state_script wrote m_pVarType = nullptr and, because
+            // push_value_with_ptr skips nullptrs, the slot is not marked
+            // as relocatable. We just wrote a non-zero relative offset,
+            // so we must set the bit ourselves; adjust_offsets() below
+            // will then add the payload base, yielding the absolute
+            // pointer the runtime expects.
+            const size_t slot_index = var_type_offset / 8;
+            if (slot_index < el.m_relocTable.size()) { el.m_relocTable[slot_index] = true; }
+        }
         // ========================================
         // 3. PAYLOADS
         // ========================================
