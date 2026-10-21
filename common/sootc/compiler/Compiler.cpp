@@ -54,6 +54,7 @@ namespace sootc {
                        const std::string &user_profile, std::unique_ptr<REPL::Wrapper> repl)
         : m_ts(TypeSystem::instance()), m_platform(comp_options.platform),
           m_soot(user_profile, false, true, comp_options.platform), m_repl(std::move(repl)) {
+        (void)repl_config;
         m_config = comp_options;
 
         m_ts.add_builtin_types();
@@ -357,7 +358,7 @@ namespace sootc {
     // Implements require as a language form. Called by NodeBuilder when
     // it sees `require` at the head of a form during compilation.
     //
-    // The file is resolved against the compiler's search_paths. If the
+    ////// The file is resolved against the compiler's search_paths. If the
     // resolved path has already been loaded (in this Compiler instance,
     // via an earlier require or a user action), the call is a no-op.
     // Otherwise the file is compiled and the resulting module is
@@ -366,6 +367,7 @@ namespace sootc {
     // See the header comment on Compiler::require_file for the
     // rationale, including the handling of cyclic requires.
     bool Compiler::require_file(const script::Object &form, const std::string &path) {
+        (void)form;
         // ------------------------------------------------------------------
         // 1. Resolve the path against search_paths.
         // ------------------------------------------------------------------

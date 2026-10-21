@@ -378,6 +378,7 @@ TEST_F(NativeFunctionsTest, PerformanceTest) {
 
 Variant sid_test_function(u32 argc, const Variant* argv) {
     StringId name = SC_ARG(0, StringId, SID("default"));
+    (void)name;
     i32 count = SC_ARG(1, i32, 1);
 
     // Простая логика для теста

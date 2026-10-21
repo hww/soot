@@ -157,17 +157,28 @@ TEST_F(DefTypeTest, ArrayField) {
     EXPECT_TRUE(has_data);
     EXPECT_TRUE(data_field.is_array());
 }
-
 TEST_F(DefTypeTest, InlineField) {
+    // 1. Объявить vector4
+    {
+        std::string code = R"(
+            (deftype vector4
+              (structure)
+              ((x int) (y int) (z int) (w int)))
+        )";
+        parse_deftype_string(code);
+    }
+
+    // 2. Объявить inline-type с inline-полем
     std::string   code = R"(
         (deftype inline-type
           (structure)
-          ((transform matrix :inline)
+          ((transform vector4 :inline)
            (id int32)))
     )";
     DeftypeResult result = parse_deftype_string(code);
 
     ASSERT_NE(result.type_info, nullptr);
+    std::cout << "result type: " << result.type_info->get_name() << "\n";
 
     auto structure = dynamic_cast<StructureType *>(result.type_info);
     ASSERT_NE(structure, nullptr);
@@ -177,7 +188,6 @@ TEST_F(DefTypeTest, InlineField) {
     EXPECT_TRUE(has_transform);
     EXPECT_TRUE(transform_field.is_inline());
 }
-
 TEST_F(DefTypeTest, ComplexOptions) {
     std::string   code = R"(
         (deftype complex-type
