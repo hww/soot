@@ -21,7 +21,7 @@ namespace carbon {
     class ModuleRegistry;
     class ModuleManager;
 
-    class StackFrame;
+    struct StackFrame;
     class VirtualMachine;
     class StateFrame;
 

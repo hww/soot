@@ -576,12 +576,14 @@ namespace carbon {
 template <> struct fmt::formatter<carbon::Variant> {
     constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
 
-    template <typename FormatContext>
+template <typename FormatContext>
     auto format(const carbon::Variant &v, FormatContext &ctx) const {
         using carbon::RuntimeType;
 
         switch (v.get_type()) {
         case RuntimeType::Null: return fmt::format_to(ctx.out(), "null");
+        case RuntimeType::Bool:
+            return fmt::format_to(ctx.out(), "{}", v.get_i64() != 0 ? "true" : "false");
         case RuntimeType::Int: return fmt::format_to(ctx.out(), "{}", v.get_i64());
         case RuntimeType::Float: return fmt::format_to(ctx.out(), "{}", v.get_f64());
         case RuntimeType::String: return fmt::format_to(ctx.out(), "{}", v.get_string());

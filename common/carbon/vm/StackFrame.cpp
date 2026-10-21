@@ -12,8 +12,8 @@ namespace carbon {
         : name(name), frame_type(frame_type), byte_code(functionDesc),
           code_ptr(functionDesc ? reinterpret_cast<Instruction *>(functionDesc->m_pInstruction)
                                 : nullptr),
-          data_ptr(functionDesc ? functionDesc->m_pSymbols : nullptr), parent(parent), pc(0),
-          argc(0), ret_num(0) {
+          data_ptr(functionDesc ? functionDesc->m_pSymbols : nullptr), pc(0), argc(0), ret_num(0),
+          parent(parent) {
         initialize_registers();
     }
 

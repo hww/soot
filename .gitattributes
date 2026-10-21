@@ -1,4 +1,7 @@
 * text=auto eol=lf
 *.hpp text eol=lf
 *.cpp text eol=lf
-
+* text=auto eol=lf
+*.h   text working-tree-encoding=UTF-8
+*.hpp text working-tree-encoding=UTF-8
+*.cpp text working-tree-encoding=UTF-8

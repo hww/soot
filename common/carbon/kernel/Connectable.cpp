@@ -30,13 +30,10 @@ namespace carbon {
     const char* Connectable::ToString() const
     {
         snprintf(s_StringBuffer, sizeof(s_StringBuffer),
-            "<Connectable hash=%p owner='%s' next0='%s' prev0='%s' next1='%s' prev1='%s'>",
-            this,
-            OwnerToString(),
-            Next0 ? Next0->OwnerToString() : "null",
-            Prev0 ? Prev0->OwnerToString() : "null",
-            Next1 ? Next1->OwnerToString() : "null",
-            Prev1 ? Prev1->OwnerToString() : "null");
+                 "<Connectable hash=%p owner='%s' next0='%s' prev0='%s' next1='%s' prev1='%s'>",
+                 static_cast<const void *>(this), OwnerToString(),
+                 Next0 ? Next0->OwnerToString() : "null", Prev0 ? Prev0->OwnerToString() : "null",
+                 Next1 ? Next1->OwnerToString() : "null", Prev1 ? Prev1->OwnerToString() : "null");
 
         return s_StringBuffer;
     }

@@ -41,7 +41,9 @@ endif()
 # Compiler flags
 # ============================================================
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pedantic")
-            
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-literal-operator")
+endif()            
 # ============================================================
 # Compiler flags
 # ============================================================
