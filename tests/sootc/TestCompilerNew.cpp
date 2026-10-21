@@ -3,7 +3,7 @@
 using namespace sootc::testing;
 
 // =============================================================================
-// (new ...) — syntax
+// (new ...) â€” syntax
 // =============================================================================
 
 TEST_F(SootcTest, NewWithoutConstructorCompiles) {
@@ -37,7 +37,7 @@ TEST_F(SootcTest, NewWithPositionalArguments) {
 }
 
 // =============================================================================
-// (new ...) — method lookup
+// (new ...) â€” method lookup
 // =============================================================================
 
 TEST_F(SootcTest, NewWithConstructorCallsVectorNew) {

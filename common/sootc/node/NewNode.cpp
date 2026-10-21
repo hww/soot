@@ -287,7 +287,7 @@ namespace sootc {
             return;
         }
 
-        // -------- Step 3: no ctor — initialize fields directly. --------
+        // -------- Step 3: no ctor â€” initialize fields directly. --------
         //
         // For a StructureType with scalar fields, we emit one
         // Store* per field. Reference-typed fields (inline structs,

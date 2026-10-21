@@ -14,14 +14,14 @@ namespace sootc {
     /// @details This form is special: it needs to produce TWO nodes that
     ///          go to TWO different places in the compiler's tree.
     ///
-    ///            1. A DataDeclarationNode — the compile-time
+    ///            1. A DataDeclarationNode â€” the compile-time
     ///               declaration. It goes into FileNode::m_children,
     ///               survives REPL input boundaries, and is what
     ///               build_variable finds when resolving the name in
     ///               a later input. Its generate() emits nothing (the
     ///               file slot is a placeholder handled by make_binary).
     ///
-    ///            2. A StoreGlobalNode — the runtime action. It goes
+    ///            2. A StoreGlobalNode â€” the runtime action. It goes
     ///               into the top-level function's body, so it runs
     ///               once when the module's top-level executes and
     ///               writes the constructed pointer into the slot.
@@ -36,13 +36,13 @@ namespace sootc {
     ///
     ///          This avoids the alternatives:
     ///
-    ///            * pending_runtime queue on FileNode — mixes the
+    ///            * pending_runtime queue on FileNode â€” mixes the
     ///              module tree with a compiler-internal channel.
     ///
-    ///            * shared_ptr / non-owning pointers — changes the
+    ///            * shared_ptr / non-owning pointers â€” changes the
     ///              ownership model across the whole compiler.
     ///
-    ///            * a Placement flag on Node — describes the problem
+    ///            * a Placement flag on Node â€” describes the problem
     ///              but does not solve ownership: a node cannot be in
     ///              two unique_ptr lists at once.
     class HeapDefineNode : public Node {

@@ -37,7 +37,7 @@ namespace {
 
     void print_usage() {
         std::cout <<
-            R"(dcinspect — inspect a DC file (.bin)
+            R"(dcinspect â€” inspect a DC file (.bin)
 
 Usage:
   dcinspect <file.bin>                        # summary mode

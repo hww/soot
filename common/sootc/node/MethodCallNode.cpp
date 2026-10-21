@@ -45,7 +45,7 @@ namespace sootc {
                                0);
         }
 
-        // 4. Call — CallFf for native methods, Call for script methods.
+        // 4. Call â€” CallFf for native methods, Call for script methods.
         const Opcode call_op = m_is_native ? Opcode::CallFf : Opcode::Call;
 
         u8 ret_reg = fn.alloc_temp_reg(m_type);

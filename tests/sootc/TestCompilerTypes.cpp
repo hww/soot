@@ -35,7 +35,7 @@ TEST_F(SootcTest, DeftypeWithDocstring) {
 TEST_F(SootcTest, DeftypeWithMultipleFields) {
     // IMPORTANT: `int` in the SOOT dialect is 8 bytes wide, matching the
     // DC register width. It is NOT the same as C++ `int`, so do not
-    // use `sizeof(int)` here — it would compile to 4 on most hosts and
+    // use `sizeof(int)` here â€” it would compile to 4 on most hosts and
     // make the test compare against the wrong number.
     //
     // The layout below is what a correct user would write for a 4-field

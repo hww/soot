@@ -60,7 +60,7 @@ namespace sootc::testing {
             }
 
             // Construct the shared Compiler. This is where lib.sot and
-            // lib.soc are loaded — once for the whole test binary.
+            // lib.soc are loaded â€” once for the whole test binary.
             CompilationOptions options;
             options.mode = CompilerMode::COMPILE_ONLY;
             options.user_profile = "#f";

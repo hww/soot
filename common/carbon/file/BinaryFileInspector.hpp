@@ -74,7 +74,7 @@ namespace carbon {
         void inspect_type_summary();
         /// @brief Print the entire file structure as JSON.
         /// @details Produces a machine-readable dump: header, entries, violations.
-        ///          Not a full AST dump — only metadata. Used by `dcinspect --json`.
+        ///          Not a full AST dump â€” only metadata. Used by `dcinspect --json`.
         void inspect_json(std::ostream &os);
         void inspect_ss_type(const SsType *st);
         void inspect_state_script(const StateScript *ss);

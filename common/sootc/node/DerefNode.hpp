@@ -6,7 +6,7 @@
 
 namespace sootc {
 
-    /// @brief (-> expr field) — read a field at a known byte offset.
+    /// @brief (-> expr field) â€” read a field at a known byte offset.
     /// @details The field offset is resolved at compile time from the type of
     ///          `expr`. Codegen for `emit()`:
     ///              intAddImm  r_addr, r_expr, offset

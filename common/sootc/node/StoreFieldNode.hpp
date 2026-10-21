@@ -19,7 +19,7 @@ namespace sootc {
     ///
     ///          m_value is any ExpressionNode. It does not matter whether
     ///          it is a NewNode (heap allocation), a VariableNode
-    ///          (symbol lookup), a ConstNode, or anything else — the
+    ///          (symbol lookup), a ConstNode, or anything else â€” the
     ///          emitter handles them uniformly via value->emit().
     ///
     ///          This node exists because a static data declaration can

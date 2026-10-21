@@ -57,7 +57,7 @@ public:
 
     /// @brief Send an EVAL_RESULT message back to a specific client.
     ///
-    /// @details The payload is a single block of text — the captured
+    /// @details The payload is a single block of text â€” the captured
     ///          output of evaluating the client's form. If the socket is
     ///          invalid or the write fails, the client is dropped and
     ///          the connection closed; this matches the behaviour of

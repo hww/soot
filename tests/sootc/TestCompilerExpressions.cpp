@@ -281,7 +281,7 @@ TEST_F(SootcTest, IfWithoutElse) {
                       "f");
     ASSERT_TRUE(result.ok) << result.error;
     // Without an else branch, the result is whatever was in the
-    // result register — we only check that the function returns.
+    // result register â€” we only check that the function returns.
 }
 
 TEST_F(SootcTest, CondFirstClause) {

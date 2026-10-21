@@ -8,7 +8,7 @@
 
 namespace sootc {
 
-    /// @brief (at base index) — read the i-th element of an inline array.
+    /// @brief (at base index) â€” read the i-th element of an inline array.
     ///
     /// @details base must evaluate to a pointer to the first element
     ///          (the array's payload). index is an integer expression.

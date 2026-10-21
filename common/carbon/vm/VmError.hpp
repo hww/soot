@@ -12,7 +12,7 @@
 
 namespace carbon {
 
-    class StackFrame; // forward
+    struct StackFrame; // forward
 
     // ========================================================================
     // ScriptException
@@ -66,7 +66,7 @@ namespace carbon {
             std::string function_name; // from ScriptLambda::m_funcName, or "<anonymous>"
             std::string frame_name;    // StackFrame::name (StringId), or "<none>"
             u32         pc = 0;
-            std::string instruction; // "LoadFloat r1, r2" — only on origin
+            std::string instruction; // "LoadFloat r1, r2" â€” only on origin
             // Registers of the origin frame, captured at throw time.
             // Empty for non-origin frames.
             std::vector<std::pair<u8, std::string>> registers;

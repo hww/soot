@@ -13,7 +13,7 @@ namespace sootc {
         const std::string src_name = src_type ? src_type->get_name() : "int";
         const bool        is_float = (src_name == "float");
 
-        // Result type follows the operand (except for NOT/BITNOT — always int).
+        // Result type follows the operand (except for NOT/BITNOT â€” always int).
         if (m_op == Op::NOT || m_op == Op::BITNOT) {
             m_type = TypeSystem::instance().lookup_type("int");
         } else {

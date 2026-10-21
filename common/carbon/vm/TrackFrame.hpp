@@ -8,7 +8,7 @@ namespace carbon {
     class VirtualMachine;
 
     // ============================================================================
-    // TrackFrame — one running track (animation / logic lane)
+    // TrackFrame â€” one running track (animation / logic lane)
     // ============================================================================
     //
     // A track is a long-lived child of StateFrame. It owns:

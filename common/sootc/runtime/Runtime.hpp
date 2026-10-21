@@ -27,7 +27,7 @@ namespace sootc {
     ///          handed to the current Runtime, which is responsible for
     ///          executing it. There are three concrete implementations:
     ///
-    ///            LocalVmRuntime  — runs the bytecode in the in-process
+    ///            LocalVmRuntime  â€” runs the bytecode in the in-process
     ///                              Carbon VM. Used when no external
     ///                              host is configured. The Carbon
     ///                              instance owns a Scheduler, so
@@ -40,13 +40,13 @@ namespace sootc {
     ///                              slows the world; it is never caught
     ///                              up.
     ///
-    ///            RemoteRuntime   — sends bytecode to an external host
+    ///            RemoteRuntime   â€” sends bytecode to an external host
     ///                              (carbon.exe) over the existing
     ///                              cross-socket protocol. The host is
     ///                              a full runtime with processes,
     ///                              entities, and game state.
     ///
-    ///            NullRuntime     — discards bytecode. Used by tests and
+    ///            NullRuntime     â€” discards bytecode. Used by tests and
     ///                              by `--compile-only`.
     ///
     ///          sootc does not know which runtime is active. It calls

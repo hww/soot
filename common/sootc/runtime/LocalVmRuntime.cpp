@@ -23,7 +23,7 @@ namespace sootc {
         // Every load gets a unique logical name, so that consecutive REPL
         // inputs do not overwrite each other's ModuleRegistry entry. If
         // they did, the previous entry's BinaryFile would be freed while
-        // Globals still held pointers into it — and functions defined in
+        // Globals still held pointers into it â€” and functions defined in
         // an earlier input (like cvector-new) would silently disappear
         // from Globals the moment a later input (like test) was loaded.
         //

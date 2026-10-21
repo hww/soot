@@ -15,7 +15,7 @@ namespace carbon {
         if (!track || track->m_totalLambdaCount <= 0) return;
 
         // ------------------------------------------------------------------
-        // 1. Main lambdas — run once, at track start.
+        // 1. Main lambdas â€” run once, at track start.
         //
         //    There may be several in a row (e.g. enter, exit). They run
         //    in order. If one yields, we stop and resume it on the next
@@ -46,7 +46,7 @@ namespace carbon {
                     return;
                 }
 
-                // Returned normally — drop the frame, move to the next main.
+                // Returned normally â€” drop the frame, move to the next main.
                 detach_child(main_frame);
                 main_frame_ptr = nullptr;
             }
@@ -65,7 +65,7 @@ namespace carbon {
         }
 
         // ------------------------------------------------------------------
-        // 2. Frame lambdas — temporary, one per matching tick.
+        // 2. Frame lambdas â€” temporary, one per matching tick.
         //
         //    Each one is pushed, executed to Return, and popped. Yield
         //    inside a frame lambda is not allowed: it would leave a

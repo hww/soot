@@ -24,13 +24,13 @@ namespace sootc {
     ///
     ///          StaticDefineNode carries both:
     ///
-    ///            1. The DataDeclarationNode — the compile-time
+    ///            1. The DataDeclarationNode â€” the compile-time
     ///               declaration. It goes into FileNode::m_children,
     ///               survives REPL input boundaries, and is what
     ///               build_variable finds when resolving the name in
     ///               a later input.
     ///
-    ///            2. Zero or more StoreFieldNodes — the runtime
+    ///            2. Zero or more StoreFieldNodes â€” the runtime
     ///               stores. They go into the top-level function's
     ///               body, one per non-constant pointer field.
     ///

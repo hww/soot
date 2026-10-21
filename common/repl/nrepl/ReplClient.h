@@ -17,14 +17,14 @@ public:
     // Send a form to the server for evaluation and wait for its result.
     //
     // Returns:
-    //   * std::nullopt                       — not connected, socket
+    //   * std::nullopt                       â€” not connected, socket
     //                                          read/write failed, or
     //                                          the server sent an
     //                                          unexpected message type.
-    //   * a string starting with "ERROR: "   — the server reported an
+    //   * a string starting with "ERROR: "   â€” the server reported an
     //                                          error while evaluating
     //                                          the form.
-    //   * any other string                   — the printed result of
+    //   * any other string                   â€” the printed result of
     //                                          the form.
     //
     // Callers that do not need the result can use eval_no_response()
