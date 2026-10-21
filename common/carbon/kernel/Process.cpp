@@ -330,12 +330,28 @@ namespace carbon {
 
         // 2. SLEEP_CODE: only run trans/post, not main code.
         if (has_mask(ProcessMask::SLEEP_CODE)) {
+            // Advance state time only when actually ticking.
+            ++state_time;
+
             execute_trans_handler(vm);
+            tick_tracks(vm);
             execute_post_handler(vm);
             return true;
         }
 
         status = ProcessStatus::RUNNING;
+
+        // Advance process/state time only when actually ticking.
+        ++state_time;
+
+        execute_trans_handler(vm);
+
+        tick_tracks(vm);
+        if (!vm.is_yielded && main_thread && main_thread->byte_code) {
+            vm.current_frame = main_thread;
+            vm.execute(RunMode::Run);
+            main_thread = vm.current_frame;
+        }
 
         // 3. trans handler (the state's Update block).
         execute_trans_handler(vm);
@@ -584,6 +600,23 @@ namespace carbon {
         current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
         push_frame(current_state_frame);
 
+        // Reset state time and tracks for the new state.
+        state_time = 0;
+
+        tracks.clear();
+        if (auto *enter = new_state->lookup(BlockType::Enter)) {
+            const SsTrackGroup &tg = enter->m_trackGroup;
+            if (tg.m_aTracks && tg.m_numTracks > 0) {
+                for (i16 i = 0; i < tg.m_numTracks; ++i) {
+                    TrackInstance ti;
+                    ti.track = &tg.m_aTracks[i];
+                    ti.pc = 0;
+                    ti.time = 0;
+                    tracks.push_back(ti);
+                }
+            }
+        }
+
         // 4. Run the on-enter handler.
         if (auto *enter = new_state->get_enter_function()) { execute_enter_handler(vm, enter); }
 
@@ -704,6 +737,57 @@ namespace carbon {
         post_frame.reset();
     }
 
+    // Convert a track-id argument to StringId. Accepts StringId (int),
+    // string (Variant::String), or const char* (Variant::Pointer).
+    StringId track_id_arg(const Variant &v) {
+        if (v.is_int()) return v.get_sid();
+        if (v.is_string()) return StringId(v.to_string());
+        if (v.is_ptr()) {
+            const char *s = static_cast<const char *>(v.get_ptr());
+            return s ? StringId(s) : StringId();
+        }
+        return StringId();
+    }
+
+    void Process::tick_tracks(VirtualMachine &vm) {
+        
+        for (auto &t : tracks) {
+
+            if (!t.track || t.track->m_totalLambdaCount <= 0) continue;
+
+            const i16 total = t.track->m_totalLambdaCount;
+
+            while (t.pc < static_cast<u32>(total)) {
+                const SsLambda &sl = t.track->m_pSsLambda[t.pc];
+                const u64       target = sl.m_frameNumber;
+
+                if (target == FRAME_SENTINEL_MAIN) {
+                    // main: only at the very start of the track.
+                    if (t.time != 0 || t.pc != 0) break;
+                } else if (target > t.time) {
+                    break; // not yet
+                }
+
+                if (sl.m_pScriptLambda) {
+                    vm.execute_function(sl.m_pScriptLambda, RunMode::Run);
+                    if (vm.is_yielded) return;
+                }
+                ++t.pc;
+            }
+
+            // The track keeps its time only while it has work left.
+            // After the last lambda the script must call set-track-time
+            // (and possibly set-track-pc) to restart it.
+            if (t.pc < static_cast<u32>(total)) { ++t.time; }
+        }
+    }
+
+    TrackInstance *Process::find_track(StringId id) {
+        for (auto &t : tracks) {
+            if (t.track && t.track->m_trackId == id) return &t;
+        }
+        return nullptr;
+    }
     // ============================================================================
     // Utility Methods
     // ============================================================================

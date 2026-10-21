@@ -273,12 +273,16 @@ namespace carbon {
 
     static_assert(sizeof(SsTrack) == 0x18, "SsTrack must be 0x18 bytes");
 
+    /// Sentinel value in SsLambda::m_frameNumber meaning "main lambda":
+    /// runs once at track start, before any frame-based lambda.
+    constexpr u64 FRAME_SENTINEL_MAIN = 0xFFFFFFFFFFFFFFFFull;
+
     /// @brief One lambda entry inside an SsTrack.
     struct SsLambda // 0x10
     {
         ScriptLambda *m_pScriptLambda; ///< <c>0x00</c>: pointer to the lambda body
-        u64 m_someSortOfCounter; ///< <c>0x08</c>: monotonically increasing counter across the file;
-                                 ///< may have gaps
+        u64 m_frameNumber;             ///< <c>0x08</c>: -1 (FRAME_SENTINEL_MAIN) = main; else frame number
+                                       ///< may have gaps
     };
 
     static_assert(sizeof(SsLambda) == 0x10, "SsLambda must be 0x10 bytes");

@@ -45,6 +45,7 @@ namespace carbon {
         u32 ret_num = 0;                        // Return register number
         u64 mark_id = 0;                        // для epoch GC
 
+
         // ------------------------------------------------------------------------
         // Registers
         // ------------------------------------------------------------------------
@@ -75,6 +76,7 @@ namespace carbon {
         }
 
         u32 get_registers_count() { return MAX_REGISTERS; }
+
 
         // ------------------------------------------------------------------------
         // Register Access

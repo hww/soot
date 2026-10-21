@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include "carbon/file/DCScript.hpp"
 #include "carbon/vm/VmError.hpp"
 
 #include <set>
 
-// Carbon � the runtime.
+// Carbon — the runtime.
 //
 // Carbon owns everything needed to load, link, and execute DC modules:
 //
@@ -24,7 +24,7 @@
 // Ownership:
 //     Carbon owns VirtualMachine, Globals, ModuleRegistry, Scheduler,
 //     ArenaManager. It does NOT own BinaryFiles after load_module()
-//     returns � they are moved into ModuleRegistry. It does NOT own
+//     returns — they are moved into ModuleRegistry. It does NOT own
 //     the native functions themselves (they are static C functions).
 //
 // Threading:
@@ -53,6 +53,7 @@ namespace carbon {
         class ArenaManager;
     }
 
+  
     /// @brief Configuration for a Carbon instance.
     struct CarbonConfig {
         /// @brief Initial GC heap size in MB. The region is reserved
@@ -77,6 +78,13 @@ namespace carbon {
         ///        arithmetic, allocation helpers). Off by default; the
         ///        language runtime owns this decision, not Carbon.
         bool load_default_natives = false;
+    };
+    
+    struct TickConfig {
+        u32  hz = 60;
+        i64  max_ticks = -1;     // -1 = без лимита
+        bool realtime = true;    // false: без sleep, для тестов
+        bool until_empty = true; // --run: true, --serve: false
     };
 
     /// @brief The result of a top-level call.
@@ -106,6 +114,7 @@ namespace carbon {
     ///     }
     class Carbon {
     public:
+
 
         // --------------------------------------------------------------------
         // Current context
@@ -282,6 +291,17 @@ namespace carbon {
         [[nodiscard]] Globals          *globals() const noexcept;
         [[nodiscard]] ModuleRegistry   *modules() noexcept;
         [[nodiscard]] Scheduler        *scheduler() noexcept;
+        
+        /// @brief Run the tick loop in the current thread.
+        ///
+        /// One tick == one frame. The loop sleeps until the next frame boundary;
+        /// if a tick overruns its budget, the debt is dropped (`next = now`),
+        /// never caught up. This is deliberate: catching up would distort the
+        /// world's speed in the other direction and make script behaviour depend
+        /// on load. Overrun produces a warning but does not accumulate debt.
+        ///
+        /// @return Number of ticks executed.
+        u64                             run_loop(const TickConfig &cfg = {});
 
     private:
         bool load_module_recursive(const std::filesystem::path              &bin_path,

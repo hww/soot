@@ -267,9 +267,12 @@ TEST_F(DefTypeTest, WithStates) {
 
     ASSERT_NE(result.type_info, nullptr);
 
-    // Проверяем что states добавились
-    auto &states = result.type_info->get_states_declared_for_type();
-    EXPECT_GT(states.size(), 0);
+    // Проверяем, что состояния добавились
+    const auto states = result.type_info->get_states_declared_for_type();
+    EXPECT_EQ(states.size(), 3u);
+    EXPECT_TRUE(states.count("idle"));
+    EXPECT_TRUE(states.count("running"));
+    EXPECT_TRUE(states.count("finished"));
 }
 
 TEST_F(DefTypeTest, Inheritance) {

@@ -444,6 +444,30 @@
 (define-native array-clear (function object object))
 (define-native array-push  (function object object object))
 
+;; Process: lifecycle
+(define-native spawn        (function object int))
+(define-native start        (function object int))
+(define-native current-pid  (function int))
+(define-native tick         (function int int))
+(define-native run          (function int int int))
+(define-native process      (function object object))
+(define-native sleep        (function int int))
+(define-native yield        (function int))
+
+;; Process: process-facing
+(define-native kill           (function object int))
+(define-native go-state       (function object object int))
+
+;; Process: state time
+(define-native get-state-time (function object int))
+(define-native set-state-time (function object int int))
+
+;; Process: track accessors
+(define-native get-track-time (function object object int))
+(define-native set-track-time (function object object int int))
+(define-native get-track-pc   (function object object int))
+(define-native set-track-pc   (function object object int int))
+
 ;; ----------------------------------------------------------------------------
 ;; Native types
 ;; ----------------------------------------------------------------------------
@@ -500,6 +524,36 @@
 ;; Nested named — работает
 ;(define inner (new 'static 'matrix :ptr (new 'static 'vector :x 1 :y 2 :z 3 :w 4)))
 ;(define m (new 'static 'matrix :ptr inner))  ;; named → named, оба named
+
+;(deftype my-gate2 (structure)
+;  ((num-attempts int32))
+;  (:options (:initial "closed"))
+;  (:states
+;    (closed
+;      :enter (lambda () (println "state `closed` enter"))
+;      :track ("bus"
+;               :frames ((10 (println "state `closed` track `bus` frame 10")))
+;               (println "state `closed` track `bus` enter")
+;               (println "state `closed` track `bus` exit"))
+;      :event ((interact (lambda (proc argc msg block) (println "interact")))))))
+
+
+; ./build/Debug/bin/carbon.exe my-gate2.bin --run my-gate2
+;(deftype my-gate2 (structure)
+;  ((num-attempts int32))
+;  (:options (:initial "closed"))
+;  (:states
+;    (closed
+;      :enter (lambda () (println "state `closed` enter"))
+;      :track ("bus"
+;               :frames ((10 (println "state `closed` track `bus` frame 10")
+;                            (set-track-time "self" "bus" 0)
+;                            (set-track-pc   "self" "bus" 0)))
+;               (println "state `closed` track `bus` enter")
+;               (println "state `closed` track `bus` exit"))
+;      :event ((interact (lambda (proc argc msg block)
+;                          (println "interact")))))))
+;(start "my-gate2")
 
 ;; ----------------------------------------------------------------------------
 ;; Load marker

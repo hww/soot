@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "sootc/runtime/Runtime.hpp"
 
@@ -29,6 +29,11 @@ namespace sootc {
     ///          it, and waits for the server's reply. A reply starting
     ///          with "ERROR: " is treated as a runtime error; anything
     ///          else is the printed result of the form.
+    ///
+    ///          String arguments are sent double-quoted and escaped
+    ///          (\", \\); everything else uses Variant::to_string().
+    ///          Without quoting, (spawn my gate) and (spawn "my gate")
+    ///          would be indistinguishable on the wire.
     class RemoteRuntime : public Runtime {
         std::string                 m_url;
         std::string                 m_host;

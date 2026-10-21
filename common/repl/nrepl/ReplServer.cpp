@@ -1,4 +1,4 @@
-// clang-format off
+﻿// clang-format off
 #include "ReplServer.h"
 
 #include "cross_sockets/XSocket.hpp"
@@ -52,7 +52,8 @@ void ReplServer::ping_response(int socket) {
     client_sockets.erase(socket);
   }
 }
-std::optional<ReplServerMessage> ReplServer::get_msg() {
+
+std::optional<ReplServerMessage> ReplServer::get_msg(int timeout_us) {
     // Clear the sockets we are listening on
     FD_ZERO(&read_sockets);
 
@@ -66,6 +67,8 @@ std::optional<ReplServerMessage> ReplServer::get_msg() {
 
     // Wait for activity on _something_, with a timeout so we don't get stuck here on exit.
     struct timeval timeout = {0, 100000};
+    timeout.tv_sec = timeout_us / 1000000;
+    timeout.tv_usec = timeout_us % 1000000;
     auto           activity = select(max_sd + 1, &read_sockets, NULL, NULL, &timeout);
     if (activity < 0 && errno != EINTR) {
         lg::error("[nREPL:{}] select error, returned: {}, errno: {}", tcp_port, activity,
@@ -212,7 +215,7 @@ void ReplServer::send_result(int socket, const std::string &text) {
 
     auto written = write_to_socket(socket, out.data(), static_cast<int>(out.size()));
     if (written == -1) {
-        lg::warn("[nREPL:{}] Failed to send EVAL_RESULT to socket {} � dropping client", tcp_port,
+        lg::warn("[nREPL:{}] Failed to send EVAL_RESULT to socket {} — dropping client", tcp_port,
                  socket);
         close_socket(socket);
         client_sockets.erase(socket);

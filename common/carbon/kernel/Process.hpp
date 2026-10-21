@@ -2,12 +2,14 @@
 
 #include "carbon/ForwardDeclarations.hpp"
 #include "CommonTypes.hpp"
+
 #include "carbon/lib/StringId.hpp"
 #include "carbon/vm/StackFrame.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/kernel/Types.hpp"
 #include "carbon/kernel/Connectable.hpp"
-#include "kernel/EventMessage.hpp"
+#include "carbon/kernel/EventMessage.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -15,6 +17,18 @@
 
 
 namespace carbon {
+
+    /// @brief One running track inside a process.
+    struct TrackInstance {
+        SsTrack *track = nullptr;
+        u32      pc = 0;
+        u64      time = 0; ///< frames since this track started
+
+        [[nodiscard]] u64 get_time() const noexcept { return time; }
+        void              set_time(u64 n) noexcept { time = n; }
+        [[nodiscard]] u32 get_pc() const noexcept { return pc; }
+        void              set_pc(u32 n) noexcept { pc = n; }
+    };
 
     // ============================================================================
     // Process Class
@@ -353,6 +367,32 @@ namespace carbon {
 
         /// Дамп информации о процессе для отладки
         void dump_info() const;
+
+        // ============================================================================
+        // Tracks
+        // ============================================================================
+
+        std::vector<TrackInstance> tracks;
+
+        TrackInstance *find_track(StringId id);
+        void           tick_tracks(VirtualMachine &vm);
+
+        // ============================================================================
+        // Time
+        // ============================================================================
+
+        inline u64  get_state_time() const noexcept { return state_time; }
+        inline void set_state_time(u64 n) noexcept { state_time = n; }
+
+    private:
+        /// Тики с момента входа в текущее состояние.
+        /// Сбрасывается в 0 при каждом go_state / deferred transition.
+        /// Это единственный источник времени для скриптовой логики
+        /// внутри состояния. Времени "с момента spawn" здесь нет
+        /// намеренно: оно никому не нужно и вводило бы второй
+        /// счётчик без семантики.
+        u64 state_time = 0;
+
 
     private:
         // ============================================================================

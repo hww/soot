@@ -53,7 +53,7 @@ public:
     ///          polling timeout, when the server is shutting down, or
     ///          when the connection was lost. The caller is expected to
     ///          loop on this method.
-    std::optional<ReplServerMessage> get_msg();
+    std::optional<ReplServerMessage> get_msg(int timeout_us = 100000);
 
     /// @brief Send an EVAL_RESULT message back to a specific client.
     ///
@@ -75,4 +75,5 @@ private:
 
     void error_response(int socket, const std::string &error);
     void ping_response(int socket);
+
 };

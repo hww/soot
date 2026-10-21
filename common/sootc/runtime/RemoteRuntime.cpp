@@ -1,4 +1,4 @@
-#include "sootc/runtime/RemoteRuntime.hpp"
+﻿#include "sootc/runtime/RemoteRuntime.hpp"
 
 #include "common/util/Log.hpp"
 
@@ -6,18 +6,60 @@
 
 namespace sootc {
 
-    // Parse "host:port" or "scheme://host:port". The scheme prefix, if
-    // present, is stripped. Everything after the first ':' is the port.
-    static std::pair<std::string, int> parse_url(const std::string &url) {
-        std::string s = url;
+    namespace {
 
-        const auto scheme_end = s.find("://");
-        if (scheme_end != std::string::npos) { s = s.substr(scheme_end + 3); }
+        // Parse "host:port" or "scheme://host:port". The scheme prefix,
+        // if present, is stripped. Everything after the first ':' is
+        // the port.
+        std::pair<std::string, int> parse_url(const std::string &url) {
+            std::string s = url;
 
-        const auto colon = s.find(':');
-        if (colon == std::string::npos) { return {s, 8181}; }
-        return {s.substr(0, colon), std::stoi(s.substr(colon + 1))};
-    }
+            const auto scheme_end = s.find("://");
+            if (scheme_end != std::string::npos) { s = s.substr(scheme_end + 3); }
+
+            const auto colon = s.find(':');
+            if (colon == std::string::npos) { return {s, 8181}; }
+            return {s.substr(0, colon), std::stoi(s.substr(colon + 1))};
+        }
+
+        // Format a single Variant as a token for the wire protocol.
+        //
+        //   String  -> "..." with \" and \\ escaped
+        //   Pointer -> null (the host cannot resolve a client address)
+        //   Bool    -> true / false
+        //   Int     -> decimal
+        //   Float   -> decimal (fmt default)
+        //   Null    -> null
+        //
+        // The host's CallParser reads exactly this grammar:
+        //   - a token starting with '"' is a string (with escapes)
+        //   - an integer token is i64
+        //   - a float token is f32
+        //   - true / #t, false / #f are booleans
+        //   - anything else is a StringId (symbol)
+        //
+        // StringId arguments (e.g. event names) are NOT quoted; they
+        // arrive at the host as symbols and are converted to StringId
+        // by CallParser::read_value.
+        std::string quote_if_string(const carbon::Variant &v) {
+            switch (v.get_type()) {
+            case carbon::RuntimeType::String: {
+                std::string out = "\"";
+                for (char c : v.get_string()) {
+                    if (c == '\\' || c == '"') { out += '\\'; }
+                    out += c;
+                }
+                out += '"';
+                return out;
+            }
+            case carbon::RuntimeType::Pointer: return "null";
+            case carbon::RuntimeType::Bool: return v.to_bool() ? "true" : "false";
+            case carbon::RuntimeType::Null: return "null";
+            default: return v.to_string();
+            }
+        }
+
+    } // namespace
 
     RemoteRuntime::RemoteRuntime(std::string url) : m_url(std::move(url)) {
         auto [host, port] = parse_url(m_url);
@@ -54,10 +96,15 @@ namespace sootc {
         }
 
         // Build "(name arg1 arg2 ...)".
+        //
+        // Every argument goes through quote_if_string so that strings
+        // keep their boundaries. Integer and float arguments are
+        // printed by Variant::to_string() in a form the host's
+        // CallParser accepts.
         std::string form = "(" + name;
         for (const auto &arg : args) {
             form += " ";
-            form += arg.to_string();
+            form += quote_if_string(arg);
         }
         form += ")";
 

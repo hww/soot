@@ -724,7 +724,7 @@ SsTrack[1] {
 ```c
 struct SsLambda {                       // 0x08 = 8 байт
     u32 m_pScriptLambda;                // +0x00 (offset)
-    u32 m_someSortOfCounter;            // +0x04
+    u32 m_frameNumber;            // +0x04
 };
 ```
 
@@ -733,7 +733,7 @@ struct SsLambda {                       // 0x08 = 8 байт
 | Offset | Size | Field | Тип | Назначение |
 |---|---|---|---|---|
 | `0x00` | 4 | `m_pScriptLambda` | `u32` | Смещение на `ScriptLambda`. **Relocated**. Может быть 0. |
-| `0x04` | 4 | `m_someSortOfCounter` | `u32` | Монотонно растущий счётчик. Может иметь пропуски. |
+| `0x04` | 4 | `m_frameNumber` | `u32` | Монотонно растущий счётчик. Может иметь пропуски. |
 
 ### Пример
 

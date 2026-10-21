@@ -39,10 +39,10 @@ def main():
     
     with open(OUTPUT_FILE, "w", encoding="utf-8") as outfile:
         for root, dirs, files in os.walk(pwd):
-            
+            SKIP_DIRS = set()  # было: {"kernel"}
             # Эффективный пропуск: os.walk не будет даже заходить в папки с именем "kernel"
             # Модифицируем dirs на месте, чтобы сэкономить время работы скрипта
-            dirs[:] = [d for d in dirs if d.lower() != "kernel"]
+            dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS]
             
             for file in files:
                 # На всякий случай проверяем отсутствие "kernel" и в имени файла

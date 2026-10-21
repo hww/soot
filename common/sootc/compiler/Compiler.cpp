@@ -1960,7 +1960,6 @@ namespace sootc {
         fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
         return true;
     }
-
     bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
         namespace fs = std::filesystem;
 
@@ -1993,12 +1992,14 @@ namespace sootc {
 
             for (auto &form : m_session_forms) {
                 auto node = builder.build(form, file_node.get());
+
                 if (!node) continue;
 
                 if (dynamic_cast<FunctionNode *>(node.get()) != nullptr ||
                     dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
                     dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
-                    dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
+                    dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr ||
+                    dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                     file_node->add_child(std::move(node));
                 } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
                     node.release();
@@ -2012,8 +2013,29 @@ namespace sootc {
                 file_node->add_child(std::move(top_level));
             }
 
+            // Compile state-script handler bodies. Without this, each
+            // StateScriptNode has no lambdas attached, and generate()
+            // produces no state-script entry: the binary ends up empty.
+            // compile_internal does the same step right after the main
+            // loop; save_session must mirror it.
+            //
+            // IMPORTANT: compile_state_script_bodies calls
+            // file->add_child(), which may reallocate m_children and
+            // invalidate iterators. We snapshot the pointers first.
+            {
+                std::vector<StateScriptNode *> state_scripts;
+                for (auto &child : file_node->children()) {
+                    if (auto *ss = dynamic_cast<StateScriptNode *>(child.get())) {
+                        state_scripts.push_back(ss);
+                    }
+                }
+                for (auto *ss : state_scripts) {
+                    compile_state_script_bodies(ss, file_node.get(), builder);
+                }
+            }
+
             DataSegment strings_table;
-            auto         element = file_node->generate(strings_table);
+            auto        element = file_node->generate(strings_table);
             if (element.m_rawData.empty()) {
                 fmt::print(fg(fmt::color::yellow), "; WARN: session produced no binary output\n");
                 return false;
@@ -2220,7 +2242,16 @@ namespace sootc {
             return "unknown";
         }
 
-    } // namespace
+    }
+    
+    // namespace
+    // (lambda () form...) from a list of forms: implicit begin, ONE lambda.
+    script::Object lambda_from_forms(script::Interpreter               &soot,
+                                     const std::vector<script::Object> &forms) {
+        return script::Object::make_pair(
+            soot.intern("lambda"),
+            script::Object::make_pair(script::Object::make_null(), script::build_list(forms)));
+    }
 
     void Compiler::compile_state_script_bodies(StateScriptNode *ss, FileNode *file,
                                                NodeBuilder &builder) {
@@ -2232,92 +2263,60 @@ namespace sootc {
             return;
         }
 
-        for (const auto &[state_name, handlers] : t->state_handlers()) {
-            for (const auto &h : handlers) {
-                // ---- Handler body ----
-                if (!h.body_ast.is_null()) {
-                    const std::string base =
-                        fmt::format("{}-{}-{}", type_name, state_name, handler_kind_name(h.kind));
-                    const std::string name = (h.kind == StateHandler::EVENT)
-                                                 ? fmt::format("{}-event-{}", base, h.event_id)
-                                                 : base;
+        // Compile one lambda form into a named FunctionNode owned by the file.
+        auto emit = [&](const std::string &name, const script::Object &lambda_form,
+                        const script::Object &where, const std::string &what) {
+            try {
+                auto  node = builder.build_lambda(lambda_form, file);
+                auto *fn = dynamic_cast<FunctionNode *>(node.get());
+                if (!fn) {
+                    lg::warn("compile_state_script_bodies: '{}' did not produce a FunctionNode",
+                             name);
+                    return;
+                }
+                fn->set_name(name);
+                FunctionNode *raw = fn;
+                node.release();
+                file->add_child(std::unique_ptr<Node>(raw));
+                file->bind(name, raw);
+            } catch (const std::exception &e) {
+                throw make_error(where, fmt::format("compiling {}", what))
+                    .expected("a compilable lambda body")
+                    .got(e.what());
+            }
+        };
 
-                    script::Object lambda_form = ensure_lambda(m_soot, h.body_ast);
+        for (const auto &[state_name, def] : t->state_defs()) {
+            // ---- Handlers ----
+            for (const auto &h : def.handlers) {
+                if (h.body_ast.is_null()) continue;
 
-                    try {
-                        auto  node = builder.build_lambda(lambda_form, file);
-                        auto *fn = dynamic_cast<FunctionNode *>(node.get());
-                        if (!fn) {
-                            lg::warn(
-                                "compile_state_script_bodies: '{}' did not produce a FunctionNode",
-                                name);
-                            continue;
-                        }
-                        fn->set_name(name);
+                const std::string base =
+                    fmt::format("{}-{}-{}", type_name, state_name, handler_kind_name(h.kind));
+                const std::string name = (h.kind == StateHandler::EVENT)
+                                             ? fmt::format("{}-event-{}", base, h.event_id)
+                                             : base;
 
-                        FunctionNode *raw = fn;
-                        node.release();
-                        file->add_child(std::unique_ptr<Node>(raw));
-                        file->bind(name, raw);
-                    } catch (const std::exception &e) {
-                        throw make_error(h.body_ast, fmt::format("compiling handler '{}'", name))
-                            .expected("a compilable lambda body")
-                            .got(e.what());
-                    }
+                emit(name, ensure_lambda(m_soot, h.body_ast), h.body_ast,
+                     fmt::format("handler '{}'", name));
+            }
+
+            // ---- Tracks (belong to the state) ----
+            for (const auto &tr : def.tracks) {
+                const std::string prefix =
+                    fmt::format("{}-{}-track-{}", type_name, state_name, tr.name);
+
+                // On-begin coroutine: ONE lambda for the whole body.
+                if (!tr.body.empty()) {
+                    emit(prefix + "-main", lambda_from_forms(m_soot, tr.body), tr.body.front(),
+                         fmt::format("track '{}' body", tr.name));
                 }
 
-                // ---- Tracks ----
-                for (const auto &tr : h.tracks) {
-                    // Main routine: each form is its own SsLambda (counter = -1).
-                    for (size_t i = 0; i < tr.steps.size(); ++i) {
-                        const std::string name =
-                            fmt::format("{}-{}-{}-track-{}-main-{}", type_name, state_name,
-                                        handler_kind_name(h.kind), tr.name, i);
-
-                        script::Object lambda_form = ensure_lambda(m_soot, tr.steps[i]);
-                        try {
-                            auto  node = builder.build_lambda(lambda_form, file);
-                            auto *fn = dynamic_cast<FunctionNode *>(node.get());
-                            if (!fn) continue;
-                            fn->set_name(name);
-
-                            FunctionNode *raw = fn;
-                            node.release();
-                            file->add_child(std::unique_ptr<Node>(raw));
-                            file->bind(name, raw);
-                        } catch (const std::exception &e) {
-                            throw make_error(
-                                tr.steps[i],
-                                fmt::format("compiling track '{}' main step {}", tr.name, i))
-                                .expected("a compilable lambda body")
-                                .got(e.what());
-                        }
-                    }
-
-                    // Frame-bound steps: (N, body) pairs.
-                    for (const auto &[N, body] : tr.frame_forms) {
-                        const std::string name =
-                            fmt::format("{}-{}-{}-track-{}-frame-{}", type_name, state_name,
-                                        handler_kind_name(h.kind), tr.name, N);
-
-                        script::Object lambda_form = ensure_lambda(m_soot, body);
-                        try {
-                            auto  node = builder.build_lambda(lambda_form, file);
-                            auto *fn = dynamic_cast<FunctionNode *>(node.get());
-                            if (!fn) continue;
-                            fn->set_name(name);
-
-                            FunctionNode *raw = fn;
-                            node.release();
-                            file->add_child(std::unique_ptr<Node>(raw));
-                            file->bind(name, raw);
-                        } catch (const std::exception &e) {
-                            throw make_error(
-                                body, fmt::format("compiling track '{}' frame {}", tr.name, N))
-                                .expected("a compilable lambda body")
-                                .got(e.what());
-                        }
-                    }
+                // Reactive frame triggers: one lambda each, named by index.
+                for (size_t i = 0; i < tr.frames.size(); ++i) {
+                    const auto &ft = tr.frames[i];
+                    emit(fmt::format("{}-frame-{}", prefix, i), lambda_from_forms(m_soot, ft.body),
+                         ft.body.front(), fmt::format("track '{}' frame {}", tr.name, ft.frame));
                 }
             }
         }

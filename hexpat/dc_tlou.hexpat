@@ -157,7 +157,7 @@ struct ScriptLambda {
 
 struct SsLambda {
     u64 m_pScriptLambda;
-    u64 m_someSortOfCounter;
+    u64 m_frameNumber;
 
     if (m_pScriptLambda != 0) {
         ScriptLambda scriptLambda @ m_pScriptLambda;

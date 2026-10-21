@@ -125,8 +125,6 @@ namespace carbon {
         } catch (const std::exception &e) {
             return std::unexpected{std::string("read_reloc_table failed: ") + e.what()};
         }
-        file.replace_newlines_in_stringtable();
-
         // Explicit move: BinaryFile holds raw pointers into its buffer, so
         // the move constructor must re-anchor them. Returning by value would
         // otherwise let the compiler pick the (deleted) copy path.
@@ -202,7 +200,6 @@ namespace carbon {
         } catch (const std::exception &e) {
             return std::unexpected{std::string("read_reloc_table failed: ") + e.what()};
         }
-        file.replace_newlines_in_stringtable();
 
         // See the comment in from_path.
         return std::move(file);
@@ -223,20 +220,6 @@ namespace carbon {
         } catch (const std::exception &e) {
             lg::error("BinaryFile::save: exception for '{}': {}", path.string(), e.what());
             return false;
-        }
-    }
-
-    /// Replace '\n' with ' ' inside the string table.
-    /// The engine does the same after loading, so we mirror it for consistency.
-    void BinaryFile::replace_newlines_in_stringtable() noexcept {
-        // The reloc table has a u32 size prefix; m_relocTable points after it,
-        // so (m_relocTable - 4) is the end of the string table.
-        constexpr u64 table_size_prefix = 4;
-        const u64     table_size = m_relocTable.num() - table_size_prefix - m_strings.num();
-
-        char *string_table = reinterpret_cast<char *>(const_cast<std::byte *>(m_strings.m_ptr));
-        for (u64 i = 0; i < table_size; ++i) {
-            if (string_table[i] == '\n') { string_table[i] = ' '; }
         }
     }
 

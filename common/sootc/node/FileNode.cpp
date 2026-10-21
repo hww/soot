@@ -373,27 +373,58 @@ namespace sootc {
             return ProgramBinaryElement(0);
         }
 
-        const auto &state_handlers = type->state_handlers();
         const auto &opts = type->options();
 
         // ---- 1. Flatten the state list ----
         //
-        // A state is "used" if it has at least one handler. Only used states
-        // appear in SsState[]. Handlers are keyed by (state_name, kind,
-        // event_id). We do not sort by name: the order is the map's natural
-        // (hash) order, which is stable within a build.
+        // A state is "used" if it has at least one handler OR at least one
+        // track. Tracks belong to the state; in the binary they hang off one
+        // carrier on-block (see `anchor` / `synth_block`).
         struct StateEntry {
             std::string                           name;
             std::vector<const StateHandlerBody *> handlers;
+            const std::vector<TrackInfo>         *tracks = nullptr;
+            int                                   anchor = -1; // index in handlers
+            bool                                  synth_block = false;
+
+            u32 block_count() const {
+                return static_cast<u32>(handlers.size()) + (synth_block ? 1u : 0u);
+            }
+            u32 track_count() const { return tracks ? static_cast<u32>(tracks->size()) : 0u; }
         };
+
+        auto lambda_count = [](const TrackInfo &tr) -> u32 {
+            return (tr.body.empty() ? 0u : 1u) + static_cast<u32>(tr.frames.size());
+        };
+
         std::vector<StateEntry> states;
-        states.reserve(state_handlers.size());
-        for (const auto &[sname, hlist] : state_handlers) {
-            if (hlist.empty()) continue;
+        for (const auto &[sname, def] : type->state_defs()) {
+            if (def.handlers.empty() && def.tracks.empty()) continue;
             StateEntry e;
             e.name = sname;
-            for (const auto &h : hlist) e.handlers.push_back(&h);
+            for (const auto &h : def.handlers) e.handlers.push_back(&h);
+            if (!def.tracks.empty()) e.tracks = &def.tracks;
             states.push_back(std::move(e));
+        }
+
+        // Choose the carrier block for each state's tracks.
+        for (auto &se : states) {
+            if (se.track_count() == 0) continue;
+            for (size_t i = 0; i < se.handlers.size(); ++i) {
+                if (se.handlers[i]->kind == StateHandler::ENTER) {
+                    se.anchor = (int)i;
+                    break;
+                }
+            }
+            if (se.anchor < 0) {
+                for (size_t i = 0; i < se.handlers.size(); ++i) {
+                    if (se.handlers[i]->kind != StateHandler::EVENT) {
+                        se.anchor = (int)i;
+                        break;
+                    }
+                }
+            }
+            if (se.anchor < 0) se.synth_block = true;
         }
 
         // ---- 2. Count blocks, tracks, lambdas ----
@@ -402,13 +433,10 @@ namespace sootc {
         u32 num_lambdas = 0;
 
         for (const auto &se : states) {
-            num_blocks += static_cast<u32>(se.handlers.size());
-            for (const auto *h : se.handlers) {
-                for (const auto &tr : h->tracks) {
-                    ++num_tracks;
-                    num_lambdas += static_cast<u32>(tr.steps.size());
-                    num_lambdas += static_cast<u32>(tr.frame_forms.size());
-                }
+            num_blocks += se.block_count();
+            num_tracks += se.track_count();
+            if (se.tracks) {
+                for (const auto &tr : *se.tracks) num_lambdas += lambda_count(tr);
             }
         }
 
@@ -484,7 +512,7 @@ namespace sootc {
             SsState    &sss = ss_states[si];
 
             sss.m_stateId = static_cast<sid64>(StringId(se.name));
-            sss.m_numSsOnBlocks = static_cast<i64>(se.handlers.size());
+            sss.m_numSsOnBlocks = static_cast<i64>(se.block_count());
             sss.m_pSsOnBlocks = reinterpret_cast<SsOnBlock *>(
                 blocks_offset + si * 0 /* replaced below */); // set after all states are sized
 
@@ -499,7 +527,7 @@ namespace sootc {
             u32 cursor = 0;
             for (size_t si = 0; si < states.size(); ++si) {
                 state_block_starts[si] = blocks_offset + cursor * sizeof(SsOnBlock);
-                cursor += static_cast<u32>(states[si].handlers.size());
+                cursor += states[si].block_count();
             }
         }
 
@@ -530,100 +558,96 @@ namespace sootc {
         track_cursor = 0;
         lambda_cursor = 0;
 
+        // Fill a track group from the state's tracks (or leave it empty).
+        auto fill_group = [&](const StateEntry &se, SsTrackGroup &grp, bool with_tracks) {
+            grp.m_always0 = 0;
+            grp.m_padding = 0;
+            grp.m_name = nullptr;
+            grp.m_always0_1 = 0;
+            grp.m_always0_2 = 0;
+            grp.m_rareScriptLambda = nullptr;
+
+            if (!with_tracks || se.track_count() == 0) {
+                grp.m_totalLambdaCount = 0;
+                grp.m_numTracks = 0;
+                grp.m_aTracks = nullptr;
+                return;
+            }
+
+            const auto &trs = *se.tracks;
+            u32         group_lambdas = 0;
+            for (const auto &tr : trs) group_lambdas += lambda_count(tr);
+
+            grp.m_totalLambdaCount = static_cast<u16>(group_lambdas);
+            grp.m_numTracks = static_cast<i16>(trs.size());
+            grp.m_aTracks =
+                reinterpret_cast<SsTrack *>(tracks_offset + track_cursor * sizeof(SsTrack));
+
+            u32 local_lambda = 0;
+            for (size_t ti = 0; ti < trs.size(); ++ti) {
+                const auto &tr = trs[ti];
+                SsTrack    &t = ss_tracks[track_cursor];
+                const u32   n = lambda_count(tr);
+
+                t.m_trackId = static_cast<sid64>(StringId(tr.name));
+                t.m_trackIdx = static_cast<u16>(ti);
+                t.m_totalLambdaCount = static_cast<i16>(n);
+                t.m_padding = 0;
+                t.m_pSsLambda =
+                    n > 0 ? reinterpret_cast<SsLambda *>(
+                                lambdas_offset + (lambda_cursor + local_lambda) * sizeof(SsLambda))
+                          : nullptr;
+
+                const std::string prefix = type_name + "-" + se.name + "-track-" + tr.name;
+                u32               li = lambda_cursor + local_lambda;
+
+                // On-begin coroutine: counter = -1.
+                if (!tr.body.empty()) {
+                    ss_lambdas[li++] = {lookup_lambda(prefix + "-main"), static_cast<u64>(-1)};
+                }
+                // Reactive frame triggers: counter = N.
+                for (size_t fi = 0; fi < tr.frames.size(); ++fi) {
+                    ss_lambdas[li++] = {lookup_lambda(prefix + "-frame-" + std::to_string(fi)),
+                                        static_cast<u64>(tr.frames[fi].frame)};
+                }
+
+                local_lambda += n;
+                ++track_cursor;
+            }
+            lambda_cursor += group_lambdas;
+        };
+
         for (size_t si = 0; si < states.size(); ++si) {
             const auto &se = states[si];
+
             for (size_t hi = 0; hi < se.handlers.size(); ++hi) {
                 const StateHandlerBody *h = se.handlers[hi];
 
-                SsOnBlock    &blk = ss_blocks[block_cursor];
-                SsTrackGroup &grp = blk.m_trackGroup;  
+                SsOnBlock &blk = ss_blocks[block_cursor];
 
                 blk.m_blockType = handler_kind_to_block_type(h->kind);
                 blk.m_always0 = 0;
                 blk.m_blockEventId =
                     h->kind == StateHandler::EVENT ? static_cast<sid64>(StringId(h->event_id)) : 0;
+
+                // Handler body: <type>-<state>-<kind>[-event-<id>]
+                std::string body_name =
+                    type_name + "-" + se.name + "-" + state_handler_to_string(h->kind);
+                if (h->kind == StateHandler::EVENT) body_name += "-event-" + h->event_id;
+                blk.m_pScriptLambda = lookup_lambda(body_name);
+
+                fill_group(se, blk.m_trackGroup, static_cast<int>(hi) == se.anchor);
+                ++block_cursor;
+            }
+
+            // Synthetic carrier: state has tracks but no suitable handler.
+            if (se.synth_block) {
+                SsOnBlock &blk = ss_blocks[block_cursor];
+                blk.m_blockType = BlockType::Enter;
+                blk.m_always0 = 0;
+                blk.m_blockEventId = 0;
                 blk.m_pScriptLambda = nullptr;
-
-                // Handler body: <type>-<state>-<kind>[-<event>]
-                {
-                    std::string body_name =
-                        type_name + "-" + se.name + "-" + state_handler_to_string(h->kind);
-                    if (h->kind == StateHandler::EVENT) body_name += "-event-" + h->event_id;
-                    blk.m_pScriptLambda = lookup_lambda(body_name);
-                }
-
-                // Tracks.
-                const u32 tracks_for_block = static_cast<u32>(h->tracks.size());
-                u32       block_lambdas = 0;
-                for (const auto &tr : h->tracks) {
-                    block_lambdas += static_cast<u32>(tr.steps.size());
-                    block_lambdas += static_cast<u32>(tr.frame_forms.size());
-                }
-
-                grp.m_always0 = 0;
-                grp.m_totalLambdaCount = static_cast<u16>(block_lambdas);
-                grp.m_numTracks = static_cast<i16>(tracks_for_block);
-                grp.m_padding = 0;
-                grp.m_aTracks = tracks_for_block > 0
-                                    ? reinterpret_cast<SsTrack *>(tracks_offset +
-                                                                  track_cursor * sizeof(SsTrack))
-                                    : nullptr;
-                grp.m_name = nullptr;
-                grp.m_always0_1 = 0;
-                grp.m_always0_2 = 0;
-                grp.m_rareScriptLambda = nullptr;
-
-                fmt::print(stderr,
-                           "DEBUG block: state='{}', kind={}, tracks_for_block={}, m_aTracks={}, "
-                           "m_numTracks={}\n",
-                           se.name, static_cast<int>(h->kind), tracks_for_block,
-                           (void *)grp.m_aTracks, static_cast<int>(grp.m_numTracks));
-
-                // Tracks.
-                u32 local_lambda = 0;
-                for (size_t ti = 0; ti < h->tracks.size(); ++ti) {
-                    const auto &tr = h->tracks[ti];
-                    SsTrack    &t = ss_tracks[track_cursor];
-
-                    const u32 n_steps = static_cast<u32>(tr.steps.size());
-                    const u32 n_frames = static_cast<u32>(tr.frame_forms.size());
-
-                    t.m_trackId = static_cast<sid64>(StringId(tr.name));
-                    t.m_trackIdx = static_cast<u16>(ti);
-                    t.m_totalLambdaCount = static_cast<i16>(n_steps + n_frames);
-                    t.m_padding = 0;
-                    t.m_pSsLambda = (n_steps + n_frames) > 0
-                                        ? reinterpret_cast<SsLambda *>(
-                                              lambdas_offset +
-                                              (lambda_cursor + local_lambda) * sizeof(SsLambda))
-                                        : nullptr;
-
-                    // Main routine steps: counter = -1.
-                    for (u32 i = 0; i < n_steps; ++i) {
-                        std::string step_name =
-                            type_name + "-" + se.name + "-" + state_handler_to_string(h->kind) +
-                                                "-track-" + tr.name + "-main-" + std::to_string(i);
-
-                        ss_lambdas[lambda_cursor + local_lambda + i] = {lookup_lambda(step_name),
-                                                                        static_cast<u64>(-1)};
-                    }
-                    local_lambda += n_steps;
-
-                    // Frame steps: counter = N.
-                    for (u32 i = 0; i < n_frames; ++i) {
-                        const i64   N = tr.frame_forms[i].first;
-                        std::string step_name =
-                            type_name + "-" + se.name + "-" + state_handler_to_string(h->kind) +
-                                                "-track-" + tr.name + "-frame-" + std::to_string(N);
-
-                        ss_lambdas[lambda_cursor + local_lambda + i] = {lookup_lambda(step_name),
-                                                                        static_cast<u64>(N)};
-                    }
-                    local_lambda += n_frames;
-
-                    ++track_cursor;
-                }
-                lambda_cursor += block_lambdas;
+                fill_group(se, blk.m_trackGroup, true);
                 ++block_cursor;
             }
         }

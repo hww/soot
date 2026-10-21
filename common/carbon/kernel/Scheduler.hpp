@@ -83,6 +83,8 @@ namespace carbon {
         [[nodiscard]] Process    *find(u64 pid) const noexcept;
         [[nodiscard]] bool        empty() const noexcept;
         [[nodiscard]] std::size_t live_count() const noexcept { return m_all.size(); }
+        [[nodiscard]] Process    *find_by_name(const std::string &name) const noexcept;
+
 
         // -------------------------------------------------------------------
         // Diagnostics

@@ -62,6 +62,21 @@ namespace carbon {
         auto state_frame = std::make_shared<StateFrame>(initial, nullptr);
         process->push_frame(state_frame);
 
+         // Track instances from the Enter block.
+        if (auto *enter = initial->lookup(BlockType::Enter)) {
+            const SsTrackGroup &tg = enter->m_trackGroup;
+            if (tg.m_aTracks && tg.m_numTracks > 0) {
+                for (i16 i = 0; i < tg.m_numTracks; ++i) {
+                    TrackInstance ti;
+                    ti.track = &tg.m_aTracks[i];
+                    ti.pc = 0;
+                    ti.time = 0;
+                    process->tracks.push_back(ti);
+                }
+            }
+        }
+        process->set_state_time(0);
+
         // 6. Run the on-enter handler, if any.
         //
         //    This must run under the scheduler's current_process pointer,
@@ -262,6 +277,14 @@ namespace carbon {
 
     bool Scheduler::empty() const noexcept {
         return m_ready.empty() && m_suspended.empty() && m_all.empty();
+    }
+
+    Process *Scheduler::find_by_name(const std::string &name) const noexcept {
+        const StringId sid(name);
+        for (const auto &p : m_all) {
+            if (p && p->name == sid && !p->is_dead()) return p.get();
+        }
+        return nullptr;
     }
 
     // ========================================================================

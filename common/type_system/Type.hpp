@@ -241,21 +241,21 @@ class BitField {
 // attached to one handler; each step is compiled separately and the
 // runtime runs them in order.
 
-struct TrackInfo {
-    std::string                 name;
-    std::vector<script::Object> steps;            ///< main routine forms (counter = -1)
-    std::vector<void *>         steps_compiled;   ///< opaque; filled by the compiler
-    u16                         frame_offset = 0; ///< unused in Step 3
-
-    /// @brief Frame-bound lambdas. Each entry is (N, body), where N is
-    ///        the animation frame at which the body runs. The body is
-    ///        compiled to its own ScriptLambda, with
-    ///        m_someSortOfCounter = N.
-    std::vector<std::pair<i64, script::Object>> frame_forms;
-    std::vector<void *>                         frame_compiled; ///< opaque, same order
+struct FrameTrigger {
+    i64                         frame = 0;
+    std::vector<script::Object> body; ///< implicit begin -> ONE lambda
+    void                       *body_compiled = nullptr;
 };
 
-    enum class StateHandler : int { ENTER, EXIT, CODE, UPDATE, POST, EVENT };
+struct TrackInfo {
+    std::string                 name;
+    std::optional<std::string>  anim;   ///< empty = animation of the state
+    std::vector<FrameTrigger>   frames; ///< reactive, on this track's clock
+    std::vector<script::Object> body;   ///< on-begin coroutine, ONE lambda
+    void                       *body_compiled = nullptr;
+};
+
+enum class StateHandler : int { ENTER, EXIT, CODE, UPDATE, POST, EVENT };
 
 namespace {
     const char *state_handler_to_string(StateHandler kind) {
@@ -272,14 +272,20 @@ namespace {
 } // namespace
 
 struct StateHandlerBody {
-    StateHandler           kind = StateHandler::ENTER;
-    std::string            event_id;                ///< empty unless kind == EVENT
-    script::Object         body_ast;                ///< the form to compile
-    void                  *body_compiled = nullptr; ///< opaque; filled by the compiler
-    DefinitionMetadata     meta;
-    std::vector<TrackInfo> tracks;
+    StateHandler       kind = StateHandler::ENTER;
+    std::string        event_id;                ///< empty unless kind == EVENT
+    script::Object     body_ast;                ///< the form to compile
+    void              *body_compiled = nullptr; ///< opaque; filled by the compiler
+    DefinitionMetadata meta;
+    // tracks removed: they belong to the state
 };
-;
+
+// One state of a type: its signature plus everything that belongs to it.
+struct StateDef {
+    TypeSpec                      signature;
+    std::vector<StateHandlerBody> handlers;
+    std::vector<TrackInfo>        tracks;
+};
 
 // ============================================================================
 // Base Type
@@ -351,19 +357,25 @@ class Type : public std::enable_shared_from_this<Type>  {
 
     size_t methods_max_id() const;
 
-    // ---- State system ----
-    void   add_state(const std::string &name, const TypeSpec &type);
+    // ---- States ----
+    //
+    // A state is one StateDef: signature + handlers + tracks.
+    void   add_state(const std::string &name, const TypeSpec &signature);
     bool   get_my_state(const std::string &name, TypeSpec *out) const;
-    size_t states_count() const { return m_states.size(); }
-    const std::map<std::string, TypeSpec> &get_states_declared_for_type() const { return m_states; }
+    size_t states_count() const { return m_state_defs.size(); }
 
-    std::vector<StateHandlerBody> *state_handlers_ptr(const std::string &state_name) {
-        auto it = m_state_handlers.find(state_name);
-        return it != m_state_handlers.end() ? &it->second : nullptr;
+    StateDef                              *state_def_ptr(const std::string &name);
+    const StateDef                        *state_def_ptr(const std::string &name) const;
+    const std::map<std::string, StateDef> &state_defs() const { return m_state_defs; }
+
+    /// Signatures only (kept for ts-info and callers that need just the types).
+    std::map<std::string, TypeSpec> get_states_declared_for_type() const {
+        std::map<std::string, TypeSpec> r;
+        for (const auto &[n, d] : m_state_defs) r.emplace(n, d.signature);
+        return r;
     }
-    const std::unordered_map<std::string, std::vector<StateHandlerBody>> &state_handlers() const {
-        return m_state_handlers;
-    }
+
+    void add_state_track(const std::string &state_name, TrackInfo track);
 
     // ---- Type options ----
     //
@@ -421,9 +433,9 @@ class Type : public std::enable_shared_from_this<Type>  {
     MethodInfo              m_new_method_info;
     bool                    m_new_method_info_defined = false;
 
-    std::map<std::string, TypeSpec>                                m_states;
-    std::map<std::string, std::string>                             m_options;
-    std::unordered_map<std::string, std::vector<StateHandlerBody>> m_state_handlers;
+    std::map<std::string, TypeSpec>    m_states;
+    std::map<std::string, std::string> m_options;
+    std::map<std::string, StateDef>    m_state_defs;
 };
 
 // ============================================================================

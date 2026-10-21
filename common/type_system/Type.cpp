@@ -296,7 +296,16 @@ bool Type::common_type_info_equal(const Type &other) const {
             break;
         }
     }
-
+    bool states_equal = m_state_defs.size() == other.m_state_defs.size();
+    if (states_equal) {
+        for (const auto &[n, d] : m_state_defs) {
+            auto it = other.m_state_defs.find(n);
+            if (it == other.m_state_defs.end() || !(it->second.signature == d.signature)) {
+                states_equal = false;
+                break;
+            }
+        }
+    }
     return methods_equal && m_states == other.m_states &&
            m_new_method_info == other.m_new_method_info &&
            m_new_method_info_defined == other.m_new_method_info_defined &&
@@ -435,22 +444,33 @@ size_t Type::methods_max_id() const {
     return id;
 }
 
+// ============================================================================
 // ---- State system ----
+// ============================================================================
 
-void Type::add_state(const std::string &name, const TypeSpec &type) {
-    auto result = m_states.insert({name, type});
-    if (!result.second) {
+void Type::add_state(const std::string &name, const TypeSpec &signature) {
+    auto [it, inserted] = m_state_defs.try_emplace(name);
+    if (!inserted) {
         throw std::runtime_error(fmt::format("State {} is already defined in type", name));
     }
+    it->second.signature = signature;
 }
+
 bool Type::get_my_state(const std::string &name, TypeSpec *out) const {
-    auto it = m_states.find(name);
-    if (it != m_states.end()) {
-        if (out)
-            *out = it->second;
-        return true;
-    }
-    return false;
+    auto it = m_state_defs.find(name);
+    if (it == m_state_defs.end()) return false;
+    if (out) *out = it->second.signature;
+    return true;
+}
+
+StateDef *Type::state_def_ptr(const std::string &name) {
+    auto it = m_state_defs.find(name);
+    return it != m_state_defs.end() ? &it->second : nullptr;
+}
+
+const StateDef *Type::state_def_ptr(const std::string &name) const {
+    auto it = m_state_defs.find(name);
+    return it != m_state_defs.end() ? &it->second : nullptr;
 }
 
 // ============================================================================
@@ -475,7 +495,12 @@ std::string Type::get_option(const std::string &key) const {
 StateHandlerBody *Type::add_state_handler(const std::string &state_name, StateHandler kind,
                                           std::string event_id, script::Object body_ast,
                                           DefinitionMetadata meta) {
-    auto &handlers = m_state_handlers[state_name];
+    auto *def = state_def_ptr(state_name);
+    if (!def) {
+        throw std::runtime_error(
+            fmt::format("handler: state '{}' is not declared in type '{}'", state_name, m_name));
+    }
+    auto &handlers = def->handlers;
 
     // Non-event kinds are unique per state: replace if already present.
     if (kind != StateHandler::EVENT) {
@@ -489,27 +514,39 @@ StateHandlerBody *Type::add_state_handler(const std::string &state_name, StateHa
         }
     }
 
-    handlers.push_back(StateHandlerBody{
-        kind, std::move(event_id), std::move(body_ast), nullptr, std::move(meta), {}});
+    handlers.push_back(
+        StateHandlerBody{kind, std::move(event_id), std::move(body_ast), nullptr, std::move(meta)});
     return &handlers.back();
 }
 
 StateHandlerBody *Type::find_state_handler(const std::string &state_name, StateHandler kind,
                                            std::string event_id) {
-    auto it = m_state_handlers.find(state_name);
-    if (it == m_state_handlers.end()) return nullptr;
-
-    for (auto &h : it->second) {
-        if (h.kind == kind && (kind != StateHandler::EVENT || h.event_id == event_id)) {
-            return &h;
-        }
+    auto *def = state_def_ptr(state_name);
+    if (!def) return nullptr;
+    for (auto &h : def->handlers) {
+        if (h.kind == kind && (kind != StateHandler::EVENT || h.event_id == event_id)) return &h;
     }
     return nullptr;
 }
 
 const std::vector<StateHandlerBody> *Type::get_state_handlers(const std::string &state_name) const {
-    auto it = m_state_handlers.find(state_name);
-    return it != m_state_handlers.end() ? &it->second : nullptr;
+    auto *def = state_def_ptr(state_name);
+    return def ? &def->handlers : nullptr;
+}
+
+void Type::add_state_track(const std::string &state_name, TrackInfo track) {
+    auto *def = state_def_ptr(state_name);
+    if (!def) {
+        throw std::runtime_error(fmt::format("track '{}': state '{}' is not declared in type '{}'",
+                                             track.name, state_name, m_name));
+    }
+    for (const auto &t : def->tracks) {
+        if (t.name == track.name) {
+            throw std::runtime_error(
+                fmt::format("duplicate track '{}' in state '{}'", track.name, state_name));
+        }
+    }
+    def->tracks.push_back(std::move(track));
 }
 
 // ============================================================================

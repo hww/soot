@@ -47,9 +47,9 @@ namespace carbon {
                 const StringId name(e.m_nameID);
                 const StringId type(e.m_typeId);
 
-                fmt::print("; [Globals] register: name='{}' type='{}' ptr={} module='{}'\n",
-                           name.to_string(), type.to_string(), e.m_entryPtr,
-                           module_path_id.to_string());
+                //fmt::print("; [Globals] register: name='{}' type='{}' ptr={} module='{}'\n",
+                //           name.to_string(), type.to_string(), e.m_entryPtr,
+                //           module_path_id.to_string());
 
                 globals.register_symbol(name, const_cast<void *>(e.m_entryPtr), type,
                                         module_path_id);
@@ -533,6 +533,46 @@ namespace carbon {
     ModuleRegistry   *Carbon::modules() noexcept { return m_impl->modules.get(); }
     Scheduler        *Carbon::scheduler() noexcept { return m_impl->scheduler.get(); }
 
+    // ------------------------------------------------------------------------
+    // Execution loop
+    // ------------------------------------------------------------------------
+
+    u64 Carbon::run_loop(const TickConfig &cfg) {
+        if (!m_impl->initialized) return 0;
+
+        using clock = std::chrono::steady_clock;
+        const auto period = std::chrono::microseconds(1'000'000 / (cfg.hz ? cfg.hz : 60));
+
+        u64  ticks = 0;
+        auto next = clock::now();
+
+        while (!m_impl->exit_requested) {
+            if (cfg.until_empty && m_impl->scheduler->empty()) break;
+
+            const auto t0 = clock::now();
+            tick();
+            ++ticks;
+
+            if (cfg.max_ticks >= 0 && static_cast<i64>(ticks) >= cfg.max_ticks) break;
+            if (!cfg.realtime) continue;
+
+            next += period;
+            const auto now = clock::now();
+            if (now > next) {
+                lg::warn("tick overrun: {} us (budget {} us)",
+                         std::chrono::duration_cast<std::chrono::microseconds>(now - t0).count(),
+                         period.count());
+                next = now; // долг не копим
+            } else {
+                std::this_thread::sleep_until(next);
+            }
+        }
+        return ticks;
+    }
+
+    // ------------------------------------------------------------------------
+    // Builtin types registration
+    // ------------------------------------------------------------------------
 
     void Carbon::register_builtin_gc_types() {
         auto &reg = gc::type_registry();

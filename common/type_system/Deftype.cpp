@@ -516,16 +516,14 @@ void declare_state_methods(Type *type, TypeSystem *type_system, const script::Ob
 }
 // Parse a single track:
 //
-//   (name main-form... (frame N body) (frames (N body) ...))
+//   (name [:anim name] [:frames ((N body...) ...)] body...)
 //
-// The main-form* are the main routine (one SsLambda each, counter = -1).
-// Each (frame N body) is a frame-bound SsLambda (counter = N).
-// Each (frames (N body) ...) expands to several such entries.
-//
-// The track is attached to the StateHandlerBody of the enclosing
-// handler. The state_name identifies which handler.
+// Header: keyword/value pairs. Body: everything after, ONE lambda.
+// Frame triggers are reactive and live only in :frames.
 void parse_track(Type *type, const std::string &state_name, const script::Object &track_form) {
-    if (!track_form.is_pair()) { throw std::runtime_error("track must be a list: (name body...)"); }
+    if (!track_form.is_pair()) {
+        throw std::runtime_error("track must be a list: (name [:key value]... body...)");
+    }
 
     TrackInfo             track;
     const script::Object &name_obj = car(&track_form);
@@ -538,68 +536,69 @@ void parse_track(Type *type, const std::string &state_name, const script::Object
             fmt::format("track name must be a symbol or string, got: {}", name_obj.print()));
     }
 
-    const script::Object *rest = &track_form.as_pair()->cdr;
-    while (rest->is_pair()) {
-        const script::Object &item = rest->as_pair()->car;
+    const script::Object *rest = cdr(&track_form);
 
-        if (!item.is_pair()) {
-            track.steps.push_back(item);
-            rest = &rest->as_pair()->cdr;
-            continue;
+    // ---- Header ----
+    while (rest->is_pair() && car(rest).is_keyword()) {
+        const std::string kw = symbol_string(car(rest));
+        rest = cdr(rest);
+        if (!rest->is_pair()) {
+            throw std::runtime_error(
+                fmt::format("track '{}': {} requires a value", track.name, kw));
         }
-
-        const script::Object &head = item.as_pair()->car;
-        if (head.is_symbol() && head.as_symbol() == "frame") {
-            const script::Object *tail = &item.as_pair()->cdr;
-            if (tail->is_null() || !tail->as_pair()->car.is_integer()) {
-                throw std::runtime_error("(frame N body): N must be an integer");
+        if (kw == ":anim") {
+            const script::Object &v = car(rest);
+            if (v.is_symbol()) {
+                track.anim = v.as_symbol().name_ptr;
+            } else if (v.is_string()) {
+                track.anim = v.as_string()->data;
+            } else {
+                throw std::runtime_error(
+                    fmt::format("track '{}': :anim must be a symbol or string, got: {}", track.name,
+                                v.print()));
             }
-            const i64 N = tail->as_pair()->car.as_integer();
-            tail = &tail->as_pair()->cdr;
-            if (tail->is_null()) { throw std::runtime_error("(frame N body): missing body"); }
-            track.frame_forms.emplace_back(N, tail->as_pair()->car);
-            rest = &rest->as_pair()->cdr;
-        } else if (head.is_symbol() && head.as_symbol() == "frames") {
-            const script::Object *tail = &item.as_pair()->cdr;
-            while (tail->is_pair()) {
-                const script::Object &pair = tail->as_pair()->car;
-                if (!pair.is_pair()) {
-                    throw std::runtime_error("(frames ...): each entry must be (N body)");
+        } else if (kw == ":frames") {
+            for_each_in_list(car(rest), [&](const script::Object &e) {
+                if (!e.is_pair() || !car(&e).is_integer()) {
+                    throw std::runtime_error(fmt::format(
+                        "track '{}': each :frames entry must be (N body...)", track.name));
                 }
-                const script::Object *ft = &pair.as_pair()->cdr;
-                if (ft->is_null() || !ft->as_pair()->car.is_integer()) {
-                    throw std::runtime_error("(frames (N body)): N must be an integer");
+                FrameTrigger ft;
+                ft.frame = car(&e).as_integer();
+                for (const script::Object *b = cdr(&e); b->is_pair(); b = &b->as_pair()->cdr) {
+                    ft.body.push_back(b->as_pair()->car);
                 }
-                const i64 N = ft->as_pair()->car.as_integer();
-                ft = &ft->as_pair()->cdr;
-                if (ft->is_null()) { throw std::runtime_error("(frames (N body)): missing body"); }
-                track.frame_forms.emplace_back(N, ft->as_pair()->car);
-                tail = &tail->as_pair()->cdr;
-            }
-            rest = &rest->as_pair()->cdr;
+                if (ft.body.empty()) {
+                    throw std::runtime_error(
+                        fmt::format("track '{}': frame {} has no body", track.name, ft.frame));
+                }
+                track.frames.push_back(std::move(ft));
+            });
         } else {
-            track.steps.push_back(item);
-            rest = &rest->as_pair()->cdr;
+            throw std::runtime_error(
+                fmt::format("track '{}': unknown header key {}", track.name, kw));
         }
+        rest = cdr(rest);
     }
 
-    // Attach the track to the first non-event handler of the state.
-    auto *handlers = type->state_handlers_ptr(state_name);
-    if (!handlers || handlers->empty()) {
-        throw std::runtime_error(fmt::format("track '{}' in state '{}': no handler to attach to",
-                                             track.name, state_name));
+    // ---- Body: ONE lambda ----
+    for (; rest->is_pair(); rest = &rest->as_pair()->cdr) {
+        const script::Object &form = rest->as_pair()->car;
+        if (form.is_pair() && car(&form).is_symbol() &&
+            (car(&form).as_symbol() == "frame" || car(&form).as_symbol() == "frames")) {
+            throw std::runtime_error(
+                fmt::format("track '{}': frame triggers are declared in the :frames header, "
+                            "not in the body",
+                            track.name));
+        }
+        track.body.push_back(form);
     }
 
-    // Pick the first non-event handler.
-    StateHandlerBody *anchor = nullptr;
-    for (auto &h : *handlers) {
-        if (h.kind != StateHandler::EVENT) {
-            anchor = &h;
-            break;
-        }
+    if (track.body.empty() && track.frames.empty()) {
+        throw std::runtime_error(fmt::format("track '{}' is empty", track.name));
     }
-    if (!anchor) { anchor = &(*handlers)[0]; }
-    anchor->tracks.push_back(std::move(track));
+
+    type->add_state_track(state_name, std::move(track));
 }
 // Parse a single state declaration.
 //

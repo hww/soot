@@ -29,9 +29,16 @@ namespace sootc {
     ///
     ///            LocalVmRuntime  — runs the bytecode in the in-process
     ///                              Carbon VM. Used when no external
-    ///                              host is configured. No processes,
-    ///                              no game state — just executes
-    ///                              lambdas.
+    ///                              host is configured. The Carbon
+    ///                              instance owns a Scheduler, so
+    ///                              state-scripts can be spawned and
+    ///                              ticked from the REPL via
+    ///                              (spawn ...), (tick N), (run hz N).
+    ///                              Time is discrete: one tick is one
+    ///                              frame, independent of wall-clock.
+    ///                              A tick that overruns its budget
+    ///                              slows the world; it is never caught
+    ///                              up.
     ///
     ///            RemoteRuntime   — sends bytecode to an external host
     ///                              (carbon.exe) over the existing

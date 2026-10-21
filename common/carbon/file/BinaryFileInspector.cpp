@@ -256,7 +256,44 @@ namespace carbon {
         return fmt::format("0x{:016X}", id);
     }
 
-    void BinaryFileInspector::inspect_string_table() {
+        /// @brief Escape a string for one-line display in the inspector.
+    ///
+    /// @details Replaces control characters and backslashes so that the
+    ///          output stays on one line and the reader can see what is
+    ///          actually stored in the string table. In particular, a
+    ///          literal '\n' inside a string constant is shown as "\n",
+    ///          not silently turned into a space and not broken across
+    ///          lines.
+    ///
+    ///          The runtime does NOT use this function: script strings are
+    ///          passed through verbatim, so '\n' still means "newline" at
+    ///          print time.
+    std::string escape_for_display(const char *s, size_t len) {
+        std::string out;
+        out.reserve(len + 8);
+        for (size_t i = 0; i < len; ++i) {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            switch (c) {
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            default:
+                if (c < 0x20) {
+                    out += fmt::format("\\x{:02X}", c);
+                } else {
+                    out += static_cast<char>(c);
+                }
+                break;
+            }
+        }
+        return out;
+    }
+
+        void BinaryFileInspector::inspect_string_table() {
         const auto *hdr = m_file->m_dcheader;
         if (!hdr) {
             m_formatter->print("(no header)\n");
@@ -280,8 +317,10 @@ namespace carbon {
 
         u32 idx = 0;
         while (p < limit && *p != '\0') {
-            const size_t len = std::strlen(p);
-            m_formatter->print("  [{:>3}] @0x{:04X}: \"{}\"\n", idx++, (u32)(p - base), p);
+            const size_t      len = std::strlen(p);
+            const std::string display = escape_for_display(p, len);
+
+            m_formatter->print("  [{:>3}] @0x{:04X}: \"{}\"\n", idx++, (u32)(p - base), display);
             p += len + 1;
         }
         if (idx == 0) m_formatter->print("  (empty)\n");
@@ -1386,9 +1425,7 @@ void BinaryFileInspector::inspect_state_script_summary(const StateScript *ss) {
                 m_formatter->print("  block[{}] {}\n", j, block_name);
 
                 const SsTrackGroup &tg = block.m_trackGroup;
-                fmt::print(stderr,
-                           "DEBUG inspect: block='{}', tg.m_aTracks={}, tg.m_numTracks={}\n",
-                           block_name, (void *)tg.m_aTracks, static_cast<int>(tg.m_numTracks));
+
                 // Individual tracks with lambda summary.
                 if (tg.m_aTracks && tg.m_numTracks > 0) {
                     for (i16 t = 0; t < tg.m_numTracks; ++t) {
@@ -1449,23 +1486,29 @@ void BinaryFileInspector::inspect_state_script_summary(const StateScript *ss) {
         IFormatter::Block block(*m_formatter, m_indent);
 
         if (lambda->m_pScriptLambda) { inspect_script_lambda(lambda->m_pScriptLambda); }
-        m_formatter->print("Counter: 0x{:X}\n", lambda->m_someSortOfCounter);
+        m_formatter->print("Counter: 0x{:X}\n", lambda->m_frameNumber);
     }
-
     void BinaryFileInspector::inspect_lambda_summary(const SsTrack *track) {
         if (!track || !track->m_pSsLambda || track->m_totalLambdaCount <= 0) {
             m_formatter->print("    (no lambdas)\n");
             return;
         }
 
-        m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {}\n", "idx", "func-name",
-                           "instrs", "symbols", "global-scope", "kind");
+        m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {:<8}  {}\n", "idx",
+                           "func-name", "instrs", "symbols", "global-scope", "frame", "kind");
+
         for (i16 i = 0; i < track->m_totalLambdaCount; ++i) {
             const SsLambda &ss_lambda = track->m_pSsLambda[i];
 
+            // frame = sentinel 0xFFFFFFFFFFFFFFFF означает "main": основная
+            // лямбда трека, выполняется один раз при старте, без номера кадра.
+            const u64         frame = ss_lambda.m_frameNumber;
+            const std::string frame_str =
+                (frame == 0xFFFFFFFFFFFFFFFFull) ? "main" : std::to_string(frame);
+
             if (!ss_lambda.m_pScriptLambda) {
-                m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {}\n", i, "(null)", 0,
-                                   0, "(null)", "empty slot");
+                m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {:<8}  {}\n", i,
+                                   "(null)", 0, 0, "(null)", frame_str, "empty slot");
                 continue;
             }
 
@@ -1476,8 +1519,8 @@ void BinaryFileInspector::inspect_state_script_summary(const StateScript *ss) {
             const std::string global_scope =
                 sl.m_sidGlobal != 0 ? sid_str(sl.m_sidGlobal) : "(null)";
 
-            m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {}\n", i, func_name,
-                               sl.m_numInstructions, sl.m_numSymbols, global_scope,
+            m_formatter->print("    {:>4}  {:<12}  {:>6}  {:>8}  {:<24}  {:<8}  {}\n", i, func_name,
+                               sl.m_numInstructions, sl.m_numSymbols, global_scope, frame_str,
                                "script-lambda");
         }
     }
