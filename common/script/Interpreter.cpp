@@ -4978,13 +4978,11 @@ Object Interpreter::eval_get_context(const Object &form, Arguments &args,
     // Начинаем с самого верхнего кадра
     auto current = env;
 
-    auto index = m_dynamic_stack.size() - 1 - ctx_index;
-    if (index >= 0)
-        // Возвращаем форму, сохраненную в этом кадре
-        return m_dynamic_stack[index]->ctx;
-    // Если индекс за пределами глубины стека, возвращаем null (или можно кинуть ошибку)
-    throw_eval_error(form, "Requested stack depth is to big");
-    return Object::make_null();
+    if (ctx_index < 0 || static_cast<size_t>(ctx_index) >= m_dynamic_stack.size()) {
+        throw_eval_error(form, "Requested stack depth is too big");
+    }
+    auto index = m_dynamic_stack.size() - 1 - static_cast<size_t>(ctx_index);
+    return m_dynamic_stack[index]->ctx;
 }
 
 // ============================================================

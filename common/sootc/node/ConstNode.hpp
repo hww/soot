@@ -8,6 +8,7 @@
 #include "sootc/libs/DataSegment.hpp"
 #include "type_system/TypeSystem.hpp"
 #include <stdexcept>
+#include <utility>   
 
 namespace sootc {
 
@@ -75,7 +76,7 @@ public:
         switch (m_etype) {
         case sootc::ConstNode::EType::INT: return m_int_value;
         case sootc::ConstNode::EType::FLOAT: return static_cast<i64>(m_float_value);
-        default: throw std ::runtime_error("unexpected");
+        default: std::unreachable();
         }
     }
     [[nodiscard]] f64 float_value() const noexcept {
@@ -84,8 +85,8 @@ public:
         // sensible number.
         switch (m_etype) {
         case sootc::ConstNode::EType::FLOAT: return m_float_value;
-        case sootc::ConstNode::EType::INT: return static_cast<f64>(m_int_value); 
-        default: throw std ::runtime_error("unexpected");
+        case sootc::ConstNode::EType::INT: return static_cast<f64>(m_int_value);
+        default: std::unreachable();
         }
     }
     [[nodiscard]] const std::string &string_value() const noexcept { return m_string_value; }
@@ -108,7 +109,8 @@ public:
             fn.add_instruction_imm_u16(Opcode::LoadStaticPointer, reg, idx);
             fn.set_temp_reg(this, reg);
         } else if (m_etype == sootc::ConstNode::EType::FLOAT) {
-            u16 idx = fn.add_constant(*reinterpret_cast<u64*>(&m_float_value), 
+            u16 idx =
+                fn.add_constant(std::bit_cast<u64>(m_float_value), 
                                        FunctionNode::ConstKind::FLOAT);
             u8 reg = fn.alloc_temp_reg(m_type);
             fn.add_instruction_imm_u16(Opcode::LoadStaticFloatImm, reg, idx);

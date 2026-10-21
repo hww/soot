@@ -29,6 +29,15 @@
 struct ReverseLookupNode;
 
 struct TypeFlags {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+#pragma clang diagnostic ignored "-Wnested-anon-types"
+#endif
+
     union {
         uint64_t flag = 0;
         struct {
@@ -38,6 +47,12 @@ struct TypeFlags {
             uint16_t pad;
         };
     };
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 };
 
 struct FieldLookupInfo {
