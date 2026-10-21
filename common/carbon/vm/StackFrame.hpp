@@ -3,458 +3,187 @@
 #include "CommonTypes.hpp"
 #include "carbon/lib/Variant.hpp"
 #include "carbon/vm/Instructions.hpp"
-#include "carbon/kernel/Process.hpp"
-#include "carbon/kernel/EventMessage.hpp"
-#include "util/Assert.hpp"
-#include "util/Log.hpp"
 #include "file/DCScript.hpp"
 #include "lib/StringId.hpp"
-#include <iostream>
-#include <ostream>
-#include <functional>
-#include <memory>  
+#include "util/Assert.hpp"
+#include "util/Log.hpp"
 
-using namespace carbon;
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
 
 namespace carbon {
 
-    // ============================================================================
-    // Stack Frame Structure
-    // ============================================================================
+    class VirtualMachine;
 
+    // ============================================================================
+    // StackFrame — base for every execution frame
+    // ============================================================================
+    //
+    // Ownership model:
+    //
+    //   parent       : weak_ptr  — the frame does NOT own its parent
+    //   m_firstChild : shared_ptr — the frame OWNS its children
+    //   m_nextSibling: shared_ptr — the frame OWNS its next sibling in the
+    //                              parent's child list
+    //
+    // A frame's child list is a singly-linked list threaded through
+    // m_nextSibling. The parent owns the first child (m_firstChild);
+    // each child owns the next. free_children() walks the list and
+    // resets every link, recursively. No cycles: parent is weak.
+    //
+    // Two kinds of children:
+    //
+    //   * Temporary (push/pop): a synchronous call frame. It lives in
+    //     stack_frame_top, not in m_firstChild. It is destroyed when
+    //     the call returns (Return).
+    //
+    //   * Long-lived (attach_child): a track, a coroutine, a state.
+    //     It lives in m_firstChild of its owner. It is destroyed when
+    //     the owner is destroyed or free_children() is called.
+    //
     struct StackFrame : public std::enable_shared_from_this<StackFrame> {
-        /// Тип фрейма (для определения поведения при очистке)
-        enum class FrameType {
-            CATCH,      // Обработка исключений
-            PROTECT,    // Защищенный блок с cleanup
-            STATE,      // Состояние процесса
-            GENERIC     // Произвольный защищенный блок
-        };
+        enum class FrameType { CATCH, PROTECT, STATE, TRACK, GENERIC };
 
-        // ------------------------------------------------------------------------
-        // Execution State
-        // ------------------------------------------------------------------------
-        StringId name;                          // Имя фрейма (для отладки и throw)
-        FrameType frame_type;                   // Тип фрейма
-        ScriptLambda* byte_code = nullptr;      // Pointer to FunctionDesc
-        Instruction* code_ptr = nullptr;        // Pointer to FunctionDesc instructions
-        u64* data_ptr = nullptr;                // Pointer to static data
-        std::shared_ptr<StackFrame> parent;     // Parent frame (for call stack)
-        u32 pc = 0;                             // Program counter
-        u32 argc = 0;                           // Number of arguments
-        u32 ret_num = 0;                        // Return register number
-        u64 mark_id = 0;                        // для epoch GC
+        // GC Debugging
+        u64 mark_id = 0;
 
+        // --------------------------------------------------------------------
+        // Identity
+        // --------------------------------------------------------------------
+        StringId  name = StringIds::none;
+        FrameType frame_type = FrameType::GENERIC;
 
-        // ------------------------------------------------------------------------
+        // --------------------------------------------------------------------
+        // Execution state
+        // --------------------------------------------------------------------
+        ScriptLambda *byte_code = nullptr;
+        Instruction  *code_ptr = nullptr;
+        u64          *data_ptr = nullptr;
+
+        u32 pc = 0;
+        u32 argc = 0;
+        u32 ret_num = 0;
+
+        // --------------------------------------------------------------------
+        // Tree links
+        // --------------------------------------------------------------------
+        std::weak_ptr<StackFrame>   parent;
+        std::shared_ptr<StackFrame> m_firstChild;
+        std::shared_ptr<StackFrame> m_nextSibling;
+
+        // --------------------------------------------------------------------
         // Registers
-        // ------------------------------------------------------------------------
-        Variant registers[MAX_REGISTERS];   // All registers (locals + args)
+        // --------------------------------------------------------------------
+        Variant registers[MAX_REGISTERS];
 
-        // ------------------------------------------------------------------------
-        // Constructors
-        // ------------------------------------------------------------------------
+        StackFrame();
+        StackFrame(ScriptLambda *functionDesc, std::shared_ptr<StackFrame> parent,
+                   FrameType frame_type = FrameType::GENERIC, StringId name = StringIds::none);
+        virtual ~StackFrame() = default;
 
-        StackFrame() {
-            initialize_registers();
-        }
-
-       
-        StackFrame(ScriptLambda* functionDesc, std::shared_ptr<StackFrame> parent = nullptr,
-            FrameType frame_type = FrameType::GENERIC, StringId name = StringIds::none);
-
-        virtual ~StackFrame(){}
-
-        /// Вызывается при выходе из области видимости фрейма
+        // --------------------------------------------------------------------
+        // Lifecycle hooks
+        // --------------------------------------------------------------------
         virtual void exit() {}
-
-        /// Вызывается при исключении через этот фрейм
         virtual void on_throw() {}
 
-        std::shared_ptr<StackFrame> get_parent() const {
-            return parent;
-        }
+        // --------------------------------------------------------------------
+        // Parent access (weak_ptr -> shared_ptr via lock)
+        // --------------------------------------------------------------------
+        std::shared_ptr<StackFrame> get_parent() const { return parent.lock(); }
 
-        u32 get_registers_count() { return MAX_REGISTERS; }
+        // --------------------------------------------------------------------
+        // Child management
+        // --------------------------------------------------------------------
+        /// Attach `child` as the last child of this frame.
+        /// The child's parent is set to this frame. The child's
+        /// m_nextSibling is set to nullptr.
+        void attach_child(std::shared_ptr<StackFrame> child);
 
+        /// Remove `child` from this frame's child list.
+        /// The child's parent and m_nextSibling are cleared.
+        void detach_child(std::shared_ptr<StackFrame> child);
 
-        // ------------------------------------------------------------------------
-        // Register Access
-        // ------------------------------------------------------------------------
+        /// Recursively destroy every child (and their subtrees).
+        /// Calls exit() on each child before releasing it.
+        void free_children();
 
-        Variant& get_register(u32 index) {
-            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
-            return registers[index];
-        }
-
-        const Variant& get_register(u32 index) const {
-            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
-            return registers[index];
-        }
-
-        Variant& get_argument(u32 index) {
-            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
-            u32 reg_index = ARG_REGISTERS_OFFSET + index;
-            return registers[reg_index];
-        }
-
-        const Variant& get_argument(u32 index) const {
-            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
-            u32 reg_index = ARG_REGISTERS_OFFSET + index;
-            return registers[reg_index];
-        }
-
-        Variant& get_local(u32 index) {
-            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
-            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
-            return registers[reg_index];
-        }
-
-        const Variant& get_local(u32 index) const {
-            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
-            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
-            return registers[reg_index];
-        }
-
-        // ============================================================================
-        // Register Access Methods
-        // ============================================================================
-
-        // Установка значения в регистр по индексу
-        void set_register(u32 index, const Variant& value) {
-            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
-            registers[index] = value;
-        }
-
-        void set_register(u32 index, Variant&& value) {
-            ASSERT_FORMAT(index < MAX_REGISTERS, "Register index out of bounds: {} (max: {})", index, MAX_REGISTERS - 1);
-            registers[index] = std::move(value);
-        }
-
-        // Установка значения в аргумент по индексу
-        void set_argument(u32 index, const Variant& value) {
-            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
-            u32 reg_index = ARG_REGISTERS_OFFSET + index;
-            registers[reg_index] = value;
-        }
-
-        void set_argument(u32 index, Variant&& value) {
-            ASSERT_FORMAT(index < MAX_ARGS, "Argument index out of bounds: {} (max: {})", index, MAX_ARGS - 1);
-            u32 reg_index = ARG_REGISTERS_OFFSET + index;
-            registers[reg_index] = std::move(value);
-        }
-
-        // Установка значения в локальную переменную по индексу
-        void set_local(u32 index, const Variant& value) {
-            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
-            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
-            registers[reg_index] = value;
-        }
-
-        void set_local(u32 index, Variant&& value) {
-            ASSERT_FORMAT(index < MAX_LOCALS, "Local index out of bounds: {} (max: {})", index, MAX_LOCALS - 1);
-            u32 reg_index = LOCAL_REGISTERS_OFFSET + index;
-            registers[reg_index] = std::move(value);
-        }
-
-        // ============================================================================
-        // Convenience Methods for Common Types
-        // ============================================================================
-
-        // Установка аргумента с конкретными типами
-        void set_argument_int(u32 index, i32 value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_float(u32 index, f32 value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_bool(u32 index, bool value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_string(u32 index, const std::string& value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_sid(u32 index, StringId value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_ptr(u32 index, void* value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_process(u32 index, Process* value) {
-            set_argument(index, Variant(value));
-        }
-
-        void set_argument_event_message(u32 index, EventMessage* value) {
-            set_argument(index, Variant(value));
-        }
-
-        // Установка локальной переменной с конкретными типами
-        void set_local_int(u32 index, i32 value) {
-            set_local(index, Variant(value));
-        }
-
-        void set_local_float(u32 index, f32 value) {
-            set_local(index, Variant(value));
-        }
-
-        void set_local_bool(u32 index, bool value) {
-            set_local(index, Variant(value));
-        }
-
-        void set_local_string(u32 index, const std::string& value) {
-            set_local(index, Variant(value));
-        }
-
-        void set_local_sid(u32 index, StringId value) {
-            set_local(index, Variant(value));
-        }
-
-        void set_local_ptr(u32 index, void* value) {
-            set_local(index, Variant(value));
-        }
-
-        // Установка регистра с конкретными типами
-        void set_register_int(u32 index, i32 value) {
-            set_register(index, Variant(value));
-        }
-
-        void set_register_float(u32 index, f32 value) {
-            set_register(index, Variant(value));
-        }
-
-        void set_register_bool(u32 index, bool value) {
-            set_register(index, Variant(value));
-        }
-
-        void set_register_string(u32 index, const std::string& value) {
-            set_register(index, Variant(value));
-        }
-
-        void set_register_sid(u32 index, StringId value) {
-            set_register(index, Variant(value));
-        }
-
-        void set_register_ptr(u32 index, void* value) {
-            set_register(index, Variant(value));
-        }        
-
-        // ------------------------------------------------------------------------
-        // Instruction Execution
-        // ------------------------------------------------------------------------
-
-        Instruction get_this_instruction() {
-            ASSERT_MSG(code_ptr != nullptr, "No code pointer set");
-            ASSERT_FORMAT(pc < get_code_size(), "Program counter out of bounds: {}", pc);
-
-            return code_ptr[pc];
-        }
-
-        Instruction get_next_instruction() {
-            ASSERT_MSG(code_ptr != nullptr, "No code pointer set");
-            ASSERT_FORMAT(pc < get_code_size(), "Program counter out of bounds: {}", pc);
-
-            Instruction instr = code_ptr[pc];
-            pc++;
-            return instr;
-        }
-
-        void jump_to(u32 new_pc) {
-            ASSERT_FORMAT(new_pc < get_code_size(), "Jump target out of bounds: {}", new_pc);
-            pc = new_pc;
-        }
-
-        u32 get_code_size() const {
-            if (!code_ptr) return 0;
-            // This would need to be stored in the frame or FunctionDesc header
-            // For now, we'll assume a large enough buffer
-            return 1024; // Temporary - should come from FunctionDesc
-        }
-
-        // ------------------------------------------------------------------------
-        // Data Access
-        // ------------------------------------------------------------------------
-
-        i64 get_static_int(u32 offset) const {
-            ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return static_cast<i64>(data_ptr[offset]); // ← читать u64-элемент целиком
-        }
-
-        f64 get_static_float(u32 offset) const {
-            ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            u64 raw = data_ptr[offset];
-            // Constants are stored as full 64-bit doubles — read all 8 bytes.
-            f64 f;
-            std::memcpy(&f, &raw, sizeof(f64));
-            return f;
-        }
-
-        void *get_static_pointer(u32 offset) const {
-            ASSERT_MSG(data_ptr != nullptr, "No data pointer set");
-            return reinterpret_cast<void *>(data_ptr[offset]);
-        }
-
-        // ------------------------------------------------------------------------
-        // Frame Management
-        // ------------------------------------------------------------------------
-
-        void setup_call(u32 num_args, u32 return_reg) {
-            argc = num_args;
-            ret_num = return_reg;
-            pc = 0; // Start execution from beginning
-        }
-
-        void copy_arguments_from(const StackFrame& caller_frame) {
-            for (u32 i = 0; i < argc && i < MAX_ARGS; i++) {
-                get_argument(i) = caller_frame.get_argument(i);
+        // --------------------------------------------------------------------
+        // Typed search
+        // --------------------------------------------------------------------
+        /// Find the nearest frame of type T in the parent chain (this included).
+        template <typename T> T *find_frame_of_type() {
+            StackFrame *cursor = this;
+            while (cursor) {
+                if (auto *typed = dynamic_cast<T *>(cursor)) return typed;
+                cursor = cursor->get_parent().get();
             }
+            return nullptr;
         }
 
-        // ------------------------------------------------------------------------
-        // Debugging
-        // ------------------------------------------------------------------------
-
-        std::string to_string() const {
-            return fmt::format("StackFrame(pc:{}, argc:{}, ret_reg:{}, parent:{:p})",
-                pc, argc, ret_num, (void*)parent.get());
+        template <typename T> const T *find_frame_of_type() const {
+            return const_cast<StackFrame *>(this)->find_frame_of_type<T>();
         }
 
-        void dump_registers() const {
-            lg::debug("=== Register Dump ===");
-
-            // Local registers
-            for (u32 i = 0; i < ARG_REGISTERS_OFFSET; i++) {
-                if (!registers[i].is_null()) {
-                    lg::debug("  r{:2d}: {}", i, registers[i].to_string());
-                }
+        /// Find a child of type T in this frame's direct child list.
+        template <typename T> T *find_child_of_type() {
+            StackFrame *cursor = m_firstChild.get();
+            while (cursor) {
+                if (auto *typed = dynamic_cast<T *>(cursor)) return typed;
+                cursor = cursor->m_nextSibling.get();
             }
-
-            // Argument registers
-            lg::debug("  --- Arguments ---");
-            for (u32 i = ARG_REGISTERS_OFFSET; i < MAX_REGISTERS; i++) {
-                if (!registers[i].is_null()) {
-                    lg::debug("  r{:2d}: {}", i, registers[i].to_string());
-                }
-            }
+            return nullptr;
         }
+
+        // --------------------------------------------------------------------
+        // Register access (unchanged, shortened here)
+        // --------------------------------------------------------------------
+        Variant       &get_register(u32 index);
+        const Variant &get_register(u32 index) const;
+        void           set_register(u32 index, const Variant &value);
+        void           set_register(u32 index, Variant &&value);
+
+        Variant       &get_argument(u32 index);
+        const Variant &get_argument(u32 index) const;
+        void           set_argument(u32 index, const Variant &value);
+        void           set_argument(u32 index, Variant &&value);
+
+        Variant       &get_local(u32 index);
+        const Variant &get_local(u32 index) const;
+        void           set_local(u32 index, const Variant &value);
+        void           set_local(u32 index, Variant &&value);
+
+        u32 get_registers_count() const { return MAX_REGISTERS; }
+
+        // --------------------------------------------------------------------
+        // Instruction fetch
+        // --------------------------------------------------------------------
+        Instruction get_this_instruction();
+        Instruction get_next_instruction();
+        void        jump_to(u32 new_pc);
+        u32         get_code_size() const;
+
+        // --------------------------------------------------------------------
+        // Data access
+        // --------------------------------------------------------------------
+        i64   get_static_int(u32 offset) const;
+        f64   get_static_float(u32 offset) const;
+        void *get_static_pointer(u32 offset) const;
+
+        // --------------------------------------------------------------------
+        // Debug
+        // --------------------------------------------------------------------
+        std::string to_string() const;
+        void        dump_registers() const;
 
     private:
-        void initialize_registers() {
-            for (u32 i = 0; i < MAX_REGISTERS; i++) {
-                registers[i] = Variant(); // Initialize as nil
-            }
-        }
+        void initialize_registers();
     };
 
-    // ============================================================================
-    // Stack Frame Management Functions
-    // ============================================================================
-
-    // Исправленные функции
-    inline std::shared_ptr<StackFrame> create_stack_frame(
-        ScriptLambda* FunctionDesc, 
-        std::shared_ptr<StackFrame> parent = nullptr) 
-    {
-        return std::make_shared<StackFrame>(FunctionDesc, parent);
-    }
-
-    // destroy_stack_frame больше не нужна - удаляем или оставляем пустой
-    inline void destroy_stack_frame(std::shared_ptr<StackFrame> frame) {
-        // Ничего не делаем - shared_ptr сам удалит
-        // Или просто удаляем эту функцию
-        (void)frame; // Подавляем warning о неиспользуемом параметре
-    }
-
-    inline std::shared_ptr<StackFrame> push_stack_frame(
-        ScriptLambda* FunctionDesc, 
-        std::shared_ptr<StackFrame> parent = nullptr) {
-        
-        return create_stack_frame(FunctionDesc, parent);
-    }
-
-    inline std::shared_ptr<StackFrame> pop_stack_frame(
-        std::shared_ptr<StackFrame> frame) {
-        
-        if (!frame) return nullptr;
-        
-        // Получаем shared_ptr родителя
-        std::shared_ptr<StackFrame> parent = frame->get_parent();
-        
-        // frame автоматически удалится, когда выйдет из области видимости
-        // Не нужно вызывать destroy
-        
-        return parent;
-    }
-
-    // ============================================================================
-    // Utility Functions
-    // ============================================================================
-
-    inline std::ostream& operator<<(std::ostream& os, const StackFrame& frame) {
+    inline std::ostream &operator<<(std::ostream &os, const StackFrame &frame) {
         return os << frame.to_string();
     }
 
-
-    /**
-     * Фрейм для перехвата исключений (аналог try-catch)
-     * Сохраняет контекст выполнения для возможности отката
-     */
-    class CatchFrame : public StackFrame {
-    public:
-
-        CatchFrame(ScriptLambda* FunctionDesc,std::shared_ptr<StackFrame> parent = nullptr, StringId tag_name = StringId("null"))
-            : StackFrame(FunctionDesc, parent, FrameType::CATCH, tag_name) {
-        }
-
-        void exit() override {
-            // Для catch фрейма очистка обычно не требуется
-            // кроме случаев, когда мы выходим без исключения
-        }
-
-        void on_throw() override {
-            // Восстанавливаем контекст выполнения
-            restore_execution_context();
-        }
-
-    private:
-        void restore_execution_context() {
-            // Восстановление регистров и стека
-            // Ассемблерная реализация зависит от платформы
-        }
-    };
-
-    /**
-     * Фрейм для гарантированного выполнения cleanup-кода
-     * Аналог RAII в C++ или defer в Go
-     */
-    class ProtectFrame : public StackFrame {
-    public:
-        /// Функция очистки (вызывается при выходе)
-        std::function<void()> cleanup_function;
-
-        /// Данные для очистки (опционально)
-        void* user_data = nullptr;
-
-        ProtectFrame(ScriptLambda* function_desc, std::shared_ptr<StackFrame> parent = nullptr, std::function<void()> cleanup = nullptr)
-            : StackFrame(function_desc, parent, FrameType::PROTECT, StringId("protected"))
-            , cleanup_function(std::move(cleanup)) {
-        }
-
-        void exit() override {
-            if (cleanup_function) {
-                cleanup_function();
-            }
-        }
-
-        /// Устанавливает пользовательские данные
-        void set_user_data(void* data) {
-            user_data = data;
-        }
-    };
-
-} // namespace vm
+} // namespace carbon

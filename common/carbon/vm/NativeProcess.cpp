@@ -344,7 +344,7 @@ namespace carbon {
         if (!p) {
             return ScriptError("get-track-time: process '%s' not found", process_arg_name(argv[0]));
         }
-        TrackInstance *t = p->find_track(sid_arg(argv[1]));
+        TrackFrame *t = p->find_track(sid_arg(argv[1]));
         return Variant(static_cast<i64>(t ? t->get_time() : 0));
     }
 
@@ -355,37 +355,13 @@ namespace carbon {
         if (!p) {
             return ScriptError("set-track-time: process '%s' not found", process_arg_name(argv[0]));
         }
-        TrackInstance *t = p->find_track(sid_arg(argv[1]));
+        TrackFrame *t = p->find_track(sid_arg(argv[1]));
         if (!t) { return ScriptError("set-track-time: track not found"); }
 
         t->set_time(static_cast<u64>(argv[2].to_int()));
         return Variant(true);
     }
 
-    Variant native_get_track_pc(u32 argc, const Variant *argv) {
-        if (argc < 2) { return ScriptError("get-track-pc: expected (process, track-id)"); }
-
-        Process *p = resolve_process_arg(argv[0]);
-        if (!p) {
-            return ScriptError("get-track-pc: process '%s' not found", process_arg_name(argv[0]));
-        }
-        TrackInstance *t = p->find_track(sid_arg(argv[1]));
-        return Variant(static_cast<i64>(t ? t->get_pc() : 0));
-    }
-
-    Variant native_set_track_pc(u32 argc, const Variant *argv) {
-        if (argc < 3) { return ScriptError("set-track-pc: expected (process, track-id, pc)"); }
-
-        Process *p = resolve_process_arg(argv[0]);
-        if (!p) {
-            return ScriptError("set-track-pc: process '%s' not found", process_arg_name(argv[0]));
-        }
-        TrackInstance *t = p->find_track(sid_arg(argv[1]));
-        if (!t) { return ScriptError("set-track-pc: track not found"); }
-
-        t->set_pc(static_cast<u32>(argv[2].to_int()));
-        return Variant(true);
-    }
 
     // ========================================================================
     // Host-side scheduler driving
@@ -445,8 +421,6 @@ namespace carbon {
         reg.register_function("set-state-time", &native_set_state_time);
         reg.register_function("get-track-time", &native_get_track_time);
         reg.register_function("set-track-time", &native_set_track_time);
-        reg.register_function("get-track-pc", &native_get_track_pc);
-        reg.register_function("set-track-pc", &native_set_track_pc);
 
         lg::info("NativeProcess: registered 8 lifecycle + 9 process-facing functions");
     }

@@ -19,21 +19,6 @@ namespace carbon {
     // Process Management (НОВОЕ - согласно нашему базису)
     // ------------------------------------------------------------------------
 
-    // Исполнение функции в модуле
-    // Variant VirtualMachine::execute_function(Module* module, StringId function, RunMode mode)
-    //{
-    //	FunctionDesc* code = module->resolve_function(function);
-    //
-    //	if (code) {
-    //		return execute_function(code, mode);
-    //	}
-    //	else {
-    //		lg::warn("VM: No main code found for process {}", module->name, function);
-    //	}
-    //
-    //	return Variant();
-    //}
-
     // Исполнение кода
     Variant VirtualMachine::execute_function(ScriptLambda *script_lambda, RunMode mode) {
         if (!script_lambda) {
@@ -109,18 +94,18 @@ namespace carbon {
                 case Opcode::Return: {
                     Variant return_value = current_frame->get_register(instr.a);
 
-                    // Получаем shared_ptr родителя через lock()
-                    auto parent_frame = current_frame->get_parent(); // возвращает shared_ptr
+                    auto parent_frame = current_frame->get_parent();
 
-                    if (!parent_frame) {
+                    // If the parent is a container frame (TrackFrame, StateFrame)
+                    // — i.e. it has no bytecode — do not descend into it. Containers
+                    // are not functions; get_next_instruction would assert on them.
+                    // Just return the value and stop.
+                    if (!parent_frame || parent_frame->code_ptr == nullptr) {
                         final_result = return_value;
-                        current_frame.reset(); // освобождаем текущий фрейм
+                        current_frame.reset();
                     } else {
                         parent_frame->get_register(current_frame->ret_num) = return_value;
-
-                        // Перемещаем current_frame на родителя
-                        current_frame = parent_frame; // shared_ptr присваивание
-                        // Старый current_frame автоматически удалится, если на него нет других ссылок
+                        current_frame = parent_frame;
                     }
 
                     if (mode == RunMode::StepOut) is_break = true;

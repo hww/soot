@@ -536,7 +536,6 @@ namespace carbon {
     // ------------------------------------------------------------------------
     // Execution loop
     // ------------------------------------------------------------------------
-
     u64 Carbon::run_loop(const TickConfig &cfg) {
         if (!m_impl->initialized) return 0;
 
@@ -551,7 +550,18 @@ namespace carbon {
 
             const auto t0 = clock::now();
             tick();
+            const auto t1 = clock::now();
             ++ticks;
+
+            // Warn only if the tick itself took longer than the frame budget.
+            // This is the real overrun: the work did not fit in one frame.
+            const auto tick_duration = t1 - t0;
+            if (tick_duration > period) {
+                lg::warn(
+                    "tick overrun: {} us (budget {} us)",
+                    std::chrono::duration_cast<std::chrono::microseconds>(tick_duration).count(),
+                    period.count());
+            }
 
             if (cfg.max_ticks >= 0 && static_cast<i64>(ticks) >= cfg.max_ticks) break;
             if (!cfg.realtime) continue;
@@ -559,10 +569,12 @@ namespace carbon {
             next += period;
             const auto now = clock::now();
             if (now > next) {
-                lg::warn("tick overrun: {} us (budget {} us)",
-                         std::chrono::duration_cast<std::chrono::microseconds>(now - t0).count(),
-                         period.count());
-                next = now; // долг не копим
+                // Behind schedule. Drop the debt; do not catch up.
+                // No warning here: the tick that actually overran was
+                // already reported above. This branch only means we are
+                // late relative to the wall clock, which is expected
+                // after an overrun or a long sleep.
+                next = now;
             } else {
                 std::this_thread::sleep_until(next);
             }

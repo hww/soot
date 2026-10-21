@@ -547,14 +547,13 @@
 ;      :enter (lambda () (println "state `closed` enter"))
 ;      :track ("bus"
 ;               :frames ((10 (println "state `closed` track `bus` frame 10")
-;                            (set-track-time "self" "bus" 0)
-;                            (set-track-pc   "self" "bus" 0)))
+;                            (set-track-time "self" "bus" 0)))
 ;               (println "state `closed` track `bus` enter")
 ;               (println "state `closed` track `bus` exit"))
 ;      :event ((interact (lambda (proc argc msg block)
 ;                          (println "interact")))))))
 ;(start "my-gate2")
-
+; (run 60 1000)
 ;; ----------------------------------------------------------------------------
 ;; Load marker
 ;; ----------------------------------------------------------------------------

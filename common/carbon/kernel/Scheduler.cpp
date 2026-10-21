@@ -3,7 +3,7 @@
 #include "carbon/Carbon.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/file/Globals.hpp"
-#include "carbon/kernel/StateFrame.hpp"
+#include "carbon/vm/StateFrame.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 
 #include "util/Log.hpp"
@@ -30,73 +30,57 @@ namespace carbon {
     // ========================================================================
 
     u64 Scheduler::spawn(const std::string &entry, const std::vector<Variant> &args) {
-        // 1. Resolve the StateScript from Globals.
         StateScript *state_script = resolve_entry(entry);
-        if (!state_script) {
-            lg::error("Scheduler::spawn: '{}' is not a valid StateScript entry", entry);
+        if (!state_script) { /* log */
             return 0;
         }
 
-        // 2. Create the process.
         auto process = std::make_unique<Process>();
         process->pid = m_next_pid++;
         process->name = StringId(entry);
         process->type = state_script;
 
-        // 3. Resolve the initial state.
         SsState *initial = state_script->resolve_state(StringId(state_script->m_initialStateId));
-        if (!initial) {
-            lg::error("Scheduler::spawn: initial state of '{}' not found", entry);
+        if (!initial) { /* log */
             return 0;
         }
-        process->current_state = initial;
 
-        // 4. Copy the state hooks.
+        process->current_state = initial;
         process->trans_hook = initial->get_trans_function();
         process->post_hook = initial->get_post_function();
+        process->set_state_time(0);
 
-        // 5. Push the StateFrame for the initial state.
-        //
-        //    StateFrame is a ProtectFrame subclass: destroying it calls
-        //    the state's on-exit handler. The Process stack owns the frame.
+        // Push the StateFrame. From here on, current_state_frame is set.
         auto state_frame = std::make_shared<StateFrame>(initial, nullptr);
         process->push_frame(state_frame);
 
-         // Track instances from the Enter block.
+        // Create one TrackFrame per track declared in the state's Enter block.
+        // The track frames are children of state_frame, in declaration order.
         if (auto *enter = initial->lookup(BlockType::Enter)) {
             const SsTrackGroup &tg = enter->m_trackGroup;
             if (tg.m_aTracks && tg.m_numTracks > 0) {
                 for (i16 i = 0; i < tg.m_numTracks; ++i) {
-                    TrackInstance ti;
-                    ti.track = &tg.m_aTracks[i];
-                    ti.pc = 0;
-                    ti.time = 0;
-                    process->tracks.push_back(ti);
+                    auto track_frame = std::make_shared<TrackFrame>(&tg.m_aTracks[i], state_frame);
+                    state_frame->attach_child(track_frame);
                 }
             }
         }
-        process->set_state_time(0);
 
-        // 6. Run the on-enter handler, if any.
-        //
-        //    This must run under the scheduler's current_process pointer,
-        //    so that any native called from it sees the right process.
+        // Run the on-enter handler under the scheduler's current_process,
+        // so natives called from it see the right process.
         Process *raw = process.get();
         m_carbon->set_current_process(raw);
-
         if (auto *enter = initial->get_enter_function()) {
             auto &vm = *m_carbon->vm();
             auto  enter_frame = std::make_shared<StackFrame>(
                 enter, nullptr, StackFrame::FrameType::GENERIC, StringIds::enter);
-            // Pass self as argument 0, so the script can access the process.
             enter_frame->set_argument(0, Variant(static_cast<void *>(raw)));
             enter_frame->argc = 1;
             vm.execute(enter_frame);
         }
-
         m_carbon->set_current_process(nullptr);
 
-        // 7. Create the main thread from the state's code function.
+        // main_thread from the state's code block (optional).
         if (auto *code = initial->get_code_function()) {
             process->main_thread = std::make_shared<StackFrame>(
                 code, nullptr, StackFrame::FrameType::GENERIC, StringIds::code);
@@ -107,17 +91,13 @@ namespace carbon {
             process->top_thread = process->main_thread;
         }
 
-        // 8. Mark the process ready.
         process->status = ProcessStatus::READY;
-
-        // 9. Register and queue.
         const u64 pid = process->pid;
         m_by_pid[pid] = raw;
         m_ready.push_back(raw);
         m_all.push_back(std::move(process));
 
         lg::info("Scheduler: spawned '{}' (pid={}, state={})", entry, pid, initial->name());
-
         return pid;
     }
 

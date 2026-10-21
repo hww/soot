@@ -1,5 +1,5 @@
 ﻿#include "carbon/kernel/Process.hpp"
-#include "carbon/kernel/StateFrame.hpp"
+#include "carbon/vm/StateFrame.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/Carbon.hpp"
@@ -224,48 +224,35 @@ namespace carbon {
     // Stack Operations
     // ============================================================================
 
-    void Process::push_frame(std::shared_ptr<StackFrame> frame) {
+   void Process::push_frame(std::shared_ptr<StackFrame> frame) {
         ASSERT_MSG(frame != nullptr, "Cannot push null frame");
 
-        frame->parent = stack_frame_top;
+        frame->parent = stack_frame_top; // weak_ptr assignment
         stack_frame_top = frame;
 
-        // Если это StateFrame, обновляем current_state_frame
         if (frame->frame_type == StackFrame::FrameType::STATE) {
-            current_state_frame = frame;
+            current_state_frame = std::static_pointer_cast<StateFrame>(frame);
         }
-
-        lg::debug("Process '{}': pushed frame '{}'", get_name_string(), frame->name);
     }
 
     std::shared_ptr<StackFrame> Process::pop_frame() {
-        if (!stack_frame_top) {
-            return nullptr;
-        }
+        if (!stack_frame_top) return nullptr;
 
         std::shared_ptr<StackFrame> frame = stack_frame_top;
-        stack_frame_top = frame->parent;
+        stack_frame_top = frame->get_parent(); // lock weak_ptr
 
-        // Если это StateFrame, очищаем current_state_frame
-        if (frame == current_state_frame) {
-            current_state_frame = nullptr;
-        }
+        if (frame == current_state_frame) { current_state_frame = nullptr; }
 
-        // Вызываем exit обработчик если есть
         frame->exit();
-
-        lg::debug("Process '{}': popped frame '{}'", get_name_string(), frame->name);
-
+        frame->parent.reset();
         return stack_frame_top;
     }
 
     std::shared_ptr<StackFrame> Process::find_frame(StringId frame_name) {
         std::shared_ptr<StackFrame> current = stack_frame_top;
         while (current) {
-            if (current->name == frame_name) {
-                return current;
-            }
-            current = current->parent;
+            if (current->name == frame_name) return current;
+            current = current->get_parent();
         }
         return nullptr;
     }
@@ -312,13 +299,12 @@ namespace carbon {
     // ============================================================================
     // Execution
     // ============================================================================
-
     bool Process::execute_quantum() {
-        if (!is_runnable()) { return false; }
+        if (!is_runnable()) return false;
 
         auto &vm = *Carbon::current()->vm();
 
-        // 1. Apply any deferred state transition first.
+        // Apply a deferred state transition first (go_state from last tick).
         if (has_pending_transition()) {
             if (!execute_deferred_transition(next_state)) {
                 lg::error("Process '{}': deferred transition failed", get_name_string());
@@ -328,60 +314,100 @@ namespace carbon {
             remove_mask(ProcessMask::GOING);
         }
 
-        // 2. SLEEP_CODE: only run trans/post, not main code.
+        // SLEEP_CODE: only trans/post, no main code, no track tick.
+        // (Tracks are part of "code"; they pause with it.)
         if (has_mask(ProcessMask::SLEEP_CODE)) {
-            // Advance state time only when actually ticking.
             ++state_time;
-
             execute_trans_handler(vm);
-            tick_tracks(vm);
             execute_post_handler(vm);
             return true;
         }
 
         status = ProcessStatus::RUNNING;
-
-        // Advance process/state time only when actually ticking.
         ++state_time;
 
         execute_trans_handler(vm);
 
-        tick_tracks(vm);
-        if (!vm.is_yielded && main_thread && main_thread->byte_code) {
+        // Tick the state's tracks. A yield from any track stops the tick.
+        if (current_state_frame) {
+            current_state_frame->tick(vm);
+            if (vm.is_yielded) {
+                vm.is_yielded = false;
+                status = ProcessStatus::READY;
+                return true;
+            }
+        }
+
+        // Run the state's code block, if any.
+        if (main_thread && main_thread->byte_code) {
             vm.current_frame = main_thread;
             vm.execute(RunMode::Run);
             main_thread = vm.current_frame;
         }
 
-        // 3. trans handler (the state's Update block).
-        execute_trans_handler(vm);
-
-        // 4. main code. This is where a native may call Suspend() or
-        //    RequestYield(): the VM stops after the native returns,
-        //    leaving current_frame pointing at the suspended position.
-        if (main_thread && main_thread->byte_code) {
-            vm.current_frame = main_thread;
-            vm.execute(RunMode::Run);
-            main_thread = vm.current_frame; // pick up where we left off
-        }
-
-        // 5. post handler.
         execute_post_handler(vm);
 
-        // 6. Decide the next status.
         if (should_yield) {
-            // A native asked for a yield or suspend. Suspend() already
-            // set status; RequestYield() did not.
-            if (status == ProcessStatus::RUNNING) { status = ProcessStatus::READY; }
+            if (status == ProcessStatus::RUNNING) status = ProcessStatus::READY;
             should_yield = false;
         } else if (status == ProcessStatus::RUNNING) {
-            // Nothing parked us. The process will run again next tick.
             status = ProcessStatus::READY;
         }
 
         return true;
     }
 
+    bool Process::execute_deferred_transition(SsState *new_state) {
+        if (!new_state) return false;
+
+        auto &vm = *Carbon::current()->vm();
+
+        // 1. Pop the old StateFrame. Its exit() runs the on-exit handler
+        //    and frees all TrackFrames (and their main frames) via
+        //    free_children(). No manual tracks.clear() needed.
+        while (stack_frame_top && stack_frame_top->frame_type == StackFrame::FrameType::STATE) {
+            pop_frame();
+        }
+
+        // 2. Switch state, hooks, and state_time.
+        SsState *old_state = current_state;
+        current_state = new_state;
+        trans_hook = new_state->get_trans_function();
+        post_hook = new_state->get_post_function();
+        state_time = 0;
+
+        // 3. Push the new StateFrame; it becomes current_state_frame.
+        auto state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
+        push_frame(state_frame);
+
+        // 4. Create TrackFrames for the new state's Enter block.
+        if (auto *enter = new_state->lookup(BlockType::Enter)) {
+            const SsTrackGroup &tg = enter->m_trackGroup;
+            if (tg.m_aTracks && tg.m_numTracks > 0) {
+                for (i16 i = 0; i < tg.m_numTracks; ++i) {
+                    auto track_frame = std::make_shared<TrackFrame>(&tg.m_aTracks[i], state_frame);
+                    state_frame->attach_child(track_frame);
+                }
+            }
+        }
+
+        // 5. Run the on-enter handler.
+        if (auto *enter = new_state->get_enter_function()) { execute_enter_handler(vm, enter); }
+
+        // 6. Rebuild main_thread from the new state's code block.
+        if (auto *code = new_state->get_code_function()) {
+            main_thread = std::make_shared<StackFrame>(
+                code, nullptr, StackFrame::FrameType::GENERIC, StringIds::code);
+            top_thread = main_thread;
+        } else {
+            main_thread.reset();
+            top_thread.reset();
+        }
+
+        lg::debug("Process '{}': '{}' -> '{}'", get_name_string(),
+                  old_state ? old_state->name() : "null", new_state->name());
+        return true;
+    }
 
     // ============================================================================
     // Control
@@ -577,66 +603,6 @@ namespace carbon {
         return true;
     }
 
-    bool Process::execute_deferred_transition(SsState *new_state) {
-        if (!new_state) return false;
-
-        auto &vm = *Carbon::current()->vm();
-
-        // 1. Pop every frame that belongs to the old state.
-        //
-        //    StateFrame::exit() (called by pop_frame) runs the old
-        //    state's on-exit handler.
-        while (stack_frame_top && stack_frame_top->frame_type == StackFrame::FrameType::STATE) {
-            pop_frame();
-        }
-
-        // 2. Switch state and hooks.
-        SsState *old_state = current_state;
-        current_state = new_state;
-        trans_hook = new_state->get_trans_function();
-        post_hook = new_state->get_post_function();
-
-        // 3. Push the new StateFrame.
-        current_state_frame = std::make_shared<StateFrame>(new_state, stack_frame_top);
-        push_frame(current_state_frame);
-
-        // Reset state time and tracks for the new state.
-        state_time = 0;
-
-        tracks.clear();
-        if (auto *enter = new_state->lookup(BlockType::Enter)) {
-            const SsTrackGroup &tg = enter->m_trackGroup;
-            if (tg.m_aTracks && tg.m_numTracks > 0) {
-                for (i16 i = 0; i < tg.m_numTracks; ++i) {
-                    TrackInstance ti;
-                    ti.track = &tg.m_aTracks[i];
-                    ti.pc = 0;
-                    ti.time = 0;
-                    tracks.push_back(ti);
-                }
-            }
-        }
-
-        // 4. Run the on-enter handler.
-        if (auto *enter = new_state->get_enter_function()) { execute_enter_handler(vm, enter); }
-
-        // 5. Rebuild main_thread from the new state's code block.
-        if (auto *code = new_state->get_code_function()) {
-            main_thread = std::make_shared<StackFrame>(
-                code, nullptr, StackFrame::FrameType::GENERIC, StringIds::code);
-            top_thread = main_thread;
-        } else {
-            main_thread.reset();
-            top_thread.reset();
-        }
-
-        lg::debug("Process '{}': '{}' -> '{}'", get_name_string(),
-                  old_state ? old_state->name() : "null", new_state->name());
-
-        return true;
-    }
-
-
     void Process::cleanup() {
         // Очищаем состояние
         current_state = nullptr;
@@ -748,46 +714,12 @@ namespace carbon {
         }
         return StringId();
     }
-
-    void Process::tick_tracks(VirtualMachine &vm) {
-        
-        for (auto &t : tracks) {
-
-            if (!t.track || t.track->m_totalLambdaCount <= 0) continue;
-
-            const i16 total = t.track->m_totalLambdaCount;
-
-            while (t.pc < static_cast<u32>(total)) {
-                const SsLambda &sl = t.track->m_pSsLambda[t.pc];
-                const u64       target = sl.m_frameNumber;
-
-                if (target == FRAME_SENTINEL_MAIN) {
-                    // main: only at the very start of the track.
-                    if (t.time != 0 || t.pc != 0) break;
-                } else if (target > t.time) {
-                    break; // not yet
-                }
-
-                if (sl.m_pScriptLambda) {
-                    vm.execute_function(sl.m_pScriptLambda, RunMode::Run);
-                    if (vm.is_yielded) return;
-                }
-                ++t.pc;
-            }
-
-            // The track keeps its time only while it has work left.
-            // After the last lambda the script must call set-track-time
-            // (and possibly set-track-pc) to restart it.
-            if (t.pc < static_cast<u32>(total)) { ++t.time; }
-        }
+    
+    TrackFrame *Process::find_track(StringId id) {
+        // Tracks live under the current StateFrame, not in the process stack.
+        return current_state_frame ? current_state_frame->find_track(id) : nullptr;
     }
 
-    TrackInstance *Process::find_track(StringId id) {
-        for (auto &t : tracks) {
-            if (t.track && t.track->m_trackId == id) return &t;
-        }
-        return nullptr;
-    }
     // ============================================================================
     // Utility Methods
     // ============================================================================
@@ -811,11 +743,14 @@ namespace carbon {
         lg::debug("  Next State: '{}'", next_state ? next_state->name() : "null");
         lg::debug("  Heap: {}/{} bytes", heap_used(), heap_size());
         lg::debug("  Stack Depth: {}", [this]() {
-            u32 depth = 0;
-            StackFrame* frame = stack_frame_top.get();
-            while (frame) { depth++; frame = frame->parent.get(); }
+            u32  depth = 0;
+            auto frame = stack_frame_top;
+            while (frame) {
+                depth++;
+                frame = frame->get_parent();
+            }
             return depth;
-            }());
+        }());
         lg::debug("  Children: {}", [this]() {
             u32 count = 0;
             Process* child = this->child;

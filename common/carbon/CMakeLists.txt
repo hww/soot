@@ -26,6 +26,8 @@ add_library(libcarbon
     ## Virtual machine
     
     common/carbon/vm/StackFrame.cpp
+    common/carbon/vm/StateFrame.cpp
+    common/carbon/vm/TrackFrame.cpp
     common/carbon/vm/VirtualMachine.cpp
     common/carbon/vm/NativeFunc.cpp   
     common/carbon/vm/NativeAllocators.cpp   
@@ -39,12 +41,10 @@ add_library(libcarbon
     common/carbon/kernel/EventMessage.cpp   
     common/carbon/kernel/Connection.cpp
     common/carbon/kernel/Connectable.cpp
-    common/carbon/kernel/Engine.cpp
-    
+    common/carbon/kernel/Engine.cpp   
     common/carbon/kernel/Process.cpp
     common/carbon/kernel/ProcessRunner.cpp
     common/carbon/kernel/Scheduler.cpp
-    common/carbon/kernel/StateFrame.cpp
 
     ## Memory manager
     common/carbon/gc/Arena.cpp

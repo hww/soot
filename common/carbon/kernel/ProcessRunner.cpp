@@ -2,8 +2,10 @@
 #include "carbon/Carbon.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/file/Globals.hpp"
-#include "carbon/lib/StringId.hpp"
 #include "carbon/vm/StackFrame.hpp"
+#include "carbon/kernel/Process.hpp"
+
+#include "carbon/lib/StringId.hpp"
 
 #include "util/Log.hpp"
 

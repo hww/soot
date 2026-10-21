@@ -5,6 +5,8 @@
 
 #include "carbon/lib/StringId.hpp"
 #include "carbon/vm/StackFrame.hpp"
+#include "carbon/vm/TrackFrame.hpp"
+#include "carbon/vm/StateFrame.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/kernel/Types.hpp"
 #include "carbon/kernel/Connectable.hpp"
@@ -18,17 +20,9 @@
 
 namespace carbon {
 
-    /// @brief One running track inside a process.
-    struct TrackInstance {
-        SsTrack *track = nullptr;
-        u32      pc = 0;
-        u64      time = 0; ///< frames since this track started
+    class StateFrame;
+    class TrackFrame;
 
-        [[nodiscard]] u64 get_time() const noexcept { return time; }
-        void              set_time(u64 n) noexcept { time = n; }
-        [[nodiscard]] u32 get_pc() const noexcept { return pc; }
-        void              set_pc(u32 n) noexcept { pc = n; }
-    };
 
     // ============================================================================
     // Process Class
@@ -115,7 +109,7 @@ namespace carbon {
         // ============================================================================
 
         /// Текущий фрейм состояния процесса
-        std::shared_ptr<StackFrame> current_state_frame = nullptr;
+        std::shared_ptr<StateFrame> current_state_frame = nullptr;
 
         /// Текущее состояние процесса (определяет поведение)
         SsState* current_state = nullptr;
@@ -372,9 +366,10 @@ namespace carbon {
         // Tracks
         // ============================================================================
 
-        std::vector<TrackInstance> tracks;
+        // REMOVE the old broken inline find_track (it called find_track on StackFrame).
+        // REPLACE with:
+        TrackFrame *find_track(StringId id);
 
-        TrackInstance *find_track(StringId id);
         void           tick_tracks(VirtualMachine &vm);
 
         // ============================================================================

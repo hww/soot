@@ -1,7 +1,7 @@
 ﻿// The kernel
 #include "carbon/kernel/Types.hpp"
 #include "carbon/vm/NativeFunc.hpp"
-#include "carbon/kernel/StateFrame.hpp"
+#include "carbon/vm/StateFrame.hpp"
 #include "carbon/kernel/Connectable.hpp"
 #include "carbon/kernel/Connection.hpp"
 #include "carbon/kernel/Engine.hpp"
