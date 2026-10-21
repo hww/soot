@@ -127,12 +127,6 @@ inline const char *soot_platform_to_game_name(SootPlatform v) {
     return "unknown"; // запасной вариант, warning -Wswitch не будет
 }
 
-// Обратная совместимость со старым (опечатанным) именем.
-[[deprecated("use soot_platform_to_game_name")]] inline const char *
-soot_plaform_to_game_name(SootPlatform v) {
-    return soot_platform_to_game_name(v);
-}
-
 // ===========================================================================
 // Exceptions
 // ===========================================================================

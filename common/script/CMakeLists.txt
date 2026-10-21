@@ -12,6 +12,8 @@ add_library(libscriptcore
     common/script/PrettyPrinter.cpp
     common/script/Errors.cpp
     common/script/Archive.cpp
+    # Type system
+    common/type_system/Register.cpp 
 )
 
 target_include_directories(libscriptcore PUBLIC

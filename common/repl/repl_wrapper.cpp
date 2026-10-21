@@ -106,7 +106,8 @@ void Wrapper::add_to_history(const std::string& line) {
 void Wrapper::save_history() {
   fs::path path;
   if (repl_config.per_game_history) {
-    path = file_util::get_path(PathType::CACHE) / soot_plaform_to_game_name(repl_config.game_version) /
+      path = file_util::get_path(PathType::CACHE) /
+             soot_platform_to_game_name(repl_config.game_version) /
            ".opengoal.repl.history";
   } else {
     path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
@@ -119,7 +120,7 @@ void Wrapper::load_history() {
     fs::path path;
     if (repl_config.per_game_history) {
         path = file_util::get_path(PathType::CACHE) /
-               soot_plaform_to_game_name(repl_config.game_version) / ".opengoal.repl.history";
+               soot_platform_to_game_name(repl_config.game_version) / ".opengoal.repl.history";
     } else {
         path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
     }
@@ -364,7 +365,7 @@ fs::path get_startup_file_path(const std::string& username, const SootPlatform g
   (void)username;
   // Сначала проверяем специфичный для версии файл в CONFIG
   auto game_specific_path = file_util::get_path(file_util::PathType::CONFIG) / 
-                            fmt::format("startup-{}.sot", soot_plaform_to_game_name(game_version));
+                            fmt::format("startup-{}.sot", soot_platform_to_game_name(game_version));
   if (file_util::exists(game_specific_path)) {
     return game_specific_path;
   }
