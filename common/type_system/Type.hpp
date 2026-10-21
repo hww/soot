@@ -258,7 +258,7 @@ struct TrackInfo {
 enum class StateHandler : int { ENTER, EXIT, CODE, UPDATE, POST, EVENT };
 
 namespace {
-    const char *state_handler_to_string(StateHandler kind) {
+    [[maybe_unused]] const char *state_handler_to_string(StateHandler kind) {
     switch (kind) {
     case StateHandler::ENTER: return "enter";
     case StateHandler::EXIT: return "exit";

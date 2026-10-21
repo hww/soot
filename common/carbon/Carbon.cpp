@@ -16,6 +16,8 @@
 
 #include <set>
 #include <unordered_map>
+#include <chrono>
+#include <thread>
 
 namespace carbon {
 
@@ -329,7 +331,7 @@ namespace carbon {
         // name. Without this, an old ModuleRegistry entry is overwritten
         // by the insert below, its BinaryFile is freed, and every pointer
         // Globals holds into that file becomes dangling.
-        if (ModuleRegistry::Entry *old = m_impl->modules->find(logical_name)) {
+        if (m_impl->modules->find(logical_name)) {
             m_impl->globals->remove_module_symbols(StringId(logical_name));
         }
 

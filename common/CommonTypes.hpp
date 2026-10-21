@@ -1,4 +1,4 @@
-﻿// common/util/CommonTypes.hpp
+// common/util/CommonTypes.hpp
 #pragma once
 
 /*!
