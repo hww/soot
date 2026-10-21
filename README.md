@@ -16,6 +16,8 @@
 
 The system is divided into two distinct layers to separate high-level logic from low-level execution:
 
+![SOOT + CARBON SYSTEM](./docs/SOOT_CARBON_SYSTEM.webp)
+
 * **SOOT (The Orchestrator):** A flexible Lisp interpreter used to design scripts for compiling and linking entire projects. Beyond simple builds, SOOT acts as a **preprocessor**, capable of modifying source files on the fly. Its integrated **REPL** allows developers to inspect and debug every stage of the pipeline—from code transformation to target communication—in an iterative loop.
 * **Carbon (The Execution Layer):** A specialized environment consisting of its own **Virtual Machine** and **Compiler**. While Carbon acts as the foundation for execution, the SOOT interpreter remains independent, acting as the manager that directs the Carbon compiler's operations.
 
