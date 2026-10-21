@@ -27,8 +27,6 @@ struct Register : NativeObject {
         return name == Register::type_name_obj() || NativeObject::is_class_name(name);
     }
 
-    Object get_at(SymbolTable* st, const Object &key) override;
-
     std::string print() const override;
     Object      inspect(SymbolTable* st) const override;
 };

@@ -1,4 +1,4 @@
-#include "config.h"
+﻿#include "config.h"
 
 #include "versions/version.h"
 
@@ -80,6 +80,7 @@ std::string KeyBind::string() const {
     case KeyBind::Modifier::META:
       return fmt::format("META-{}", key);
   }
+  return ""; // ← или throw std::runtime_error("unreachable")
 }
 
 void to_json(json& j, const KeyBind& obj) {
