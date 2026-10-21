@@ -5,6 +5,8 @@
 #include "carbon/vm/VirtualMachine.hpp"
 #include "util/Log.hpp"
 
+#include <atomic>
+
 namespace sootc {
 
     LocalVmRuntime::LocalVmRuntime() {

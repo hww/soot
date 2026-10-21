@@ -210,7 +210,11 @@ struct Vector4 {
 template <typename T> constexpr auto to_underlying(T value) -> std::underlying_type_t<T> {
     return static_cast<std::underlying_type_t<T>>(value);
 }
-
+// ===========================================================================
+// ENUM_FLAG_OPERATORS — must be the LAST thing in this file.
+// If you add anything below it, make sure the file ends with a newline,
+// otherwise GCC/Clang emit -Wbackslash-newline-at-eof.
+// ===========================================================================
 #define ENUM_FLAG_OPERATORS(T)                                                                     \
     constexpr T operator~(T a) { return static_cast<T>(~to_underlying(a)); }                       \
     constexpr T operator|(T a, T b) {                                                              \
@@ -225,3 +229,4 @@ template <typename T> constexpr auto to_underlying(T value) -> std::underlying_t
     constexpr T &operator|=(T &a, T b) { return a = a | b; }                                       \
     constexpr T &operator&=(T &a, T b) { return a = a & b; }                                       \
     constexpr T &operator^=(T &a, T b) { return a = a ^ b; }
+// <<< EOF >>>  (this line must be followed by a newline)
