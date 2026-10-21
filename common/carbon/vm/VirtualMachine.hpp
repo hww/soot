@@ -1,18 +1,18 @@
 ﻿#pragma once
 
-#include "carbon/ForwardDeclarations.hpp"
 #include "CommonTypes.hpp"
+#include "carbon/ForwardDeclarations.hpp"
 #include "carbon/lib/Variant.hpp"
 #include "carbon/vm/Instructions.hpp"
-#include "carbon/vm/VmError.hpp"
-#include "carbon/vm/NativeFunc.hpp"
 #include "carbon/vm/NativeAllocators.hpp"
+#include "carbon/vm/NativeFunc.hpp"
+#include "carbon/vm/VmError.hpp"
 
 #include "carbon/gc/GC.hpp"
 
 #include <memory>
-
-using namespace carbon::gc;
+#include <string>
+#include <vector>
 
 namespace carbon {
 
@@ -22,7 +22,7 @@ namespace carbon {
     // ============================================================================
     // Forward Declarations
     // ============================================================================
-    
+
     class VirtualMachine;
     struct StackFrame;
     class Carbon;
@@ -31,7 +31,7 @@ namespace carbon {
     // Native Function Interface
     // ============================================================================
 
-    using NativeFunction = Variant(*)(u32 argc, const Variant* argv);
+    using NativeFunction = Variant (*)(u32 argc, const Variant *argv);
 
     // ============================================================================
     // Virtual Machine Core
@@ -39,60 +39,56 @@ namespace carbon {
 
     class VirtualMachine {
     public:
-        Carbon* carbon;
-        bool enable_debug_log;
-        bool is_suspended;
-        bool is_break;
-        bool is_error;
+        Carbon *carbon;
+        bool    enable_debug_log;
+        bool    is_suspended;
+        bool    is_break;
+        bool    is_error;
         /// Set by the VM when a native function requested a yield.
         /// Reset by the host (Scheduler) before the next execute().
-        bool                        is_yielded = false;
+        bool    is_yielded = false;
 
-        std::string break_reason;
+        std::string                 break_reason;
         std::shared_ptr<StackFrame> current_frame;
         NativeAllocators            m_allocators;
 
 
-        VirtualMachine(Carbon *carbon) : carbon(carbon)
-        {
+        VirtualMachine(Carbon *carbon) : carbon(carbon) {
             enable_debug_log = true;
             is_suspended = false;
             is_break = false;
             is_error = false;
             break_reason = "";
-            current_frame = nullptr; 
-            
+            current_frame = nullptr;
+
             NativeFunctionRegistry::get_instance().initialize_builtins();
             // Register allocators before anything else can call them.
             m_allocators.initialize_builtins();
         }
 
-        ~VirtualMachine() { 
-            purge();
-        }
+        ~VirtualMachine() { purge(); }
 
         /// @brief Clear every frame-lifetime allocator. Call once per frame,
         ///        or after each REPL expression, depending on the desired
         ///        lifetime model.
-        void VirtualMachine::purge() { m_allocators.clear_all(); }
+        void purge() { m_allocators.clear_all(); }
 
         // ------------------------------------------------------------------------
         // Properties
         // ------------------------------------------------------------------------
 
-         std::shared_ptr<StackFrame> CurrentFrame() {return current_frame; }
+        std::shared_ptr<StackFrame> CurrentFrame() { return current_frame; }
 
         /// <summary>There is no stack frame to execute</summary>
         bool IsCompleted() { return current_frame == nullptr; }
 
-        void ClearFlags()
-        {
+        void ClearFlags() {
             is_suspended = false;
             is_break = false;
             is_error = false;
             break_reason.clear();
             current_frame = nullptr;
-        }        
+        }
 
         /// Reset per-run flags. Called by the Scheduler before each quantum.
         void reset_run_flags() {
@@ -122,8 +118,6 @@ namespace carbon {
         Variant execute(std::shared_ptr<StackFrame> stack_frame, RunMode mode = RunMode::Run);
         Variant execute(RunMode mode = RunMode::Run);
 
-        
-   
     private:
         // ------------------------------------------------------------------------
         // Internal Helpers
@@ -133,13 +127,9 @@ namespace carbon {
 
         f64 resolve_float(std::shared_ptr<StackFrame> frame, StringId name);
 
-        void* resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name);
+        void *resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name);
 
-
-        // ------------------------------------------------------------------------
-        // Error state
-        // ------------------------------------------------------------------------
-public:
+    public:
         // The VM does not throw C++ exceptions for runtime errors. Instead,
         // an instruction that detects a problem calls set_error(), which
         // records the error and sets m_has_error. The main execute loop
@@ -166,28 +156,24 @@ public:
         void set_error(VmError err);
 
     private:
-        // Read the pointer stored in register `regnum` of the current frame
-        // and return it through `out_ptr`.
+        // Read the pointer stored in register `regnum` of the current frame.
         //
-        // On success:
-        //   * `out_ptr` is set to a non-null pointer.
-        //   * returns false.
+        // On success: returns a non-null pointer.
+        // On failure: records an error via set_error() and returns nullptr;
+        //             the caller must check the return value and, if null,
+        //             abort the current instruction (the error state is
+        //             already set, so the main loop will stop).
         //
-        // On failure:
-        //   * an error is recorded via set_error();
-        //   * returns true.
-        //
-        // The caller is expected to do:
-        //     void *ptr;
-        //     if (checked_get_ptr(instr, instr.b, base, "LoadFloat", ptr)) break;
-        //     ... use ptr ...
-        //
-        // `op_name` is used in the error message so that reports point at
-        // the actual opcode, not a hardcoded one.
+        // Typical usage:
+        //     if (void *ptr = checked_get_ptr(instr, instr.b, base)) {
+        //         ... use ptr ...
+        //     } else {
+        //         break;   // error already recorded
+        //     }
         [[nodiscard]] void *checked_get_ptr(Instruction &instr, u8 regnum, Variant &reg);
-        
+
         bool    m_has_error = false;
         VmError m_pending_error;
     };
 
-} // namespace vm
+} // namespace carbon

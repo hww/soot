@@ -1,4 +1,4 @@
-// common/util/CommonTypes.hpp
+﻿// common/util/CommonTypes.hpp
 #pragma once
 
 /*!
@@ -30,12 +30,15 @@
 // System headers
 // ===========================================================================
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 #include "fmt/format.h"
 
@@ -117,11 +120,17 @@ constexpr i32 INVALID_INDEX = -1;
 
 enum class SootPlatform { Default };
 
-inline const char *soot_plaform_to_game_name(SootPlatform v) {
+inline const char *soot_platform_to_game_name(SootPlatform v) {
     switch (v) {
     case SootPlatform::Default: return "default";
     }
-    throw std::runtime_error("unknown platform");
+    return "unknown"; // запасной вариант, warning -Wswitch не будет
+}
+
+// Обратная совместимость со старым (опечатанным) именем.
+[[deprecated("use soot_platform_to_game_name")]] inline const char *
+soot_plaform_to_game_name(SootPlatform v) {
+    return soot_platform_to_game_name(v);
 }
 
 // ===========================================================================
@@ -159,10 +168,11 @@ inline i32 safe_cast_s32(i64 value) {
 }
 
 /// @brief Cast f64 to f32, throwing OverflowException if the value does not fit.
+///        Also rejects NaN and infinities.
 inline f32 safe_cast_f32(f64 value) {
     constexpr f64 max_f32 = static_cast<f64>((std::numeric_limits<f32>::max)());
     constexpr f64 min_f32 = -static_cast<f64>((std::numeric_limits<f32>::max)());
-    if (value > max_f32 || value < min_f32) {
+    if (!std::isfinite(value) || value > max_f32 || value < min_f32) {
         throw OverflowException(fmt::format("Value {} out of range for f32", value));
     }
     return static_cast<f32>(value);
