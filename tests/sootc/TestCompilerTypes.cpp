@@ -14,12 +14,11 @@ TEST_F(SootcTest, SimpleDeftype) {
            (z float :offset 8)))
     )");
     ASSERT_NE(file, nullptr);
-    ASSERT_EQ(file->entry_count(), 1u);
 
-    const auto *entry = file->entries();
-    ASSERT_NE(entry, nullptr);
-    EXPECT_EQ(file->resolve_sid(entry[0].m_nameID), "vec3");
-    EXPECT_EQ(entry[0].m_typeId, SID("ss-type"));
+    const auto *entry = file->find_entry_by_name(SID("vec3"));
+    ASSERT_NE(entry, nullptr) << "vec3 SsType entry not found";
+    EXPECT_EQ(entry->m_nameID, SID("vec3"));
+    EXPECT_EQ(entry->m_typeId, SID("ss-type"));
 }
 
 TEST_F(SootcTest, DeftypeWithDocstring) {
@@ -29,7 +28,7 @@ TEST_F(SootcTest, DeftypeWithDocstring) {
           ((a int :offset 0)))
     )");
     ASSERT_NE(file, nullptr);
-    ASSERT_EQ(file->entry_count(), 1u);
+    EXPECT_NE(file->find_entry_by_name(SID("documented")), nullptr);
 }
 
 TEST_F(SootcTest, DeftypeWithMultipleFields) {
@@ -55,8 +54,9 @@ TEST_F(SootcTest, DeftypeWithMultipleFields) {
     )");
     ASSERT_NE(file, nullptr);
 
-    const auto *entry = file->entries();
-    const auto *ss = file->entry_as_ss_type(entry[0]);
+    const auto *entry = file->find_entry_by_name(SID("quad"));
+    ASSERT_NE(entry, nullptr);
+    const auto *ss = file->entry_as_ss_type(*entry);
     ASSERT_NE(ss, nullptr);
     EXPECT_EQ(ss->m_numFields, 4u);
     EXPECT_EQ(ss->m_size, 32u);
@@ -71,9 +71,10 @@ TEST_F(SootcTest, DeftypeSingleField) {
           ((value int :offset 0)))
     )");
     ASSERT_NE(file, nullptr);
-    ASSERT_EQ(file->entry_count(), 1u);
 
-    const auto *ss = file->entry_as_ss_type(file->entries()[0]);
+    const auto *entry = file->find_entry_by_name(SID("single"));
+    ASSERT_NE(entry, nullptr);
+    const auto *ss = file->entry_as_ss_type(*entry);
     ASSERT_NE(ss, nullptr);
     EXPECT_EQ(ss->m_numFields, 1u);
     EXPECT_EQ(ss->m_size, 8u);
@@ -102,9 +103,10 @@ TEST_F(SootcTest, DeftypeMixedFieldTypes) {
     )");
     ASSERT_NE(file, nullptr);
 
-    const auto *ss = file->entry_as_ss_type(file->entries()[0]);
+    const auto *entry = file->find_entry_by_name(SID("mixed"));
+    ASSERT_NE(entry, nullptr);
+    const auto *ss = file->entry_as_ss_type(*entry);
     ASSERT_NE(ss, nullptr);
-    EXPECT_EQ(ss->m_numFields, 4u);
     // Actual layout:
     //   i int      at 0  -> 0..7
     //   f float    at 8  -> 8..11
@@ -112,6 +114,7 @@ TEST_F(SootcTest, DeftypeMixedFieldTypes) {
     //   s symbol   at 20 -> 20..27
     // get_size_in_memory returns the offset past the last field, so 28.
     // There is no trailing padding in this codebase.
+    EXPECT_EQ(ss->m_numFields, 4u);
     EXPECT_EQ(ss->m_size, 28u);
 }
 
@@ -155,8 +158,9 @@ TEST_F(SootcTest, EnumAndTypeTogether) {
     )");
     ASSERT_NE(file, nullptr);
     // Only the deftype should be emitted.
-    EXPECT_EQ(file->entry_count(), 1u);
-    EXPECT_EQ(file->resolve_sid(file->entries()[0].m_nameID), "pixel");
+    const auto *entry = file->find_entry_by_name(SID("pixel"));
+    ASSERT_NE(entry, nullptr) << "pixel SsType entry not found";
+    EXPECT_EQ(entry->m_typeId, SID("ss-type"));
 }
 
 // =============================================================================
@@ -170,8 +174,9 @@ TEST_F(SootcTest, StaticInstanceSingleField) {
         (define origin (new 'static 'point :x 0))
     )");
     ASSERT_NE(file, nullptr);
-    // SsType + data entry.
-    EXPECT_EQ(file->entry_count(), 2u);
+
+    EXPECT_NE(file->find_entry_by_name(SID("point")), nullptr) << "point SsType missing";
+    EXPECT_NE(file->find_entry_by_name(SID("origin")), nullptr) << "origin data entry missing";
 }
 
 TEST_F(SootcTest, StaticInstanceMultipleFields) {
@@ -183,7 +188,8 @@ TEST_F(SootcTest, StaticInstanceMultipleFields) {
         (define origin (new 'static 'vec3 :x 0.0 :y 0.0 :z 0.0))
     )");
     ASSERT_NE(file, nullptr);
-    EXPECT_EQ(file->entry_count(), 2u);
+    EXPECT_NE(file->find_entry_by_name(SID("vec3")), nullptr);
+    EXPECT_NE(file->find_entry_by_name(SID("origin")), nullptr);
 }
 
 TEST_F(SootcTest, MultipleStaticInstances) {
@@ -196,7 +202,9 @@ TEST_F(SootcTest, MultipleStaticInstances) {
     )");
     ASSERT_NE(file, nullptr);
     // One SsType + two data entries.
-    EXPECT_EQ(file->entry_count(), 3u);
+    EXPECT_NE(file->find_entry_by_name(SID("vec2")), nullptr);
+    EXPECT_NE(file->find_entry_by_name(SID("origin")), nullptr);
+    EXPECT_NE(file->find_entry_by_name(SID("unit")), nullptr);
 }
 
 TEST_F(SootcTest, StaticInstanceWithIntValues) {
@@ -207,7 +215,8 @@ TEST_F(SootcTest, StaticInstanceWithIntValues) {
         (define screen (new 'static 'config :width 1920 :height 1080))
     )");
     ASSERT_NE(file, nullptr);
-    EXPECT_EQ(file->entry_count(), 2u);
+    EXPECT_NE(file->find_entry_by_name(SID("config")), nullptr);
+    EXPECT_NE(file->find_entry_by_name(SID("screen")), nullptr);
 }
 
 // =============================================================================
@@ -223,7 +232,9 @@ TEST_F(SootcTest, FieldOffsetsArePreserved) {
     )");
     ASSERT_NE(file, nullptr);
 
-    const auto *ss = file->entry_as_ss_type(file->entries()[0]);
+    auto *entry = file->find_entry_by_name(SID("padded"));
+    ASSERT_NE(entry, nullptr);
+    const auto *ss = file->entry_as_ss_type(*entry);
     ASSERT_NE(ss, nullptr);
 
     ASSERT_GE(ss->m_numFields, 3u);

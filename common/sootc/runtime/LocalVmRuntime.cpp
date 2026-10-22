@@ -11,10 +11,13 @@ namespace sootc {
 
     LocalVmRuntime::LocalVmRuntime() {
         carbon::CarbonConfig config;
-        // The compiler does not want a sidbase of its own; it uses
-        // whatever StringIdManager has already loaded. So leave
-        // config.sidbase_path empty.
-        m_carbon.initialize(config);
+        if (!m_carbon.initialize(config)) {
+            lg::warn("LocalVmRuntime: Carbon already active in this thread, reusing it");
+            // m_carbon не инициализирован, но t_current уже указывает на другой Carbon.
+            // Это плохо, но пока SootcTest использует s_carbon = Carbon::current(),
+            // run() будет работать с тем Carbon, который создал LocalVmRuntime...
+            // Нет, не будет. См. ниже.
+        }
     }
 
     LocalVmRuntime::~LocalVmRuntime() { m_carbon.shutdown(); }

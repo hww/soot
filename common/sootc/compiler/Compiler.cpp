@@ -521,21 +521,37 @@ namespace sootc {
             // Every FileNode has exactly one top-level function. For
             // a fresh REPL FileNode it is created here; for a reused
             // FileNode (non-REPL) it may already exist.
-            FunctionNode *top_level = file_node->top_level();
-            if (!top_level) {
-                auto tl = std::make_unique<FunctionNode>("top-level");
-                top_level = tl.get();
-                file_node->add_child(std::move(tl));
-                file_node->set_top_level(top_level);
-            }
+            // ---- Top-level function (lazy) ----
+            //
+            // top_level is created ONLY when the first top-level expression
+            // appears. A file that contains only declarations (deftype /
+            // defenum / defconstant / defun) has no top-level expressions
+            // and therefore no top-level function: nothing would run, and
+            // emitting an empty SsLambda("top-level") would add a bogus
+            // entry to the binary.
+            //
+            // For a reused FileNode (non-REPL), top_level may already exist
+            // from a previous compile; in that case we keep it and replace
+            // its body for THIS input.
+            FunctionNode *top_level = nullptr;
+            SequenceNode *top_level_body = nullptr;
 
-            // Fresh body for THIS input. The top-level body is
-            // one-shot: expressions are not accumulated across
-            // inputs. Declarations live in m_children and do
-            // accumulate.
-            auto          fresh_body = std::make_unique<SequenceNode>();
-            SequenceNode *top_level_body = fresh_body.get();
-            top_level->set_body(std::move(fresh_body));
+            auto ensure_top_level = [&]() -> SequenceNode * {
+                if (!top_level) { top_level = file_node->top_level(); }
+                if (!top_level) {
+                    auto tl = std::make_unique<FunctionNode>("top-level");
+                    top_level = tl.get();
+                    file_node->add_child(std::move(tl));
+                    file_node->set_top_level(top_level);
+                }
+                if (!top_level_body) { // ← добавить проверку
+                    auto body = std::make_unique<SequenceNode>();
+                    top_level_body = body.get();
+                    top_level->set_body(std::move(body));
+                }
+                return top_level_body;
+            };
+
 
             // ---- Process each top-level form in this input ----
             auto current = forms;
@@ -543,20 +559,12 @@ namespace sootc {
                 auto node = builder.build(current.as_pair()->car, file_node);
                 if (node) {
                     if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
-                        // Static declaration with deferred pointer fields.
-                        //
-                        //   decl   -> m_children (survives input boundaries)
-                        //   stores -> top_level_body (run once each)
                         file_node->add_child(sd->take_decl());
-                        for (auto &store : sd->take_stores()) {
-                            top_level_body->add(std::move(store));
-                        }
+                        auto *body = ensure_top_level(); // ← добавить
+                        for (auto &store : sd->take_stores()) { body->add(std::move(store)); }
                     } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
-                        // Two children, two destinations:
-                        //   decl  -> m_children (survives input boundaries)
-                        //   store -> top_level_body (runs once)
                         file_node->add_child(hd->take_decl());
-                        top_level_body->add(hd->take_store());
+                        ensure_top_level()->add(hd->take_store()); // ← добавить
                     } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
@@ -572,7 +580,7 @@ namespace sootc {
                             .got("bare (new ...)");
                     } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
                         node.release();
-                        top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
+                        ensure_top_level()->add(std::unique_ptr<ExpressionNode>(expr));
                     } else {
                         throw CompilerError("Compiler::compile_internal")
                             .where(fmt::format("file '{}'", effective_filename))
@@ -584,7 +592,7 @@ namespace sootc {
                 current = current.as_pair()->cdr;
             }
             
-             // ---- Compile state-script handler bodies ----
+            // ---- Compile state-script handler bodies ----
             //
             // Each handler body and each track step is compiled into its
             // own FunctionNode, added to the file, and later laid out by

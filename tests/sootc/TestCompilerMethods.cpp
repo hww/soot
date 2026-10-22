@@ -53,7 +53,7 @@ TEST_F(SootcTest, MethodWithMultipleFields) {
 }
 
 TEST_F(SootcTest, MethodCallingAnotherMethod) {
-    auto file = compile(R"(
+    auto result = run(R"(
         (deftype acc (structure)
           ((total int :offset 0))
           (:methods
@@ -65,12 +65,16 @@ TEST_F(SootcTest, MethodCallingAnotherMethod) {
           this)
 
         (defmethod add-twice ((this acc) (n int))
-          (add this n)
-          (add this n))
-    )");
-    ASSERT_NE(file, nullptr);
-    // At least one SsType + two methods.
-    EXPECT_GE(file->entry_count(), 1u);
+          (-> this add n)
+          (-> this add n))
+        (define a (new 'heap 'acc))
+        (defun get ()
+            (-> a add-twice 5)
+            (-> a total))
+    )",
+                      "get");
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_EQ(result.value.to_int(), 10);
 }
 
 // =============================================================================

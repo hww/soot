@@ -44,37 +44,25 @@ namespace sootc::testing {
     class SootcTest : public ::testing::Test {
     protected:
         static void SetUpTestSuite() {
-            // Suppress info-level chatter during tests. Warnings and
-            // errors are still shown so real problems surface.
             lg::set_stdout_level(lg::level::warn);
             lg::set_file_level(lg::level::warn);
 
-            // Bring up the shared Carbon context first, so that any
-            // code in the Compiler's constructor that reaches for
-            // Carbon::current() finds a valid context.
-            carbon::CarbonConfig carbon_cfg;
-            carbon_cfg.register_builtin_types = true;
-            s_carbon = std::make_unique<carbon::Carbon>();
-            if (!s_carbon->initialize(carbon_cfg)) {
-                throw std::runtime_error("SootcTest: failed to initialize Carbon");
-            }
-
-            // Construct the shared Compiler. This is where lib.sot and
-            // lib.soc are loaded — once for the whole test binary.
             CompilationOptions options;
             options.mode = CompilerMode::COMPILE_ONLY;
             options.user_profile = "#f";
             options.search_paths = {"soot_src", "tests/sootc"};
 
             s_compiler = std::make_unique<Compiler>(options, std::nullopt, "#f", nullptr);
+
+            s_carbon = carbon::Carbon::current();
+            if (!s_carbon) {
+                throw std::runtime_error("SootcTest: Compiler did not create a Carbon context");
+            }
         }
 
         static void TearDownTestSuite() {
+            s_carbon = nullptr;
             s_compiler.reset();
-            if (s_carbon) {
-                s_carbon->shutdown();
-                s_carbon.reset();
-            }
         }
 
         void SetUp() override {
@@ -94,14 +82,17 @@ namespace sootc::testing {
         ///          in `out_error`.
         std::unique_ptr<carbon::BinaryFile> compile(const std::string &source,
                                                     std::string       *out_error = nullptr) {
+            static std::size_t s_counter = 0;
+            const std::string  filename = "<test-" + std::to_string(s_counter++) + ">";
+
             auto forms = s_compiler->get_soot_interpreter().get_reader().read_from_string(
-                source, false, "<test>");
+                source, false, filename);
             if (forms.is_null()) {
                 if (out_error) *out_error = "failed to read forms";
                 return nullptr;
             }
 
-            auto result = s_compiler->compile_file(forms, "<test>");
+            auto result = s_compiler->compile_file(forms, filename);
             if (!result) {
                 if (out_error) *out_error = result.error();
                 return nullptr;
@@ -122,12 +113,9 @@ namespace sootc::testing {
             auto file = compile(source, &out.error);
             if (!file) return out;
 
-            // Load the compiled module into the shared Carbon context
-            // under a unique logical name so that repeated runs of the
-            // same test do not collide. The name is derived from the
-            // test name plus a monotonic counter.
+            // Загружаем модуль в Carbon. Имя уникальное, чтобы не затирать
+            // ранее загруженные модули (каждый тест — свой модуль).
             const std::string logical = "<test>/" + std::to_string(s_module_counter++);
-
             if (!s_carbon->load_module_from_binary(logical, std::move(*file))) {
                 out.error = "failed to load module into Carbon";
                 return out;
@@ -140,8 +128,7 @@ namespace sootc::testing {
             }
 
             auto *lambda = reinterpret_cast<carbon::ScriptLambda *>(fn_ptr);
-            auto *vm = s_carbon->vm();
-            out.value = vm->execute_function(lambda, carbon::RunMode::Run);
+            out.value = s_carbon->vm()->execute_function(lambda, carbon::RunMode::Run);
             out.ok = true;
             return out;
         }
@@ -151,7 +138,7 @@ namespace sootc::testing {
 
     private:
         inline static std::unique_ptr<Compiler>       s_compiler;
-        inline static std::unique_ptr<carbon::Carbon> s_carbon;
+        inline static carbon::Carbon *s_carbon;
         inline static std::size_t                     s_module_counter = 0;
     };
 

@@ -26,6 +26,9 @@ namespace sootc {
         bool is_native() const { return m_is_native; }
 
         void emit(FunctionNode &fn) override {
+
+   
+
             // 1. Вычислить аргументы (они окажутся во временных регистрах)
             for (auto &arg : m_args) { arg->emit(fn); }
 

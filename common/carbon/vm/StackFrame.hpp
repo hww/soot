@@ -69,7 +69,7 @@ namespace carbon {
         // --------------------------------------------------------------------
         // Tree links
         // --------------------------------------------------------------------
-        std::weak_ptr<StackFrame>   parent;
+        std::shared_ptr<StackFrame> parent;
         std::shared_ptr<StackFrame> m_firstChild;
         std::shared_ptr<StackFrame> m_nextSibling;
 
@@ -92,7 +92,7 @@ namespace carbon {
         // --------------------------------------------------------------------
         // Parent access (weak_ptr -> shared_ptr via lock)
         // --------------------------------------------------------------------
-        std::shared_ptr<StackFrame> get_parent() const { return parent.lock(); }
+        std::shared_ptr<StackFrame> get_parent() const { return parent; }
 
         // --------------------------------------------------------------------
         // Child management

@@ -81,7 +81,8 @@ namespace carbon {
                     logstring +=
                         fmt::format("R{}={} ", i, current_frame->get_register(i).to_string());
                 }
-                lg::debug("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
+                lg::debug("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(),
+                            logstring);
             }
 
             try {

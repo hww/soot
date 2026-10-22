@@ -38,6 +38,8 @@ namespace sootc {
         const char *node_type() const override { return "FileNode"; }
         std::string to_string() const override;
 
+        FileNode *file() override { return this; }
+
         // ---- Name ----
         const std::string &name() const { return m_name; }
 
@@ -89,7 +91,12 @@ namespace sootc {
 
         /// @brief Append a child node. Used by NodeBuilder when hoisting
         ///        declarations out of a (begin ...) form.
-        void add_child(std::unique_ptr<Node> child) { m_children.push_back(std::move(child)); }
+        void add_child(std::unique_ptr<Node> child) { 
+            if (child) {
+                child->set_file(this); // ← добавить
+            }
+            m_children.push_back(std::move(child)); 
+        }
 
         /// @brief Take ownership of children and symbols, leaving this FileNode empty.
         /// Used by the REPL to merge a freshly-built FileNode into the

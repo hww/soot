@@ -1,5 +1,3 @@
-#pragma once
-
 #include "Node.hpp"
 #include "type_system/TypeSpec.hpp"
 

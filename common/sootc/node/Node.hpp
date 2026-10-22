@@ -95,7 +95,7 @@ protected:
     FileNode* m_cached_file = nullptr;
     FunctionNode* m_cached_function = nullptr;
     NodeType m_node_type = NodeType::Node;
-    
+
 protected:
 
     void invalidate_cache() {
@@ -122,7 +122,8 @@ protected:
     }
     
     virtual void update_self_cache() {}
-    
+
+
 public:
     Node() = default;
     Node(NodeType type) : m_node_type(type) {}
@@ -136,7 +137,6 @@ public:
     // Разрешаем перемещение
     Node(Node&&) = default;
     Node& operator=(Node&&) = default;
-
     
     NodeType get_node_type() const { return m_node_type; }
     const char* get_node_type_string() { return node_type_to_string(m_node_type); }
@@ -209,9 +209,12 @@ public:
     // ========================================================================
     
     class GlobalNode* global();
-    class FileNode* file();
     class FunctionNode* function();
-    
+
+    virtual class FileNode *file();
+ 
+    void set_file(FileNode *f) { m_cached_file = f; }
+        
     // ========================================================================
     // Виртуальные методы
     // ========================================================================

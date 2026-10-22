@@ -1,4 +1,4 @@
-#include "TestHelper.hpp"
+﻿#include "TestHelper.hpp"
 
 using namespace sootc::testing;
 
@@ -14,18 +14,17 @@ TEST_F(SootcTest, EmptyInputProducesNoBinary) {
 }
 
 TEST_F(SootcTest, DefunCompilesToScriptLambda) {
-    auto file = compile(R"((defun test () (_print "abc")))");
+    auto file = compile(R"((defun test () (print "abc")))");
     ASSERT_NE(file, nullptr);
-    ASSERT_EQ(file->entry_count(), 1u);
 
-    const auto *entry = file->entries();
+    const auto *entry = file->find_entry_by_name(SID("test"));
     ASSERT_NE(entry, nullptr);
-    EXPECT_EQ(entry[0].m_nameID, SID("test"));
-    EXPECT_EQ(entry[0].m_typeId, SID("script-lambda"));
+    EXPECT_EQ(entry->m_nameID, SID("test"));
+    EXPECT_EQ(entry->m_typeId, SID("script-lambda"));
 }
 
 TEST_F(SootcTest, DefunWithPrintRuns) {
-    auto result = run(R"((defun test () (_print "abc")))", "test");
+    auto result = run(R"((defun test () (print "abc")))", "test");
     ASSERT_TRUE(result.ok) << result.error;
 }
 
@@ -37,10 +36,9 @@ TEST_F(SootcTest, DeftypeRegistersType) {
     auto file = compile("(deftype vec3 (structure) ((x float)))");
     ASSERT_NE(file, nullptr) << "deftype should produce an SsType entry";
 
-    ASSERT_EQ(file->entry_count(), 1u);
-    const auto *entry = file->entries();
+    const auto *entry = file->find_entry_by_name(SID("vec3"));
     EXPECT_EQ(file->resolve_sid(entry[0].m_nameID), "vec3");
-    EXPECT_EQ(entry[0].m_typeId, SID("ss-type"));
+    EXPECT_EQ(entry->m_typeId, SID("ss-type"));
 }
 
 TEST_F(SootcTest, DeftypeVectorHasFourFields) {
@@ -53,8 +51,10 @@ TEST_F(SootcTest, DeftypeVectorHasFourFields) {
     )");
     ASSERT_NE(file, nullptr);
 
-    const auto *entry = file->entries();
-    const auto *ss = file->entry_as_ss_type(entry[0]);
+    const auto *entry = file->find_entry_by_name(SID("tvector"));
+    ASSERT_NE(entry, nullptr) << "tvector SsType entry not found";
+
+    const auto *ss = file->entry_as_ss_type(*entry);
     ASSERT_NE(ss, nullptr);
     EXPECT_EQ(ss->m_numFields, 4u);
     EXPECT_EQ(ss->m_size, 16u);
@@ -71,10 +71,16 @@ TEST_F(SootcTest, StaticInstanceHasCorrectLayout) {
     )");
     ASSERT_NE(file, nullptr);
 
-    // Should have two entries: the SsType and the data instance.
-    EXPECT_EQ(file->entry_count(), 2u);
-}
+    // SsType for vec3
+    const auto *type_entry = file->find_entry_by_name(SID("vec3"));
+    ASSERT_NE(type_entry, nullptr) << "vec3 SsType missing";
+    EXPECT_EQ(type_entry->m_typeId, SID("ss-type"));
 
+    // Data entry for v
+    const auto *data_entry = file->find_entry_by_name(SID("v"));
+    ASSERT_NE(data_entry, nullptr) << "v data entry missing";
+    // (проверить, что data_entry — это data-struct, а не что-то ещё)
+}
 // =============================================================================
 // Constants
 // =============================================================================

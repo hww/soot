@@ -9,7 +9,7 @@ using namespace sootc::testing;
 TEST_F(SootcTest, NewWithoutConstructorCompiles) {
     auto file = compile(R"(
         (deftype simple (structure) ((x float)))
-        (defun make () (new 'process 'simple))
+        (defun make () (new 'heap 'simple))
     )");
     ASSERT_NE(file, nullptr) << "bare new without ctor should compile";
 }
@@ -17,7 +17,7 @@ TEST_F(SootcTest, NewWithoutConstructorCompiles) {
 TEST_F(SootcTest, NewWithQuotedAllocationAndType) {
     auto file = compile(R"(
         (deftype simple (structure) ((x float)))
-        (defun make () (new 'process 'simple))
+        (defun make () (new 'heap 'simple))
     )");
     ASSERT_NE(file, nullptr);
 }
@@ -31,7 +31,7 @@ TEST_F(SootcTest, NewWithPositionalArguments) {
           (set! (-> this x) x)
           (set! (-> this y) y)
           this)
-        (defun make () (new 'process 'tvector 1.0 2.0))
+        (defun make () (new 'heap 'tvector 1.0 2.0))
     )");
     ASSERT_NE(file, nullptr) << "positional args must be accepted";
 }
@@ -46,7 +46,7 @@ TEST_F(SootcTest, NewWithConstructorCallsVectorNew) {
         (defmethod new tvector ((allocation symbol) (x float))
           (set! (-> this x) x)
           this)
-        (defun make () (new 'process 'tvector 1.0))
+        (defun make () (new 'heap 'tvector 1.0))
     )");
     ASSERT_NE(file, nullptr);
 
