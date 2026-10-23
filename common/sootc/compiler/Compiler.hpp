@@ -412,6 +412,12 @@ namespace sootc {
         }
 
         // ------------------------------------------------------------------
+        // Config
+        // ------------------------------------------------------------------
+    public:
+        CompilationOptions *config() { return &m_config; }
+
+        // ------------------------------------------------------------------
         // Globals
         // ------------------------------------------------------------------
     public:
@@ -474,10 +480,13 @@ namespace sootc {
         // --- Type system ---
         ReplStatus cmd_ts_info(const script::Object &form);
 
+        // --- AST ---
+        ReplStatus cmd_ast(const script::Object &form);
+
         // --- State ---
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;
-        script::Interpreter              m_soot;
+        script::Interpreter            m_soot;
         std::unique_ptr<REPL::Wrapper> m_repl;
 
         CompilationOptions          m_config;

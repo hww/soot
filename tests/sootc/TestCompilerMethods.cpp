@@ -72,7 +72,8 @@ TEST_F(SootcTest, MethodCallingAnotherMethod) {
             (-> a add-twice 5)
             (-> a total))
     )",
-                      "get");
+                      "get", 
+        true);
     ASSERT_TRUE(result.ok) << result.error;
     EXPECT_EQ(result.value.to_int(), 10);
 }

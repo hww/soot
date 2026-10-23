@@ -117,6 +117,12 @@ public:
     void  set_parent(Node *parent) { m_parent = parent; }
 
     const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
+    virtual std::vector<const Node *>         all_children() const {
+        std::vector<const Node *> out;
+        out.reserve(m_children.size());
+        for (auto &c : m_children) out.push_back(c.get());
+        return out;
+    }
     
     void add_child(std::unique_ptr<Node> child) {
         child->set_parent(this);

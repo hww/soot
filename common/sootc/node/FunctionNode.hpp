@@ -7,6 +7,7 @@
 #include "sootc/libs/Parameter.hpp"
 #include "sootc/libs/VariableInfo.hpp"
 #include "sootc/node/Node.hpp"
+#include "sootc/node/ExpressionNode.hpp"
 #include "type_system/Type.hpp"
 #include <memory>
 #include <unordered_map>
@@ -210,7 +211,14 @@ namespace sootc {
         ProgramBinaryElement generate(DataSegment &state) override {
             return build_binary(m_name, state);
         }
-
+        // ========================================================================
+        // Children
+        // ========================================================================
+        std::vector<const Node *> all_children() const override {
+            auto out = Node::all_children();         // вложенные функции
+            if (m_body) out.push_back(m_body.get()); // тело
+            return out;
+        }
     private:
         ProgramBinaryElement build_binary(const std::string &module_name, DataSegment &state);
 

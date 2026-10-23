@@ -52,6 +52,15 @@ namespace sootc {
             for (auto &e : m_exprs) { result += " " + e->to_string(); }
             return result + ")";
         }
+        // ========================================================================
+        // Children
+        // ========================================================================
+        std::vector<const Node *> all_children() const override {
+            std::vector<const Node *> out;
+            out.reserve(m_exprs.size());
+            for (auto &e : m_exprs) out.push_back(e.get());
+            return out;
+        }
     };
 
 } // namespace sootc

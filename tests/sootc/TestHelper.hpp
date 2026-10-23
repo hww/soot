@@ -6,6 +6,8 @@
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "sootc/compiler/Compiler.hpp"
+#include "sootc/node/NodeInspector.hpp"
+#include "sootc/node/FileNode.hpp"
 #include "type_system/TypeSystem.hpp"
 #include "util/Log.hpp"
 
@@ -76,12 +78,27 @@ namespace sootc::testing {
         }
 
         void TearDown() override {}
+        
+        void dump_ast(const std::string &filename = "") {
+            if (filename.empty()) {
+                fmt::print("=== GlobalNode ({}) ===\n", compiler().global_env()->symbols().size());
+                inspect_ast(compiler().global_env());
+                return;
+            }
+            if (auto *fn = compiler().find_file_node(filename)) {
+                fmt::print("--- {} ---\n", filename);
+                inspect_ast(fn);
+            } else {
+                fmt::print("FileNode '{}' not found\n", filename);
+            }
+        }
 
         /// @brief Compile a source string as if it were typed at the REPL.
         /// @details Returns nullptr on error; the error message is stored
         ///          in `out_error`.
         std::unique_ptr<carbon::BinaryFile> compile(const std::string &source,
-                                                    std::string       *out_error = nullptr) {
+                                                    std::string       *out_error = nullptr,
+                                                    bool               inspect_ast = false) {
             static std::size_t s_counter = 0;
             const std::string  filename = "<test-" + std::to_string(s_counter++) + ">";
 
@@ -91,28 +108,31 @@ namespace sootc::testing {
                 if (out_error) *out_error = "failed to read forms";
                 return nullptr;
             }
-
+            s_compiler->config()->debug_print_ast = inspect_ast;
             auto result = s_compiler->compile_file(forms, filename);
+
             if (!result) {
                 if (out_error) *out_error = result.error();
                 return nullptr;
             }
+
             if (!*result) {
                 if (out_error) *out_error = "no binary produced";
                 return nullptr;
             }
+
             return std::move(*result);
         }
 
         /// @brief Compile the source, then run the named function in the VM.
         /// @details `source` must define the function. The function is
         ///          looked up by SID in the shared Carbon context.
-        RunResult run(const std::string &source, const std::string &function_name) {
+        RunResult run(const std::string &source, const std::string &function_name, bool inspect_ast = false) {
             RunResult out;
 
-            auto file = compile(source, &out.error);
+            auto file = compile(source, &out.error, inspect_ast);
             if (!file) return out;
-
+ 
             // Загружаем модуль в Carbon. Имя уникальное, чтобы не затирать
             // ранее загруженные модули (каждый тест — свой модуль).
             const std::string logical = "<test>/" + std::to_string(s_module_counter++);

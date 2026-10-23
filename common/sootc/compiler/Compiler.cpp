@@ -16,6 +16,7 @@
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/Macro.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
+
 #include "sootc/node/DataDeclarationNode.hpp"
 #include "sootc/node/EnumDeclarationNode.hpp"
 #include "sootc/node/FileNode.hpp"
@@ -24,6 +25,7 @@
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/StaticDefineNode.hpp"
 #include "sootc/node/StateScriptNode.hpp"
+#include "sootc/node/NodeInspector.hpp"
 
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
@@ -589,6 +591,8 @@ namespace sootc {
                             .got(node->get_node_type_string());
                     }
                 }
+                if (m_config.debug_print_ast)
+                    inspect_ast(node.get());
                 current = current.as_pair()->cdr;
             }
             
@@ -659,6 +663,7 @@ namespace sootc {
             return std::unexpected(std::string("SOOT error: ") + e.what());
 
         } catch (const CompilerError &e) {
+            if (m_config.debug_print_ast && file_node) { inspect_ast(file_node); }
             if (file_node && snapshot.valid) {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
@@ -743,7 +748,8 @@ namespace sootc {
                                                         "arg-ls",
                                                         "gcls",
                                                         "gc",
-                                                        "ts-info"};
+                                                        "ts-info",
+                                                        "ast"};
         return kCommands;
     }
 
@@ -807,6 +813,7 @@ namespace sootc {
         if (name == "gcls") return cmd_gc_list(form);
         if (name == "gc") return cmd_gc_collect(form);
         if (name == "ts-info") return cmd_ts_info(form);
+        if (name == "ast") return cmd_ast(form);
 
         fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
         return ReplStatus::ERR;
@@ -1450,6 +1457,25 @@ namespace sootc {
             fmt::print("  states ({}):\n", states.size());
             for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
         }
+
+        return ReplStatus::OK;
+    }
+
+    // ===============================================================
+    // AST
+    // ===============================================================
+    
+    ReplStatus Compiler::cmd_ast(const script::Object &form) {
+        (void)form;
+
+        fmt::print("=== FileNodes ({}) ===\n", m_file_nodes.size());
+        for (auto &[name, fn] : m_file_nodes) {
+            fmt::print("--- {} ---\n", name);
+            inspect_ast(fn.get());
+        }
+
+        fmt::print("=== GlobalNode ({}) ===\n", m_global_env->symbols().size());
+        inspect_ast(m_global_env.get());
 
         return ReplStatus::OK;
     }
