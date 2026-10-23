@@ -484,14 +484,34 @@ namespace sootc {
             cur = cur.as_pair()->cdr;
         }
 
+        // Declare local variables in the enclosing FunctionNode BEFORE
+        // building the body. Otherwise build_expression for (x + y) will not
+        // find x/y in FunctionNode: they used to be added only in
+        // LetNode::emit, which runs later, during codegen. As a result the
+        // type of VariableNode for x/y was nullptr, and so were the types of
+        // LetNode and ReturnNode.
+        let_node->prepare_locals(node->function());
+
         auto body = build_body_as_sequence(body_forms, node);
         if (!body) {
             throw m_compiler->make_error(form, "NodeBuilder::build_let")
                 .expected("non-empty body")
                 .got("empty body");
         }
-        let_node->set_body(
-            std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(body.release())));
+
+        auto *body_expr = dynamic_cast<ExpressionNode *>(body.release());
+        if (!body_expr) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_let")
+                .expected("body as ExpressionNode")
+                .got("non-ExpressionNode");
+        }
+
+        let_node->set_body(std::unique_ptr<ExpressionNode>(body_expr));
+
+        // Propagate the body's type to the LetNode. Without this, LetNode::m_type
+        // stays nullptr until emit(), and ReturnNode (which reads m_value->get_type()
+        // in its constructor) ends up with type=(null).
+        let_node->set_type(body_expr->get_type());
 
         return let_node;
     }

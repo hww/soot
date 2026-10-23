@@ -581,8 +581,14 @@ namespace sootc {
                             .expected("top-level 'new' to be wrapped in 'define'")
                             .got("bare (new ...)");
                     } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                        node.release();
-                        ensure_top_level()->add(std::unique_ptr<ExpressionNode>(expr));
+                        if (auto *seq = dynamic_cast<SequenceNode *>(expr);
+                            seq && seq->size() == 0) {
+                            // Empty sequence at top level: no code, drop it.
+                            // `node` is a unique_ptr; going out of scope frees it.
+                        } else {
+                            node.release();
+                            ensure_top_level()->add(std::unique_ptr<ExpressionNode>(expr));
+                        }
                     } else {
                         throw CompilerError("Compiler::compile_internal")
                             .where(fmt::format("file '{}'", effective_filename))
@@ -2038,9 +2044,14 @@ namespace sootc {
                     dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                     file_node->add_child(std::move(node));
                 } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                    node.release();
-                    top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
-                    top_level_used = true;
+                    if (auto* seq = dynamic_cast<SequenceNode*>(expr); seq && seq->size() == 0) {
+                        // Empty sequence at top level: no code, drop it.
+                        // `node` is a unique_ptr; going out of scope frees it.
+                    } else {
+                        node.release();
+                        top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
+                        top_level_used = true;
+                    }
                 }
             }
 

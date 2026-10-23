@@ -2,12 +2,16 @@
 
 #include "ExpressionNode.hpp"
 #include "sootc/node/Node.hpp"
+#include "sootc/node/FunctionNode.hpp"
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace sootc {
+    
+    class FunctionNode;
 
     // (let ((a 1) (b 2)) body...)
     //
@@ -49,10 +53,23 @@ namespace sootc {
                 if (b.value) f(*b.value);
             if (m_body) f(*m_body);
         }
-    private:
-        // Регистры, выделенные под локальные переменные этого let.
-        // Заполняется в emit() — нужно, чтобы VariableNode ниже по дереву
-        // знал, куда смотреть. Но пока — просто через FunctionNode::get_variable_reg.
+
+        /// @brief Объявить локальные переменные в FunctionNode до построения тела.
+        /// @details Вызывается из NodeBuilder::build_let сразу после разбора
+        ///          bindings и до build_expression(body). Благодаря этому
+        ///          build_variable для x/y находит их в FunctionNode и получает
+        ///          тип (или object, если тип не указан).
+        ///
+        ///          LetNode::emit больше НЕ добавляет переменные — они уже
+        ///          добавлены. emit только выделяет регистры через
+        ///          get_variable_reg и делает Move.
+        void prepare_locals(FunctionNode *fn) {
+            if (!fn) return;
+            for (auto &b : m_bindings) {
+                Type *t = b.value ? b.value->get_type() : nullptr;
+                fn->add_local_variable(b.name, t);
+            }
+        }
     };
 
 } // namespace sootc
