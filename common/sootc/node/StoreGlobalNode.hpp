@@ -2,6 +2,7 @@
 
 #include "ExpressionNode.hpp"
 #include "sootc/node/Node.hpp"
+#include "sootc/node/NewNode.hpp"
 #include <memory>
 #include <string>
 
@@ -37,6 +38,10 @@ namespace sootc {
         void emit(FunctionNode &fn) override;
 
         std::string to_string() const override { return "(store-global " + m_name + ")"; }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_new_node) f(*m_new_node);
+        }
     };
 
 } // namespace sootc

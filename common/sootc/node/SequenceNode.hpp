@@ -17,7 +17,10 @@ namespace sootc {
     public:
         SequenceNode() : ExpressionNode(NodeType::SequenceNode) {}
 
-        void add(std::unique_ptr<ExpressionNode> expr) { m_exprs.push_back(std::move(expr)); }
+        void add(std::unique_ptr<ExpressionNode> expr) {
+            adopt(expr);
+            m_exprs.push_back(std::move(expr));
+        }
 
         void remove_where(const std::function<bool(const ExpressionNode *)> &pred) {
             m_exprs.erase(std::remove_if(m_exprs.begin(), m_exprs.end(),
@@ -29,7 +32,7 @@ namespace sootc {
 
         size_t size() const { return m_exprs.size(); }
 
-        bool empty() const { return m_children.empty(); }
+        bool empty() const { return m_exprs.empty(); }
 
         void emit(FunctionNode &func) override {
             if (m_exprs.empty()) {
@@ -55,11 +58,8 @@ namespace sootc {
         // ========================================================================
         // Children
         // ========================================================================
-        std::vector<const Node *> all_children() const override {
-            std::vector<const Node *> out;
-            out.reserve(m_exprs.size());
-            for (auto &e : m_exprs) out.push_back(e.get());
-            return out;
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &e : m_exprs) f(*e);
         }
     };
 

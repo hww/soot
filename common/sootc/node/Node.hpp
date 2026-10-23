@@ -2,6 +2,7 @@
 #pragma once
 
 #include "carbon/file/ProgramBinaryElement.hpp"
+#include <functional>
 #include <memory>
 #include <vector>
 #include <string>
@@ -86,11 +87,47 @@ inline const char* node_type_to_string(NodeType type) {
     return "UnknownNode";
 }
 
+// ============================================================================
+// Модель владения детьми
+// ----------------------------------------------------------------------------
+// Node сам детей НЕ хранит. Каждый конкретный узел владеет своими детьми
+// как типизированными членами (unique_ptr<ExpressionNode> m_left, ...) или
+// собственным вектором (SequenceNode::m_exprs, FileNode::m_children, ...).
+//
+// Для обобщённых обходов (инспектор, оптимизации, визиторы) каждый узел
+// обязан реализовать for_each_child() и перечислить в нём ВСЕХ своих детей.
+//
+// Инвариант parent: у каждого ребёнка parent() == узел, который им владеет.
+// Выставляется ТОЛЬКО через adopt() в конструкторе / сеттере владельца.
+// ============================================================================
 class Node {
     Node* m_parent = nullptr;
 protected:    
     NodeType                           m_node_type = NodeType::Node;
-    std::vector<std::unique_ptr<Node>> m_children;
+
+    // ---- Усыновление: единственное место, где выставляется m_parent ----
+    template<typename T>
+    T* adopt(const std::unique_ptr<T>& child) {
+        static_assert(std::is_base_of_v<Node, T>, "T must be derived from Node");
+        if (child) child->m_parent = this;
+        return child.get();
+    }
+
+     template <typename T> T *adopt(const std::shared_ptr<T> &child) {
+        static_assert(std::is_base_of_v<Node, T>, "T must be derived from Node");
+        if (child) child->m_parent = this;
+        return child.get();
+    }
+
+    template<typename T>
+    void adopt_all(const std::vector<std::unique_ptr<T>>& children) {
+        for (const auto& c : children) adopt(c);
+    }
+
+    // Отвязать ребёнка (когда владение уходит наружу: release_child и т.п.)
+    static void orphan(Node* child) {
+        if (child) child->m_parent = nullptr;
+    }
 
 public:
     Node() = default;
@@ -98,13 +135,12 @@ public:
 
     virtual ~Node() = default;
 
-    // Запрещаем копирование (unique_ptr нельзя копировать)
+    // Узлы адресуются по указателю: на них ссылаются parent у детей и
+    // temp-регистры в FunctionNode. Ни копирование, ни перемещение не нужны.
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
-    
-    // Разрешаем перемещение
-    Node(Node&&) = default;
-    Node& operator=(Node&&) = default;
+    Node(Node&&) = delete;
+    Node& operator=(Node&&) = delete;
     
     NodeType get_node_type() const { return m_node_type; }
     const char* get_node_type_string() { return node_type_to_string(m_node_type); }
@@ -114,36 +150,21 @@ public:
     // ========================================================================
     
     Node* parent() const { return m_parent; }
-    void  set_parent(Node *parent) { m_parent = parent; }
 
-    const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
-    virtual std::vector<const Node *>         all_children() const {
+    /// @brief Вызвать f для каждого прямого ребёнка в порядке "исходника".
+    /// @details Единственный обобщённый интерфейс к детям. Реализация
+    ///          узла ОБЯЗАНА перечислить всех детей, которыми он владеет.
+    ///          Константность поверхностная: unique_ptr::get() в const-методе
+    ///          возвращает неконстантный указатель (как и BinaryNode::left()).
+    ///
+    ///          TODO: после миграции всех узлов заменить тело по умолчанию
+    ///          на `= 0`, чтобы компилятор нашёл забытые.
+    virtual void for_each_child(const std::function<void(Node &)> &f) const { (void)f; }
+
+    std::vector<const Node *> all_children() const {
         std::vector<const Node *> out;
-        out.reserve(m_children.size());
-        for (auto &c : m_children) out.push_back(c.get());
+        for_each_child([&](Node &c) { out.push_back(&c); });
         return out;
-    }
-    
-    void add_child(std::unique_ptr<Node> child) {
-        child->set_parent(this);
-        m_children.push_back(std::move(child));
-    }
-
-    template<typename T, typename... Args>
-    T* add_child(Args&&... args) {
-        // 1. Создаем узел нужного типа
-        auto child = std::make_unique<T>(std::forward<Args>(args)...);
-        
-        // 2. Берем сырой указатель для возврата
-        T* ptr = child.get();
-        
-        // 3. Устанавливаем связи (parent/child)
-        ptr->set_parent(this); // Если у тебя есть такая логика
-        
-        // 4. Передаем владение в вектор детей
-        m_children.push_back(std::move(child));
-        
-        return ptr;
     }
     
     // Безопасное приведение без dynamic_cast

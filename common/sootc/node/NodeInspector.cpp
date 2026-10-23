@@ -43,17 +43,6 @@ namespace sootc {
 
         std::string type_str(const Type *t) { return t ? "\"" + t->get_name() + "\"" : "(null)"; }
 
-        std::string node_ref(const Node *n) {
-            if (!n) return "(null)";
-            // Try to get a name if the node has one.
-            if (auto *f = dynamic_cast<const FunctionNode *>(n)) return "\"" + f->name() + "\"";
-            if (auto *d = dynamic_cast<const DataDeclarationNode *>(n))
-                return "\"" + d->name() + "\"";
-            if (auto *v = dynamic_cast<const VariableNode *>(n)) return "\"" + v->name() + "\"";
-            if (auto *file = dynamic_cast<const FileNode *>(n)) return "\"" + file->name() + "\"";
-            return std::string("<") + n->node_type() + ">";
-        }
-
         std::string bool_str(bool b) { return b ? "#t" : "#f"; }
 
         std::string esc(const std::string &s) {
@@ -215,7 +204,7 @@ namespace sootc {
                 return;
             }
 
-            if (auto *x = dynamic_cast<const IfNode *>(n)) {
+            if (dynamic_cast<const IfNode *>(n)) {
                 p.open("IfNode");
                 p.close_with_children(n);
                 return;
@@ -287,13 +276,13 @@ namespace sootc {
                 return;
             }
 
-            if (auto *x = dynamic_cast<const HeapDefineNode *>(n)) {
+            if (dynamic_cast<const HeapDefineNode *>(n)) {
                 p.open("HeapDefineNode");
                 p.close_with_children(n);
                 return;
             }
 
-            if (auto *x = dynamic_cast<const StaticDefineNode *>(n)) {
+            if (dynamic_cast<const StaticDefineNode *>(n)) {
                 p.open("StaticDefineNode");
                 p.close_with_children(n);
                 return;

@@ -89,6 +89,8 @@ namespace sootc {
 
         // Тело функции
         std::unique_ptr<ExpressionNode> m_body;
+        // Вложенные функции (раньше лежали в Node::m_children)
+        std::vector<std::unique_ptr<FunctionNode>> m_nested;
         DataSegment                    *m_state = nullptr;
 
     public:
@@ -215,10 +217,16 @@ namespace sootc {
         // ========================================================================
         // Children
         // ========================================================================
-        std::vector<const Node *> all_children() const override {
-            auto out = Node::all_children();         // вложенные функции
-            if (m_body) out.push_back(m_body.get()); // тело
-            return out;
+        /// @brief Принять вложенную функцию во владение.
+        FunctionNode *add_nested(std::unique_ptr<FunctionNode> fn) {
+            adopt(fn);
+            m_nested.push_back(std::move(fn));
+            return m_nested.back().get();
+        }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &n : m_nested) f(*n); // вложенные функции
+            if (m_body) f(*m_body);         // тело
         }
     private:
         ProgramBinaryElement build_binary(const std::string &module_name, DataSegment &state);

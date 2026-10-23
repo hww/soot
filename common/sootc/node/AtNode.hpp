@@ -36,7 +36,10 @@ namespace sootc {
         AtNode(std::unique_ptr<ExpressionNode> base, std::unique_ptr<ExpressionNode> index,
                Type *elem_type)
             : ExpressionNode(NodeType::AtNode, elem_type), m_base(std::move(base)),
-              m_index(std::move(index)), m_elem_type(elem_type) {}
+              m_index(std::move(index)), m_elem_type(elem_type) {
+            adopt(m_base);
+            adopt(m_index);
+        }
 
         const char *node_type() const override { return "AtNode"; }
 
@@ -56,6 +59,11 @@ namespace sootc {
         }
 
         void emit(FunctionNode &fn) override;
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_base) f(*m_base);
+            if (m_index) f(*m_index);
+        }
     };
 
 } // namespace sootc

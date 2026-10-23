@@ -35,6 +35,12 @@ namespace sootc {
         bool is_native() const { return m_is_native; }
 
         void emit(FunctionNode &fn) override;
+
+       void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_obj) f(*m_obj);
+            for (auto &a : m_args)
+                if (a) f(*a);
+       }
     };
 
 } // namespace sootc

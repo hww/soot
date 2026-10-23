@@ -25,6 +25,8 @@ public:
         , m_left(std::move(left))
         , m_right(std::move(right)) 
     {
+        adopt(m_left);
+        adopt(m_right);
         // Результат сравнения - булево значение (int)
         m_type = TypeSystem::instance().lookup_type("int");
     }
@@ -78,6 +80,11 @@ public:
             case Op::GE: op_str = ">="; break;
         }
         return "(" + m_left->to_string() + " " + op_str + " " + m_right->to_string() + ")";
+    }
+
+    void for_each_child(const std::function<void(Node &)> &f) const override {
+        if (m_left) f(*m_left);
+        if (m_right) f(*m_right);
     }
 };
 

@@ -2199,11 +2199,6 @@ namespace sootc {
         rest = rest.as_pair()->cdr;
 
         // ---- 2. Optional explicit type name ----
-        //
-        // Only `new` uses this form:
-        //     (defmethod new vector ((allocation symbol) ...) ...)
-        // For all other methods the list of arguments comes right away:
-        //     (defmethod len ((this vector)) ...)
         std::string type_name;
         if (rest.is_pair() && rest.as_pair()->car.is_symbol()) {
             type_name = rest.as_pair()->car.to_std_string();
@@ -2219,15 +2214,20 @@ namespace sootc {
         const auto &arg_list = rest.as_pair()->car;
         auto        body_forms = rest.as_pair()->cdr;
 
-        // ---- 4. Build a FunctionNode ----
+        // ---- 4. Build a FunctionNode, attach before building the body ----
         auto fn = std::make_unique<FunctionNode>("<pending>");
-        fn->set_parent(node);
-        FunctionCompiler::parse_arguments(arg_list, fn.get(), node, *this);
+
+        FileNode *owner_file = node ? node->file() : nullptr;
+        if (!owner_file) owner_file = dynamic_cast<FileNode *>(node);
+
+        FunctionNode *raw = fn.get();
+        if (owner_file) {
+            owner_file->add_child(std::move(fn));
+            fn.reset();
+        }
+        FunctionCompiler::parse_arguments(arg_list, raw, node, *this);
 
         // ---- 5. Infer type_name for non-new methods ----
-        //
-        // For ordinary methods the owning type comes from the first argument,
-        // which is `(this-name type-name)`.
         if (type_name.empty()) {
             if (!arg_list.is_pair()) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
@@ -2250,20 +2250,8 @@ namespace sootc {
         }
 
         // ---- 6. For `new`, insert `this` as the SECOND parameter ----
-        //
-        // The VM calling convention for constructors is:
-        //
-        //     <type>-new(allocation, this, ...user_args)
-        //
-        // The user writes only `(allocation symbol)` at the front; `this` is
-        // inserted by the compiler right after it. This is why `new` has the
-        // owning type written explicitly after the method name, while ordinary
-        // methods get it from their first argument.
-        //
-        // If the user actually wrote `this` in the argument list (some code
-        // does that for clarity), we skip the insertion.
         if (method_name == "new") {
-            const bool user_wrote_this = (fn->lookup_variable("this") != nullptr);
+            const bool user_wrote_this = (raw->lookup_variable("this") != nullptr);
             if (!user_wrote_this) {
                 Type *this_type = m_ts.lookup_type_no_throw(type_name);
                 if (!this_type) {
@@ -2271,18 +2259,14 @@ namespace sootc {
                         .expected("known type for 'new' method")
                         .got(type_name);
                 }
-                fn->insert_parameter_at(1, "this", this_type);
+                raw->insert_parameter_at(1, "this", this_type);
             }
         }
 
-        fn->set_name(fmt::format("{}-{}", type_name, method_name));
-        fn->set_method_of_type(type_name);
+        raw->set_name(fmt::format("{}-{}", type_name, method_name));
+        raw->set_method_of_type(type_name);
 
         // ---- 7. Parse the body ----
-        //
-        // A method body is a sequence of forms. The value of the method is the
-        // value of the last form. We wrap everything in a SequenceNode so that
-        // side-effecting statements (set!, calls, ...) are not dropped.
         if (!body_forms.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
                 .expected("non-empty body")
@@ -2292,11 +2276,11 @@ namespace sootc {
         auto body_seq = std::make_unique<SequenceNode>();
         auto current = body_forms;
         while (current.is_pair()) {
-            auto expr = build_expression(current.as_pair()->car, fn.get());
+            auto expr = build_expression(current.as_pair()->car, raw);
             body_seq->add(std::move(expr));
             current = current.as_pair()->cdr;
         }
-        fn->set_body(std::move(body_seq));
+        raw->set_body(std::move(body_seq));
 
         // ---- 8. Register in TypeSystem ----
         try {
@@ -2310,6 +2294,19 @@ namespace sootc {
                 .got(e.what());
         }
 
+        // ---- 9. Detach ----
+        if (owner_file) {
+            auto back = owner_file->release_child(raw);
+            if (!back) {
+                throw m_compiler->make_error(form, "NodeBuilder::build_defmethod")
+                    .expected("raw FunctionNode to be a child of owner_file")
+                    .got("not found after attach");
+            }
+            fn = std::unique_ptr<FunctionNode>(static_cast<FunctionNode *>(back.release()));
+        } else {
+            // No owner (rare): fn is still the owning unique_ptr.
+            fn = std::unique_ptr<FunctionNode>(raw);
+        }
         return fn;
     }
 

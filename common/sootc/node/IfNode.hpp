@@ -18,7 +18,17 @@ public:
         : ControlNode(NodeType::IfNode)
         , m_condition(std::move(cond))
         , m_then_branch(std::move(then_branch))
-        , m_else_branch(std::move(else_branch)) {}
+        , m_else_branch(std::move(else_branch)) {
+        adopt(m_condition);
+        adopt(m_then_branch);
+        adopt(m_else_branch);
+    }
+
+    void for_each_child(const std::function<void(Node &)> &f) const override {
+        f(*m_condition);
+        f(*m_then_branch);
+        if (m_else_branch) f(*m_else_branch);
+    }
     
    void emit(FunctionNode &fn) override {
         // 1. Условие

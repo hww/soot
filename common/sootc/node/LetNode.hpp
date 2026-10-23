@@ -29,10 +29,14 @@ namespace sootc {
         LetNode() : ExpressionNode(NodeType::LetNode) {}
 
         void add_binding(const std::string &name, std::unique_ptr<ExpressionNode> value) {
+            adopt(value);
             m_bindings.push_back({name, std::move(value)});
         }
 
-        void set_body(std::unique_ptr<ExpressionNode> body) { m_body = std::move(body); }
+        void set_body(std::unique_ptr<ExpressionNode> body) {
+            adopt(body);
+            m_body = std::move(body);
+        }
 
         const std::vector<Binding> &bindings() const { return m_bindings; }
         const ExpressionNode       *body() const { return m_body.get(); }
@@ -40,6 +44,11 @@ namespace sootc {
         void        emit(FunctionNode &fn) override;
         std::string to_string() const override;
 
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &b : m_bindings)
+                if (b.value) f(*b.value);
+            if (m_body) f(*m_body);
+        }
     private:
         // Регистры, выделенные под локальные переменные этого let.
         // Заполняется в emit() — нужно, чтобы VariableNode ниже по дереву

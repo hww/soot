@@ -163,7 +163,6 @@ namespace sootc {
                         .got("not found after attach");
                 }
                 fn = std::unique_ptr<FunctionNode>(static_cast<FunctionNode *>(back.release()));
-                fn->set_parent(nullptr);
             } else {
                 fn = std::unique_ptr<FunctionNode>(raw);
             }

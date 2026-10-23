@@ -9,14 +9,16 @@ namespace sootc {
     DerefNode::DerefNode(std::unique_ptr<ExpressionNode> expr, std::string field, u32 offset,
                          Type *field_type)
         : ExpressionNode(field_type), m_expr(std::move(expr)), m_field(std::move(field)),
-          m_offset(offset) {}
+          m_offset(offset) {
+        adopt(m_expr);
+    }
 
     DerefNode::DerefNode(std::unique_ptr<ExpressionNode> expr, std::string field, u32 offset,
                          Type *field_type,
-              bool is_inline, bool is_array)
+                         bool is_inline, bool is_array)
         : ExpressionNode(field_type), m_expr(std::move(expr)), m_field(std::move(field)),
-          m_offset(offset), m_is_inline(is_inline), m_is_array(is_array)
-    {
+          m_offset(offset), m_is_inline(is_inline), m_is_array(is_array) {
+        adopt(m_expr);
     }
 
     std::string DerefNode::to_string() const {

@@ -16,7 +16,10 @@ namespace sootc {
         CallNode(const std::string &name, Type *return_type)
             : ExpressionNode(NodeType::CallNode, return_type), m_function_name(name) {}
 
-        void add_argument(std::unique_ptr<ExpressionNode> arg) { m_args.push_back(std::move(arg)); }
+        void add_argument(std::unique_ptr<ExpressionNode> arg) { 
+            adopt(arg);
+            m_args.push_back(std::move(arg));
+        }
 
         void  set_target(Node *t) { m_target = t; }
         Node *target() const { return m_target; }
@@ -56,6 +59,11 @@ namespace sootc {
             std::string result = "(call " + m_function_name;
             for (auto &arg : m_args) { result += " " + arg->to_string(); }
             return result + ")";
+        }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &a : m_args)
+                if (a) f(*a);
         }
     };
 

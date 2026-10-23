@@ -19,6 +19,7 @@ namespace sootc {
     public:
         UnaryNode(Op op, std::unique_ptr<ExpressionNode> operand)
             : ExpressionNode(NodeType::ExpressionNode), m_op(op), m_operand(std::move(operand)) {
+            adopt(m_operand);
             // Type follows the operand's type (ABS/NEG preserve it; NOT always int).
             if (op == Op::NOT || op == Op::BITNOT) {
                 m_type = TypeSystem::instance().lookup_type("int");
@@ -42,6 +43,10 @@ namespace sootc {
             case Op::BITNOT: op_str = "lognot"; break;
             }
             return std::string("(") + op_str + " " + m_operand->to_string() + ")";
+        }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_operand) f(*m_operand);
         }
     };
 

@@ -199,7 +199,10 @@ namespace sootc {
     // ========================================================================
     // Code generation
     // ========================================================================
-    void FunctionNode::set_body(std::unique_ptr<ExpressionNode> body) { m_body = std::move(body); }
+    void FunctionNode::set_body(std::unique_ptr<ExpressionNode> body) {
+        m_body = std::move(body);
+        adopt(m_body);
+    }
 
     void FunctionNode::emit_body(ExpressionNode *body) {
         if (!body) {

@@ -22,7 +22,9 @@ namespace sootc {
 
     public:
         CastNode(std::unique_ptr<ExpressionNode> value, Type *target_type)
-            : ExpressionNode(NodeType::CastNode, target_type), m_value(std::move(value)) {}
+            : ExpressionNode(NodeType::CastNode, target_type), m_value(std::move(value)) {
+            adopt(m_value);
+        }
 
         void emit(FunctionNode &fn) override;
 
@@ -33,6 +35,10 @@ namespace sootc {
             const std::string src =
                 (m_value && m_value->get_type()) ? m_value->get_type()->get_name() : "?";
             return "CastNode(" + src + " -> " + dst + ")";
+        }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_value) f(*m_value);
         }
     };
 

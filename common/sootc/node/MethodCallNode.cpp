@@ -11,7 +11,10 @@ namespace sootc {
                                    std::vector<std::unique_ptr<ExpressionNode>> args,
                                    Type                                        *return_type)
         : ExpressionNode(return_type), m_obj(std::move(obj)), m_full_name(std::move(full_name)),
-          m_args(std::move(args)) {}
+          m_args(std::move(args)) {
+        adopt(m_obj);
+        adopt_all(m_args);
+    }
 
     std::string MethodCallNode::to_string() const {
         std::string s = "(-> " + m_obj->to_string() + " " + m_full_name;

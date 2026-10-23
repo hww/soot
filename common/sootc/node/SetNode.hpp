@@ -24,21 +24,35 @@ namespace sootc {
     public:
         /// @brief (set! variable value)
         SetNode(const std::string &name, std::unique_ptr<ExpressionNode> value)
-            : ExpressionNode(NodeType::SetNode), m_name(name), m_value(std::move(value)) {}
+            : ExpressionNode(NodeType::SetNode), m_name(name), m_value(std::move(value)) {
+            adopt(m_value);
+        }
 
         /// @brief (set! (-> obj field) value)
         SetNode(std::unique_ptr<DerefNode> lvalue, std::unique_ptr<ExpressionNode> value)
             : ExpressionNode(NodeType::SetNode), m_lvalue(std::move(lvalue)),
-              m_value(std::move(value)) {}
+              m_value(std::move(value)) {
+            adopt(m_lvalue);
+            adopt(m_value);
+        }
 
         /// @brief (set! (at array index) value)
         SetNode(std::unique_ptr<AtNode> lvalue, std::unique_ptr<ExpressionNode> value)
             : ExpressionNode(NodeType::SetNode), m_at_lvalue(std::move(lvalue)),
-              m_value(std::move(value)) {}
+              m_value(std::move(value)) {
+            adopt(m_lvalue);
+            adopt(m_value);
+        }
 
         void emit(FunctionNode &fn) override;
 
         std::string to_string() const override;
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_lvalue) f(*m_lvalue);
+            if (m_at_lvalue) f(*m_at_lvalue);
+            if (m_value) f(*m_value);
+        }
     };
 
 } // namespace sootc

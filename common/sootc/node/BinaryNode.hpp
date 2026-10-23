@@ -29,9 +29,16 @@ public:
     BinaryNode(Op op, std::unique_ptr<ExpressionNode> left, std::unique_ptr<ExpressionNode> right)
         : ExpressionNode(NodeType::BinaryNode),  m_op(op), m_left(std::move(left)), m_right(std::move(right)) 
     {
+        adopt(m_left);
+        adopt(m_right);
         if (m_left && m_left->get_type()) {
             m_type = m_left->get_type();
         }
+    }
+
+    void for_each_child(const std::function<void(Node &)> &f) const override {
+        f(*m_left);
+        f(*m_right);
     }
     
     void emit(FunctionNode &fn) override {

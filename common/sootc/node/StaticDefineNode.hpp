@@ -68,6 +68,12 @@ namespace sootc {
                 "StaticDefineNode::generate: this node is a compile-time "
                 "wrapper; it must be unpacked by compile_internal, not emitted");
         }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_decl) f(*m_decl);
+            for (auto &s : m_stores)
+                if (s) f(*s);
+        }
     };
 
 } // namespace sootc

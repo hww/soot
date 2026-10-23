@@ -40,7 +40,9 @@ namespace sootc {
         DataDeclarationNode(std::string name, std::shared_ptr<NewNode> instance,
                             bool exported = false, bool heap = false)
             : Node(NodeType::DataDeclarationNode), m_name(std::move(name)),
-              m_instance(std::move(instance)), m_exported(exported), m_heap(heap) {}
+              m_instance(std::move(instance)), m_exported(exported), m_heap(heap) {
+            adopt(m_instance);
+        }
 
         const char *node_type() const override { return "DataDeclarationNode"; }
 
@@ -61,6 +63,10 @@ namespace sootc {
         std::shared_ptr<NewNode> instance_shared() const { return m_instance; }
 
         ProgramBinaryElement generate(DataSegment &) override;
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_instance) f(*m_instance);
+        }
     };
 
 } // namespace sootc

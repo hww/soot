@@ -114,6 +114,11 @@ namespace sootc {
             m_ordered_symbols = std::move(s.ordered_symbols);
             s.valid = false;
         }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &[name, node] : m_symbols)
+                if (node) f(*node);
+        }
     };
 
 } // namespace sootc

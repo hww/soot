@@ -41,6 +41,10 @@ namespace sootc {
 
         /// @brief The type of the field (already stored in m_type).
         Type *field_type() const { return m_type; }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_expr) f(*m_expr);
+        }
     };
 
 } // namespace sootc

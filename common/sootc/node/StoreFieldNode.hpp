@@ -42,7 +42,9 @@ namespace sootc {
         StoreFieldNode(std::string owner_name, u32 field_offset,
                        std::unique_ptr<ExpressionNode> value)
             : ExpressionNode(NodeType::StoreFieldNode), m_owner_name(std::move(owner_name)),
-              m_field_offset(field_offset), m_value(std::move(value)) {}
+              m_field_offset(field_offset), m_value(std::move(value)) {
+            adopt(m_value);
+        }
 
         const char *node_type() const override { return "StoreFieldNode"; }
 
@@ -52,6 +54,10 @@ namespace sootc {
         }
 
         void emit(FunctionNode &fn) override;
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            if (m_value) f(*m_value);
+        }
     };
 
 } // namespace sootc

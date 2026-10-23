@@ -28,7 +28,8 @@ namespace sootc {
         /// @brief Names that need a placeholder entry in the binary.
         /// @details See add_placeholder() for the rationale.
         std::vector<std::string>                m_placeholders;
-
+        /// @brief Объявления файла (функции, данные, типы). Владеет ими FileNode.
+        std::vector<std::unique_ptr<Node>>      m_children;
     public:
         explicit FileNode(const std::string &name);
 
@@ -86,11 +87,16 @@ namespace sootc {
 
         /// @brief Append a child node. Used by NodeBuilder when hoisting
         ///        declarations out of a (begin ...) form.
-        void add_child(std::unique_ptr<Node> child) { 
-            if (child) {
-                child->set_parent(this);                                
-            }
-            m_children.push_back(std::move(child)); 
+        void add_child(std::unique_ptr<Node> child) {
+            if (!child) return;
+            adopt(child);
+            m_children.push_back(std::move(child));
+        }
+
+        const std::vector<std::unique_ptr<Node>> &children() const { return m_children; }
+
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &c : m_children) f(*c);
         }
 
         /// @brief Take ownership of children and symbols, leaving this FileNode empty.
@@ -107,7 +113,7 @@ namespace sootc {
             if (m_children.empty()) return nullptr;
             auto last = std::move(m_children.back());
             m_children.pop_back();
-            last->set_parent(nullptr);
+            orphan(last.get());
             return last;
         }
         /// @brief Remove and return a specific child, or nullptr if not found.
@@ -120,7 +126,7 @@ namespace sootc {
                 if (it->get() == child) {
                     auto out = std::move(*it);
                     m_children.erase(it);
-                    if (out) out->set_parent(nullptr);
+                    orphan(out.get());
                     return out;
                 }
             }

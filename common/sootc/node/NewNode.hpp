@@ -71,11 +71,21 @@ namespace sootc {
 
         // ---- static: fields ----
         void add_field(const std::string &name, std::unique_ptr<ExpressionNode> value) {
+            adopt(value);
             m_fields.push_back({name, std::move(value)});
         }
 
         // ---- non-static: constructor arguments ----
-        void add_argument(std::unique_ptr<ExpressionNode> arg) { m_args.push_back(std::move(arg)); }
+        void add_argument(std::unique_ptr<ExpressionNode> arg) {
+            adopt(arg);
+            m_args.push_back(std::move(arg));
+        }
+
+        /// @brief Append one element init expression.
+        void add_element(std::unique_ptr<ExpressionNode> e) {
+            adopt(e);
+            m_elements.push_back(std::move(e));
+        }
 
         const TypeSpec                                     &type() const { return m_type; }
         const std::vector<FieldInit>                       &fields() const { return m_fields; }
@@ -100,9 +110,6 @@ namespace sootc {
             m_array_size = size;
         }
 
-        /// @brief Append one element init expression.
-        void add_element(std::unique_ptr<ExpressionNode> e) { m_elements.push_back(std::move(e)); }
-
         /// @brief Emit code for a constructor call ('global' / 'heap' / 'stack').
         /// @details
         ///          1. Look up "<type>-new" in the symbol table.
@@ -123,6 +130,14 @@ namespace sootc {
         ///          element otherwise (the top-level compiler reports an error).
         ProgramBinaryElement generate(DataSegment &state) override;
 
+        void for_each_child(const std::function<void(Node &)> &f) const override {
+            for (auto &fi : m_fields)
+                if (fi.value) f(*fi.value);
+            for (auto &a : m_args)
+                if (a) f(*a);
+            for (auto &e : m_elements)
+                if (e) f(*e);
+        }
     private:
         void emit_field_init_stores(FunctionNode &fn, u8 base_ptr_reg, StructureType *st);
     };
