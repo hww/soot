@@ -89,40 +89,8 @@ inline const char* node_type_to_string(NodeType type) {
 class Node {
     Node* m_parent = nullptr;
 protected:    
+    NodeType                           m_node_type = NodeType::Node;
     std::vector<std::unique_ptr<Node>> m_children;
-    // Кэш для быстрого доступа к узлам по типу
-    GlobalNode * m_cached_global = nullptr;
-    FileNode* m_cached_file = nullptr;
-    FunctionNode* m_cached_function = nullptr;
-    NodeType m_node_type = NodeType::Node;
-
-protected:
-
-    void invalidate_cache() {
-        m_cached_global = nullptr;
-        m_cached_file = nullptr;
-        m_cached_function = nullptr;
-        
-        // Дети не должны кэшировать родителей заново
-        for (auto& child : m_children) {
-            child->invalidate_cache();
-        }
-    }
-    
-    void update_parent_cache(Node* parent) {
-        if (!parent) return;
-        
-        // Копируем кэш от родителя
-        m_cached_global = parent->m_cached_global;
-        m_cached_file = parent->m_cached_file;
-        m_cached_function = parent->m_cached_function;
-        
-        // И обновляем для своего типа
-        update_self_cache();
-    }
-    
-    virtual void update_self_cache() {}
-
 
 public:
     Node() = default;
@@ -146,11 +114,12 @@ public:
     // ========================================================================
     
     Node* parent() const { return m_parent; }
+    void  set_parent(Node *parent) { m_parent = parent; }
+
     const std::vector<std::unique_ptr<Node>>& children() const { return m_children; }
     
     void add_child(std::unique_ptr<Node> child) {
-        child->m_parent = this;
-        child->update_parent_cache(this);
+        child->set_parent(this);
         m_children.push_back(std::move(child));
     }
 
@@ -211,10 +180,9 @@ public:
     class GlobalNode* global();
     class FunctionNode* function();
 
-    virtual class FileNode *file();
- 
-    void set_file(FileNode *f) { m_cached_file = f; }
-        
+    class FileNode *file();
+
+       
     // ========================================================================
     // Виртуальные методы
     // ========================================================================

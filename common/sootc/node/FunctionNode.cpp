@@ -231,7 +231,7 @@ namespace sootc {
             if (it != m_temp_regs.end()) { result_reg = it->second; }
             add_instruction(Opcode::Return, result_reg, 0, 0);
         }
-
+  
         resolve_branches();
     }
 

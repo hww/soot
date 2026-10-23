@@ -89,8 +89,6 @@ namespace sootc {
         // Тело функции
         std::unique_ptr<ExpressionNode> m_body;
         DataSegment                    *m_state = nullptr;
-    protected:
-        void update_self_cache() override { m_cached_function = this; }
 
     public:
         explicit FunctionNode(const std::string &name);

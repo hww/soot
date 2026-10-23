@@ -29,9 +29,6 @@ namespace sootc {
         std::unordered_map<std::string, Node *> m_symbols;
         std::vector<Node *>                     m_ordered_symbols;
 
-    protected:
-        void update_self_cache() override { m_cached_global = this; }
-
     public:
         GlobalNode() : Node(NodeType::GlobalNode) {}
 

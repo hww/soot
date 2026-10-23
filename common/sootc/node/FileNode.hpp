@@ -29,16 +29,11 @@ namespace sootc {
         /// @details See add_placeholder() for the rationale.
         std::vector<std::string>                m_placeholders;
 
-    protected:
-        void update_self_cache() override { m_cached_file = this; }
-
     public:
         explicit FileNode(const std::string &name);
 
         const char *node_type() const override { return "FileNode"; }
         std::string to_string() const override;
-
-        FileNode *file() override { return this; }
 
         // ---- Name ----
         const std::string &name() const { return m_name; }
@@ -93,7 +88,7 @@ namespace sootc {
         ///        declarations out of a (begin ...) form.
         void add_child(std::unique_ptr<Node> child) { 
             if (child) {
-                child->set_file(this); // ← добавить
+                child->set_parent(this);                                
             }
             m_children.push_back(std::move(child)); 
         }

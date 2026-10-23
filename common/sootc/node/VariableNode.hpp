@@ -40,10 +40,13 @@ namespace sootc {
         VariableNode(const std::string &name, Type *type, bool is_heap = false,
                      Type *elem_type = nullptr)
             : ExpressionNode(NodeType::VariableNode, type), m_name(name), m_is_heap(is_heap),
-              m_elem_type(elem_type) {}
+              m_elem_type(elem_type) {
+        }
 
         VariableNode(const std::string &name, Type *type, u8 reg)
-            : ExpressionNode(NodeType::VariableNode, type), m_name(name), m_reg(reg) {}
+            : ExpressionNode(NodeType::VariableNode, type), m_name(name), m_reg(reg),
+              m_elem_type(type) {
+        }
 
         void               set_reg(u8 reg) { m_reg = reg; }
         const std::string &name() const { return m_name; }

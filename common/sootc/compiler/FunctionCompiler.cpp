@@ -20,6 +20,7 @@
 #include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/node/FunctionNode.hpp"
 #include "sootc/node/ReturnNode.hpp"
+#include "sootc/node/FileNode.hpp"
 #include <stdexcept>
 #include <sootc/node/SequenceNode.hpp>
 

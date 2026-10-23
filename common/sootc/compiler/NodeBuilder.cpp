@@ -1766,6 +1766,7 @@ namespace sootc {
             return value_node;
         }
 
+
         // ---- Value is (new Type ...) ----
         if (auto *new_node = dynamic_cast<NewNode *>(value_node.get())) {
             if (new_node->is_static()) {
@@ -2220,6 +2221,7 @@ namespace sootc {
 
         // ---- 4. Build a FunctionNode ----
         auto fn = std::make_unique<FunctionNode>("<pending>");
+        fn->set_parent(node);
         FunctionCompiler::parse_arguments(arg_list, fn.get(), node, *this);
 
         // ---- 5. Infer type_name for non-new methods ----
