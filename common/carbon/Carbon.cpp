@@ -300,7 +300,7 @@ namespace carbon {
         return true;
     }
 
-        bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
+    bool Carbon::load_module_from_binary(const std::string &logical_name, BinaryFile &&file) {
         if (!m_impl->initialized) {
             lg::error("Carbon::load_module_from_binary: not initialized");
             return false;
@@ -370,7 +370,10 @@ namespace carbon {
 
         if (m_impl->modules->contains_path(canonical)) return true;
 
-        // 1. Read the .dci, if present, and load imports first.
+        // 1. Read the .dci, if present, and load imports first. Each import
+        //    is fully loaded AND its top-level is executed before we return,
+        //    so that by the time this module's top-level runs, every
+        //    dependency has already been initialised.
         fs::path dci_path = bin_path;
         dci_path.replace_extension(".dci");
 
@@ -412,7 +415,14 @@ namespace carbon {
         }
 
         // 2. Load the .bin itself.
-        return load_module(bin_path);
+        if (!load_module(bin_path)) { return false; }
+
+        // 3. Run this module's top-level immediately, so that any module
+        //    that depends on it sees a fully initialised environment.
+        const std::string logical = bin_path.stem().string();
+        if (!run_top_level(logical)) { return false; }
+
+        return true;
     }
 
     void Carbon::unload_module(const std::string &logical_name) {
@@ -471,6 +481,53 @@ namespace carbon {
 
     bool Carbon::has_module(const std::string &logical_name) const {
         return m_impl->modules->contains(logical_name);
+    }
+
+bool Carbon::run_top_level(const std::string &logical_name, RunMode mode) {
+        if (!m_impl->initialized) {
+            lg::error("Carbon::run_top_level: not initialized");
+            return false;
+        }
+
+        // Find the module. It must already be loaded.
+        ModuleRegistry::Entry *entry = m_impl->modules->find(logical_name);
+        if (!entry) {
+            lg::error("Carbon::run_top_level: module '{}' is not loaded", logical_name);
+            return false;
+        }
+
+        // Locate "top-level" in THIS module's entry table. We must not use
+        // Globals: Globals is a flat SID -> pointer map, so with several
+        // loaded modules it would return whichever "top-level" was
+        // registered last. We want the one that belongs to this module.
+        const DCEntry *table = entry->file->entries();
+        const u32      n = entry->file->entry_count();
+
+        void *tl_ptr = nullptr;
+        for (u32 i = 0; i < n; ++i) {
+            const std::string name =
+                StringIdManager::instance().get_string(StringId(table[i].m_nameID));
+            if (name == "top-level") {
+                tl_ptr = const_cast<void *>(table[i].m_entryPtr);
+                break;
+            }
+        }
+
+        // No top-level entry: the module contained only declarations
+        // (deftype / defenum / defmethod / defconstant). That is a normal,
+        // valid outcome.
+        if (!tl_ptr) { return true; }
+
+        auto *lambda = reinterpret_cast<ScriptLambda *>(tl_ptr);
+        m_impl->vm->execute_function(lambda, mode);
+
+        if (m_impl->vm->has_error()) {
+            lg::error("Carbon::run_top_level: top-level of '{}' failed: {}", logical_name,
+                      m_impl->vm->pending_error().message());
+            m_impl->vm->clear_error();
+            return false;
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------------

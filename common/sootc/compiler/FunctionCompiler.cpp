@@ -51,13 +51,14 @@ namespace sootc {
         // Any other keyword is consumed and ignored, matching the loose
         // contract used by lib.soc's let/let* macros.
         std::unique_ptr<FunctionNode> compile_function(const script::Object &form, Node *node,
-                                                       NodeBuilder &builder) {
+                                                       NodeBuilder &builder)
+        {
 
             auto rest = form.as_pair()->cdr;
 
             // Skip keyword options: :name, :immediate, :segment, :no-typecheck.
             script::Object current = rest;
-            std::string  function_name;
+            std::string    function_name;
 
             while (current.is_pair()) {
                 auto head = current.as_pair()->car;
@@ -90,74 +91,84 @@ namespace sootc {
             auto args_list = current.as_pair()->car;
             auto body_forms = current.as_pair()->cdr;
 
+            // ---- 1. Create (owned) ----
             auto fn =
                 std::make_unique<FunctionNode>(function_name.empty() ? "lambda" : function_name);
 
             parse_arguments(args_list, fn.get(), node, builder);
 
-            // Compile every top-level form in the body and keep them all.
+            // ---- 2. Attach to FileNode BEFORE building the body ----
             //
-            // The previous implementation overwrote `last_expr` on every
-            // iteration, so only the LAST top-level form ended up in the
-            // function body. Every earlier form was silently discarded.
-            // This is invisible when the body is a single form (e.g. a
-            // single `let` or a single `while`), but breaks as soon as
-            // the user writes a sequence such as
+            // The body may reference top-level names declared in the same file
+            // (e.g. (-> a add-twice 5) where `a` is a top-level define).
+            // build_variable resolves those names through node->file(). If `fn`
+            // is not yet attached, its file() is nullptr and the lookup silently
+            // fails.
             //
-            //     (defun gcd (a b)
-            //       (while (!= b 0) ...)
-            //       a)
+            // We attach `fn` to the owning FileNode, build the body (during
+            // which fn->file() works), then detach it so the caller can take
+            // ownership back. This keeps the existing "return unique_ptr"
+            // contract for build_define / build_begin / build_call.
+            FileNode *owner_file = nullptr;
+            if (node) {
+                owner_file = node->file();
+                if (!owner_file) owner_file = dynamic_cast<FileNode *>(node);
+            }
+
+            FunctionNode *raw = fn.get();
+            if (owner_file) {
+                owner_file->add_child(std::move(fn)); // parent = owner_file, ownership -> file
+                fn.reset();                           // fn now empty; raw is non-owning
+            }
+
+            // ---- 3. Fill (build the body) ----
             //
-            // where the `while` was dropped and only `a` was compiled.
-            //
-            // We now build a SequenceNode from all body forms. The
-            // SequenceNode's value is the value of its last element, which
-            // is exactly the return value of the function. If the body is
-            // a single form, the SequenceNode has a single element, and
-            // the result is identical to the old behaviour for that case.
+            // raw->file() is valid here (raw is a child of owner_file, or raw
+            // is unattached if owner_file is nullptr — the old behavior).
             std::vector<std::unique_ptr<ExpressionNode>> body_exprs;
             body_exprs.reserve(4);
 
             auto current_body = body_forms;
             while (current_body.is_pair()) {
-                body_exprs.push_back(
-                    builder.build_expression(current_body.as_pair()->car, fn.get()));
+                body_exprs.push_back(builder.build_expression(current_body.as_pair()->car, raw));
                 current_body = current_body.as_pair()->cdr;
             }
 
-            if (body_exprs.empty()) {
-                // Empty body: an empty function. Nothing to return.
-                // The prologue is still emitted by FunctionNode::emit_body.
-                return fn;
+            if (!body_exprs.empty()) {
+                if (body_exprs.size() == 1) {
+                    auto &last_expr = body_exprs[0];
+                    Type *return_type = last_expr->get_type();
+                    if (return_type) { raw->set_return_type(return_type); }
+
+                    auto ret = std::make_unique<ReturnNode>(std::move(last_expr));
+                    raw->set_body(std::move(ret));
+                } else {
+                    auto seq = std::make_unique<SequenceNode>();
+                    for (auto &expr : body_exprs) { seq->add(std::move(expr)); }
+
+                    Type *return_type = seq->get_type();
+                    if (return_type) { raw->set_return_type(return_type); }
+
+                    auto ret = std::make_unique<ReturnNode>(std::move(seq));
+                    raw->set_body(std::move(ret));
+                }
             }
 
-            // If the body is a single expression, wrap it in a ReturnNode
-            // directly. This preserves the exact codegen (and exact byte
-            // layout) of every existing test that uses a single-form body.
-            if (body_exprs.size() == 1) {
-                auto &last_expr = body_exprs[0];
-                Type *return_type = last_expr->get_type();
-                if (return_type) { fn->set_return_type(return_type); }
-
-                auto ret = std::make_unique<ReturnNode>(std::move(last_expr));
-                fn->set_body(std::move(ret));
-                return fn;
+            // ---- 4. Detach (give ownership back to the caller) ----
+            if (owner_file) {
+                auto back = owner_file->release_child(raw);
+                if (!back) {
+                    throw builder.m_compiler->make_error(form, "FunctionCompiler::compile_function")
+                        .expected("raw FunctionNode to be a child of owner_file")
+                        .got("not found after attach");
+                }
+                fn = std::unique_ptr<FunctionNode>(static_cast<FunctionNode *>(back.release()));
+                fn->set_parent(nullptr);
+            } else {
+                fn = std::unique_ptr<FunctionNode>(raw);
             }
 
-            // Multi-form body: build a SequenceNode, then wrap in a
-            // ReturnNode. The SequenceNode emits every expression in order
-            // and forwards the temp register of the last one, so the
-            // ReturnNode returns the value of the final form.
-            auto seq = std::make_unique<SequenceNode>();
-            for (auto &expr : body_exprs) { seq->add(std::move(expr)); }
-
-            Type *return_type = seq->get_type();
-            if (return_type) { fn->set_return_type(return_type); }
-
-            auto ret = std::make_unique<ReturnNode>(std::move(seq));
-            fn->set_body(std::move(ret));
-
-            return fn;
+            return fn; // caller takes ownership; see header note
         }
 
         // Parse a parameter list into the given FunctionNode.

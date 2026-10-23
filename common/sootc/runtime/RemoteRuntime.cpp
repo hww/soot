@@ -85,6 +85,14 @@ namespace sootc {
         return true;
     }
 
+    bool RemoteRuntime::run_top_level(const std::string &logical_name) {
+        // The host runs its own top-level when it loads modules. Sootc
+        // does not send binaries over the wire, so there is nothing
+        // for us to run here.
+        (void)logical_name;
+        return true;
+    }
+
     RuntimeResult RemoteRuntime::call(const std::string                  &name,
                                       const std::vector<carbon::Variant> &args) {
         RuntimeResult out;

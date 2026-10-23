@@ -41,6 +41,10 @@ namespace sootc {
         return m_carbon.load_module_from_binary(logical_name, std::move(file));
     }
 
+    bool LocalVmRuntime::run_top_level(const std::string &logical_name) {
+        return m_carbon.run_top_level(logical_name);
+    }
+
     RuntimeResult LocalVmRuntime::call(const std::string                  &name,
                                        const std::vector<carbon::Variant> &args) {
         RuntimeResult out;

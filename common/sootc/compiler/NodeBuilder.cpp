@@ -262,9 +262,9 @@ namespace sootc {
     // lambda
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_lambda(const script::Object &form, Node *node) {
-        return FunctionCompiler::compile_function(form, node, *this);
+        return std::unique_ptr<Node>(
+            FunctionCompiler::compile_function(form, node, *this).release());
     }
-
     // ============================================================================
     // update-macro-metadata
     // ============================================================================

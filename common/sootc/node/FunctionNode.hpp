@@ -204,6 +204,7 @@ namespace sootc {
         void set_body(std::unique_ptr<ExpressionNode> body);
         void emit_body(ExpressionNode *body);
         void emit_body();
+        const ExpressionNode *body() const { return m_body.get(); }
 
         // ========================================================================
         // Сериализация

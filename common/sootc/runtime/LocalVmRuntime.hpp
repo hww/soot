@@ -29,6 +29,7 @@ namespace sootc {
         [[nodiscard]] std::string name() const override { return "local-vm"; }
 
         bool          load_module(carbon::BinaryFile &&file) override;
+        bool          run_top_level(const std::string &logical_name) override;
         RuntimeResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override;
         

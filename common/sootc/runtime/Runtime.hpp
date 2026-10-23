@@ -63,6 +63,16 @@ namespace sootc {
         /// @return true on success.
         virtual bool load_module(carbon::BinaryFile &&file) = 0;
 
+        /// @brief Run the module's `top-level` function, if it has one.
+        /// @details Loading and running are separate operations. A
+        ///          module loaded via load_module is only registered
+        ///          (symbols, SsTypes). Its top-level code runs only
+        ///          when this method is called explicitly.
+        /// @param logical_name  The name returned by load_module.
+        /// @return true if the module was found and top-level ran (or
+        ///         there was no top-level to run).
+        virtual bool          run_top_level(const std::string &logical_name) = 0;
+
         /// @brief Call a function by name with the given arguments.
         /// @details The function must have been loaded into the runtime
         ///          beforehand (via load_module or by the runtime being

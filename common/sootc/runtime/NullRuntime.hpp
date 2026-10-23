@@ -22,6 +22,11 @@ namespace sootc {
             return true;
         }
 
+        bool run_top_level(const std::string &logical_name) override {
+            (void)logical_name;
+            return true;
+        }
+
         RuntimeResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override {
             (void)name;

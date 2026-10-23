@@ -41,6 +41,7 @@
 #include <string>
 #include <vector>
 #include <file/BinaryFile.hpp>
+#include <vm/VirtualMachine.hpp>
 
 namespace carbon {
 
@@ -224,10 +225,36 @@ namespace carbon {
         /// @return true if a module with this logical name is loaded.
         [[nodiscard]] bool has_module(const std::string &logical_name) const;
 
+        /// @brief Execute the module's `top-level` function, if it has one.
+        ///
+        /// @details Loading and running are separate operations. A module
+        ///          that is loaded via load_module_from_binary is only
+        ///          *registered* (SsTypes, symbols). Its top-level code is
+        ///          NOT run. This method is how the caller asks for it.
+        ///
+        ///          Typical callers:
+        ///            * CLI: after loading the main input file.
+        ///            * REPL: after loading each user input.
+        ///            * tests: after loading, before calling a named function.
+        ///
+        ///          Library modules (lib.sc, anything loaded via `require`)
+        ///          must NOT be run: their top-level is declarations only.
+        ///
+        /// @param logical_name  The name passed to load_module_from_binary.
+        /// @param mode          RunMode; defaults to Run.
+        /// @return true if the module was found and top-level ran (or there
+        ///         was no top-level to run). false if the module is unknown
+        ///         or the VM reported an error.
+        bool run_top_level(const std::string &logical_name, RunMode mode = RunMode::Run);
+
+    private:
+        bool load_module_recursive(const std::filesystem::path              &bin_path,
+                                           const std::vector<std::filesystem::path> &search_paths,
+                                           std::set<std::filesystem::path> &already_loaded);
         // ----------------------------------------------------------------
         // Calling
         // ----------------------------------------------------------------
-
+    public:
         /// @brief Call a top-level function by name. Runs it to
         ///        completion on the current thread, then runs a GC pass.
         ///
@@ -304,9 +331,7 @@ namespace carbon {
         u64                             run_loop(const TickConfig &cfg = {});
 
     private:
-        bool load_module_recursive(const std::filesystem::path              &bin_path,
-                                   const std::vector<std::filesystem::path> &search_paths,
-                                   std::set<std::filesystem::path>          &already_loaded);
+
 
         void register_builtin_gc_types();
         void register_ss_type_in_gc(const SsType &st);

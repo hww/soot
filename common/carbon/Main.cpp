@@ -415,7 +415,6 @@ int main(int argc, char *argv[]) {
         }
         pos_start = 1;
     }
-
     // ----- --serve: host loop -----
     //
     // The host ticks itself; the client sends function calls over the

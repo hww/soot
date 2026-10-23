@@ -141,6 +141,13 @@ namespace sootc::testing {
                 return out;
             }
 
+            // Run the module's top-level code (heap allocs, global stores, ...).
+            // Loading only registers symbols; running is the caller's job.
+            if (!s_carbon->run_top_level(logical)) {
+                out.error = "top-level of module failed";
+                return out;
+            }
+
             void *fn_ptr = s_carbon->globals()->find_symbol_ptr(carbon::StringId(function_name));
             if (!fn_ptr) {
                 out.error = "function '" + function_name + "' not found in Globals";

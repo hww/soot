@@ -98,6 +98,36 @@ namespace sootc {
         /// persistent session FileNode.
         std::vector<std::unique_ptr<Node>> take_children() { return std::move(m_children); }
 
+        /// @brief Remove and return the last child added via add_child.
+        /// @details Used by FunctionCompiler::compile_function to temporarily
+        ///          attach a FunctionNode to the file while its body is being
+        ///          built (so that node->file() resolves top-level names), and
+        ///          then detach it so the caller can take ownership back.
+        std::unique_ptr<Node> release_last_child() {
+            if (m_children.empty()) return nullptr;
+            auto last = std::move(m_children.back());
+            m_children.pop_back();
+            last->set_parent(nullptr);
+            return last;
+        }
+        /// @brief Remove and return a specific child, or nullptr if not found.
+        /// @details Used by FunctionCompiler::compile_function to detach the
+        ///          FunctionNode it temporarily attached, without relying on
+        ///          "last child" ordering (the body build may have added other
+        ///          children to the file in between).
+        std::unique_ptr<Node> release_child(const Node *child) {
+            for (auto it = m_children.begin(); it != m_children.end(); ++it) {
+                if (it->get() == child) {
+                    auto out = std::move(*it);
+                    m_children.erase(it);
+                    if (out) out->set_parent(nullptr);
+                    return out;
+                }
+            }
+            return nullptr;
+        }
+        // --- Symbols ---
+
         std::unordered_map<std::string, Node *> take_symbols() {
             auto out = std::move(m_symbols);
             m_ordered_symbols.clear();

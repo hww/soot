@@ -59,6 +59,9 @@ namespace carbon {
 
     // Исполнение кода связанного со стек фреймом
     Variant VirtualMachine::execute(RunMode mode) {
+        m_has_error = false;
+        m_pending_error = VmError{};
+        is_break = false;
         Variant final_result;
 
         // Исполнение кода
