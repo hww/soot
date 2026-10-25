@@ -80,7 +80,7 @@ namespace carbon {
 
             if (true || enable_debug_log) {
                 std::string logstring;
-                for (int i = 0; i < current_frame->get_registers_count(); i++) {
+                for (u32 i = 0; i < current_frame->get_registers_count(); i++) {
                     logstring +=
                         fmt::format("R{}={} ", i, current_frame->get_register(i).to_string());
                 }
@@ -796,7 +796,6 @@ namespace carbon {
                 case Opcode::StoreU32: {
                     Variant &regA = current_frame->get_register(instr.a);
                     Variant &regB = current_frame->get_register(instr.b);
-                    Variant &addr = current_frame->get_register(instr.a);
                     void    *ptr = checked_get_ptr(instr, instr.b, regA);
                     if (ptr == nullptr) break;
                     *reinterpret_cast<i32 *>(ptr) = regB.to_int();
@@ -806,7 +805,6 @@ namespace carbon {
                 case Opcode::StoreFloat: {
                     Variant &regA = current_frame->get_register(instr.a);
                     Variant &regB = current_frame->get_register(instr.b);
-                    Variant &addr = current_frame->get_register(instr.a);
                     void    *ptr = checked_get_ptr(instr, instr.b, regA);
                     if (ptr == nullptr) break;
                     *reinterpret_cast<f32 *>(ptr) = regB.to_float();

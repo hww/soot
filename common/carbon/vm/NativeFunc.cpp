@@ -113,6 +113,35 @@ namespace carbon {
     }
 
     // ============================================================================
+    // String ID
+    // ============================================================================
+    
+    Variant native_sid_to_string(u32 argc, const Variant* argv) {
+        if (argc == 0) { 
+              throw std::runtime_error(fmt::format("sid_to_string expects arg0 sid, got nothing\n"));
+        }
+        auto arg0 = argv[0];
+        if (!arg0.is_int()) {
+            throw std::runtime_error(
+                fmt::format("sid_to_string expects arg0 sid, got {}\n", arg0.to_string()));
+        }
+        auto str = StringIdManager::instance().get_string(arg0.to_sid());
+        return Variant(str);
+    }
+
+    Variant native_string_to_sid(u32 argc, const Variant* argv) {
+        if (argc == 0) {
+            throw std::runtime_error(fmt::format("string_to_sid expects arg0 sid, got nothing\n"));
+        }
+        auto arg0 = argv[0];
+        if (!arg0.is_ptr()) {
+            throw std::runtime_error(
+                fmt::format("string_to_sid expects arg0 string, got {}\n", arg0.to_string()));
+        }
+        return Variant(StringId(argv[1].to_string()));
+    }
+
+    // ============================================================================
     // Registry Initialization
     // ============================================================================
 

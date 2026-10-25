@@ -324,7 +324,7 @@ namespace carbon {
         // =========================================================================
 
         Variant &operator=(i64 value) {
-            set_i32(value);
+            set_i64(value);
             return *this;
         }
 
@@ -368,14 +368,14 @@ namespace carbon {
 
         u64 get_u64() const {
             if (type_ != RuntimeType::Int) {
-                throw TypeError("get_i64()", RuntimeType::Int, type_);
+                throw TypeError("get_u64()", RuntimeType::Int, type_);
             }
             return int_value;
         }
 
         u32 get_u32() const {
             if (type_ != RuntimeType::Int) {
-                throw TypeError("get_int()", RuntimeType::Int, type_);
+                throw TypeError("get_u32()", RuntimeType::Int, type_);
             }
             return int_value;
         }
@@ -403,7 +403,7 @@ namespace carbon {
 
         bool get_bool() const {
             if (type_ != RuntimeType::Int && type_ != RuntimeType::Bool) {
-                throw TypeError("get_bool()", RuntimeType::Int, type_);
+                throw TypeError("get_bool()", RuntimeType::Bool, type_);
             }
             return int_value;
         }
@@ -461,6 +461,7 @@ namespace carbon {
         bool to_bool() const {
             if (type_ == RuntimeType::Bool) return int_value != 0;
             if (type_ == RuntimeType::Int) return int_value != 0;
+            if (type_ == RuntimeType::Sid) return int_value != 0;
             if (type_ == RuntimeType::Float) return float_value != 0;
             if (type_ == RuntimeType::Pointer) return ptr_value != nullptr;
             if (type_ == RuntimeType::String) return ptr_value != nullptr;
@@ -534,6 +535,7 @@ namespace carbon {
 
         bool operator<(const Variant &other) const {
             if (type_ != other.type_) return type_ < other.type_;
+            if (is_null()) return true;
 
             if (is_bool()) return int_value < other.int_value;
             if (is_int()) return int_value < other.int_value;
@@ -583,7 +585,7 @@ template <typename FormatContext>
         switch (v.get_type()) {
         case RuntimeType::Null: return fmt::format_to(ctx.out(), "null");
         case RuntimeType::Bool:
-            return fmt::format_to(ctx.out(), "{}", v.get_i64() != 0 ? "true" : "false");
+            return fmt::format_to(ctx.out(), "{}", v.get_bool() ? "true" : "false");
         case RuntimeType::Int: return fmt::format_to(ctx.out(), "{}", v.get_i64());
         case RuntimeType::Float: return fmt::format_to(ctx.out(), "{}", v.get_f64());
         case RuntimeType::String: return fmt::format_to(ctx.out(), "{}", v.get_string());
