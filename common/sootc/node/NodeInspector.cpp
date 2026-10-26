@@ -102,7 +102,6 @@ namespace sootc {
             if (auto *x = dynamic_cast<const FileNode *>(n)) {
                 p.open("FileNode");
                 p.field("name", str(x->name()));
-                p.field("export_all", bool_str(x->export_all()));
                 p.field("imports", std::to_string(x->imports().size()));
                 p.field("children", std::to_string(x->children().size()));
                 p.close_with_children(n);
@@ -115,7 +114,6 @@ namespace sootc {
                 p.field("params", std::to_string(x->param_count()));
                 p.field("return", type_str(x->get_return_type()));
                 p.field("method_of", str(x->method_of_type()));
-                p.field("exported", bool_str(x->is_exported()));
                 p.close_with_children(n);
                 return;
             }
@@ -257,7 +255,6 @@ namespace sootc {
                 p.open("DataDeclarationNode");
                 p.field("name", str(x->name()));
                 p.field("heap", bool_str(x->is_heap()));
-                p.field("exported", bool_str(x->is_exported()));
                 p.close_with_children(n);
                 return;
             }

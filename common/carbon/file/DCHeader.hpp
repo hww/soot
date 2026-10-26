@@ -49,7 +49,7 @@ namespace carbon {
         uint32_t m_stringsOffset; ///< <c>0x0C</c>: absolute offset of the string pool
                                   ///< from the start of the file (== data_size)
 
-        uint32_t m_blobsOffset; ///< <c>0x10</c>: absolute offset of the blob pool
+        uint32_t m_reserved;    ///< <c>0x10</c>: absolute offset of the blob pool
                                 ///< (anonymous static structures) from the start
                                 ///< of the file. 0 means "no blobs in this file".
                                 ///< When non-zero, the region

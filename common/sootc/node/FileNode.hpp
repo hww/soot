@@ -140,16 +140,6 @@ namespace sootc {
             return out;
         }
 
-        // --- Export ---
-    public:
-
-        bool export_all() const { return m_export_all; }
-        void set_export_all(bool v) { m_export_all = v; }
-
-    private:
-        /// @brief Export all file
-        bool m_export_all = false;
-
         // ---- Transaction support ----
         // In REPL mode the same FileNode is reused across inputs. If a
         // compilation throws (a bad DataDeclarationNode, a NodeBuilder error),
@@ -196,6 +186,7 @@ namespace sootc {
 
     private:
         const std::vector<std::string> &placeholders() const { return m_placeholders; }
+
     public:
         // ---- Transaction support for REPL ----
         //
@@ -256,9 +247,26 @@ namespace sootc {
 
 
     private:
+
+
         /// @brief Collect all emitting children (FunctionNode + DataDeclarationNode)
         ///        in the natural order they appear in the file.
         std::vector<ProgramBinaryElement> collect_all(DataSegment &state);
+
+        /// @brief Recursively flatten m_anonChildren of el into out.
+        ///
+        /// @details Each child gets its DCEntry filled in from its own
+        ///          m_structLayout (or "global" if absent), then its own
+        ///          nested anonymous children are flattened first, and
+        ///          finally the child itself is appended.
+        ///
+        ///          Called by collect_all for every DataDeclarationNode
+        ///          before the parent element is pushed. Order in the
+        ///          entry table does not affect name resolution, but
+        ///          placing children before the parent makes dumps
+        ///          easier to read.
+        static void flatten_anon(ProgramBinaryElement &el, std::vector<ProgramBinaryElement> &out);
+
         /// @brief Assemble the final binary from per-element payloads.
         /// @param program_elements  Payloads (functions, data-structs, ...).
         /// @param state             Global compilation state (strings, etc).
@@ -334,6 +342,20 @@ namespace sootc {
         ///          top-level function per module, and it accumulates
         ///          every expression in order.
         FunctionNode *m_top_level = nullptr;
+
+    public:
+        /// @brief Produce a unique name for an anonymous structure.
+        ///
+        /// @details The base name is "<owner>-<field>". If that name is
+        ///          already bound in this file (user-defined or from a
+        ///          previous anonymous child), a "#N" suffix is appended,
+        ///          where N is a monotonically increasing counter per
+        ///          base name. The first collision yields "<base>#1",
+        ///          the second "<base>#2", and so on.
+        std::string make_unique_anon_name(const std::string &base);
+
+    private:
+        std::unordered_map<std::string, u32> m_anon_name_counter;
     };
 
 } // namespace sootc

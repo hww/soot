@@ -22,3 +22,5 @@ common/carbon/main.cpp
 soot_understand.udb
 tmp
 *.log 
+*.TMP
+*~RF*

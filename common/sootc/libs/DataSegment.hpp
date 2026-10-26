@@ -164,26 +164,16 @@ namespace sootc {
         /// @throws std::runtime_error if not present.
         u32 find_string(const std::string &s) const { return m_strings.get_offset(s); }
 
-        // ---- Blobs ----
-
-        /// @brief Append a blob to the blob pool.
-        /// @return offset within the blob pool (multiple of 8).
-        u32 add_blob(const void *data, size_t size) { return m_blobs.append(data, size); }
-
         // ---- Assembly-side accessors ----
 
         [[nodiscard]] const StringPool &strings() const noexcept { return m_strings; }
-        [[nodiscard]] const BlobPool   &blobs() const noexcept { return m_blobs; }
 
         [[nodiscard]] bool has_strings() const noexcept { return !m_strings.empty(); }
-        [[nodiscard]] bool has_blobs() const noexcept { return !m_blobs.empty(); }
 
         [[nodiscard]] u64 string_size() const noexcept { return m_strings.size(); }
-        [[nodiscard]] u64 blob_size() const noexcept { return m_blobs.size(); }
 
     private:
         StringPool m_strings;
-        BlobPool   m_blobs;
     };
 
 } // namespace sootc

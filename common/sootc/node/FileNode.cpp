@@ -78,9 +78,15 @@ namespace sootc {
             } else if (auto *decl = dynamic_cast<DataDeclarationNode *>(child.get())) {
                 ProgramBinaryElement element = decl->generate(data_segment);
                 const size_t         payload_size = element.m_rawData.size();
-                if (payload_size > 0) {
-                    entries.push_back(std::move(element));
-                    lg::debug("Data declaration '{}': {} bytes", decl->name(), payload_size);
+                if (payload_size > 0 || !element.m_anonChildren.empty()) {
+                    // Children first, then the parent. Order in the entry
+                    // table is irrelevant for name resolution, but a
+                    // parent-after-children layout reads better in dumps.
+                    flatten_anon(element, entries);
+                    if (payload_size > 0) {
+                        entries.push_back(std::move(element));
+                        lg::debug("Data declaration '{}': {} bytes", decl->name(), payload_size);
+                    }
                 } else if (decl->is_heap()) {
                     lg::debug("Data declaration '{}': heap, no payload", decl->name());
                 } else {
@@ -96,7 +102,26 @@ namespace sootc {
 
         return entries;
     }
-    
+
+    // ============================================================================
+    // flatten_anon - recursively flatten m_anonChildren into the entry list
+    // ============================================================================
+
+    void FileNode::flatten_anon(ProgramBinaryElement &el, std::vector<ProgramBinaryElement> &out) {
+        for (auto &[name, child] : el.m_anonChildren) {
+            child.m_entry = {
+                .m_nameID = StringId(name).value,
+                .m_typeId =
+                    StringId(child.m_structLayout ? child.m_structLayout->type_name : "global")
+                        .value,
+                .m_entryPtr = nullptr,
+            };
+            flatten_anon(child, out);
+            out.push_back(std::move(child));
+        }
+        el.m_anonChildren.clear();
+    }
+
     // ============================================================================
     // build_ss_type - emit one SsType element (header + SsField[] + SsMethod[])
     // ============================================================================
@@ -718,6 +743,16 @@ namespace sootc {
     }
 
     // ============================================================================
+    // make_unique_anon_name for unamed structures
+    // ============================================================================
+
+    std::string FileNode::make_unique_anon_name(const std::string &base) {
+        if (!has_local(base)) { return base; }
+        u32 &n = m_anon_name_counter[base];
+        return fmt::format("{}#{}", base, ++n);
+    }
+
+    // ============================================================================
     // make_binary - сборка финального бинарника
     // ============================================================================
     ProgramBinaryElement FileNode::make_binary(std::vector<ProgramBinaryElement> program_elements,
@@ -903,8 +938,6 @@ namespace sootc {
         //     [entry table]
         //     [entry payloads]
         //     [string pool]      <- m_stringsOffset
-        //     [pad to 8]
-        //     [blob pool]        <- m_blobsOffset (0 if empty)
         //     [pad to 4]
         //     [reloc table]      <- m_textSize
         //
@@ -918,22 +951,19 @@ namespace sootc {
                             });
 
         const auto &string_pool_bytes = data_segment.strings().bytes();
-        const auto &blob_pool_bytes = data_segment.blobs().bytes();
 
         const u64 strings_size = string_pool_bytes.size();
-        const u64 blobs_size = blob_pool_bytes.size();
 
         const u64 data_size = header_size + entries_size + entries_data_size;
         const u64 strings_start = data_size;
-        const u64 strings_pad = (8 - (strings_size % 8)) % 8;
-        const u64 blobs_start = strings_start + strings_size + strings_pad;
-        const u64 blobs_pad = (4 - (blobs_size % 4)) % 4;
-        const u64 relocatable_size = blobs_start + blobs_size + blobs_pad;
+        // Pad to 4, not 8: the only section after the string pool is the
+        // relocation table, and its u32 size field needs 4-byte alignment.
+        const u64 strings_pad = (4 - (strings_size % 4)) % 4;
+        const u64 relocatable_size = strings_start + strings_size + strings_pad;
         const u64 reloc_bytes = (relocatable_size + 7) / 8;
         const u64 total_size = relocatable_size + 4 + reloc_bytes;
 
-        lg::debug("make_binary: total_size={}, strings_start={}, blobs_start={}", total_size,
-                  strings_start, blobs_start);
+        lg::debug("make_binary: total_size={}, strings_start={}", total_size, strings_start);
 
         ProgramBinaryElement element(total_size);
 
@@ -942,10 +972,10 @@ namespace sootc {
         // ========================================
         DC_Header header{DC_FILE_MAGIC,
                          DC_FILE_VERSION,
-                         static_cast<uint32_t>(relocatable_size),                 // m_textSize
-                         static_cast<uint32_t>(strings_start),                    // m_stringsOffset
-                         static_cast<uint32_t>(blobs_size > 0 ? blobs_start : 0), // m_blobsOffset
-                         static_cast<uint32_t>(num_entries),                      // m_numEntries
+                         static_cast<uint32_t>(relocatable_size), // m_textSize
+                         static_cast<uint32_t>(strings_start),    // m_stringsOffset
+                         0,                                       // m_reserved (was m_blobsOffset)
+                         static_cast<uint32_t>(num_entries),      // m_numEntries
                          reinterpret_cast<DCEntry *>(first_entry_offset)};
 
         element.push_value_with_ptr(header, PTR_FIELD(DC_Header, m_pStartOfData));
@@ -1055,10 +1085,6 @@ namespace sootc {
                 u64 absolute = 0;
 
                 switch (slot.kind) {
-                case ProgramBinaryElement::StructPointerSlot::Kind::Blob:
-                    absolute = blobs_start + slot.blob_offset;
-                    break;
-
                 case ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic: {
                     // Try to resolve the target name to a file offset
                     // in this entry table. If the name is not present,
@@ -1123,18 +1149,6 @@ namespace sootc {
                               /*relocation_bit=*/0);
         }
         for (u64 i = 0; i < strings_pad; ++i) {
-            const std::byte zero = std::byte{0};
-            element.push_blob(&zero, 1, /*relocation_bit=*/0);
-        }
-
-        // ========================================
-        // 5. BLOB POOL
-        // ========================================
-        if (blobs_size > 0) {
-            element.push_blob(blob_pool_bytes.data(), blobs_size,
-                              /*relocation_bit=*/0);
-        }
-        for (u64 i = 0; i < blobs_pad; ++i) {
             const std::byte zero = std::byte{0};
             element.push_blob(&zero, 1, /*relocation_bit=*/0);
         }

@@ -39,7 +39,6 @@ namespace sootc {
     void NodeBuilder::init_form_table() {
         // Basic / declarations
         m_form_table["define"] = &NodeBuilder::build_define_wrap;
-        m_form_table["define-export"] = &NodeBuilder::build_define_wrap;
         m_form_table["lambda"] = &NodeBuilder::build_lambda_wrap;
         m_form_table["function"] = &NodeBuilder::build_lambda_wrap;
         m_form_table["begin"] = &NodeBuilder::build_begin_wrap;
@@ -1669,13 +1668,6 @@ namespace sootc {
     // define / define-export
     // ============================================================================
     std::unique_ptr<Node> NodeBuilder::build_define(const script::Object &form, Node *context) {
-        bool exported = form.as_pair()->car.is_symbol("define-export");
-
-        if (!exported) {
-            if (auto *file = context->file()) {
-                if (file->export_all()) { exported = true; }
-            }
-        }
 
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
@@ -1737,7 +1729,7 @@ namespace sootc {
         // effect immediately. Normal modules reject it — see the note
         // in the original error message about chunk versioning.
         if (auto *file = context->file()) {
-            if (file->has_local(name) && !file->export_all()) {
+            if (file->has_local(name)) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_define")
                     .expected("a fresh name")
                     .got(fmt::format("'{}' is already defined in this module", name))
@@ -1766,7 +1758,6 @@ namespace sootc {
         // ---- Value is a function ----
         if (auto *fn = dynamic_cast<FunctionNode *>(value_node.get())) {
             fn->set_name(name);
-            fn->set_exported(exported);
 
             TypeSpec sig = build_function_signature(fn, name);
             m_compiler->define_function_signature(name, sig);
@@ -1780,7 +1771,7 @@ namespace sootc {
                 file->remove_named(name);
                 file->bind(name, fn);
             }
-            if (exported) { m_compiler->global_env()->bind(name, fn); }
+            m_compiler->global_env()->bind(name, fn); 
 
             lg::info("build_define: '{}' -> FunctionNode", name);
             return value_node;
@@ -1803,14 +1794,14 @@ namespace sootc {
                 std::unique_ptr<NewNode> new_node_uptr(new_node);
                 std::shared_ptr<NewNode> shared_new = std::move(new_node_uptr);
 
-                auto decl = std::make_unique<DataDeclarationNode>(name, shared_new, exported,
+                auto decl = std::make_unique<DataDeclarationNode>(name, shared_new,
                                                                   /*heap=*/false);
 
                 if (auto *file = context->file()) {
                     file->remove_named(name);
                     file->bind(name, decl.get());
                 }
-                if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
+                m_compiler->global_env()->bind(name, decl.get());
 
                 // ---- StoreFieldNode companions ----
                 //
@@ -2015,7 +2006,7 @@ namespace sootc {
             std::shared_ptr<NewNode> shared_new = std::move(new_node_uptr);
 
             auto decl =
-                std::make_unique<DataDeclarationNode>(name, shared_new, exported, /*heap=*/true);
+                std::make_unique<DataDeclarationNode>(name, shared_new, /*heap=*/true);
 
             auto store = std::make_unique<StoreGlobalNode>(name, shared_new);
 
@@ -2024,7 +2015,8 @@ namespace sootc {
                 file->bind(name, decl.get());
                 file->add_placeholder(name);
             }
-            if (exported) { m_compiler->global_env()->bind(name, decl.get()); }
+
+            m_compiler->global_env()->bind(name, decl.get()); 
 
             return std::make_unique<HeapDefineNode>(std::move(decl), std::move(store));
         }

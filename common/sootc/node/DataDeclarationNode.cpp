@@ -1,10 +1,11 @@
 ﻿#include "DataDeclarationNode.hpp"
-#include "sootc/node/ConstFold.hpp"
-#include "sootc/node/ConstNode.hpp"
-#include "sootc/libs/DataSegment.hpp"
-#include "sootc/node/VariableNode.hpp"
 #include "carbon/lib/StringId.hpp"
 #include "carbon/lib/StringIdManager.hpp"
+#include "sootc/libs/DataSegment.hpp"
+#include "sootc/node/ConstFold.hpp"
+#include "sootc/node/ConstNode.hpp"
+#include "sootc/node/VariableNode.hpp"
+#include "sootc/node/FileNode.hpp"
 #include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
 #include "type_system/TypeSystem.hpp"
@@ -16,6 +17,7 @@
 #include <cstring>
 #include <set>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 // ============================================================================
@@ -38,9 +40,22 @@ namespace sootc {
 
     namespace {
 
-        // Forward declaration: write_value is recursive and needs
-        // generate_static_element, which itself uses write_value for
-        // inline subfields. We break the cycle with a forward decl.
+        // Convenience alias for the list of anonymous child entries that
+        // generate_static_element and write_value produce while walking
+        // a (new 'static ...) tree.
+        using AnonChildren = std::vector<std::pair<std::string, ProgramBinaryElement>>;
+
+        // Forward declarations. write_value is recursive and calls
+        // generate_static_element for anonymous static structures, while
+        // generate_static_element calls write_value for each field.
+        // Both signatures must agree with their definitions below.
+
+        void write_value(std::vector<std::byte> &payload, size_t base_off, Type *type,
+                         const ExpressionNode *init, TypeSystem &ts, DataSegment &segment,
+                         std::vector<ProgramBinaryElement::StructPointerSlot> &deferred,
+                         AnonChildren &anon_children, const std::string &owner_name,
+                         const std::string &field_name, bool is_inline);
+
         ProgramBinaryElement generate_static_element(const NewNode *node, TypeSystem &ts,
                                                      DataSegment       &segment,
                                                      const std::string &owner_name);
@@ -103,56 +118,62 @@ namespace sootc {
             return nullptr;
         }
 
-        /// @brief Recursively write a compile-time value at base_off.
-        ///
-        /// @details Supported cases:
-        ///            1. builtin scalar          — fold + memcpy.
-        ///            2. inline structure        — recurse.
-        ///            3. pointer to anonymous    — generate an anon entry
-        ///               static structure           and register it, leave
-        ///                                          a deferred slot.
-        ///
-        ///          Inline arrays and non-static pointers are not yet
-        ///          supported and throw.
-        /// @brief Recursively write a compile-time value at `base_off`.
-        ///
-        /// @param payload    Byte buffer, already zeroed, exact size.
-    
+        // Recursively write a compile-time value at base_off.
+        //
+        // Supported cases:
+        //   1. builtin scalar          - fold + memcpy.
+        //   2. inline structure        - recurse.
+        //   3. pointer to anonymous    - generate an anon entry and record
+        //      static structure          a deferred slot that points at it.
+        //
+        // Inline arrays and non-static pointers are not yet supported and
+        // are left at zero in the payload; build_define creates a
+        // StoreFieldNode for them.
         void write_value(std::vector<std::byte> &payload, size_t base_off, Type *type,
                          const ExpressionNode *init, TypeSystem &ts, DataSegment &segment,
                          std::vector<ProgramBinaryElement::StructPointerSlot> &deferred,
-                         const std::string &owner_name, const std::string &field_name,
-                         bool is_inline) {
+                         AnonChildren &anon_children, const std::string &owner_name,
+                         const std::string &field_name, bool is_inline) {
             const std::string &type_name = type->get_name();
 
-            // ---- 0. Pointer to an anonymous static structure ----
+            // ---- 0. Pointer to a structure ----
             //
             // A reference-typed field that is NOT inline holds a pointer,
-            // not an embedded value. Its initializer must be a static
-            // NewNode; we generate its payload, append it to the
-            // DataSegment's BlobPool, and record a deferred slot.
-            //
-            // Crucially, we do NOT recurse into the type's fields here:
-            // the field is a pointer, and writing subfields at
-            // (base_off + sub.offset) would corrupt the parent's payload.
-            //
-            // Symbolic pointers (:ptr target) and heap pointers
-            // (:ptr (new 'global X)) are not yet supported; they will be
-            // handled by a StoreGlobalNode companion in a later step.
+            // not an embedded value. We do not recurse into the type's
+            // fields here: writing subfields at (base_off + sub.offset)
+            // would corrupt the parent's payload.
             if (!is_inline && type->is_reference()) {
-                // ---- 0a. Anonymous static structure in the blob pool ----
+                // ---- 0a. Anonymous static structure ----
+                //
+                // The initializer is a (new 'static X ...) form. We
+                // synthesize a name from the owner and the field, generate
+                // the child element, and record a deferred slot that will
+                // be resolved to the child's file offset in make_binary.
                 if (auto *new_init = dynamic_cast<const NewNode *>(init)) {
                     if (new_init->is_static()) {
-                        ProgramBinaryElement anon_el =
-                            generate_static_element(new_init, ts, segment, owner_name);
+                        // Resolve the owner FileNode through the parent
+                        // chain. The init node is attached to the
+                        // DataDeclarationNode, which is attached to the
+                        // FileNode. Node::file() walks that chain.
+                        //
+                        // If the chain is broken (e.g. a detached
+                        // expression being inspected in a test), fall
+                        // back to the raw base name — uniqueness is a
+                        // convenience, not a correctness requirement.
+                        FileNode         *owner_file = const_cast<ExpressionNode *>(init)->file();
+                        const std::string base = owner_name + "-" + field_name;
+                        const std::string anon_name =
+                            owner_file ? owner_file->make_unique_anon_name(base) : base;
 
-                        u32 blob_off =
-                            segment.add_blob(anon_el.m_rawData.data(), anon_el.m_rawData.size());
+                        ProgramBinaryElement anon_el =
+                            generate_static_element(new_init, ts, segment, anon_name);
+
+                        anon_children.push_back({anon_name, std::move(anon_el)});
 
                         ProgramBinaryElement::StructPointerSlot slot{};
-                        slot.kind = ProgramBinaryElement::StructPointerSlot::Kind::Blob;
+                        slot.kind = ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic;
                         slot.slot_offset = base_off;
-                        slot.blob_offset = blob_off;
+                        slot.target_name = anon_name;
                         deferred.push_back(std::move(slot));
                         return;
                     }
@@ -160,12 +181,10 @@ namespace sootc {
 
                 // ---- 0b. Named static structure in the same file ----
                 //
-                // (define v (new 'static 'vector ...))
-                // (define m (new 'static 'matrix :ptr v))
-                //
-                // The init is a VariableNode naming v. We do not know
-                // v's file offset here; we record the name and let
-                // make_binary resolve it after layout.
+                // The initializer is a VariableNode naming another
+                // top-level declaration. We do not know its file offset
+                // here; we record the name and let make_binary resolve it
+                // after layout.
                 if (auto *var_init = dynamic_cast<const VariableNode *>(init)) {
                     ProgramBinaryElement::StructPointerSlot slot{};
                     slot.kind = ProgramBinaryElement::StructPointerSlot::Kind::NamedStatic;
@@ -175,9 +194,9 @@ namespace sootc {
                     return;
                 }
 
-                // Not resolvable at compile time. Leave the slot at 0;
-                // build_define creates a StoreFieldNode for this field,
-                // and the real value is written at runtime.
+                // Not resolvable at compile time. Leave the slot at zero;
+                // build_define creates a StoreFieldNode for this field and
+                // the real value is written at runtime.
                 return;
             }
 
@@ -221,28 +240,33 @@ namespace sootc {
                     }
 
                     write_value(payload, base_off + static_cast<size_t>(sub.offset()), sub_type,
-                                sub_init->value.get(), ts, segment, deferred, owner_name,
-                                sub.name(),
+                                sub_init->value.get(), ts, segment, deferred, anon_children,
+                                owner_name, sub.name(),
                                 sub.is_inline()); // recurse with the subfield's own inline flag
                 }
                 return;
             }
 
             // ---- Unsupported ----
-            // Not resolvable at compile time. Leave the slot at 0;
-            // build_define will have created a StoreFieldNode for
-            // this field that writes the real value at runtime.
+            // Not resolvable at compile time. Leave the slot at zero;
+            // build_define creates a StoreFieldNode for this field and
+            // the real value is written at runtime.
             return;
         }
 
-        /// @brief Generate a ProgramBinaryElement for a static NewNode.
-        ///
-        /// @details Produces the payload (and relocations) for a
-        ///          (new 'static X ...) form. Does NOT set the entry
-        ///          name or type; the caller does. Used both by
-        ///          DataDeclarationNode::generate for the top-level
-        ///          define, and internally for anonymous static
-        ///          structures referenced from a pointer field.
+        // Generate a ProgramBinaryElement for a static NewNode.
+        //
+        // Produces the payload (and relocations) for a (new 'static X ...)
+        // form. Does NOT set the entry name or type; the caller does.
+        // Used both by DataDeclarationNode::generate for the top-level
+        // define, and internally for anonymous static structures that are
+        // referenced from a pointer field.
+        //
+        // Any anonymous children produced while walking this structure are
+        // attached to the returned element's m_anonChildren. The caller
+        // (write_value for a nested anon, or FileNode::collect_all for a
+        // top-level declaration) is responsible for flattening them into
+        // the entry list.
         ProgramBinaryElement generate_static_element(const NewNode *node, TypeSystem &ts,
                                                      DataSegment       &segment,
                                                      const std::string &owner_name) {
@@ -270,6 +294,10 @@ namespace sootc {
             std::vector<std::byte> payload(static_cast<size_t>(size_bytes), std::byte{0});
             std::vector<ProgramBinaryElement::StructPointerSlot> deferred;
 
+            // Anonymous children discovered while walking this structure's
+            // fields. They are attached to the element below.
+            AnonChildren local_children;
+
             for (const auto &field : st->fields()) {
                 const NewNode::FieldInit *init = find_field_init(node, field.name());
                 if (!init || !init->value) { continue; }
@@ -282,8 +310,8 @@ namespace sootc {
                 }
 
                 write_value(payload, static_cast<size_t>(field.offset()), field_type,
-                            init->value.get(), ts, segment, deferred, owner_name, field.name(),
-                            field.is_inline());
+                            init->value.get(), ts, segment, deferred, local_children, owner_name,
+                            field.name(), field.is_inline());
             }
 
             ProgramBinaryElement el(static_cast<u64>(payload.size()));
@@ -307,6 +335,7 @@ namespace sootc {
             el.push_blob(payload.data(), payload.size(), /*relocation_bit=*/0);
 
             el.m_structPointerSlots = std::move(deferred);
+            el.m_anonChildren = std::move(local_children);
             return el;
         }
 
@@ -338,8 +367,8 @@ namespace sootc {
                           .m_typeId = StringId(m_instance->type().base_type()).value,
                           .m_entryPtr = nullptr};
 
-            lg::info("DataDeclarationNode '{}': {} bytes, type '{}', exported={}", m_name,
-                     el.m_rawData.size(), m_instance->type().base_type(), m_exported);
+            lg::info("DataDeclarationNode '{}': {} bytes, type '{}'", m_name,
+                     el.m_rawData.size(), m_instance->type().base_type());
             return el;
         } catch (const std::exception &e) {
             throw std::runtime_error(fmt::format("DataDeclarationNode '{}': {}", m_name, e.what()));

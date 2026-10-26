@@ -33,27 +33,24 @@ namespace sootc {
     class DataDeclarationNode : public Node {
         std::string              m_name;
         std::shared_ptr<NewNode> m_instance; ///< shared with StoreGlobalNode in heap mode
-        bool                     m_exported;
         bool                     m_heap;
 
     public:
         DataDeclarationNode(std::string name, std::shared_ptr<NewNode> instance,
-                            bool exported = false, bool heap = false)
+                            bool heap = false)
             : Node(NodeType::DataDeclarationNode), m_name(std::move(name)),
-              m_instance(std::move(instance)), m_exported(exported), m_heap(heap) {
+              m_instance(std::move(instance)), m_heap(heap) {
             adopt(m_instance);
         }
 
         const char *node_type() const override { return "DataDeclarationNode"; }
 
         std::string to_string() const override {
-            return (m_exported ? "(define-export " : "(define ") + m_name + " " +
-                   (m_instance ? m_instance->to_string() : "none") + ")";
+            return "(define " + m_name + " " + (m_instance ? m_instance->to_string() : "none") + ")";
         }
 
         const std::string &name() const { return m_name; }
         const NewNode     *instance() const { return m_instance.get(); }
-        bool               is_exported() const { return m_exported; }
         bool               is_heap() const { return m_heap; }
 
         /// @brief Return the shared NewNode.

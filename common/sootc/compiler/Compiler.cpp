@@ -510,7 +510,6 @@ namespace sootc {
                 file_node = it->second.get();
             } else {
                 auto owned = std::make_unique<FileNode>(effective_filename);
-                if (is_repl) { owned->set_export_all(true); }
                 file_node = owned.get();
                 m_file_nodes[effective_filename] = std::move(owned);
                 owns_file_node = true;

@@ -79,6 +79,7 @@ namespace carbon {
               m_stringConstantSlots(std::move(other.m_stringConstantSlots)),
               m_structPointerSlots(std::move(other.m_structPointerSlots)),
               m_structLayout(std::move(other.m_structLayout)), 
+              m_anonChildren(std::move(other.m_anonChildren)), 
               m_byteOffset(other.m_byteOffset),
               m_bitOffset(other.m_bitOffset) {
             other.m_entry.m_entryPtr = nullptr;
@@ -180,7 +181,6 @@ namespace carbon {
         /// @brief Append `num_bits` relocation bits, all set to `bits` (0 or 1).
         void insert_into_reloctable(u8 bits, u64 num_bits) noexcept;
 
-        void insert_string_offset() noexcept;
         void insert_string_offset(u64 offset) noexcept;
 
         /// @brief Add `offset` to every relocated pointer in m_rawData.
@@ -230,7 +230,6 @@ namespace carbon {
         ///          is meaningful.
         struct StructPointerSlot {
             enum class Kind {
-                Blob,        ///< points into DataSegment::blobs()
                 NamedStatic, ///< points at another entry in this file
             };
 
@@ -246,6 +245,11 @@ namespace carbon {
         u64 m_byteOffset = 0;
         u8  m_bitOffset = 0;
 
+        /// @brief Дочерние анонимные entry, порождённые этим элементом.
+        /// @details DataDeclarationNode кладёт сюда сгенерированные
+        ///          элементы неименованных структур. FileNode::collect_all
+        ///          вливает их в общий список перед make_binary.
+        std::vector<std::pair<std::string, ProgramBinaryElement>> m_anonChildren;
 
     private:
         /// @brief Mark the slot containing a pointer field as relocatable.

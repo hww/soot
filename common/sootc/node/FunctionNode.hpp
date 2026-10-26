@@ -51,7 +51,6 @@ namespace sootc {
 
     class FunctionNode : public Node {
         std::string m_name;
-        bool        m_exported = false;
 
         /// @brief Type this function is a method of, or "" for a plain function.
         /// @details Set by NodeBuilder::build_defmethod. The full name of a method
@@ -105,8 +104,6 @@ namespace sootc {
         // ========================================================================
         const std::string &name() const { return m_name; }
         void               set_name(std::string name) { m_name = std::move(name); }
-        void               set_exported(bool e) { m_exported = e; }
-        bool               is_exported() const { return m_exported; }
 
         // ========================================================================
         // Method-of-type

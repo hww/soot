@@ -11,8 +11,8 @@
 #include "fmt/color.h"
 #include "fmt/format.h"
 
-#include "sootc/compiler/NodeBuilder.hpp"
 #include "sootc/compiler/CompilerError.hpp"
+#include "sootc/compiler/NodeBuilder.hpp"
 
 #include "sootc/runtime/Runtime.hpp"
 
@@ -32,7 +32,7 @@
 #include "type_system/TypeSystem.hpp"
 
 namespace sootc {
-    
+
     class NodeBuilder;
     class StateScriptNode;
 
@@ -89,8 +89,6 @@ namespace sootc {
         ///          Do not include a scheme prefix; the runtime parses
         ///          optional "tcp://" or "http://" if present.
         std::string runtime_url;
-
-
     };
 
     class Compiler {
@@ -119,10 +117,12 @@ namespace sootc {
 
         /// @brief Compile forms as a REPL input.
         /// @details Sets is_repl = true. Used only by compile_and_report.
-        ///          A REPL input gets a unique logical name and its
-        ///          FileNode is set to export_all.
+        ///          A REPL input gets a unique logical name (see
+        ///          compile_internal) so that consecutive inputs do not
+        ///          unload each other via load_module_from_binary's
+        ///          same-name replacement.
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-                    compile_file_repl(script::Object &forms, const std::string &filename);
+        compile_file_repl(script::Object &forms, const std::string &filename);
 
         // --- Require (language form) ---
         //
@@ -148,7 +148,7 @@ namespace sootc {
         // @param path    The path string from the form.
         // @return        true if the file was loaded (or was already
         //                loaded before this call).
-        bool        require_file(const script::Object &form, const std::string &path);
+        bool require_file(const script::Object &form, const std::string &path);
 
         /// @brief Look up the FileNode produced by a previous compile_file.
         /// @details Used by build_require to attach the imported file to
@@ -173,7 +173,9 @@ namespace sootc {
         TypeSystem       &ts() { return m_ts; }
         const TypeSystem &ts() const { return m_ts; }
 
-        TypeSpec parse_typespec(const script::Object &form) { return ::parse_typespec(&m_ts, form); };
+        TypeSpec parse_typespec(const script::Object &form) {
+            return ::parse_typespec(&m_ts, form);
+        };
 
         // --- Function declarations ---
         //
@@ -207,9 +209,9 @@ namespace sootc {
         }
 
         // --- Environment management ---
-        void         set_global(const std::string &name, const script::Object &value);
+        void           set_global(const std::string &name, const script::Object &value);
         script::Object get_global(const std::string &name);
-        void         reload_environment();
+        void           reload_environment();
 
         script::Interpreter &get_soot_interpreter() { return m_soot; }
         script::Object       get_soot_environment() { return m_soot.get_soot_environment(); }
@@ -236,11 +238,11 @@ namespace sootc {
         bool save_session(const std::string &name, const std::filesystem::path &dir);
         /// @brief Save a .dci manifest for a compiled module.
         ///
-        /// @details A .dci file describes the module's logical path,
-        ///          its imports, and its exports. It lives next to the
-        ///          .bin file and is read by the loader (carbon) to
-        ///          resolve dependencies without the user having to
-        ///          list them on the command line.
+        /// @details A .dci file describes the module's logical path
+        ///          and the files it imports via (require ...). It
+        ///          lives next to the .bin file and is read by the
+        ///          loader (carbon) to resolve dependencies without
+        ///          the user having to list them on the command line.
         ///
         ///          The manifest is built from:
         ///            * logical_path  — the file's path relative to
@@ -249,22 +251,23 @@ namespace sootc {
         ///            * binary_size   — the size of the emitted .bin;
         ///            * imports       — every file that was pulled in
         ///                              via (require ...) during this
-        ///                              compilation;
-        ///            * exports       — every top-level name that was
-        ///                              registered (functions and
-        ///                              data).
+        ///                              compilation.
+        ///
+        ///          Exports are not recorded: every top-level name is
+        ///          visible through Globals at runtime, so a separate
+        ///          export list would be redundant.
         ///
         /// @param file       The BinaryFile that was just produced.
         /// @param target_dir Directory to write the .dci into.
         /// @return true on success.
-        bool           save_dci(const BinaryFile &file, const std::filesystem::path &target_dir);
+        bool save_dci(const BinaryFile &file, const std::filesystem::path &target_dir);
         /// @brief Save the accumulated SIDBase to the path from m_config.
         /// @details Called by main.cpp after all input files are compiled,
         ///          or on REPL exit. This is the ONLY place that writes
         ///          sidbase to disk.
-        void           save_sidbase();
+        void save_sidbase();
         // --- Macros ---
-        bool         is_soot_macro(const std::string &name);
+        bool is_soot_macro(const std::string &name);
         script::Object expand_soot_macro(const script::Object &form);
 
         // --- Lambda name synthesis ---
@@ -306,16 +309,15 @@ namespace sootc {
 
         // --- Built-in SOOT forms ---
         script::Object builtin_get_enum_vals(const script::Object &form, script::Arguments &args,
-                                           const std::shared_ptr<script::EnvironmentObject> &env);
+                                             const std::shared_ptr<script::EnvironmentObject> &env);
 
         script::Arguments get_va(const script::Object &form, const script::Object &rest);
         script::Arguments get_va_no_named(const script::Object &form, const script::Object &rest);
 
-        void va_check(
-            const script::Object &form, const script::Arguments &args,
-            const std::vector<std::optional<script::ObjectType>> &unnamed,
-            const std::unordered_map<std::string, std::pair<bool, std::optional<script::ObjectType>>>
-                &named);
+        void va_check(const script::Object &form, const script::Arguments &args,
+                      const std::vector<std::optional<script::ObjectType>> &unnamed,
+                      const std::unordered_map<
+                          std::string, std::pair<bool, std::optional<script::ObjectType>>> &named);
 
         void for_each_in_list(const script::Object                              &list,
                               const std::function<void(const script::Object &)> &f);
@@ -345,24 +347,25 @@ namespace sootc {
         /// @param forms     Top-level forms of the input.
         /// @param filename  Display name and file key.
         /// @param is_repl   True when this input comes from the REPL.
-        ///                  Controls three things:
+        ///                  Controls two things:
         ///                    * The module's logical name is made unique
         ///                      ("<repl-N>") so that subsequent REPL
         ///                      inputs do not unload it via
         ///                      load_module_from_binary's same-name
         ///                      replacement.
-        ///                    * Every name defined by the input is
-        ///                      exported (set_export_all on the
-        ///                      FileNode), so that later inputs can
-        ///                      resolve it.
         ///                    * Redefinition of an existing name is
         ///                      allowed: the old child is removed
         ///                      from m_children before the new one is
         ///                      bound.
         ///
-        ///                  For non-REPL files, all three are false.
+        ///                  For non-REPL files, both are false.
+        ///
+        ///                  There is no per-file export list: every
+        ///                  top-level name is registered in Globals,
+        ///                  so a later input can resolve it by name
+        ///                  regardless of which input defined it.
         std::expected<std::unique_ptr<BinaryFile>, std::string>
-             compile_internal(script::Object &forms, const std::string &filename, bool is_repl);
+        compile_internal(script::Object &forms, const std::string &filename, bool is_repl);
 
         void render_internal_error(const std::exception &e);
 
