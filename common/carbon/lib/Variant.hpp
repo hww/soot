@@ -285,7 +285,7 @@ namespace carbon {
 
         void set_bool(bool value) {
             type_ = RuntimeType::Bool;
-            int_value = value;
+            int_value = value ? 1 : 0;
         }
 
         void set_ptr(void *ptr, RuntimeType type) {
@@ -461,7 +461,7 @@ namespace carbon {
         bool to_bool() const {
             if (type_ == RuntimeType::Bool) return int_value != 0;
             if (type_ == RuntimeType::Int) return int_value != 0;
-            if (type_ == RuntimeType::Sid) return int_value != 0;
+
             if (type_ == RuntimeType::Float) return float_value != 0;
             if (type_ == RuntimeType::Pointer) return ptr_value != nullptr;
             if (type_ == RuntimeType::String) return ptr_value != nullptr;
@@ -484,7 +484,6 @@ namespace carbon {
         inline bool is_number() const {
             return type_ == RuntimeType::Int || type_ == RuntimeType::Float;
         }
-  
 
         // =========================================================================
         // STRING REPRESENTATION
@@ -519,7 +518,6 @@ namespace carbon {
         bool operator==(const Variant &other) const {
             if (type_ != other.type_) return false;
 
-            if (is_bool())  return int_value == other.int_value;
             if (is_int())   return int_value == other.int_value;
             if (is_float()) return float_value == other.float_value;
             if (is_string()) {
@@ -536,7 +534,7 @@ namespace carbon {
         bool operator<(const Variant &other) const {
             if (type_ != other.type_) return type_ < other.type_;
             if (is_null()) return true;
-
+   
             if (is_bool()) return int_value < other.int_value;
             if (is_int()) return int_value < other.int_value;
             if (is_float()) return float_value < other.float_value;
@@ -584,11 +582,8 @@ template <typename FormatContext>
 
         switch (v.get_type()) {
         case RuntimeType::Null: return fmt::format_to(ctx.out(), "null");
-        case RuntimeType::Bool:
-            return fmt::format_to(ctx.out(), "{}", v.get_bool() ? "true" : "false");
         case RuntimeType::Int: return fmt::format_to(ctx.out(), "{}", v.get_i64());
         case RuntimeType::Float: return fmt::format_to(ctx.out(), "{}", v.get_f64());
-        case RuntimeType::String: return fmt::format_to(ctx.out(), "{}", v.get_string());
         case RuntimeType::Pointer: {
             const void *raw = v.get_ptr();
             if (raw == nullptr) return fmt::format_to(ctx.out(), "null");

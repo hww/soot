@@ -53,7 +53,6 @@ namespace sootc {
                 return out;
             }
             case carbon::RuntimeType::Pointer: return "null";
-            case carbon::RuntimeType::Bool: return v.to_bool() ? "true" : "false";
             case carbon::RuntimeType::Null: return "null";
             default: return v.to_string();
             }

@@ -415,6 +415,11 @@
 (define-native println (function _varargs_ object))
 (define-native format  (function _varargs_ object))
 
+; --- String ID ---
+
+(define-native string-to-sid  (function _varargs_ object))
+(define-native sid-to-string  (function _varargs_ object))
+
 ; --- Allocator ---
 ; Signature is (where, type-id) -> pointer. Both args are SIDs or values.
 ; Varargs is not needed; the compiler will accept exactly 2 args.

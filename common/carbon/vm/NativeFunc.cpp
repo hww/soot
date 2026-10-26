@@ -125,7 +125,7 @@ namespace carbon {
             throw std::runtime_error(
                 fmt::format("sid_to_string expects arg0 sid, got {}\n", arg0.to_string()));
         }
-        auto str = StringIdManager::instance().get_string(arg0.to_sid());
+        auto str = StringIdManager::instance().get_string(arg0.to_int());
         return Variant(str);
     }
 
@@ -150,6 +150,10 @@ namespace carbon {
         register_function("print", native_print);
         register_function("println", native_println);
         register_function("format", native_println);
+
+        // String ID
+        register_function("string-to-sid", native_string_to_sid);
+        register_function("sid-to-string", native_sid_to_string);
 
         // Process control
         initialize_process_natives();
