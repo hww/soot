@@ -24,15 +24,20 @@ TEST_F(VariantTest, Construction) {
     EXPECT_FLOAT_EQ(f32_val.get_f32(), 3.14f);
 
     Variant bool_val(true);
-    EXPECT_TRUE(bool_val.is_bool());
+    EXPECT_TRUE(bool_val.is_int());
     EXPECT_TRUE(bool_val.get_bool());
 }
 
 TEST_F(VariantTest, StringOperations) {
     Variant str_val("hello");
-    EXPECT_TRUE(str_val.is_string());
-    EXPECT_EQ(str_val.get_string(), "hello");
-    EXPECT_EQ(str_val.to_string(), "hello");
+    EXPECT_TRUE(str_val.is_ptr());
+    EXPECT_EQ(str_val.get_string(), "hello"); // явный get_string — ок
+    // to_string() no longer reads a Pointer as a C string: without
+    // type information a Pointer may point to a structure, a function,
+    // or an array, and reading it as a string would be undefined
+    // behaviour. The typed formatter {:t=string} is the correct way
+    // to print a string-valued Variant.
+    EXPECT_EQ(fmt::format("{:t=string}", str_val), "\"hello\"");
 }
 
 TEST_F(VariantTest, Assignment) {

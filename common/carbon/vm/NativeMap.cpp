@@ -58,7 +58,7 @@ namespace carbon {
             if (!m || !m->m_pValues) return;
             for (u32 i = 0; i < m->m_size; ++i) {
                 const Variant &v = m->m_pValues[i];
-                if (v.get_type() == RuntimeType::Pointer || v.get_type() == RuntimeType::String) {
+                if (v.get_type() == RuntimeType::Pointer) {
                     void *p = const_cast<void *>(v.get_ptr());
                     if (p) visitor(0, p, 0, user);
                 }

@@ -67,22 +67,10 @@ namespace carbon {
         // ---- Остальные argv[1..N] — varargs для fmt ----
         fmt::dynamic_format_arg_store<fmt::format_context> store;
         for (u32 i = 1; i < argc; ++i) {
-            const auto &v = argv[i];
-            switch (v.get_type()) {
-            case carbon::RuntimeType::Int: store.push_back(v.get_i64()); break;
-            case carbon::RuntimeType::Float: store.push_back(v.get_f64()); break;
-            case carbon::RuntimeType::Pointer: {
-                const void *raw = v.get_ptr();
-                if (raw == nullptr) {
-                    store.push_back("null");
-                } else {
-                    // Соглашение: pointer в print — это C-string.
-                    store.push_back(static_cast<const char *>(raw));
-                }
-                break;
-            }
-            case carbon::RuntimeType::Null: store.push_back("null"); break;
-            }
+            // Push the Variant itself, not its unpacked value. This way
+            // fmt dispatches to formatter<Variant>, which understands
+            // {:p}, {:sid}, {:t=...}, {:x}, {:b}, {:f}, and {}.
+            store.push_back(argv[i]);
         }
 
         // ---- Один вызов fmt::vformat — формирует строку целиком ----

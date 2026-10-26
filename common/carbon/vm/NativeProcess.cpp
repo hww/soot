@@ -33,7 +33,6 @@ namespace {
     // All three mean the same thing: a name. Convert to StringId once, here.
     StringId sid_arg(const Variant &v) {
         if (v.is_int()) return v.get_sid();
-        if (v.is_string()) return StringId(v.to_string());
         if (v.is_ptr()) {
             const char *s = static_cast<const char *>(v.get_ptr());
             return s ? StringId(s) : StringId();
@@ -53,13 +52,6 @@ namespace {
         Carbon *c = Carbon::current();
         if (!c || !c->is_initialized()) return nullptr;
 
-        if (v.is_string()) {
-            const char *s = v.to_c_string();
-            if (!s || *s == '\0') return nullptr;
-            if (std::strcmp(s, "self") == 0) return Carbon::current_process();
-            return c->scheduler()->find_by_name(s);
-        }
-
         if (v.is_ptr()) {
             const char *s = static_cast<const char *>(v.get_ptr());
             if (!s || *s == '\0') return nullptr;
@@ -78,10 +70,6 @@ namespace {
 
     // Name of an argument for error messages. Never returns nullptr.
     const char *process_arg_name(const Variant &v) {
-        if (v.is_string()) {
-            const char *s = v.to_c_string();
-            return s ? s : "(null)";
-        }
         if (v.is_ptr()) {
             const char *s = static_cast<const char *>(v.get_ptr());
             return s ? s : "(null)";
@@ -96,11 +84,6 @@ namespace {
 
     // State-script name argument for spawn/start.
     const char *script_name_arg(const Variant &v) {
-        if (v.is_string()) {
-            const char *s = v.to_c_string();
-            if (!s || *s == '\0') return nullptr;
-            return s;
-        }
         if (v.is_ptr()) {
             const char *s = static_cast<const char *>(v.get_ptr());
             if (!s || *s == '\0') return nullptr;

@@ -43,15 +43,6 @@ namespace sootc {
         // by CallParser::read_value.
         std::string quote_if_string(const carbon::Variant &v) {
             switch (v.get_type()) {
-            case carbon::RuntimeType::String: {
-                std::string out = "\"";
-                for (char c : v.get_string()) {
-                    if (c == '\\' || c == '"') { out += '\\'; }
-                    out += c;
-                }
-                out += '"';
-                return out;
-            }
             case carbon::RuntimeType::Pointer: return "null";
             case carbon::RuntimeType::Null: return "null";
             default: return v.to_string();

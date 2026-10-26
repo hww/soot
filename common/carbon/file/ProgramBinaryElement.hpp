@@ -79,8 +79,8 @@ namespace carbon {
               m_stringConstantSlots(std::move(other.m_stringConstantSlots)),
               m_structPointerSlots(std::move(other.m_structPointerSlots)),
               m_structLayout(std::move(other.m_structLayout)), 
-              m_anonChildren(std::move(other.m_anonChildren)), 
               m_byteOffset(other.m_byteOffset),
+              m_anonChildren(std::move(other.m_anonChildren)),
               m_bitOffset(other.m_bitOffset) {
             other.m_entry.m_entryPtr = nullptr;
             other.m_byteOffset = 0;

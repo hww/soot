@@ -20,6 +20,7 @@ add_executable(carbon_test
     tests/carbon/ArrayRuntimeTest.cpp
     tests/carbon/StringRuntimeTest.cpp
     tests/carbon/AllocationTest.cpp
+    tests/carbon/VariantFormatterTest.cpp
 )
 
 # Линкуем с нашей библиотекой и gtest

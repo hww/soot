@@ -311,10 +311,14 @@ TEST_F(NativeFunctionsTest, FunctionNotFound) {
 // Custom Native Function Test
 // ============================================================================
 
-Variant custom_concat_function(u32 argc, const Variant* argv) {
+Variant custom_concat_function(u32 argc, const Variant *argv) {
     std::string result;
     for (u32 i = 0; i < argc; i++) {
-        result += argv[i].to_string();
+        if (argv[i].is_ptr()) {
+            result += argv[i].get_string();
+        } else {
+            result += argv[i].to_string();
+        }
         if (i < argc - 1) result += " ";
     }
     return Variant(result);
@@ -338,7 +342,7 @@ TEST_F(NativeFunctionsTest, CustomFunctionRegistration) {
 
     Variant result = concat_func(3, args);
     auto resultstr = result.to_string();
-    EXPECT_EQ(resultstr, "Hello World 123");
+    EXPECT_EQ(fmt::format("{:t=string}", result), "\"Hello World 123\"");
 }
 
 // ============================================================================

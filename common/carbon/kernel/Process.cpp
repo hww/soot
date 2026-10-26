@@ -707,7 +707,6 @@ namespace carbon {
     // string (Variant::String), or const char* (Variant::Pointer).
     StringId track_id_arg(const Variant &v) {
         if (v.is_int()) return v.get_sid();
-        if (v.is_string()) return StringId(v.to_string());
         if (v.is_ptr()) {
             const char *s = static_cast<const char *>(v.get_ptr());
             return s ? StringId(s) : StringId();
