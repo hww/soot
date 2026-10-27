@@ -563,6 +563,7 @@ namespace carbon {
             case EntryKind::SsType: kind_str = "ss-type"; break;
             case EntryKind::Map: kind_str = "map"; break;
             case EntryKind::DataStruct: kind_str = "data-struct"; break;
+            case EntryKind::Array: kind_str = "array"; break;
             case EntryKind::Unknown: kind_str = "unknown"; break;
             }
             os << fmt::format("{:>4}  {:>18}  {:>18}  {:>18}  {}\n", i, resolve_sid(e.m_nameID),

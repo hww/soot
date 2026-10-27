@@ -58,6 +58,7 @@ namespace sootc {
           m_soot(user_profile, false, true, comp_options.platform), m_repl(std::move(repl)) {
         (void)repl_config;
         m_config = comp_options;
+        sync_type_verbose(); 
 
         m_ts.add_builtin_types();
         m_global_env = std::make_unique<GlobalNode>();
@@ -465,9 +466,12 @@ namespace sootc {
     // The core compilation driver: build the node tree, generate a binary,
     // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
     // if the input produced no binary output (compile-time-only declarations).
+    // The core compilation driver: build the node tree, generate a binary,
+    // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
+    // if the input produced no binary output (compile-time-only declarations).
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_internal(script::Object &forms, const std::string &filename, bool is_repl) {
-
+        std::set<FileNode *> owners_to_rebuild;
         // ---- Effective name ----
         //
         // For REPL inputs, generate a unique logical name. The name
@@ -486,13 +490,11 @@ namespace sootc {
         FileNode          *file_node = nullptr;
         bool               owns_file_node = false;
         FileNode::Snapshot snapshot;
-        
-        // ← ВСТАВИТЬ ЗДЕСЬ:
-        // Снимок global_env до компиляции. build_define может успеть
-        // сделать global_env()->bind(...) для узла, который затем
-        // уничтожится вместе с FileNode при rollback. Без этого
-        // global_env удержит висячий указатель, и следующий ввод
-        // упадёт на build_variable.
+
+        // Snapshot global_env before compiling. build_define may bind a
+        // name in global_env() for a node that is then destroyed along
+        // with the FileNode on rollback. Without this, global_env holds
+        // a dangling pointer and the next input crashes in build_variable.
         m_global_snapshot = m_global_env->take_snapshot();
 
         try {
@@ -517,11 +519,6 @@ namespace sootc {
 
             snapshot = file_node->take_snapshot();
 
-            // ---- Top-level function ----
-            //
-            // Every FileNode has exactly one top-level function. For
-            // a fresh REPL FileNode it is created here; for a reused
-            // FileNode (non-REPL) it may already exist.
             // ---- Top-level function (lazy) ----
             //
             // top_level is created ONLY when the first top-level expression
@@ -545,14 +542,13 @@ namespace sootc {
                     file_node->add_child(std::move(tl));
                     file_node->set_top_level(top_level);
                 }
-                if (!top_level_body) { // ← добавить проверку
+                if (!top_level_body) {
                     auto body = std::make_unique<SequenceNode>();
                     top_level_body = body.get();
                     top_level->set_body(std::move(body));
                 }
                 return top_level_body;
             };
-
 
             // ---- Process each top-level form in this input ----
             auto current = forms;
@@ -561,13 +557,64 @@ namespace sootc {
                 if (node) {
                     if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
                         file_node->add_child(sd->take_decl());
-                        auto *body = ensure_top_level(); // ← добавить
+                        auto *body = ensure_top_level();
                         for (auto &store : sd->take_stores()) { body->add(std::move(store)); }
                     } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
                         file_node->add_child(hd->take_decl());
-                        ensure_top_level()->add(hd->take_store()); // ← добавить
-                    } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
-                        file_node->add_child(std::move(node));
+                        ensure_top_level()->add(hd->take_store());
+                    } else if (auto *fn = dynamic_cast<FunctionNode *>(node.get())) {
+                        // A FunctionNode whose name is "<type>-<method>" is a method
+                        // implementation. If the type was declared by a deftype in a
+                        // *previous* REPL input, the type's SsType lives in a different
+                        // FileNode. Attach the FunctionNode to that FileNode, not to
+                        // the current one, so that when the owner's make_binary runs
+                        // it will pick up the method's ScriptLambda and set
+                        // SsType::m_pMethods[id].m_pLambda.
+                        //
+                        // The name is "<type>-<method>", and BOTH parts may contain '-'.
+                        // "my-basic-len" is type "my-basic", method "len", not type "my".
+                        // We therefore iterate over every known type and check whether
+                        // "<type>-" is a prefix of the function name. The longest match
+                        // wins, so a type whose name is a prefix of another type's name
+                        // ("vec" vs "vector") still resolves correctly.
+                        FileNode          *owner = nullptr;
+                        size_t             best_prefix_len = 0;
+                        const std::string &fn_name = fn->name();
+
+                        for (auto &[oname, onode] : m_file_nodes) {
+                            (void)oname;
+                            for (auto &child : onode->children()) {
+                                if (auto *td = dynamic_cast<TypeDeclarationNode *>(child.get())) {
+                                    const std::string prefix = td->type().base_type() + "-";
+                                    if (fn_name.rfind(prefix, 0) == 0 &&
+                                        prefix.size() > best_prefix_len) {
+                                        best_prefix_len = prefix.size();
+                                        owner = onode.get();
+                                    }
+                                }
+                            }
+                        }
+
+                        if (owner && owner != file_node) {
+                            // Replace any existing method implementation in the owner.
+                            // Without this, repeated `defmethod len my-basic` in separate
+                            // REPL inputs would accumulate duplicate FunctionNodes in
+                            // <repl-0>, growing the binary on each call. Removing the
+                            // stale child first guarantees exactly one FunctionNode per
+                            // method name in the owner's m_children.
+                            owner->remove_named(fn_name);
+
+                            FunctionNode *raw = fn;
+                            node.release();
+                            owner->add_child(std::unique_ptr<Node>(raw));
+                            owner->bind(fn_name, raw);
+                            owners_to_rebuild.insert(owner);
+
+                            lg::info("compile_internal: attached '{}' to owner '{}'", fn_name,
+                                     owner->name());
+                        } else {
+                            file_node->add_child(std::move(node));
+                        }
                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
@@ -596,11 +643,10 @@ namespace sootc {
                             .got(node->get_node_type_string());
                     }
                 }
-                if (m_config.debug_print_ast)
-                    inspect_ast(node.get());
+                if (m_config.debug_print_ast) inspect_ast(node.get());
                 current = current.as_pair()->cdr;
             }
-            
+
             // ---- Compile state-script handler bodies ----
             //
             // Each handler body and each track step is compiled into its
@@ -627,10 +673,53 @@ namespace sootc {
             }
 
             // ---- Generate the binary ----
-            FileNode *stored = file_node;
-
+            FileNode   *stored = file_node;
             DataSegment strings_table;
-            auto         element = stored->generate(strings_table);
+            auto        element = stored->generate(strings_table);
+
+            // ---- Rebuild only the owners that received a new method ----
+            //
+            // A REPL input that is only a defmethod produces no binary of
+            // its own (element.m_rawData is empty), but it has already
+            // attached a FunctionNode to the owner FileNode. The owner's
+            // SsType must be rebuilt so the new m_pLambda reaches Globals.
+            //
+            // Rebuild ONLY the owners recorded in owners_to_rebuild, not every
+            // FileNode that happens to have a TypeDeclarationNode. Rebuilding
+            // every type-owner on every REPL input re-loads lib.sc and
+            // overwrites Globals["top-level"], so the module that was just
+            // compiled (e.g. <repl-3>) is never the one that runs.
+            for (FileNode *owner : owners_to_rebuild) {
+                if (!owner || owner == stored) continue;
+
+                DataSegment owner_strings;
+                auto        owner_el = owner->generate(owner_strings);
+                if (owner_el.m_rawData.empty()) continue;
+
+                auto owner_bytes = make_aligned_buffer(owner_el.m_rawData.size());
+                std::memcpy(owner_bytes.get(), owner_el.m_rawData.data(),
+                            owner_el.m_rawData.size());
+
+                auto owner_bin_res = BinaryFile::from_buffer(owner->name(), std::move(owner_bytes),
+                                                             owner_el.m_rawData.size());
+                if (!owner_bin_res) {
+                    lg::warn("compile_internal: cannot rebuild owner '{}': {}", owner->name(),
+                             owner_bin_res.error());
+                    continue;
+                }
+
+                auto owner_bin = std::make_unique<BinaryFile>(std::move(owner_bin_res.value()));
+                for (const auto &ds : owner->data_structs()) {
+                    owner_bin->m_dataStructs.push_back(ds);
+                }
+
+                if (!m_runtime->load_module(std::move(*owner_bin))) {
+                    lg::warn("compile_internal: runtime rejected rebuilt owner '{}'",
+                             owner->name());
+                } else {
+                    lg::debug("compile_internal: rebuilt owner '{}'", owner->name());
+                }
+            }
 
             if (element.m_rawData.empty()) {
                 lg::info("No binary output (only type/enum declarations)");
@@ -654,7 +743,7 @@ namespace sootc {
             for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
             if (m_config.debug_print_asm) { color_binary_file(binary); }
-            
+
             m_global_snapshot = GlobalNode::Snapshot{};
 
             return binary;
@@ -664,7 +753,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
+            m_global_env->rollback(std::move(m_global_snapshot));
             return std::unexpected(std::string("SOOT error: ") + e.what());
 
         } catch (const CompilerError &e) {
@@ -673,7 +762,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
+            m_global_env->rollback(std::move(m_global_snapshot));
             return std::unexpected(std::string(e.what()));
 
         } catch (const std::exception &e) {
@@ -681,7 +770,7 @@ namespace sootc {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
             }
-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
+            m_global_env->rollback(std::move(m_global_snapshot));
             render_internal_error(e);
             return std::unexpected(std::string("Internal compiler error: ") + e.what());
         }
@@ -1158,6 +1247,7 @@ namespace sootc {
                 return ReplStatus::ERR;
             }
             m_config.log_level = value.to_std_string();
+            sync_type_verbose(); 
             fmt::print(fg(fmt::color::green), "; arg-set \"log-level\" => \"{}\"\n",
                        m_config.log_level);
             return ReplStatus::OK;
@@ -1549,6 +1639,7 @@ namespace sootc {
 
     // Compile a REPL expression, print a listing, and register the module.
     ReplStatus Compiler::compile_and_report(const std::string &code) {
+
         try {
             auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
             if (forms.is_null()) {
@@ -1928,6 +2019,44 @@ namespace sootc {
             fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n",
                        target_dir.string(), ec.message());
             return false;
+        }
+
+        // ---- Strict mode: every :methods declaration must have a body ----
+        //
+        // A REPL session can build a type and its methods in separate
+        // inputs; build_ss_type must not fail on the intermediate states.
+        // But once the user asks to save the binary, every declared method
+        // that is not a builtin must have a ScriptLambda.
+        {
+            const DCEntry *table = file.entries();
+            const u32      n = file.entry_count();
+            for (u32 i = 0; i < n; ++i) {
+                if (BinaryFile::entry_kind(table[i]) != BinaryFile::EntryKind::SsType) continue;
+                const SsType *st = file.entry_as_ss_type(table[i]);
+                if (!st || !st->m_pMethods) continue;
+
+                for (u32 id = 0; id < st->m_numMethods; ++id) {
+                    const SsMethod &sm = static_cast<const SsMethod *>(st->m_pMethods)[id];
+                    if (sm.m_pLambda != nullptr) continue;
+                    if (sm.m_name == 0) continue; // empty slot
+
+                    const std::string type_name = file.resolve_sid(st->m_name);
+                    const std::string method_name = file.resolve_sid(sm.m_name);
+
+                    // Skip builtins (methods inherited from basic/object that
+                    // have no user implementation in this module). The
+                    // m_fullName still carries "<type>-<method>"; if the
+                    // method's defining type is not this type, it is builtin.
+                    //
+                    // For a simple first step, just report every unimplemented
+                    // method. If this turns out too noisy for builtins, the
+                    // check can be relaxed later.
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                               "; ERROR: method '{}' (id {}) of type '{}' has no defmethod\n",
+                               method_name, id, type_name);
+                    return false;
+                }
+            }
         }
 
         fs::path out = target_dir / (file.m_path.stem().string() + ".bin");
@@ -2446,5 +2575,14 @@ namespace sootc {
         }
 
         lg::warn("lib.sc not found");
+    }
+
+    // sootccompilerCompiler.cpp
+    void Compiler::sync_type_verbose() {
+        const bool verbose = (m_config.log_level == "debug");
+        if (Type::verbose != verbose) {
+            Type::verbose = verbose;
+            lg::debug("Type::verbose = {}", verbose ? "true" : "false");
+        }
     }
 } // namespace sootc

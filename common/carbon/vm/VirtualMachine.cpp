@@ -56,6 +56,21 @@ namespace carbon {
         current_frame = stack_frame;
         return execute(mode);
     }
+    
+    void VirtualMachine::push_call_frame(ScriptLambda *target, u8 dst, u32 argc, RunMode mode) {
+        auto frame = std::make_shared<StackFrame>(target, current_frame);
+        frame->ret_num = dst;
+        frame->argc = argc;
+
+        for (u32 i = 0; i < argc; i++) {
+            frame->get_register(ARG_REGISTERS_OFFSET + i) =
+                current_frame->get_register(ARG_REGISTERS_OFFSET + i);
+        }
+
+        current_frame = std::move(frame);
+
+        if (mode == RunMode::StepIn) is_break = true;
+    }
 
     // Исполнение кода связанного со стек фреймом
     Variant VirtualMachine::execute(RunMode mode) {
@@ -86,6 +101,7 @@ namespace carbon {
                 }
                 lg::debug("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(),
                             logstring);
+                //fmt::print("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
             }
 
             try {
@@ -123,6 +139,8 @@ namespace carbon {
                     break;
                 }
                 case Opcode::Call: {
+
+
                     Variant &func_var = current_frame->get_register(instr.b);
 
                     void *func_ptr = nullptr;
@@ -155,22 +173,8 @@ namespace carbon {
                                   &instr);
                         break;
                     }
-
-                    ScriptLambda *target_code = reinterpret_cast<ScriptLambda *>(func_ptr);
-
-                    auto new_frame = std::make_shared<StackFrame>(target_code, current_frame);
-
-                    new_frame->ret_num = instr.a;
-                    new_frame->argc = instr.c;
-
-                    for (u32 i = 0; i < new_frame->argc; i++) {
-                        new_frame->get_register(ARG_REGISTERS_OFFSET + i) =
-                            current_frame->get_register(ARG_REGISTERS_OFFSET + i);
-                    }
-
-                    current_frame = std::move(new_frame);
-
-                    if (mode == RunMode::StepIn) is_break = true;
+                    push_call_frame(reinterpret_cast<ScriptLambda *>(func_ptr), instr.a, instr.c,
+                                    mode);
                     break;
                 }
                 case Opcode::CallFf: {
@@ -227,6 +231,60 @@ namespace carbon {
 
                     break;
                 }
+
+                case Opcode::CallMethod: {
+                    // a = dst, b = reg(method id), c = argc >= 1, receiver = r24+0
+                    if (instr.c == 0) {
+                        set_error(VmError::Kind::TypeMismatch,
+                                  "CallMethod: argc must include receiver", &instr);
+                        break;
+                    }
+                    Variant &obj_var = current_frame->get_argument(0);
+                    Variant &idx_var = current_frame->get_register(instr.b);
+
+                    if (!obj_var.is_ptr() || !obj_var.get_ptr() || !idx_var.is_int()) {
+                        set_error(VmError::Kind::TypeMismatch,
+                                  "CallMethod: receiver must be a non-null object pointer, id must "
+                                  "be int",
+                                  &instr);
+                        break;
+                    }
+
+                    // The receiver is a basic-derived object. Its first 8 bytes hold
+                    // the SID64 of its runtime type name. Resolve that SID through
+                    // Globals to get SsType*, then index SsType::m_pMethods by the
+                    // method id from the register.
+                    const sid64    type_sid = *static_cast<const sid64 *>(obj_var.get_ptr());
+                    const StringId type_name(type_sid);
+
+                    void *type_ptr = carbon->globals()->find_symbol_ptr(type_name);
+                    auto *type = static_cast<SsType *>(type_ptr);
+
+                    i64 idx = idx_var.get_i64();
+
+                    if (!type || !type->m_pMethods || idx < 0 ||
+                        idx >= static_cast<i64>(type->m_numMethods)) {
+                        set_error(VmError::Kind::UndefinedFunction,
+                                  fmt::format("CallMethod: no method #{} on receiver (type '{}')",
+                                              idx, type_name.to_cstring()),
+                                  &instr);
+                        break;
+                    }
+
+                    ScriptLambda *lambda = static_cast<SsMethod *>(type->m_pMethods)[idx].m_pLambda;
+                    if (!lambda) {
+                        set_error(VmError::Kind::UndefinedFunction,
+                                  fmt::format(
+                                      "CallMethod: method #{} of '{}' is built-in or unimplemented",
+                                      idx, type_name.to_cstring()),
+                                  &instr);
+                        break;
+                    }
+
+                    push_call_frame(lambda, instr.a, instr.c, mode);
+                    break;
+                }
+
                 case Opcode::Branch: {
                     current_frame->pc = instr.imm16();
                     break;

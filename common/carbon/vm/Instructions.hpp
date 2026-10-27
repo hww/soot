@@ -329,6 +329,7 @@ namespace carbon {
         case Opcode::AssertPointer: return "AssertPointer";
         case Opcode::BreakFlag: return "BreakFlag";
         case Opcode::Breakpoint: return "Breakpoint";
+        case Opcode::CallMethod: return "CallMethod";
         default: return "Unknown Opcode";
         }
     }
@@ -395,6 +396,8 @@ namespace carbon {
         {Opcode::Call, "Call", OperandType::REG, OperandType::REG, OperandType::IMM_U8,
          StaticType::NONE},
         {Opcode::CallFf, "CallFf", OperandType::REG, OperandType::REG, OperandType::IMM_U8,
+         StaticType::NONE},
+        {Opcode::CallMethod, "CallMethod", OperandType::REG, OperandType::REG, OperandType::IMM_U8,
          StaticType::NONE},
         {Opcode::IEqual, "IEqual", OperandType::REG, OperandType::REG, OperandType::REG,
          StaticType::NONE},

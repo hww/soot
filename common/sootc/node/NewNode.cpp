@@ -106,7 +106,7 @@ namespace sootc {
             u8 ptr_reg = fn.alloc_temp_reg(nullptr);
             fn.add_instruction(Opcode::CallFf, ptr_reg, alloc_fn_reg, 2);
 
-           // -------- write each element into its slot --------
+            // -------- write each element into its slot --------
 
             const auto &elems = m_elements;
 
@@ -237,6 +237,18 @@ namespace sootc {
         u8 ptr_reg = fn.alloc_temp_reg(nullptr);
         fn.add_instruction(Opcode::CallFf, ptr_reg, alloc_fn_reg, 2);
 
+        // Basic-derived types carry a runtime type tag in the first 8 bytes
+        // of the heap payload. Write the SID64 of the type name there, so
+        // that CallMethod can resolve it to SsType*.
+        //
+        // Structure-derived types (vector, matrix, ...) have no tag; their
+        // first field starts at offset 0.
+        if (dynamic_cast<BasicType *>(type) != nullptr) {
+            u8  sid_reg = fn.alloc_temp_reg(nullptr);
+            u16 sid_idx = fn.add_constant(StringId(type_name).value, FunctionNode::ConstKind::SID);
+            fn.add_instruction_imm_u16(Opcode::LoadStaticI64Imm, sid_reg, sid_idx);
+            fn.add_instruction(Opcode::StoreI64, ptr_reg, sid_reg, 0); // a=addr, b=value
+        }
         // -------- Step 2: does the type have its own constructor? --------
         bool has_ctor = false;
         if (Type *t = TypeSystem::instance().lookup_type_no_throw(type_name)) {
@@ -318,6 +330,11 @@ namespace sootc {
 
         auto emit_one = [&](const Field &field, ExpressionNode *init) {
             if (!init) return;
+
+            // Skip the implicit type header. It was written to payload[0..8]
+            // by NewNode::emit from type_name and must not be overwritten by
+            // a user-provided :type initializer (which is illegal anyway).
+            if (field.name() == "type" && dynamic_cast<BasicType *>(st) != nullptr) { return; }
 
             Type *field_type = ts.lookup_type_no_throw(field.type().base_type());
             if (!field_type) {

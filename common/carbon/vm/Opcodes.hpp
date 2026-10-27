@@ -36,6 +36,7 @@ namespace carbon {
         CastFloat,            ///< dest = (float)dest
         Call,                 ///< near call: dest = op1(args...), op2 = arg count
         CallFf,               ///< far call:  dest = op1(args...), op2 = arg count
+        CallMethod,           ///< dest = type->methods[r(op1+1)](args...); op1 = SsType* reg, op2 = arg count
         IEqual,               ///< dest = (op1 == op2) (integer)
         IGreaterThan,         ///< dest = (op1 >  op2) (integer)
         IGreaterThanEqual,    ///< dest = (op1 >= op2) (integer)

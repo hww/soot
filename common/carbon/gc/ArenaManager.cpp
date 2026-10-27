@@ -60,6 +60,7 @@ namespace carbon::gc {
 
     static void release_region(std::byte *p, std::size_t bytes) {
 #if defined(_WIN32)
+        (void)bytes;
         VirtualFree(p, 0, MEM_RELEASE);
 #else
         munmap(p, bytes);

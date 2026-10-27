@@ -226,8 +226,11 @@ namespace sootc {
 
         for (const auto &sf : ss_fields) { element.push_value(sf); }
 
-        // m_pLambda is already an absolute file offset (computed in Pass 1),
-        // so it must NOT be marked as relocatable.
+        // m_pLambda is a file offset that the loader must convert to an
+        // absolute pointer. Mark it as a relocatable slot, so that
+        // BinaryFile::read_reloc_table turns 0x70 into m_bytes + 0x70.
+        // Without the reloc bit the value stays a relative offset, and
+        // push_call_frame receives a bogus pointer.
         for (const auto &sm : ss_methods) { element.push_value(sm); }
 
         lg::info("build_ss_type '{}': {} fields, {} methods, {} bytes", type_name, num_fields,
@@ -335,7 +338,9 @@ namespace sootc {
                                     PTR_FIELD(SsType, m_pMethods));
 
         for (const auto &sf : ss_fields) { element.push_value(sf); }
-        for (const auto &sm : ss_methods) { element.push_value(sm); }
+        for (const auto &sm : ss_methods) {
+            for (const auto &sm : ss_methods) { element.push_value(sm); }
+        }
 
         lg::info("build_ss_type_for_script '{}': {} fields, {} methods, {} bytes", vars_name,
                  num_fields, num_methods, element.m_rawData.size());
@@ -1110,7 +1115,33 @@ namespace sootc {
             // ---- 3c. adjust_offsets ----
             const u64 function_start = element.m_rawData.size();
             fn.adjust_offsets(function_start);
+            // ---- 3c'. Mark SsMethod::m_pLambda as relocatable ----
+            if (fn.m_entry.m_typeId == SS_TYPE_SID) {
+                auto *hdr = reinterpret_cast<SsType *>(fn.m_rawData.data());
+                if (hdr && hdr->m_numMethods > 0) {
+                    const u64 methods_offset =
+                        sizeof(SsType) + static_cast<u64>(hdr->m_numFields) * sizeof(SsField);
 
+                    //fmt::print(stderr,
+                    //           "3c' entry='{}' payload={} numFields={} numMethods={} "
+                    //           "methods_offset=0x{:X} sizeof(SsType)={} sizeof(SsField)={} "
+                    //           "sizeof(SsMethod)={} offsetof_pLambda={}\n",
+                    //           StringIdManager::instance().get_string(fn.m_entry.m_nameID),
+                    //           fn.m_rawData.size(), hdr->m_numFields, hdr->m_numMethods,
+                    //           methods_offset, sizeof(SsType), sizeof(SsField), sizeof(SsMethod),
+                    //           offsetof(SsMethod, m_pLambda));
+
+                    for (u32 i = 0; i < hdr->m_numMethods; ++i) {
+                        const u64 slot =
+                            methods_offset + i * sizeof(SsMethod) + offsetof(SsMethod, m_pLambda);
+                        //fmt::print(stderr, "   i={} slot=0x{:X} payload={} ok={}\n", i, slot,
+                        //           fn.m_rawData.size(), slot + 8 <= fn.m_rawData.size());
+                        if (slot + 8 > fn.m_rawData.size()) break;
+                        const size_t slot_bit = slot / 8;
+                        if (slot_bit < fn.m_relocTable.size()) { fn.m_relocTable[slot_bit] = true; }
+                    }
+                }
+            }
             // ---- 3d. Restore string bits ----
             for (size_t i = 0; i < fn.m_stringConstantSlots.size(); ++i) {
                 const size_t slot_bit = fn.m_stringConstantSlots[i].slot_offset / 8;
@@ -1178,7 +1209,7 @@ namespace sootc {
                             "Header text/string offsets will be wrong.",
                             element.m_rawData.size(), total_size));
         }
-
+        
         return element;
     }
 

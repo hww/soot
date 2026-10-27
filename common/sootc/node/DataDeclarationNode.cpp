@@ -293,12 +293,35 @@ namespace sootc {
 
             std::vector<std::byte> payload(static_cast<size_t>(size_bytes), std::byte{0});
             std::vector<ProgramBinaryElement::StructPointerSlot> deferred;
+            
+            // Basic-derived types carry a runtime type tag in the first 8 bytes
+            // of their payload. For static objects it is the SID64 of the type
+            // name (not a pointer): the type may be declared in another file,
+            // so its SsType* is not known at compile time. The VM resolves the
+            // SID to an SsType* through Globals at CallMethod time.
+            //
+            // Structure-derived types (vector, matrix, ...) have no tag and
+            // start with their first declared field at offset 0. This check
+            // distinguishes the two: only BasicType gets the header.
+            if (dynamic_cast<BasicType *>(type) != nullptr) {
+                const sid64 type_sid = static_cast<sid64>(StringId(type_name));
+                std::memcpy(payload.data(), &type_sid, sizeof(sid64));
+            }
 
             // Anonymous children discovered while walking this structure's
             // fields. They are attached to the element below.
             AnonChildren local_children;
 
             for (const auto &field : st->fields()) {
+                // Skip the implicit type header FIRST. It is written above
+                // from type_name; it has no user initializer, and
+                // find_field_init would return nullptr (or, if the user
+                // wrote :type, return a node we must not store into the
+                // header slot).
+                if (field.name() == "type" && dynamic_cast<BasicType *>(type) != nullptr) {
+                    continue;
+                }
+
                 const NewNode::FieldInit *init = find_field_init(node, field.name());
                 if (!init || !init->value) { continue; }
 
@@ -320,6 +343,14 @@ namespace sootc {
             layout.type_name = type_name;
             layout.total_size = static_cast<u32>(size_bytes);
             for (const auto &field : st->fields()) {
+                // Skip the implicit type header. It is written at offset 0 by
+                // generate_static_element from type_name; it has no user-facing
+                // initializer and must not appear as a field in the inspector
+                // dump or in the generated C header.
+                if (field.name() == "type" && dynamic_cast<BasicType *>(type) != nullptr) {
+                    continue;
+                }
+
                 StructFieldInfo fi;
                 fi.name = field.name();
                 fi.type_name = field.type().print();

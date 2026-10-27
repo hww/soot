@@ -22,7 +22,7 @@ namespace sootc {
         std::string                                  m_full_name; ///< "<type>-<method>"
         std::vector<std::unique_ptr<ExpressionNode>> m_args;
         bool                                         m_is_native = false; // ← NEW
-
+        int m_method_id = -1; ///< -1 = use static lookup (current behaviour)
     public:
         MethodCallNode(std::unique_ptr<ExpressionNode> obj, std::string full_name,
                        std::vector<std::unique_ptr<ExpressionNode>> args, Type *return_type);
@@ -33,6 +33,10 @@ namespace sootc {
         // ---- NEW: native/script dispatch ----
         void set_is_native(bool v) { m_is_native = v; }
         bool is_native() const { return m_is_native; }
+        
+        // ---- Method index ----
+        void set_method_id(int id) { m_method_id = id; }
+        int  method_id() const { return m_method_id; }
 
         void emit(FunctionNode &fn) override;
 

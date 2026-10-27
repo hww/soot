@@ -503,8 +503,6 @@ class TypeSystem {
 
     std::string m_variant = "default";
 
-  public:
-    static int verbose;
 };
 
 // ============================================================================

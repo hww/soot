@@ -603,5 +603,16 @@ namespace sootc {
         ///          при исключении. Гарантирует, что global_env не
         ///          удержит висячий указатель после rollback FileNode.
         GlobalNode::Snapshot m_global_snapshot;
+        // sootc/compiler/Compiler.hpp
+    private:
+        // Синхронизирует глобальный флаг Type::verbose с текущим
+        // m_config.log_level. Вызывается при любом изменении log_level:
+        // в конструкторе (после инициализации m_config) и в
+        // cmd_arg_set при смене "log-level".
+        //
+        // "debug" -> Type::verbose = true, всё остальное -> false.
+        // Trace намеренно не включает verbose: trace — это про VM/compiler
+        // внутренности, а Type::verbose — про дампы полей типов.
+        void sync_type_verbose();
     };
 } // namespace sootc

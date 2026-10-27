@@ -765,22 +765,50 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
                                        const script::Object &fields, const script::Object &options,
                                        script::EnvironmentMap *constants) {
     StructureDefResult result;
+
+    // ---- Fields ----
     for_each_in_list(fields, [&](const script::Object &o) { add_field(type, ts, o, constants); });
+
     TypeFlags flags;
     flags.heap_base = 0;
-
     flags.size = type->get_size_in_memory();
     flags.pad = 0;
 
+    // ---- Options ----
+    //
+    // The option tail is a flat sequence of entries. Each entry is one of:
+    //
+    //   (:methods (...))         -- list-headed option
+    //   (:states (...))          -- list-headed option
+    //   (:state-methods (...))   -- list-headed option
+    //   (:options (...))         -- list-headed option
+    //   :size-assert #x20        -- flat keyword + value
+    //   :method-count-assert 14  -- flat keyword + value
+    //   :flag-assert #x...       -- flat keyword + value
+    //   :no-runtime-type         -- flat keyword, no value
+    //   :no-inspect              -- flat keyword, no value
+    //   :pack-me                 -- flat keyword, no value
+    //   :heap-base #x...         -- flat keyword + value
+    //   :allow-misaligned        -- flat keyword, no value
+    //   :final                   -- flat keyword, no value
+    //   :always-stack-singleton  -- flat keyword, no value
+    //
+    // OpenGOAL writes the flat keyword forms directly; macros may produce
+    // the list-headed forms for :methods/:states/:state-methods/:options.
+    // Both are accepted in the same loop.
     auto    *rest = &options;
     int      size_assert = -1;
     int      method_count_assert = -1;
     uint64_t flag_assert = 0;
     bool     flag_assert_set = false;
     bool     set_heapbase = false;
+
     while (!rest->is_null()) {
-        if (car(rest).is_pair()) {
-            auto  opt_list = &car(rest);
+        const script::Object &head = car(rest);
+
+        if (head.is_pair()) {
+            // ---- List-headed option: (:methods ...) etc. ----
+            auto  opt_list = &head;
             auto &first = car(opt_list);
             opt_list = cdr(opt_list);
 
@@ -795,19 +823,42 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
                 parse_type_options(type, *opt_list);
             } else {
                 throw std::runtime_error("Invalid option list in field specification: " +
-                                         car(rest).print());
+                                         head.print());
             }
-
             rest = cdr(rest);
-        } else {
-            auto opt_name = symbol_string(car(rest));
+        } else if (head.is_keyword()) {
+            // ---- Flat keyword option ----
+            const std::string opt_name = symbol_string(head);
             rest = cdr(rest);
 
-            if (opt_name == ":size-assert") {
-                size_assert = get_int(car(rest));
-                if (size_assert == -1) {
-                    throw std::runtime_error("Cannot use -1 as size-assert");
+            if (opt_name == ":methods") {
+                if (rest->is_null() || !car(rest).is_pair()) {
+                    throw std::runtime_error(":methods requires a list of method declarations");
                 }
+                declare_method(type, ts, car(rest), result);
+                rest = cdr(rest);
+            } else if (opt_name == ":states") {
+                if (rest->is_null() || !car(rest).is_pair()) {
+                    throw std::runtime_error(":states requires a list of state declarations");
+                }
+                declare_state(type, ts, car(rest), result);
+                rest = cdr(rest);
+            } else if (opt_name == ":state-methods") {
+                if (rest->is_null() || !car(rest).is_pair()) {
+                    throw std::runtime_error(
+                        ":state-methods requires a list of state method declarations");
+                }
+                declare_state_methods(type, ts, car(rest), result);
+                rest = cdr(rest);
+            } else if (opt_name == ":options") {
+                if (rest->is_null() || !car(rest).is_pair()) {
+                    throw std::runtime_error(":options requires a list of option entries");
+                }
+                parse_type_options(type, car(rest));
+                rest = cdr(rest);
+            } else if (opt_name == ":size-assert") {
+                size_assert = get_int(car(rest));
+                if (size_assert == -1) { throw std::runtime_error("Cannot use -1 as size-assert"); }
                 rest = cdr(rest);
             } else if (opt_name == ":method-count-assert") {
                 method_count_assert = get_int(car(rest));
@@ -826,7 +877,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
             } else if (opt_name == ":pack-me") {
                 result.pack_me = true;
             } else if (opt_name == ":heap-base") {
-                u16 hb = get_int(car(rest));
+                u16 hb = static_cast<u16>(get_int(car(rest)));
                 if ((hb % 0x10) != 0) {
                     throw std::runtime_error("heap-base is not 16-byte aligned");
                 }
@@ -842,36 +893,40 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
             } else {
                 throw std::runtime_error("Invalid option in field specification: " + opt_name);
             }
+        } else {
+            throw std::runtime_error(
+                fmt::format("Invalid option in field specification: {}", head.print()));
         }
     }
 
+    // ---- Process heap-base auto-detection ----
+    //
+    // If this type is a child of `process`, its heap-base must be at
+    // least the size of the parent, rounded up to 0x10. The check runs
+    // after the option loop so that both automatic and manual values
+    // can be validated.
     if (ts->fully_defined_type_exists(TypeSpec("process")) &&
         ts->tc(TypeSpec("process"), TypeSpec(type->get_parent()))) {
-        // check heap-base if this is a child of process.
         auto process_type = ts->get_type_of_type<BasicType>("process");
         auto auto_hb = (flags.size - process_type->size() + 0xf) & ~0xf;
         if (!set_heapbase) {
-            // wasnt set manually so set automatically.
             flags.heap_base = auto_hb;
         } else if (flags.heap_base < auto_hb) {
-            // was set manually so verify if that's correct.
             throw std::runtime_error(fmt::format(
                 "Process heap underflow in type {}: heap-base is {} vs. auto-detected {}",
                 type->get_name(), flags.heap_base, auto_hb));
-            //} else if (flags.heap_base != auto_hb) {
-            //  lg::print("Type {} has manual heap-base ({} vs {}). This is fine. \n",
-            //  type->get_name(),
-            //             flags.heap_base, auto_hb);
         }
     }
 
+    // ---- Size assertion ----
     if (size_assert != -1 && flags.size != u16(size_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
                         type->get_name(), int(flags.size), int(flags.size), size_assert));
     }
 
-    flags.methods = ts->get_next_method_id(type);
+    // ---- Method count ----
+    flags.methods = static_cast<u16>(ts->get_next_method_id(type));
 
     if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
         throw std::runtime_error(
@@ -879,6 +934,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
             " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
     }
 
+    // ---- Flag assertion ----
     if (flag_assert_set && (flags.flag != flag_assert)) {
         throw std::runtime_error(
             fmt::format("Type {} has flag 0x{:x} but flag-assert was set to 0x{:x}",

@@ -703,8 +703,7 @@ namespace sootc {
             if (m_ts.try_lookup_method(expr_type->get_name(), name, &method_info)) {
                 std::vector<std::unique_ptr<ExpressionNode>> args;
                 for (size_t j = i + 1; j < steps.size(); ++j) {
-                    const auto &arg_form = steps[j];
-                    args.push_back(build_expression(arg_form, node));
+                    args.push_back(build_expression(steps[j], node));
                 }
 
                 Type *return_type = nullptr;
@@ -718,6 +717,13 @@ namespace sootc {
                 auto method_call = std::make_unique<MethodCallNode>(std::move(current), full_name,
                                                                     std::move(args), return_type);
                 method_call->set_is_native(m_compiler->is_native_function(full_name));
+
+                // Virtual dispatch is only valid for basic-derived types. For
+                // structure-derived types the compiler knows the exact type,
+                // so LookupPointer + Call is both correct and faster.
+                if (m_ts.should_use_virtual_methods(expr_type, method_info.id)) {
+                    method_call->set_method_id(method_info.id);
+                }
 
                 return method_call;
             }

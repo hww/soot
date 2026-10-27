@@ -852,9 +852,10 @@ std::string BasicType::inspect() const {
                     "  final:      {}\n"
                     "  fields:",
                     m_name, m_parent, m_dynamic, m_size_in_mem, m_heap_base, m_final);
-    for (const auto &field : m_fields) {
-        result += "\n    " + field.print();
-    }
+    for (const auto &field : m_fields) { result += "\n    " + field.print(); }
+    result += "\n  methods:";
+    if (m_new_method_info_defined) { result += "\n    " + m_new_method_info.print_one_line(); }
+    for (const auto &m : m_methods) { result += "\n    " + m.print_one_line(); }
     return result;
 }
 

@@ -119,15 +119,10 @@ namespace carbon {
         Variant execute(RunMode mode = RunMode::Run);
 
     private:
-        // ------------------------------------------------------------------------
-        // Internal Helpers
-        // ------------------------------------------------------------------------
-
-        i64 resolve_integer(std::shared_ptr<StackFrame> frame, StringId name);
-
-        f64 resolve_float(std::shared_ptr<StackFrame> frame, StringId name);
-
-        void *resolve_pointer(std::shared_ptr<StackFrame> frame, StringId name);
+        /// Create a frame for `target`, copy `argc` arguments from the caller's
+        /// r24.. into it and make it the current frame. `dst` is the caller's
+        /// register that receives the return value.
+        void push_call_frame(ScriptLambda *target, u8 dst, u32 argc, RunMode mode);
 
     public:
         // The VM does not throw C++ exceptions for runtime errors. Instead,

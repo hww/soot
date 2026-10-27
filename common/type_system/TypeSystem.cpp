@@ -985,8 +985,9 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
     type->m_fields.push_back(field);
     if (Type::verbose)
         fmt::print(
-            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {}\n",
-            field_name, type->get_name(), offset, field_size, is_inline, array_size);
+            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {} size-in-memory: {}\n",
+            field_name, type->get_name(), offset, field_size, is_inline, array_size, 
+            type->get_size_in_memory());
 
     return offset;
 }
@@ -1335,10 +1336,11 @@ void TypeSystem::add_builtin_types() {
     // Fields of `basic`
     // ---------------------------------------------------------------------
     //
-    // Every `basic`-derived object starts with a 4-byte SID that names
-    // its runtime type. This is what allows the VM to dispatch on
-    // `-> type` and to walk a `type` chain at runtime.
-    add_field_to_type(basic_type, "type", make_typespec("type"));
+    // The type header is a SID64, not a 4-byte tag. Every basic-derived
+    // object starts with 8 bytes that hold the SID of its runtime type.
+    // The VM's CallMethod reads these 8 bytes as a sid64, resolves them
+    // through Globals (LookupPointer), and indexes SsType::m_pMethods.
+    add_field_to_type(basic_type, "type", make_typespec("sid64"));
 
     // ---------------------------------------------------------------------
     // Fields of `type`
