@@ -654,8 +654,47 @@ namespace sootc {
                         } else {
                             file_node->add_child(std::move(node));
                         }
-                    } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
-                               dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
+                    } else if (auto *td = dynamic_cast<TypeDeclarationNode *>(node.get())) {
+                        // A repeated `deftype` for a type that is already
+                        // declared in another FileNode must NOT create a
+                        // second TypeDeclarationNode. The owner FileNode
+                        // already holds the SsType with every method that
+                        // defmethod attached to it. Adding a fresh
+                        // TypeDeclarationNode here would emit a second
+                        // SsType with m_pMethods[*].m_pLambda == nullptr,
+                        // and load_module would overwrite Globals[<type>]
+                        // with that empty table. CallMethod would then
+                        // dereference null.
+                        //
+                        // Instead we drop the new TypeDeclarationNode.
+                        // TypeSystem already has the type; the owner
+                        // FileNode is already loaded; nothing needs to
+                        // change.
+                        const std::string &type_name = td->type().base_type();
+                        FileNode          *existing_owner = nullptr;
+                        for (auto &[oname, onode] : m_file_nodes) {
+                            (void)oname;
+                            if (onode.get() == file_node) continue;
+                            for (auto &child : onode->children()) {
+                                if (auto *other_td =
+                                        dynamic_cast<TypeDeclarationNode *>(child.get())) {
+                                    if (other_td->type().base_type() == type_name) {
+                                        existing_owner = onode.get();
+                                        break;
+                                    }
+                                }
+                            }
+                            if (existing_owner) break;
+                        }
+
+                        if (existing_owner) {
+                            lg::info("compile_internal: '{}' already declared in '{}', skipping",
+                                     type_name, existing_owner->name());
+                            // node is a unique_ptr; going out of scope frees it.
+                        } else {
+                            file_node->add_child(std::move(node));
+                        }
+                    } else if (dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
                     } else if (dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr) {
