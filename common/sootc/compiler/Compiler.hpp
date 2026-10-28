@@ -614,5 +614,8 @@ namespace sootc {
         // Trace намеренно не включает verbose: trace — это про VM/compiler
         // внутренности, а Type::verbose — про дампы полей типов.
         void sync_type_verbose();
+
+    private:
+        bool check_type_methods_implemented(const FileNode *file_node) const;
     };
 } // namespace sootc

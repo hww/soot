@@ -2209,6 +2209,70 @@ namespace sootc {
                 }
             }
 
+            // ---- Strict mode: every method declared in a type must be
+            //      implemented by a defmethod in the same FileNode. ----
+            //
+            // This check is done on the AST, before make_binary. At this
+            // point m_children contains:
+            //   * TypeDeclarationNode(s) — one per deftype;
+            //   * FunctionNode(s)        — one per defun / defmethod,
+            //                              named "<type>-<method>" for methods.
+            //
+            // We do NOT look at the emitted SsType. That struct is built
+            // by make_binary from whatever FunctionNodes happen to be in
+            // m_children; if the reloc or the method-offset map is off,
+            // the check reads garbage. The AST has the truth: a method is
+            // implemented iff there is a FunctionNode with the exact name
+            // "<type>-<method>".
+            //
+            // Inherited methods are not checked. They are implemented in
+            // the parent's module (or the parent itself is broken). We
+            // only require that every method declared *in this type* has
+            // a matching FunctionNode in this FileNode.
+            {
+                // Collect the names of every FunctionNode in m_children.
+                std::set<std::string> fn_names;
+                for (auto &child : file_node->children()) {
+                    if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
+                        fn_names.insert(fn->name());
+                    }
+                }
+
+                // For each type declaration, check every own method.
+                for (auto &child : file_node->children()) {
+                    auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
+                    if (!td) continue;
+
+                    const std::string &type_name = td->type().base_type();
+                    Type              *type = m_ts.lookup_type_no_throw(type_name);
+                    if (!type) continue;
+
+                    // Methods declared in this type (not inherited).
+                    for (const auto &m : type->get_methods_defined_for_type()) {
+                        const std::string full_name = type_name + "-" + m.name;
+                        if (fn_names.count(full_name)) continue;
+
+                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                                   "; ERROR: method '{}' of type '{}' is declared "
+                                   "but has no defmethod\n",
+                                   m.name, type_name);
+                        return false;
+                    }
+
+                    // `new` is not in get_methods_defined_for_type().
+                    if (const auto *ni = type->get_new_method_defined_for_type()) {
+                        const std::string full_name = type_name + "-" + ni->name;
+                        if (!fn_names.count(full_name)) {
+                            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                                       "; ERROR: method 'new' of type '{}' is declared "
+                                       "but has no defmethod\n",
+                                       type_name);
+                            return false;
+                        }
+                    }
+                }
+            }
+
             DataSegment strings_table;
             auto        element = file_node->generate(strings_table);
             if (element.m_rawData.empty()) {
@@ -2584,5 +2648,47 @@ namespace sootc {
             Type::verbose = verbose;
             lg::debug("Type::verbose = {}", verbose ? "true" : "false");
         }
+    }
+
+    bool Compiler::check_type_methods_implemented(const FileNode *file_node) const {
+        if (!file_node) return true;
+
+        std::set<std::string> fn_names;
+        for (auto &child : file_node->children()) {
+            if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
+                fn_names.insert(fn->name());
+            }
+        }
+
+        for (auto &child : file_node->children()) {
+            auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
+            if (!td) continue;
+
+            const std::string &type_name = td->type().base_type();
+            Type              *type = m_ts.lookup_type_no_throw(type_name);
+            if (!type) continue;
+
+            for (const auto &m : type->get_methods_defined_for_type()) {
+                const std::string full_name = type_name + "-" + m.name;
+                if (fn_names.count(full_name)) continue;
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: method '{}' of type '{}' is declared "
+                           "but has no defmethod\n",
+                           m.name, type_name);
+                return false;
+            }
+
+            if (const auto *ni = type->get_new_method_defined_for_type()) {
+                const std::string full_name = type_name + "-" + ni->name;
+                if (!fn_names.count(full_name)) {
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                               "; ERROR: method 'new' of type '{}' is declared "
+                               "but has no defmethod\n",
+                               type_name);
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 } // namespace sootc

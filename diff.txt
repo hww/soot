@@ -1,0 +1,1012 @@
+diff --git a/common/carbon/Carbon.cpp b/common/carbon/Carbon.cpp
+index 314c9d3..b92f4c9 100644
+--- a/common/carbon/Carbon.cpp
++++ b/common/carbon/Carbon.cpp
+@@ -547,6 +547,7 @@ bool Carbon::run_top_level(const std::string &logical_name, RunMode mode) {
+         }
+         auto *lambda = reinterpret_cast<ScriptLambda *>(fn);
+         try {
++            lg::debug("Carbon::call '{}' -> ptr {}", name, fn);
+             out.value = m_impl->vm->execute_function(lambda, RunMode::Run, args);
+             m_impl->vm->purge();
+             if (m_impl->vm->has_error()) {
+diff --git a/common/carbon/gc/ArenaManager.cpp b/common/carbon/gc/ArenaManager.cpp
+index 75daaf2..f7b2861 100644
+--- a/common/carbon/gc/ArenaManager.cpp
++++ b/common/carbon/gc/ArenaManager.cpp
+@@ -60,6 +60,7 @@ namespace carbon::gc {
+ 
+     static void release_region(std::byte *p, std::size_t bytes) {
+ #if defined(_WIN32)
++        (void)bytes;
+         VirtualFree(p, 0, MEM_RELEASE);
+ #else
+         munmap(p, bytes);
+diff --git a/common/carbon/vm/VirtualMachine.cpp b/common/carbon/vm/VirtualMachine.cpp
+index 4ada2c7..23e90e4 100644
+--- a/common/carbon/vm/VirtualMachine.cpp
++++ b/common/carbon/vm/VirtualMachine.cpp
+@@ -101,6 +101,7 @@ namespace carbon {
+                 }
+                 lg::debug("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(),
+                             logstring);
++                fmt::print("PC={} : {} ;; {}", current_frame->pc - 1, instr.to_string(), logstring);
+             }
+ 
+             try {
+@@ -249,13 +250,23 @@ namespace carbon {
+                         break;
+                     }
+ 
+-                    auto *type = *static_cast<SsType **>(obj_var.get_ptr()); // заголовок объекта
++                    // The receiver is a basic-derived object. Its first 8 bytes hold
++                    // the SID64 of its runtime type name. Resolve that SID through
++                    // Globals to get SsType*, then index SsType::m_pMethods by the
++                    // method id from the register.
++                    const sid64    type_sid = *static_cast<const sid64 *>(obj_var.get_ptr());
++                    const StringId type_name(type_sid);
++
++                    void *type_ptr = carbon->globals()->find_symbol_ptr(type_name);
++                    auto *type = static_cast<SsType *>(type_ptr);
++
+                     i64 idx = idx_var.get_i64();
+ 
+                     if (!type || !type->m_pMethods || idx < 0 ||
+                         idx >= static_cast<i64>(type->m_numMethods)) {
+                         set_error(VmError::Kind::UndefinedFunction,
+-                                  fmt::format("CallMethod: no method #{} on receiver", idx),
++                                  fmt::format("CallMethod: no method #{} on receiver (type '{}')",
++                                              idx, type_name.to_cstring()),
+                                   &instr);
+                         break;
+                     }
+@@ -265,7 +276,7 @@ namespace carbon {
+                         set_error(VmError::Kind::UndefinedFunction,
+                                   fmt::format(
+                                       "CallMethod: method #{} of '{}' is built-in or unimplemented",
+-                                      idx, static_cast<StringId>(type->m_name).to_cstring()),
++                                      idx, type_name.to_cstring()),
+                                   &instr);
+                         break;
+                     }
+diff --git a/common/sootc/Main.cpp b/common/sootc/Main.cpp
+index f063eae..2c701f5 100644
+--- a/common/sootc/Main.cpp
++++ b/common/sootc/Main.cpp
+@@ -36,8 +36,8 @@ struct CommandLineOptions {
+     // Behavior.
+     bool        interactive = true;    // open REPL?
+     bool        print_listing = false; // print listing in CLI mode?
+-    std::string log_level = "warn";    // debug | info | warn | error
+-    std::string log_file;
++    std::string log_level = "info";    // debug | info | warn | error
++    std::string log_file = "default.log";
+ 
+     // Compiler mode.
+     sootc::CompilerMode mode = sootc::CompilerMode::HYBRID;
+diff --git a/common/sootc/compiler/Compiler.cpp b/common/sootc/compiler/Compiler.cpp
+index e2c638b..3e72240 100644
+--- a/common/sootc/compiler/Compiler.cpp
++++ b/common/sootc/compiler/Compiler.cpp
+@@ -58,6 +58,7 @@ namespace sootc {
+           m_soot(user_profile, false, true, comp_options.platform), m_repl(std::move(repl)) {
+         (void)repl_config;
+         m_config = comp_options;
++        sync_type_verbose(); 
+ 
+         m_ts.add_builtin_types();
+         m_global_env = std::make_unique<GlobalNode>();
+@@ -462,12 +463,15 @@ namespace sootc {
+         return true;
+     }
+ 
++    // The core compilation driver: build the node tree, generate a binary,
++    // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
++    // if the input produced no binary output (compile-time-only declarations).
+     // The core compilation driver: build the node tree, generate a binary,
+     // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
+     // if the input produced no binary output (compile-time-only declarations).
+     std::expected<std::unique_ptr<BinaryFile>, std::string>
+     Compiler::compile_internal(script::Object &forms, const std::string &filename, bool is_repl) {
+-
++        std::set<FileNode *> owners_to_rebuild;
+         // ---- Effective name ----
+         //
+         // For REPL inputs, generate a unique logical name. The name
+@@ -486,13 +490,11 @@ namespace sootc {
+         FileNode          *file_node = nullptr;
+         bool               owns_file_node = false;
+         FileNode::Snapshot snapshot;
+-        
+-        // ← ВСТАВИТЬ ЗДЕСЬ:
+-        // Снимок global_env до компиляции. build_define может успеть
+-        // сделать global_env()->bind(...) для узла, который затем
+-        // уничтожится вместе с FileNode при rollback. Без этого
+-        // global_env удержит висячий указатель, и следующий ввод
+-        // упадёт на build_variable.
++
++        // Snapshot global_env before compiling. build_define may bind a
++        // name in global_env() for a node that is then destroyed along
++        // with the FileNode on rollback. Without this, global_env holds
++        // a dangling pointer and the next input crashes in build_variable.
+         m_global_snapshot = m_global_env->take_snapshot();
+ 
+         try {
+@@ -517,11 +519,6 @@ namespace sootc {
+ 
+             snapshot = file_node->take_snapshot();
+ 
+-            // ---- Top-level function ----
+-            //
+-            // Every FileNode has exactly one top-level function. For
+-            // a fresh REPL FileNode it is created here; for a reused
+-            // FileNode (non-REPL) it may already exist.
+             // ---- Top-level function (lazy) ----
+             //
+             // top_level is created ONLY when the first top-level expression
+@@ -545,7 +542,7 @@ namespace sootc {
+                     file_node->add_child(std::move(tl));
+                     file_node->set_top_level(top_level);
+                 }
+-                if (!top_level_body) { // ← добавить проверку
++                if (!top_level_body) {
+                     auto body = std::make_unique<SequenceNode>();
+                     top_level_body = body.get();
+                     top_level->set_body(std::move(body));
+@@ -553,7 +550,6 @@ namespace sootc {
+                 return top_level_body;
+             };
+ 
+-
+             // ---- Process each top-level form in this input ----
+             auto current = forms;
+             while (current.is_pair()) {
+@@ -561,13 +557,64 @@ namespace sootc {
+                 if (node) {
+                     if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
+                         file_node->add_child(sd->take_decl());
+-                        auto *body = ensure_top_level(); // ← добавить
++                        auto *body = ensure_top_level();
+                         for (auto &store : sd->take_stores()) { body->add(std::move(store)); }
+                     } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
+                         file_node->add_child(hd->take_decl());
+-                        ensure_top_level()->add(hd->take_store()); // ← добавить
+-                    } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr) {
+-                        file_node->add_child(std::move(node));
++                        ensure_top_level()->add(hd->take_store());
++                    } else if (auto *fn = dynamic_cast<FunctionNode *>(node.get())) {
++                        // A FunctionNode whose name is "<type>-<method>" is a method
++                        // implementation. If the type was declared by a deftype in a
++                        // *previous* REPL input, the type's SsType lives in a different
++                        // FileNode. Attach the FunctionNode to that FileNode, not to
++                        // the current one, so that when the owner's make_binary runs
++                        // it will pick up the method's ScriptLambda and set
++                        // SsType::m_pMethods[id].m_pLambda.
++                        //
++                        // The name is "<type>-<method>", and BOTH parts may contain '-'.
++                        // "my-basic-len" is type "my-basic", method "len", not type "my".
++                        // We therefore iterate over every known type and check whether
++                        // "<type>-" is a prefix of the function name. The longest match
++                        // wins, so a type whose name is a prefix of another type's name
++                        // ("vec" vs "vector") still resolves correctly.
++                        FileNode          *owner = nullptr;
++                        size_t             best_prefix_len = 0;
++                        const std::string &fn_name = fn->name();
++
++                        for (auto &[oname, onode] : m_file_nodes) {
++                            (void)oname;
++                            for (auto &child : onode->children()) {
++                                if (auto *td = dynamic_cast<TypeDeclarationNode *>(child.get())) {
++                                    const std::string prefix = td->type().base_type() + "-";
++                                    if (fn_name.rfind(prefix, 0) == 0 &&
++                                        prefix.size() > best_prefix_len) {
++                                        best_prefix_len = prefix.size();
++                                        owner = onode.get();
++                                    }
++                                }
++                            }
++                        }
++
++                        if (owner && owner != file_node) {
++                            // Replace any existing method implementation in the owner.
++                            // Without this, repeated `defmethod len my-basic` in separate
++                            // REPL inputs would accumulate duplicate FunctionNodes in
++                            // <repl-0>, growing the binary on each call. Removing the
++                            // stale child first guarantees exactly one FunctionNode per
++                            // method name in the owner's m_children.
++                            owner->remove_named(fn_name);
++
++                            FunctionNode *raw = fn;
++                            node.release();
++                            owner->add_child(std::unique_ptr<Node>(raw));
++                            owner->bind(fn_name, raw);
++                            owners_to_rebuild.insert(owner);
++
++                            lg::info("compile_internal: attached '{}' to owner '{}'", fn_name,
++                                     owner->name());
++                        } else {
++                            file_node->add_child(std::move(node));
++                        }
+                     } else if (dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
+                                dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
+                                dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
+@@ -596,11 +643,10 @@ namespace sootc {
+                             .got(node->get_node_type_string());
+                     }
+                 }
+-                if (m_config.debug_print_ast)
+-                    inspect_ast(node.get());
++                if (m_config.debug_print_ast) inspect_ast(node.get());
+                 current = current.as_pair()->cdr;
+             }
+-            
++
+             // ---- Compile state-script handler bodies ----
+             //
+             // Each handler body and each track step is compiled into its
+@@ -627,10 +673,53 @@ namespace sootc {
+             }
+ 
+             // ---- Generate the binary ----
+-            FileNode *stored = file_node;
+-
++            FileNode   *stored = file_node;
+             DataSegment strings_table;
+-            auto         element = stored->generate(strings_table);
++            auto        element = stored->generate(strings_table);
++
++            // ---- Rebuild only the owners that received a new method ----
++            //
++            // A REPL input that is only a defmethod produces no binary of
++            // its own (element.m_rawData is empty), but it has already
++            // attached a FunctionNode to the owner FileNode. The owner's
++            // SsType must be rebuilt so the new m_pLambda reaches Globals.
++            //
++            // Rebuild ONLY the owners recorded in owners_to_rebuild, not every
++            // FileNode that happens to have a TypeDeclarationNode. Rebuilding
++            // every type-owner on every REPL input re-loads lib.sc and
++            // overwrites Globals["top-level"], so the module that was just
++            // compiled (e.g. <repl-3>) is never the one that runs.
++            for (FileNode *owner : owners_to_rebuild) {
++                if (!owner || owner == stored) continue;
++
++                DataSegment owner_strings;
++                auto        owner_el = owner->generate(owner_strings);
++                if (owner_el.m_rawData.empty()) continue;
++
++                auto owner_bytes = make_aligned_buffer(owner_el.m_rawData.size());
++                std::memcpy(owner_bytes.get(), owner_el.m_rawData.data(),
++                            owner_el.m_rawData.size());
++
++                auto owner_bin_res = BinaryFile::from_buffer(owner->name(), std::move(owner_bytes),
++                                                             owner_el.m_rawData.size());
++                if (!owner_bin_res) {
++                    lg::warn("compile_internal: cannot rebuild owner '{}': {}", owner->name(),
++                             owner_bin_res.error());
++                    continue;
++                }
++
++                auto owner_bin = std::make_unique<BinaryFile>(std::move(owner_bin_res.value()));
++                for (const auto &ds : owner->data_structs()) {
++                    owner_bin->m_dataStructs.push_back(ds);
++                }
++
++                if (!m_runtime->load_module(std::move(*owner_bin))) {
++                    lg::warn("compile_internal: runtime rejected rebuilt owner '{}'",
++                             owner->name());
++                } else {
++                    lg::debug("compile_internal: rebuilt owner '{}'", owner->name());
++                }
++            }
+ 
+             if (element.m_rawData.empty()) {
+                 lg::info("No binary output (only type/enum declarations)");
+@@ -654,7 +743,7 @@ namespace sootc {
+             for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
+ 
+             if (m_config.debug_print_asm) { color_binary_file(binary); }
+-            
++
+             m_global_snapshot = GlobalNode::Snapshot{};
+ 
+             return binary;
+@@ -664,7 +753,7 @@ namespace sootc {
+                 file_node->rollback(std::move(snapshot));
+                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+             }
+-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
++            m_global_env->rollback(std::move(m_global_snapshot));
+             return std::unexpected(std::string("SOOT error: ") + e.what());
+ 
+         } catch (const CompilerError &e) {
+@@ -673,7 +762,7 @@ namespace sootc {
+                 file_node->rollback(std::move(snapshot));
+                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+             }
+-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
++            m_global_env->rollback(std::move(m_global_snapshot));
+             return std::unexpected(std::string(e.what()));
+ 
+         } catch (const std::exception &e) {
+@@ -681,7 +770,7 @@ namespace sootc {
+                 file_node->rollback(std::move(snapshot));
+                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
+             }
+-            m_global_env->rollback(std::move(m_global_snapshot)); // ← добавить
++            m_global_env->rollback(std::move(m_global_snapshot));
+             render_internal_error(e);
+             return std::unexpected(std::string("Internal compiler error: ") + e.what());
+         }
+@@ -1158,6 +1247,7 @@ namespace sootc {
+                 return ReplStatus::ERR;
+             }
+             m_config.log_level = value.to_std_string();
++            sync_type_verbose(); 
+             fmt::print(fg(fmt::color::green), "; arg-set \"log-level\" => \"{}\"\n",
+                        m_config.log_level);
+             return ReplStatus::OK;
+@@ -1549,6 +1639,7 @@ namespace sootc {
+ 
+     // Compile a REPL expression, print a listing, and register the module.
+     ReplStatus Compiler::compile_and_report(const std::string &code) {
++
+         try {
+             auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
+             if (forms.is_null()) {
+@@ -1609,6 +1700,77 @@ namespace sootc {
+                            m_runtime->name());
+             }
+ 
++            // ---- Cross-REPL method patches ----
++            //
++            // A deftype in one REPL input and a defmethod in another produce
++            // two FileNodes. The first one holds the TypeDeclarationNode and
++            // emitted an SsType with m_pLambda == nullptr; the second one
++            // holds the FunctionNode but no SsType at all. The runtime ends
++            // up with the first SsType, so CallMethod fails with "unimplemented".
++            //
++            // Fix: for each (type, method) that was declared in :methods and
++            // defined by defmethod, find the FileNode that owns the type, and
++            // re-run its make_binary so that a fresh SsType with m_pLambda set
++            // is registered. The new SsType replaces the old one in Globals
++            // (same logical module name for the runtime, or the same SID).
++            //
++            // In REPL mode the same FileNode is reused across inputs only for
++            // non-REPL compilation. For REPL every input gets a fresh FileNode,
++            // so we must look up the type's owner FileNode by name in
++            // m_file_nodes.
++            //
++            // The simplest robust approach: for every FileNode in m_file_nodes
++            // that has a TypeDeclarationNode for a type we just patched, rebuild
++            // the binary and reload it. Because the module's logical name is
++            // stable (<repl-N>), load_module_from_binary replaces the old module
++            // entry and the old SsType in Globals.
++
++            // Build the list of (type_name -> owner FileNode) for all types
++            // that were declared in :methods and have a FunctionNode
++            // "<type>-<method>" somewhere in m_file_nodes.
++            std::unordered_map<std::string, FileNode *> type_owners;
++            for (auto &[name, node] : m_file_nodes) {
++                for (auto &child : node->children()) {
++                    if (auto *td = dynamic_cast<TypeDeclarationNode *>(child.get())) {
++                        type_owners[td->type().base_type()] = node.get();
++                    }
++                }
++            }
++
++            if (!type_owners.empty()) {
++                // Recompile each owner file with its current children.
++                // make_binary will pick up the new "<type>-<method>" entries
++                // and set SsType::m_pMethods[id].m_pLambda.
++                for (auto &[type_name, owner] : type_owners) {
++                    DataSegment strings_table;
++                    auto        element = owner->generate(strings_table);
++                    if (element.m_rawData.empty()) continue;
++
++                    auto bytes = make_aligned_buffer(element.m_rawData.size());
++                    std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
++
++                    auto binary_result = BinaryFile::from_buffer(owner->name(), std::move(bytes),
++                                                                 element.m_rawData.size());
++                    if (!binary_result) {
++                        lg::warn("cross-REPL patch: cannot rebuild '{}': {}", owner->name(),
++                                 binary_result.error());
++                        continue;
++                    }
++
++                    auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
++                    for (const auto &ds : owner->data_structs()) {
++                        binary->m_dataStructs.push_back(ds);
++                    }
++
++                    // Replace the module in the runtime under the SAME logical
++                    // name, so that load_module_from_binary drops the old
++                    // symbols (including the stale SsType) and registers the new
++                    // ones.
++                    if (!m_runtime->load_module(std::move(*binary))) {
++                        lg::warn("cross-REPL patch: runtime rejected rebuilt '{}'", owner->name());
++                    }
++                }
++            }
+             // After the module is loaded, run its `top-level` function if
+             // it has one. In REPL mode, every expression that is not a
+             // declaration (defun / deftype / define with a function value)
+@@ -1930,6 +2092,44 @@ namespace sootc {
+             return false;
+         }
+ 
++        // ---- Strict mode: every :methods declaration must have a body ----
++        //
++        // A REPL session can build a type and its methods in separate
++        // inputs; build_ss_type must not fail on the intermediate states.
++        // But once the user asks to save the binary, every declared method
++        // that is not a builtin must have a ScriptLambda.
++        {
++            const DCEntry *table = file.entries();
++            const u32      n = file.entry_count();
++            for (u32 i = 0; i < n; ++i) {
++                if (BinaryFile::entry_kind(table[i]) != BinaryFile::EntryKind::SsType) continue;
++                const SsType *st = file.entry_as_ss_type(table[i]);
++                if (!st || !st->m_pMethods) continue;
++
++                for (u32 id = 0; id < st->m_numMethods; ++id) {
++                    const SsMethod &sm = static_cast<const SsMethod *>(st->m_pMethods)[id];
++                    if (sm.m_pLambda != nullptr) continue;
++                    if (sm.m_name == 0) continue; // empty slot
++
++                    const std::string type_name = file.resolve_sid(st->m_name);
++                    const std::string method_name = file.resolve_sid(sm.m_name);
++
++                    // Skip builtins (methods inherited from basic/object that
++                    // have no user implementation in this module). The
++                    // m_fullName still carries "<type>-<method>"; if the
++                    // method's defining type is not this type, it is builtin.
++                    //
++                    // For a simple first step, just report every unimplemented
++                    // method. If this turns out too noisy for builtins, the
++                    // check can be relaxed later.
++                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
++                               "; ERROR: method '{}' (id {}) of type '{}' has no defmethod\n",
++                               method_name, id, type_name);
++                    return false;
++                }
++            }
++        }
++
+         fs::path out = target_dir / (file.m_path.stem().string() + ".bin");
+         if (!const_cast<BinaryFile &>(file).save(out)) {
+             fmt::print(fg(fmt::color::crimson), "; ERROR: cannot save {}\n", out.string());
+@@ -2447,4 +2647,13 @@ namespace sootc {
+ 
+         lg::warn("lib.sc not found");
+     }
++
++    // sootccompilerCompiler.cpp
++    void Compiler::sync_type_verbose() {
++        const bool verbose = (m_config.log_level == "debug");
++        if (Type::verbose != verbose) {
++            Type::verbose = verbose;
++            lg::debug("Type::verbose = {}", verbose ? "true" : "false");
++        }
++    }
+ } // namespace sootc
+\ No newline at end of file
+diff --git a/common/sootc/compiler/Compiler.hpp b/common/sootc/compiler/Compiler.hpp
+index bf83157..470201a 100644
+--- a/common/sootc/compiler/Compiler.hpp
++++ b/common/sootc/compiler/Compiler.hpp
+@@ -603,5 +603,16 @@ namespace sootc {
+         ///          при исключении. Гарантирует, что global_env не
+         ///          удержит висячий указатель после rollback FileNode.
+         GlobalNode::Snapshot m_global_snapshot;
++        // sootc/compiler/Compiler.hpp
++    private:
++        // Синхронизирует глобальный флаг Type::verbose с текущим
++        // m_config.log_level. Вызывается при любом изменении log_level:
++        // в конструкторе (после инициализации m_config) и в
++        // cmd_arg_set при смене "log-level".
++        //
++        // "debug" -> Type::verbose = true, всё остальное -> false.
++        // Trace намеренно не включает verbose: trace — это про VM/compiler
++        // внутренности, а Type::verbose — про дампы полей типов.
++        void sync_type_verbose();
+     };
+ } // namespace sootc
+\ No newline at end of file
+diff --git a/common/sootc/compiler/NodeBuilder.cpp b/common/sootc/compiler/NodeBuilder.cpp
+index dd8a22d..99c91d6 100644
+--- a/common/sootc/compiler/NodeBuilder.cpp
++++ b/common/sootc/compiler/NodeBuilder.cpp
+@@ -703,8 +703,7 @@ namespace sootc {
+             if (m_ts.try_lookup_method(expr_type->get_name(), name, &method_info)) {
+                 std::vector<std::unique_ptr<ExpressionNode>> args;
+                 for (size_t j = i + 1; j < steps.size(); ++j) {
+-                    const auto &arg_form = steps[j];
+-                    args.push_back(build_expression(arg_form, node));
++                    args.push_back(build_expression(steps[j], node));
+                 }
+ 
+                 Type *return_type = nullptr;
+@@ -719,6 +718,13 @@ namespace sootc {
+                                                                     std::move(args), return_type);
+                 method_call->set_is_native(m_compiler->is_native_function(full_name));
+ 
++                // Virtual dispatch is only valid for basic-derived types. For
++                // structure-derived types the compiler knows the exact type,
++                // so LookupPointer + Call is both correct and faster.
++                if (m_ts.should_use_virtual_methods(expr_type, method_info.id)) {
++                    method_call->set_method_id(method_info.id);
++                }
++
+                 return method_call;
+             }
+ 
+diff --git a/common/sootc/node/DataDeclarationNode.cpp b/common/sootc/node/DataDeclarationNode.cpp
+index 84a0632..ae6b6be 100644
+--- a/common/sootc/node/DataDeclarationNode.cpp
++++ b/common/sootc/node/DataDeclarationNode.cpp
+@@ -293,12 +293,35 @@ namespace sootc {
+ 
+             std::vector<std::byte> payload(static_cast<size_t>(size_bytes), std::byte{0});
+             std::vector<ProgramBinaryElement::StructPointerSlot> deferred;
++            
++            // Basic-derived types carry a runtime type tag in the first 8 bytes
++            // of their payload. For static objects it is the SID64 of the type
++            // name (not a pointer): the type may be declared in another file,
++            // so its SsType* is not known at compile time. The VM resolves the
++            // SID to an SsType* through Globals at CallMethod time.
++            //
++            // Structure-derived types (vector, matrix, ...) have no tag and
++            // start with their first declared field at offset 0. This check
++            // distinguishes the two: only BasicType gets the header.
++            if (dynamic_cast<BasicType *>(type) != nullptr) {
++                const sid64 type_sid = static_cast<sid64>(StringId(type_name));
++                std::memcpy(payload.data(), &type_sid, sizeof(sid64));
++            }
+ 
+             // Anonymous children discovered while walking this structure's
+             // fields. They are attached to the element below.
+             AnonChildren local_children;
+ 
+             for (const auto &field : st->fields()) {
++                // Skip the implicit type header FIRST. It is written above
++                // from type_name; it has no user initializer, and
++                // find_field_init would return nullptr (or, if the user
++                // wrote :type, return a node we must not store into the
++                // header slot).
++                if (field.name() == "type" && dynamic_cast<BasicType *>(type) != nullptr) {
++                    continue;
++                }
++
+                 const NewNode::FieldInit *init = find_field_init(node, field.name());
+                 if (!init || !init->value) { continue; }
+ 
+@@ -320,6 +343,14 @@ namespace sootc {
+             layout.type_name = type_name;
+             layout.total_size = static_cast<u32>(size_bytes);
+             for (const auto &field : st->fields()) {
++                // Skip the implicit type header. It is written at offset 0 by
++                // generate_static_element from type_name; it has no user-facing
++                // initializer and must not appear as a field in the inspector
++                // dump or in the generated C header.
++                if (field.name() == "type" && dynamic_cast<BasicType *>(type) != nullptr) {
++                    continue;
++                }
++
+                 StructFieldInfo fi;
+                 fi.name = field.name();
+                 fi.type_name = field.type().print();
+diff --git a/common/sootc/node/FileNode.cpp b/common/sootc/node/FileNode.cpp
+index f1d9d9b..a23d17b 100644
+--- a/common/sootc/node/FileNode.cpp
++++ b/common/sootc/node/FileNode.cpp
+@@ -226,9 +226,14 @@ namespace sootc {
+ 
+         for (const auto &sf : ss_fields) { element.push_value(sf); }
+ 
+-        // m_pLambda is already an absolute file offset (computed in Pass 1),
+-        // so it must NOT be marked as relocatable.
+-        for (const auto &sm : ss_methods) { element.push_value(sm); }
++        // m_pLambda is a file offset that the loader must convert to an
++        // absolute pointer. Mark it as a relocatable slot, so that
++        // BinaryFile::read_reloc_table turns 0x70 into m_bytes + 0x70.
++        // Without the reloc bit the value stays a relative offset, and
++        // push_call_frame receives a bogus pointer.
++        for (const auto &sm : ss_methods) {
++            element.push_value_with_ptr(sm, PTR_FIELD(SsMethod, m_pLambda));
++        }
+ 
+         lg::info("build_ss_type '{}': {} fields, {} methods, {} bytes", type_name, num_fields,
+                  num_methods, element.m_rawData.size());
+@@ -335,7 +340,9 @@ namespace sootc {
+                                     PTR_FIELD(SsType, m_pMethods));
+ 
+         for (const auto &sf : ss_fields) { element.push_value(sf); }
+-        for (const auto &sm : ss_methods) { element.push_value(sm); }
++        for (const auto &sm : ss_methods) {
++            element.push_value_with_ptr(sm, PTR_FIELD(SsMethod, m_pLambda));
++        }
+ 
+         lg::info("build_ss_type_for_script '{}': {} fields, {} methods, {} bytes", vars_name,
+                  num_fields, num_methods, element.m_rawData.size());
+diff --git a/common/sootc/node/MethodCallNode.cpp b/common/sootc/node/MethodCallNode.cpp
+index 1a5f708..8058a77 100644
+--- a/common/sootc/node/MethodCallNode.cpp
++++ b/common/sootc/node/MethodCallNode.cpp
+@@ -28,12 +28,54 @@ namespace sootc {
+     ///          3. Move them into the argument registers (r24+).
+     ///          4. Emit the call and store the result in a new temp register.
+     void MethodCallNode::emit(FunctionNode &fn) {
+-        // 1. Resolve the method lambda from the symbol table.
++        // Virtual dispatch: the receiver is a basic-derived object whose
++        // first 8 bytes hold the SID64 of its runtime type. Emit CallMethod
++        // so the VM resolves the SsType* and indexes SsType::m_pMethods
++        // by m_method_id at runtime.
++        //
++        // Static dispatch: the type is known at compile time and the
++        // method has no virtual semantics. Emit LookupPointer + Call as
++        // before.
++        //
++        // m_method_id is set by NodeBuilder::build_deref from MethodInfo.id
++        // when the type is basic and the method is virtual
++        // (TypeSystem::should_use_virtual_methods). When it is -1, we fall
++        // back to the static path.
++        if (m_method_id >= 0) {
++            // ---- 1. Evaluate receiver + args into temp registers. ----
++            std::vector<u8> arg_regs;
++            m_obj->emit(fn);
++            arg_regs.push_back(fn.get_temp_reg(m_obj.get()));
++            for (auto &arg : m_args) {
++                arg->emit(fn);
++                arg_regs.push_back(fn.get_temp_reg(arg.get()));
++            }
++
++            // ---- 2. Move into r24+ (receiver first, then args). ----
++            for (size_t i = 0; i < arg_regs.size(); ++i) {
++                fn.add_instruction(Opcode::Move, static_cast<u8>(ARG_REGISTERS_OFFSET + i),
++                                   arg_regs[i], 0);
++            }
++
++            // ---- 3. Load method_id into a temp register. ----
++            u8  idx_reg = fn.alloc_temp_reg(nullptr);
++            u16 idx_st =
++                fn.add_constant(static_cast<u64>(m_method_id), FunctionNode::ConstKind::INT);
++            fn.add_instruction_imm_u16(Opcode::LoadStaticI64Imm, idx_reg, idx_st);
++
++            // ---- 4. CallMethod: a = dst, b = method_id reg, c = argc. ----
++            u8 ret_reg = fn.alloc_temp_reg(m_type);
++            fn.add_instruction(Opcode::CallMethod, ret_reg, idx_reg,
++                               static_cast<u8>(arg_regs.size()));
++            fn.set_temp_reg(this, ret_reg);
++            return;
++        }
++
++        // ---- Static path (unchanged). ----
+         u8  fn_reg = fn.alloc_temp_reg(nullptr);
+         u16 st_idx = fn.add_constant(StringId(m_full_name).value, FunctionNode::ConstKind::SID);
+         fn.add_instruction_imm_u16(Opcode::LookupPointer, fn_reg, st_idx);
+ 
+-        // 2. Evaluate receiver + arguments.
+         std::vector<u8> arg_regs;
+         m_obj->emit(fn);
+         arg_regs.push_back(fn.get_temp_reg(m_obj.get()));
+@@ -42,13 +84,11 @@ namespace sootc {
+             arg_regs.push_back(fn.get_temp_reg(arg.get()));
+         }
+ 
+-        // 3. Move values into the argument registers (r24+).
+         for (size_t i = 0; i < arg_regs.size(); ++i) {
+             fn.add_instruction(Opcode::Move, static_cast<u8>(ARG_REGISTERS_OFFSET + i), arg_regs[i],
+                                0);
+         }
+ 
+-        // 4. Call — CallFf for native methods, Call for script methods.
+         const Opcode call_op = m_is_native ? Opcode::CallFf : Opcode::Call;
+ 
+         u8 ret_reg = fn.alloc_temp_reg(m_type);
+diff --git a/common/sootc/node/MethodCallNode.hpp b/common/sootc/node/MethodCallNode.hpp
+index 064edf4..7259c46 100644
+--- a/common/sootc/node/MethodCallNode.hpp
++++ b/common/sootc/node/MethodCallNode.hpp
+@@ -22,7 +22,7 @@ namespace sootc {
+         std::string                                  m_full_name; ///< "<type>-<method>"
+         std::vector<std::unique_ptr<ExpressionNode>> m_args;
+         bool                                         m_is_native = false; // ← NEW
+-
++        int m_method_id = -1; ///< -1 = use static lookup (current behaviour)
+     public:
+         MethodCallNode(std::unique_ptr<ExpressionNode> obj, std::string full_name,
+                        std::vector<std::unique_ptr<ExpressionNode>> args, Type *return_type);
+@@ -33,6 +33,10 @@ namespace sootc {
+         // ---- NEW: native/script dispatch ----
+         void set_is_native(bool v) { m_is_native = v; }
+         bool is_native() const { return m_is_native; }
++        
++        // ---- Method index ----
++        void set_method_id(int id) { m_method_id = id; }
++        int  method_id() const { return m_method_id; }
+ 
+         void emit(FunctionNode &fn) override;
+ 
+diff --git a/common/sootc/node/NewNode.cpp b/common/sootc/node/NewNode.cpp
+index 17a2ce0..c1bdc04 100644
+--- a/common/sootc/node/NewNode.cpp
++++ b/common/sootc/node/NewNode.cpp
+@@ -106,7 +106,7 @@ namespace sootc {
+             u8 ptr_reg = fn.alloc_temp_reg(nullptr);
+             fn.add_instruction(Opcode::CallFf, ptr_reg, alloc_fn_reg, 2);
+ 
+-           // -------- write each element into its slot --------
++            // -------- write each element into its slot --------
+ 
+             const auto &elems = m_elements;
+ 
+@@ -237,6 +237,18 @@ namespace sootc {
+         u8 ptr_reg = fn.alloc_temp_reg(nullptr);
+         fn.add_instruction(Opcode::CallFf, ptr_reg, alloc_fn_reg, 2);
+ 
++        // Basic-derived types carry a runtime type tag in the first 8 bytes
++        // of the heap payload. Write the SID64 of the type name there, so
++        // that CallMethod can resolve it to SsType*.
++        //
++        // Structure-derived types (vector, matrix, ...) have no tag; their
++        // first field starts at offset 0.
++        if (dynamic_cast<BasicType *>(type) != nullptr) {
++            u8  sid_reg = fn.alloc_temp_reg(nullptr);
++            u16 sid_idx = fn.add_constant(StringId(type_name).value, FunctionNode::ConstKind::SID);
++            fn.add_instruction_imm_u16(Opcode::LoadStaticI64Imm, sid_reg, sid_idx);
++            fn.add_instruction(Opcode::StoreI64, ptr_reg, sid_reg, 0); // a=addr, b=value
++        }
+         // -------- Step 2: does the type have its own constructor? --------
+         bool has_ctor = false;
+         if (Type *t = TypeSystem::instance().lookup_type_no_throw(type_name)) {
+@@ -319,6 +331,11 @@ namespace sootc {
+         auto emit_one = [&](const Field &field, ExpressionNode *init) {
+             if (!init) return;
+ 
++            // Skip the implicit type header. It was written to payload[0..8]
++            // by NewNode::emit from type_name and must not be overwritten by
++            // a user-provided :type initializer (which is illegal anyway).
++            if (field.name() == "type" && dynamic_cast<BasicType *>(st) != nullptr) { return; }
++
+             Type *field_type = ts.lookup_type_no_throw(field.type().base_type());
+             if (!field_type) {
+                 lg::warn("NewNode: field '{}' has unknown type '{}', skipped", field.name(),
+diff --git a/common/type_system/Deftype.cpp b/common/type_system/Deftype.cpp
+index 43e0cc6..413cd9d 100644
+--- a/common/type_system/Deftype.cpp
++++ b/common/type_system/Deftype.cpp
+@@ -765,22 +765,50 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
+                                        const script::Object &fields, const script::Object &options,
+                                        script::EnvironmentMap *constants) {
+     StructureDefResult result;
++
++    // ---- Fields ----
+     for_each_in_list(fields, [&](const script::Object &o) { add_field(type, ts, o, constants); });
++
+     TypeFlags flags;
+     flags.heap_base = 0;
+-
+     flags.size = type->get_size_in_memory();
+     flags.pad = 0;
+ 
++    // ---- Options ----
++    //
++    // The option tail is a flat sequence of entries. Each entry is one of:
++    //
++    //   (:methods (...))         -- list-headed option
++    //   (:states (...))          -- list-headed option
++    //   (:state-methods (...))   -- list-headed option
++    //   (:options (...))         -- list-headed option
++    //   :size-assert #x20        -- flat keyword + value
++    //   :method-count-assert 14  -- flat keyword + value
++    //   :flag-assert #x...       -- flat keyword + value
++    //   :no-runtime-type         -- flat keyword, no value
++    //   :no-inspect              -- flat keyword, no value
++    //   :pack-me                 -- flat keyword, no value
++    //   :heap-base #x...         -- flat keyword + value
++    //   :allow-misaligned        -- flat keyword, no value
++    //   :final                   -- flat keyword, no value
++    //   :always-stack-singleton  -- flat keyword, no value
++    //
++    // OpenGOAL writes the flat keyword forms directly; macros may produce
++    // the list-headed forms for :methods/:states/:state-methods/:options.
++    // Both are accepted in the same loop.
+     auto    *rest = &options;
+     int      size_assert = -1;
+     int      method_count_assert = -1;
+     uint64_t flag_assert = 0;
+     bool     flag_assert_set = false;
+     bool     set_heapbase = false;
++
+     while (!rest->is_null()) {
+-        if (car(rest).is_pair()) {
+-            auto  opt_list = &car(rest);
++        const script::Object &head = car(rest);
++
++        if (head.is_pair()) {
++            // ---- List-headed option: (:methods ...) etc. ----
++            auto  opt_list = &head;
+             auto &first = car(opt_list);
+             opt_list = cdr(opt_list);
+ 
+@@ -795,19 +823,42 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
+                 parse_type_options(type, *opt_list);
+             } else {
+                 throw std::runtime_error("Invalid option list in field specification: " +
+-                                         car(rest).print());
++                                         head.print());
+             }
+-
+             rest = cdr(rest);
+-        } else {
+-            auto opt_name = symbol_string(car(rest));
++        } else if (head.is_keyword()) {
++            // ---- Flat keyword option ----
++            const std::string opt_name = symbol_string(head);
+             rest = cdr(rest);
+ 
+-            if (opt_name == ":size-assert") {
+-                size_assert = get_int(car(rest));
+-                if (size_assert == -1) {
+-                    throw std::runtime_error("Cannot use -1 as size-assert");
++            if (opt_name == ":methods") {
++                if (rest->is_null() || !car(rest).is_pair()) {
++                    throw std::runtime_error(":methods requires a list of method declarations");
++                }
++                declare_method(type, ts, car(rest), result);
++                rest = cdr(rest);
++            } else if (opt_name == ":states") {
++                if (rest->is_null() || !car(rest).is_pair()) {
++                    throw std::runtime_error(":states requires a list of state declarations");
+                 }
++                declare_state(type, ts, car(rest), result);
++                rest = cdr(rest);
++            } else if (opt_name == ":state-methods") {
++                if (rest->is_null() || !car(rest).is_pair()) {
++                    throw std::runtime_error(
++                        ":state-methods requires a list of state method declarations");
++                }
++                declare_state_methods(type, ts, car(rest), result);
++                rest = cdr(rest);
++            } else if (opt_name == ":options") {
++                if (rest->is_null() || !car(rest).is_pair()) {
++                    throw std::runtime_error(":options requires a list of option entries");
++                }
++                parse_type_options(type, car(rest));
++                rest = cdr(rest);
++            } else if (opt_name == ":size-assert") {
++                size_assert = get_int(car(rest));
++                if (size_assert == -1) { throw std::runtime_error("Cannot use -1 as size-assert"); }
+                 rest = cdr(rest);
+             } else if (opt_name == ":method-count-assert") {
+                 method_count_assert = get_int(car(rest));
+@@ -826,7 +877,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
+             } else if (opt_name == ":pack-me") {
+                 result.pack_me = true;
+             } else if (opt_name == ":heap-base") {
+-                u16 hb = get_int(car(rest));
++                u16 hb = static_cast<u16>(get_int(car(rest)));
+                 if ((hb % 0x10) != 0) {
+                     throw std::runtime_error("heap-base is not 16-byte aligned");
+                 }
+@@ -842,36 +893,40 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
+             } else {
+                 throw std::runtime_error("Invalid option in field specification: " + opt_name);
+             }
++        } else {
++            throw std::runtime_error(
++                fmt::format("Invalid option in field specification: {}", head.print()));
+         }
+     }
+ 
++    // ---- Process heap-base auto-detection ----
++    //
++    // If this type is a child of `process`, its heap-base must be at
++    // least the size of the parent, rounded up to 0x10. The check runs
++    // after the option loop so that both automatic and manual values
++    // can be validated.
+     if (ts->fully_defined_type_exists(TypeSpec("process")) &&
+         ts->tc(TypeSpec("process"), TypeSpec(type->get_parent()))) {
+-        // check heap-base if this is a child of process.
+         auto process_type = ts->get_type_of_type<BasicType>("process");
+         auto auto_hb = (flags.size - process_type->size() + 0xf) & ~0xf;
+         if (!set_heapbase) {
+-            // wasnt set manually so set automatically.
+             flags.heap_base = auto_hb;
+         } else if (flags.heap_base < auto_hb) {
+-            // was set manually so verify if that's correct.
+             throw std::runtime_error(fmt::format(
+                 "Process heap underflow in type {}: heap-base is {} vs. auto-detected {}",
+                 type->get_name(), flags.heap_base, auto_hb));
+-            //} else if (flags.heap_base != auto_hb) {
+-            //  lg::print("Type {} has manual heap-base ({} vs {}). This is fine. \n",
+-            //  type->get_name(),
+-            //             flags.heap_base, auto_hb);
+         }
+     }
+ 
++    // ---- Size assertion ----
+     if (size_assert != -1 && flags.size != u16(size_assert)) {
+         throw std::runtime_error(
+             fmt::format("Type {} came out to size {}[{:#x}] but size-assert was set to {}",
+                         type->get_name(), int(flags.size), int(flags.size), size_assert));
+     }
+ 
+-    flags.methods = ts->get_next_method_id(type);
++    // ---- Method count ----
++    flags.methods = static_cast<u16>(ts->get_next_method_id(type));
+ 
+     if (method_count_assert != -1 && flags.methods != u16(method_count_assert)) {
+         throw std::runtime_error(
+@@ -879,6 +934,7 @@ StructureDefResult parse_structure_def(StructureType *type, TypeSystem *ts,
+             " methods, but method-count-assert was set to " + std::to_string(method_count_assert));
+     }
+ 
++    // ---- Flag assertion ----
+     if (flag_assert_set && (flags.flag != flag_assert)) {
+         throw std::runtime_error(
+             fmt::format("Type {} has flag 0x{:x} but flag-assert was set to 0x{:x}",
+diff --git a/common/type_system/Type.cpp b/common/type_system/Type.cpp
+index 6cd8a54..4234ce6 100644
+--- a/common/type_system/Type.cpp
++++ b/common/type_system/Type.cpp
+@@ -852,9 +852,10 @@ std::string BasicType::inspect() const {
+                     "  final:      {}\n"
+                     "  fields:",
+                     m_name, m_parent, m_dynamic, m_size_in_mem, m_heap_base, m_final);
+-    for (const auto &field : m_fields) {
+-        result += "\n    " + field.print();
+-    }
++    for (const auto &field : m_fields) { result += "\n    " + field.print(); }
++    result += "\n  methods:";
++    if (m_new_method_info_defined) { result += "\n    " + m_new_method_info.print_one_line(); }
++    for (const auto &m : m_methods) { result += "\n    " + m.print_one_line(); }
+     return result;
+ }
+ 
+diff --git a/common/type_system/TypeSystem.cpp b/common/type_system/TypeSystem.cpp
+index db23769..7707ae4 100644
+--- a/common/type_system/TypeSystem.cpp
++++ b/common/type_system/TypeSystem.cpp
+@@ -985,8 +985,9 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
+     type->m_fields.push_back(field);
+     if (Type::verbose)
+         fmt::print(
+-            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {}\n",
+-            field_name, type->get_name(), offset, field_size, is_inline, array_size);
++            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {} size-in-memory: {}\n",
++            field_name, type->get_name(), offset, field_size, is_inline, array_size, 
++            type->get_size_in_memory());
+ 
+     return offset;
+ }
+@@ -1335,10 +1336,11 @@ void TypeSystem::add_builtin_types() {
+     // Fields of `basic`
+     // ---------------------------------------------------------------------
+     //
+-    // Every `basic`-derived object starts with a 4-byte SID that names
+-    // its runtime type. This is what allows the VM to dispatch on
+-    // `-> type` and to walk a `type` chain at runtime.
+-    add_field_to_type(basic_type, "type", make_typespec("type"));
++    // The type header is a SID64, not a 4-byte tag. Every basic-derived
++    // object starts with 8 bytes that hold the SID of its runtime type.
++    // The VM's CallMethod reads these 8 bytes as a sid64, resolves them
++    // through Globals (LookupPointer), and indexes SsType::m_pMethods.
++    add_field_to_type(basic_type, "type", make_typespec("sid64"));
+ 
+     // ---------------------------------------------------------------------
+     // Fields of `type`
+diff --git a/common/type_system/TypeSystem.hpp b/common/type_system/TypeSystem.hpp
+index cbb1fbf..6dd76a5 100644
+--- a/common/type_system/TypeSystem.hpp
++++ b/common/type_system/TypeSystem.hpp
+@@ -503,8 +503,6 @@ class TypeSystem {
+ 
+     std::string m_variant = "default";
+ 
+-  public:
+-    static int verbose;
+ };
+ 
+ // ============================================================================
