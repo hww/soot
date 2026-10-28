@@ -34,6 +34,7 @@ namespace carbon {
             {"SsField", sizeof(SsField)},
             {"SsType", sizeof(SsType)},
             {"ProgramBinaryElement", sizeof(ProgramBinaryElement)},
+            {"RequiresList", sizeof(RequiresList)},
         };
 
         std::printf("%-24s %8s   %s\n", "struct", "size", "hex");

@@ -21,10 +21,9 @@ add_library(libcarbon
     common/carbon/file/BinaryFile.cpp   
     common/carbon/file/BinaryFileInspector.cpp   
     common/carbon/file/ProgramBinaryElement.cpp   
-    common/carbon/file/DCIFile.cpp   
+       
 
     ## Virtual machine
-    
     common/carbon/vm/StackFrame.cpp
     common/carbon/vm/StateFrame.cpp
     common/carbon/vm/TrackFrame.cpp

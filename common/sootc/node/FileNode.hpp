@@ -28,6 +28,11 @@ namespace sootc {
         /// @brief Names that need a placeholder entry in the binary.
         /// @details See add_placeholder() for the rationale.
         std::vector<std::string>                m_placeholders;
+        /// @brief Module names this file depends on via (require ...).
+        /// @details Serialised into a "requires" entry in the .bin as a
+        ///          SymbolArray of SIDs. The loader can read it to walk
+        ///          the dependency graph without a .dci side file.
+        std::vector<std::string>                m_requires;
         /// @brief Объявления файла (функции, данные, типы). Владеет ими FileNode.
         std::vector<std::unique_ptr<Node>>      m_children;
     public:
@@ -132,6 +137,8 @@ namespace sootc {
             }
             return nullptr;
         }
+
+
         // --- Symbols ---
 
         std::unordered_map<std::string, Node *> take_symbols() {
@@ -183,7 +190,27 @@ namespace sootc {
                 m_placeholders.push_back(name);
             }
         }
+        /// @brief Record a module that this file depends on.
+        /// @details Called by NodeBuilder::build_require. Deduplicated:
+        ///          a file that requires the same module twice lists it once.
+        void add_require(const std::string &module_name) {
+            if (std::find(m_requires.begin(), m_requires.end(), module_name) == m_requires.end()) {
+                m_requires.push_back(module_name);
+            }
+        }
 
+        /// @brief Remove a dependency recorded by add_require.
+        /// @details Used by save_session / save_module to strip a
+        ///          self-dependency before generation. A module that
+        ///          requires itself cannot be loaded.
+        void remove_require(const std::string &module_name) {
+            m_requires.erase(std::remove(m_requires.begin(), m_requires.end(), module_name),
+                             m_requires.end());
+        }
+
+        const std::vector<std::string> & get_requires() const {
+            return m_requires;
+        }
     private:
         const std::vector<std::string> &placeholders() const { return m_placeholders; }
 

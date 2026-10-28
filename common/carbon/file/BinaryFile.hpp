@@ -119,6 +119,8 @@ namespace carbon {
             Map,          ///< m_typeId == SID("map") or SID("map-32")
             Array,        ///< m_typeId == SID("array")
             DataStruct,   ///< any other non-zero typeId (raw payload)
+            SymbolArray,  ///< m_typeId == SID("symbol-array") — a bare SymbolArray entry
+            Requires,     ///< m_typeId == SID("requires") — a RequiresList entry
         };
 
         BinaryFile() = default;
@@ -192,6 +194,12 @@ namespace carbon {
         
         /// @return the entry payload as DcArray*, or nullptr if kind != Array.
         [[nodiscard]] const DcArray *entry_as_array(const DCEntry &entry) const noexcept;
+        
+        /// @return the entry payload as SymbolArray*, or nullptr if kind != SymbolArray.
+        [[nodiscard]] const SymbolArray *entry_as_symbol_array(const DCEntry &entry) const noexcept;
+
+        /// @return the entry payload as RequiresList*, or nullptr if kind != Requires.
+        [[nodiscard]] const RequiresList *entry_as_requires(const DCEntry &entry) const noexcept;
 
         // -------------------------------------------------------------------
         // SID and string helpers

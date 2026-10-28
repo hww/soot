@@ -236,31 +236,28 @@ namespace sootc {
         /// @param dir    Output directory. Defaults to ".".
         /// @return true on success.
         bool save_session(const std::string &name, const std::filesystem::path &dir);
-        /// @brief Save a .dci manifest for a compiled module.
+        /// @brief Compile a .sc file and save it as its own module (.bin + .h).
         ///
-        /// @details A .dci file describes the module's logical path
-        ///          and the files it imports via (require ...). It
-        ///          lives next to the .bin file and is read by the
-        ///          loader (carbon) to resolve dependencies without
-        ///          the user having to list them on the command line.
+        /// @details Unlike save_session, which serialises everything entered in
+        ///          the REPL as one throwaway module, this method compiles ONE
+        ///          source file and writes exactly what that file contains —
+        ///          its own declarations and its own (require ...) list.
         ///
-        ///          The manifest is built from:
-        ///            * logical_path  — the file's path relative to
-        ///                              source_root, with the
-        ///                              extension stripped;
-        ///            * binary_size   — the size of the emitted .bin;
-        ///            * imports       — every file that was pulled in
-        ///                              via (require ...) during this
-        ///                              compilation.
+        ///          The module's name is the file stem. A module never contains
+        ///          a dependency on itself: if the file contains
+        ///          (require "bar.sc") and the file is bar.sc, the dependency is
+        ///          dropped (see NodeBuilder::build_require).
         ///
-        ///          Exports are not recorded: every top-level name is
-        ///          visible through Globals at runtime, so a separate
-        ///          export list would be redundant.
+        ///          The output goes to <out_dir>/<stem>.bin and
+        ///          <out_dir>/<stem>.h. The directory is resolved against
+        ///          PROJECT if relative, same as save_binary/save_header.
         ///
-        /// @param file       The BinaryFile that was just produced.
-        /// @param target_dir Directory to write the .dci into.
+        /// @param source_file  Path to the .sc file. Resolved against
+        ///                     m_config.search_paths if relative.
+        /// @param out_dir      Output directory. Defaults to "build".
         /// @return true on success.
-        bool save_dci(const BinaryFile &file, const std::filesystem::path &target_dir);
+        bool           save_module(const std::filesystem::path &source_file,
+                                   const std::filesystem::path &out_dir = "build");
         /// @brief Save the accumulated SIDBase to the path from m_config.
         /// @details Called by main.cpp after all input files are compiled,
         ///          or on REPL exit. This is the ONLY place that writes
@@ -386,8 +383,8 @@ namespace sootc {
 
         // --- Helpers ---
         ReplStatus interpret_and_print(const std::string &script);
-        ReplStatus compile_and_report(const std::string &code);
-        ReplStatus try_interpret_then_compile(const std::string &code);
+        ReplStatus compile_and_report(script::Object forms);
+        ReplStatus try_interpret_then_compile(script::Object form);
 
         void                 color_binary_file(std::unique_ptr<BinaryFile> &binary);
         std::vector<uint8_t> codegen_binary(BinaryFile *binary);
@@ -450,7 +447,7 @@ namespace sootc {
         /// @return The command's ReplStatus, or std::nullopt if `input`
         ///         is not a REPL command and should go through the
         ///         normal compile pipeline.
-        std::optional<ReplStatus> try_handle_repl_command(const std::string &input);
+        std::optional<ReplStatus> try_handle_repl_command(const script::Object &form);
 
         /// @brief Map a command name to its handler.
         ReplStatus dispatch_repl_command(const std::string &name, const script::Object &form);
@@ -468,6 +465,7 @@ namespace sootc {
         ReplStatus cmd_has_macro(const script::Object &form);
         ReplStatus cmd_list_symbols(const script::Object &form);
         ReplStatus cmd_save_session(const script::Object &form);
+        ReplStatus cmd_save_module(const script::Object &form);
         ReplStatus cmd_sc_run(const script::Object &form);
         ReplStatus cmd_sc_eval(const script::Object &form);
 

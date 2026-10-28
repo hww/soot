@@ -545,5 +545,34 @@ namespace carbon {
     };
 
     static_assert(sizeof(DcArray) == 0x18, "DcArray must be 0x18 bytes");
+
+    // ---------------------------------------------------------------------------
+    // RequiresList — the "requires" entry of a .bin module.
+    // ---------------------------------------------------------------------------
+    //
+    // Each module may depend on other modules via (require "path"). The
+    // dependency is stored as the module name (a plain string), not as a
+    // SID:
+    //
+    //   * a SID is only meaningful together with a matching SIDBase;
+    //     without one, StringId(sid) resolves to "<unknown:...>" and the
+    //     loader cannot find the file;
+    //   * the loader must work on a bare .bin with no side files;
+    //   * the name is a literal string in the string pool, so the loader
+    //     can read it directly with m_bytes + offset.
+    //
+    // Layout:
+    //   +0x00  u32          m_numEntries
+    //   +0x04  u32          m_reserved
+    //   +0x08  const char **m_pNames      pointer to const char*[m_numEntries]
+    //
+    // Each m_pNames[i] is a relocated pointer into the string pool.
+    struct RequiresList {
+        u32          m_numEntries;
+        u32          m_reserved;
+        const char **m_pNames;
+    };
+
+    static_assert(sizeof(RequiresList) == 0x10, "RequiresList must be 0x10 bytes");
 }
 

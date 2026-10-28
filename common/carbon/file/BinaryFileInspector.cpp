@@ -509,6 +509,24 @@ namespace carbon {
                 if (const auto *arr = m_file->entry_as_array(*entry)) { inspect_array(arr); }
                 break;
             }
+            case BinaryFile::EntryKind::SymbolArray: {
+                if (const auto *arr = m_file->entry_as_symbol_array(*entry)) {
+                    inspect_symbol_array(arr, "symbol-array");
+                }
+                break;
+            }
+            case BinaryFile::EntryKind::Requires: {
+                if (const auto *req = m_file->entry_as_requires(*entry)) {
+                    m_formatter->print("Requires ({}):\n", req->m_numEntries);
+                    if (req->m_pNames) {
+                        for (u32 i = 0; i < req->m_numEntries; ++i) {
+                            m_formatter->print("  [{}] {}\n", i,
+                                               req->m_pNames[i] ? req->m_pNames[i] : "(null)");
+                        }
+                    }
+                }
+                break;
+            }
             case BinaryFile::EntryKind::Unknown: break;
             }
         } catch (const std::exception &e) {
@@ -590,6 +608,8 @@ namespace carbon {
             case BinaryFile::EntryKind::Map: kind_str = "map"; break;
             case BinaryFile::EntryKind::DataStruct: kind_str = "data-struct"; break;
             case BinaryFile::EntryKind::Array: kind_str = "array"; break;
+            case BinaryFile::EntryKind::SymbolArray: kind_str = "symbol-array"; break;
+            case BinaryFile::EntryKind::Requires: kind_str = "requires"; break;
             case BinaryFile::EntryKind::Unknown: kind_str = "unknown"; break;
             }
 
@@ -632,6 +652,8 @@ namespace carbon {
             case BinaryFile::EntryKind::Map: ++n_maps; break;
             case BinaryFile::EntryKind::DataStruct: ++n_data; break;
             case BinaryFile::EntryKind::Array: ++n_arrays; break;
+            case BinaryFile::EntryKind::SymbolArray: ++n_arrays; break; // или свой счётчик
+            case BinaryFile::EntryKind::Requires: ++n_arrays; break; // или свой счётчик
             case BinaryFile::EntryKind::Unknown: ++n_unknown; break;
             }
         }

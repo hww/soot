@@ -2376,7 +2376,6 @@ namespace sootc {
     std::unique_ptr<Node> NodeBuilder::build_require(const script::Object &form, Node *node) {
         (void)node;
 
-        // Expect exactly one argument: a string path.
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_require")
@@ -2391,7 +2390,6 @@ namespace sootc {
                 .got(path_obj.print());
         }
 
-        // No extra arguments.
         if (rest.as_pair()->cdr.is_pair()) {
             throw m_compiler->make_error(form, "NodeBuilder::build_require")
                 .expected("a single path argument")
@@ -2399,7 +2397,29 @@ namespace sootc {
         }
 
         // Delegate to the compiler.
-        m_compiler->require_file(form, path_obj.to_std_string());
+        const std::string dep = path_obj.to_std_string();
+        m_compiler->require_file(form, dep);
+
+        // Record the dependency on the FileNode so that make_binary can
+        // emit a "requires" entry. Strip the extension (".sc" / ".bin")
+        // so the entry stores a logical module name, not a file name.
+        //
+        // Never record a self-dependency: a module that requires itself
+        // cannot be loaded. For a normal file `file->name()` is the file
+        // stem; for a REPL input it is the synthetic "<repl-N>", which
+        // never matches a real module name and therefore can never be
+        // stripped by mistake.
+        if (auto *file = node ? node->file() : nullptr) {
+            std::filesystem::path p(dep);
+            const std::string     module = p.stem().string();
+            const std::string     self = std::filesystem::path(file->name()).stem().string();
+            if (!module.empty() && module != self) {
+                file->add_require(module);
+            } else {
+                lg::debug("build_require: skipping self-dependency '{}' in '{}'", module,
+                          file->name());
+            }
+        }
 
         return std::make_unique<SequenceNode>();
     }

@@ -28,7 +28,8 @@ namespace sootc {
     // to_string
     // ============================================================================
     std::string FileNode::to_string() const {
-        return "FileNode(name=" + m_name + ", symbols=" + std::to_string(m_symbols.size()) + ")";
+        return "FileNode(name=" + m_name + ", symbols=" + std::to_string(m_symbols.size()) +
+               ", requires=" + std::to_string(m_requires.size()) + ")";
     }
 
     // ============================================================================
@@ -827,8 +828,13 @@ namespace sootc {
         // running_offset for the first function is off by
         // placeholders.size() * sizeof(DCEntry), and every SsMethod::m_pLambda
         // points into the wrong place.
+        // Every entry that will end up in the table: functions, SsTypes
+        // (one per type), SsType+StateScript (two per state-script),
+        // heap placeholders, and the "requires" entry (one, if any
+        // dependencies were recorded).
         const u64 total_entries = program_elements.size() + type_infos.size() +
-                                  state_script_infos.size() * 2 + m_placeholders.size();
+                                  state_script_infos.size() * 2 + m_placeholders.size() +
+                                  (m_requires.empty() ? 0 : 1);
 
         // ------------------------------------------------------------------
         // Pass 1: method offsets for SsType entries.
@@ -943,6 +949,70 @@ namespace sootc {
             lg::debug("make_binary: placeholder entry '{}'", pname);
         }
 
+        // ------------------------------------------------------------------
+        // "requires" entry: list of modules this file depends on.
+        // ------------------------------------------------------------------
+        //
+        // Layout:
+        //   SymbolArray  (0x10)
+        //   sid64[]      (8 * N)
+        //
+        // The SymbolArray itself is the entry payload; m_pSymbols points
+        // at the sid64 array that immediately follows, and is marked as
+        // relocatable so that the loader turns the file offset into an
+        // absolute pointer.
+        //
+        // The entry is emitted only if there is at least one dependency.
+        // A file with no requires has no "requires" entry at all, which
+        // the inspector reports as "(none)".
+        if (!m_requires.empty()) {
+            const u32 n = static_cast<u32>(m_requires.size());
+
+            // Layout: RequiresList (0x10) + const char*[N] (8 * N).
+            // m_pNames points at the pointer array that follows. Each
+            // m_pNames[i] points at a string in the string pool; the
+            // string itself is added via add_string() and resolved by
+            // m_stringConstantSlots at Pass 3a.
+            const u64 names_offset = sizeof(RequiresList);
+            const u64 payload_size = names_offset + n * sizeof(const char *);
+
+            ProgramBinaryElement req_el(payload_size);
+            req_el.m_entry = {
+                .m_nameID = StringId("requires").value,
+                .m_typeId = StringId("requires").value,
+                .m_entryPtr = nullptr,
+            };
+
+            RequiresList list{};
+            list.m_numEntries = n;
+            list.m_reserved = 0;
+            list.m_pNames = reinterpret_cast<const char **>(names_offset);
+
+            req_el.push_value_with_ptr(list, PTR_FIELD(RequiresList, m_pNames));
+
+            for (u32 i = 0; i < n; ++i) {
+                const u32 str_offset = data_segment.add_string(m_requires[i]);
+
+                const u64 slot_offset = names_offset + i * sizeof(const char *);
+                req_el.m_stringConstantSlots.push_back({slot_offset, str_offset});
+
+                // Placeholder: make_binary::Pass 3a writes the absolute
+                // string-pool offset into this slot.
+                const u64 offset_in_payload = req_el.m_rawData.size();
+                req_el.push_value(static_cast<u64>(0));
+
+                // Mark the slot as relocatable. Pass 3a clears the bit
+                // before adjust_offsets() runs and restores it afterwards,
+                // so the loader turns the file-relative string offset into
+                // an absolute pointer. Without this, the slot stays 0 and
+                // the loader sees a null m_pNames[i].
+                const size_t slot_bit = offset_in_payload / 8;
+                if (slot_bit < req_el.m_relocTable.size()) { req_el.m_relocTable[slot_bit] = true; }
+            }
+
+            program_elements.push_back(std::move(req_el));
+            lg::debug("make_binary: requires entry with {} deps", n);
+        }
         // ================================================================
         // Pass 2: file layout.
         // ================================================================
@@ -1175,6 +1245,7 @@ namespace sootc {
             for (size_t i = 0; i < fn.m_relocTable.size(); ++i) {
                 if (!fn.m_relocTable[i]) { continue; }
                 const size_t file_slot = function_slot + i;
+
                 if (file_slot < element.m_relocTable.size()) {
                     element.m_relocTable[file_slot] = true;
                 }

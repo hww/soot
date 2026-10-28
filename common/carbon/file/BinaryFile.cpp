@@ -379,20 +379,6 @@ namespace carbon {
             m_top_level = reinterpret_cast<const ScriptLambda *>(e.m_entryPtr);
             break;
         }
-
-        // Debug: dump SsMethod lambdas.
-        for (u32 i = 0; i < m_dcheader->m_numEntries; ++i) {
-            const DCEntry &e = entries()[i];
-            if (e.m_typeId != SS_TYPE_SID) continue;
-            auto *st = const_cast<SsType *>(entry_as_ss_type(e));
-            if (!st || !st->m_pMethods) continue;
-            auto *methods = static_cast<SsMethod *>(st->m_pMethods);
-            for (u32 j = 0; j < st->m_numMethods; ++j) {
-                fmt::print("SsType '{}' method[{}] name='{}' lambda={}",
-                          StringId(st->m_name).to_string(), j,
-                          StringId(methods[j].m_name).to_string(), (void *)methods[j].m_pLambda);
-            }
-        }
     }
 
 
@@ -461,6 +447,8 @@ namespace carbon {
         if (entry.m_typeId == SID("state-script")) { return EntryKind::StateScript; }
         if (entry.m_typeId == SS_TYPE_SID) { return EntryKind::SsType; }
         if (entry.m_typeId == SID("array")) { return EntryKind::Array; }
+        if (entry.m_typeId == SID("symbol-array")) { return EntryKind::SymbolArray; }
+        if (entry.m_typeId == SID("requires")) { return EntryKind::Requires; }
         if (entry.m_typeId == SID("map") || entry.m_typeId == SID("map-32")) {
             return EntryKind::Map;
         }
@@ -496,6 +484,18 @@ namespace carbon {
         if (entry_kind(entry) != EntryKind::Array) { return nullptr; }
         if (!is_valid_ptr(entry.m_entryPtr, sizeof(DcArray))) { return nullptr; }
         return reinterpret_cast<const DcArray *>(entry.m_entryPtr);
+    }
+
+    const SymbolArray *BinaryFile::entry_as_symbol_array(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::SymbolArray) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(SymbolArray))) { return nullptr; }
+        return reinterpret_cast<const SymbolArray *>(entry.m_entryPtr);
+    }
+
+    const RequiresList *BinaryFile::entry_as_requires(const DCEntry &entry) const noexcept {
+        if (entry_kind(entry) != EntryKind::Requires) { return nullptr; }
+        if (!is_valid_ptr(entry.m_entryPtr, sizeof(RequiresList))) { return nullptr; }
+        return reinterpret_cast<const RequiresList *>(entry.m_entryPtr);
     }
 
     // ===========================================================================

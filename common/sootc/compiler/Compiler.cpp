@@ -1,6 +1,5 @@
 // sootc/compiler/Compiler.cpp
 #include "carbon/file/BinaryFileInspector.hpp"
-#include "carbon/file/DCIFile.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/file/SizeAssertions.hpp"
 #include "carbon/lib/StringIdManager.hpp"
@@ -395,7 +394,6 @@ namespace sootc {
         // by save_session cannot be found by require.
         std::string resolved;
         bool        found = false;
-
         if (fs::path(path).is_absolute()) {
             resolved = path;
             found = fs::exists(resolved);
@@ -413,6 +411,36 @@ namespace sootc {
                     found = true;
                 }
             }
+
+            // ============================================================
+            // 2b. Relative to the directory of the file currently being
+            //     compiled.
+            //
+            //     A (require "sibling.sc") is naturally resolved against
+            //     the dependent file's own directory, before the global
+            //     search_paths are consulted. This mirrors #include "..."
+            //     in C/C++ and require() in Node.js: the dependency lives
+            //     next to its dependent, not in a global search root.
+            //
+            //     Without this, a file in a subdirectory (e.g.
+            //     soot_src/tests/foo.sc) cannot require a sibling
+            //     (soot_src/tests/bar.sc) unless soot_src/tests/ is
+            //     explicitly listed in search_paths. That is surprising
+            //     and forces the user to pass --source-root for a case
+            //     that should Just Work.
+            //
+            //     m_current_file is set by compile_file / compile_file_repl
+            //     before this function is reached, so it always points at
+            //     the .sc file whose form contains the (require ...).
+            // ============================================================
+            if (!found && !m_current_file.empty()) {
+                fs::path candidate = fs::path(m_current_file).parent_path() / path;
+                if (fs::exists(candidate)) {
+                    resolved = candidate.string();
+                    found = true;
+                }
+            }
+
             // 3. PROJECT / search_path
             if (!found) {
                 for (const auto &dir : m_config.search_paths) {
@@ -874,30 +902,19 @@ namespace sootc {
     // goes through compile_and_report / interpret_and_print.
     ReplStatus Compiler::handle_repl_string(const std::string &input) {
         const auto first = input.find_first_not_of(" \t");
-        if (first == std::string::npos) return ReplStatus::OK; // all whitespace
+        if (first == std::string::npos) return ReplStatus::OK;
 
         std::string trimmed = input.substr(first);
-
         m_want_exit = false;
         m_want_reload = false;
 
-        // REPL commands are handled BEFORE compilation.
-        if (auto status = try_handle_repl_command(trimmed)) {
-            if (*status == ReplStatus::WANT_EXIT) return ReplStatus::WANT_EXIT;
-            if (*status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
-            return *status;
-        }
+        auto forms = m_soot.get_reader().read_from_string(trimmed, false, "<repl>");
+        if (forms.is_null()) return ReplStatus::ERR;
 
-        switch (m_config.mode) {
-        case CompilerMode::INTERPRET_ONLY: interpret_and_print(trimmed); break;
-        case CompilerMode::COMPILE_ONLY:
-        case CompilerMode::HYBRID:
-        default: compile_and_report(trimmed); break;
-        }
-
-        if (m_want_exit) return ReplStatus::WANT_EXIT;
-        if (m_want_reload) return ReplStatus::WANT_RELOAD;
-        return ReplStatus::OK;
+        auto status = compile_and_report(forms);
+        if (status == ReplStatus::WANT_EXIT) return ReplStatus::WANT_EXIT;
+        if (status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
+        return status;
     }
 
     // The set of names recognised as REPL commands. Kept as a
@@ -913,6 +930,7 @@ namespace sootc {
                                                         "has-macro",
                                                         "list-symbols",
                                                         "save-session",
+                                                        "save-module", 
                                                         "sc-run",
                                                         "sc-eval",
                                                         "arg-set",
@@ -928,40 +946,12 @@ namespace sootc {
     // If `input` parses to a REPL command form, dispatch it and return
     // its status. Otherwise return std::nullopt so the caller can fall
     // through to the normal compile pipeline.
-    std::optional<ReplStatus> Compiler::try_handle_repl_command(const std::string &input) {
-        // Legacy `:command` syntax is no longer supported. Detect it
-        // early and give the user a helpful hint instead of a raw
-        // "undefined variable ':run'" from the compiler.
-        if (!input.empty() && input[0] == ':') {
-            fmt::print(fg(fmt::color::yellow), "; WARN: ':' command syntax is no longer supported. "
-                                               "Use (e), (reload), (help), (sc-run ...), etc.\n");
-            return ReplStatus::OK;
-        }
-
-        // Quick reject: if it does not start with '(', it cannot be a
-        // command form. Anything else goes through the normal pipeline.
-        if (input.empty() || input[0] != '(') return std::nullopt;
-        // Parse the input. With add_top_level = false, the reader
-        // returns a LIST of forms — even for a single-form input.
-        auto form = m_soot.get_reader().read_from_string(input, false, "<repl>");
-        if (form.is_null() || !form.is_pair()) return std::nullopt;
-
-        // Unwrap the one-element list produced by add_top_level = false.
-        //
-        // After this step, `form` is the actual user form, e.g.
-        // `(has-macro "defun")`. We detect the wrapper by checking
-        // whether the head is a pair (which means "this is a list of
-        // forms") rather than a symbol.
-        if (form.as_pair()->car.is_pair()) { form = form.as_pair()->car; }
-
+    std::optional<ReplStatus> Compiler::try_handle_repl_command(const script::Object &form) {
         if (!form.is_pair()) return std::nullopt;
-
         const auto &head = form.as_pair()->car;
         if (!head.is_symbol()) return std::nullopt;
-
         const std::string name = head.as_symbol().name_ptr;
         if (!repl_commands().count(name)) return std::nullopt;
-
         return dispatch_repl_command(name, form);
     }
 
@@ -977,6 +967,7 @@ namespace sootc {
         if (name == "has-macro") return cmd_has_macro(form);
         if (name == "list-symbols") return cmd_list_symbols(form);
         if (name == "save-session") return cmd_save_session(form);
+        if (name == "save-module") return cmd_save_module(form);
         if (name == "sc-run") return cmd_sc_run(form);
         if (name == "sc-eval") return cmd_sc_eval(form);
         if (name == "arg-set") return cmd_arg_set(form);
@@ -1148,7 +1139,48 @@ namespace sootc {
         }
         return ReplStatus::OK;
     }
+    // (save-module "path/to/foo.sc" ["out_dir"])
+    //
+    // Compile a .sc file as its own module and save it. This is the
+    // module-level counterpart to save-session: it writes what the file
+    // contains, not what the REPL has accumulated.
+    ReplStatus Compiler::cmd_save_module(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module \"path/to/file.sc\" [\"out_dir\"]) "
+                       "requires a path\n");
+            return ReplStatus::ERR;
+        }
 
+        const auto &path_obj = rest.as_pair()->car;
+        if (!path_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module ...) path must be a string\n");
+            return ReplStatus::ERR;
+        }
+
+        std::string path = path_obj.to_std_string();
+        std::string out_dir = "build";
+
+        auto after_path = rest.as_pair()->cdr;
+        if (after_path.is_pair()) {
+            const auto &dir_obj = after_path.as_pair()->car;
+            if (!dir_obj.is_string()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (save-module ...) out_dir must be a string\n");
+                return ReplStatus::ERR;
+            }
+            out_dir = dir_obj.to_std_string();
+        }
+
+        if (save_module(path, out_dir)) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK: module '{}' saved\n",
+                       path);
+            return ReplStatus::OK;
+        }
+        return ReplStatus::ERR;
+    }
     // (sc-run name arg...)
     //
     // Execute a compiled function in the active runtime.
@@ -1716,91 +1748,90 @@ namespace sootc {
     }
 
     // Compile a REPL expression, print a listing, and register the module.
-    ReplStatus Compiler::compile_and_report(const std::string &code) {
-
+    ReplStatus Compiler::compile_and_report(script::Object forms) {
         try {
-            auto forms = m_soot.get_reader().read_from_string(code, false, "<repl>");
             if (forms.is_null()) {
-                // Do not print here!
-                // fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                //            "; ERROR: failed to read input\n");
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: failed to read input\n");
                 return ReplStatus::ERR;
             }
-            // Remember every top-level form for :save. The forms are stored
-            // as parsed script::Object values, which are reference-counted and
-            // cheap to keep around.
-            {
-                auto cur = forms;
-                while (cur.is_pair()) {
-                    m_session_forms.push_back(cur.as_pair()->car);
-                    cur = cur.as_pair()->cdr;
+
+            // Walk the top-level forms. For each:
+            //   * if it is a REPL command (head symbol in repl_commands()),
+            //     dispatch it and continue;
+            //   * otherwise compile it as a single-form module.
+            auto cur = forms;
+            while (cur.is_pair()) {
+                auto form = cur.as_pair()->car;
+                cur = cur.as_pair()->cdr;
+
+                if (auto status = try_handle_repl_command(form)) {
+                    if (*status == ReplStatus::WANT_EXIT) return ReplStatus::WANT_EXIT;
+                    if (*status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
+                    if (*status == ReplStatus::ERR) return ReplStatus::ERR;
+                    continue;
                 }
-            }
 
-            auto result = compile_file_repl(forms, "<repl>");
+                // Compile this single form.
+                auto one = script::Object::make_pair(form, script::Object::make_null());
+                auto result = compile_file_repl(one, "<repl>");
+                if (!result) {
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                               result.error());
+                    return ReplStatus::ERR;
+                }
 
-            // `result` is std::expected<unique_ptr<BinaryFile>, string>.
-            // `!result` is true when the expected holds an error, NOT when
-            // the pointer inside is null. We must check both separately.
-            if (!result) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                           result.error());
-                return ReplStatus::ERR;
-            }
+                // Record the form in the session ONLY after it compiled successfully.
+                // A failed input is not part of the session: replaying it in
+                // save_session would fail again, and the user has no way to remove it
+                // from the session without restarting the REPL. This also matches
+                // rule 5: the session is the history of successful inputs, not a
+                // log of everything typed.
+                m_session_forms.push_back(form);
 
-            // `*result` is the unique_ptr<BinaryFile> itself. It is empty
-            // when the input contained only compile-time declarations
-            // (deftype, defenum, defmethod, defconstant, ...), which produce
-            // no binary payload. That is a normal outcome, not a crash.
-            if (!*result) {
-                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                           "; OK (types/enums registered)\n");
-                return ReplStatus::OK;
-            }
+                if (!*result) {
+                    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                               "; OK (types/enums registered)\n");
+                    continue;
+                }
 
-            // print_listing is now the single source of truth: it can
-            // be set from the CLI (--print-listing) or from the REPL
-            // with (arg-set "print-listing" #t). Both paths write to
-            // m_config, so this check has nothing left to look up.
-            if (m_config.print_listing) { print_listing(**result); }
+                if (!result) {
+                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                               result.error());
+                    return ReplStatus::ERR;
+                }
 
-            // Hand the compiled module to the active runtime. This is
-            // the ONE place where sootc talks to the execution backend
-            // during a compile: previously it called
-            // carbon::Globals::inst().load_module(...) directly, which
-            // hard-wired the in-process VM. Now it goes through the
-            // Runtime abstraction, so the same code path works with
-            // LocalVmRuntime, RemoteRuntime, and NullRuntime.
-            bool loaded = m_runtime->load_module(std::move(**result));
-            if (!loaded) {
-                fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,
-                           "; WARN: failed to register module in runtime '{}'\n",
-                           m_runtime->name());
-            }
+                if (!*result) {
+                    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                               "; OK (types/enums registered)\n");
+                    continue;
+                }
 
-            // Run THIS module's top-level, not a Globals lookup. Globals
-            // is a flat SID -> pointer map, and top-level is not a module
-            // symbol: every module that has top-level expressions defines
-            // one, and a Globals-based lookup would return whichever
-            // module was loaded last. The module we just loaded is the
-            // one whose top-level must run.
-            //
-            // LocalVmRuntime knows the logical_name it just registered.
-            // NullRuntime and RemoteRuntime have no top-level to print.
-            if (auto *local = dynamic_cast<LocalVmRuntime *>(m_runtime.get())) {
-                const std::string &logical = local->last_logical_name();
-                if (!logical.empty()) {
-                    auto run_result = m_runtime->run_top_level(logical);
-                    if (!run_result.ok) {
-                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                                   run_result.error);
-                        return ReplStatus::ERR;
+                if (m_config.print_listing) { print_listing(**result); }
+
+                bool loaded = m_runtime->load_module(std::move(**result));
+                if (!loaded) {
+                    fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold,
+                               "; WARN: failed to register module in runtime '{}'\n",
+                               m_runtime->name());
+                }
+
+                if (auto *local = dynamic_cast<LocalVmRuntime *>(m_runtime.get())) {
+                    const std::string &logical = local->last_logical_name();
+                    if (!logical.empty()) {
+                        auto run_result = m_runtime->run_top_level(logical);
+                        if (!run_result.ok) {
+                            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                                       "; ERROR: {}\n", run_result.error);
+                            return ReplStatus::ERR;
+                        }
+                        fmt::print(fg(fmt::color::cyan), "; => {}\n", run_result.value.to_string());
                     }
-                    fmt::print(fg(fmt::color::cyan), "; => {}\n", run_result.value.to_string());
                 }
+
+                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK\n");
             }
 
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK\n");
             return ReplStatus::OK;
         } catch (const std::exception &e) {
             fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; EXCEPTION: {}\n",
@@ -1810,14 +1841,14 @@ namespace sootc {
     }
 
     // Try to interpret; on failure, fall back to compilation.
-    ReplStatus Compiler::try_interpret_then_compile(const std::string &code) {
+    ReplStatus Compiler::try_interpret_then_compile(script::Object form) {
         try {
-            auto result = interpret(code);
+            auto result = interpret(form);
             if (m_config.debug_print_ast) { lg::info("=> {}", result.print()); }
             return ReplStatus::OK;
         } catch (const std::exception &e) {
             lg::debug("Interpret failed: {}, trying compilation", e.what());
-            return compile_and_report(code);
+            return compile_and_report(form);
         }
     }
 
@@ -2242,6 +2273,9 @@ namespace sootc {
             auto top_level_body = std::make_unique<SequenceNode>();
             auto top_level = std::make_unique<FunctionNode>("top-level");
             bool top_level_used = false;
+            
+            fmt::print(stderr, "; save_session: {} forms\n", m_session_forms.size());
+            for (auto &f : m_session_forms) { fmt::print(stderr, ";   form: {}\n", f.print()); }
 
             for (auto &form : m_session_forms) {
                 auto node = builder.build(form, file_node.get());
@@ -2336,6 +2370,75 @@ namespace sootc {
                     }
                 }
             }
+            // ---- Strict mode: every method declared in a type must be
+            //      implemented by a defmethod in the same FileNode. ----
+            {
+                std::set<std::string> fn_names;
+                for (auto &child : file_node->children()) {
+                    if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
+                        fn_names.insert(fn->name());
+                    }
+                }
+
+                for (auto &child : file_node->children()) {
+                    auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
+                    if (!td) continue;
+
+                    const std::string &type_name = td->type().base_type();
+                    Type              *type = m_ts.lookup_type_no_throw(type_name);
+                    if (!type) continue;
+
+                    for (const auto &m : type->get_methods_defined_for_type()) {
+                        const std::string full_name = type_name + "-" + m.name;
+                        if (fn_names.count(full_name)) continue;
+
+                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                                   "; ERROR: method '{}' of type '{}' is declared "
+                                   "but has no defmethod\n",
+                                   m.name, type_name);
+                        m_global_env->rollback(std::move(global_snapshot));
+                        return false;
+                    }
+
+                    if (const auto *ni = type->get_new_method_defined_for_type()) {
+                        const std::string full_name = type_name + "-" + ni->name;
+                        if (!fn_names.count(full_name)) {
+                            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                                       "; ERROR: method 'new' of type '{}' is declared "
+                                       "but has no defmethod\n",
+                                       type_name);
+                            m_global_env->rollback(std::move(global_snapshot));
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // ============================================================
+            // Strip self-dependency.
+            //
+            // build_require already skips a require whose stem matches
+            // file->name(). But the session's identity is the `name`
+            // argument of save_session, which may differ from any
+            // FileNode::name() seen during the REPL (those are
+            // "<repl-N>"). So the user can type (require "bar.sc") in a
+            // session they then save as "bar", and the resulting
+            // bar.bin would require "bar" — a self-cycle that cannot
+            // be loaded. Remove it defensively here.
+            //
+            // This is a no-op in the normal case, where the user saves
+            // the session under a name they never required.
+            // ============================================================
+            {
+                namespace fs = std::filesystem;
+                const std::string self = fs::path(name).stem().string();
+                if (!self.empty()) {
+                    const auto &reqs = file_node->get_requires();
+                    if (std::find(reqs.begin(), reqs.end(), self) != reqs.end()) {
+                        file_node->remove_require(self);
+                    }
+                }
+            }
 
             DataSegment strings_table;
             auto        element = file_node->generate(strings_table);
@@ -2365,8 +2468,8 @@ namespace sootc {
 
             bool ok = save_binary(*binary, out_dir);
             if (ok) ok = save_header(*binary, out_dir);
-            if (ok) ok = save_dci(*binary, out_dir);
 
+            save_sidbase();
             m_global_env->rollback(std::move(global_snapshot));
             return ok;
         } catch (const std::exception &e) {
@@ -2375,93 +2478,59 @@ namespace sootc {
             return false;
         }
     }
-    // Save a .dci manifest for a compiled module.
-    //
-    // A .dci file is the module's declaration: its logical path, the
-    // imports it depends on, and the exports it provides. The loader
-    // (carbon) reads it to resolve dependencies without the user
-    // having to list them on the command line.
-    //
-    // For now, only the imports side is populated. Exports would
-    // require tracking every top-level name that ended up in the
-    // binary, which the current pipeline does not do. The .dci is
-    // still useful: a loader that walks the import graph can order
-    // its loads correctly.
-    bool Compiler::save_dci(const BinaryFile &file, const std::filesystem::path &target_dir) {
+    bool Compiler::save_module(const std::filesystem::path &source_file,
+                               const std::filesystem::path &out_dir) {
         namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::create_directories(target_dir, ec);
 
-        // --- Logical path ---
-        //
-        // Compute the module's logical path from the file's path,
-        // relative to the source_root. Strip the extension and
-        // normalise separators to '/'.
-        std::string logical_path = file.m_path.string();
-
-        if (!m_config.search_paths.empty()) {
-            // Find the first search path that the file lives under,
-            // and strip it. Fall back to the file's own stem.
-            for (const auto &root : m_config.search_paths) {
-                fs::path root_abs = fs::absolute(root, ec);
-                fs::path file_abs = fs::absolute(file.m_path, ec);
-                if (ec) continue;
-
-                auto rel = fs::relative(file_abs, root_abs, ec);
-                if (!ec && !rel.empty() && rel.string().rfind("..", 0) != 0) {
-                    logical_path = rel.replace_extension("").generic_string();
-                    break;
-                }
-            }
-        }
-
-        if (logical_path.empty()) { logical_path = file.m_path.stem().string(); }
-
-        // --- Build the manifest ---
-        carbon::DCIFile manifest;
-        manifest.logical_path = logical_path;
-        manifest.module_name = carbon::DCIFile::extract_module_name(logical_path);
-        manifest.binary_size = static_cast<u32>(file.m_size);
-
-        // Imports: every file that was pulled in via (require ...).
-        for (const auto &dep : m_loaded_files) {
-            // Store the imported module by its logical path, not by
-            // its absolute filesystem path, so the manifest is
-            // portable between machines.
-            std::string dep_path = dep.string();
-            if (!m_config.search_paths.empty()) {
-                for (const auto &root : m_config.search_paths) {
-                    fs::path root_abs = fs::absolute(root, ec);
-                    fs::path dep_abs = fs::absolute(dep, ec);
-                    if (ec) continue;
-
-                    auto rel = fs::relative(dep_abs, root_abs, ec);
-                    if (!ec && !rel.empty() && rel.string().rfind("..", 0) != 0) {
-                        dep_path = rel.replace_extension("").generic_string();
-                        break;
-                    }
-                }
-            }
-            manifest.imports.emplace_back(carbon::StringId(dep_path));
-        }
-
-        // Exports: for now, leave empty. A future change to the
-        // compiler can record every top-level name that was emitted
-        // and fill this in.
-        //
-        // manifest.exports = ...;
-
-        // --- Write the .dci ---
-        fs::path out = target_dir / (file.m_path.stem().string() + ".dci");
-        if (!manifest.save(out.string())) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot write {}\n", out.string());
+        // 1. Resolve the source path against search_paths.
+        const std::string resolved = find_file(source_file.string());
+        if (!fs::exists(resolved)) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                       "; ERROR: save_module: '{}' not found\n", source_file.string());
             return false;
         }
 
-        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
+        // 2. Compile the file. This is the SAME path as a normal `sootc
+        //    file.sc` run: it builds a fresh FileNode named after the file
+        //    stem, so its m_requires are exactly the file's own requires.
+        lg::info("save_module: compiling '{}'", resolved);
+
+        auto result = compile_file(fs::path(resolved));
+        if (!result) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                       "; ERROR: save_module: compile failed: {}\n", result.error());
+            return false;
+        }
+
+        // Compile-time-only file (only deftype/defenum/defconstant): nothing
+        // to save. That is a normal outcome; report and return true.
+        if (!*result) {
+            fmt::print(fg(fmt::color::yellow),
+                       "; WARN: save_module: '{}' produced no binary (declarations only)\n",
+                       source_file.string());
+            return true;
+        }
+
+        // 3. Strip self-dependency defensively.
+        const std::string stem = fs::path(resolved).stem().string();
+        if (auto *file_node = find_file_node(resolved)) { file_node->remove_require(stem); }
+
+        // 4. Resolve the output directory against PROJECT.
+        fs::path target = out_dir;
+        if (target.is_relative()) {
+            target = file_util::get_path(file_util::PathType::PROJECT) / target;
+        }
+
+        // 5. Save. save_binary enforces the "every :methods entry must have
+        //    a body" rule and writes <stem>.bin; save_header writes
+        //    <stem>.h from the SsType entries.
+        if (!save_binary(**result, target)) { return false; }
+        if (!save_header(**result, target)) { return false; }
+
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                   "; saved module '{}' -> {}/{}.bin\n", stem, target.string(), stem);
         return true;
     }
-
     void Compiler::save_sidbase() {
         if (m_config.sidbase_path.empty()) {
             return; // no path configured, nothing to save

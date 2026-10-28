@@ -103,6 +103,7 @@ namespace sootc {
                 p.open("FileNode");
                 p.field("name", str(x->name()));
                 p.field("imports", std::to_string(x->imports().size()));
+                p.field("requires", std::to_string(x->get_requires().size()));
                 p.field("children", std::to_string(x->children().size()));
                 p.close_with_children(n);
                 return;

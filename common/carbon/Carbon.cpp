@@ -1,7 +1,6 @@
 ﻿#include "carbon/Carbon.hpp"
 
 #include "carbon/file/BinaryFile.hpp"
-#include "carbon/file/DCIFile.hpp"
 #include "carbon/file/DCScript.hpp"
 #include "carbon/file/Globals.hpp"
 #include "carbon/gc/ArenaManager.hpp"
@@ -13,6 +12,7 @@
 #include "carbon/kernel/Process.hpp"
 
 #include "util/Log.hpp"
+#include "util/FileUtil.hpp"
 
 #include <set>
 #include <unordered_map>
@@ -58,7 +58,10 @@ namespace carbon {
                 if (name == StringId("top-level") && type == StringId("script-lambda")) {
                     continue;
                 }
-
+                // do not index requremens
+                if (name == StringId("requires")) {
+                    continue;
+                }
                 globals.register_symbol(name, const_cast<void *>(e.m_entryPtr), type,
                                         module_path_id);
             }
@@ -362,9 +365,34 @@ namespace carbon {
         return load_module_recursive(path, search_paths, already_loaded);
     }
 
-    // Note: load_module_recursive lives as a free function so it can
-    // recurse without re-entering the public API. The public API stays
-    // a thin wrapper around it.
+        // ------------------------------------------------------------------------
+    // Carbon::load_module_recursive
+    // ------------------------------------------------------------------------
+    //
+    // Load a .bin module and every module it depends on. This is the single
+    // entry point for "load this module and make it runnable".
+    //
+    // Responsibilities, in order:
+    //   1. Canonicalize the path, dedupe against already_loaded / ModuleRegistry.
+    //   2. Register the .bin in the runtime (load_module).
+    //   3. Read the "requires" entry from the just-loaded .bin and load
+    //      every dependency recursively. Dependencies are loaded BEFORE this
+    //      module's top-level runs, so Globals is fully populated by the
+    //      time foo's top-level executes.
+    //   4. Run this module's top-level (once its dependencies are up).
+    //
+    // Notes for future changes:
+    //   * The "requires" entry is a RequiresList: a flat array of plain
+    //     strings (not SIDs). This makes the .bin self-contained and does
+    //     not depend on SIDBase being present in the process.
+    //   * The .dci side-file mechanism has been removed. The only source
+    //     of dependency information is the .bin itself.
+    //   * Cyclic imports terminate because a module is inserted into
+    //     `already_loaded` BEFORE the recursion into its dependencies.
+    //   * A module that has already been loaded (same canonical path) is
+    //     skipped silently — this is what makes diamond-shaped dependency
+    //     graphs cheap.
+    //
     bool Carbon::load_module_recursive(const std::filesystem::path              &bin_path,
                                        const std::vector<std::filesystem::path> &search_paths,
                                        std::set<std::filesystem::path>          &already_loaded) {
@@ -372,65 +400,153 @@ namespace carbon {
         namespace fs = std::filesystem;
         std::error_code ec;
 
+        // --------------------------------------------------------------------
+        // 1. Canonicalize + dedupe
+        // --------------------------------------------------------------------
+        //
+        // Two different spellings of the same file (relative vs absolute,
+        // symlinks, "..", ...) must resolve to the same key, otherwise the
+        // cycle guard fails and a diamond import would re-enter itself.
+        //
+        // `weakly_canonical` is used instead of `canonical` because the file
+        // may not exist on disk yet in tests that build the .bin in memory.
+        // If it fails, fall back to the raw path.
+        //
+        // We mark the file as already-loaded HERE, before doing any work.
+        // This is what makes cyclic requires terminate: an inner call that
+        // sees the same key returns immediately.
         fs::path canonical = fs::weakly_canonical(bin_path, ec);
-        if (ec) canonical = bin_path;
+        if (ec) { canonical = bin_path; }
 
-        if (already_loaded.count(canonical)) return true;
+        if (already_loaded.count(canonical)) {
+            lg::debug("Carbon: '{}' already visited — skipping", canonical.string());
+            return true;
+        }
         already_loaded.insert(canonical);
 
-        if (m_impl->modules->contains_path(canonical)) return true;
+        // A module that is already registered is fully initialised: its
+        // top-level has already run, its symbols are in Globals. Nothing to
+        // do.
+        if (m_impl->modules->contains_path(canonical)) {
+            lg::debug("Carbon: '{}' already in ModuleRegistry — skipping", canonical.string());
+            return true;
+        }
 
-        // 1. Read the .dci, if present, and load imports first. Each import
-        //    is fully loaded AND its top-level is executed before we return,
-        //    so that by the time this module's top-level runs, every
-        //    dependency has already been initialised.
-        fs::path dci_path = bin_path;
-        dci_path.replace_extension(".dci");
+        // --------------------------------------------------------------------
+        // 2. Load the .bin itself
+        // --------------------------------------------------------------------
+        //
+        // After this call the entry table (including the "requires" entry)
+        // is readable through m_impl->modules->find(logical). No top-level
+        // has run yet; that happens in step 4, after dependencies are up.
+        //
+        // If load_module fails (bad magic, version mismatch, unreadable
+        // file), we must NOT remove the entry from already_loaded: the
+        // file is genuinely broken, and a retry will fail the same way.
+        // (Callers that want to recover can clear the set themselves.)
+        if (!load_module(bin_path)) {
+            lg::error("Carbon: failed to load '{}'", bin_path.string());
+            return false;
+        }
 
-        if (fs::exists(dci_path)) {
-            try {
-                DCIFile  manifest = DCIFile::parse(dci_path.string());
-                fs::path parent_dir = bin_path.parent_path();
+        // --------------------------------------------------------------------
+        // 3. Read "requires" and load dependencies recursively
+        // --------------------------------------------------------------------
+        //
+        // The "requires" entry is a RequiresList:
+        //
+        //     +0x00  u32          m_numEntries
+        //     +0x04  u32          m_reserved
+        //     +0x08  const char **m_pNames      -> const char*[m_numEntries]
+        //
+        // Each m_pNames[i] is a relocated pointer into the string pool of
+        // THIS file. The name is the logical module name (e.g. "bar"), not
+        // a SID and not a filesystem path.
+        //
+        // The search order for "<name>.bin" is:
+        //     a. parent directory of the requesting module  (deploy layout)
+        //     b. each directory in search_paths              (source layout)
+        //     c. PROJECT / "<name>.bin"                      (dev layout)
+        //
+        // A missing dependency is a hard error: the module cannot be
+        // top-level-initialised without it.
+        const std::string logical = bin_path.stem().string();
 
-                for (const auto &imp : manifest.imports) {
-                    const std::string dep_name = imp.to_string();
+        if (ModuleRegistry::Entry *entry = m_impl->modules->find(logical)) {
+            const DCEntry *table = entry->file->entries();
+            const u32      n = entry->file->entry_count();
 
-                    std::vector<fs::path> candidates;
-                    candidates.push_back(parent_dir / (dep_name + ".bin"));
-                    for (const auto &root : search_paths) {
-                        candidates.push_back(root / (dep_name + ".bin"));
+            if (table) {
+                for (u32 i = 0; i < n; ++i) {
+                    const DCEntry &e = table[i];
+
+                    // Only the "requires" entry matters here. All other
+                    // entries (script-lambdas, ss-types, data-structs,
+                    // placeholders, ...) are ignored.
+                    if (StringId(e.m_nameID) != StringId("requires")) { continue; }
+
+                    // The entry must be a RequiresList, not a SymbolArray.
+                    // SymbolArray is used elsewhere (state-script options)
+                    // and contains SID64s, not strings.
+                    if (BinaryFile::entry_kind(e) != BinaryFile::EntryKind::Requires) {
+                        lg::warn("Carbon: '{}' has a 'requires' entry with wrong kind",
+                                 bin_path.filename().string());
+                        continue;
                     }
 
-                    bool found = false;
-                    for (const auto &candidate : candidates) {
-                        if (fs::exists(candidate)) {
+                    const RequiresList *req = entry->file->entry_as_requires(e);
+                    if (!req || !req->m_pNames) { continue; }
+
+                    for (u32 j = 0; j < req->m_numEntries; ++j) {
+                        const char *raw = req->m_pNames[j];
+                        if (!raw) { continue; }
+
+                        const std::string dep_name(raw);
+
+                        // Build the candidate list for "<dep_name>.bin".
+                        std::vector<fs::path> candidates;
+                        candidates.push_back(bin_path.parent_path() / (dep_name + ".bin"));
+                        for (const auto &root : search_paths) {
+                            candidates.push_back(root / (dep_name + ".bin"));
+                        }
+                        candidates.push_back(file_util::get_path(file_util::PathType::PROJECT) /
+                                             (dep_name + ".bin"));
+
+                        // First existing candidate wins.
+                        bool found = false;
+                        for (const auto &candidate : candidates) {
+                            std::error_code ec2;
+                            if (!fs::exists(candidate, ec2)) { continue; }
+
                             if (!load_module_recursive(candidate, search_paths, already_loaded)) {
                                 return false;
                             }
                             found = true;
                             break;
                         }
-                    }
 
-                    if (!found) {
-                        lg::error("Carbon: '{}' imports '{}' but no .bin found",
-                                  bin_path.filename().string(), dep_name);
-                        return false;
+                        if (!found) {
+                            lg::error("Carbon: '{}' requires '{}' but no .bin found",
+                                      bin_path.filename().string(), dep_name);
+                            return false;
+                        }
                     }
                 }
-            } catch (const std::exception &e) {
-                lg::error("Carbon: cannot parse '{}': {}", dci_path.string(), e.what());
-                return false;
             }
         }
 
-        // 2. Load the .bin itself.
-        if (!load_module(bin_path)) { return false; }
-
-        // 3. Run this module's top-level immediately, so that any module
-        //    that depends on it sees a fully initialised environment.
-        const std::string logical = bin_path.stem().string();
-        CallResult        tl = run_top_level(logical);
+        // --------------------------------------------------------------------
+        // 4. Run this module's top-level
+        // --------------------------------------------------------------------
+        //
+        // At this point every dependency has been loaded AND its top-level
+        // has run, so Globals is fully populated. Now (and only now) it is
+        // safe to execute this module's own top-level: it may reference
+        // symbols defined by its dependencies.
+        //
+        // A module with no top-level (declarations only) returns ok=true
+        // with an empty value. That is a normal outcome, not an error.
+        CallResult tl = run_top_level(logical);
         if (!tl.ok) {
             lg::error("Carbon: top-level of '{}' failed: {}", logical, tl.error);
             return false;
