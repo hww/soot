@@ -143,7 +143,8 @@ namespace sootc::testing {
 
             // Run the module's top-level code (heap allocs, global stores, ...).
             // Loading only registers symbols; running is the caller's job.
-            if (!s_carbon->run_top_level(logical)) {
+            auto result = s_carbon->run_top_level(logical);
+            if (!result.ok) {
                 out.error = "top-level of module failed";
                 return out;
             }

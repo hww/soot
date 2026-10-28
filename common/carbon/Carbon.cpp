@@ -49,9 +49,15 @@ namespace carbon {
                 const StringId name(e.m_nameID);
                 const StringId type(e.m_typeId);
 
-                //fmt::print("; [Globals] register: name='{}' type='{}' ptr={} module='{}'\n",
-                //           name.to_string(), type.to_string(), e.m_entryPtr,
-                //           module_path_id.to_string());
+                // top-level is not a module symbol. It is the module's
+                // entry point, stored in BinaryFile::m_top_level and called
+                // only through Carbon::run_top_level. Registering it in
+                // Globals would make every load overwrite the same slot,
+                // and a module without top-level would leave a foreign one
+                // behind.
+                if (name == StringId("top-level") && type == StringId("script-lambda")) {
+                    continue;
+                }
 
                 globals.register_symbol(name, const_cast<void *>(e.m_entryPtr), type,
                                         module_path_id);
@@ -148,6 +154,8 @@ namespace carbon {
         std::unique_ptr<Scheduler>      scheduler;
     };
 
+
+
     // ------------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------------
@@ -241,6 +249,8 @@ namespace carbon {
     }
 
     bool Carbon::is_initialized() const noexcept { return m_impl->initialized; }
+    
+    [[nodiscard]] const CarbonConfig &Carbon::config() const noexcept { return m_impl->config; }
 
     // ------------------------------------------------------------------------
     // Module loading
@@ -420,7 +430,11 @@ namespace carbon {
         // 3. Run this module's top-level immediately, so that any module
         //    that depends on it sees a fully initialised environment.
         const std::string logical = bin_path.stem().string();
-        if (!run_top_level(logical)) { return false; }
+        CallResult        tl = run_top_level(logical);
+        if (!tl.ok) {
+            lg::error("Carbon: top-level of '{}' failed: {}", logical, tl.error);
+            return false;
+        }
 
         return true;
     }
@@ -482,52 +496,45 @@ namespace carbon {
     bool Carbon::has_module(const std::string &logical_name) const {
         return m_impl->modules->contains(logical_name);
     }
-
-bool Carbon::run_top_level(const std::string &logical_name, RunMode mode) {
+    CallResult Carbon::run_top_level(const std::string &logical_name, RunMode mode) {
+        CallResult out;
         if (!m_impl->initialized) {
-            lg::error("Carbon::run_top_level: not initialized");
-            return false;
+            out.error = "Carbon::run_top_level: not initialized";
+            return out;
         }
 
-        // Find the module. It must already be loaded.
         ModuleRegistry::Entry *entry = m_impl->modules->find(logical_name);
         if (!entry) {
-            lg::error("Carbon::run_top_level: module '{}' is not loaded", logical_name);
-            return false;
+            out.error = "Carbon::run_top_level: module '" + logical_name + "' is not loaded";
+            return out;
         }
 
-        // Locate "top-level" in THIS module's entry table. We must not use
-        // Globals: Globals is a flat SID -> pointer map, so with several
-        // loaded modules it would return whichever "top-level" was
-        // registered last. We want the one that belongs to this module.
-        const DCEntry *table = entry->file->entries();
-        const u32      n = entry->file->entry_count();
+        // top-level is per-module. BinaryFile already located it during
+        // read_reloc_table and stored the absolute pointer. A module with
+        // no top-level (declarations only) has m_top_level == nullptr;
+        // running nothing is the correct behaviour.
+        const ScriptLambda *lambda = entry->file->m_top_level;
+        if (!lambda) {
+            out.ok = true;
+            return out;
+        }
 
-        void *tl_ptr = nullptr;
-        for (u32 i = 0; i < n; ++i) {
-            const std::string name =
-                StringIdManager::instance().get_string(StringId(table[i].m_nameID));
-            if (name == "top-level") {
-                tl_ptr = const_cast<void *>(table[i].m_entryPtr);
-                break;
+        try {
+            out.value = m_impl->vm->execute_function(const_cast<ScriptLambda *>(lambda), mode);
+            m_impl->vm->purge();
+            if (m_impl->vm->has_error()) {
+                out.ok = false;
+                out.error = m_impl->vm->pending_error().message();
+                out.vm_error = std::make_shared<VmError>(m_impl->vm->pending_error());
+                m_impl->vm->clear_error();
+            } else {
+                out.ok = true;
             }
+        } catch (const std::exception &e) {
+            out.ok = false;
+            out.error = e.what();
         }
-
-        // No top-level entry: the module contained only declarations
-        // (deftype / defenum / defmethod / defconstant). That is a normal,
-        // valid outcome.
-        if (!tl_ptr) { return true; }
-
-        auto *lambda = reinterpret_cast<ScriptLambda *>(tl_ptr);
-        m_impl->vm->execute_function(lambda, mode);
-
-        if (m_impl->vm->has_error()) {
-            lg::error("Carbon::run_top_level: top-level of '{}' failed: {}", logical_name,
-                      m_impl->vm->pending_error().message());
-            m_impl->vm->clear_error();
-            return false;
-        }
-        return true;
+        return out;
     }
 
     // ------------------------------------------------------------------------
@@ -546,6 +553,8 @@ bool Carbon::run_top_level(const std::string &logical_name, RunMode mode) {
             return out;
         }
         auto *lambda = reinterpret_cast<ScriptLambda *>(fn);
+        fmt::print(stderr, "; Carbon::call '{}' -> lambda={} m_pInstruction={}\n", name,
+                   (void *)lambda, lambda ? (void *)lambda->m_pInstruction : nullptr);
         try {
             out.value = m_impl->vm->execute_function(lambda, RunMode::Run, args);
             m_impl->vm->purge();

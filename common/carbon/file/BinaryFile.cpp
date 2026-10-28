@@ -54,6 +54,21 @@ namespace carbon {
         } else {
             m_strings = location();
         }
+
+        // m_top_level points into m_bytes; after a move we must re-derive
+        // it from the (already rebuilt) entry table.
+        m_top_level = nullptr;
+        if (m_dcheader && m_dcheader->m_numEntries > 0) {
+            const DCEntry *table = entries();
+            if (table) {
+                for (u32 i = 0; i < m_dcheader->m_numEntries; ++i) {
+                    if (table[i].m_nameID != SID("top-level")) { continue; }
+                    if (table[i].m_typeId != SID("script-lambda")) { continue; }
+                    m_top_level = reinterpret_cast<const ScriptLambda *>(table[i].m_entryPtr);
+                    break;
+                }
+            }
+        }
     }
 
     BinaryFile::BinaryFile(BinaryFile &&other) noexcept
@@ -352,6 +367,32 @@ namespace carbon {
                             m_dcheader->m_stringsOffset, m_size));
         }
         m_strings = location(m_bytes.get() + m_dcheader->m_stringsOffset);
+
+        // Locate "top-level" entry. Its m_entryPtr is now an absolute
+        // pointer (relocation for ScriptLambda.m_pInstruction has already
+        // been applied), so we can store it directly.
+        m_top_level = nullptr;
+        for (u32 i = 0; i < m_dcheader->m_numEntries; ++i) {
+            const DCEntry &e = entries()[i];
+            if (e.m_nameID != SID("top-level")) { continue; }
+            if (e.m_typeId != SID("script-lambda")) { continue; }
+            m_top_level = reinterpret_cast<const ScriptLambda *>(e.m_entryPtr);
+            break;
+        }
+
+        // Debug: dump SsMethod lambdas.
+        for (u32 i = 0; i < m_dcheader->m_numEntries; ++i) {
+            const DCEntry &e = entries()[i];
+            if (e.m_typeId != SS_TYPE_SID) continue;
+            auto *st = const_cast<SsType *>(entry_as_ss_type(e));
+            if (!st || !st->m_pMethods) continue;
+            auto *methods = static_cast<SsMethod *>(st->m_pMethods);
+            for (u32 j = 0; j < st->m_numMethods; ++j) {
+                fmt::print("SsType '{}' method[{}] name='{}' lambda={}",
+                          StringId(st->m_name).to_string(), j,
+                          StringId(methods[j].m_name).to_string(), (void *)methods[j].m_pLambda);
+            }
+        }
     }
 
 

@@ -9,8 +9,9 @@
 
 namespace sootc {
 
-    LocalVmRuntime::LocalVmRuntime() {
+    LocalVmRuntime::LocalVmRuntime(std::vector<std::filesystem::path> search_paths) {
         carbon::CarbonConfig config;
+        config.search_paths = std::move(search_paths);
         if (!m_carbon.initialize(config)) {
             lg::warn("LocalVmRuntime: Carbon already active in this thread, reusing it");
             // m_carbon не инициализирован, но t_current уже указывает на другой Carbon.
@@ -36,20 +37,20 @@ namespace sootc {
         static std::atomic<u64> s_counter{0};
         const u64               n = s_counter.fetch_add(1, std::memory_order_relaxed);
 
-        const std::string logical_name = fmt::format("{}_{}", file.m_path.stem().string(), n);
+        m_last_logical_name = fmt::format("{}_{}", file.m_path.stem().string(), n);
 
-        return m_carbon.load_module_from_binary(logical_name, std::move(file));
+        return m_carbon.load_module_from_binary(m_last_logical_name, std::move(file));
     }
 
-    bool LocalVmRuntime::run_top_level(const std::string &logical_name) {
+    CallResult  LocalVmRuntime::run_top_level(const std::string &logical_name) {
         return m_carbon.run_top_level(logical_name);
     }
 
-    RuntimeResult LocalVmRuntime::call(const std::string                  &name,
+    CallResult  LocalVmRuntime::call(const std::string                  &name,
                                        const std::vector<carbon::Variant> &args) {
-        RuntimeResult out;
+        CallResult  out;
 
-        carbon::CallResult r = m_carbon.call(name, args);
+        CallResult  r = m_carbon.call(name, args);
         out.ok = r.ok;
         out.value = r.value;
         out.error = r.error;

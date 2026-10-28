@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 
+using namespace carbon;
+
 namespace sootc {
 
     /// @brief A Runtime that sends work to an external host over the
@@ -45,9 +47,9 @@ namespace sootc {
 
         bool load_module(carbon::BinaryFile &&file) override;
 
-        bool run_top_level(const std::string &logical_name) override;
+        CallResult run_top_level(const std::string &logical_name) override;
 
-        RuntimeResult call(const std::string                  &name,
+        CallResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override;
 
         std::string name() const override { return fmt::format("remote:{}", m_url); }

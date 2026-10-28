@@ -38,6 +38,7 @@ struct CommandLineOptions {
     bool        print_listing = false; // print listing in CLI mode?
     std::string log_level = "warn";    // debug | info | warn | error
     std::string log_file;
+    std::string         project_dir; // explicit project root; overrides detection
 
     // Compiler mode.
     sootc::CompilerMode mode = sootc::CompilerMode::HYBRID;
@@ -72,6 +73,9 @@ void print_banner() {
 void print_help(const char *program_name) {
     fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold, "SOOT Compiler\n\n");
     fmt::print("Usage: {} [options] [files...]\n\n", program_name);
+
+    fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "Project:\n");
+    fmt::print("  --project <dir>      Default directory for search files\n");
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "Input / output:\n");
     fmt::print("  --target <dir>       Target directory for compiled files (default: build)\n");
@@ -203,6 +207,8 @@ CommandLineOptions parse_args(int argc, char *argv[]) {
         else if (arg == "--log-file" && i + 1 < argc) {
             opts.log_file = argv[++i];
         }
+       
+        else if (arg == "--project" && i + 1 < argc) { opts.project_dir = argv[++i]; }
 
         // ----- Unknown -----
         else {
@@ -282,6 +288,23 @@ int main(int argc, char *argv[]) {
         } else {
             comp_options.runtime_url = opts.runtime_url;
         }
+
+        // Resolve PROJECT once, before any path is used. Three sources, in
+        // priority order:
+        //   1. --project <dir> (explicit)
+        //   2. first input file's directory (sootc foo.sc → PROJECT = dir(foo.sc))
+        //   3. detect_project_root(fs::current_path())
+        std::filesystem::path project_root;
+        if (!opts.project_dir.empty()) {
+            project_root = std::filesystem::absolute(opts.project_dir);
+        } else if (!opts.input_files.empty()) {
+            auto dir = std::filesystem::absolute(opts.input_files.front()).parent_path();
+            project_root = file_util::detect_project_root(dir);
+        } else {
+            project_root = file_util::detect_project_root();
+        }
+        file_util::set_project_path(project_root);
+        lg::info("PROJECT = {}", project_root.string());
 
         // ----- Compiler -----
         std::unique_ptr<sootc::Compiler> compiler;

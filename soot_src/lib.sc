@@ -473,6 +473,9 @@
 (define-native get-track-pc   (function object object int))
 (define-native set-track-pc   (function object object int int))
 
+; --- Modules ---
+(define-native load-module  (function string object))
+
 ;; ----------------------------------------------------------------------------
 ;; Native types
 ;; ----------------------------------------------------------------------------

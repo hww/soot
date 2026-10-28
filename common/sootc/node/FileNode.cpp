@@ -817,8 +817,18 @@ namespace sootc {
             el.check_size();
         }
 
+        // total_entries must count every entry that will end up in the
+        // entry table: program_elements, type_infos (SsType per type),
+        // state_script_infos (SsType + StateScript per state-script),
+        // and m_placeholders (one per heap-allocated top-level define).
+        //
+        // m_placeholders are appended at the very end of make_binary, but
+        // they still occupy a DCEntry slot. If they are not counted here,
+        // running_offset for the first function is off by
+        // placeholders.size() * sizeof(DCEntry), and every SsMethod::m_pLambda
+        // points into the wrong place.
         const u64 total_entries = program_elements.size() + type_infos.size() +
-                                  state_script_infos.size() * 2; // SsType + StateScript
+                                  state_script_infos.size() * 2 + m_placeholders.size();
 
         // ------------------------------------------------------------------
         // Pass 1: method offsets for SsType entries.

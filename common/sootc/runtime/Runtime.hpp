@@ -8,18 +8,12 @@
 #include "carbon/file/BinaryFile.hpp"
 #include "carbon/lib/Variant.hpp"
 #include "carbon/vm/VmError.hpp"
+#include "carbon/Carbon.hpp"
+
+using namespace carbon;
 
 namespace sootc {
 
-    /// @brief Result of running a function in a runtime.
-    struct RuntimeResult {
-        bool            ok = false;
-        std::string     error;
-        carbon::Variant value;
-        // Forwarded from Carbon::CallResult when the failure was a VM
-        // error. Null otherwise.
-        std::shared_ptr<const carbon::VmError> vm_error;
-    };
 
     /// @brief Abstract execution backend.
     ///
@@ -71,13 +65,13 @@ namespace sootc {
         /// @param logical_name  The name returned by load_module.
         /// @return true if the module was found and top-level ran (or
         ///         there was no top-level to run).
-        virtual bool          run_top_level(const std::string &logical_name) = 0;
+        virtual CallResult run_top_level(const std::string &logical_name) = 0;
 
         /// @brief Call a function by name with the given arguments.
         /// @details The function must have been loaded into the runtime
         ///          beforehand (via load_module or by the runtime being
         ///          the host itself).
-        virtual RuntimeResult call(const std::string                  &name,
+        virtual CallResult call(const std::string                  &name,
                                    const std::vector<carbon::Variant> &args) = 0;
 
         /// @brief Human-readable name of this runtime, for logs and the REPL.

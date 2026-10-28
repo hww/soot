@@ -153,6 +153,7 @@ namespace carbon {
     Variant native_current_pid(u32 argc, const Variant *argv);
     Variant native_sid_to_string(u32 argc, const Variant *argv);
     Variant native_string_to_sid(u32 argc, const Variant *argv);
+    Variant native_load_module(u32 argc, const Variant *argv);
 
     /// Register the process-control natives in the global registry.
     void initialize_process_natives();

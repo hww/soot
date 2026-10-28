@@ -3,6 +3,7 @@
 #include "common/util/Log.hpp"
 
 #include <utility>
+#include <Carbon.hpp>
 
 namespace sootc {
 
@@ -75,17 +76,17 @@ namespace sootc {
         return true;
     }
 
-    bool RemoteRuntime::run_top_level(const std::string &logical_name) {
+    CallResult RemoteRuntime::run_top_level(const std::string &logical_name) {
         // The host runs its own top-level when it loads modules. Sootc
         // does not send binaries over the wire, so there is nothing
         // for us to run here.
         (void)logical_name;
-        return true;
+        return carbon::CallResult{};
     }
 
-    RuntimeResult RemoteRuntime::call(const std::string                  &name,
+    CallResult RemoteRuntime::call(const std::string                  &name,
                                       const std::vector<carbon::Variant> &args) {
-        RuntimeResult out;
+        CallResult out;
 
         if (!m_client || !m_client->is_connected()) {
             out.ok = false;

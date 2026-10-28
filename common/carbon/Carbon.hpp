@@ -79,6 +79,14 @@ namespace carbon {
         ///        arithmetic, allocation helpers). Off by default; the
         ///        language runtime owns this decision, not Carbon.
         bool load_default_natives = false;
+
+        /// @brief Directories searched by `load-module` and
+        ///        `load_module_with_imports` when a module name (not an
+        ///        absolute path) is given. Each entry is resolved against
+        ///        the process CWD if relative; the loader also tries the
+        ///        parent directory of the requesting module first, then
+        ///        PROJECT, then these paths in order.
+        std::vector<std::filesystem::path> search_paths;
     };
     
     struct TickConfig {
@@ -245,7 +253,10 @@ namespace carbon {
         /// @return true if the module was found and top-level ran (or there
         ///         was no top-level to run). false if the module is unknown
         ///         or the VM reported an error.
-        bool run_top_level(const std::string &logical_name, RunMode mode = RunMode::Run);
+        CallResult run_top_level(const std::string &logical_name, RunMode mode = RunMode::Run);
+
+        /// @brief Execute the module's `top-level` function, if it has one.
+        [[nodiscard]] const CarbonConfig &config() const noexcept;
 
     private:
         bool load_module_recursive(const std::filesystem::path              &bin_path,

@@ -4,6 +4,8 @@
 #include "sootc/runtime/Runtime.hpp"
 #include "carbon/file/Globals.hpp"
 
+using namespace carbon;
+
 namespace sootc {
 
     /// @brief Runtime backend that executes code in-process, via a
@@ -23,14 +25,14 @@ namespace sootc {
     ///     makes unit tests safe.
     class LocalVmRuntime : public Runtime {
     public:
-        LocalVmRuntime();
+        explicit LocalVmRuntime(std::vector<std::filesystem::path> search_paths = {});
         ~LocalVmRuntime() override;
 
         [[nodiscard]] std::string name() const override { return "local-vm"; }
 
         bool          load_module(carbon::BinaryFile &&file) override;
-        bool          run_top_level(const std::string &logical_name) override;
-        RuntimeResult call(const std::string                  &name,
+        CallResult run_top_level(const std::string &logical_name) override;
+        CallResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override;
         
         bool has_symbol(const std::string &name) const override {
@@ -38,8 +40,10 @@ namespace sootc {
             return m_carbon.globals()->find_symbol_ptr(carbon::StringId(name)) != nullptr;
         }
 
+        const std::string &last_logical_name() const { return m_last_logical_name; }
     private:
         carbon::Carbon m_carbon;
+        std::string    m_last_logical_name;
     };
 
 } // namespace sootc

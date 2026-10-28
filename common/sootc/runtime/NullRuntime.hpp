@@ -22,16 +22,16 @@ namespace sootc {
             return true;
         }
 
-        bool run_top_level(const std::string &logical_name) override {
+        carbon::CallResult run_top_level(const std::string &logical_name) override {
             (void)logical_name;
-            return true;
+            return carbon::CallResult{};
         }
 
-        RuntimeResult call(const std::string                  &name,
+        carbon::CallResult call(const std::string                  &name,
                            const std::vector<carbon::Variant> &args) override {
             (void)name;
             (void)args;
-            RuntimeResult out;
+            carbon::CallResult out;
             out.ok = true;
             return out;
         }

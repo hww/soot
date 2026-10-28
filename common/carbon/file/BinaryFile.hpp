@@ -220,6 +220,17 @@ namespace carbon {
 
         /// @brief Print the entry table (name, type, ptr, kind) to `os`.
         void dump_entries(std::ostream &os = std::cout) const;
+        
+        /// @brief Entry "top-level" of this module, or nullptr if the module
+        ///        has no top-level (declarations only). Filled by
+        ///        read_reloc_table after all pointers are absolute.
+        ///
+        /// @details top-level is not a global symbol. It is the module's
+        ///          entry point, and only the loader should call it. Keeping
+        ///          it in Globals would make every load overwrite the same
+        ///          slot, and a module without top-level would leave a
+        ///          foreign one behind.
+        const ScriptLambda   *m_top_level = nullptr;
 
         std::filesystem::path m_path;               ///< source path (for diagnostics)
         const DC_Header      *m_dcheader = nullptr; ///< pointer into m_bytes

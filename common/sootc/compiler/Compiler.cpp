@@ -75,7 +75,14 @@ namespace sootc {
         //                      external host (carbon.exe) over the
         //                      cross-socket protocol.
         if (m_config.runtime_url.empty()) {
-            m_runtime = std::make_unique<LocalVmRuntime>();
+            // Convert the string search_paths from CompilationOptions
+            // into filesystem::path for CarbonConfig. The runtime uses
+            // these to find .bin files when a script calls
+            // (load-module "name").
+            std::vector<std::filesystem::path> runtime_search_paths;
+            runtime_search_paths.reserve(m_config.search_paths.size());
+            for (const auto &s : m_config.search_paths) { runtime_search_paths.emplace_back(s); }
+            m_runtime = std::make_unique<LocalVmRuntime>(std::move(runtime_search_paths));
         } else if (m_config.runtime_url == "null") {
             m_runtime = std::make_unique<NullRuntime>();
         } else {
@@ -148,7 +155,7 @@ namespace sootc {
                                 "(compile \"",   "(deftype ",     "(defenum ",  "(sc-run ",
                                 "(sc-eval ",     "(inspect-env)", "(e)",        "(reload)",
                                 "(help)",        "(clear)",       "(sizes)",    "(list-symbols)",
-                                "(save-session "};
+                                "(save-session ", "(load-module"};
 
             m_repl->regex_colors = {
                 {";[^\n]*", replxx::Replxx::Color::BRIGHTCYAN},
@@ -376,24 +383,56 @@ namespace sootc {
         // ------------------------------------------------------------------
         namespace fs = std::filesystem;
 
-        std::string resolved = path;
+        // Resolve `path` against PROJECT and search_paths. An absolute path
+        // is taken as-is. A relative path is tried:
+        //   1. as-is (CWD) — for backward compatibility and for paths the
+        //      user typed explicitly;
+        //   2. PROJECT / path;
+        //   3. PROJECT / dir / path for each search_path.
+        //
+        // This is the same resolution order as save_session, which always
+        // writes to PROJECT / <dir> / <name>.bin. Without it, a file saved
+        // by save_session cannot be found by require.
+        std::string resolved;
+        bool        found = false;
 
-        if (!fs::exists(resolved)) {
-            bool found = false;
-            for (const auto &dir : m_config.search_paths) {
-                fs::path candidate = fs::path(dir) / path;
+        if (fs::path(path).is_absolute()) {
+            resolved = path;
+            found = fs::exists(resolved);
+        } else {
+            // 1. CWD
+            if (fs::exists(path)) {
+                resolved = path;
+                found = true;
+            }
+            // 2. PROJECT
+            if (!found) {
+                fs::path candidate = file_util::get_path(file_util::PathType::PROJECT) / path;
                 if (fs::exists(candidate)) {
                     resolved = candidate.string();
                     found = true;
-                    break;
                 }
             }
+            // 3. PROJECT / search_path
             if (!found) {
-                throw CompilerError("Compiler::require_file")
-                    .expected("a file that exists in search_paths")
-                    .got(fmt::format("'{}'", path))
-                    .note(fmt::format("search_paths: {}", fmt::join(m_config.search_paths, ", ")));
+                for (const auto &dir : m_config.search_paths) {
+                    fs::path candidate =
+                        file_util::get_path(file_util::PathType::PROJECT) / dir / path;
+                    if (fs::exists(candidate)) {
+                        resolved = candidate.string();
+                        found = true;
+                        break;
+                    }
+                }
             }
+        }
+        if (!found) {
+            throw CompilerError("Compiler::require_file")
+                .expected("a file that exists in search_paths")
+                .got(fmt::format("'{}'", path))
+                .note(fmt::format("search_paths: {}", fmt::join(m_config.search_paths, ", ")))
+                .note(fmt::format("PROJECT: {}",
+                                  file_util::get_path(file_util::PathType::PROJECT).string()));
         }
 
         // ------------------------------------------------------------------
@@ -1700,28 +1739,25 @@ namespace sootc {
                            m_runtime->name());
             }
 
-            // After the module is loaded, run its `top-level` function if
-            // it has one. In REPL mode, every expression that is not a
-            // declaration (defun / deftype / define with a function value)
-            // ends up in a synthetic `top-level` function. Running it here
-            // makes `(_print "Hello")` behave like an expression statement:
-            // it executes immediately, and its value (if any) is printed.
+            // Run THIS module's top-level, not a Globals lookup. Globals
+            // is a flat SID -> pointer map, and top-level is not a module
+            // symbol: every module that has top-level expressions defines
+            // one, and a Globals-based lookup would return whichever
+            // module was loaded last. The module we just loaded is the
+            // one whose top-level must run.
             //
-            // If there is no `top-level` (for example, the input was just
-            // a `defun`), the lookup returns nothing and we silently skip.
-            if (m_runtime->has_symbol("top-level")) {
-                auto top_level_result = m_runtime->call("top-level", {});
-                if (top_level_result.ok) {
-                    // Print the return value only if it is not the dummy
-                    // `1` that _print returns. A more elaborate version
-                    // could compare against the function's declared return
-                    // type, but for now the check below is enough.
-                    const std::string printed = top_level_result.value.to_string();
-                    fmt::print(fg(fmt::color::cyan), "; => {}\n", printed);
-                } else {
-                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                               top_level_result.error);
-                    return ReplStatus::ERR;
+            // LocalVmRuntime knows the logical_name it just registered.
+            // NullRuntime and RemoteRuntime have no top-level to print.
+            if (auto *local = dynamic_cast<LocalVmRuntime *>(m_runtime.get())) {
+                const std::string &logical = local->last_logical_name();
+                if (!logical.empty()) {
+                    auto run_result = m_runtime->run_top_level(logical);
+                    if (!run_result.ok) {
+                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                                   run_result.error);
+                        return ReplStatus::ERR;
+                    }
+                    fmt::print(fg(fmt::color::cyan), "; => {}\n", run_result.value.to_string());
                 }
             }
 
@@ -2152,6 +2188,14 @@ namespace sootc {
             return false;
         }
 
+        // save_session builds a throwaway FileNode from m_session_forms.
+        // NodeBuilder::build_define binds every (define ...) into
+        // m_global_env; without a rollback, those bindings point at
+        // Nodes owned by the throwaway FileNode and dangle as soon as
+        // it goes out of scope. Snapshot m_global_env before building
+        // and roll it back on every exit path.
+        GlobalNode::Snapshot global_snapshot = m_global_env->take_snapshot();
+
         try {
             NodeBuilder builder(m_ts, this);
             auto        file_node = std::make_unique<FileNode>(name);
@@ -2165,16 +2209,25 @@ namespace sootc {
 
                 if (!node) continue;
 
-                if (dynamic_cast<FunctionNode *>(node.get()) != nullptr ||
-                    dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
-                    dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
-                    dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr ||
-                    dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
+                if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
+                    file_node->add_child(sd->take_decl());
+                    for (auto &store : sd->take_stores()) {
+                        top_level_body->add(std::move(store));
+                        top_level_used = true;
+                    }
+                } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
+                    file_node->add_child(hd->take_decl());
+                    top_level_body->add(hd->take_store());
+                    top_level_used = true;
+                } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr ||
+                           dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
+                           dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
+                           dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr ||
+                           dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                     file_node->add_child(std::move(node));
                 } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                    if (auto* seq = dynamic_cast<SequenceNode*>(expr); seq && seq->size() == 0) {
+                    if (auto *seq = dynamic_cast<SequenceNode *>(expr); seq && seq->size() == 0) {
                         // Empty sequence at top level: no code, drop it.
-                        // `node` is a unique_ptr; going out of scope frees it.
                     } else {
                         node.release();
                         top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
@@ -2188,15 +2241,7 @@ namespace sootc {
                 file_node->add_child(std::move(top_level));
             }
 
-            // Compile state-script handler bodies. Without this, each
-            // StateScriptNode has no lambdas attached, and generate()
-            // produces no state-script entry: the binary ends up empty.
-            // compile_internal does the same step right after the main
-            // loop; save_session must mirror it.
-            //
-            // IMPORTANT: compile_state_script_bodies calls
-            // file->add_child(), which may reallocate m_children and
-            // invalidate iterators. We snapshot the pointers first.
+            // Compile state-script handler bodies.
             {
                 std::vector<StateScriptNode *> state_scripts;
                 for (auto &child : file_node->children()) {
@@ -2211,26 +2256,7 @@ namespace sootc {
 
             // ---- Strict mode: every method declared in a type must be
             //      implemented by a defmethod in the same FileNode. ----
-            //
-            // This check is done on the AST, before make_binary. At this
-            // point m_children contains:
-            //   * TypeDeclarationNode(s) — one per deftype;
-            //   * FunctionNode(s)        — one per defun / defmethod,
-            //                              named "<type>-<method>" for methods.
-            //
-            // We do NOT look at the emitted SsType. That struct is built
-            // by make_binary from whatever FunctionNodes happen to be in
-            // m_children; if the reloc or the method-offset map is off,
-            // the check reads garbage. The AST has the truth: a method is
-            // implemented iff there is a FunctionNode with the exact name
-            // "<type>-<method>".
-            //
-            // Inherited methods are not checked. They are implemented in
-            // the parent's module (or the parent itself is broken). We
-            // only require that every method declared *in this type* has
-            // a matching FunctionNode in this FileNode.
             {
-                // Collect the names of every FunctionNode in m_children.
                 std::set<std::string> fn_names;
                 for (auto &child : file_node->children()) {
                     if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
@@ -2238,7 +2264,6 @@ namespace sootc {
                     }
                 }
 
-                // For each type declaration, check every own method.
                 for (auto &child : file_node->children()) {
                     auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
                     if (!td) continue;
@@ -2247,7 +2272,6 @@ namespace sootc {
                     Type              *type = m_ts.lookup_type_no_throw(type_name);
                     if (!type) continue;
 
-                    // Methods declared in this type (not inherited).
                     for (const auto &m : type->get_methods_defined_for_type()) {
                         const std::string full_name = type_name + "-" + m.name;
                         if (fn_names.count(full_name)) continue;
@@ -2256,10 +2280,10 @@ namespace sootc {
                                    "; ERROR: method '{}' of type '{}' is declared "
                                    "but has no defmethod\n",
                                    m.name, type_name);
+                        m_global_env->rollback(std::move(global_snapshot));
                         return false;
                     }
 
-                    // `new` is not in get_methods_defined_for_type().
                     if (const auto *ni = type->get_new_method_defined_for_type()) {
                         const std::string full_name = type_name + "-" + ni->name;
                         if (!fn_names.count(full_name)) {
@@ -2267,6 +2291,7 @@ namespace sootc {
                                        "; ERROR: method 'new' of type '{}' is declared "
                                        "but has no defmethod\n",
                                        type_name);
+                            m_global_env->rollback(std::move(global_snapshot));
                             return false;
                         }
                     }
@@ -2277,6 +2302,7 @@ namespace sootc {
             auto        element = file_node->generate(strings_table);
             if (element.m_rawData.empty()) {
                 fmt::print(fg(fmt::color::yellow), "; WARN: session produced no binary output\n");
+                m_global_env->rollback(std::move(global_snapshot));
                 return false;
             }
 
@@ -2287,6 +2313,7 @@ namespace sootc {
                 BinaryFile::from_buffer(name, std::move(bytes), element.m_rawData.size());
             if (!binary_result) {
                 fmt::print(fg(fmt::color::crimson), "; ERROR: {}\n", binary_result.error());
+                m_global_env->rollback(std::move(global_snapshot));
                 return false;
             }
 
@@ -2295,13 +2322,16 @@ namespace sootc {
                 binary->m_dataStructs.push_back(ds);
             }
 
-            // Save binary, header, and dci.
-            if (!save_binary(*binary, out_dir)) return false;
-            if (!save_header(*binary, out_dir)) return false;
-            if (!save_dci(*binary, out_dir)) return false;
+            if (m_config.print_listing) { print_listing(*binary); }
 
-            return true;
+            bool ok = save_binary(*binary, out_dir);
+            if (ok) ok = save_header(*binary, out_dir);
+            if (ok) ok = save_dci(*binary, out_dir);
+
+            m_global_env->rollback(std::move(global_snapshot));
+            return ok;
         } catch (const std::exception &e) {
+            m_global_env->rollback(std::move(global_snapshot));
             fmt::print(fg(fmt::color::crimson), "; EXCEPTION during save_session: {}\n", e.what());
             return false;
         }
