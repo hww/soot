@@ -66,6 +66,7 @@ namespace sootc {
         std::unique_ptr<CallNode>       build_call(const script::Object &form, Node *node);
         std::unique_ptr<VariableNode>   build_variable(const script::Object &form, Node *node);
         std::unique_ptr<ConstNode>      build_const(const script::Object &form, Node *node);
+        std::unique_ptr<ConstNode>         build_quote(const script::Object &form, Node *node);
         std::unique_ptr<ExpressionNode>    build_abs(const script::Object &form, Node *node);
         std::unique_ptr<ExpressionNode>    build_neg(const script::Object &form, Node *node);
         std::unique_ptr<ExpressionNode>    build_not(const script::Object &form, Node *node);
@@ -83,6 +84,7 @@ namespace sootc {
         ///          loaded the required module, it continues with the
         ///          next form. An empty SequenceNode is returned.
         std::unique_ptr<Node>              build_require(const script::Object &form, Node *node);
+
 
         // ---- Helpers ----
         Type                              *parse_type(const script::Object &type_form, Node *node);
@@ -107,6 +109,7 @@ namespace sootc {
 
         std::unique_ptr<Node> build_begin_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_define_wrap(const script::Object &form, Node *node);
+        std::unique_ptr<Node> build_quote_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_defmacro_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_seval_wrap(const script::Object &form, Node *node);
         std::unique_ptr<Node> build_deftype_wrap(const script::Object &form, Node *node);

@@ -87,6 +87,11 @@ namespace sootc {
         // (require "path/to/file.sc") — language-level dependency form.
         // See NodeBuilder::build_require and Compiler::require_file.
         m_form_table["require"] = &NodeBuilder::build_require;
+
+        // (quote sym) — a quoted symbol is a SID literal.
+        // The reader turns 'foo into (quote foo), so this is the
+        // single entry point for the 'foo literal.
+        m_form_table["quote"] = &NodeBuilder::build_quote_wrap;
     }
 
     // ============================================================================
@@ -112,11 +117,12 @@ namespace sootc {
             // Note: keywords (`:foo`) are NOT SID literals. They are
             // internal symbols used by forms like `new`. They are not
             // handled here.
+#ifdef STRING_ID_LITERAL_
             if (name.size() > 1 && name[0] == '#') {
                 const sid64 sid = static_cast<sid64>(StringId(name));
                 return ConstNode::make_sid(sid);
             }
-
+#endif
             // ---- Compile-time constants ----
             if (m_compiler) {
                 if (auto constant = m_compiler->lookup_constant(name)) {
@@ -190,6 +196,7 @@ namespace sootc {
     WRAP_FORWARD(build_not_wrap, build_not)
     WRAP_FORWARD(build_lognot_wrap, build_lognot)
     WRAP_FORWARD(build_at_wrap, build_at)
+    WRAP_FORWARD(build_quote_wrap, build_quote)
 
 #undef WRAP_FORWARD
 
@@ -2422,5 +2429,44 @@ namespace sootc {
         }
 
         return std::make_unique<SequenceNode>();
+    }
+
+    // ============================================================================
+    // quote
+    // ============================================================================
+    //
+    // (quote sym) — a quoted symbol is a SID literal.
+    //
+    // The reader turns 'foo into (quote foo). The compiler interns
+    // "foo" in StringIdManager and emits the resulting 64-bit hash
+    // as a constant. The VM sees the same SID that map-set,
+    // symbol comparison, and defun registration expect.
+    //
+    // Only a symbol may be quoted. '42 and '"foo" are rejected:
+    // a quoted integer is not a SID, and "foo" already has a
+    // meaning (string literal). Use the string directly if you
+    // want a string; use 'foo if you want a SID.
+    std::unique_ptr<ConstNode> NodeBuilder::build_quote(const script::Object &form, Node *node) {
+        (void)node;
+
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_quote")
+                .expected("(quote symbol)")
+                .got("missing argument");
+        }
+
+        const auto &arg = rest.as_pair()->car;
+
+        if (arg.is_symbol()) {
+            const sid64 sid = StringId(arg.to_std_string());
+            return ConstNode::make_sid(sid);
+        }
+
+        throw m_compiler->make_error(form, "NodeBuilder::build_quote")
+            .expected("a symbol after quote")
+            .got(arg.print())
+            .note("'foo produces the SID of the symbol foo. "
+                  "Quoted integers, floats, and strings are not supported.");
     }
 } // namespace sootc
