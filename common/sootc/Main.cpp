@@ -41,7 +41,9 @@ struct CommandLineOptions {
     std::string              user_profile = "#f";
 
     // Behavior.
-    bool        interactive = true;
+    /// Tri-state: unset means "use soot.json"; true/false mean
+    /// "force REPL on/off, overriding soot.json".
+    std::optional<bool> repl;
     bool        print_listing = false;
     std::string log_level = "warn";
     std::string log_file;
@@ -90,7 +92,10 @@ void print_help(const char *program_name) {
     fmt::print("  --profile <name>     Load user profile\n");
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nBehavior:\n");
-    fmt::print("  -n, --no-repl        Don't open the REPL (CLI mode only)\n");
+    fmt::print("  -r --repl            Open the REPL (CLI mode only)\n");
+    fmt::print("                       (overrides soot.json \"repl\")\n");
+    fmt::print("  -n --no-repl         Don't open the REPL (CLI mode only)\n");
+    fmt::print("                       (overrides soot.json \"repl\")\n");
     fmt::print("  --print-listing      Print binary listing after each file (CLI)\n");
     fmt::print("  --log <level>        Log level: debug|info|warn|error (default: info)\n");
     fmt::print("  --log-file <path>    Write logs to a file (default: stderr only)\n");
@@ -169,8 +174,10 @@ CommandLineOptions parse_args(int argc, char *argv[]) {
         }
 
         // ----- Behavior -----
-        else if (arg == "--no-repl" || arg == "-n") {
-            opts.interactive = false;
+        else if (arg == "--repl" || arg == "-r") {
+            opts.repl = true;
+        } else if (arg == "--no-repl" || arg == "-n") {
+            opts.repl = false;
         } else if (arg == "--print-listing") {
             opts.print_listing = true;
         } else if (arg == "--log" && i + 1 < argc) {
@@ -282,6 +289,10 @@ int main(int argc, char *argv[]) {
         common::SootProjectConfig project_cfg = common::SootProjectConfig::load(opts.project_root);
         common::set_project_path(project_cfg.project_root);
         lg::info("PROJECT = {}", project_cfg.project_root.string());
+        // REPL: CLI --repl / --no-repl override soot.json. If neither
+        // is set, soot.json decides; if soot.json is silent, default
+        // is false (exit after compile/run).
+        const bool   want_repl = opts.repl.value_or(project_cfg.repl);
 
         // ----- REPL configuration -----
         REPL::Config repl_config(opts.platform);
@@ -366,7 +377,7 @@ int main(int argc, char *argv[]) {
             }
             auto status = compiler->handle_repl_string(script);
             if (status == sootc::ReplStatus::WANT_EXIT) {
-                // The script asked to exit. Honour it: --no-repl or not,
+                // The script asked to exit. Honour it: --repl or not,
                 // we stop here.
                 return 0;
             }
@@ -418,12 +429,21 @@ int main(int argc, char *argv[]) {
             compiler->save_sidbase();
 
             // If REPL is disabled, exit after compiling.
-            if (!opts.interactive) { return 0; }
-        } else if (!opts.interactive) {
-            // No files, no REPL: nothing to do. This is a mistake.
-            lg::error("Nothing to do: no input files and REPL is disabled. "
-                      "Pass a file to compile, or remove --no-repl to open the REPL.");
-            return 1;
+            if (!want_repl) { return 0; }
+        } else if (!want_repl) {
+            // No files, no --run, no REPL: nothing to do.
+            // --run was already executed above; if it did something,
+            // this branch is not reached. Reaching it means the user
+            // ran sootc with no input and no --repl, which is almost
+            // certainly a mistake.
+            if (opts.run_script.empty()) {
+                lg::error("Nothing to do: no input files, no --run, and REPL is disabled. "
+                          "Pass a file to compile, pass --run <script>, "
+                          "or add --repl to open the REPL.");
+                return 1;
+            }
+            // --run was given and executed successfully. Just exit.
+            return 0;
         }
 
         // ----- REPL -----
@@ -453,7 +473,7 @@ int main(int argc, char *argv[]) {
         // #name literals, those strings were registered during the
         // session. Flush them to disk on the way out. This is best-
         // effort: if the user kills the terminal, we can't save.
-        if (opts.interactive && !comp_options.sidbase_path.empty()) {
+        if (want_repl && !comp_options.sidbase_path.empty()) {
             if (carbon::StringIdManager::instance().save_dconstruct_sidbase(
                     comp_options.sidbase_path)) {
                 lg::info("Saved sidbase: {} ({} entries)", comp_options.sidbase_path,

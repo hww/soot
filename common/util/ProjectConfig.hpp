@@ -67,10 +67,21 @@ namespace common {
 
     struct SootProjectConfig {
         std::filesystem::path              project_root;
+        std::filesystem::path project_root_field; 
         std::string                        runtime = "local";
         std::filesystem::path              sidbase = "build/sidbase.bin";
         std::vector<std::filesystem::path> search_paths = {".", "scripts", "src", "examples",
                                                            "soot_src"};
+        /// @brief Open the REPL after compiling / running?
+        ///
+        /// @details Default: false. sootc and carbon exit after their
+        ///          work is done unless the user explicitly asks for
+        ///          the REPL. A project may set this to true in
+        ///          soot.json so that F5 in an IDE opens the REPL
+        ///          without any per-run configuration.
+        ///
+        ///          CLI --repl / --no-repl override this field.
+        bool                               repl = false;
 
         /// @brief Walk up from `start` looking for soot.json.
         static std::filesystem::path find(const std::filesystem::path &start);

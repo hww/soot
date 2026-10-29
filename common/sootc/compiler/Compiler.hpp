@@ -44,6 +44,26 @@ namespace sootc {
         HYBRID,         // Interpret first, fall back to compile (default).
     };
 
+    // Where the current input came from.
+    //
+    //   Default — compiled from a real .sc file. Its ModuleId is a
+    //             path inside the project; base_dir is the file's
+    //             parent directory.
+    //
+    //   Test    — compiled from a test harness, e.g. SootcTest::compile.
+    //             No real file on disk. Explicit ./ and ../ paths are
+    //             resolved against project_root.
+    //
+    //   Repl    — typed at the REPL. No real file on disk. Explicit
+    //             ./ and ../ paths are resolved against project_root.
+    //
+    // The distinction matters only for require path resolution.
+    enum class InputOrigin {
+        Default,
+        Test,
+        Repl,
+    };
+
     // REPL loop control status returned by handle_repl_string().
     enum class ReplStatus {
         OK,          // Continue the loop.
@@ -111,6 +131,13 @@ namespace sootc {
         ~Compiler();
 
         // --- Compilation ---
+        
+        /// @brief Mark the next compile_file() input as a test input.
+        /// @details Affects only explicit ./ and ../ path resolution
+        ///          in require: they will be resolved against
+        ///          project_root instead of the (non-existent)
+        ///          parent directory of the synthetic name.
+        void set_input_origin(InputOrigin origin) { m_input_origin = origin; }
 
         /// @brief Compile forms as a regular file (not a REPL input).
         /// @details Sets is_repl = false in the underlying call. Used
@@ -533,6 +560,7 @@ namespace sootc {
         std::unique_ptr<NoneNode>   m_none;
 
         ModuleId                                        m_current_file;
+        InputOrigin                                     m_input_origin = InputOrigin::Default;
         std::unordered_map<std::string, FunctionInfo>   m_functions;
         std::unordered_map<std::string, script::Object> m_constants;
 

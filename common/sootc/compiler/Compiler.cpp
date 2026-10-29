@@ -377,6 +377,7 @@ namespace sootc {
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file(script::Object &forms, const std::string &filename) {
         m_current_file = ModuleId(filename);
+        m_input_origin = InputOrigin::Default;
         auto result = compile_internal(forms, filename, /*is_repl=*/false);
 
         if (result && m_config.debug_print_ir) {
@@ -404,6 +405,7 @@ namespace sootc {
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file_repl(script::Object &forms, const std::string &filename) {
         m_current_file = ModuleId(filename);
+        m_input_origin = InputOrigin::Repl;
         auto result = compile_internal(forms, filename, /*is_repl=*/true);
 
         if (result && m_config.debug_print_ir) {
@@ -421,7 +423,22 @@ namespace sootc {
         std::vector<fs::path> search_paths;
         for (const auto &s : m_config.search_paths) search_paths.emplace_back(s);
 
-        fs::path base_dir = from_id.parent_path();
+        // Base directory for explicit ./ and ../ paths.
+        //
+        //   Default — the file's own directory.
+        //   Test    — project_root (no real file on disk).
+        //   Repl    — project_root (no real file on disk).
+        //
+        // This is decided by the compiler's own state, not by
+        // inspecting the ModuleId string: a synthetic name is an
+        // implementation detail, not an input to path resolution.
+        fs::path base_dir;
+        if (m_input_origin == InputOrigin::Default) {
+            base_dir = from_id.parent_path();
+        } else {
+            base_dir = m_config.project_root;
+        }
+
         fs::path found = common::find_project_file(path, base_dir, search_paths);
         if (found.empty()) return std::nullopt;
 
@@ -634,6 +651,12 @@ namespace sootc {
         // dangle, and a later (-> v x) would read zero.
         std::string effective_filename = filename;
         if (is_repl) { effective_filename = fmt::format("<repl-{}>", m_repl_counter++); }
+        
+        // For REPL inputs, the effective name is "<repl-N>". Make it
+        // visible to resolve_require via m_current_file, so that
+        // (require "./sibling.sc") from the REPL knows there is no real
+        // file to anchor to and falls back to PROJECT.
+        if (is_repl) { m_current_file = ModuleId(effective_filename); }
 
         FileNode          *file_node = nullptr;
         bool               owns_file_node = false;

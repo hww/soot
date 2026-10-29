@@ -76,15 +76,25 @@ namespace common {
 
         if (file.is_absolute()) { return fs::exists(file) ? file : fs::path{}; }
 
+        // base_dir may be relative (a ModuleId like "tests/foo.sc"
+        // produces base_dir "tests"). Resolve it against PROJECT so
+        // that fs::exists() sees an absolute path. Without this,
+        // fs::exists("tests/bar.sc") is evaluated against CWD, which
+        // is not where the project lives.
+        fs::path abs_base = base_dir;
+        if (!abs_base.empty() && abs_base.is_relative()) {
+            abs_base = get_path(PathType::PROJECT) / abs_base;
+        }
+
         const bool explicit_relative = filename.starts_with("./") || filename.starts_with("../");
         if (explicit_relative) {
-            if (base_dir.empty()) return {};
-            fs::path candidate = (base_dir / file).lexically_normal();
+            if (abs_base.empty()) { return {}; }
+            fs::path candidate = (abs_base / file).lexically_normal();
             return fs::exists(candidate) ? candidate : fs::path{};
         }
 
-        if (!base_dir.empty()) {
-            fs::path candidate = (base_dir / file).lexically_normal();
+        if (!abs_base.empty()) {
+            fs::path candidate = (abs_base / file).lexically_normal();
             if (fs::exists(candidate)) return candidate;
         }
 
@@ -334,21 +344,38 @@ namespace common {
         }
 
         for (auto &[key, v] : entries) {
-            if (key == "runtime" && v.kind == Value::Kind::STRING) {
+            if (key == "project_root" && v.kind == Value::Kind::STRING) {
+                cfg.project_root_field = v.str;
+            } else if (key == "runtime" && v.kind == Value::Kind::STRING) {
                 cfg.runtime = v.str;
             } else if (key == "sidbase" && v.kind == Value::Kind::STRING) {
                 cfg.sidbase = v.str;
             } else if (key == "search_paths" && v.kind == Value::Kind::ARRAY_OF_STRINGS) {
                 cfg.search_paths.clear();
                 for (auto &s : v.arr) cfg.search_paths.emplace_back(s);
+            } else if (key == "repl" && v.kind == Value::Kind::OTHER) {
+                // Accept "true" and "false" as bare tokens. The minimal
+                // parser does not have a boolean kind, so we match the
+                // literal text.
+                const std::string &raw = v.str;
+                if (raw == "true") {
+                    cfg.repl = true;
+                } else if (raw == "false") {
+                    cfg.repl = false;
+                } else {
+                    lg::warn("ProjectConfig: 'repl' must be true or false in '{}' — ignored",
+                             json_path.string());
+                }
             } else {
                 lg::warn("ProjectConfig: unknown key '{}' in '{}' — ignored", key,
                          json_path.string());
             }
         }
 
-        lg::info("ProjectConfig: loaded '{}' (runtime='{}', sidbase='{}', search_paths={})",
-                 json_path.string(), cfg.runtime, cfg.sidbase.string(), cfg.search_paths.size());
+        lg::info("ProjectConfig: loaded '{}' (runtime='{}', sidbase='{}', "
+                 "search_paths={}, repl={})",
+                 json_path.string(), cfg.runtime, cfg.sidbase.string(), cfg.search_paths.size(),
+                 cfg.repl ? "true" : "false");
 
         return cfg;
     }
@@ -356,24 +383,52 @@ namespace common {
     SootProjectConfig SootProjectConfig::load(const std::string &explicit_root) {
         SootProjectConfig cfg;
 
-        fs::path root;
+        // 1. Resolve the *location* of soot.json: either an explicit
+        //    path, SOOT_ROOT, or by walking up from CWD.
+        std::filesystem::path json_dir;
         if (!explicit_root.empty()) {
-            root = fs::absolute(explicit_root);
+            json_dir = std::filesystem::absolute(explicit_root);
         } else if (const char *env = std::getenv("SOOT_ROOT")) {
-            root = fs::absolute(env);
+            json_dir = std::filesystem::absolute(env);
         } else {
-            root = find(fs::current_path());
-            if (root.empty()) { root = fs::current_path(); }
+            json_dir = find(std::filesystem::current_path());
+            if (json_dir.empty()) { json_dir = std::filesystem::current_path(); }
         }
 
-        const auto json_path = root / "soot.json";
-        if (fs::exists(json_path)) {
+        const auto json_path = json_dir / "soot.json";
+
+        // 2. Read soot.json if present.
+        if (std::filesystem::exists(json_path)) {
             cfg = read(json_path);
+
+            // 3. If soot.json has a "project_root" field, resolve it
+            //    relative to the directory containing soot.json. This is
+            //    what makes the config portable: "../.." means "two
+            //    levels above soot.json", regardless of where the project
+            //    is checked out.
+            if (!cfg.project_root_field.empty()) {
+                std::filesystem::path resolved = json_dir / cfg.project_root_field;
+                std::error_code       ec;
+                resolved = std::filesystem::weakly_canonical(resolved, ec);
+                if (ec) resolved = std::filesystem::absolute(resolved);
+                cfg.project_root = resolved;
+            } else {
+                // No field: project_root is the directory of soot.json.
+                cfg.project_root = json_dir;
+            }
         } else {
+            // No soot.json: project_root is json_dir (the resolved start).
+            cfg.project_root = json_dir;
             lg::info("ProjectConfig: '{}' not found — using defaults", json_path.string());
         }
 
-        cfg.project_root = root;
+        // Ensure absolute and non-empty.
+        if (cfg.project_root.empty()) {
+            cfg.project_root = std::filesystem::current_path();
+        } else if (cfg.project_root.is_relative()) {
+            cfg.project_root = std::filesystem::absolute(cfg.project_root);
+        }
+
         return cfg;
     }
 

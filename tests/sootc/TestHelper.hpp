@@ -109,6 +109,7 @@ namespace sootc::testing {
                 return nullptr;
             }
             s_compiler->config()->debug_print_ast = inspect_ast;
+            s_compiler->set_input_origin(InputOrigin::Test);
             auto result = s_compiler->compile_file(forms, filename);
 
             if (!result) {
