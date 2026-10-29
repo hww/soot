@@ -1,12 +1,18 @@
 ﻿// main.cpp
 #include "CommonTypes.hpp"
+
 #include "carbon/lib/SIDBase.hpp"
 #include "carbon/lib/StringIdManager.hpp"
+
+#include "sootc/compiler/Compiler.hpp"
+
+#include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
+#include "util/Log.hpp"
+
 #include "fmt/color.h"
 #include "fmt/core.h"
-#include "sootc/compiler/Compiler.hpp"
-#include "util/FileUtil.hpp"
-#include "util/Log.hpp"
+
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -262,23 +268,20 @@ int main(int argc, char *argv[]) {
             lg::initialize();
         }
 
-        // ----- Project root -----
+         // ----- Project root + soot.json -----
         //
-        // Project root: --project-root, or current working directory.
-        // Do NOT call detect_project_root: project identity is explicit
-        // or CWD, never inferred from .git or similar markers.
+        // SootProjectConfig::load applies the same resolution rules for
+        // sootc and carbon:
+        //   1. --project-root
+        //   2. SOOT_ROOT environment variable
+        //   3. Walk up from CWD looking for soot.json
+        //   4. Current working directory
         //
-        // The root is fixed ONCE, here, and never re-evaluated. Changing
-        // the working directory later does not change the meaning of a
-        // module id.
-        std::filesystem::path project_root;
-        if (!opts.project_root.empty()) {
-            project_root = std::filesystem::absolute(opts.project_root);
-        } else {
-            project_root = std::filesystem::current_path();
-        }
-        file_util::set_project_path(project_root);
-        lg::info("PROJECT = {}", project_root.string());
+        // A missing or malformed soot.json is not an error: defaults
+        // are used.
+        sootc::SootProjectConfig project_cfg = sootc::SootProjectConfig::load(opts.project_root);
+        file_util::set_project_path(project_cfg.project_root);
+        lg::info("PROJECT = {}", project_cfg.project_root.string());
 
         // ----- REPL configuration -----
         REPL::Config repl_config(opts.platform);
@@ -299,9 +302,29 @@ int main(int argc, char *argv[]) {
         comp_options.log_level = opts.log_level;
         comp_options.sidbase_path = opts.sidbase_path;
         comp_options.user_profile = opts.user_profile;
-        comp_options.search_paths = {".", "scripts", "src", "examples", opts.source_root};
-        comp_options.project_root = project_root;
+        // search_paths: soot.json wins if it lists them; otherwise
+        // the CLI default plus --source-root.
+        if (!project_cfg.search_paths.empty()) {
+            comp_options.search_paths.clear();
+            for (const auto &p : project_cfg.search_paths) {
+                comp_options.search_paths.push_back(p.string());
+            }
+        } else {
+            comp_options.search_paths = {".", "scripts", "src", "examples", opts.source_root};
+        }
+        comp_options.project_root = project_cfg.project_root;
         comp_options.target_dir = opts.target_dir;
+
+        // sidbase: soot.json wins; otherwise the CLI value.
+        if (opts.sidbase_path.empty() && !project_cfg.sidbase.empty()) {
+            comp_options.sidbase_path = project_cfg.sidbase_absolute().string();
+            lg::info("ProjectConfig: sidbase = {}", comp_options.sidbase_path);
+        }
+
+        // runtime: soot.json wins; otherwise the CLI value.
+        if (opts.runtime_url.empty() || opts.runtime_url == "local") {
+            if (project_cfg.runtime != "local") { comp_options.runtime_url = project_cfg.runtime; }
+        }
 
         // Translate the CLI runtime name into the Compiler's runtime_url.
         // The Compiler expects an empty string for the local VM, "null"
@@ -430,12 +453,13 @@ int main(int argc, char *argv[]) {
         // #name literals, those strings were registered during the
         // session. Flush them to disk on the way out. This is best-
         // effort: if the user kills the terminal, we can't save.
-        if (opts.interactive && !opts.sidbase_path.empty()) {
-            if (carbon::StringIdManager::instance().save_dconstruct_sidbase(opts.sidbase_path)) {
-                lg::info("Saved sidbase: {} ({} entries)", opts.sidbase_path,
+        if (opts.interactive && !comp_options.sidbase_path.empty()) {
+            if (carbon::StringIdManager::instance().save_dconstruct_sidbase(
+                    comp_options.sidbase_path)) {
+                lg::info("Saved sidbase: {} ({} entries)", comp_options.sidbase_path,
                          carbon::StringIdManager::instance().size());
             } else {
-                lg::error("Failed to save sidbase: {}", opts.sidbase_path);
+                lg::error("Failed to save sidbase: {}", comp_options.sidbase_path);
             }
         }
 

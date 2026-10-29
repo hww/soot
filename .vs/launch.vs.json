@@ -5,17 +5,9 @@
     {
       "type": "default",
       "project": "CMakeLists.txt",
-      "projectTarget": "sootc.exe (bin\\sootc.exe)",
-      "name": "sootc with arguments",
-      "args": [
-        "--project-root",
-        "D:/projects/hww/_c/soot.git/soot_src",
-        "--runtime",
-        "local",
-        "--sidbase",
-        "D:/projects/hww/_c/soot.git/build/Debug/sidbase.bin"
-      ],
-      "currentDir": "D:/projects/hww/_c/soot.git"
+      "projectTarget": "sootc.exe",
+      "name": "sootc (Debug)",
+      "currentDir": "${workspaceRoot}"
     }
   ]
 }

@@ -6,6 +6,8 @@
 #include "common/repl/nrepl/ReplServer.h"
 
 #include "common/util/Log.hpp"
+#include "util/ProjectConfig.hpp"
+#include "util/FileUtil.hpp"   
 
 #include "fmt/color.h"
 #include "fmt/format.h"
@@ -32,6 +34,8 @@ namespace {
         fmt::print("  -I, --include <dir>     Add a module search path (repeatable)\n");
         fmt::print("  -l, --load <file.bin>   Load a module explicitly (repeatable)\n");
         fmt::print("  -s, --sidbase <file>    Load a sidbase.bin\n");
+        fmt::print("  --project-root <dir>    Project root. Default: CWD.\n");
+        fmt::print("  --project <dir>         Alias for --project-root.\n");
         fmt::print("  --run <name>            Spawn a state-script and run the tick loop\n");
         fmt::print("  --hz <n>                Tick rate in Hz (default: 60)\n");
         fmt::print("  --ticks <n>             Stop after N ticks (default: unlimited)\n");
@@ -274,6 +278,7 @@ int main(int argc, char *argv[]) {
     std::vector<std::filesystem::path> search_paths;
     std::vector<std::string>           positional;
     std::string                        sidbase_path;
+    std::string                        project_root_arg; // --project-root
     std::string                        run_state_script; // --run <name>
     u32                                hz = 60;          // --hz <n>
     i64                                max_ticks = -1;   // --ticks <n>
@@ -310,6 +315,10 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             sidbase_path = argv[++i];
+            continue;
+        }
+        if ((arg == "--project-root" || arg == "--project") && i + 1 < argc) {
+            project_root_arg = argv[++i];
             continue;
         }
         if (arg == "--run") {
@@ -387,9 +396,37 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // ----- Project root + soot.json -----
+    //
+    // Same resolution as sootc:
+    //   1. --project-root
+    //   2. SOOT_ROOT environment variable
+    //   3. find(soot.json) from CWD
+    //   4. CWD
+    //
+    // Once the root is known, soot.json is read (if present) to
+    // obtain sidbase and search_paths. The CLI -s and -I still
+    // override soot.json.
+    sootc::SootProjectConfig project_cfg = sootc::SootProjectConfig::load(project_root_arg);
+    file_util::set_project_path(project_cfg.project_root);
+    lg::info("PROJECT = {}", project_cfg.project_root.string());
+
+    // sidbase: CLI -s wins; otherwise soot.json; otherwise default.
+    std::string effective_sidbase = sidbase_path;
+    if (effective_sidbase.empty() && !project_cfg.sidbase.empty()) {
+        effective_sidbase = project_cfg.sidbase_absolute().string();
+    }
+
+    // search_paths: CLI -I wins if any were given; otherwise soot.json.
+    if (search_paths.empty() && !project_cfg.search_paths.empty()) {
+        for (const auto &p : project_cfg.search_paths) {
+            search_paths.push_back(project_cfg.project_root / p);
+        }
+    }
+
     // ----- Carbon up -----
     CarbonConfig config;
-    config.sidbase_path = sidbase_path;
+    config.sidbase_path = effective_sidbase;
 
     Carbon carbon;
     if (!carbon.initialize(config)) {

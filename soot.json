@@ -1,0 +1,5 @@
+{
+  "runtime": "local",
+  "sidbase": "build/sidbase.bin",
+  "search_paths": [ "lib", "src", "examples", "soot_src" ]
+}

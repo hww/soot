@@ -15,6 +15,7 @@ common/util/FileUtil.cpp
 common/util/PrintFloat.cpp
 common/util/Diff.cpp  
 common/util/math/Geometry.cpp  
+common/util/ProjectConfig.cpp   
 )
 
 # Линкуем fmt если нужно

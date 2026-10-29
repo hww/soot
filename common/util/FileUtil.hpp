@@ -72,6 +72,42 @@ enum class PathType {
 void     set_project_path(const fs::path &path);
 fs::path get_path(PathType type);
 
+/// @brief Directory containing the running executable.
+/// @details Used to find tool-owned resources (prelude, default
+///          sidbase) that must work regardless of the working
+///          directory. Platform-specific: /proc/self/exe on Linux,
+///          GetModuleFileName on Windows, _NSGetExecutablePath on macOS.
+/// @return Absolute path to the directory, or empty path on failure.
+std::filesystem::path get_executable_dir();
+
+/// @brief Find a project file by searching, in order:
+///
+///          1. Relative to `base_dir`, if given.
+///          2. Relative to the current working directory.
+///          3. Relative to the directory of the running executable.
+///          4. Relative to PROJECT.
+///          5. Relative to each entry of PROJECT/search_paths.
+///          6. Relative to CONFIG.
+///          7. Relative to SHARE.
+///
+/// @details A path starting with "./" or "../" is treated as
+///          explicitly relative to `base_dir`: only step 1 is tried.
+///          Any other relative path goes through all steps. An
+///          absolute path is returned as-is if it exists.
+///
+///          The first existing file wins. Returns an empty path if
+///          no candidate exists.
+///
+/// @param filename  File name (may include a relative path).
+/// @param base_dir  Directory of the file that requested the search,
+///                  e.g. the currently-compiling source. May be empty.
+/// @param search_paths  PROJECT-relative search paths, e.g.
+///                  {".", "scripts", "src", "examples", "soot_src"}.
+/// @return Absolute path to the first existing candidate, or {}.
+std::filesystem::path find_project_file(const std::string                        &filename,
+                                        const std::filesystem::path              &base_dir,
+                                        const std::vector<std::filesystem::path> &search_paths);
+
 // Ищет файл в приоритете: Project -> Config -> Share
 fs::path find_config_file(const std::string &filename);
 

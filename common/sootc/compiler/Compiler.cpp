@@ -57,7 +57,20 @@ namespace sootc {
           m_soot(user_profile, false, true, comp_options.platform), m_repl(std::move(repl)) {
         (void)repl_config;
         m_config = comp_options;
-        sync_type_verbose(); 
+        sync_type_verbose();
+
+        // If the caller did not set project_root (unit tests, embedded
+        // uses), fall back to file_util's PROJECT, or to CWD if that is
+        // also empty. The compiler cannot work without a root: every
+        // module id is resolved relative to it, and the prelude loader
+        // needs a directory to search in.
+        if (m_config.project_root.empty()) {
+            m_config.project_root = file_util::get_path(file_util::PathType::PROJECT);
+        }
+        if (m_config.project_root.empty()) {
+            m_config.project_root = std::filesystem::current_path();
+            file_util::set_project_path(m_config.project_root);
+        }
 
         m_ts.add_builtin_types();
         m_global_env = std::make_unique<GlobalNode>();
@@ -402,50 +415,25 @@ namespace sootc {
     std::optional<ModuleRef> Compiler::resolve_require(const std::string &path,
                                                        const ModuleId    &from_id) const {
         namespace fs = std::filesystem;
-        const fs::path root = m_config.project_root;
 
-        // Reject absolute paths: a module must not depend on an
-        // arbitrary file outside the project.
-        if (fs::path(path).is_absolute()) { return std::nullopt; }
+        std::vector<fs::path> search_paths;
+        for (const auto &s : m_config.search_paths) search_paths.emplace_back(s);
 
-        // 1. Explicit sibling: ./foo, ../foo.
-        if (path.starts_with("./") || path.starts_with("../")) {
-            fs::path from_dir = from_id.parent_path();
-            fs::path candidate = (from_dir / path).lexically_normal();
-            fs::path resolved = root / candidate;
-            if (fs::exists(resolved)) {
-                auto id_opt = [&]() -> std::optional<ModuleId> {
-                    try {
-                        return make_module_id(resolved, root);
-                    } catch (...) { return std::nullopt; }
-                }();
-                if (!id_opt) return std::nullopt;
-                std::error_code ec;
-                fs::path        canon = fs::weakly_canonical(resolved, ec);
-                if (ec) canon = fs::absolute(resolved);
-                return ModuleRef{*id_opt, canon};
-            }
-            return std::nullopt;
-        }
+        fs::path base_dir = from_id.parent_path();
+        fs::path found = file_util::find_project_file(path, base_dir, search_paths);
+        if (found.empty()) return std::nullopt;
 
-        // 2. Project root.
-        fs::path candidate = path;
-        if (!candidate.has_extension()) candidate += ".sc";
-        fs::path resolved = root / candidate;
-        if (fs::exists(resolved)) {
-            auto id_opt = [&]() -> std::optional<ModuleId> {
-                try {
-                    return make_module_id(resolved, root);
-                } catch (...) { return std::nullopt; }
-            }();
-            if (!id_opt) return std::nullopt;
-            std::error_code ec;
-            fs::path        canon = fs::weakly_canonical(resolved, ec);
-            if (ec) canon = fs::absolute(resolved);
-            return ModuleRef{*id_opt, canon};
-        }
+        auto id_opt = [&]() -> std::optional<ModuleId> {
+            try {
+                return make_module_id(found, m_config.project_root);
+            } catch (...) { return std::nullopt; }
+        }();
+        if (!id_opt) return std::nullopt;
 
-        return std::nullopt;
+        std::error_code ec;
+        fs::path        canon = fs::weakly_canonical(found, ec);
+        if (ec) canon = fs::absolute(found);
+        return ModuleRef{*id_opt, canon};
     }
 
     std::optional<ModuleRef> Compiler::resolve_module(const std::string &path) const {
@@ -776,43 +764,38 @@ namespace sootc {
                     } else if (auto *td = dynamic_cast<TypeDeclarationNode *>(node.get())) {
                         // A repeated `deftype` for a type that is already
                         // declared in another FileNode must NOT create a
-                        // second TypeDeclarationNode. The owner FileNode
-                        // already holds the SsType with every method that
-                        // defmethod attached to it. Adding a fresh
-                        // TypeDeclarationNode here would emit a second
-                        // SsType with m_pMethods[*].m_pLambda == nullptr,
-                        // and load_module would overwrite Globals[<type>]
-                        // with that empty table. CallMethod would then
-                        // dereference null.
+                        // second TypeDeclarationNode. ...
                         //
-                        // Instead we drop the new TypeDeclarationNode.
-                        // TypeSystem already has the type; the owner
-                        // FileNode is already loaded; nothing needs to
-                        // change.
-                        const std::string &type_name = td->type().base_type();
-                        FileNode          *existing_owner = nullptr;
-                        for (auto &[oname, onode] : m_file_nodes) {
-                            (void)oname;
-                            if (onode.get() == file_node) continue;
-                            for (auto &child : onode->children()) {
-                                if (auto *other_td =
-                                        dynamic_cast<TypeDeclarationNode *>(child.get())) {
-                                    if (other_td->type().base_type() == type_name) {
-                                        existing_owner = onode.get();
-                                        break;
+                        // This applies only to REPL inputs. A non-REPL
+                        // file is its own unit: a `deftype` in a
+                        // different file is a separate declaration,
+                        // even if TypeSystem already knows the type.
+                        // Dropping it would drop the SsType entry from
+                        // the new binary.
+                        bool              skip = false;
+                        const std::string type_name = td->type().base_type();
+
+                        if (is_repl) {
+                            for (auto &[oname, onode] : m_file_nodes) {
+                                (void)oname;
+                                if (onode.get() == file_node) continue;
+                                for (auto &child : onode->children()) {
+                                    if (auto *other_td =
+                                            dynamic_cast<TypeDeclarationNode *>(child.get())) {
+                                        if (other_td->type().base_type() == type_name) {
+                                            lg::info("compile_internal: '{}' already declared "
+                                                     "in '{}', skipping",
+                                                     type_name, onode->name());
+                                            skip = true;
+                                            break;
+                                        }
                                     }
                                 }
+                                if (skip) break;
                             }
-                            if (existing_owner) break;
                         }
 
-                        if (existing_owner) {
-                            lg::info("compile_internal: '{}' already declared in '{}', skipping",
-                                     type_name, existing_owner->name());
-                            // node is a unique_ptr; going out of scope frees it.
-                        } else {
-                            file_node->add_child(std::move(node));
-                        }
+                        if (!skip) { file_node->add_child(std::move(node)); }
                     } else if (dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
                                dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
                         file_node->add_child(std::move(node));
@@ -2936,77 +2919,66 @@ namespace sootc {
     void Compiler::load_soot_prelude() {
         namespace fs = std::filesystem;
 
-        std::vector<fs::path> candidates = {
-            // Prelude is part of the tool, not the user's project.
-            // Never look in PROJECT.
-            file_util::get_path(file_util::PathType::PROJECT) / "lib.st", 
-            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.st",
-            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.st",
-        };
+        std::vector<fs::path> search_paths;
+        for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
 
-        for (const auto &p : candidates) {
-            if (!fs::exists(p)) { continue; }
+        const fs::path found = file_util::find_project_file("lib.st", fs::path{}, search_paths);
 
-            lg::info("Loading SOOT library {}", p.string());
-
-            try {
-                std::string content = file_util::read_text(p);
-
-                // Strip UTF-8 BOM.
-                if (content.size() >= 3 && static_cast<uint8_t>(content[0]) == 0xEF &&
-                    static_cast<uint8_t>(content[1]) == 0xBB &&
-                    static_cast<uint8_t>(content[2]) == 0xBF) {
-                    content = content.substr(3);
-                }
-
-                m_soot.eval_string(content, p.string());
-
-                lg::info("Loaded SOOT library {}", p.string());
-                return;
-
-            } catch (const std::exception &e) {
-                lg::error("Failed to evaluate {}: {}", p.string(), e.what());
-                return;
-            }
+        if (found.empty()) {
+            lg::warn("lib.st not found");
+            return;
         }
 
-        lg::warn("lib.st not found");
+        const fs::path &p = found;
+        lg::info("Loading SOOT library {}", p.string());
+
+        try {
+            std::string content = file_util::read_text(p);
+
+            // Strip UTF-8 BOM.
+            if (content.size() >= 3 && static_cast<uint8_t>(content[0]) == 0xEF &&
+                static_cast<uint8_t>(content[1]) == 0xBB &&
+                static_cast<uint8_t>(content[2]) == 0xBF) {
+                content = content.substr(3);
+            }
+
+            m_soot.eval_string(content, p.string());
+
+            lg::info("Loaded SOOT library {}", p.string());
+        } catch (const std::exception &e) {
+            lg::error("Failed to evaluate {}: {}", p.string(), e.what());
+        }
     }
 
     void Compiler::load_soc_prelude() {
         namespace fs = std::filesystem;
 
-        std::vector<fs::path> candidates = {
-            file_util::get_path(file_util::PathType::PROJECT) / "lib.sc", 
-            file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.sc",
-            file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.sc",
-        };
+        std::vector<fs::path> search_paths;
+        for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
 
-        for (const auto &p : candidates) {
-            if (!fs::exists(p)) { continue; }
-
-            lg::info("Loading SOOTC library {}", p.string());
-
-            try {
-                auto result = compile_file(p);
-
-                if (!result) {
-                    lg::error("Failed to compile {}: {}", p.string(), result.error());
-                    return;
-                }
-
-                if (*result) { m_runtime->load_module(std::move(**result)); }
-
-                lg::info("Loaded SOOTC library {}", p.string());
-                return;
-
-            } catch (const std::exception &e) {
-                lg::error("Exception while loading {}: {}", p.string(), e.what());
-                return;
-            }
+        const fs::path found = file_util::find_project_file("lib.sc", fs::path{}, search_paths);
+        if (found.empty()) {
+            lg::warn("lib.sc not found");
+            return;
         }
 
-        lg::warn("lib.sc not found");
+        const fs::path &p = found;
+        lg::info("Loading SOOTC library {}", p.string());
+
+        try {
+            auto result = compile_file(p);
+
+            if (!result) {
+                lg::error("Failed to compile {}: {}", p.string(), result.error());
+                return;
+            }
+
+            if (*result) { m_runtime->load_module(std::move(**result)); }
+
+            lg::info("Loaded SOOTC library {}", p.string());
+        } catch (const std::exception &e) {
+            lg::error("Exception while loading {}: {}", p.string(), e.what());
+        }
     }
 
     // sootccompilerCompiler.cpp

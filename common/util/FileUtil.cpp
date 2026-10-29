@@ -3,6 +3,7 @@
 #include "util/Log.hpp"
 #include <fstream>
 #include <regex>
+#include <CommonTypes.hpp>
 
 namespace file_util {
 
@@ -248,6 +249,95 @@ fs::path get_path(PathType type) {
     default:
         return fs::current_path();
     }
+}
+
+std::filesystem::path get_executable_dir() {
+#if defined(_WIN32)
+    wchar_t buf[MAX_PATH];
+    DWORD   len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (len == 0 || len == MAX_PATH) return {};
+    return std::filesystem::path(buf).parent_path();
+#elif defined(__linux__)
+    char    buf[4096];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0) return {};
+    buf[len] = '\0';
+    return std::filesystem::path(buf).parent_path();
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::vector<char> buf(size);
+    if (_NSGetExecutablePath(buf.data(), &size) != 0) return {};
+    return std::filesystem::path(buf.data()).parent_path();
+#else
+    return {};
+#endif
+}
+
+std::filesystem::path find_project_file(const std::string                        &filename,
+                                        const std::filesystem::path              &base_dir,
+                                        const std::vector<std::filesystem::path> &search_paths) {
+    namespace fs = std::filesystem;
+
+    const fs::path file(filename);
+
+    // Absolute: return as-is if it exists.
+    if (file.is_absolute()) { return fs::exists(file) ? file : fs::path{}; }
+
+    // Explicit sibling: ./foo or ../foo — only relative to base_dir.
+    const bool explicit_relative = filename.starts_with("./") || filename.starts_with("../");
+    if (explicit_relative) {
+        if (base_dir.empty()) return {};
+        fs::path candidate = (base_dir / file).lexically_normal();
+        return fs::exists(candidate) ? candidate : fs::path{};
+    }
+
+    // 1. Relative to base_dir (where the current file lives).
+    if (!base_dir.empty()) {
+        fs::path candidate = (base_dir / file).lexically_normal();
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    // 2. CWD.
+    {
+        fs::path candidate = fs::current_path() / file;
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    // 3. exe_dir.
+    {
+        fs::path candidate = get_executable_dir() / file;
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    // 4. PROJECT.
+    const fs::path project_root = get_path(PathType::PROJECT);
+    if (!project_root.empty()) {
+        fs::path candidate = project_root / file;
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    // 5. PROJECT / search_paths.
+    if (!project_root.empty()) {
+        for (const auto &dir : search_paths) {
+            fs::path candidate = project_root / dir / file;
+            if (fs::exists(candidate)) return candidate;
+        }
+    }
+
+    // 6. CONFIG.
+    {
+        fs::path candidate = get_path(PathType::CONFIG) / file;
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    // 7. SHARE.
+    {
+        fs::path candidate = get_path(PathType::SHARE) / file;
+        if (fs::exists(candidate)) return candidate;
+    }
+
+    return {};
 }
 
 fs::path find_config_file(const std::string &filename) {
