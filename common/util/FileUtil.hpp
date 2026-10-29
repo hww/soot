@@ -58,19 +58,6 @@ uintmax_t remove_dir(const fs::path &path);
 // =================== ОПЕРАЦИИ С ПУТЯМИ  ====================
 std::string convert_to_unix_path_separators(const std::string& path);
 
-// ========== ОПЕРАЦИИ С ФАЙЛАМИ ДЛЯ ЭТОГО ПРОЕКТА ============
-enum class PathType {
-    CWD,    // Текущая рабочая директория
-    EXE,    // Директория с бинарником
-    HOME,   // Домашняя папка пользователя
-    CONFIG, // ~/.config/soot/
-    CACHE,  // ~/.cache/soot/
-    SHARE,  // /usr/local/share/soot/ или эквивалент
-    PROJECT // Корень проекта (определяется автоматически или через set)
-};
-
-void     set_project_path(const fs::path &path);
-fs::path get_path(PathType type);
 
 /// @brief Directory containing the running executable.
 /// @details Used to find tool-owned resources (prelude, default
@@ -79,43 +66,6 @@ fs::path get_path(PathType type);
 ///          GetModuleFileName on Windows, _NSGetExecutablePath on macOS.
 /// @return Absolute path to the directory, or empty path on failure.
 std::filesystem::path get_executable_dir();
-
-/// @brief Find a project file by searching, in order:
-///
-///          1. Relative to `base_dir`, if given.
-///          2. Relative to the current working directory.
-///          3. Relative to the directory of the running executable.
-///          4. Relative to PROJECT.
-///          5. Relative to each entry of PROJECT/search_paths.
-///          6. Relative to CONFIG.
-///          7. Relative to SHARE.
-///
-/// @details A path starting with "./" or "../" is treated as
-///          explicitly relative to `base_dir`: only step 1 is tried.
-///          Any other relative path goes through all steps. An
-///          absolute path is returned as-is if it exists.
-///
-///          The first existing file wins. Returns an empty path if
-///          no candidate exists.
-///
-/// @param filename  File name (may include a relative path).
-/// @param base_dir  Directory of the file that requested the search,
-///                  e.g. the currently-compiling source. May be empty.
-/// @param search_paths  PROJECT-relative search paths, e.g.
-///                  {".", "scripts", "src", "examples", "soot_src"}.
-/// @return Absolute path to the first existing candidate, or {}.
-std::filesystem::path find_project_file(const std::string                        &filename,
-                                        const std::filesystem::path              &base_dir,
-                                        const std::vector<std::filesystem::path> &search_paths);
-
-// Ищет файл в приоритете: Project -> Config -> Share
-fs::path find_config_file(const std::string &filename);
-
-// Логика автопоиска корня (ищет файл-маркер вверх по дереву)
-fs::path detect_project_root(fs::path start_from = fs::current_path());
-
-// Логика генерации пути к файлу
-std::string get_file_path(const std::vector<std::string> &input);
 
 fs::path get_absolute_path(const fs::path &path);
 } // namespace file_util

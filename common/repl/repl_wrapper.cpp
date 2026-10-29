@@ -2,6 +2,7 @@
 
 #include "CommonTypes.hpp"
 #include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
 #include "util/JsonUtil.hpp"
 #include "util/StringUtil.hpp"
 #include "versions/version.h"
@@ -68,7 +69,7 @@ void Wrapper::print_welcome_message(const std::vector<std::string>& loaded_proje
     
     add_line(3, platform + fmt::format(gray, "{}", str_util::join(loaded_projects, ",")));
     add_line(4, fmt::format("  Project Path: {}", 
-                fmt::format(gray, "{}", file_util::get_path(file_util::PathType::PROJECT).string())));
+                fmt::format(gray, "{}", common::get_path(common::PathType::PROJECT).string())));
     add_line(5, "");
 
     std::string nrepl = "  nREPL: ";
@@ -106,11 +107,11 @@ void Wrapper::add_to_history(const std::string& line) {
 void Wrapper::save_history() {
   fs::path path;
   if (repl_config.per_game_history) {
-      path = file_util::get_path(PathType::CACHE) /
+      path = common::get_path(common::PathType::CACHE) /
              soot_platform_to_game_name(repl_config.game_version) /
            ".opengoal.repl.history";
   } else {
-    path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
+      path = common::get_path(common::PathType::CONFIG) / ".sot.repl.history";
   }
   file_util::create_dirs_for_file(path.string());
   repl.history_save(path.string());
@@ -119,10 +120,10 @@ void Wrapper::save_history() {
 void Wrapper::load_history() {
     fs::path path;
     if (repl_config.per_game_history) {
-        path = file_util::get_path(PathType::CACHE) /
+        path = common::get_path(common::PathType::CACHE) /
                soot_platform_to_game_name(repl_config.game_version) / ".opengoal.repl.history";
     } else {
-        path = file_util::get_path(PathType::CONFIG) / ".sot.repl.history";
+        path = common::get_path(common::PathType::CONFIG) / ".sot.repl.history";
     }
 
     // Создать директорию, если её нет
@@ -343,7 +344,7 @@ std::string find_repl_username() {
   // 1. look for the `user.txt` file, which should only contain the username
   // 2. if this is absent AND there is a single folder inside the "user" folder, use that as the
   // username
-  auto user_dir = file_util::get_path(file_util::PathType::PROJECT) / "user";
+    auto user_dir = common::get_path(common::PathType::PROJECT) / "user";
   auto dirs = file_util::list_dirs(user_dir.string());
   if (dirs.size() == 1) {
     return dirs.at(0).filename().string();
@@ -364,20 +365,20 @@ std::string find_repl_username() {
 fs::path get_startup_file_path(const std::string& username, const SootPlatform game_version) {
   (void)username;
   // Сначала проверяем специфичный для версии файл в CONFIG
-  auto game_specific_path = file_util::get_path(file_util::PathType::CONFIG) / 
+  auto game_specific_path = common::get_path(common::PathType::CONFIG) / 
                             fmt::format("startup-{}.sot", soot_platform_to_game_name(game_version));
   if (file_util::exists(game_specific_path)) {
     return game_specific_path;
   }
   
   // Затем проверяем общий startup файл в CONFIG
-  auto config_path = file_util::get_path(file_util::PathType::CONFIG) / "startup.sot";
+  auto config_path = common::get_path(common::PathType::CONFIG) / "startup.sot";
   if (file_util::exists(config_path)) {
     return config_path;
   }
   
   // Затем проверяем в PROJECT (если есть проект-специфичный)
-  auto project_path = file_util::get_path(file_util::PathType::PROJECT) / "startup.sot";
+  auto project_path = common::get_path(common::PathType::PROJECT) / "startup.sot";
   if (file_util::exists(project_path)) {
     return project_path;
   }
@@ -411,8 +412,8 @@ StartupFile load_user_startup_file(const std::string& username, const SootPlatfo
 REPL::Config load_repl_config(const std::string& username,
                               const SootPlatform game_version,
                               const int nrepl_port) {
-  auto repl_config_path =
-      file_util::get_path(file_util::PathType::PROJECT) / "goal_src" / "user" / username / "repl-config.json";
+    auto repl_config_path = common::get_path(common::PathType::PROJECT) / "goal_src" / "user" /
+                            username / "repl-config.json";
   REPL::Config loaded_config(game_version);
   if (file_util::exists(repl_config_path.string())) {
     try {

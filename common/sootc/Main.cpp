@@ -279,14 +279,14 @@ int main(int argc, char *argv[]) {
         //
         // A missing or malformed soot.json is not an error: defaults
         // are used.
-        sootc::SootProjectConfig project_cfg = sootc::SootProjectConfig::load(opts.project_root);
-        file_util::set_project_path(project_cfg.project_root);
+        common::SootProjectConfig project_cfg = common::SootProjectConfig::load(opts.project_root);
+        common::set_project_path(project_cfg.project_root);
         lg::info("PROJECT = {}", project_cfg.project_root.string());
 
         // ----- REPL configuration -----
         REPL::Config repl_config(opts.platform);
         repl_config.asm_file_search_dirs.push_back(
-            file_util::get_path(file_util::PathType::PROJECT).string());
+            common::get_path(common::PathType::PROJECT).string());
         repl_config.per_game_history = true;
 
         auto startup_file = REPL::load_user_startup_file(opts.user_profile, opts.platform);

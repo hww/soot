@@ -13,6 +13,7 @@
 
 #include "util/Log.hpp"
 #include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
 
 #include <set>
 #include <unordered_map>
@@ -509,7 +510,7 @@ namespace carbon {
                         for (const auto &root : search_paths) {
                             candidates.push_back(root / (dep_name + ".bin"));
                         }
-                        candidates.push_back(file_util::get_path(file_util::PathType::PROJECT) /
+                        candidates.push_back(common::get_path(common::PathType::PROJECT) /
                                              (dep_name + ".bin"));
 
                         // First existing candidate wins.

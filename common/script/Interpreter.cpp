@@ -4,15 +4,13 @@
 #include "script/Object.hpp"
 #include "script/PrettyPrinter.hpp"
 #include "script/Printer.hpp"
-#include <cstddef>
-#include <iostream>
 
 #include "type_system/Defenum.hpp"
 #include "type_system/Deftype.hpp"
-
 #include "type_system/TypeSystem.hpp"
 
 #include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
 #include "util/Log.hpp"
 #include "util/StringUtil.hpp"
 
@@ -25,6 +23,9 @@
 #include "versions/revision.h"
 #include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
+
+#include <cstddef>
+#include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -4184,26 +4185,26 @@ Object Interpreter::eval_get_path(const Object &form, Arguments &args,
     (void)env;
     vararg_check(form, args, {{ObjectType::SYMBOL}}, {}); // Один символ
     std::string         sym = args.unnamed[0].as_symbol().name_ptr;
-    file_util::PathType select;
+    common::PathType select;
     if (sym == "cwd")
-        select = file_util::PathType::CWD;
+        select = common::PathType::CWD;
     else if (sym == "exe")
-        select = file_util::PathType::EXE;
+        select = common::PathType::EXE;
     else if (sym == "home")
-        select = file_util::PathType::HOME;
+        select = common::PathType::HOME;
     else if (sym == "config")
-        select = file_util::PathType::CONFIG;
+        select = common::PathType::CONFIG;
     else if (sym == "cache")
-        select = file_util::PathType::CACHE;
+        select = common::PathType::CACHE;
     else if (sym == "share")
-        select = file_util::PathType::SHARE;
+        select = common::PathType::SHARE;
     else if (sym == "project")
-        select = file_util::PathType::PROJECT;
+        select = common::PathType::PROJECT;
     else {
         throw_eval_error(
             form, "get_path requires a symbol: cwd, exe, home, config, cache, share, project");
     }
-    return Object::make_string(file_util::get_path(select).string());
+    return Object::make_string(common::get_path(select).string());
 }
 
 Object Interpreter::eval_find_file(const Object &form, Arguments &args,
@@ -4212,7 +4213,7 @@ Object Interpreter::eval_find_file(const Object &form, Arguments &args,
     vararg_check(form, args, {{ObjectType::STRING}}, {}); // Одна строка (команда)
 
     std::string path = args.unnamed[0].as_string()->data;
-    auto        found = file_util::find_config_file(path);
+    auto        found = common::find_config_file(path);
     return found.empty() ? Object::make_null() : Object::make_string(found.string());
 }
 

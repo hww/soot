@@ -1,6 +1,7 @@
 #include "Reader.hpp"
 #include "ListBuilder.hpp"
-#include "util/FileUtil.hpp" // твой file_hub
+#include "util/FileUtil.hpp" 
+#include "util/ProjectConfig.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
 #include "repl/repl_wrapper.h"
@@ -268,7 +269,7 @@ Object Reader::read_from_string(const std::string &str, bool add_top_level,
 Object Reader::read_from_file(const std::vector<std::string> &file_path, bool check_encoding,
                               bool add_top_level, EvalCallback eval_callback) {
     std::string file_descriptor = fmt::format("{}", fmt::join(file_path, "/"));
-    const auto  joined_file_path = file_util::get_file_path(file_path);
+    const auto  joined_file_path = common::get_file_path(file_path);
 
     if (!file_util::exists(joined_file_path)) {
         throw std::runtime_error(

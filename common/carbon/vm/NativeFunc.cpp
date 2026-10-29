@@ -195,7 +195,7 @@ namespace carbon {
             if (as_given.extension() != ".bin") { as_given.replace_extension(".bin"); }
             candidates.push_back(as_given);
 
-            fs::path project = file_util::get_path(file_util::PathType::PROJECT);
+            fs::path project = common::get_path(common::PathType::PROJECT);
             candidates.push_back(project / as_given);
 
             for (const auto &dir : carbon->config().search_paths) {
@@ -243,9 +243,7 @@ namespace carbon {
         // resolve consistently.
         std::vector<fs::path> search_paths;
         for (const auto &dir : carbon->config().search_paths) {
-            search_paths.push_back(dir.is_absolute()
-                                       ? dir
-                                       : (file_util::get_path(file_util::PathType::PROJECT) / dir));
+            search_paths.push_back(dir.is_absolute() ? dir : (common::get_path(common::PathType::PROJECT) / dir));
         }
 
         if (!carbon->load_module_with_imports(found, search_paths)) {

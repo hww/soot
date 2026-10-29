@@ -1,5 +1,6 @@
 #include "MemoryRegion.hpp"
-#include "FileUtil.hpp"
+#include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
 #include <fstream>
 
 namespace script {
@@ -131,7 +132,7 @@ bool MemoryRegion::export_intel_hex_file(const std::string &path, size_t start_o
     }
 
     // Определяем полный путь
-    auto        project_path = file_util::get_path(file_util::PathType::PROJECT);
+    auto        project_path = common::get_path(common::PathType::PROJECT);
     std::string full_path = path;
     if (path[0] != '/' && path[0] != '\\') {
         full_path = project_path.string() + "/" + path;

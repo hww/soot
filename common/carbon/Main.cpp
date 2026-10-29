@@ -407,8 +407,8 @@ int main(int argc, char *argv[]) {
     // Once the root is known, soot.json is read (if present) to
     // obtain sidbase and search_paths. The CLI -s and -I still
     // override soot.json.
-    sootc::SootProjectConfig project_cfg = sootc::SootProjectConfig::load(project_root_arg);
-    file_util::set_project_path(project_cfg.project_root);
+    common::SootProjectConfig project_cfg = common::SootProjectConfig::load(project_root_arg);
+    common::set_project_path(project_cfg.project_root);
     lg::info("PROJECT = {}", project_cfg.project_root.string());
 
     // sidbase: CLI -s wins; otherwise soot.json; otherwise default.

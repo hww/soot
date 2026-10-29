@@ -32,6 +32,8 @@
 
 #include "type_system/TypeSystem.hpp"
 
+#include "util/ProjectConfig.hpp"
+
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "fmt/format.h"
@@ -65,11 +67,11 @@ namespace sootc {
         // module id is resolved relative to it, and the prelude loader
         // needs a directory to search in.
         if (m_config.project_root.empty()) {
-            m_config.project_root = file_util::get_path(file_util::PathType::PROJECT);
+            m_config.project_root = common::get_path(common::PathType::PROJECT);
         }
         if (m_config.project_root.empty()) {
             m_config.project_root = std::filesystem::current_path();
-            file_util::set_project_path(m_config.project_root);
+            common::set_project_path(m_config.project_root);
         }
 
         m_ts.add_builtin_types();
@@ -420,7 +422,7 @@ namespace sootc {
         for (const auto &s : m_config.search_paths) search_paths.emplace_back(s);
 
         fs::path base_dir = from_id.parent_path();
-        fs::path found = file_util::find_project_file(path, base_dir, search_paths);
+        fs::path found = common::find_project_file(path, base_dir, search_paths);
         if (found.empty()) return std::nullopt;
 
         auto id_opt = [&]() -> std::optional<ModuleId> {
@@ -2368,7 +2370,7 @@ namespace sootc {
         // Resolve the output directory against the project root.
         fs::path out_dir = dir;
         if (out_dir.is_relative()) {
-            out_dir = file_util::get_path(file_util::PathType::PROJECT) / out_dir;
+            out_dir = common::get_path(common::PathType::PROJECT) / out_dir;
         }
 
         std::error_code ec;
@@ -2922,7 +2924,7 @@ namespace sootc {
         std::vector<fs::path> search_paths;
         for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
 
-        const fs::path found = file_util::find_project_file("lib.st", fs::path{}, search_paths);
+        const fs::path found = common::find_project_file("lib.st", fs::path{}, search_paths);
 
         if (found.empty()) {
             lg::warn("lib.st not found");
@@ -2956,7 +2958,7 @@ namespace sootc {
         std::vector<fs::path> search_paths;
         for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
 
-        const fs::path found = file_util::find_project_file("lib.sc", fs::path{}, search_paths);
+        const fs::path found = common::find_project_file("lib.sc", fs::path{}, search_paths);
         if (found.empty()) {
             lg::warn("lib.sc not found");
             return;
