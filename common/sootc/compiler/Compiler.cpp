@@ -323,13 +323,45 @@ namespace sootc {
 
         if (!iter->is_null()) { throw_compiler_error(list, "Invalid list: {}", list.print()); }
     }
+    // ===============================================================
+    // Module resolution
+    // ===============================================================
+
+    namespace {
+
+        /// Canonicalise `path` to a ModuleId (relative to `root`).
+        /// Rejects paths that escape `root`.
+        ModuleId make_module_id(const std::filesystem::path &path,
+                                const std::filesystem::path &root) {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            fs::path        canonical = fs::weakly_canonical(path, ec);
+            if (ec) canonical = fs::absolute(path);
+
+            fs::path root_canonical = fs::weakly_canonical(root, ec);
+            if (ec) root_canonical = fs::absolute(root);
+
+            fs::path rel = canonical.lexically_relative(root_canonical);
+            if (rel.empty()) {
+                throw std::runtime_error(fmt::format("module '{}' is outside project root '{}'",
+                                                     path.string(), root.string()));
+            }
+            for (const auto &part : rel) {
+                if (part == "..") {
+                    throw std::runtime_error(fmt::format("module '{}' escapes project root '{}'",
+                                                         path.string(), root.string()));
+                }
+            }
+            return rel;
+        }
+
+    } // namespace
 
     // ========== Compilation ==========
 
-
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file(script::Object &forms, const std::string &filename) {
-        m_current_file = filename;
+        m_current_file = ModuleId(filename);
         auto result = compile_internal(forms, filename, /*is_repl=*/false);
 
         if (result && m_config.debug_print_ir) {
@@ -342,16 +374,21 @@ namespace sootc {
 
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file(const std::filesystem::path &path) {
-        std::string content = read_file_content(path.string());
-        auto        forms = m_soot.get_reader().read_from_string(content, false, path.string());
+        // Canonicalize the key: the same file reached through different
+        // spellings (relative, absolute, symlinks) must resolve to the
+        // same ModuleId.
+        const ModuleId    id = make_module_id(path, m_config.project_root);
+        const std::string content = read_file_content((m_config.project_root / id).string());
+        auto              forms = m_soot.get_reader().read_from_string(content, false, id.string());
         if (forms.is_null()) {
-            return std::unexpected("Failed to read or parse file: " + path.string());
+            return std::unexpected("Failed to read or parse file: " + id.string());
         }
-        return compile_file(forms, path.string());
+        return compile_file(forms, id.string());
     }
+
     std::expected<std::unique_ptr<BinaryFile>, std::string>
     Compiler::compile_file_repl(script::Object &forms, const std::string &filename) {
-        m_current_file = filename;
+        m_current_file = ModuleId(filename);
         auto result = compile_internal(forms, filename, /*is_repl=*/true);
 
         if (result && m_config.debug_print_ir) {
@@ -362,125 +399,180 @@ namespace sootc {
         return result;
     }
 
-    // (require "path/to/file.sc")
+    std::optional<ModuleRef> Compiler::resolve_require(const std::string &path,
+                                                       const ModuleId    &from_id) const {
+        namespace fs = std::filesystem;
+        const fs::path root = m_config.project_root;
+
+        // Reject absolute paths: a module must not depend on an
+        // arbitrary file outside the project.
+        if (fs::path(path).is_absolute()) { return std::nullopt; }
+
+        // 1. Explicit sibling: ./foo, ../foo.
+        if (path.starts_with("./") || path.starts_with("../")) {
+            fs::path from_dir = from_id.parent_path();
+            fs::path candidate = (from_dir / path).lexically_normal();
+            fs::path resolved = root / candidate;
+            if (fs::exists(resolved)) {
+                auto id_opt = [&]() -> std::optional<ModuleId> {
+                    try {
+                        return make_module_id(resolved, root);
+                    } catch (...) { return std::nullopt; }
+                }();
+                if (!id_opt) return std::nullopt;
+                std::error_code ec;
+                fs::path        canon = fs::weakly_canonical(resolved, ec);
+                if (ec) canon = fs::absolute(resolved);
+                return ModuleRef{*id_opt, canon};
+            }
+            return std::nullopt;
+        }
+
+        // 2. Project root.
+        fs::path candidate = path;
+        if (!candidate.has_extension()) candidate += ".sc";
+        fs::path resolved = root / candidate;
+        if (fs::exists(resolved)) {
+            auto id_opt = [&]() -> std::optional<ModuleId> {
+                try {
+                    return make_module_id(resolved, root);
+                } catch (...) { return std::nullopt; }
+            }();
+            if (!id_opt) return std::nullopt;
+            std::error_code ec;
+            fs::path        canon = fs::weakly_canonical(resolved, ec);
+            if (ec) canon = fs::absolute(resolved);
+            return ModuleRef{*id_opt, canon};
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<ModuleRef> Compiler::resolve_module(const std::string &path) const {
+        namespace fs = std::filesystem;
+        const fs::path root = m_config.project_root;
+
+        // Absolute: convert to ModuleId.
+        if (fs::path(path).is_absolute()) {
+            if (!fs::exists(path)) return std::nullopt;
+            auto id_opt = [&]() -> std::optional<ModuleId> {
+                try {
+                    return make_module_id(path, root);
+                } catch (...) { return std::nullopt; }
+            }();
+            if (!id_opt) return std::nullopt;
+            std::error_code ec;
+            fs::path        canon = fs::weakly_canonical(path, ec);
+            if (ec) canon = fs::absolute(path);
+            return ModuleRef{*id_opt, canon};
+        }
+
+        // Relative to project root. Try with and without .sc.
+        fs::path candidate = path;
+        if (!candidate.has_extension()) {
+            fs::path with_sc = root / (path + ".sc");
+            if (fs::exists(with_sc)) {
+                auto id_opt = [&]() -> std::optional<ModuleId> {
+                    try {
+                        return make_module_id(with_sc, root);
+                    } catch (...) { return std::nullopt; }
+                }();
+                if (!id_opt) return std::nullopt;
+                std::error_code ec;
+                fs::path        canon = fs::weakly_canonical(with_sc, ec);
+                if (ec) canon = fs::absolute(with_sc);
+                return ModuleRef{*id_opt, canon};
+            }
+        }
+        fs::path resolved = root / candidate;
+        if (fs::exists(resolved)) {
+            auto id_opt = [&]() -> std::optional<ModuleId> {
+                try {
+                    return make_module_id(resolved, root);
+                } catch (...) { return std::nullopt; }
+            }();
+            if (!id_opt) return std::nullopt;
+            std::error_code ec;
+            fs::path        canon = fs::weakly_canonical(resolved, ec);
+            if (ec) canon = fs::absolute(resolved);
+            return ModuleRef{*id_opt, canon};
+        }
+
+        return std::nullopt;
+    }
+
+       // (require "path/to/file.sc")
     //
     // Implements require as a language form. Called by NodeBuilder when
     // it sees `require` at the head of a form during compilation.
     //
-    ////// The file is resolved against the compiler's search_paths. If the
-    // resolved path has already been loaded (in this Compiler instance,
-    // via an earlier require or a user action), the call is a no-op.
-    // Otherwise the file is compiled and the resulting module is
-    // registered in the active runtime.
+    // A require path is resolved against ONE root: the project root.
+    // There are two forms:
     //
-    // See the header comment on Compiler::require_file for the
-    // rationale, including the handling of cyclic requires.
+    //   1. "./foo.sc" or "../foo.sc" — relative to the directory of
+    //      the file that contains the require. Use this when the
+    //      dependency lives next to its dependent and should move
+    //      with it.
+    //
+    //   2. "lib/utils.sc" — relative to the project root. Use this
+    //      for stable, project-wide references. This is the form
+    //      that ends up in the .bin's "requires" entry.
+    //
+    // Absolute paths are rejected: a module must not depend on an
+    // arbitrary file outside the project. That would break
+    // reproducibility and make the .bin non-portable.
+    //
+    // The resolved path is canonicalised and converted to a ModuleId
+    // (a path relative to the project root). The ModuleId is what
+    // m_loaded_files and m_file_nodes are keyed by, so two different
+    // spellings of the same file resolve to the same module, and the
+    // same module resolves to the same key on any machine.
+    //
+    // If the module was already loaded in this Compiler instance,
+    // the call is a no-op. Otherwise the file is compiled and the
+    // resulting module is registered in the active runtime.
+    //
+    // Cyclic requires are not supported: a file that requires itself,
+    // directly or transitively, is silently skipped on the second
+    // visit. The entry is added to m_loaded_files BEFORE the recursive
+    // compile, so the recursion terminates. This is a deliberate
+    // trade-off: it matches C/C++ #include guards, where a cycle is
+    // a no-op rather than an error. A future version may report
+    // cycles explicitly (see save_module_recursive, which does).
     bool Compiler::require_file(const script::Object &form, const std::string &path) {
         (void)form;
-        // ------------------------------------------------------------------
-        // 1. Resolve the path against search_paths.
-        // ------------------------------------------------------------------
-        namespace fs = std::filesystem;
 
-        // Resolve `path` against PROJECT and search_paths. An absolute path
-        // is taken as-is. A relative path is tried:
-        //   1. as-is (CWD) — for backward compatibility and for paths the
-        //      user typed explicitly;
-        //   2. PROJECT / path;
-        //   3. PROJECT / dir / path for each search_path.
+        // ------------------------------------------------------------------
+        // 1. Resolve the path to a ModuleRef.
+        // ------------------------------------------------------------------
         //
-        // This is the same resolution order as save_session, which always
-        // writes to PROJECT / <dir> / <name>.bin. Without it, a file saved
-        // by save_session cannot be found by require.
-        std::string resolved;
-        bool        found = false;
-        if (fs::path(path).is_absolute()) {
-            resolved = path;
-            found = fs::exists(resolved);
-        } else {
-            // 1. CWD
-            if (fs::exists(path)) {
-                resolved = path;
-                found = true;
-            }
-            // 2. PROJECT
-            if (!found) {
-                fs::path candidate = file_util::get_path(file_util::PathType::PROJECT) / path;
-                if (fs::exists(candidate)) {
-                    resolved = candidate.string();
-                    found = true;
-                }
-            }
-
-            // ============================================================
-            // 2b. Relative to the directory of the file currently being
-            //     compiled.
-            //
-            //     A (require "sibling.sc") is naturally resolved against
-            //     the dependent file's own directory, before the global
-            //     search_paths are consulted. This mirrors #include "..."
-            //     in C/C++ and require() in Node.js: the dependency lives
-            //     next to its dependent, not in a global search root.
-            //
-            //     Without this, a file in a subdirectory (e.g.
-            //     soot_src/tests/foo.sc) cannot require a sibling
-            //     (soot_src/tests/bar.sc) unless soot_src/tests/ is
-            //     explicitly listed in search_paths. That is surprising
-            //     and forces the user to pass --source-root for a case
-            //     that should Just Work.
-            //
-            //     m_current_file is set by compile_file / compile_file_repl
-            //     before this function is reached, so it always points at
-            //     the .sc file whose form contains the (require ...).
-            // ============================================================
-            if (!found && !m_current_file.empty()) {
-                fs::path candidate = fs::path(m_current_file).parent_path() / path;
-                if (fs::exists(candidate)) {
-                    resolved = candidate.string();
-                    found = true;
-                }
-            }
-
-            // 3. PROJECT / search_path
-            if (!found) {
-                for (const auto &dir : m_config.search_paths) {
-                    fs::path candidate =
-                        file_util::get_path(file_util::PathType::PROJECT) / dir / path;
-                    if (fs::exists(candidate)) {
-                        resolved = candidate.string();
-                        found = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (!found) {
+        // resolve_require() applies the two rules above and returns
+        // a ModuleRef { ModuleId, ResolvedPath }. Absolute paths and
+        // paths outside the project root are rejected.
+        //
+        // No CWD search, no search_paths search: those were removed
+        // deliberately. A module's identity must be stable across
+        // machines and working directories.
+        auto ref_opt = resolve_require(path, m_current_file);
+        if (!ref_opt) {
             throw CompilerError("Compiler::require_file")
-                .expected("a file that exists in search_paths")
+                .expected("a file inside the project root, "
+                          "or an explicit ./sibling or ../sibling")
                 .got(fmt::format("'{}'", path))
-                .note(fmt::format("search_paths: {}", fmt::join(m_config.search_paths, ", ")))
-                .note(fmt::format("PROJECT: {}",
-                                  file_util::get_path(file_util::PathType::PROJECT).string()));
+                .note(fmt::format("PROJECT: {}", m_config.project_root.string()));
         }
+        const ModuleRef &ref = *ref_opt;
 
         // ------------------------------------------------------------------
-        // 2. Normalize the path so that two different spellings of the
-        //    same file resolve to the same key in m_loaded_files.
+        // 2. Skip if already loaded.
         // ------------------------------------------------------------------
-        std::error_code ec;
-        fs::path        canonical = fs::weakly_canonical(resolved, ec);
-        if (ec) {
-            // weakly_canonical can fail if the path does not exist, but
-            // we already checked fs::exists above, so this is rare. Fall
-            // back to the resolved path as-is.
-            canonical = resolved;
-        }
-
-        // ------------------------------------------------------------------
-        // 3. Skip if already loaded.
-        // ------------------------------------------------------------------
-        if (m_loaded_files.count(canonical)) {
-            lg::debug("require: '{}' already loaded — skipping", canonical.string());
+        //
+        // m_loaded_files is keyed by ModuleId, not by absolute path.
+        // The same module reached through different spellings (or on
+        // different machines) produces the same ModuleId, so the
+        // check is stable.
+        if (m_loaded_files.count(ref.id)) {
+            lg::debug("require: '{}' already loaded — skipping", ref.id.string());
             return true;
         }
 
@@ -488,22 +580,22 @@ namespace sootc {
         // requires terminate: if the file we are about to compile
         // requires itself (directly or transitively), the inner call
         // sees the key in m_loaded_files and returns immediately.
-        m_loaded_files.insert(canonical);
+        m_loaded_files.insert(ref.id);
 
         // ------------------------------------------------------------------
-        // 4. Compile and load.
+        // 3. Compile and load.
         // ------------------------------------------------------------------
-        lg::info("require: loading '{}'", canonical.string());
+        lg::info("require: loading '{}'", ref.id.string());
 
-        auto result = compile_file(canonical);
+        auto result = compile_file(ref.resolved);
         if (!result) {
             // Compilation failed. Remove the marker so that a later
             // require of the same file can be retried after the user
             // fixes the problem.
-            m_loaded_files.erase(canonical);
+            m_loaded_files.erase(ref.id);
             throw CompilerError("Compiler::require_file")
                 .expected("a compilable file")
-                .got(fmt::format("'{}'", canonical.string()))
+                .got(fmt::format("'{}'", ref.id.string()))
                 .caused_by(result.error());
         }
 
@@ -513,20 +605,19 @@ namespace sootc {
         // are already registered in TypeSystem, so there is nothing to
         // load into the runtime.
         if (!*result) {
-            lg::debug("require: '{}' produced no binary (compile-time only)", canonical.string());
+            lg::debug("require: '{}' produced no binary (compile-time only)", ref.id.string());
             return true;
         }
 
         bool loaded = m_runtime->load_module(std::move(**result));
         if (!loaded) {
-            m_loaded_files.erase(canonical);
+            m_loaded_files.erase(ref.id);
             throw CompilerError("Compiler::require_file")
                 .expected("the runtime to accept the module")
-                .got(fmt::format("runtime '{}' rejected '{}'", m_runtime->name(),
-                                 canonical.string()));
+                .got(fmt::format("runtime '{}' rejected '{}'", m_runtime->name(), ref.id.string()));
         }
 
-        lg::info("require: loaded '{}'", canonical.string());
+        lg::info("require: loaded '{}'", ref.id.string());
         return true;
     }
 
@@ -931,6 +1022,7 @@ namespace sootc {
                                                         "list-symbols",
                                                         "save-session",
                                                         "save-module", 
+                                                        "save-module-recursive",
                                                         "sc-run",
                                                         "sc-eval",
                                                         "arg-set",
@@ -968,6 +1060,7 @@ namespace sootc {
         if (name == "list-symbols") return cmd_list_symbols(form);
         if (name == "save-session") return cmd_save_session(form);
         if (name == "save-module") return cmd_save_module(form);
+        if (name == "save-module-recursive") return cmd_save_module_recursive(form);
         if (name == "sc-run") return cmd_sc_run(form);
         if (name == "sc-eval") return cmd_sc_eval(form);
         if (name == "arg-set") return cmd_arg_set(form);
@@ -1138,6 +1231,44 @@ namespace sootc {
             return ReplStatus::ERR;
         }
         return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_save_module_recursive(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module-recursive \"path\" [\"out_dir\"]) "
+                       "requires a path\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &path_obj = rest.as_pair()->car;
+        if (!path_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module-recursive ...) path must be a string\n");
+            return ReplStatus::ERR;
+        }
+
+        std::string path = path_obj.to_std_string();
+        std::string out_dir = "build";
+
+        auto after_path = rest.as_pair()->cdr;
+        if (after_path.is_pair()) {
+            const auto &dir_obj = after_path.as_pair()->car;
+            if (!dir_obj.is_string()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (save-module-recursive ...) out_dir must be a string\n");
+                return ReplStatus::ERR;
+            }
+            out_dir = dir_obj.to_std_string();
+        }
+
+        if (save_module_recursive(path, out_dir)) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                       "; OK: module '{}' and dependencies saved\n", path);
+            return ReplStatus::OK;
+        }
+        return ReplStatus::ERR;
     }
     // (save-module "path/to/foo.sc" ["out_dir"])
     //
@@ -1675,7 +1806,7 @@ namespace sootc {
 
         fmt::print("=== FileNodes ({}) ===\n", m_file_nodes.size());
         for (auto &[name, fn] : m_file_nodes) {
-            fmt::print("--- {} ---\n", name);
+            fmt::print("--- {} ---\n", name.string());
             inspect_ast(fn.get());
         }
 
@@ -2165,7 +2296,15 @@ namespace sootc {
             }
         }
 
-        fs::path out = target_dir / (file.m_path.stem().string() + ".bin");
+        // Preserve the module structure under target_dir:
+        // "lib/utils.sc" -> "<target_dir>/lib/utils.bin".
+        // Without this, two files with the same stem in different
+        // directories would collide.
+        fs::path rel = file.m_path;
+        if (rel.is_absolute()) { rel = rel.lexically_relative(m_config.project_root); }
+        rel.replace_extension(".bin");
+        fs::path out = target_dir / rel;
+        fs::create_directories(out.parent_path());
         if (!const_cast<BinaryFile &>(file).save(out)) {
             fmt::print(fg(fmt::color::crimson), "; ERROR: cannot save {}\n", out.string());
             return false;
@@ -2224,7 +2363,11 @@ namespace sootc {
 
         std::string header = m_ts.generate_c_header(type_names);
 
-        fs::path      out = target_dir / (file.m_path.stem().string() + ".h");
+        fs::path rel = file.m_path;
+        if (rel.is_absolute()) { rel = rel.lexically_relative(m_config.project_root); }
+        rel.replace_extension(".h");
+        fs::path out = target_dir / rel;
+        fs::create_directories(out.parent_path());
         std::ofstream ofs(out);
         if (!ofs) {
             fmt::print(fg(fmt::color::crimson), "; ERROR: cannot open {} for writing\n",
@@ -2478,59 +2621,144 @@ namespace sootc {
             return false;
         }
     }
+
     bool Compiler::save_module(const std::filesystem::path &source_file,
                                const std::filesystem::path &out_dir) {
         namespace fs = std::filesystem;
 
-        // 1. Resolve the source path against search_paths.
-        const std::string resolved = find_file(source_file.string());
-        if (!fs::exists(resolved)) {
+        // 1. Resolve to a ModuleRef.
+        auto ref_opt = resolve_module(source_file.string());
+        if (!ref_opt) {
             fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                       "; ERROR: save_module: '{}' not found\n", source_file.string());
+                       "; ERROR: save_module: '{}' not found in project\n", source_file.string());
             return false;
         }
+        const ModuleRef &ref = *ref_opt;
 
-        // 2. Compile the file. This is the SAME path as a normal `sootc
-        //    file.sc` run: it builds a fresh FileNode named after the file
-        //    stem, so its m_requires are exactly the file's own requires.
-        lg::info("save_module: compiling '{}'", resolved);
+        // 2. Is the module already in the AST?
+        FileNode                   *file_node = find_file_node(ref.id);
+        std::unique_ptr<BinaryFile> binary_from_ast;
 
-        auto result = compile_file(fs::path(resolved));
+        if (file_node) {
+            lg::info("save_module: reusing AST for '{}'", ref.id.string());
+
+            DataSegment strings_table;
+            auto        element = file_node->generate(strings_table);
+            if (element.m_rawData.empty()) {
+                fmt::print(fg(fmt::color::yellow), "; WARN: save_module: '{}' produced no binary\n",
+                           ref.id.string());
+                return true;
+            }
+
+            auto bytes = make_aligned_buffer(element.m_rawData.size());
+            std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
+
+            auto binary_result = BinaryFile::from_buffer(ref.id.string(), std::move(bytes),
+                                                         element.m_rawData.size());
+            if (!binary_result) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: save_module: cannot build binary: {}\n",
+                           binary_result.error());
+                return false;
+            }
+
+            binary_from_ast = std::make_unique<BinaryFile>(std::move(binary_result.value()));
+            for (const auto &ds : file_node->data_structs()) {
+                binary_from_ast->m_dataStructs.push_back(ds);
+            }
+        }
+
+        // 3. Resolve the output directory against project root.
+        fs::path target = out_dir;
+        if (target.is_relative()) { target = m_config.project_root / target; }
+
+        // 4. Save.
+        if (binary_from_ast) {
+            return save_binary(*binary_from_ast, target) && save_header(*binary_from_ast, target);
+        }
+
+        // Not in AST: compile from disk.
+        auto result = compile_file(ref.resolved);
         if (!result) {
             fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
                        "; ERROR: save_module: compile failed: {}\n", result.error());
             return false;
         }
-
-        // Compile-time-only file (only deftype/defenum/defconstant): nothing
-        // to save. That is a normal outcome; report and return true.
         if (!*result) {
-            fmt::print(fg(fmt::color::yellow),
-                       "; WARN: save_module: '{}' produced no binary (declarations only)\n",
-                       source_file.string());
+            fmt::print(fg(fmt::color::yellow), "; WARN: save_module: '{}' produced no binary\n",
+                       ref.id.string());
             return true;
         }
 
-        // 3. Strip self-dependency defensively.
-        const std::string stem = fs::path(resolved).stem().string();
-        if (auto *file_node = find_file_node(resolved)) { file_node->remove_require(stem); }
+        return save_binary(**result, target) && save_header(**result, target);
+    }
 
-        // 4. Resolve the output directory against PROJECT.
-        fs::path target = out_dir;
-        if (target.is_relative()) {
-            target = file_util::get_path(file_util::PathType::PROJECT) / target;
+
+            bool Compiler::save_recursive_impl(const ModuleRef &ref, const std::filesystem::path &out_dir,
+                                       std::set<ModuleId> &visited, std::set<ModuleId> &active) {
+        if (visited.count(ref.id)) return true;
+        if (active.count(ref.id)) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                       "; ERROR: cyclic require: '{}'\n", ref.id.string());
+            return false;
+        }
+        active.insert(ref.id);
+
+        // Find or compile the FileNode.
+        FileNode *file_node = find_file_node(ref.id);
+        if (!file_node) {
+            auto result = compile_file(ref.resolved);
+            if (!result || !*result) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: save_module_recursive: cannot compile '{}'\n",
+                           ref.id.string());
+                return false;
+            }
+            file_node = find_file_node(ref.id);
+            if (!file_node) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: save_module_recursive: AST not registered for '{}'\n",
+                           ref.id.string());
+                return false;
+            }
         }
 
-        // 5. Save. save_binary enforces the "every :methods entry must have
-        //    a body" rule and writes <stem>.bin; save_header writes
-        //    <stem>.h from the SsType entries.
-        if (!save_binary(**result, target)) { return false; }
-        if (!save_header(**result, target)) { return false; }
+        // Recurse into dependencies first.
+        for (const auto &dep : file_node->get_requires()) {
+            if (dep == module_id_without_extension(ref.id)) continue;
+            auto dep_ref_opt = resolve_require(dep + ".sc", ref.id);
+            if (!dep_ref_opt) { dep_ref_opt = resolve_module(dep); }
+            if (!dep_ref_opt) {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: save_module_recursive: dependency '{}' of '{}' "
+                           "not found in project\n",
+                           dep, ref.id.string());
+                return false;
+            }
+            if (!save_recursive_impl(*dep_ref_opt, out_dir, visited, active)) { return false; }
+        }
 
-        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                   "; saved module '{}' -> {}/{}.bin\n", stem, target.string(), stem);
-        return true;
+        active.erase(ref.id);
+        visited.insert(ref.id);
+
+        return save_module(ref.resolved, out_dir);
     }
+
+
+    bool Compiler::save_module_recursive(const std::filesystem::path &source_file,
+                                         const std::filesystem::path &out_dir) {
+        auto ref_opt = resolve_module(source_file.string());
+        if (!ref_opt) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                       "; ERROR: save_module_recursive: '{}' not found in project\n",
+                       source_file.string());
+            return false;
+        }
+        std::set<ModuleId> visited;
+        std::set<ModuleId> active;
+        return save_recursive_impl(*ref_opt, out_dir, visited, active);
+    }
+
     void Compiler::save_sidbase() {
         if (m_config.sidbase_path.empty()) {
             return; // no path configured, nothing to save
@@ -2709,7 +2937,9 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> candidates = {
-            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.st",
+            // Prelude is part of the tool, not the user's project.
+            // Never look in PROJECT.
+            file_util::get_path(file_util::PathType::PROJECT) / "lib.st", 
             file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.st",
             file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.st",
         };
@@ -2747,7 +2977,7 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> candidates = {
-            file_util::get_path(file_util::PathType::PROJECT) / "soot_src" / "lib.sc",
+            file_util::get_path(file_util::PathType::PROJECT) / "lib.sc", 
             file_util::get_path(file_util::PathType::CONFIG) / "soot_src" / "lib.sc",
             file_util::get_path(file_util::PathType::SHARE) / "soot_src" / "lib.sc",
         };

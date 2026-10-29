@@ -30,15 +30,16 @@ struct CommandLineOptions {
     std::vector<std::string> input_files;
     std::string              target_dir = "build";
     std::string              source_root = ".";
+    std::string              run_script; // --run do.st
     std::string              output_name;
     std::string              user_profile = "#f";
 
     // Behavior.
-    bool        interactive = true;    // open REPL?
-    bool        print_listing = false; // print listing in CLI mode?
-    std::string log_level = "warn";    // debug | info | warn | error
+    bool        interactive = true;
+    bool        print_listing = false;
+    std::string log_level = "warn";
     std::string log_file;
-    std::string         project_dir; // explicit project root; overrides detection
+    std::string project_root; // --project-root
 
     // Compiler mode.
     sootc::CompilerMode mode = sootc::CompilerMode::HYBRID;
@@ -47,14 +48,9 @@ struct CommandLineOptions {
     bool                debug_asm = false;
 
     // Execution backend.
-    //   "local"         -> LocalVmRuntime (default)
-    //   "null"          -> NullRuntime
-    //   "<host>:<port>" -> RemoteRuntime
     std::string runtime_url = "local";
 
-    // SIDBase path. If set, sidbase is loaded before compilation
-    // and saved after all input files have been compiled. If empty,
-    // sidbase lives only in memory for the duration of the process.
+    // SIDBase path.
     std::string sidbase_path;
 
     // Soot platform.
@@ -75,7 +71,11 @@ void print_help(const char *program_name) {
     fmt::print("Usage: {} [options] [files...]\n\n", program_name);
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "Project:\n");
-    fmt::print("  --project <dir>      Default directory for search files\n");
+    fmt::print("  --project-root <dir> Project root. All relative module paths\n");
+    fmt::print("                       are resolved against this root.\n");
+    fmt::print("                       Default: current working directory.\n");
+    fmt::print("  --project <dir>      Alias for --project-root (legacy).\n");
+    fmt::print("  --run <script.st>    Execute a script in the REPL after startup.\n");
 
     fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "Input / output:\n");
     fmt::print("  --target <dir>       Target directory for compiled files (default: build)\n");
@@ -208,7 +208,11 @@ CommandLineOptions parse_args(int argc, char *argv[]) {
             opts.log_file = argv[++i];
         }
        
-        else if (arg == "--project" && i + 1 < argc) { opts.project_dir = argv[++i]; }
+        else if ((arg == "--project-root" || arg == "--project") && i + 1 < argc) {
+            opts.project_root = argv[++i];
+        } else if (arg == "--run" && i + 1 < argc) {
+            opts.run_script = argv[++i];
+        }
 
         // ----- Unknown -----
         else {
@@ -219,7 +223,6 @@ CommandLineOptions parse_args(int argc, char *argv[]) {
 
     return opts;
 }
-
 int main(int argc, char *argv[]) {
     try {
         auto opts = parse_args(argc, argv);
@@ -259,6 +262,24 @@ int main(int argc, char *argv[]) {
             lg::initialize();
         }
 
+        // ----- Project root -----
+        //
+        // Project root: --project-root, or current working directory.
+        // Do NOT call detect_project_root: project identity is explicit
+        // or CWD, never inferred from .git or similar markers.
+        //
+        // The root is fixed ONCE, here, and never re-evaluated. Changing
+        // the working directory later does not change the meaning of a
+        // module id.
+        std::filesystem::path project_root;
+        if (!opts.project_root.empty()) {
+            project_root = std::filesystem::absolute(opts.project_root);
+        } else {
+            project_root = std::filesystem::current_path();
+        }
+        file_util::set_project_path(project_root);
+        lg::info("PROJECT = {}", project_root.string());
+
         // ----- REPL configuration -----
         REPL::Config repl_config(opts.platform);
         repl_config.asm_file_search_dirs.push_back(
@@ -279,6 +300,8 @@ int main(int argc, char *argv[]) {
         comp_options.sidbase_path = opts.sidbase_path;
         comp_options.user_profile = opts.user_profile;
         comp_options.search_paths = {".", "scripts", "src", "examples", opts.source_root};
+        comp_options.project_root = project_root;
+        comp_options.target_dir = opts.target_dir;
 
         // Translate the CLI runtime name into the Compiler's runtime_url.
         // The Compiler expects an empty string for the local VM, "null"
@@ -288,23 +311,6 @@ int main(int argc, char *argv[]) {
         } else {
             comp_options.runtime_url = opts.runtime_url;
         }
-
-        // Resolve PROJECT once, before any path is used. Three sources, in
-        // priority order:
-        //   1. --project <dir> (explicit)
-        //   2. first input file's directory (sootc foo.sc → PROJECT = dir(foo.sc))
-        //   3. detect_project_root(fs::current_path())
-        std::filesystem::path project_root;
-        if (!opts.project_dir.empty()) {
-            project_root = std::filesystem::absolute(opts.project_dir);
-        } else if (!opts.input_files.empty()) {
-            auto dir = std::filesystem::absolute(opts.input_files.front()).parent_path();
-            project_root = file_util::detect_project_root(dir);
-        } else {
-            project_root = file_util::detect_project_root();
-        }
-        file_util::set_project_path(project_root);
-        lg::info("PROJECT = {}", project_root.string());
 
         // ----- Compiler -----
         std::unique_ptr<sootc::Compiler> compiler;
@@ -321,6 +327,27 @@ int main(int argc, char *argv[]) {
         // ----- Run startup commands -----
         for (const auto &cmd : startup_file.run_before_listen) {
             compiler->handle_repl_string(cmd);
+        }
+
+        // ----- Run --run script (if given) -----
+        //
+        // The script is executed in the same Compiler instance, so it
+        // sees every module already loaded and every prelude macro. A
+        // failure aborts immediately: the user is not left wondering
+        // whether the build completed.
+        if (!opts.run_script.empty()) {
+            std::string script = file_util::read_text(opts.run_script);
+            if (script.empty()) {
+                lg::error("Cannot read script: {}", opts.run_script);
+                return 1;
+            }
+            auto status = compiler->handle_repl_string(script);
+            if (status == sootc::ReplStatus::WANT_EXIT) {
+                // The script asked to exit. Honour it: --no-repl or not,
+                // we stop here.
+                return 0;
+            }
+            if (status == sootc::ReplStatus::ERR) { return 1; }
         }
 
         // ----- Compile input files -----

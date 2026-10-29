@@ -1,26 +1,34 @@
 ﻿################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
-
+# Игнорируем всю папку .vs по умолчанию
 /.vs
+# Исключение: если вы хотите поделиться файлом launch.vs.json со всей командой
+# (это безопасно, так как мы ранее настроили его через универсальный макрос ${debugInfo.targetName})
+!.vs/launch.vs.json
+# Папки сборки
+/build
 /out
 /enc_temp_folder
+# Temporary
 *.tmp
 *.temp
 *.TMP
 *.TEMP
-/build
 /.cache
+tmp
 
+# Profiler
 profiler_dump.json
-xifw.hex
-add.bin
-add.dci
+
+# Git
 .gitignore
-common/carbon/main.cpp
+
+# Understand C
 *.udb
 soot_understand.udb
-tmp
+
+# Logs
 *.log 
 *.TMP
 *~RF*

@@ -2416,15 +2416,23 @@ namespace sootc {
         // stem; for a REPL input it is the synthetic "<repl-N>", which
         // never matches a real module name and therefore can never be
         // stripped by mistake.
+        // Record the dependency as a ModuleId without extension
+        // ("lib/utils.sc" -> "lib/utils"). The .bin format stores
+        // logical names without extensions, so it does not depend on
+        // the source file's extension.
         if (auto *file = node ? node->file() : nullptr) {
-            std::filesystem::path p(dep);
-            const std::string     module = p.stem().string();
-            const std::string     self = std::filesystem::path(file->name()).stem().string();
-            if (!module.empty() && module != self) {
-                file->add_require(module);
-            } else {
-                lg::debug("build_require: skipping self-dependency '{}' in '{}'", module,
-                          file->name());
+            // `dep` is the raw string from (require "..."). Resolve it
+            // to a ModuleId via the compiler, then strip the extension.
+            if (m_compiler) {
+                auto ref_opt = m_compiler->resolve_require(dep, /*from_id=*/file->name());
+                if (ref_opt) {
+                    std::string id_no_ext = sootc::module_id_without_extension(ref_opt->id);
+                    std::string self_no_ext =
+                        sootc::module_id_without_extension(std::filesystem::path(file->name()));
+                    if (!id_no_ext.empty() && id_no_ext != self_no_ext) {
+                        file->add_require(id_no_ext);
+                    }
+                }
             }
         }
 

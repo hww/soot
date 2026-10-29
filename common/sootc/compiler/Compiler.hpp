@@ -12,6 +12,7 @@
 #include "fmt/format.h"
 
 #include "sootc/compiler/CompilerError.hpp"
+#include "sootc/compiler/ModuleRef.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
 
 #include "sootc/runtime/Runtime.hpp"
@@ -76,6 +77,15 @@ namespace sootc {
         std::string              log_level = "info";
         std::string              sidbase_path;
         std::vector<std::string> search_paths;
+
+        /// Project root. Set once at startup from --project-root
+        /// (or the current working directory if not given). All
+        /// relative module paths are resolved against this root.
+        std::filesystem::path project_root;
+
+        /// Output directory for compiled artifacts. Defaults to
+        /// "build". Relative paths are resolved against project_root.
+        std::filesystem::path target_dir = "build";
 
         /// @brief Execution backend.
         ///
@@ -150,11 +160,38 @@ namespace sootc {
         //                loaded before this call).
         bool require_file(const script::Object &form, const std::string &path);
 
-        /// @brief Look up the FileNode produced by a previous compile_file.
-        /// @details Used by build_require to attach the imported file to
-        ///          the current file's m_imports.
-        FileNode *find_file_node(const std::string &key) const {
-            auto it = m_file_nodes.find(key);
+        /// @brief Resolve a require path to a ModuleRef.
+        /// @details Resolution rules:
+        ///            1. "./foo" or "../foo" — relative to the
+        ///               directory of `from_id`.
+        ///            2. anything else — relative to project_root.
+        ///          Absolute paths are rejected: they would let a
+        ///          module depend on an arbitrary file outside the
+        ///          project, breaking reproducibility.
+        ///          search_paths is NOT consulted here.
+        std::optional<ModuleRef> resolve_require(const std::string &path,
+                                                 const ModuleId    &from_id) const;
+
+        /// @brief Resolve a module path for save_module / save_module_recursive.
+        /// @details Same as resolve_require, but also accepts an
+        ///          absolute path (which is converted to a ModuleId by
+        ///          making it relative to project_root).
+        std::optional<ModuleRef> resolve_module(const std::string &path) const;
+
+        /// @brief Compile a .sc file and every module it requires,
+        ///        saving all of them as .bin + .h.
+        /// @details Dependencies are saved first, then the file
+        ///          itself, matching load_module_recursive's order.
+        ///          Cyclic requires are detected and reported as an
+        ///          error.
+        bool save_module_recursive(const std::filesystem::path &source_file,
+                                   const std::filesystem::path &out_dir = "build");
+
+        /// @brief Look up the FileNode by its ModuleId.
+        /// @details Returns nullptr if the module has not been compiled
+        ///          in this Compiler instance.
+        FileNode *find_file_node(const ModuleId &id) const {
+            auto it = m_file_nodes.find(id);
             return it != m_file_nodes.end() ? it->second.get() : nullptr;
         }
 
@@ -466,6 +503,7 @@ namespace sootc {
         ReplStatus cmd_list_symbols(const script::Object &form);
         ReplStatus cmd_save_session(const script::Object &form);
         ReplStatus cmd_save_module(const script::Object &form);
+        ReplStatus cmd_save_module_recursive(const script::Object &form);
         ReplStatus cmd_sc_run(const script::Object &form);
         ReplStatus cmd_sc_eval(const script::Object &form);
 
@@ -494,7 +532,7 @@ namespace sootc {
         std::unique_ptr<GlobalNode> m_global_env;
         std::unique_ptr<NoneNode>   m_none;
 
-        std::string                                     m_current_file;
+        ModuleId                                        m_current_file;
         std::unordered_map<std::string, FunctionInfo>   m_functions;
         std::unordered_map<std::string, script::Object> m_constants;
 
@@ -559,11 +597,14 @@ namespace sootc {
 
         // --- Loaded files (for require) ---
         //
-        // Absolute paths of .sc files that have already been loaded
-        // in this Compiler instance. Populated by require_file(). Used
-        // to make requires idempotent, so a file that is required by
-        // two of its dependents is compiled only once.
-        std::set<std::filesystem::path> m_loaded_files;
+        // Logical module ids that have already been loaded in this
+        // Compiler instance. Populated by require_file(). Used to make
+        // requires idempotent, so a file that is required by two of
+        // its dependents is compiled only once.
+        //
+        // Keyed by ModuleId (relative to project_root), not by absolute
+        // path: the module identity is stable across project moves.
+        std::set<ModuleId> m_loaded_files;
 
         // ------------------------------------------------------------------
         // Loaded FileNodes
@@ -577,7 +618,8 @@ namespace sootc {
         // m_imports.
         //
         // The FileNode is destroyed only when the Compiler is destroyed.
-        std::unordered_map<std::string, std::unique_ptr<FileNode>> m_file_nodes;
+        // Keyed by ModuleId (relative to project_root).
+        std::unordered_map<ModuleId, std::unique_ptr<FileNode>> m_file_nodes;
 
         // ------------------------------------------------------------------
         // REPL File Counter
@@ -615,5 +657,8 @@ namespace sootc {
 
     private:
         bool check_type_methods_implemented(const FileNode *file_node) const;
+
+        bool save_recursive_impl(const ModuleRef &ref, const std::filesystem::path &out_dir,
+                                 std::set<ModuleId> &visited, std::set<ModuleId> &active);
     };
 } // namespace sootc

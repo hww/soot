@@ -76,8 +76,9 @@ else()
 endif()
 
 set_target_properties(sootc PROPERTIES 
-    VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VS_DEBUGGER_COMMAND_ARGUMENTS
+        "--project-root \"${CMAKE_SOURCE_DIR}/soot_src\" --runtime local --sidbase \"${CMAKE_BINARY_DIR}/sidbase.bin\""
 )
 
 # Установка
