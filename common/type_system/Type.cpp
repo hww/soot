@@ -12,6 +12,7 @@
 #include <typeinfo>
 #include <format>
 
+
 // ============================================================================
 // RegClass to string
 // ============================================================================
@@ -35,7 +36,8 @@ std::string reg_kind_to_string(RegClass reg_class) {
     }
 }
 
-int Type::verbose = 0;
+
+lg::level Type::log_level = lg::level::warn;
 
 // ============================================================================
 // MethodInfo
@@ -721,8 +723,8 @@ StructureType::StructureType(std::string parent, std::string name, bool boxed, b
 void StructureType::inherit(StructureType *parent) {
     if (!parent)
         return;
-    if (Type::verbose) {
-        fmt::print("DEBUG: Inheriting from {} to {}\n", parent->get_name(), get_name());
+    if (Type::is_debug_log()) {
+        lg::debug("DEBUG: Inheriting from {} to {}", parent->get_name(), get_name());
     }
     m_fields = parent->fields();
     m_size_in_mem = parent->get_size_in_memory();

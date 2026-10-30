@@ -1351,7 +1351,12 @@ namespace sootc {
         }
     }
 
-    void FileNode::add_import(FileNode *file) { m_imports.push_back(file); }
+    void FileNode::add_import(FileNode *file) {
+        if (!file || file == this) return;
+        if (std::find(m_imports.begin(), m_imports.end(), file) == m_imports.end()) {
+            m_imports.push_back(file);
+        }
+    }
 
     void FileNode::insert_into_reloctable(u8 *reloc_table, u64 &byte_offset, u64 &bit_offset,
                                           u8 bits, u64 num_bits) noexcept {

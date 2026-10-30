@@ -14,6 +14,8 @@
 #include "type_system/Type.hpp"
 #include "type_system/TypeSpec.hpp"
 
+#include "util/Log.hpp"
+
 #include <memory>
 #include <optional>
 #include <stdexcept>

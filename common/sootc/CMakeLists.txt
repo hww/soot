@@ -24,6 +24,10 @@ add_library(libsootc
 
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
+    common/sootc/compiler/SaveModule.cpp
+    common/sootc/compiler/ReplCommands.cpp
+    common/sootc/compiler/StateScriptCompilation.cpp
+    common/sootc/compiler/Bootstrap.cpp
     common/sootc/compiler/FunctionCompiler.cpp
     common/sootc/compiler/FileCompiler.cpp
     common/sootc/compiler/Macro.cpp

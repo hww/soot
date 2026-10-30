@@ -584,8 +584,8 @@ MethodInfo TypeSystem::declare_method(Type *type, const std::string &method_name
 
     if (method_name == "delete" && !override_type) {
         // Можно добавить специальную логику для delete
-        if (Type::verbose)
-            fmt::print("DEBUG: Declaring delete method for type {}\n", type->get_name());
+        if (Type::is_debug_log())
+            lg::debug("DEBUG: Declaring delete method for type {}", type->get_name());
     }
     // Look for existing method
     MethodInfo existing_info;
@@ -983,9 +983,9 @@ int TypeSystem::add_field_to_type(StructureType *type, const std::string &field_
 
     // ДОБАВЛЯЕМ ПОЛЕ В СТРУКТУРУ
     type->m_fields.push_back(field);
-    if (Type::verbose)
-        fmt::print(
-            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {} size-in-memory: {}\n",
+    if (Type::is_debug_log())
+        lg::debug(
+            "DEBUG: Added field {} to type {}, offset: {}, size: {}, inline: {}, array: {} size-in-memory: {}",
             field_name, type->get_name(), offset, field_size, is_inline, array_size, 
             type->get_size_in_memory());
 
@@ -1386,7 +1386,7 @@ void TypeSystem::add_builtin_types() {
     add_field_to_type(string_type, "data", make_pointer_typespec("uint8"), 8, false,
                       true); // dynamic
 
-    if (Type::verbose) fmt::print("DEBUG: Builtin types initialized successfully\n");
+    if (Type::is_debug_log()) lg::debug("DEBUG: Builtin types initialized successfully");
     verify_type_sizes();
 }
 
@@ -2380,8 +2380,8 @@ int TypeSystem::get_alignment_in_type(const Field &field) {
     if (!field_type->is_reference()) {
         alignment = field_type->get_in_memory_alignment();
     }
-    if (Type::verbose)
-        fmt::print("DEBUG: Field {} type {} alignment: {}\n", field.name(), field_type->get_name(),
+    if (Type::is_debug_log())
+        lg::debug("DEBUG: Field {} type {} alignment: {}", field.name(), field_type->get_name(),
                    alignment);
 
     // Reference type - ИСПОЛЬЗУЕМ POINTER_SIZE
@@ -2457,8 +2457,8 @@ void find_field_access_paths(const TypeSystem                      *ts,
     for (const auto &field : type->fields()) {
         int field_offset = field.offset();
         int field_size = ts->get_size_in_type(field);
-        if (Type::verbose)
-            fmt::print("DEBUG: Checking field '{}' at offset {}, size: {}, target: {}\n",
+        if (Type::is_debug_log())
+            lg::debug("DEBUG: Checking field '{}' at offset {}, size: {}, target: {}",
                        field.name(), field_offset, field_size, target_offset);
 
         // Точное совпадение с полем
@@ -2474,8 +2474,8 @@ void find_field_access_paths(const TypeSystem                      *ts,
         // Поле является массивом
         if (field.is_array() && !field.is_dynamic()) {
             if (target_offset >= field_offset && target_offset < field_offset + field_size) {
-                if (Type::verbose)
-                    fmt::print("DEBUG: Inside array '{}', calculating index...\n", field.name());
+                if (Type::is_debug_log())
+                    lg::debug("DEBUG: Inside array '{}', calculating index...", field.name());
 
                 // ВЫЧИСЛЯЕМ РАЗМЕР ЭЛЕМЕНТА ПРАВИЛЬНО
                 int element_size;
@@ -2487,14 +2487,13 @@ void find_field_access_paths(const TypeSystem                      *ts,
                     // Для обычных массивов - размер указателя или значения
                     element_size = field_size / field.array_size();
                 }
-                if (Type::verbose)
-                    fmt::print("DEBUG: Element size: {}, array_size: {}\n", element_size,
+                if (Type::is_debug_log())
+                    lg::debug("DEBUG: Element size: {}, array_size: {}", element_size,
                                field.array_size());
 
                 int index = (target_offset - field_offset) / element_size;
                 int remainder = (target_offset - field_offset) % element_size;
-                if (Type::verbose)
-                    fmt::print("DEBUG: Index: {}, remainder: {}\n", index, remainder);
+                if (Type::is_debug_log()) lg::debug("DEBUG: Index: {}, remainder: {}", index, remainder);
 
                 ReverseLookupNode array_node{current_path,
                                              {FieldReverseLookupOutput::Token::Kind::FIELD,
@@ -2508,15 +2507,15 @@ void find_field_access_paths(const TypeSystem                      *ts,
                 if (field.is_inline() && remainder > 0) {
                     auto element_type = ts->lookup_type_allow_partial_def(field.type());
                     if (auto element_struct = dynamic_cast<const StructureType *>(element_type)) {
-                        if (Type::verbose)
-                            fmt::print("DEBUG: Recursing into inline array element at offset {}\n",
+                        if (Type::is_debug_log())
+                            lg::debug("DEBUG: Recursing into inline array element at offset {}",
                                        remainder);
                         find_field_access_paths(ts, element_struct, remainder, &index_node, results,
                                                 depth + 1);
                     } else {
                         // Простой тип, но есть remainder - это ошибка?
-                        if (Type::verbose)
-                            fmt::print("DEBUG: Simple type with remainder - skipping\n");
+                        if (Type::is_debug_log())
+                            lg::debug("DEBUG: Simple type with remainder - skipping");
                     }
                 } else {
                     // Нет remainder или не inline - просто доступ к элементу
@@ -2558,15 +2557,14 @@ void find_field_access_paths(const TypeSystem                      *ts,
 FieldReverseLookupOutput
 TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
     FieldReverseLookupOutput result;
-    if (Type::verbose) {
-        fmt::print("=== REVERSE LOOKUP START ===\n");
-        fmt::print("DEBUG: Reverse lookup for type {} at offset {}, stride: {}, pointer_size: {}\n",
+    if (Type::is_debug_log()) {
+        lg::debug("=== REVERSE LOOKUP START ===\n");
+        lg::debug("DEBUG: Reverse lookup for type {} at offset {}, stride: {}, pointer_size: {}",
                    input.base_type.print(), input.offset, input.stride, TypeConfig::pointer_size);
     }
     Type *base_type = lookup_type_allow_partial_def(input.base_type);
     if (!base_type) {
-        if (Type::verbose)
-            fmt::print("DEBUG: Base type not found\n");
+        if (Type::is_debug_log()) lg::debug("DEBUG: Base type not found");
         result.success = false;
         return result;
     }
@@ -2576,22 +2574,22 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
     if (input.stride != 0) {
         // Для простоты считаем что stride уже применен
     }
-    if (Type::verbose)
-        fmt::print("DEBUG: Base type: {}, kind: {}\n", base_type->get_name(),
+    if (Type::is_debug_log())
+        lg::debug("DEBUG: Base type: {}, kind: {}", base_type->get_name(),
                    typeid(*base_type).name());
 
     // Обрабатываем StructureType
     if (auto structure = dynamic_cast<StructureType *>(base_type)) {
-        if (Type::verbose) {
-            fmt::print("DEBUG: Processing structure '{}' with {} fields, total size: {}\n",
+        if (Type::is_debug_log()) {
+            lg::debug("DEBUG: Processing structure '{}' with {} fields, total size: {}",
                        structure->get_name(), structure->fields().size(),
                        structure->get_size_in_memory());
 
             // Выводим информацию о всех полях для отладки
             for (const auto &field : structure->fields()) {
                 int field_size = get_size_in_type(field);
-                fmt::print("DEBUG:   Field '{}' at offset {}, size: {}, inline: {}, array: {}, "
-                           "array_size: {}\n",
+                lg::debug("DEBUG:   Field '{}' at offset {}, size: {}, inline: {}, array: {}, "
+                           "array_size: {}",
                            field.name(), field.offset(), field_size, field.is_inline(),
                            field.is_array(), field.array_size());
             }
@@ -2600,8 +2598,7 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
 
         // Находим все возможные пути доступа
         find_field_access_paths(this, structure, effective_offset, nullptr, all_results);
-        if (Type::verbose)
-            fmt::print("DEBUG: Found {} possible access paths\n", all_results.size());
+        if (Type::is_debug_log()) lg::debug("DEBUG: Found {} possible access paths", all_results.size());
 
         if (!all_results.empty()) {
             // Выбираем результат с наивысшим score
@@ -2614,27 +2611,26 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
             for (const auto &token : best_result->tokens) {
                 best_result->total_score += token.score();
             }
-            if (Type::verbose) {
-                fmt::print("DEBUG: Best result: {} tokens, score: {}\n", best_result->tokens.size(),
+            if (Type::is_debug_log()) {
+                lg::debug("DEBUG: Best result: {} tokens, score: {}", best_result->tokens.size(),
                            best_result->total_score);
                 for (const auto &token : best_result->tokens) {
-                    fmt::print("DEBUG:   Token: {} (kind: {})\n", token.print(),
+                    lg::debug("DEBUG:   Token: {} (kind: {})\n", token.print(),
                                static_cast<int>(token.kind));
                 }
             }
 
             return *best_result;
         } else {
-            if (Type::verbose)
-                fmt::print("DEBUG: No access paths found for offset {}\n", effective_offset);
+            if (Type::is_debug_log())
+                lg::debug("DEBUG: No access paths found for offset {}\n", effective_offset);
         }
     } else if (auto bitfield = dynamic_cast<BitFieldType *>(base_type)) {
-        if (Type::verbose)
-            fmt::print("DEBUG: Processing bitfield '{}'\n", bitfield->get_name());
+        if (Type::is_debug_log()) lg::debug("DEBUG: Processing bitfield '{}'", bitfield->get_name());
 
         for (const auto &field : bitfield->fields()) {
-            if (Type::verbose)
-                fmt::print("DEBUG:   BitField '{}' at bit offset {}, size: {} bits\n", field.name(),
+            if (Type::is_debug_log())
+                lg::debug("DEBUG:   BitField '{}' at bit offset {}, size: {} bits", field.name(),
                            field.offset(), field.size());
 
             if (effective_offset >= field.offset() &&
@@ -2647,19 +2643,18 @@ TypeSystem::reverse_field_lookup(const FieldReverseLookupInput &input) const {
                         FieldReverseLookupOutput::Token::Kind::FIELD, field.name(), -1,
                         1.0 // Высокий score для точного совпадения
                     });
-
-                    fmt::print("DEBUG: Found bitfield match: {}\n", field.name());
+                    if (Type::is_debug_log())
+                        lg::debug("DEBUG: Found bitfield match: {}\n", field.name());
                     return result;
                 }
             }
         }
     } else {
-        if (Type::verbose)
-            fmt::print("DEBUG: Unsupported type kind for reverse lookup: {}\n",
+        if (Type::is_debug_log())
+            lg::debug("DEBUG: Unsupported type kind for reverse lookup: {}",
                        typeid(*base_type).name());
     }
-    if (Type::verbose)
-        fmt::print("DEBUG: Reverse lookup FAILED\n");
+    if (Type::is_debug_log()) lg::debug("DEBUG: Reverse lookup FAILED");
     result.success = false;
     return result;
 }

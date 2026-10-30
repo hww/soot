@@ -79,6 +79,7 @@ namespace sootc {
                                             }),
                              m_children.end());
         }
+
         // ---- Imports ----
         void                           add_import(FileNode *file);
         const std::vector<FileNode *> &imports() const { return m_imports; }

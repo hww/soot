@@ -6,15 +6,17 @@
 #include "carbon/file/Globals.hpp"
 #include "carbon/vm/VirtualMachine.hpp"
 #include "sootc/compiler/Compiler.hpp"
-#include "sootc/node/NodeInspector.hpp"
 #include "sootc/node/FileNode.hpp"
+#include "sootc/node/NodeInspector.hpp"
 #include "type_system/TypeSystem.hpp"
+#include "util/Config.hpp"
 #include "util/Log.hpp"
 
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <ProjectConfig.hpp>
 
 namespace sootc::testing {
 
@@ -46,15 +48,25 @@ namespace sootc::testing {
     class SootcTest : public ::testing::Test {
     protected:
         static void SetUpTestSuite() {
-            lg::set_stdout_level(lg::level::warn);
+            lg::set_console_level(lg::level::warn);
             lg::set_file_level(lg::level::warn);
 
-            CompilationOptions options;
-            options.mode = CompilerMode::COMPILE_ONLY;
-            options.user_profile = "#f";
-            options.search_paths = {"soot_src", "tests/sootc"};
+            // The Compiler stores a const reference to Config, so
+            // s_config must outlive s_compiler. Both are static, so
+            // their lifetime is the test binary's lifetime.
+            s_config = std::make_unique<common::Config>();
+            // Find the project root the same way main() does: walk up from
+            // CWD looking for soot.json. If not found, fall back to CWD.
+            // Using CWD directly would make the tests depend on where the
+            // test binary happens to live (build/Debug/bin), not on where
+            // the project is.
+            auto root = common::SootProjectConfig::find(std::filesystem::current_path());
+            s_config->common.project_root = root.empty() ? std::filesystem::current_path() : root;
+            s_config->compiler.mode = "compile";
+            s_config->compiler.user_profile = "#f";
+            s_config->compiler.search_paths = {"soot_src", "tests/sootc"};
 
-            s_compiler = std::make_unique<Compiler>(options, std::nullopt, "#f", nullptr);
+            s_compiler = std::make_unique<Compiler>(*s_config, std::nullopt, "#f", nullptr);
 
             s_carbon = carbon::Carbon::current();
             if (!s_carbon) {
@@ -65,6 +77,7 @@ namespace sootc::testing {
         static void TearDownTestSuite() {
             s_carbon = nullptr;
             s_compiler.reset();
+            s_config.reset();
         }
 
         void SetUp() override {
@@ -78,7 +91,7 @@ namespace sootc::testing {
         }
 
         void TearDown() override {}
-        
+
         void dump_ast(const std::string &filename = "") {
             if (filename.empty()) {
                 fmt::print("=== GlobalNode ({}) ===\n", compiler().global_env()->symbols().size());
@@ -108,7 +121,11 @@ namespace sootc::testing {
                 if (out_error) *out_error = "failed to read forms";
                 return nullptr;
             }
-            s_compiler->config()->debug_print_ast = inspect_ast;
+
+            // dump_ast is read by compile_file at the moment it runs,
+            // through m_config (which is a reference to s_config).
+            s_config->compiler.dump_ast = inspect_ast;
+
             s_compiler->set_input_origin(InputOrigin::Test);
             auto result = s_compiler->compile_file(forms, filename);
 
@@ -128,22 +145,19 @@ namespace sootc::testing {
         /// @brief Compile the source, then run the named function in the VM.
         /// @details `source` must define the function. The function is
         ///          looked up by SID in the shared Carbon context.
-        RunResult run(const std::string &source, const std::string &function_name, bool inspect_ast = false) {
+        RunResult run(const std::string &source, const std::string &function_name,
+                      bool inspect_ast = false) {
             RunResult out;
 
             auto file = compile(source, &out.error, inspect_ast);
             if (!file) return out;
- 
-            // Загружаем модуль в Carbon. Имя уникальное, чтобы не затирать
-            // ранее загруженные модули (каждый тест — свой модуль).
+
             const std::string logical = "<test>/" + std::to_string(s_module_counter++);
             if (!s_carbon->load_module_from_binary(logical, std::move(*file))) {
                 out.error = "failed to load module into Carbon";
                 return out;
             }
 
-            // Run the module's top-level code (heap allocs, global stores, ...).
-            // Loading only registers symbols; running is the caller's job.
             auto result = s_carbon->run_top_level(logical);
             if (!result.ok) {
                 out.error = "top-level of module failed";
@@ -166,8 +180,9 @@ namespace sootc::testing {
         carbon::Carbon &carbon_context() { return *s_carbon; }
 
     private:
+        inline static std::unique_ptr<common::Config> s_config;
         inline static std::unique_ptr<Compiler>       s_compiler;
-        inline static carbon::Carbon *s_carbon;
+        inline static carbon::Carbon                 *s_carbon = nullptr;
         inline static std::size_t                     s_module_counter = 0;
     };
 

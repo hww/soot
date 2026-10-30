@@ -66,6 +66,20 @@ namespace sootc {
 
         // Возвращаемый результат
         Type *m_return_type = nullptr;
+        /// @brief Full signature of this function: parameter types and
+        ///        return type, as a TypeSpec("function", args...).
+        ///
+        /// @details Computed once in build_define from the parameter
+        ///          list and m_return_type, and stored here so that
+        ///          call-site typechecking can consult the signature
+        ///          through the import graph (FileNode::lookup) instead
+        ///          of m_native_functions. This is what makes
+        ///          two files that define the same function name
+        ///          independently typechecked.
+        ///
+        ///          Native functions have no FunctionNode and keep
+        ///          their signature in Compiler::m_native_functions.
+        TypeSpec                                m_signature;
 
         // Переменные (локальные + параметры)
         std::vector<VariableInfo>               m_variables;
@@ -163,6 +177,19 @@ namespace sootc {
         // ========================================================================
         void  set_return_type(Type *type) { m_return_type = type; }
         Type *get_return_type() const { return m_return_type; }
+        
+        // ========================================================================
+        // Signature
+        // ========================================================================
+
+        /// @brief Full TypeSpec("function", args...) of this function.
+        const TypeSpec &signature() const { return m_signature; }
+        void            set_signature(TypeSpec sig) { m_signature = std::move(sig); }
+        bool            has_signature() const { return !m_signature.empty(); }
+
+        // ========================================================================
+        // Globals
+        // ========================================================================
 
         void         set_global_state(DataSegment *s) { m_state = s; }
         DataSegment *global_state() const { return m_state; }

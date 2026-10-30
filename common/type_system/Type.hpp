@@ -17,6 +17,7 @@
 #include "script/Object.hpp"
 
 #include "util/StringIdHash.hpp"
+#include "util/Log.hpp"
 
 #include <cstdint>
 #include <fmt/format.h>
@@ -294,7 +295,8 @@ struct StateDef {
 class Type : public std::enable_shared_from_this<Type>  {
   friend class TypeSystem; // <-- access to m_state_handlers
   public:
-    static int verbose;
+    static lg::level log_level;
+    static bool      is_debug_log() { return log_level == lg::level::debug; }
 
     Type(std::string parent, std::string name, bool is_boxed, int heap_base);
     virtual ~Type() = default;

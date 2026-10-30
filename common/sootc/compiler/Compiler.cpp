@@ -32,8 +32,6 @@
 
 #include "type_system/TypeSystem.hpp"
 
-#include "util/ProjectConfig.hpp"
-
 #include "fmt/color.h"
 #include "fmt/core.h"
 #include "fmt/format.h"
@@ -42,36 +40,41 @@
 #include "third_party/replxx/include/replxx.hxx"
 
 #include "util/FileUtil.hpp"
+#include "util/ProjectConfig.hpp"
 #include "util/Log.hpp"
+#include <Config.cpp>
 
 namespace sootc {
 
-    // Construct the compiler and bring it to a usable state:
-    //   1. load the SOOT interpreter prelude (lib.st)  -> m_soot
-    //   2. compile the SOOTC compiler prelude (lib.sc) -> m_ts / m_soot macros
-    //   3. set up the REPL, if the mode requires it
-    //   4. load the user profile (if any)
-    //   5. register C++-side SOOT forms that need access to the compiler
-    Compiler::Compiler(const CompilationOptions          comp_options,
-                       const std::optional<REPL::Config> repl_config,
-                       const std::string &user_profile, std::unique_ptr<REPL::Wrapper> repl)
-        : m_ts(TypeSystem::instance()), m_platform(comp_options.platform),
-          m_soot(user_profile, false, true, comp_options.platform), m_repl(std::move(repl)) {
+    // @brief Construct the compiler.
+    //
+    // @param cfg           The single source of truth for every
+    //                      option. Must outlive the Compiler.
+    // @param repl_config   Optional REPL shell configuration.
+    //                      Not part of cfg: it describes the
+    //                      interactive shell, not the compiler.
+    // @param user_profile  Profile name, kept for REPL::Wrapper.
+    //                      Same value as cfg.compiler.user_profile.
+    // @param repl          Optional REPL wrapper.
+    Compiler::Compiler(const common::Config &cfg, const std::optional<REPL::Config> repl_config,
+             const std::string &user_profile, std::unique_ptr<REPL::Wrapper> repl)
+        : m_ts(TypeSystem::instance()), m_platform(cfg.common.platform),
+          m_soot(user_profile, false, true, cfg.common.platform), m_repl(std::move(repl)),
+          m_config(cfg) {
         (void)repl_config;
-        m_config = comp_options;
-        sync_type_verbose();
+
+        Type::log_level = m_config.common.log_level;
+
 
         // If the caller did not set project_root (unit tests, embedded
         // uses), fall back to file_util's PROJECT, or to CWD if that is
         // also empty. The compiler cannot work without a root: every
         // module id is resolved relative to it, and the prelude loader
         // needs a directory to search in.
-        if (m_config.project_root.empty()) {
-            m_config.project_root = common::get_path(common::PathType::PROJECT);
-        }
-        if (m_config.project_root.empty()) {
-            m_config.project_root = std::filesystem::current_path();
-            common::set_project_path(m_config.project_root);
+        if (m_config.common.project_root.empty()) {
+            throw std::runtime_error(
+                "Compiler: cfg.common.project_root is empty; "
+                "call common::set_project_path() and fill cfg before constructing Compiler");
         }
 
         m_ts.add_builtin_types();
@@ -88,19 +91,19 @@ namespace sootc {
         //   "<host>:<port>" -> RemoteRuntime; sends work to an
         //                      external host (carbon.exe) over the
         //                      cross-socket protocol.
-        if (m_config.runtime_url.empty()) {
+        if (m_config.compiler.runtime_url.empty()) {
             // Convert the string search_paths from CompilationOptions
             // into filesystem::path for CarbonConfig. The runtime uses
             // these to find .bin files when a script calls
             // (load-module "name").
             std::vector<std::filesystem::path> runtime_search_paths;
-            runtime_search_paths.reserve(m_config.search_paths.size());
-            for (const auto &s : m_config.search_paths) { runtime_search_paths.emplace_back(s); }
+            runtime_search_paths.reserve(m_config.compiler.search_paths.size());
+            for (const auto &s : m_config.compiler.search_paths) { runtime_search_paths.emplace_back(s); }
             m_runtime = std::make_unique<LocalVmRuntime>(std::move(runtime_search_paths));
-        } else if (m_config.runtime_url == "null") {
+        } else if (m_config.compiler.runtime_url == "null") {
             m_runtime = std::make_unique<NullRuntime>();
         } else {
-            m_runtime = std::make_unique<RemoteRuntime>(m_config.runtime_url);
+            m_runtime = std::make_unique<RemoteRuntime>(m_config.compiler.runtime_url);
         }
         lg::info("Runtime: {}", m_runtime->name());
 
@@ -123,39 +126,39 @@ namespace sootc {
         // starts with an empty SID registry. That is exactly what the
         // unit tests rely on, because they never want to touch the
         // user's sidbase file.
-        if (!m_config.sidbase_path.empty()) {
+        if (!m_config.common.sidbase.string().empty()) {
             std::error_code ec;
-            const bool      exists = std::filesystem::exists(m_config.sidbase_path, ec);
+            const bool      exists = std::filesystem::exists(m_config.common.sidbase.string(), ec);
 
             if (ec) {
-                lg::warn("SIDBase: cannot stat '{}': {} — starting empty", m_config.sidbase_path,
+                lg::warn("SIDBase: cannot stat '{}': {} — starting empty", m_config.common.sidbase.string(),
                          ec.message());
             } else if (!exists) {
                 lg::info("SIDBase: '{}' not found — will be created on exit",
-                         m_config.sidbase_path);
+                         m_config.common.sidbase.string());
             } else {
                 const bool loaded = carbon::StringIdManager::instance().load_dconstruct_sidbase(
-                    m_config.sidbase_path);
+                    m_config.common.sidbase.string());
 
                 if (loaded) {
                     lg::info("SIDBase: loaded {} entries from '{}'",
-                             carbon::StringIdManager::instance().size(), m_config.sidbase_path);
+                             carbon::StringIdManager::instance().size(), m_config.common.sidbase.string());
                 } else {
                     lg::warn("SIDBase: failed to load '{}' — starting empty",
-                             m_config.sidbase_path);
+                             m_config.common.sidbase.string());
                 }
             }
         } else {
             lg::info("SIDBase: no path configured — using in-memory registry only");
         }
 
-        // 1. SOOT prelude -> interpreter (lib.st).
-        load_soot_prelude();
+        // 1. SOOT bootstrap -> interpreter (lib.st).
+        load_soot_bootstrap();
 
-        // 2. SOOTC prelude -> compiler (lib.sc).
-        load_soc_prelude();
+        // 2. SOOTC bootstrap -> compiler (lib.sc).
+        load_soc_bootstrap();
 
-        if (m_config.mode != CompilerMode::COMPILE_ONLY) { setup_repl(); }
+        if (m_config.compiler.mode == "compile") { setup_repl(); }
 
         if (user_profile != "#f") { load_user_profile(); }
 
@@ -380,7 +383,7 @@ namespace sootc {
         m_input_origin = InputOrigin::Default;
         auto result = compile_internal(forms, filename, /*is_repl=*/false);
 
-        if (result && m_config.debug_print_ir) {
+        if (result && m_config.compiler.dump_ir) {
             lg::info("Compilation successful for: {}", filename);
             BinaryFileInspector inspector(result->get());
             inspector.inspect();
@@ -393,8 +396,8 @@ namespace sootc {
         // Canonicalize the key: the same file reached through different
         // spellings (relative, absolute, symlinks) must resolve to the
         // same ModuleId.
-        const ModuleId    id = make_module_id(path, m_config.project_root);
-        const std::string content = read_file_content((m_config.project_root / id).string());
+        const ModuleId    id = make_module_id(path, m_config.common.project_root);
+        const std::string content = read_file_content((m_config.common.project_root / id).string());
         auto              forms = m_soot.get_reader().read_from_string(content, false, id.string());
         if (forms.is_null()) {
             return std::unexpected("Failed to read or parse file: " + id.string());
@@ -408,7 +411,7 @@ namespace sootc {
         m_input_origin = InputOrigin::Repl;
         auto result = compile_internal(forms, filename, /*is_repl=*/true);
 
-        if (result && m_config.debug_print_ir) {
+        if (result && m_config.compiler.dump_ir) {
             lg::info("Compilation successful for: {}", filename);
             BinaryFileInspector inspector(result->get());
             inspector.inspect();
@@ -421,7 +424,7 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.search_paths) search_paths.emplace_back(s);
+        for (const auto &s : m_config.compiler.search_paths) search_paths.emplace_back(s);
 
         // Base directory for explicit ./ and ../ paths.
         //
@@ -436,7 +439,7 @@ namespace sootc {
         if (m_input_origin == InputOrigin::Default) {
             base_dir = from_id.parent_path();
         } else {
-            base_dir = m_config.project_root;
+            base_dir = m_config.common.project_root;
         }
 
         fs::path found = common::find_project_file(path, base_dir, search_paths);
@@ -444,7 +447,7 @@ namespace sootc {
 
         auto id_opt = [&]() -> std::optional<ModuleId> {
             try {
-                return make_module_id(found, m_config.project_root);
+                return make_module_id(found, m_config.common.project_root);
             } catch (...) { return std::nullopt; }
         }();
         if (!id_opt) return std::nullopt;
@@ -457,7 +460,7 @@ namespace sootc {
 
     std::optional<ModuleRef> Compiler::resolve_module(const std::string &path) const {
         namespace fs = std::filesystem;
-        const fs::path root = m_config.project_root;
+        const fs::path root = m_config.common.project_root;
 
         // Absolute: convert to ModuleId.
         if (fs::path(path).is_absolute()) {
@@ -566,7 +569,7 @@ namespace sootc {
                 .expected("a file inside the project root, "
                           "or an explicit ./sibling or ../sibling")
                 .got(fmt::format("'{}'", path))
-                .note(fmt::format("PROJECT: {}", m_config.project_root.string()));
+                .note(fmt::format("PROJECT: {}", m_config.common.project_root.string()));
         }
         const ModuleRef &ref = *ref_opt;
 
@@ -578,8 +581,24 @@ namespace sootc {
         // The same module reached through different spellings (or on
         // different machines) produces the same ModuleId, so the
         // check is stable.
+        //
+        // Even when the module is already loaded, the CURRENT requirer
+        // still needs an import edge to it: FileNode::lookup walks
+        // m_imports recursively, and without this edge the requirer
+        // cannot see the module's symbols. This matters when the same
+        // module is required from two places, e.g. once from the top
+        // level of a REPL session and once from a source file inside
+        // the same session.
         if (m_loaded_files.count(ref.id)) {
-            lg::debug("require: '{}' already loaded — skipping", ref.id.string());
+            lg::debug("require: '{}' already loaded — adding import edge", ref.id.string());
+
+            FileNode *from_file = find_file_node(m_current_file);
+            FileNode *dep_file = find_file_node(ref.id);
+            if (from_file && dep_file) {
+                from_file->add_import(dep_file);
+                lg::debug("require: '{}' now imports '{}' (cached)", from_file->name(),
+                          ref.id.string());
+            }
             return true;
         }
 
@@ -594,7 +613,16 @@ namespace sootc {
         // ------------------------------------------------------------------
         lg::info("require: loading '{}'", ref.id.string());
 
+        // Remember the requirer's FileNode BEFORE compile_file, because
+        // compile_file overwrites m_current_file with the required
+        // module's id. If we looked it up after compile_file, we would
+        // see the required module, not its requirer, and the
+        // add_import call below would be a self-import (which
+        // FileNode::add_import ignores).
+        FileNode *requirer_file = find_file_node(m_current_file);
+
         auto result = compile_file(ref.resolved);
+
         if (!result) {
             // Compilation failed. Remove the marker so that a later
             // require of the same file can be retried after the user
@@ -624,9 +652,30 @@ namespace sootc {
                 .got(fmt::format("runtime '{}' rejected '{}'", m_runtime->name(), ref.id.string()));
         }
 
+        // Record the dependency edge: the file that contains the
+        // (require ...) form now points at the FileNode of the
+        // required module. This is what FileNode::lookup walks when
+        // resolving names. Without it, a function defined in the
+        // required file is not visible to the requirer, even though
+        // it is registered in the flat m_native_functions table.
+        //
+        // m_current_file identifies the requirer:
+        //   * for a regular source file, it is the file's ModuleId;
+        //   * for a REPL input, it is the synthetic "<repl-N>" name,
+        //     which has a FileNode in m_file_nodes.
+        {
+            FileNode *from_file = requirer_file;
+            FileNode *dep_file = find_file_node(ref.id);
+            if (from_file && dep_file) {
+                from_file->add_import(dep_file);
+                lg::debug("require: '{}' now imports '{}'", from_file->name(), ref.id.string());
+            }
+        }
+
         lg::info("require: loaded '{}'", ref.id.string());
         return true;
     }
+
 
     // The core compilation driver: build the node tree, generate a binary,
     // and wrap it in a BinaryFile. Returns nullptr (wrapped in a unique_ptr)
@@ -848,7 +897,7 @@ namespace sootc {
                             .got(node->get_node_type_string());
                     }
                 }
-                if (m_config.debug_print_ast) inspect_ast(node.get());
+                if (m_config.compiler.dump_ast) inspect_ast(node.get());
                 current = current.as_pair()->cdr;
             }
 
@@ -931,7 +980,7 @@ namespace sootc {
                 return std::unique_ptr<BinaryFile>(nullptr);
             }
 
-            if (m_config.debug_print_ir) { element.dump(); }
+            if (m_config.compiler.dump_ir) { element.dump(); }
 
             auto bytes = make_aligned_buffer(element.m_rawData.size());
             std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
@@ -947,7 +996,7 @@ namespace sootc {
 
             for (const auto &ds : stored->data_structs()) { binary->m_dataStructs.push_back(ds); }
 
-            if (m_config.debug_print_asm) { color_binary_file(binary); }
+            if (m_config.compiler.dump_asm) { color_binary_file(binary); }
 
             m_global_snapshot = GlobalNode::Snapshot{};
 
@@ -962,7 +1011,7 @@ namespace sootc {
             return std::unexpected(std::string("SOOT error: ") + e.what());
 
         } catch (const CompilerError &e) {
-            if (m_config.debug_print_ast && file_node) { inspect_ast(file_node); }
+            if (m_config.compiler.dump_ast && file_node) { inspect_ast(file_node); }
             if (file_node && snapshot.valid) {
                 file_node->rollback(std::move(snapshot));
                 if (owns_file_node) { m_file_nodes.erase(effective_filename); }
@@ -1015,815 +1064,6 @@ namespace sootc {
         if (status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
         return status;
     }
-
-    // The set of names recognised as REPL commands. Kept as a
-    // function-local static so it is built exactly once per process.
-    const std::set<std::string> &Compiler::repl_commands() {
-        static const std::set<std::string> kCommands = {"help",
-                                                        "clear",
-                                                        "e",
-                                                        "reload",
-                                                        "sizes",
-                                                        "inspect-env",
-                                                        "inspect-env-soots",
-                                                        "has-macro",
-                                                        "list-symbols",
-                                                        "save-session",
-                                                        "save-module", 
-                                                        "save-module-recursive",
-                                                        "sc-run",
-                                                        "sc-eval",
-                                                        "arg-set",
-                                                        "arg-get",
-                                                        "arg-ls",
-                                                        "gcls",
-                                                        "gc",
-                                                        "ts-info",
-                                                        "ast"};
-        return kCommands;
-    }
-
-    // If `input` parses to a REPL command form, dispatch it and return
-    // its status. Otherwise return std::nullopt so the caller can fall
-    // through to the normal compile pipeline.
-    std::optional<ReplStatus> Compiler::try_handle_repl_command(const script::Object &form) {
-        if (!form.is_pair()) return std::nullopt;
-        const auto &head = form.as_pair()->car;
-        if (!head.is_symbol()) return std::nullopt;
-        const std::string name = head.as_symbol().name_ptr;
-        if (!repl_commands().count(name)) return std::nullopt;
-        return dispatch_repl_command(name, form);
-    }
-
-    ReplStatus Compiler::dispatch_repl_command(const std::string    &name,
-                                               const script::Object &form) {
-        if (name == "help") return cmd_help(form);
-        if (name == "clear") return cmd_clear(form);
-        if (name == "e") return cmd_e(form);
-        if (name == "reload") return cmd_reload(form);
-        if (name == "sizes") return cmd_sizes(form);
-        if (name == "inspect-env") return cmd_inspect_env(form);
-        if (name == "inspect-env-soots") return cmd_inspect_env_soots(form);
-        if (name == "has-macro") return cmd_has_macro(form);
-        if (name == "list-symbols") return cmd_list_symbols(form);
-        if (name == "save-session") return cmd_save_session(form);
-        if (name == "save-module") return cmd_save_module(form);
-        if (name == "save-module-recursive") return cmd_save_module_recursive(form);
-        if (name == "sc-run") return cmd_sc_run(form);
-        if (name == "sc-eval") return cmd_sc_eval(form);
-        if (name == "arg-set") return cmd_arg_set(form);
-        if (name == "arg-get") return cmd_arg_get(form);
-        if (name == "arg-ls") return cmd_arg_list(form);
-        if (name == "gcls") return cmd_gc_list(form);
-        if (name == "gc") return cmd_gc_collect(form);
-        if (name == "ts-info") return cmd_ts_info(form);
-        if (name == "ast") return cmd_ast(form);
-
-        fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
-        return ReplStatus::ERR;
-    }
-
-    // ===============================================================
-    // REPL command handlers
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_help(const script::Object &form) {
-        (void)form;
-        if (m_repl) m_repl->print_help_message();
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_clear(const script::Object &form) {
-        (void)form;
-        if (m_repl) m_repl->clear_screen();
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_e(const script::Object &form) {
-        (void)form;
-        return ReplStatus::WANT_EXIT;
-    }
-
-    ReplStatus Compiler::cmd_reload(const script::Object &form) {
-        (void)form;
-        return ReplStatus::WANT_RELOAD;
-    }
-
-    ReplStatus Compiler::cmd_sizes(const script::Object &form) {
-        (void)form;
-        carbon::print_all_struct_sizes();
-        return ReplStatus::OK;
-    }
-
-    // Dump the compiler-side environment (*soot-env*).
-    //
-    // *soot-env* is the environment where lib.sc registers its macros.
-    // try_getting_macro_from_soot consults only this environment, so
-    // whatever appears here is what the compiler sees as macros.
-    ReplStatus Compiler::cmd_inspect_env(const script::Object &form) {
-        (void)form;
-        auto sootc_env = m_soot.get_soot_environment().as_env_ptr();
-
-        fmt::print("\n=== Compiler environment (*soot-env*) ===\n");
-
-        const auto &entries = sootc_env->vars.get_all_entries();
-        std::size_t used = 0;
-        for (const auto &entry : entries) {
-            if (!entry.key) continue;
-            ++used;
-
-            const char *kind = "value";
-            if (entry.value.is_macro()) kind = "macro";
-            else if (entry.value.is_function())
-                kind = "function";
-            else if (entry.value.is_special_form())
-                kind = "special-form";
-            else if (entry.value.is_primitive())
-                kind = "primitive";
-
-            fmt::print("  {:<40} {}\n", entry.key, kind);
-        }
-
-        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
-        return ReplStatus::OK;
-    }
-
-    // Dump the interpreter-side environment (*global-env*).
-    //
-    // *global-env* is where lib.st and the interpreter register their
-    // macros and built-in functions. The compiler does NOT consult this
-    // environment for macro dispatch.
-    ReplStatus Compiler::cmd_inspect_env_soots(const script::Object &form) {
-        (void)form;
-        auto global_env = m_soot.get_global_environment().as_env_ptr();
-
-        fmt::print("\n=== Interpreter environment (*global-env*) ===\n");
-
-        const auto &entries = global_env->vars.get_all_entries();
-        std::size_t used = 0;
-        for (const auto &entry : entries) {
-            if (!entry.key) continue;
-            ++used;
-
-            const char *kind = "value";
-            if (entry.value.is_macro()) kind = "macro";
-            else if (entry.value.is_function())
-                kind = "function";
-            else if (entry.value.is_special_form())
-                kind = "special-form";
-            else if (entry.value.is_primitive())
-                kind = "primitive";
-
-            fmt::print("  {:<40} {}\n", entry.key, kind);
-        }
-
-        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
-        return ReplStatus::OK;
-    }
-
-    // Check whether `name` is a macro visible to the compiler, i.e. a
-    // macro registered in *soot-env*.
-    ReplStatus Compiler::cmd_has_macro(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: (has-macro \"name\") requires a name\n");
-            return ReplStatus::ERR;
-        }
-        const auto &name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol() && !name_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (has-macro ...) name must be symbol or string\n");
-            return ReplStatus::ERR;
-        }
-        const std::string name = name_obj.to_std_string();
-        const bool        is_macro = is_soot_macro(name);
-
-        fmt::print(fg(is_macro ? fmt::color::green : fmt::color::yellow),
-                   "; has-macro \"{}\" => {}\n", name, is_macro ? "true" : "false");
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_list_symbols(const script::Object &form) {
-        (void)form;
-
-        carbon::Carbon *carbon = carbon::Carbon::current();
-        if (!carbon) {
-            fmt::print(fg(fmt::color::yellow), "; WARN: no active Carbon context\n");
-            return ReplStatus::OK;
-        }
-
-        auto symbols = carbon->globals()->all_symbols();
-        for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_save_session(const script::Object &form) {
-        std::string session_name = m_session_name;
-
-        auto rest = form.as_pair()->cdr;
-        if (rest.is_pair() && rest.as_pair()->car.is_string()) {
-            session_name = rest.as_pair()->car.to_std_string();
-        }
-
-        try {
-            if (save_session(session_name, ".")) {
-                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                           "; saved session as {}.bin and {}.h\n", session_name, session_name);
-            } else {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: failed to save session\n");
-                return ReplStatus::ERR;
-            }
-        } catch (const std::exception &e) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n", e.what());
-            return ReplStatus::ERR;
-        }
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_save_module_recursive(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module-recursive \"path\" [\"out_dir\"]) "
-                       "requires a path\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &path_obj = rest.as_pair()->car;
-        if (!path_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module-recursive ...) path must be a string\n");
-            return ReplStatus::ERR;
-        }
-
-        std::string path = path_obj.to_std_string();
-        std::string out_dir = "build";
-
-        auto after_path = rest.as_pair()->cdr;
-        if (after_path.is_pair()) {
-            const auto &dir_obj = after_path.as_pair()->car;
-            if (!dir_obj.is_string()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (save-module-recursive ...) out_dir must be a string\n");
-                return ReplStatus::ERR;
-            }
-            out_dir = dir_obj.to_std_string();
-        }
-
-        if (save_module_recursive(path, out_dir)) {
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                       "; OK: module '{}' and dependencies saved\n", path);
-            return ReplStatus::OK;
-        }
-        return ReplStatus::ERR;
-    }
-    // (save-module "path/to/foo.sc" ["out_dir"])
-    //
-    // Compile a .sc file as its own module and save it. This is the
-    // module-level counterpart to save-session: it writes what the file
-    // contains, not what the REPL has accumulated.
-    ReplStatus Compiler::cmd_save_module(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module \"path/to/file.sc\" [\"out_dir\"]) "
-                       "requires a path\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &path_obj = rest.as_pair()->car;
-        if (!path_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module ...) path must be a string\n");
-            return ReplStatus::ERR;
-        }
-
-        std::string path = path_obj.to_std_string();
-        std::string out_dir = "build";
-
-        auto after_path = rest.as_pair()->cdr;
-        if (after_path.is_pair()) {
-            const auto &dir_obj = after_path.as_pair()->car;
-            if (!dir_obj.is_string()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (save-module ...) out_dir must be a string\n");
-                return ReplStatus::ERR;
-            }
-            out_dir = dir_obj.to_std_string();
-        }
-
-        if (save_module(path, out_dir)) {
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK: module '{}' saved\n",
-                       path);
-            return ReplStatus::OK;
-        }
-        return ReplStatus::ERR;
-    }
-    // (sc-run name arg...)
-    //
-    // Execute a compiled function in the active runtime.
-    //
-    // Argument types are inferred from the SOOT object kind:
-    //   integer   -> i64
-    //   float     -> f32
-    //   string    -> std::string
-    //   symbol    -> StringId
-    //
-    // Example: (sc-run gcd 48 18)
-    ReplStatus Compiler::cmd_sc_run(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: (sc-run name arg...) requires a name\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol() && !name_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (sc-run ...) name must be symbol or string\n");
-            return ReplStatus::ERR;
-        }
-        const std::string name = name_obj.to_std_string();
-
-        // Parse arguments as SOOT objects and convert to Variants.
-        std::vector<carbon::Variant> vm_args;
-        auto                         args_rest = rest.as_pair()->cdr;
-        while (args_rest.is_pair()) {
-            const auto &o = args_rest.as_pair()->car;
-            if (o.is_integer()) {
-                vm_args.push_back(carbon::Variant(static_cast<i64>(o.as_integer())));
-            } else if (o.is_float()) {
-                vm_args.push_back(carbon::Variant(static_cast<f32>(o.as_float())));
-            } else if (o.is_string()) {
-                vm_args.push_back(carbon::Variant(o.to_std_string()));
-            } else if (o.is_symbol()) {
-                vm_args.push_back(carbon::Variant(carbon::StringId(o.as_symbol().name_ptr)));
-            } else {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (sc-run ...) unsupported argument kind: {}\n", o.print());
-                return ReplStatus::ERR;
-            }
-            args_rest = args_rest.as_pair()->cdr;
-        }
-
-        // Hand the call to the active runtime.
-        auto result = m_runtime->call(name, vm_args);
-        if (!result.ok) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
-                       result.error);
-            return ReplStatus::ERR;
-        }
-
-        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; {} => {}\n", name,
-                   result.value.to_string());
-        return ReplStatus::OK;
-    }
-
-    // (sc-eval expr)
-    //
-    // Evaluate a SOOT expression in the interpreter's global environment
-    // and print the result. This is the compiler-side analogue of the
-    // old `:soot` REPL command.
-    ReplStatus Compiler::cmd_sc_eval(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (sc-eval <expr>) requires an expression\n");
-            return ReplStatus::ERR;
-        }
-        try {
-            auto result =
-                m_soot.eval_form(rest.as_pair()->car, m_soot.get_global_environment().as_env_ptr());
-            fmt::print(fg(fmt::color::green), "{}\n", result.print());
-        } catch (const std::exception &e) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: {}\n", e.what());
-            return ReplStatus::ERR;
-        }
-        return ReplStatus::OK;
-    }
-
-    // (arg-set "key" value)
-    //
-    // Set a compiler runtime parameter. The parameter is stored
-    // directly in m_config (CompilationOptions), which is the single
-    // source of truth for every compiler option — the same struct
-    // that the CLI populates at startup and that compile_and_report
-    // reads when it decides whether to print the listing, the IR, etc.
-    //
-    // Changing a parameter here takes effect immediately for every
-    // subsequent compilation in this session.
-    //
-    // Recognised keys (see also cmd_arg_get):
-    //   "print-listing"  bool   — print the binary listing after each compile
-    //   "print-ir"       bool   — print the IR
-    //   "print-ast"      bool   — print the AST
-    //   "print-asm"      bool   — print the generated assembly
-    //   "log-level"      string — log level: "debug" | "info" | "warn" | "error"
-    //
-    // Read-only keys (settable only from the CLI):
-    //   "sidbase", "runtime", "search-paths", "platform",
-    //   "mode", "user-profile" — query with (arg-get ...) but not settable.
-    //
-    // Examples:
-    //   (arg-set "print-listing" #t)
-    //   (arg-set "log-level" "debug")
-    ReplStatus Compiler::cmd_arg_set(const script::Object &form) {
-        // --- Parse the key and value ---
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set \"key\" value) requires a key and a value\n");
-            return ReplStatus::ERR;
-        }
-        const auto &key_obj = rest.as_pair()->car;
-        if (!key_obj.is_string() && !key_obj.is_symbol()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set ...) key must be string or symbol\n");
-            return ReplStatus::ERR;
-        }
-
-        auto after_key = rest.as_pair()->cdr;
-        if (!after_key.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set \"{}\" value) requires a value\n",
-                       key_obj.to_std_string());
-            return ReplStatus::ERR;
-        }
-
-        const std::string key = key_obj.to_std_string();
-        const auto       &value = after_key.as_pair()->car;
-
-        // --- Helpers ---
-        //
-        // SOOT has no native bool type; #t / #f are the canonical
-        // truthy values. We accept any symbol and treat "#t" as true,
-        // anything else as false, so that (arg-set "x" #f) works and
-        // (arg-set "x" whatever) is not silently truthy.
-        auto as_bool = [](const script::Object &o) -> bool {
-            return o.is_symbol() && o.as_symbol() == "#t";
-        };
-
-        // --- Dispatch ---
-        if (key == "print-listing") {
-            m_config.print_listing = as_bool(value);
-            fmt::print(fg(fmt::color::green), "; arg-set \"print-listing\" => {}\n",
-                       m_config.print_listing ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-ir") {
-            m_config.debug_print_ir = as_bool(value);
-            fmt::print(fg(fmt::color::green), "; arg-set \"print-ir\" => {}\n",
-                       m_config.debug_print_ir ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-ast") {
-            m_config.debug_print_ast = as_bool(value);
-            fmt::print(fg(fmt::color::green), "; arg-set \"print-ast\" => {}\n",
-                       m_config.debug_print_ast ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-asm") {
-            m_config.debug_print_asm = as_bool(value);
-            fmt::print(fg(fmt::color::green), "; arg-set \"print-asm\" => {}\n",
-                       m_config.debug_print_asm ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "log-level") {
-            if (!value.is_string() && !value.is_symbol()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: \"log-level\" expects a string (debug|info|warn|error)\n");
-                return ReplStatus::ERR;
-            }
-            m_config.log_level = value.to_std_string();
-            sync_type_verbose(); 
-            fmt::print(fg(fmt::color::green), "; arg-set \"log-level\" => \"{}\"\n",
-                       m_config.log_level);
-            return ReplStatus::OK;
-        }
-
-        // --- Read-only keys: give a clear error, not a silent no-op ---
-        if (key == "sidbase" || key == "runtime" || key == "search-paths" || key == "platform" ||
-            key == "mode" || key == "user-profile") {
-            fmt::print(fg(fmt::color::yellow),
-                       "; ERROR: \"{}\" is read-only (set it on the command line)\n", key);
-            return ReplStatus::ERR;
-        }
-
-        // --- Unknown key ---
-        fmt::print(fg(fmt::color::crimson),
-                   "; ERROR: unknown key \"{}\". Try one of: "
-                   "print-listing, print-ir, print-ast, print-asm, log-level\n",
-                   key);
-        return ReplStatus::ERR;
-    }
-
-    // (arg-get "key")
-    //
-    // Read a compiler runtime parameter. Values are read directly
-    // from m_config, which is the single source of truth for every
-    // compiler option — the same struct the CLI populates at startup.
-    //
-    // Unknown keys return (unset) rather than an error, so that a
-    // script can safely probe for optional keys.
-    //
-    // Examples:
-    //   (arg-get "print-listing")
-    //   (arg-get "log-level")
-    //   (arg-get "sidbase")
-    ReplStatus Compiler::cmd_arg_get(const script::Object &form) {
-        // --- Parse the key ---
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: (arg-get \"key\") requires a key\n");
-            return ReplStatus::ERR;
-        }
-        const auto &key_obj = rest.as_pair()->car;
-        if (!key_obj.is_string() && !key_obj.is_symbol()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-get ...) key must be string or symbol\n");
-            return ReplStatus::ERR;
-        }
-
-        const std::string key = key_obj.to_std_string();
-
-        // --- Mutable keys ---
-        if (key == "print-listing") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"print-listing\" => {}\n",
-                       m_config.print_listing ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-ir") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"print-ir\" => {}\n",
-                       m_config.debug_print_ir ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-ast") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"print-ast\" => {}\n",
-                       m_config.debug_print_ast ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "print-asm") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"print-asm\" => {}\n",
-                       m_config.debug_print_asm ? "#t" : "#f");
-            return ReplStatus::OK;
-        }
-        if (key == "log-level") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"log-level\" => \"{}\"\n",
-                       m_config.log_level);
-            return ReplStatus::OK;
-        }
-
-        // --- Read-only keys ---
-        if (key == "sidbase") {
-            if (m_config.sidbase_path.empty()) {
-                fmt::print(fg(fmt::color::yellow), "; arg-get \"sidbase\" => (unset)\n");
-            } else {
-                fmt::print(fg(fmt::color::green), "; arg-get \"sidbase\" => \"{}\"\n",
-                           m_config.sidbase_path);
-            }
-            return ReplStatus::OK;
-        }
-        if (key == "runtime") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"runtime\" => \"{}\"\n",
-                       m_runtime->name());
-            return ReplStatus::OK;
-        }
-        if (key == "user-profile") {
-            fmt::print(fg(fmt::color::green), "; arg-get \"user-profile\" => \"{}\"\n",
-                       m_config.user_profile);
-            return ReplStatus::OK;
-        }
-
-        // --- Unknown ---
-        fmt::print(fg(fmt::color::yellow), "; arg-get \"{}\" => (unset)\n", key);
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_arg_list(const script::Object &form) {
-        // --- Parse (optional) filter argument ---
-        auto        rest = form.as_pair()->cdr;
-        std::string filter;
-        bool        has_filter = false;
-        if (rest.is_pair()) {
-            const auto &filter_obj = rest.as_pair()->car;
-            if (!filter_obj.is_string() && !filter_obj.is_symbol()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (arg-list ...) filter must be string or symbol\n");
-                return ReplStatus::ERR;
-            }
-            filter = filter_obj.to_std_string();
-            has_filter = true;
-        }
-
-        auto matches = [&](const std::string &key) {
-            return !has_filter || key.find(filter) != std::string::npos;
-        };
-
-        // --- Mutable keys ---
-        if (matches("print-listing") || matches("print-ir") || matches("print-ast") ||
-            matches("print-asm") || matches("log-level")) {
-            fmt::print(fg(fmt::color::cyan), "; --- Mutable keys ---\n");
-        }
-        if (matches("print-listing")) {
-            fmt::print(fg(fmt::color::green), ";   print-listing => {}\n",
-                       m_config.print_listing ? "#t" : "#f");
-        }
-        if (matches("print-ir")) {
-            fmt::print(fg(fmt::color::green), ";   print-ir      => {}\n",
-                       m_config.debug_print_ir ? "#t" : "#f");
-        }
-        if (matches("print-ast")) {
-            fmt::print(fg(fmt::color::green), ";   print-ast     => {}\n",
-                       m_config.debug_print_ast ? "#t" : "#f");
-        }
-        if (matches("print-asm")) {
-            fmt::print(fg(fmt::color::green), ";   print-asm     => {}\n",
-                       m_config.debug_print_asm ? "#t" : "#f");
-        }
-        if (matches("log-level")) {
-            fmt::print(fg(fmt::color::green), ";   log-level     => \"{}\"\n", m_config.log_level);
-        }
-
-        // --- Read-only keys ---
-        if (matches("sidbase") || matches("runtime") || matches("user-profile")) {
-            fmt::print(fg(fmt::color::cyan), "; --- Read-only keys ---\n");
-        }
-        if (matches("sidbase")) {
-            if (m_config.sidbase_path.empty()) {
-                fmt::print(fg(fmt::color::yellow), ";   sidbase       => (unset)\n");
-            } else {
-                fmt::print(fg(fmt::color::green), ";   sidbase       => \"{}\"\n",
-                           m_config.sidbase_path);
-            }
-        }
-        if (matches("runtime")) {
-            fmt::print(fg(fmt::color::green), ";   runtime       => \"{}\"\n", m_runtime->name());
-        }
-        if (matches("user-profile")) {
-            fmt::print(fg(fmt::color::green), ";   user-profile  => \"{}\"\n",
-                       m_config.user_profile);
-        }
-
-        return ReplStatus::OK;
-    }
-    // ===============================================================
-    // Garbage collector
-    // ===============================================================
-
-    namespace {
-
-        struct GcListEntry {
-            sid64       type;
-            void       *payload;
-            std::size_t size;
-        };
-
-        struct GcListContext {
-            std::vector<GcListEntry>               *entries;
-            std::vector<sid64>                     *order;
-            std::unordered_map<sid64, std::size_t> *counts;
-        };
-
-        void gc_list_visitor(sid64 type_sid, void *payload, std::size_t size, void *user) {
-            auto *ctx = static_cast<GcListContext *>(user);
-
-            if (ctx->counts->find(type_sid) == ctx->counts->end()) {
-                (*ctx->counts)[type_sid] = 0;
-                ctx->order->push_back(type_sid);
-            }
-            (*ctx->counts)[type_sid] += 1;
-
-            ctx->entries->push_back({type_sid, payload, size});
-        }
-
-    } // namespace
-
-    ReplStatus Compiler::cmd_gc_collect(const script::Object &form) {
-        (void)form;
-
-        const auto before = gc::stats().live_objects;
-        gc::collect();
-        const auto after = gc::stats().live_objects;
-
-        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                   "; gc-collect: {} -> {} live objects\n", before, after);
-        return ReplStatus::OK;
-    }
-
-    ReplStatus Compiler::cmd_gc_list(const script::Object &form) {
-        (void)form;
-
-        const auto s = gc::stats();
-
-        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "=== GC heap ===\n");
-        fmt::print("  live objects:  {}\n", s.live_objects);
-        fmt::print("  total allocs:  {}\n", s.total_allocated);
-        fmt::print("  total frees:   {}\n", s.total_freed);
-        fmt::print("  passes:        {}\n", s.total_passes);
-        fmt::print("  committed:     {} bytes\n", s.bytes_committed);
-
-        std::vector<GcListEntry>               entries;
-        std::vector<sid64>                     order;
-        std::unordered_map<sid64, std::size_t> counts;
-
-        GcListContext ctx{&entries, &order, &counts};
-        gc::for_each_live(&gc_list_visitor, &ctx);
-
-        if (entries.empty()) {
-            fmt::print(fg(fmt::color::yellow), "  (no live objects)\n");
-            return ReplStatus::OK;
-        }
-
-        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nBy type:\n");
-
-        // Sort by count descending.
-        std::sort(order.begin(), order.end(),
-                  [&](sid64 a, sid64 b) { return counts[a] > counts[b]; });
-
-        for (sid64 sid : order) {
-            const std::string name = carbon::StringId(sid).to_string();
-            fmt::print("  {:<30} {}\n", name, counts[sid]);
-        }
-
-        // Detail list (first 32).
-        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nObjects (first 32):\n");
-        constexpr std::size_t kMaxShow = 32;
-        for (std::size_t i = 0; i < entries.size() && i < kMaxShow; ++i) {
-            const auto       &e = entries[i];
-            const std::string name = carbon::StringId(e.type).to_string();
-            fmt::print("  [{}] {:<24} size={}  ptr={}\n", i, name, e.size, e.payload);
-        }
-        if (entries.size() > kMaxShow) {
-            fmt::print("  ... and {} more\n", entries.size() - kMaxShow);
-        }
-
-        return ReplStatus::OK;
-    }
-
-    // ===============================================================
-    // Type system
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (ts-info <type-name>) requires a type name\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol() && !name_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (ts-info ...) name must be symbol or string\n");
-            return ReplStatus::ERR;
-        }
-
-        const std::string type_name = name_obj.to_std_string();
-
-        Type *type = m_ts.lookup_type_no_throw(type_name);
-        if (!type) {
-            fmt::print(fg(fmt::color::yellow), "; ts-info: unknown type '{}'\n", type_name);
-            return ReplStatus::ERR;
-        }
-
-        fmt::print("{}\n", type->inspect());
-
-        // Extras that inspect() does not print:
-        fmt::print("  is_reference:           {}\n", type->is_reference());
-        fmt::print("  load_size:              {}\n", type->get_load_size());
-        fmt::print("  preferred_reg_class:    {}\n",
-                   reg_kind_to_string(type->get_preferred_reg_class()));
-
-        const auto &states = type->get_states_declared_for_type();
-        if (!states.empty()) {
-            fmt::print("  states ({}):\n", states.size());
-            for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
-        }
-
-        return ReplStatus::OK;
-    }
-
-    // ===============================================================
-    // AST
-    // ===============================================================
-    
-    ReplStatus Compiler::cmd_ast(const script::Object &form) {
-        (void)form;
-
-        fmt::print("=== FileNodes ({}) ===\n", m_file_nodes.size());
-        for (auto &[name, fn] : m_file_nodes) {
-            fmt::print("--- {} ---\n", name.string());
-            inspect_ast(fn.get());
-        }
-
-        fmt::print("=== GlobalNode ({}) ===\n", m_global_env->symbols().size());
-        inspect_ast(m_global_env.get());
-
-        return ReplStatus::OK;
-    }
-
     // ===============================================================
     // REPL loop helpers
     // ===============================================================
@@ -1836,16 +1076,12 @@ namespace sootc {
     std::string Compiler::get_prompt() {
         std::string prompt = "";
 
-        switch (m_config.mode) {
-        case sootc::CompilerMode::COMPILE_ONLY:
+        if (m_config.compiler.mode == "compile") {
             prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sc > ");
-            break;
-        case sootc::CompilerMode::INTERPRET_ONLY:
+        } else if (m_config.compiler.mode == "interpret") {
             prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "si > ");
-            break;
-        case sootc::CompilerMode::HYBRID:
+        } else {
             prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sci> ");
-            break;
         }
         return "\033[0m" + prompt;
     }
@@ -1882,7 +1118,7 @@ namespace sootc {
     // Interpret a script and optionally print the result.
     ReplStatus Compiler::interpret_and_print(const std::string &script) {
         auto result = interpret(script);
-        if (m_config.debug_print_ast) { lg::info("=> {}", result.print()); }
+        if (m_config.compiler.dump_ast) { lg::info("=> {}", result.print()); }
         return ReplStatus::OK;
     }
 
@@ -1946,7 +1182,7 @@ namespace sootc {
                     continue;
                 }
 
-                if (m_config.print_listing) { print_listing(**result); }
+                if (m_config.compiler.print_listing) { print_listing(**result); }
 
                 bool loaded = m_runtime->load_module(std::move(**result));
                 if (!loaded) {
@@ -1983,7 +1219,7 @@ namespace sootc {
     ReplStatus Compiler::try_interpret_then_compile(script::Object form) {
         try {
             auto result = interpret(form);
-            if (m_config.debug_print_ast) { lg::info("=> {}", result.print()); }
+            if (m_config.compiler.dump_ast) { lg::info("=> {}", result.print()); }
             return ReplStatus::OK;
         } catch (const std::exception &e) {
             lg::debug("Interpret failed: {}, trying compilation", e.what());
@@ -1999,7 +1235,7 @@ namespace sootc {
 
     // Interpret already-parsed forms in the global SOOT environment.
     script::Object Compiler::interpret(const script::Object &forms) {
-        if (m_config.debug_print_ast) { lg::info("AST: {}", forms.print()); }
+        if (m_config.compiler.dump_ast) { lg::info("AST: {}", forms.print()); }
 
         script::Object result = script::Object::make_none();
         try {
@@ -2030,23 +1266,6 @@ namespace sootc {
 
     // ========== Environment management ==========
 
-    void Compiler::load_user_profile() {
-        if (m_config.user_profile == "#f") return;
-
-        REPL::StartupFile startup =
-            REPL::load_user_startup_file(m_config.user_profile, SootPlatform::Default);
-
-        for (const auto &cmd : startup.run_before_listen) {
-            try {
-                auto result = interpret(cmd);
-            } catch (const std::exception &e) {
-                print_warning(fmt::format("Failed to execute startup command: {}", e.what()));
-            }
-        }
-
-        lg::info("Loaded user profile: {}", m_config.user_profile);
-    }
-
     void Compiler::set_global(const std::string &name, const script::Object &value) {
         m_soot.define_global(name.c_str(), value);
     }
@@ -2068,14 +1287,19 @@ namespace sootc {
     void Compiler::setup_repl() {
         if (!m_repl) { m_repl = std::make_unique<REPL::Wrapper>(m_platform); }
 
-        m_repl->username = m_config.user_profile;
+        // Give (opt ...) access to the interpreter, so that
+        // (opt key) can build script::Objects. Without this, every
+        // (opt key) prints (unavailable).
+        common::set_repl_interpreter(&m_soot);
+
+        m_repl->username = m_config.compiler.user_profile;
         m_repl->init_settings();
         m_repl->load_history();
     }
 
     void Compiler::color_binary_file(std::unique_ptr<BinaryFile> & /*binary*/) {
         // Register allocation and optimizations would go here.
-        if (m_config.debug_print_asm) {
+        if (m_config.compiler.dump_asm) {
             // binary->print_asm();
         }
     }
@@ -2093,7 +1317,7 @@ namespace sootc {
 
         if (fs::exists(filename)) { return filename; }
 
-        for (const auto &dir : m_config.search_paths) {
+        for (const auto &dir : m_config.compiler.search_paths) {
             fs::path candidate = fs::path(dir) / filename;
             if (fs::exists(candidate)) { return candidate.string(); }
         }
@@ -2247,542 +1471,6 @@ namespace sootc {
         }
     }
 
-    // ===============================================================
-    // Printing / saving
-    // ===============================================================
-
-    void Compiler::print_listing(const BinaryFile &file) {
-        carbon::BinaryFileInspector inspector(const_cast<BinaryFile *>(&file));
-        inspector.inspect();
-    }
-
-    bool Compiler::save_binary(const BinaryFile &file, const std::filesystem::path &target_dir) {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::create_directories(target_dir, ec);
-        if (ec) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n",
-                       target_dir.string(), ec.message());
-            return false;
-        }
-
-        // ---- Strict mode: every :methods declaration must have a body ----
-        //
-        // A REPL session can build a type and its methods in separate
-        // inputs; build_ss_type must not fail on the intermediate states.
-        // But once the user asks to save the binary, every declared method
-        // that is not a builtin must have a ScriptLambda.
-        {
-            const DCEntry *table = file.entries();
-            const u32      n = file.entry_count();
-            for (u32 i = 0; i < n; ++i) {
-                if (BinaryFile::entry_kind(table[i]) != BinaryFile::EntryKind::SsType) continue;
-                const SsType *st = file.entry_as_ss_type(table[i]);
-                if (!st || !st->m_pMethods) continue;
-
-                for (u32 id = 0; id < st->m_numMethods; ++id) {
-                    const SsMethod &sm = static_cast<const SsMethod *>(st->m_pMethods)[id];
-                    if (sm.m_pLambda != nullptr) continue;
-                    if (sm.m_name == 0) continue; // empty slot
-
-                    const std::string type_name = file.resolve_sid(st->m_name);
-                    const std::string method_name = file.resolve_sid(sm.m_name);
-
-                    // Skip builtins (methods inherited from basic/object that
-                    // have no user implementation in this module). The
-                    // m_fullName still carries "<type>-<method>"; if the
-                    // method's defining type is not this type, it is builtin.
-                    //
-                    // For a simple first step, just report every unimplemented
-                    // method. If this turns out too noisy for builtins, the
-                    // check can be relaxed later.
-                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                               "; ERROR: method '{}' (id {}) of type '{}' has no defmethod\n",
-                               method_name, id, type_name);
-                    return false;
-                }
-            }
-        }
-
-        // Preserve the module structure under target_dir:
-        // "lib/utils.sc" -> "<target_dir>/lib/utils.bin".
-        // Without this, two files with the same stem in different
-        // directories would collide.
-        fs::path rel = file.m_path;
-        if (rel.is_absolute()) { rel = rel.lexically_relative(m_config.project_root); }
-        rel.replace_extension(".bin");
-        fs::path out = target_dir / rel;
-        fs::create_directories(out.parent_path());
-        if (!const_cast<BinaryFile &>(file).save(out)) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot save {}\n", out.string());
-            return false;
-        }
-
-        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
-        return true;
-    }
-
-    bool Compiler::save_listing(const BinaryFile &file, const std::filesystem::path &target_dir) {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::create_directories(target_dir, ec);
-
-        fs::path      out = target_dir / "out.lst";
-        std::ofstream ofs(out);
-        if (!ofs) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot open {}\n", out.string());
-            return false;
-        }
-
-        // TODO: redirect BinaryFileInspector output here when its API allows
-        // writing to a stream.
-        ofs << "; SOOT listing\n";
-        ofs << "; (not yet wired to BinaryFile API)\n";
-        (void)file;
-
-        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
-        return true;
-    }
-
-    bool Compiler::save_header(const BinaryFile &file, const std::filesystem::path &target_dir) {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::create_directories(target_dir, ec);
-
-        // Collect type names that actually have an SsType entry in the
-        // binary. This filters out all builtin VM types (structure, basic,
-        // symbol, type, string, function, ...) and only emits user types.
-        std::vector<std::string> type_names;
-        const DCEntry           *table = file.entries();
-        const u32                n = file.entry_count();
-        if (table) {
-            for (u32 i = 0; i < n; ++i) {
-                if (BinaryFile::entry_kind(table[i]) != BinaryFile::EntryKind::SsType) { continue; }
-                const SsType *st = file.entry_as_ss_type(table[i]);
-                if (!st) continue;
-                const std::string name = file.resolve_sid(st->m_name);
-                if (!name.empty()) { type_names.push_back(name); }
-            }
-        }
-
-        if (type_names.empty()) {
-            return true; // nothing to emit
-        }
-
-        std::string header = m_ts.generate_c_header(type_names);
-
-        fs::path rel = file.m_path;
-        if (rel.is_absolute()) { rel = rel.lexically_relative(m_config.project_root); }
-        rel.replace_extension(".h");
-        fs::path out = target_dir / rel;
-        fs::create_directories(out.parent_path());
-        std::ofstream ofs(out);
-        if (!ofs) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot open {} for writing\n",
-                       out.string());
-            return false;
-        }
-        ofs << header;
-
-        fmt::print(fg(fmt::color::green), "; saved {}\n", out.string());
-        return true;
-    }
-    bool Compiler::save_session(const std::string &name, const std::filesystem::path &dir) {
-        namespace fs = std::filesystem;
-
-        // Resolve the output directory against the project root.
-        fs::path out_dir = dir;
-        if (out_dir.is_relative()) {
-            out_dir = common::get_path(common::PathType::PROJECT) / out_dir;
-        }
-
-        std::error_code ec;
-        fs::create_directories(out_dir, ec);
-        if (ec) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: cannot create dir {}: {}\n",
-                       out_dir.string(), ec.message());
-            return false;
-        }
-
-        if (m_session_forms.empty()) {
-            fmt::print(fg(fmt::color::yellow), "; WARN: session is empty, nothing to save\n");
-            return false;
-        }
-
-        // save_session builds a throwaway FileNode from m_session_forms.
-        // NodeBuilder::build_define binds every (define ...) into
-        // m_global_env; without a rollback, those bindings point at
-        // Nodes owned by the throwaway FileNode and dangle as soon as
-        // it goes out of scope. Snapshot m_global_env before building
-        // and roll it back on every exit path.
-        GlobalNode::Snapshot global_snapshot = m_global_env->take_snapshot();
-
-        try {
-            NodeBuilder builder(m_ts, this);
-            auto        file_node = std::make_unique<FileNode>(name);
-
-            auto top_level_body = std::make_unique<SequenceNode>();
-            auto top_level = std::make_unique<FunctionNode>("top-level");
-            bool top_level_used = false;
-            
-            fmt::print(stderr, "; save_session: {} forms\n", m_session_forms.size());
-            for (auto &f : m_session_forms) { fmt::print(stderr, ";   form: {}\n", f.print()); }
-
-            for (auto &form : m_session_forms) {
-                auto node = builder.build(form, file_node.get());
-
-                if (!node) continue;
-
-                if (auto *sd = dynamic_cast<StaticDefineNode *>(node.get())) {
-                    file_node->add_child(sd->take_decl());
-                    for (auto &store : sd->take_stores()) {
-                        top_level_body->add(std::move(store));
-                        top_level_used = true;
-                    }
-                } else if (auto *hd = dynamic_cast<HeapDefineNode *>(node.get())) {
-                    file_node->add_child(hd->take_decl());
-                    top_level_body->add(hd->take_store());
-                    top_level_used = true;
-                } else if (dynamic_cast<FunctionNode *>(node.get()) != nullptr ||
-                           dynamic_cast<TypeDeclarationNode *>(node.get()) != nullptr ||
-                           dynamic_cast<EnumDeclarationNode *>(node.get()) != nullptr ||
-                           dynamic_cast<DataDeclarationNode *>(node.get()) != nullptr ||
-                           dynamic_cast<StateScriptNode *>(node.get()) != nullptr) {
-                    file_node->add_child(std::move(node));
-                } else if (auto *expr = dynamic_cast<ExpressionNode *>(node.get())) {
-                    if (auto *seq = dynamic_cast<SequenceNode *>(expr); seq && seq->size() == 0) {
-                        // Empty sequence at top level: no code, drop it.
-                    } else {
-                        node.release();
-                        top_level_body->add(std::unique_ptr<ExpressionNode>(expr));
-                        top_level_used = true;
-                    }
-                }
-            }
-
-            if (top_level_used) {
-                top_level->set_body(std::move(top_level_body));
-                file_node->add_child(std::move(top_level));
-            }
-
-            // Compile state-script handler bodies.
-            {
-                std::vector<StateScriptNode *> state_scripts;
-                for (auto &child : file_node->children()) {
-                    if (auto *ss = dynamic_cast<StateScriptNode *>(child.get())) {
-                        state_scripts.push_back(ss);
-                    }
-                }
-                for (auto *ss : state_scripts) {
-                    compile_state_script_bodies(ss, file_node.get(), builder);
-                }
-            }
-
-            // ---- Strict mode: every method declared in a type must be
-            //      implemented by a defmethod in the same FileNode. ----
-            {
-                std::set<std::string> fn_names;
-                for (auto &child : file_node->children()) {
-                    if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
-                        fn_names.insert(fn->name());
-                    }
-                }
-
-                for (auto &child : file_node->children()) {
-                    auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
-                    if (!td) continue;
-
-                    const std::string &type_name = td->type().base_type();
-                    Type              *type = m_ts.lookup_type_no_throw(type_name);
-                    if (!type) continue;
-
-                    for (const auto &m : type->get_methods_defined_for_type()) {
-                        const std::string full_name = type_name + "-" + m.name;
-                        if (fn_names.count(full_name)) continue;
-
-                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                                   "; ERROR: method '{}' of type '{}' is declared "
-                                   "but has no defmethod\n",
-                                   m.name, type_name);
-                        m_global_env->rollback(std::move(global_snapshot));
-                        return false;
-                    }
-
-                    if (const auto *ni = type->get_new_method_defined_for_type()) {
-                        const std::string full_name = type_name + "-" + ni->name;
-                        if (!fn_names.count(full_name)) {
-                            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                                       "; ERROR: method 'new' of type '{}' is declared "
-                                       "but has no defmethod\n",
-                                       type_name);
-                            m_global_env->rollback(std::move(global_snapshot));
-                            return false;
-                        }
-                    }
-                }
-            }
-            // ---- Strict mode: every method declared in a type must be
-            //      implemented by a defmethod in the same FileNode. ----
-            {
-                std::set<std::string> fn_names;
-                for (auto &child : file_node->children()) {
-                    if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
-                        fn_names.insert(fn->name());
-                    }
-                }
-
-                for (auto &child : file_node->children()) {
-                    auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
-                    if (!td) continue;
-
-                    const std::string &type_name = td->type().base_type();
-                    Type              *type = m_ts.lookup_type_no_throw(type_name);
-                    if (!type) continue;
-
-                    for (const auto &m : type->get_methods_defined_for_type()) {
-                        const std::string full_name = type_name + "-" + m.name;
-                        if (fn_names.count(full_name)) continue;
-
-                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                                   "; ERROR: method '{}' of type '{}' is declared "
-                                   "but has no defmethod\n",
-                                   m.name, type_name);
-                        m_global_env->rollback(std::move(global_snapshot));
-                        return false;
-                    }
-
-                    if (const auto *ni = type->get_new_method_defined_for_type()) {
-                        const std::string full_name = type_name + "-" + ni->name;
-                        if (!fn_names.count(full_name)) {
-                            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                                       "; ERROR: method 'new' of type '{}' is declared "
-                                       "but has no defmethod\n",
-                                       type_name);
-                            m_global_env->rollback(std::move(global_snapshot));
-                            return false;
-                        }
-                    }
-                }
-            }
-
-            // ============================================================
-            // Strip self-dependency.
-            //
-            // build_require already skips a require whose stem matches
-            // file->name(). But the session's identity is the `name`
-            // argument of save_session, which may differ from any
-            // FileNode::name() seen during the REPL (those are
-            // "<repl-N>"). So the user can type (require "bar.sc") in a
-            // session they then save as "bar", and the resulting
-            // bar.bin would require "bar" — a self-cycle that cannot
-            // be loaded. Remove it defensively here.
-            //
-            // This is a no-op in the normal case, where the user saves
-            // the session under a name they never required.
-            // ============================================================
-            {
-                namespace fs = std::filesystem;
-                const std::string self = fs::path(name).stem().string();
-                if (!self.empty()) {
-                    const auto &reqs = file_node->get_requires();
-                    if (std::find(reqs.begin(), reqs.end(), self) != reqs.end()) {
-                        file_node->remove_require(self);
-                    }
-                }
-            }
-
-            DataSegment strings_table;
-            auto        element = file_node->generate(strings_table);
-            if (element.m_rawData.empty()) {
-                fmt::print(fg(fmt::color::yellow), "; WARN: session produced no binary output\n");
-                m_global_env->rollback(std::move(global_snapshot));
-                return false;
-            }
-
-            auto bytes = make_aligned_buffer(element.m_rawData.size());
-            std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
-
-            auto binary_result =
-                BinaryFile::from_buffer(name, std::move(bytes), element.m_rawData.size());
-            if (!binary_result) {
-                fmt::print(fg(fmt::color::crimson), "; ERROR: {}\n", binary_result.error());
-                m_global_env->rollback(std::move(global_snapshot));
-                return false;
-            }
-
-            auto binary = std::make_unique<BinaryFile>(std::move(binary_result.value()));
-            for (const auto &ds : file_node->data_structs()) {
-                binary->m_dataStructs.push_back(ds);
-            }
-
-            if (m_config.print_listing) { print_listing(*binary); }
-
-            bool ok = save_binary(*binary, out_dir);
-            if (ok) ok = save_header(*binary, out_dir);
-
-            save_sidbase();
-            m_global_env->rollback(std::move(global_snapshot));
-            return ok;
-        } catch (const std::exception &e) {
-            m_global_env->rollback(std::move(global_snapshot));
-            fmt::print(fg(fmt::color::crimson), "; EXCEPTION during save_session: {}\n", e.what());
-            return false;
-        }
-    }
-
-    bool Compiler::save_module(const std::filesystem::path &source_file,
-                               const std::filesystem::path &out_dir) {
-        namespace fs = std::filesystem;
-
-        // 1. Resolve to a ModuleRef.
-        auto ref_opt = resolve_module(source_file.string());
-        if (!ref_opt) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                       "; ERROR: save_module: '{}' not found in project\n", source_file.string());
-            return false;
-        }
-        const ModuleRef &ref = *ref_opt;
-
-        // 2. Is the module already in the AST?
-        FileNode                   *file_node = find_file_node(ref.id);
-        std::unique_ptr<BinaryFile> binary_from_ast;
-
-        if (file_node) {
-            lg::info("save_module: reusing AST for '{}'", ref.id.string());
-
-            DataSegment strings_table;
-            auto        element = file_node->generate(strings_table);
-            if (element.m_rawData.empty()) {
-                fmt::print(fg(fmt::color::yellow), "; WARN: save_module: '{}' produced no binary\n",
-                           ref.id.string());
-                return true;
-            }
-
-            auto bytes = make_aligned_buffer(element.m_rawData.size());
-            std::memcpy(bytes.get(), element.m_rawData.data(), element.m_rawData.size());
-
-            auto binary_result = BinaryFile::from_buffer(ref.id.string(), std::move(bytes),
-                                                         element.m_rawData.size());
-            if (!binary_result) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: save_module: cannot build binary: {}\n",
-                           binary_result.error());
-                return false;
-            }
-
-            binary_from_ast = std::make_unique<BinaryFile>(std::move(binary_result.value()));
-            for (const auto &ds : file_node->data_structs()) {
-                binary_from_ast->m_dataStructs.push_back(ds);
-            }
-        }
-
-        // 3. Resolve the output directory against project root.
-        fs::path target = out_dir;
-        if (target.is_relative()) { target = m_config.project_root / target; }
-
-        // 4. Save.
-        if (binary_from_ast) {
-            return save_binary(*binary_from_ast, target) && save_header(*binary_from_ast, target);
-        }
-
-        // Not in AST: compile from disk.
-        auto result = compile_file(ref.resolved);
-        if (!result) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                       "; ERROR: save_module: compile failed: {}\n", result.error());
-            return false;
-        }
-        if (!*result) {
-            fmt::print(fg(fmt::color::yellow), "; WARN: save_module: '{}' produced no binary\n",
-                       ref.id.string());
-            return true;
-        }
-
-        return save_binary(**result, target) && save_header(**result, target);
-    }
-
-
-            bool Compiler::save_recursive_impl(const ModuleRef &ref, const std::filesystem::path &out_dir,
-                                       std::set<ModuleId> &visited, std::set<ModuleId> &active) {
-        if (visited.count(ref.id)) return true;
-        if (active.count(ref.id)) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                       "; ERROR: cyclic require: '{}'\n", ref.id.string());
-            return false;
-        }
-        active.insert(ref.id);
-
-        // Find or compile the FileNode.
-        FileNode *file_node = find_file_node(ref.id);
-        if (!file_node) {
-            auto result = compile_file(ref.resolved);
-            if (!result || !*result) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: save_module_recursive: cannot compile '{}'\n",
-                           ref.id.string());
-                return false;
-            }
-            file_node = find_file_node(ref.id);
-            if (!file_node) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: save_module_recursive: AST not registered for '{}'\n",
-                           ref.id.string());
-                return false;
-            }
-        }
-
-        // Recurse into dependencies first.
-        for (const auto &dep : file_node->get_requires()) {
-            if (dep == module_id_without_extension(ref.id)) continue;
-            auto dep_ref_opt = resolve_require(dep + ".sc", ref.id);
-            if (!dep_ref_opt) { dep_ref_opt = resolve_module(dep); }
-            if (!dep_ref_opt) {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: save_module_recursive: dependency '{}' of '{}' "
-                           "not found in project\n",
-                           dep, ref.id.string());
-                return false;
-            }
-            if (!save_recursive_impl(*dep_ref_opt, out_dir, visited, active)) { return false; }
-        }
-
-        active.erase(ref.id);
-        visited.insert(ref.id);
-
-        return save_module(ref.resolved, out_dir);
-    }
-
-
-    bool Compiler::save_module_recursive(const std::filesystem::path &source_file,
-                                         const std::filesystem::path &out_dir) {
-        auto ref_opt = resolve_module(source_file.string());
-        if (!ref_opt) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                       "; ERROR: save_module_recursive: '{}' not found in project\n",
-                       source_file.string());
-            return false;
-        }
-        std::set<ModuleId> visited;
-        std::set<ModuleId> active;
-        return save_recursive_impl(*ref_opt, out_dir, visited, active);
-    }
-
-    void Compiler::save_sidbase() {
-        if (m_config.sidbase_path.empty()) {
-            return; // no path configured, nothing to save
-        }
-
-        const std::size_t count = carbon::StringIdManager::instance().size();
-        const bool        saved =
-            carbon::StringIdManager::instance().save_dconstruct_sidbase(m_config.sidbase_path);
-
-        if (saved) {
-            lg::info("SIDBase: saved {} entries to '{}'", count, m_config.sidbase_path);
-        } else {
-            lg::warn("SIDBase: failed to save '{}'", m_config.sidbase_path);
-        }
-    }
-
     bool Compiler::is_soot_macro(const std::string &name) {
         auto sym = m_soot.intern(name.c_str());
         return try_getting_macro_from_soot(m_soot, sym, nullptr);
@@ -2822,238 +1510,4 @@ namespace sootc {
         return fmt::format("{}::lambda#{}", effective_base, m_lambda_counter++);
     }
 
-    // ========================================================================
-    // State-script body compilation
-    // ========================================================================
-
-    namespace {
-
-        // Build a (lambda () body) form from an arbitrary body form.
-        // If the form is already a lambda, use it as-is.
-        script::Object ensure_lambda(script::Interpreter &soot, const script::Object &body) {
-            if (body.is_pair() && body.as_pair()->car.is_symbol()) {
-                const std::string head = body.as_pair()->car.as_symbol();
-                if (head == "lambda" || head == "function") { return body; }
-            }
-            // Wrap: (lambda () body)
-            return script::Object::make_pair(
-                soot.intern("lambda"),
-                script::Object::make_pair(
-                    script::Object::make_null(),
-                    script::Object::make_pair(body, script::Object::make_null())));
-        }
-
-        std::string handler_kind_name(StateHandler kind) {
-            switch (kind) {
-            case StateHandler::ENTER: return "enter";
-            case StateHandler::EXIT: return "exit";
-            case StateHandler::CODE: return "code";
-            case StateHandler::UPDATE: return "trans";
-            case StateHandler::POST: return "post";
-            case StateHandler::EVENT: return "event";
-            }
-            return "unknown";
-        }
-
-    }
-    
-    // namespace
-    // (lambda () form...) from a list of forms: implicit begin, ONE lambda.
-    script::Object lambda_from_forms(script::Interpreter               &soot,
-                                     const std::vector<script::Object> &forms) {
-        return script::Object::make_pair(
-            soot.intern("lambda"),
-            script::Object::make_pair(script::Object::make_null(), script::build_list(forms)));
-    }
-
-    void Compiler::compile_state_script_bodies(StateScriptNode *ss, FileNode *file,
-                                               NodeBuilder &builder) {
-        const std::string &type_name = ss->type().base_type();
-
-        Type *t = m_ts.lookup_type_no_throw(type_name);
-        if (!t) {
-            lg::warn("compile_state_script_bodies: unknown type '{}'", type_name);
-            return;
-        }
-
-        // Compile one lambda form into a named FunctionNode owned by the file.
-        auto emit = [&](const std::string &name, const script::Object &lambda_form,
-                        const script::Object &where, const std::string &what) {
-            try {
-                auto  node = builder.build_lambda(lambda_form, file);
-                auto *fn = dynamic_cast<FunctionNode *>(node.get());
-                if (!fn) {
-                    lg::warn("compile_state_script_bodies: '{}' did not produce a FunctionNode",
-                             name);
-                    return;
-                }
-                fn->set_name(name);
-                FunctionNode *raw = fn;
-                node.release();
-                file->add_child(std::unique_ptr<Node>(raw));
-                file->bind(name, raw);
-            } catch (const std::exception &e) {
-                throw make_error(where, fmt::format("compiling {}", what))
-                    .expected("a compilable lambda body")
-                    .got(e.what());
-            }
-        };
-
-        for (const auto &[state_name, def] : t->state_defs()) {
-            // ---- Handlers ----
-            for (const auto &h : def.handlers) {
-                if (h.body_ast.is_null()) continue;
-
-                const std::string base =
-                    fmt::format("{}-{}-{}", type_name, state_name, handler_kind_name(h.kind));
-                const std::string name = (h.kind == StateHandler::EVENT)
-                                             ? fmt::format("{}-event-{}", base, h.event_id)
-                                             : base;
-
-                emit(name, ensure_lambda(m_soot, h.body_ast), h.body_ast,
-                     fmt::format("handler '{}'", name));
-            }
-
-            // ---- Tracks (belong to the state) ----
-            for (const auto &tr : def.tracks) {
-                const std::string prefix =
-                    fmt::format("{}-{}-track-{}", type_name, state_name, tr.name);
-
-                // On-begin coroutine: ONE lambda for the whole body.
-                if (!tr.body.empty()) {
-                    emit(prefix + "-main", lambda_from_forms(m_soot, tr.body), tr.body.front(),
-                         fmt::format("track '{}' body", tr.name));
-                }
-
-                // Reactive frame triggers: one lambda each, named by index.
-                for (size_t i = 0; i < tr.frames.size(); ++i) {
-                    const auto &ft = tr.frames[i];
-                    emit(fmt::format("{}-frame-{}", prefix, i), lambda_from_forms(m_soot, ft.body),
-                         ft.body.front(), fmt::format("track '{}' frame {}", tr.name, ft.frame));
-                }
-            }
-        }
-
-        lg::debug("compile_state_script_bodies: '{}' compiled", type_name);
-    }
-
-    // ===============================================================
-    // Prelude loading
-    // ===============================================================
-
-    void Compiler::load_soot_prelude() {
-        namespace fs = std::filesystem;
-
-        std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
-
-        const fs::path found = common::find_project_file("lib.st", fs::path{}, search_paths);
-
-        if (found.empty()) {
-            lg::warn("lib.st not found");
-            return;
-        }
-
-        const fs::path &p = found;
-        lg::info("Loading SOOT library {}", p.string());
-
-        try {
-            std::string content = file_util::read_text(p);
-
-            // Strip UTF-8 BOM.
-            if (content.size() >= 3 && static_cast<uint8_t>(content[0]) == 0xEF &&
-                static_cast<uint8_t>(content[1]) == 0xBB &&
-                static_cast<uint8_t>(content[2]) == 0xBF) {
-                content = content.substr(3);
-            }
-
-            m_soot.eval_string(content, p.string());
-
-            lg::info("Loaded SOOT library {}", p.string());
-        } catch (const std::exception &e) {
-            lg::error("Failed to evaluate {}: {}", p.string(), e.what());
-        }
-    }
-
-    void Compiler::load_soc_prelude() {
-        namespace fs = std::filesystem;
-
-        std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.search_paths) { search_paths.emplace_back(s); }
-
-        const fs::path found = common::find_project_file("lib.sc", fs::path{}, search_paths);
-        if (found.empty()) {
-            lg::warn("lib.sc not found");
-            return;
-        }
-
-        const fs::path &p = found;
-        lg::info("Loading SOOTC library {}", p.string());
-
-        try {
-            auto result = compile_file(p);
-
-            if (!result) {
-                lg::error("Failed to compile {}: {}", p.string(), result.error());
-                return;
-            }
-
-            if (*result) { m_runtime->load_module(std::move(**result)); }
-
-            lg::info("Loaded SOOTC library {}", p.string());
-        } catch (const std::exception &e) {
-            lg::error("Exception while loading {}: {}", p.string(), e.what());
-        }
-    }
-
-    // sootccompilerCompiler.cpp
-    void Compiler::sync_type_verbose() {
-        const bool verbose = (m_config.log_level == "debug");
-        if (Type::verbose != verbose) {
-            Type::verbose = verbose;
-            lg::debug("Type::verbose = {}", verbose ? "true" : "false");
-        }
-    }
-
-    bool Compiler::check_type_methods_implemented(const FileNode *file_node) const {
-        if (!file_node) return true;
-
-        std::set<std::string> fn_names;
-        for (auto &child : file_node->children()) {
-            if (auto *fn = dynamic_cast<FunctionNode *>(child.get())) {
-                fn_names.insert(fn->name());
-            }
-        }
-
-        for (auto &child : file_node->children()) {
-            auto *td = dynamic_cast<TypeDeclarationNode *>(child.get());
-            if (!td) continue;
-
-            const std::string &type_name = td->type().base_type();
-            Type              *type = m_ts.lookup_type_no_throw(type_name);
-            if (!type) continue;
-
-            for (const auto &m : type->get_methods_defined_for_type()) {
-                const std::string full_name = type_name + "-" + m.name;
-                if (fn_names.count(full_name)) continue;
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: method '{}' of type '{}' is declared "
-                           "but has no defmethod\n",
-                           m.name, type_name);
-                return false;
-            }
-
-            if (const auto *ni = type->get_new_method_defined_for_type()) {
-                const std::string full_name = type_name + "-" + ni->name;
-                if (!fn_names.count(full_name)) {
-                    fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                               "; ERROR: method 'new' of type '{}' is declared "
-                               "but has no defmethod\n",
-                               type_name);
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
 } // namespace sootc

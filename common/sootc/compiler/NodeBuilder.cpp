@@ -1361,14 +1361,35 @@ namespace sootc {
 
 
         // ---- Typecheck against known signature (if any) ----
-        if (auto sig = m_compiler->lookup_function_signature(func_name)) {
-            const size_t declared_args = sig->get_args_count() - 1;
+        //
+        // The signature is looked up through the current file's import
+        // graph first: file->lookup(func_name) returns the FunctionNode
+        // defined in this file or in a required module, and that node
+        // carries its own signature. This is what makes two files that
+        // define the same function name independently typechecked.
+        //
+        // For native functions (no FunctionNode) and for REPL/test
+        // inputs (no import graph), fall back to the flat m_native_functions
+        // table, which still holds the signature.
+        std::optional<TypeSpec> sig_opt;
+        if (auto *file = node->file()) {
+            if (auto *decl = file->lookup(func_name)) {
+                if (auto *fn = dynamic_cast<FunctionNode *>(decl)) {
+                    if (fn->has_signature()) { sig_opt = fn->signature(); }
+                }
+            }
+        }
+        if (!sig_opt) { sig_opt = m_compiler->lookup_function_signature(func_name); }
+
+        if (sig_opt) {
+            const auto  &sig = *sig_opt;
+            const size_t declared_args = sig.get_args_count() - 1;
 
             // ---- Найти _varargs_ ----
             bool   has_varargs = false;
             size_t required = declared_args;
             for (size_t i = 0; i < declared_args; ++i) {
-                const auto &arg = sig->get_arg(i);
+                const auto &arg = sig.get_arg(i);
                 if (arg.base_type() == "_varargs_" || arg.print() == "_varargs_") {
                     has_varargs = true;
                     required = i;
@@ -1383,13 +1404,13 @@ namespace sootc {
                         .expected(
                             fmt::format("at least {} arguments for '{}'", required, func_name))
                         .got(fmt::format("{} arguments", args.size()))
-                        .note(fmt::format("Signature: {}", sig->print()));
+                        .note(fmt::format("Signature: {}", sig.print()));
                 }
             } else if (args.size() != declared_args) {
                 throw m_compiler->make_error(form, "NodeBuilder::build_call")
                     .expected(fmt::format("{} arguments for '{}'", declared_args, func_name))
                     .got(fmt::format("{} arguments", args.size()))
-                    .note(fmt::format("Signature: {}", sig->print()));
+                    .note(fmt::format("Signature: {}", sig.print()));
             }
 
             // ---- Типчек только обязательных (до _varargs_) ----
@@ -1400,19 +1421,58 @@ namespace sootc {
         }
         // ---- Existence check ----
         //
-        // A call is valid only if the name is known to the compiler:
-        // either a script function registered by defun/defmethod, or a
-        // native function registered by define-native. Anything else is
-        // an undefined name and must be reported at compile time,
-        // instead of producing a Call that will fail at runtime.
-        if (!m_compiler->lookup_function_signature(func_name)) {
-            throw m_compiler->make_error(form, "NodeBuilder::build_call")
-                .expected("a defined or declared function")
-                .got(fmt::format("undefined function '{}'", func_name))
-                .note("Define it with defun/defmethod, or declare it with define-native.");
+        // A call is valid if the callee is reachable in one of two ways:
+        //
+        //   1. Through the current file's scope: FileNode::lookup walks
+        //      the file's own symbols and its m_imports recursively.
+        //      This is what makes a function from a required module
+        //      visible in the requirer, and it distinguishes two files
+        //      that happen to define the same function name.
+        //
+        //   2. Through the compiler's flat function table (m_native_functions).
+        //      This covers:
+        //        * native functions registered by define-native —
+        //          they are global by design and belong to no file;
+        //        * REPL and test inputs, which have no file chain to
+        //          walk and rely on m_native_functions to see functions from
+        //          previous inputs.
+        //
+        // A script function that is only in m_native_functions (compiled from
+        // a file that the current file does not require) is NOT visible.
+        // The call must be rejected, matching what the runtime would do
+        // if the requirer were loaded without its dependency.
+        const bool is_native = m_compiler->is_native_function(func_name);
+
+        bool reachable = false;
+        if (auto *file = node->file()) {
+            if (auto *decl = file->lookup(func_name)) {
+                reachable = (dynamic_cast<FunctionNode *>(decl) != nullptr);
+            }
         }
+
+        // Fallbacks for inputs that have no file chain to walk.
+        if (!reachable && !is_native) {
+            const InputOrigin origin = m_compiler->input_origin();
+            if (origin == InputOrigin::Repl || origin == InputOrigin::Test) {
+                reachable = m_compiler->lookup_function_signature(func_name).has_value();
+            }
+        }
+
+        // Native functions are always visible.
+        if (!reachable && is_native) { reachable = true; }
+
+        if (!reachable) {
+            throw m_compiler->make_error(form, "NodeBuilder::build_call")
+                .expected(fmt::format("'{}' to be defined or required", func_name))
+                .got("not visible from the current file")
+                .note(fmt::format("Add (require \"...\") for the file that defines '{}', "
+                                  "or declare it with define-native.",
+                                  func_name));
+        }
+
         auto call = std::make_unique<CallNode>(func_name, nullptr);
-        call->set_is_native(m_compiler->is_native_function(func_name));
+        call->set_is_native(is_native);
+
         for (auto &arg : args) {
             call->add_argument(
                 std::unique_ptr<ExpressionNode>(dynamic_cast<ExpressionNode *>(arg.release())));
@@ -1773,6 +1833,7 @@ namespace sootc {
             fn->set_name(name);
 
             TypeSpec sig = build_function_signature(fn, name);
+            fn->set_signature(sig);
             m_compiler->define_function_signature(name, sig);
             lg::info("Registered function: {} : {}", name, sig.print());
 
