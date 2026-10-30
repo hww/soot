@@ -62,9 +62,9 @@ namespace sootc::testing {
             // the project is.
             auto root = common::SootProjectConfig::find(std::filesystem::current_path());
             s_config->common.project_root = root.empty() ? std::filesystem::current_path() : root;
+            s_config->common.search_paths = {"soot_src", "tests/sootc"};
             s_config->compiler.mode = "compile";
             s_config->compiler.user_profile = "#f";
-            s_config->compiler.search_paths = {"soot_src", "tests/sootc"};
 
             s_compiler = std::make_unique<Compiler>(*s_config, std::nullopt, "#f", nullptr);
 

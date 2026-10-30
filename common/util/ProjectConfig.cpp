@@ -170,7 +170,7 @@ namespace common {
         runtime = config.compiler.runtime_url.empty() ? "local" : config.compiler.runtime_url;
 
         search_paths.clear();
-        for (const auto &p : config.compiler.search_paths) search_paths.push_back(p);
+        for (const auto &p : config.common.search_paths) search_paths.push_back(p);
 
         if (config.compiler.repl) repl = *config.compiler.repl;
     }

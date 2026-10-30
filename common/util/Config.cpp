@@ -149,6 +149,12 @@ namespace common {
             color = *s;
             return std::nullopt;
         }
+        if (name == "search-paths") {
+            auto v = as_path_list(value, "search-paths");
+            if (!v) return v.error();
+            search_paths = *v;
+            return std::nullopt;
+        }
         return fmt::format("(opt ...): unknown key '{}'", name);
     }
 
@@ -163,6 +169,12 @@ namespace common {
             return script::Object::make_string(std::string(log_level_name(log_level)).c_str());
         if (name == "log-file") return script::Object::make_string(log_file.string().c_str());
         if (name == "color") return script::Object::make_string(color.c_str());
+        if (name == "search-paths") {
+            std::vector<script::Object> items;
+            for (const auto &p : search_paths)
+                items.push_back(script::Object::make_string(p.string().c_str()));
+            return script::build_list(items);
+        }
         return std::nullopt;
     }
 
@@ -219,12 +231,6 @@ namespace common {
             out_dir = *s;
             return std::nullopt;
         }
-        if (name == "search-paths") {
-            auto v = as_path_list(value, "search-paths");
-            if (!v) return v.error();
-            search_paths = *v;
-            return std::nullopt;
-        }
         if (name == "repl") {
             auto b = as_bool(value, "repl");
             if (!b) return b.error();
@@ -258,12 +264,6 @@ namespace common {
             return script::Object::make_string(s.c_str());
         }
         if (name == "out-dir") return script::Object::make_string(out_dir.string().c_str());
-        if (name == "search-paths") {
-            std::vector<script::Object> items;
-            for (const auto &p : search_paths)
-                items.push_back(script::Object::make_string(p.string().c_str()));
-            return script::build_list(items);
-        }
         if (name == "repl") {
             if (!repl) return script::Object::make_null();
             return g_interp->true_or_false(*repl);
@@ -328,6 +328,11 @@ namespace common {
             }
             if (j.contains("log-file")) c.log_file = j.at("log-file").get<std::string>();
             if (j.contains("color")) c.color = j.at("color").get<std::string>();
+            if (j.contains("search-paths")) {
+                c.search_paths.clear();
+                for (const auto &p : j.at("search-paths"))
+                    c.search_paths.emplace_back(p.get<std::string>());
+            }
             return std::nullopt;
         }
 
@@ -355,11 +360,6 @@ namespace common {
                 }
             }
             if (j.contains("out-dir")) c.out_dir = j.at("out-dir").get<std::string>();
-            if (j.contains("search-paths")) {
-                c.search_paths.clear();
-                for (const auto &p : j.at("search-paths"))
-                    c.search_paths.emplace_back(p.get<std::string>());
-            }
             if (j.contains("repl")) c.repl = j.at("repl").get<bool>();
             if (j.contains("profile")) c.user_profile = j.at("profile").get<std::string>();
             if (j.contains("runtime")) {
@@ -471,7 +471,7 @@ namespace common {
         bool is_option(const std::string &arg) { return arg.size() > 1 && arg[0] == '-'; }
     } // namespace
 
-    std::optional<std::string> apply_cli(int argc, char *argv[], Config &cfg,
+    std::optional<std::string> apply_cli(int argc, char *argv[], Config &cfg, Scope scope,
                                          std::vector<std::string> &inputs, bool &no_config) {
         bool end_of_options = false;
         bool config_given = false;
@@ -607,7 +607,13 @@ namespace common {
                 ++i;
                 continue;
             }
-
+            if (arg == "-I" || arg == "--include") {
+                auto v = need_value(i, "-I");
+                if (!v) return v;
+                cfg.common.search_paths.emplace_back(*v);
+                ++i;
+                continue;
+            }
             // ----- Compiler -----
             if (arg == "--mode") {
                 auto v = need_value(i, "--mode");
@@ -647,13 +653,6 @@ namespace common {
                 ++i;
                 continue;
             }
-            if (arg == "-I" || arg == "--include") {
-                auto v = need_value(i, "-I");
-                if (!v) return v;
-                cfg.compiler.search_paths.emplace_back(*v);
-                ++i;
-                continue;
-            }
             if (arg == "--profile") {
                 auto v = need_value(i, "--profile");
                 if (!v) return v;
@@ -684,7 +683,20 @@ namespace common {
                 continue;
             }
 
-            return fmt::format("unknown option '{}'. Try 'sootc --help'", arg);
+            // Recognise options from the other tool and report them as
+            // such, instead of "unknown option". A user who types
+            // `carbon --mode hybrid` should see that --mode belongs to
+            // sootc, not to carbon.
+            for (const auto &f : Config::all_fields()) {
+                if (f.scope == scope || f.scope == Scope::Common) continue;
+                if (arg == "--" + std::string(f.name)) {
+                    const char *owner = (f.scope == Scope::Compiler) ? "sootc" : "carbon";
+                    const char *mine = (scope == Scope::Compiler) ? "sootc" : "carbon";
+                    return fmt::format("{} is a {} option, not a {} option", arg, owner, mine);
+                }
+            }
+            return fmt::format("unknown option '{}'. Try '{} --help'", arg,
+                               (scope == Scope::Compiler) ? "sootc" : "carbon");
         }
 
         if (no_config && config_given) { return "--config and --no-config are mutually exclusive"; }

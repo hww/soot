@@ -5,9 +5,10 @@
 
 #include "common/repl/nrepl/ReplServer.h"
 
-#include "common/util/Log.hpp"
+#include "util/Config.hpp"
+#include "util/FileUtil.hpp"
+#include "util/Log.hpp"
 #include "util/ProjectConfig.hpp"
-#include "util/FileUtil.hpp"   
 
 #include "fmt/color.h"
 #include "fmt/format.h"
@@ -26,35 +27,15 @@ using namespace carbon;
 
 namespace {
 
-    void print_usage(const char *prog) {
-        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "carbon — Carbon VM runtime\n\n");
-        fmt::print("Usage:\n");
-        fmt::print("  {} [options] <file.bin> <function> [args...]\n", prog);
-        fmt::print("\nOptions:\n");
-        fmt::print("  -I, --include <dir>     Add a module search path (repeatable)\n");
-        fmt::print("  -l, --load <file.bin>   Load a module explicitly (repeatable)\n");
-        fmt::print("  -s, --sidbase <file>    Load a sidbase.bin\n");
-        fmt::print("  --project-root <dir>    Project root. Default: CWD.\n");
-        fmt::print("  --project <dir>         Alias for --project-root.\n");
-        fmt::print("  --run <name>            Spawn a state-script and run the tick loop\n");
-        fmt::print("  --hz <n>                Tick rate in Hz (default: 60)\n");
-        fmt::print("  --ticks <n>             Stop after N ticks (default: unlimited)\n");
-        fmt::print("  --serve                 Run the HTTP/REPL host (default port 8181)\n");
-        fmt::print("  --port <n>              Port for --serve (default: 8181)\n");
-        fmt::print("  -h, --help              Show this help\n");
-        fmt::print("\nNotes:\n");
-        fmt::print("  Imports are resolved via .dci manifests next to each .bin.\n");
-        fmt::print("  Use -I to add directories where .bin/.dci pairs live.\n");
-        fmt::print("  In --serve mode the host ticks itself; the client only sends\n");
-        fmt::print("  function calls. Time is discrete: one tick is one frame.\n");
-    }
+    // ================================================================
+    // Runtime argument parsing
+    // ================================================================
+    //
+    // Arguments passed to the called function (carbon <file> <fn>
+    // <args...>) are parsed into Variants. This is not part of the
+    // tool configuration: it is the payload of the call. It stays
+    // here, independent of common::Config.
 
-    // Parse a single CLI argument into a Variant.
-    //   - integer (decimal)   -> i64
-    //   - float               -> f32
-    //   - true / #t           -> bool true
-    //   - false / #f          -> bool false
-    //   - anything else       -> std::string (Variant::String)
     Variant parse_argument(const char *arg) {
         char *end = nullptr;
 
@@ -70,26 +51,21 @@ namespace {
         return Variant(std::string(arg));
     }
 
-    // ----------------------------------------------------------------
-    // Tiny S-expression tokenizer for the --serve protocol.
+    // ================================================================
+    // --serve wire protocol
+    // ================================================================
     //
-    // The wire format is one line per call:
+    // One line per call: (name arg1 arg2 ...)
     //
-    //     (name arg1 arg2 ...)
-    //
-    // where each argument is one of:
-    //
-    //     - an integer (optionally with '-' sign)  -> i64
-    //     - a float                                 -> f32
-    //     - a double-quoted string with \" and \\   -> std::string
-    //     - #t / #f / true / false                  -> bool
-    //     - anything else                           -> StringId
+    // Each argument is one of:
+    //   - an integer (optionally with '-' sign)  -> i64
+    //   - a float                                 -> f32
+    //   - a double-quoted string with \" and \\   -> std::string
+    //   - #t / #f / true / false                  -> bool
+    //   - anything else                           -> StringId
     //
     // The tokenizer does NOT use script::Reader from sootc: the host
-    // must stay independent of the compiler, and the protocol is small
-    // and stable enough that a 40-line parser is cheaper than a
-    // dependency.
-    // ----------------------------------------------------------------
+    // must stay independent of the compiler.
 
     struct ParsedCall {
         std::string          name;
@@ -193,9 +169,8 @@ namespace {
             const std::string tok = read_symbol();
             if (tok.empty()) { fail("empty token"); }
 
-            // Integer or float.
-            char           *end = nullptr;
-            const long long lv = std::strtol(tok.c_str(), &end, 10);
+            char      *end = nullptr;
+            const long lv = std::strtol(tok.c_str(), &end, 10);
             if (*end == '\0' && end != tok.c_str()) { return Variant(static_cast<i64>(lv)); }
             double dv = std::strtod(tok.c_str(), &end);
             if (*end == '\0' && end != tok.c_str()) { return Variant(static_cast<f32>(dv)); }
@@ -203,8 +178,6 @@ namespace {
             if (tok == "true" || tok == "#t") return Variant(true);
             if (tok == "false" || tok == "#f") return Variant(false);
 
-            // Everything else is treated as a StringId (symbols,
-            // identifiers, event names).
             return Variant(StringId(tok));
         }
 
@@ -212,9 +185,6 @@ namespace {
         std::size_t        m_pos;
     };
 
-    // Handle one wire payload: parse it, call the function, build the
-    // reply string. The reply is either the function's result (as text)
-    // or "ERROR: <message>" if anything went wrong.
     std::string handle_eval(Carbon &carbon, const std::string &payload) {
         try {
             CallParser parser(payload);
@@ -223,15 +193,14 @@ namespace {
             CallResult r = carbon.call(call.name, call.args);
             if (!r.ok) { return "ERROR: " + r.error; }
 
-            // A null result is not an error, but the client should see
-            // that the call happened. Return the string "null" for it.
             if (r.value.is_null()) { return "null"; }
             return r.value.to_string();
         } catch (const std::exception &e) { return std::string("ERROR: ") + e.what(); }
     }
 
-    // ----------------------------------------------------------------
-    // --serve: the host loop.
+    // ================================================================
+    // --serve loop
+    // ================================================================
     //
     // Single thread: the socket and the tick loop share the same
     // thread, and the socket wait is bounded by the time left until
@@ -240,7 +209,7 @@ namespace {
     //
     // The loop does NOT exit when the scheduler is empty: the host
     // must stay alive between calls, waiting for the first spawn.
-    // ----------------------------------------------------------------
+
     void serve_loop(Carbon &carbon, u32 hz, int port) {
         ReplServer server([] { return false; }, port);
 
@@ -273,224 +242,213 @@ namespace {
 
 } // namespace
 
+namespace {
+
+    // ================================================================
+    // Early scan
+    // ================================================================
+    //
+    // --config, --no-config and --project-root decide where (and
+    // whether) soot.json is read, so they must be known before
+    // load_json(). Everything else goes through apply_cli().
+
+    struct EarlyArgs {
+        std::string project_root;
+        std::string config_file;
+        bool        no_config = false;
+    };
+
+    EarlyArgs scan_early_args(int argc, char *argv[]) {
+        EarlyArgs out;
+        for (int i = 1; i < argc; ++i) {
+            const std::string arg = argv[i];
+            if (arg == "--config" && i + 1 < argc) {
+                out.config_file = argv[++i];
+            } else if (arg == "--project-root" || arg == "--project") {
+                if (i + 1 < argc) out.project_root = argv[++i];
+            } else if (arg == "--no-config") {
+                out.no_config = true;
+            }
+        }
+        return out;
+    }
+
+    // ================================================================
+    // Logging
+    // ================================================================
+
+    void setup_logging(const common::Config &cfg) {
+        lg::set_console_level(cfg.common.log_level);
+        if (!cfg.common.log_file.empty()) {
+            lg::set_file(cfg.common.log_file.string());
+            lg::set_file_level(cfg.common.log_level);
+            lg::info("Log file enabled: {}", cfg.common.log_file.string());
+        }
+        lg::initialize();
+    }
+
+    // ================================================================
+    // CarbonConfig from Config
+    // ================================================================
+    //
+    // CarbonConfig is the runtime's DTO for initialize(); it is not
+    // the same thing as common::Config. This is the one place that
+    // bridges them, same as make_compilation_options in sootc.
+
+    CarbonConfig make_carbon_config(const common::Config &cfg) {
+        CarbonConfig out;
+        out.sidbase_path = cfg.common.sidbase.string();
+        out.search_paths.clear();
+        for (const auto &p : cfg.common.search_paths) { out.search_paths.push_back(p); }
+        return out;
+    }
+
+    // ================================================================
+    // listen parsing
+    // ================================================================
+    //
+    // HostConfig::listen is "host:port" or just "port". Empty means
+    // 127.0.0.1:8181.
+
+    struct ListenAddress {
+        std::string host = "127.0.0.1";
+        int         port = 8181;
+    };
+
+    ListenAddress parse_listen(const std::string &s) {
+        ListenAddress out;
+        if (s.empty()) return out;
+
+        const auto colon = s.rfind(':');
+        if (colon == std::string::npos) {
+            // "port" only
+            try {
+                out.port = std::stoi(s);
+            } catch (...) { /* keep default */
+            }
+            return out;
+        }
+        out.host = s.substr(0, colon);
+        try {
+            out.port = std::stoi(s.substr(colon + 1));
+        } catch (...) { /* keep default */
+        }
+        return out;
+    }
+
+} // namespace
+
 int main(int argc, char *argv[]) {
-    std::vector<std::string>           load_files;
-    std::vector<std::filesystem::path> search_paths;
-    std::vector<std::string>           positional;
-    std::string                        sidbase_path;
-    std::string                        project_root_arg; // --project-root
-    std::string                        run_state_script; // --run <name>
-    u32                                hz = 60;          // --hz <n>
-    i64                                max_ticks = -1;   // --ticks <n>
-    bool                               serve = false;    // --serve
-    int                                port = 8181;      // --port <n>
-    bool                               want_help = false;
-
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-
-        if (arg == "-h" || arg == "--help") {
-            want_help = true;
-            break;
-        }
-        if (arg == "-I" || arg == "--include") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a dir\n", arg);
-                return 1;
-            }
-            search_paths.emplace_back(argv[++i]);
-            continue;
-        }
-        if (arg == "-l" || arg == "--load") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a file\n", arg);
-                return 1;
-            }
-            load_files.emplace_back(argv[++i]);
-            continue;
-        }
-        if (arg == "-s" || arg == "--sidbase") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a file\n", arg);
-                return 1;
-            }
-            sidbase_path = argv[++i];
-            continue;
-        }
-        if ((arg == "--project-root" || arg == "--project") && i + 1 < argc) {
-            project_root_arg = argv[++i];
-            continue;
-        }
-        if (arg == "--run") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a state-script name\n", arg);
-                return 1;
-            }
-            run_state_script = argv[++i];
-            continue;
-        }
-        if (arg == "--hz") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a number\n", arg);
-                return 1;
-            }
-            char      *end = nullptr;
-            const long v = std::strtol(argv[++i], &end, 10);
-            if (*end != '\0' || v <= 0 || v > 1000) {
-                fmt::print(stderr, "carbon: --hz must be 1..1000\n");
-                return 1;
-            }
-            hz = static_cast<u32>(v);
-            continue;
-        }
-        if (arg == "--ticks") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a number\n", arg);
-                return 1;
-            }
-            char           *end = nullptr;
-            const long long v = std::strtoll(argv[++i], &end, 10);
-            if (*end != '\0' || v < -1) {
-                fmt::print(stderr, "carbon: --ticks must be >= -1\n");
-                return 1;
-            }
-            max_ticks = static_cast<i64>(v);
-            continue;
-        }
-        if (arg == "--serve") {
-            serve = true;
-            continue;
-        }
-        if (arg == "--port") {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "carbon: '{}' requires a number\n", arg);
-                return 1;
-            }
-            char      *end = nullptr;
-            const long v = std::strtol(argv[++i], &end, 10);
-            if (*end != '\0' || v < 1 || v > 65535) {
-                fmt::print(stderr, "carbon: --port must be 1..65535\n");
-                return 1;
-            }
-            port = static_cast<int>(v);
-            continue;
-        }
-        if (!arg.empty() && arg[0] == '-') {
-            fmt::print(stderr, "carbon: unknown option '{}'\n", arg);
-            print_usage(argv[0]);
-            return 1;
-        }
-        positional.push_back(arg);
-    }
-
-    // --run and --serve are mutually exclusive with the positional
-    // "call one function" form. --run may still take a positional
-    // file, which is loaded before spawn.
-    const bool has_action = !run_state_script.empty() || serve;
-    if (want_help) {
-        print_usage(argv[0]);
-        return 0;
-    }
-    if (!has_action && load_files.empty() && positional.size() < 2) {
-        print_usage(argv[0]);
-        return 1;
-    }
-
-    // ----- Project root + soot.json -----
+    // ----- Layers -----
     //
-    // Same resolution as sootc:
-    //   1. --project-root
-    //   2. SOOT_ROOT environment variable
-    //   3. find(soot.json) from CWD
-    //   4. CWD
-    //
-    // Once the root is known, soot.json is read (if present) to
-    // obtain sidbase and search_paths. The CLI -s and -I still
-    // override soot.json.
-    common::SootProjectConfig project_cfg = common::SootProjectConfig::load(project_root_arg);
-    common::set_project_path(project_cfg.project_root);
-    lg::info("PROJECT = {}", project_cfg.project_root.string());
+    // Same order as sootc: early scan, JSON, env, CLI.
+    // apply_cli is called with Scope::Host, so sootc-only options
+    // (--mode, --dump, ...) are rejected with a precise message
+    // rather than "unknown option".
 
-    // sidbase: CLI -s wins; otherwise soot.json; otherwise default.
-    std::string effective_sidbase = sidbase_path;
-    if (effective_sidbase.empty() && !project_cfg.sidbase.empty()) {
-        effective_sidbase = project_cfg.sidbase_absolute().string();
+    const EarlyArgs early = scan_early_args(argc, argv);
+
+    if (early.no_config && !early.config_file.empty()) {
+        fmt::print(stderr, "error: --config and --no-config are mutually exclusive\n");
+        return 2;
     }
 
-    // search_paths: CLI -I wins if any were given; otherwise soot.json.
-    if (search_paths.empty() && !project_cfg.search_paths.empty()) {
-        for (const auto &p : project_cfg.search_paths) {
-            search_paths.push_back(project_cfg.project_root / p);
+    common::Config cfg;
+
+    if (!early.no_config) {
+        if (auto err = common::load_json(early.config_file, early.project_root, cfg)) {
+            fmt::print(stderr, "error: {}\n", *err);
+            return 2;
         }
     }
+
+    if (auto err = common::apply_env(cfg)) {
+        fmt::print(stderr, "error: {}\n", *err);
+        return 2;
+    }
+
+    std::vector<std::string> inputs;
+    bool                     no_config = early.no_config;
+    if (auto err = common::apply_cli(argc, argv, cfg, common::Scope::Host, inputs, no_config)) {
+        fmt::print(stderr, "error: {}\n", *err);
+        return 2;
+    }
+
+    setup_logging(cfg);
+
+    // ----- Project root -----
+
+    if (cfg.common.project_root.empty()) {
+        cfg.common.project_root = std::filesystem::current_path();
+    } else if (cfg.common.project_root.is_relative()) {
+        cfg.common.project_root = std::filesystem::absolute(cfg.common.project_root);
+    }
+    common::set_project_path(cfg.common.project_root);
+    lg::info("PROJECT = {}", cfg.common.project_root.string());
 
     // ----- Carbon up -----
-    CarbonConfig config;
-    config.sidbase_path = effective_sidbase;
+
+    CarbonConfig carbon_cfg = make_carbon_config(cfg);
 
     Carbon carbon;
-    if (!carbon.initialize(config)) {
+    if (!carbon.initialize(carbon_cfg)) {
         fmt::print(stderr, "carbon: failed to initialize runtime\n");
         return 1;
     }
 
-    // ----- Load modules -----
-    for (const auto &path : load_files) {
-        if (!carbon.load_module_with_imports(path, search_paths)) {
-            fmt::print(stderr, "carbon: failed to load '{}'\n", path);
+    // ----- Load modules (-l / --load) -----
+
+    for (const auto &path : cfg.host.load_files) {
+        if (!carbon.load_module_with_imports(path, carbon_cfg.search_paths)) {
+            fmt::print(stderr, "carbon: failed to load '{}'\n", path.string());
             carbon.shutdown();
             return 1;
         }
     }
 
+    // ----- Positional .bin (if any) -----
+
     std::size_t pos_start = 0;
-    if (!positional.empty() && std::filesystem::exists(positional[0])) {
-        if (!carbon.load_module_with_imports(positional[0], search_paths)) {
-            fmt::print(stderr, "carbon: failed to load '{}'\n", positional[0]);
+    if (!inputs.empty() && std::filesystem::exists(inputs[0])) {
+        if (!carbon.load_module_with_imports(inputs[0], carbon_cfg.search_paths)) {
+            fmt::print(stderr, "carbon: failed to load '{}'\n", inputs[0]);
             carbon.shutdown();
             return 1;
         }
         pos_start = 1;
     }
-    // ----- --serve: host loop -----
-    //
-    // The host ticks itself; the client sends function calls over the
-    // wire. The positional "call" form is not used in this mode.
-    if (serve) {
-        if (port != 8181) {
-            // ReplServer port is currently fixed by REPL::Config;
-            // a custom --port would require ReplServer to accept one.
-            fmt::print(stderr, "carbon: --port {} ignored (ReplServer uses the configured port)\n",
-                       port);
-        }
-        serve_loop(carbon, hz, port);
+
+    // ----- --serve -----
+
+    if (cfg.host.serve) {
+        const ListenAddress addr = parse_listen(cfg.host.listen);
+        serve_loop(carbon, static_cast<u32>(cfg.host.hz), addr.port);
         carbon.shutdown();
         return 0;
     }
 
-    // ----- --run: spawn + tick loop -----
-    //
-    // Spawns the named state-script and advances the scheduler at the
-    // requested rate. The loop exits when the scheduler empties, the
-    // tick budget is exhausted, or the runtime is asked to exit.
-    if (!run_state_script.empty()) {
-        u64 pid = carbon.spawn_process(run_state_script, {});
+    // ----- --run NAME -----
+
+    if (!cfg.host.run_state_script.empty()) {
+        const std::string &name = cfg.host.run_state_script;
+
+        u64 pid = carbon.spawn_process(name, {});
         if (pid == 0) {
-            fmt::print(stderr, "carbon: failed to spawn '{}'\n", run_state_script);
+            fmt::print(stderr, "carbon: failed to spawn '{}'\n", name);
             carbon.shutdown();
             return 1;
         }
 
-        fmt::print(fg(fmt::color::cyan), "carbon: spawned '{}' (pid={}, {} Hz)\n", run_state_script,
-                   pid, hz);
+        fmt::print(fg(fmt::color::cyan), "carbon: spawned '{}' (pid={}, {} Hz)\n", name, pid,
+                   cfg.host.hz);
 
-        carbon::TickConfig cfg;
-        cfg.hz = hz;
-        cfg.max_ticks = max_ticks;
-        cfg.realtime = true;
-        cfg.until_empty = true;
+        carbon::TickConfig tick_cfg;
+        tick_cfg.hz = static_cast<u32>(cfg.host.hz);
+        tick_cfg.max_ticks = cfg.host.ticks;
+        tick_cfg.realtime = true;
+        tick_cfg.until_empty = true;
 
-        const u64 ticks = carbon.run_loop(cfg);
+        const u64 ticks = carbon.run_loop(tick_cfg);
         fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
                    "carbon: tick loop finished after {} ticks\n", ticks);
 
@@ -499,17 +457,18 @@ int main(int argc, char *argv[]) {
     }
 
     // ----- Default: call one function once -----
-    if (positional.size() <= pos_start) {
+
+    if (inputs.size() <= pos_start) {
         fmt::print(stderr, "carbon: no function name given\n");
-        print_usage(argv[0]);
+        common::print_help(common::Scope::Host, "carbon");
         carbon.shutdown();
         return 1;
     }
 
-    const std::string    fn_name = positional[pos_start];
+    const std::string    fn_name = inputs[pos_start];
     std::vector<Variant> args;
-    for (std::size_t i = pos_start + 1; i < positional.size(); ++i) {
-        args.push_back(parse_argument(positional[i].c_str()));
+    for (std::size_t i = pos_start + 1; i < inputs.size(); ++i) {
+        args.push_back(parse_argument(inputs[i].c_str()));
     }
 
     fmt::print(fg(fmt::color::cyan), "carbon: calling {}({} args)\n", fn_name, args.size());

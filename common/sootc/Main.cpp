@@ -106,7 +106,8 @@ int main(int argc, char *argv[]) {
 
         std::vector<std::string> inputs;
         bool                     no_config = early.no_config;
-        if (auto err = common::apply_cli(argc, argv, cfg, inputs, no_config)) {
+        if (auto err =
+                common::apply_cli(argc, argv, cfg, common::Scope::Compiler, inputs, no_config)) {
             fmt::print(stderr, "error: {}\n", *err);
             return 2;
         }

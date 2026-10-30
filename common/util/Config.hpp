@@ -63,6 +63,11 @@ namespace common {
         lg::level             log_level = lg::level::warn;
         std::filesystem::path log_file;
         std::string           color = "auto"; // "auto" | "always" | "never"
+        
+        // Module search paths. Shared by sootc (finds .sc) and
+        // carbon (finds .bin). Relative entries are resolved against
+        // project_root by the callers, not here.
+        std::vector<std::filesystem::path>   search_paths = {".", "scripts", "src", "examples"};
 
         static const std::vector<FieldInfo> &fields();
 
@@ -93,7 +98,6 @@ namespace common {
         bool print_listing = false;
 
         std::filesystem::path              out_dir = "build";
-        std::vector<std::filesystem::path> search_paths = {".", "scripts", "src", "examples"};
 
         // Tri-state: nullopt = "use soot.json", true/false = "force".
         // This is the one field where "not set" is different from
@@ -123,10 +127,24 @@ namespace common {
     // Reserved for carbon. sootc does not read these fields, and
     // silently ignores the "host" section of soot.json.
     struct HostConfig {
-        std::string listen; // "" = default
+        // Address to listen on, "host:port" or just "port". Empty =
+        // 127.0.0.1:8181. --port N sets this to "127.0.0.1:<N>".
+        std::string listen;
+
+        // Run the HTTP/REPL host loop. --serve / --no-serve.
+        bool serve = false;
+
+        // Tick rate and budget for --run and --serve.
+        int     hz = 60;
+        int64_t ticks = -1;
+
+        // State-script name to spawn (carbon --run NAME).
+        std::string run_state_script;
+
+        // .bin files to load explicitly (carbon -l/--load).
+        std::vector<std::filesystem::path> load_files;
 
         static const std::vector<FieldInfo> &fields();
-
         std::optional<std::string>    set(const std::string &name, const script::Object &value);
         std::optional<script::Object> get(const std::string &name) const;
     };
@@ -194,7 +212,7 @@ namespace common {
     // prints them and exits with code 2).
     //
     // Positional arguments (input files) are appended to `inputs`.
-    std::optional<std::string> apply_cli(int argc, char *argv[], Config &cfg,
+    std::optional<std::string> apply_cli(int argc, char *argv[], Config &cfg, Scope scope,
                                          std::vector<std::string> &inputs, bool &no_config);
 
     // ================================================================

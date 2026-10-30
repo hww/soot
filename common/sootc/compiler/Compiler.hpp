@@ -97,32 +97,6 @@ namespace sootc {
     };
 
     // ================================================================
-    // CompilationOptions
-    // ================================================================
-    //
-    // Deprecated. The Compiler now takes a common::Config; this
-    // struct is kept only until the last caller (tests, save_module
-    // internal path) is migrated. Do not add fields here.
-    //
-    // TODO: delete once every caller constructs the Compiler from
-    //       common::Config.
-    struct CompilationOptions {
-        SootPlatform             platform = SootPlatform::Default;
-        CompilerMode             mode = CompilerMode::HYBRID;
-        std::string              user_profile = "#f";
-        bool                     debug_print_ir = false;
-        bool                     debug_print_ast = false;
-        bool                     debug_print_asm = false;
-        bool                     print_listing = false;
-        std::string              log_level = "info";
-        std::string              sidbase_path;
-        std::vector<std::string> search_paths;
-        std::filesystem::path    project_root;
-        std::filesystem::path    target_dir = "build";
-        std::string              runtime_url;
-    };
-
-    // ================================================================
     // Compiler
     // ================================================================
     //
@@ -581,17 +555,6 @@ namespace sootc {
         //          input to the previous one).
         std::unordered_map<std::string, FunctionInfo>   m_native_functions;
         std::unordered_map<std::string, script::Object> m_constants;
-
-        // Per-instance set of already-loaded bootstrap paths.
-        //
-        // MUST NOT be static: each Compiler instance has its own
-        // interpreter (m_soot), and macro registration is
-        // per-interpreter. A static set would silently skip loading
-        // lib.sc into the second and later Compiler instances,
-        // leaving them without `defun`, `let`, etc., which breaks
-        // every unit test that creates a fresh Compiler.
-        std::set<std::filesystem::path> m_loaded_soot_libs;
-        std::set<std::filesystem::path> m_loaded_soc_libs;
 
         // @brief All top-level forms entered in the REPL during this
         //        session.

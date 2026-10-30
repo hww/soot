@@ -45,7 +45,7 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.compiler.search_paths) search_paths.emplace_back(s);
+        for (const auto &s : m_config.common.search_paths) search_paths.emplace_back(s);
 
         const fs::path found = common::find_project_file("lib.st", fs::path{}, search_paths);
         if (found.empty()) {
@@ -68,7 +68,7 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.compiler.search_paths) search_paths.emplace_back(s);
+        for (const auto &s : m_config.common.search_paths) search_paths.emplace_back(s);
 
         const fs::path found = common::find_project_file("lib.sc", fs::path{}, search_paths);
         if (found.empty()) {

@@ -92,13 +92,11 @@ namespace sootc {
         //                      external host (carbon.exe) over the
         //                      cross-socket protocol.
         if (m_config.compiler.runtime_url.empty()) {
-            // Convert the string search_paths from CompilationOptions
-            // into filesystem::path for CarbonConfig. The runtime uses
-            // these to find .bin files when a script calls
-            // (load-module "name").
-            std::vector<std::filesystem::path> runtime_search_paths;
-            runtime_search_paths.reserve(m_config.compiler.search_paths.size());
-            for (const auto &s : m_config.compiler.search_paths) { runtime_search_paths.emplace_back(s); }
+            // The runtime uses search_paths to find .bin files when a
+            // script calls (load-module "name"). The paths are already
+            // filesystem::path; copy them into the runtime's own vector.
+            std::vector<std::filesystem::path> runtime_search_paths(
+                m_config.common.search_paths.begin(), m_config.common.search_paths.end());
             m_runtime = std::make_unique<LocalVmRuntime>(std::move(runtime_search_paths));
         } else if (m_config.compiler.runtime_url == "null") {
             m_runtime = std::make_unique<NullRuntime>();
@@ -424,7 +422,7 @@ namespace sootc {
         namespace fs = std::filesystem;
 
         std::vector<fs::path> search_paths;
-        for (const auto &s : m_config.compiler.search_paths) search_paths.emplace_back(s);
+        for (const auto &s : m_config.common.search_paths) search_paths.emplace_back(s);
 
         // Base directory for explicit ./ and ../ paths.
         //
@@ -1317,7 +1315,7 @@ namespace sootc {
 
         if (fs::exists(filename)) { return filename; }
 
-        for (const auto &dir : m_config.compiler.search_paths) {
+        for (const auto &dir : m_config.common.search_paths) {
             fs::path candidate = fs::path(dir) / filename;
             if (fs::exists(candidate)) { return candidate.string(); }
         }
