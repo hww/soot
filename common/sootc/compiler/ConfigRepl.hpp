@@ -18,7 +18,7 @@
 
 #include "util/Config.hpp"
 
-namespace sootc::repl {
+namespace sootc::repl_commands {
 
     // The REPL sets this once, before any (opt ...) runs.
     // Needed because (opt key) must return a script::Object, and

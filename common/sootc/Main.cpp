@@ -139,12 +139,12 @@ int main(int argc, char *argv[]) {
 
         // ----- REPL shell configuration -----
 
-        REPL::Config repl_config(cfg.common.platform);
+        repl::Config repl_config(cfg.common.platform);
         repl_config.asm_file_search_dirs.push_back(cfg.common.project_root.string());
         repl_config.per_game_history = true;
 
         auto startup_file =
-            REPL::load_user_startup_file(cfg.compiler.user_profile, cfg.common.platform);
+            repl::load_user_startup_file(cfg.compiler.user_profile, cfg.common.platform);
 
         // ----- Compiler -----
 
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
         try {
             compiler = std::make_unique<sootc::Compiler>(
                 cfg, repl_config, cfg.compiler.user_profile,
-                std::make_unique<REPL::Wrapper>(cfg.compiler.user_profile, repl_config,
+                std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, repl_config,
                                                 startup_file,
                                                 /*nrepl_alive=*/false));
         } catch (const std::exception &e) {
@@ -241,7 +241,7 @@ int main(int argc, char *argv[]) {
                 lg::info("Reloading compiler...");
                 compiler = std::make_unique<sootc::Compiler>(
                     cfg, repl_config, cfg.compiler.user_profile,
-                    std::make_unique<REPL::Wrapper>(cfg.compiler.user_profile, repl_config,
+                    std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, repl_config,
                                                     startup_file,
                                                     /*nrepl_alive=*/false));
                 status = sootc::ReplStatus::OK;

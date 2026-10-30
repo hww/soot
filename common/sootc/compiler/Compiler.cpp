@@ -54,11 +54,11 @@ namespace sootc {
     // @param repl_config   Optional REPL shell configuration.
     //                      Not part of cfg: it describes the
     //                      interactive shell, not the compiler.
-    // @param user_profile  Profile name, kept for REPL::Wrapper.
+    // @param user_profile  Profile name, kept for repl::Wrapper.
     //                      Same value as cfg.compiler.user_profile.
     // @param repl          Optional REPL wrapper.
-    Compiler::Compiler(const common::Config &cfg, const std::optional<REPL::Config> repl_config,
-             const std::string &user_profile, std::unique_ptr<REPL::Wrapper> repl)
+    Compiler::Compiler(const common::Config &cfg, const std::optional<repl::Config> repl_config,
+             const std::string &user_profile, std::unique_ptr<repl::Wrapper> repl)
         : m_ts(TypeSystem::instance()), m_platform(cfg.common.platform),
           m_soot(user_profile, false, true, cfg.common.platform), m_repl(std::move(repl)),
           m_config(cfg), m_startup_config(cfg) {
@@ -1278,10 +1278,10 @@ namespace sootc {
     // Set up the REPL wrapper. If a wrapper was already provided to the
     // constructor, reuse it; otherwise create a fresh one.
     void Compiler::setup_repl() {
-        if (!m_repl) { m_repl = std::make_unique<REPL::Wrapper>(m_platform); }
+        if (!m_repl) { m_repl = std::make_unique<repl::Wrapper>(m_platform); }
 
         // Give (opt ...) access to the interpreter.
-        sootc::repl::set_repl_interpreter(&m_soot);
+        sootc::repl_commands::set_repl_interpreter(&m_soot);
 
         m_repl->username = m_config.compiler.user_profile;
         m_repl->init_settings();

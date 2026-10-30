@@ -4,6 +4,7 @@ add_library(librepl
     ${CMAKE_CURRENT_SOURCE_DIR}/common/repl/repl_wrapper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/repl/nrepl/ReplServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/repl/nrepl/ReplClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/repl/CommandTable.cpp
 )
 
 

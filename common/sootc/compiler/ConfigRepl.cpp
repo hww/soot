@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace sootc::repl {
+namespace sootc::repl_commands {
 
     namespace {
 

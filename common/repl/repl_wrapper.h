@@ -9,7 +9,7 @@
 
 #include "third_party/replxx/include/replxx.hxx"
 
-namespace REPL {
+namespace repl {
 
     struct StartupFile {
         std::vector<std::string> run_before_listen = {};
@@ -66,12 +66,12 @@ namespace REPL {
     private:
         replxx::Replxx                      repl;
         replxx::Replxx::key_press_handler_t commit_text_action(std::string text_to_commit);
-        std::vector<REPL::KeyBind>          keybindings = {};
+        std::vector<repl::KeyBind>          keybindings = {};
     };
 
     std::string  find_repl_username();
     StartupFile  load_user_startup_file(const std::string &username,
                                         const SootPlatform game_version);
-    REPL::Config load_repl_config(const std::string &username, const SootPlatform game_version,
+    repl::Config load_repl_config(const std::string &username, const SootPlatform game_version,
                                   const int nrepl_port);
-} // namespace REPL
+} // namespace repl

@@ -458,7 +458,7 @@ InternedSymbolPtr Interpreter::intern_ptr(const std::string &name) {
 /*!
  * Display the REPL, which will run until the user executes exit.
  */
-void Interpreter::execute_repl(REPL::Wrapper& repl) {
+void Interpreter::execute_repl(repl::Wrapper& repl) {
     std::string input;
 
     while (true) {

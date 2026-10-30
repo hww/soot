@@ -4,7 +4,7 @@
 
 #include "fmt/core.h"
 
-namespace REPL {
+namespace repl {
 
 void to_json(json& j, const Config& obj) {
   j = json{
@@ -111,4 +111,4 @@ void from_json(const json& j, KeyBind& obj) {
     obj.modifier = KeyBind::Modifier::META;
   }
 }
-}  // namespace REPL
+}  // namespace repl

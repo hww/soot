@@ -99,7 +99,7 @@ class Reader {
     Object read_one(TextStream &ts);
 
     // REPL метод (если нужен):
-    std::optional<Object> read_from_stdin(const std::string& prompt, REPL::Wrapper& repl);
+    std::optional<Object> read_from_stdin(const std::string& prompt, repl::Wrapper& repl);
 
     // Source database
     TextDb &get_db() { return m_db; }

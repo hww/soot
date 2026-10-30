@@ -20,7 +20,7 @@
 
 using namespace file_util;
 
-namespace REPL {
+namespace repl {
 void Wrapper::clear_screen() {
   repl.clear_screen();
 }
@@ -282,12 +282,12 @@ StartupFile load_user_startup_file(const std::string& username, const SootPlatfo
   return startup_file;
 }
 
-REPL::Config load_repl_config(const std::string& username,
+repl::Config load_repl_config(const std::string& username,
                               const SootPlatform game_version,
                               const int nrepl_port) {
     auto repl_config_path = common::get_path(common::PathType::PROJECT) / "goal_src" / "user" /
                             username / "repl-config.json";
-  REPL::Config loaded_config(game_version);
+  repl::Config loaded_config(game_version);
   if (file_util::exists(repl_config_path.string())) {
     try {
       auto repl_config_data =
@@ -302,4 +302,4 @@ REPL::Config load_repl_config(const std::string& username,
   loaded_config.temp_nrepl_port = nrepl_port;
   return loaded_config;
 }
-}  // namespace REPL
+}  // namespace repl

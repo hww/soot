@@ -5,7 +5,7 @@
 class MakeSystem {
     public:
 
-    MakeSystem(const std::optional<REPL::Config>& repl_config, const std::string& user_profile) : m_soot() {
+    MakeSystem(const std::optional<repl::Config>& repl_config, const std::string& user_profile) : m_soot() {
         // Реализация конструктора
         // Пока можно оставить пустым или с минимальной инициализацией
         (void)repl_config;
@@ -16,6 +16,6 @@ class MakeSystem {
     
     
     script::Interpreter m_soot;
-    std::optional<REPL::Config> m_repl_config;
+    std::optional<repl::Config> m_repl_config;
     std::vector<std::string> m_loaded_projects;
 };

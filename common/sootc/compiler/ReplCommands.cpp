@@ -1,4 +1,5 @@
-﻿#include "sootc/compiler/ReplCommands.hpp"
+﻿#include "repl/CommandTable.hpp"
+#include "sootc/compiler/ReplCommands.hpp"
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/ConfigRepl.hpp"
 #include "sootc/compiler/NodeInspector.hpp"
@@ -8,19 +9,12 @@
 
 #include "carbon/file/SizeAssertions.hpp"
 
-namespace sootc::repl {
+#include "script/Object.hpp"
 
-    std::string_view group_name(CommandGroup g) {
-        switch (g) {
-        case CommandGroup::Session: return "Session";
-        case CommandGroup::Options: return "Options";
-        case CommandGroup::Run: return "Run";
-        case CommandGroup::Inspect: return "Inspect";
-        case CommandGroup::Save: return "Save";
-        case CommandGroup::GC: return "GC";
-        }
-        return "Other";
-    }
+using namespace repl;
+
+namespace sootc::repl_commands {
+
 
     const std::vector<CommandInfo> &commands() {
         static const std::vector<CommandInfo> kCommands = {
@@ -172,19 +166,10 @@ namespace sootc::repl {
         return kCommands;
     }
 
-    const CommandInfo *find_command(std::string_view name) {
-        for (const auto &c : commands()) {
-            if (c.long_name == name) return &c;
-            if (!c.short_name.empty() && c.short_name == name) return &c;
-        }
-        return nullptr;
-    }
-
-    bool is_command_name(std::string_view name) { return find_command(name) != nullptr; }
-
  } // namespace sootc::repl
 
  namespace sootc {
+     using namespace sootc::repl_commands;
     // ===============================================================
     // Session commands
     // ===============================================================
@@ -192,7 +177,7 @@ namespace sootc::repl {
     // (help)        — list every command, grouped by CommandGroup
     // (help "cmd")  — show usage, summary, and old names for one command
     ReplStatus Compiler::cmd_help(const script::Object &form) {
-        using namespace sootc::repl;
+  
 
         // ----- (help) -----
         auto rest = form.as_pair()->cdr;
@@ -203,8 +188,9 @@ namespace sootc::repl {
             // come in the order declared in CommandGroup; within a
             // group, commands appear in table order.
             const CommandGroup groups[] = {
-                CommandGroup::Session, CommandGroup::Options, CommandGroup::Run,
-                CommandGroup::Inspect, CommandGroup::Save,    CommandGroup::GC,
+                CommandGroup::Session, CommandGroup::Options,
+                CommandGroup::Run,     CommandGroup::Inspect,
+                CommandGroup::Save,    CommandGroup::GC,
             };
 
             for (CommandGroup g : groups) {
@@ -240,7 +226,7 @@ namespace sootc::repl {
         }
         const std::string name = name_obj.to_std_string();
 
-        const CommandInfo *cmd = find_command(name);
+        const CommandInfo *cmd = find_command(commands(), name);
         if (!cmd) {
             fmt::print(fg(fmt::color::yellow), "; help: unknown command '{}'\n", name);
             return ReplStatus::ERR;
@@ -314,7 +300,7 @@ namespace sootc::repl {
 
         // (opt)
         if (rest.is_null()) {
-            sootc::repl::opt_list(const_cast<common::Config &>(m_config));
+            opt_list(const_cast<common::Config &>(m_config));
             return ReplStatus::OK;
         }
 
@@ -336,7 +322,7 @@ namespace sootc::repl {
 
         // (opt "key")
         if (after_key.is_null()) {
-            if (!sootc::repl::opt_get(const_cast<common::Config &>(m_config), key)) {
+            if (!opt_get(const_cast<common::Config &>(m_config), key)) {
                 return ReplStatus::ERR;
             }
             return ReplStatus::OK;
@@ -350,7 +336,7 @@ namespace sootc::repl {
         }
         const auto &value = after_key.as_pair()->car;
 
-        if (!sootc::repl::opt_set(const_cast<common::Config &>(m_config), key, value)) {
+        if (!opt_set(const_cast<common::Config &>(m_config), key, value)) {
             return ReplStatus::ERR;
         }
         Type::log_level = m_config.common.log_level;
@@ -538,13 +524,13 @@ namespace sootc::repl {
         if (!head.is_symbol()) return std::nullopt;
 
         const std::string               name = head.as_symbol().name_ptr;
-        const sootc::repl::CommandInfo *cmd = sootc::repl::find_command(name);
+        const CommandInfo *cmd = find_command(commands(), name);
         if (!cmd) return std::nullopt;
 
         return dispatch_repl_command(*cmd, form);
     }
 
-    ReplStatus Compiler::dispatch_repl_command(const sootc::repl::CommandInfo &cmd,
+    ReplStatus Compiler::dispatch_repl_command(const CommandInfo &cmd,
                                                const script::Object           &form) {
         if (!cmd.handler) {
             fmt::print(stderr, "; ERROR: '{}' is not implemented yet\n", cmd.long_name);

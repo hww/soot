@@ -94,8 +94,8 @@ namespace sootc {
     void Compiler::load_user_profile() {
         if (m_config.compiler.user_profile == "#f") return;
 
-        REPL::StartupFile startup =
-            REPL::load_user_startup_file(m_config.compiler.user_profile, SootPlatform::Default);
+        repl::StartupFile startup =
+            repl::load_user_startup_file(m_config.compiler.user_profile, SootPlatform::Default);
 
         for (const auto &cmd : startup.run_before_listen) {
             try {

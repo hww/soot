@@ -119,12 +119,12 @@ namespace sootc {
         // @param repl_config  Optional REPL shell configuration. Not
         //                     part of cfg: it describes the
         //                     interactive shell, not the compiler.
-        // @param user_profile Profile name, kept for REPL::Wrapper.
+        // @param user_profile Profile name, kept for repl::Wrapper.
         //                     Same value as cfg.compiler.user_profile.
         // @param repl         Optional REPL wrapper.
-        Compiler(const common::Config &cfg, const std::optional<REPL::Config> repl_config = {},
+        Compiler(const common::Config &cfg, const std::optional<repl::Config> repl_config = {},
                  const std::string             &user_profile = "#f",
-                 std::unique_ptr<REPL::Wrapper> repl = nullptr);
+                 std::unique_ptr<repl::Wrapper> repl = nullptr);
 
         ~Compiler();
 
@@ -492,8 +492,8 @@ namespace sootc {
         std::optional<ReplStatus> try_handle_repl_command(const script::Object &form);
 
         // @brief Map a command name to its handler.
-        ReplStatus dispatch_repl_command(const sootc::repl::CommandInfo &cmd,
-                                         const script::Object           &form);
+        ReplStatus dispatch_repl_command(const ::repl::CommandInfo &cmd,
+                                         const script::Object      &form);
 
         // ================================================================
         // Helpers
@@ -544,7 +544,7 @@ namespace sootc {
         TypeSystem                    &m_ts;
         SootPlatform                   m_platform;
         script::Interpreter            m_soot;
-        std::unique_ptr<REPL::Wrapper> m_repl;
+        std::unique_ptr<repl::Wrapper> m_repl;
         std::unique_ptr<GlobalNode>    m_global_env;
         std::unique_ptr<NoneNode>      m_none;
         std::unique_ptr<Runtime>       m_runtime;

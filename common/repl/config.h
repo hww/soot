@@ -11,9 +11,7 @@
 
 using json = nlohmann::json;
 
-namespace REPL {
-
-
+namespace repl {
 
   // ===================================================
   // Keyboard
@@ -74,4 +72,4 @@ namespace REPL {
   void to_json(json& j, const Config& obj);
   void from_json(const json& j, Config& obj);
 
-}  // namespace REPL
+}  // namespace repl

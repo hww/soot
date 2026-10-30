@@ -22,7 +22,7 @@ std::string read_file(const std::string& filename) {
 int main(int argc, char* argv[]) {
     (void)argv;
     try {
-        REPL::Wrapper repl(SootPlatform::Default);
+        repl::Wrapper repl(SootPlatform::Default);
         Interpreter interpreter;
         
         // Если есть аргументы командной строки, обработать их

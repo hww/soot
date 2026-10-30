@@ -60,7 +60,7 @@ class Interpreter {
 
     // --- Доступ к приватным членам -------
     // Запуск REPL
-    void execute_repl(REPL::Wrapper& repl) ;
+    void execute_repl(repl::Wrapper& repl) ;
 
     // Лоступ к Reader
     Reader &get_reader() { return m_reader; }
