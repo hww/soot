@@ -13,6 +13,12 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(__linux__)
+#include <unistd.h> // readlink
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h> // _NSGetExecutablePath
+#endif
+
 namespace sootc {
 
     class FunctionNode;
