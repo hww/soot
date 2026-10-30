@@ -120,61 +120,66 @@ namespace common {
         return kFields;
     }
 
-    std::optional<std::string> CommonConfig::set(const std::string    &name,
-                                                 const script::Object &value) {
-        if (name == "project-root")
-            return "\"project-root\" is read-only (set it on the command line)";
-        if (name == "sidbase") return "\"sidbase\" is read-only (set it on the command line)";
-        if (name == "platform") return "\"platform\" is read-only (set it on the command line)";
-
+    std::optional<std::string> CommonConfig::set_string(const std::string &name,
+                                                        const std::string &value) {
         if (name == "log") {
-            auto s = as_string(value, "log");
-            if (!s) return s;
-            auto lvl = parse_log_level(*s);
-            if (!lvl) return fmt::format("(opt ...): unknown log level '{}'", *s);
+            auto lvl = parse_log_level(value);
+            if (!lvl) return fmt::format("unknown log level '{}'", value);
             log_level = *lvl;
             return std::nullopt;
         }
         if (name == "log-file") {
-            auto s = as_string(value, "log-file");
-            if (!s) return s;
-            log_file = *s;
+            log_file = value;
             return std::nullopt;
         }
         if (name == "color") {
-            auto s = as_string(value, "color");
-            if (!s) return s;
-            if (*s != "auto" && *s != "always" && *s != "never")
-                return fmt::format("(opt ...): color must be auto|always|never, got '{}'", *s);
-            color = *s;
+            if (value != "auto" && value != "always" && value != "never") {
+                return fmt::format("color must be auto|always|never, got '{}'", value);
+            }
+            color = value;
             return std::nullopt;
         }
-        if (name == "search-paths") {
-            auto v = as_path_list(value, "search-paths");
-            if (!v) return v.error();
-            search_paths = *v;
-            return std::nullopt;
+        if (name == "project-root" || name == "sidbase" || name == "platform") {
+            return fmt::format("\"{}\" is read-only", name);
         }
-        return fmt::format("(opt ...): unknown key '{}'", name);
+        return fmt::format("unknown string field '{}'", name);
     }
 
-    std::optional<script::Object> CommonConfig::get(const std::string &name) const {
-        if (!g_interp) return std::nullopt;
-        if (name == "project-root")
-            return script::Object::make_string(project_root.string().c_str());
-        if (name == "sidbase") return script::Object::make_string(sidbase.string().c_str());
-        if (name == "platform")
-            return script::Object::make_string(std::to_string(static_cast<int>(platform)).c_str());
-        if (name == "log")
-            return script::Object::make_string(std::string(log_level_name(log_level)).c_str());
-        if (name == "log-file") return script::Object::make_string(log_file.string().c_str());
-        if (name == "color") return script::Object::make_string(color.c_str());
+    std::optional<std::string> CommonConfig::set_bool(const std::string &, bool) {
+        return "CommonConfig has no bool fields";
+    }
+
+    std::optional<std::string> CommonConfig::set_int(const std::string &, int64_t) {
+        return "CommonConfig has no int fields";
+    }
+
+    std::optional<std::string>
+    CommonConfig::set_path_list(const std::string                        &name,
+                                const std::vector<std::filesystem::path> &value) {
         if (name == "search-paths") {
-            std::vector<script::Object> items;
-            for (const auto &p : search_paths)
-                items.push_back(script::Object::make_string(p.string().c_str()));
-            return script::build_list(items);
+            search_paths = value;
+            return std::nullopt;
         }
+        return fmt::format("unknown path-list field '{}'", name);
+    }
+
+    std::optional<std::string> CommonConfig::get_string(const std::string &name) const {
+        if (name == "project-root") return project_root.string();
+        if (name == "sidbase") return sidbase.string();
+        if (name == "platform") return std::to_string(static_cast<int>(platform));
+        if (name == "log") return std::string(log_level_name(log_level));
+        if (name == "log-file") return log_file.string();
+        if (name == "color") return color;
+        return std::nullopt;
+    }
+
+    std::optional<bool> CommonConfig::get_bool(const std::string &) const { return std::nullopt; }
+
+    std::optional<int64_t> CommonConfig::get_int(const std::string &) const { return std::nullopt; }
+
+    std::optional<std::vector<std::filesystem::path>>
+    CommonConfig::get_path_list(const std::string &name) const {
+        if (name == "search-paths") return search_paths;
         return std::nullopt;
     }
 
@@ -195,103 +200,182 @@ namespace common {
         return kFields;
     }
 
-    std::optional<std::string> CompilerConfig::set(const std::string    &name,
-                                                   const script::Object &value) {
+     std::optional<std::string> CompilerConfig::set_string(const std::string &name,
+                                                          const std::string &value) {
         if (name == "mode") {
-            auto s = as_string(value, "mode");
-            if (!s) return s;
-            if (*s != "compile" && *s != "interpret" && *s != "hybrid")
-                return fmt::format("(opt ...): mode must be compile|interpret|hybrid, got '{}'",
-                                   *s);
-            mode = *s;
-            return std::nullopt;
-        }
-        if (name == "dump") {
-            auto s = as_string(value, "dump");
-            if (!s) return s;
-            dump_ast = dump_ir = dump_asm = print_listing = false;
-            std::stringstream ss(*s);
-            std::string       item;
-            while (std::getline(ss, item, ',')) {
-                if (item == "ast") dump_ast = true;
-                else if (item == "ir")
-                    dump_ir = true;
-                else if (item == "asm")
-                    dump_asm = true;
-                else if (item == "listing")
-                    print_listing = true;
-                else
-                    return fmt::format("(opt ...): unknown dump kind '{}'", item);
+            if (value != "compile" && value != "interpret" && value != "hybrid") {
+                return fmt::format("mode must be compile|interpret|hybrid, got '{}'", value);
             }
+            mode = value;
             return std::nullopt;
         }
         if (name == "out-dir") {
-            auto s = as_string(value, "out-dir");
-            if (!s) return s;
-            out_dir = *s;
-            return std::nullopt;
-        }
-        if (name == "repl") {
-            auto b = as_bool(value, "repl");
-            if (!b) return b.error();
-            repl = *b;
+            out_dir = value;
             return std::nullopt;
         }
         if (name == "profile") {
-            auto s = as_string(value, "profile");
-            if (!s) return s;
-            user_profile = *s;
+            user_profile = value;
             return std::nullopt;
         }
         if (name == "runtime") {
-            auto s = as_string(value, "runtime");
-            if (!s) return s;
-            runtime_url = (*s == "local") ? std::string{} : *s;
+            runtime_url = (value == "local") ? std::string{} : value;
             return std::nullopt;
         }
-        return fmt::format("(opt ...): unknown key '{}'", name);
+        return fmt::format("unknown string field '{}'", name);
     }
 
-    std::optional<script::Object> CompilerConfig::get(const std::string &name) const {
-        if (!g_interp) return std::nullopt;
-        if (name == "mode") return script::Object::make_string(mode.c_str());
-        if (name == "dump") {
-            std::string s;
-            if (dump_ast) s += s.empty() ? "ast" : ",ast";
-            if (dump_ir) s += s.empty() ? "ir" : ",ir";
-            if (dump_asm) s += s.empty() ? "asm" : ",asm";
-            if (print_listing) s += s.empty() ? "listing" : ",listing";
-            return script::Object::make_string(s.c_str());
-        }
-        if (name == "out-dir") return script::Object::make_string(out_dir.string().c_str());
+    std::optional<std::string> CompilerConfig::set_bool(const std::string &name, bool value) {
         if (name == "repl") {
-            if (!repl) return script::Object::make_null();
-            return g_interp->true_or_false(*repl);
+            repl = value;
+            return std::nullopt;
         }
-        if (name == "profile") return script::Object::make_string(user_profile.c_str());
-        if (name == "runtime")
-            return script::Object::make_string(runtime_url.empty() ? "local" : runtime_url.c_str());
+        return fmt::format("unknown bool field '{}'", name);
+    }
+
+    std::optional<std::string> CompilerConfig::set_int(const std::string &, int64_t) {
+        return "CompilerConfig has no int fields";
+    }
+
+    std::optional<std::string>
+    CompilerConfig::set_path_list(const std::string                        &name,
+                                  const std::vector<std::filesystem::path> &value) {
+        if (name == "do") {
+            do_files = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown path-list field '{}'", name);
+    }
+
+    std::optional<std::string> CompilerConfig::get_string(const std::string &name) const {
+        if (name == "mode") return mode;
+        if (name == "out-dir") return out_dir.string();
+        if (name == "profile") return user_profile;
+        if (name == "runtime") return runtime_url.empty() ? "local" : runtime_url;
         return std::nullopt;
+    }
+
+    std::optional<bool> CompilerConfig::get_bool(const std::string &name) const {
+        if (name == "repl") {
+            if (!repl) return std::nullopt;
+            return *repl;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<int64_t> CompilerConfig::get_int(const std::string &) const {
+        return std::nullopt;
+    }
+
+    std::optional<std::vector<std::filesystem::path>>
+    CompilerConfig::get_path_list(const std::string &name) const {
+        if (name == "do") return do_files;
+        return std::nullopt;
+    }
+
+        std::optional<std::string> CompilerConfig::set_dump(const std::string &value) {
+        dump_ast = dump_ir = dump_asm = print_listing = false;
+        std::stringstream ss(value);
+        std::string       item;
+        while (std::getline(ss, item, ',')) {
+            if (item == "ast") dump_ast = true;
+            else if (item == "ir")
+                dump_ir = true;
+            else if (item == "asm")
+                dump_asm = true;
+            else if (item == "listing")
+                print_listing = true;
+            else
+                return fmt::format("unknown dump kind '{}'", item);
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::string> CompilerConfig::get_dump() const {
+        std::string s;
+        if (dump_ast) s += s.empty() ? "ast" : ",ast";
+        if (dump_ir) s += s.empty() ? "ir" : ",ir";
+        if (dump_asm) s += s.empty() ? "asm" : ",asm";
+        if (print_listing) s += s.empty() ? "listing" : ",listing";
+        return s;
     }
 
     // ---------- HostConfig ----------
 
     const std::vector<FieldInfo> &HostConfig::fields() {
         static const std::vector<FieldInfo> kFields = {
-            {"listen", "string", Scope::Host, false, "carbon: address to listen on (host:port)."},
+            {"listen", "string", Scope::Host, true, "Address to listen on (host:port).", ""},
+            {"serve", "bool", Scope::Host, true, "Run the HTTP/REPL host loop.", "true|false"},
+            {"hz", "int", Scope::Host, true, "Tick rate in Hz.", ""},
+            {"ticks", "int", Scope::Host, true, "Tick budget; -1 = unlimited.", ""},
+            {"run", "string", Scope::Host, true, "State-script name to spawn.", ""},
+            {"load", "path-list", Scope::Host, false, ".bin files to load explicitly.", ""},
         };
         return kFields;
     }
 
-    std::optional<std::string> HostConfig::set(const std::string &name,
-                                               const script::Object & /*value*/) {
-        if (name == "listen") return "\"listen\" is read-only (set it on the command line)";
-        return fmt::format("(opt ...): unknown key '{}'", name);
+    std::optional<std::string> HostConfig::set_string(const std::string &name,
+                                                      const std::string &value) {
+        if (name == "listen") {
+            listen = value;
+            return std::nullopt;
+        }
+        if (name == "run") {
+            run_state_script = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown string field '{}'", name);
     }
 
-    std::optional<script::Object> HostConfig::get(const std::string &name) const {
-        if (!g_interp) return std::nullopt;
-        if (name == "listen") return script::Object::make_string(listen.c_str());
+    std::optional<std::string> HostConfig::set_bool(const std::string &name, bool value) {
+        if (name == "serve") {
+            serve = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown bool field '{}'", name);
+    }
+
+    std::optional<std::string> HostConfig::set_int(const std::string &name, int64_t value) {
+        if (name == "hz") {
+            hz = static_cast<int>(value);
+            return std::nullopt;
+        }
+        if (name == "ticks") {
+            ticks = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown int field '{}'", name);
+    }
+
+    std::optional<std::string>
+    HostConfig::set_path_list(const std::string                        &name,
+                              const std::vector<std::filesystem::path> &value) {
+        if (name == "load") {
+            load_files = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown path-list field '{}'", name);
+    }
+
+    std::optional<std::string> HostConfig::get_string(const std::string &name) const {
+        if (name == "listen") return listen;
+        if (name == "run") return run_state_script;
+        return std::nullopt;
+    }
+
+    std::optional<bool> HostConfig::get_bool(const std::string &name) const {
+        if (name == "serve") return serve;
+        return std::nullopt;
+    }
+
+    std::optional<int64_t> HostConfig::get_int(const std::string &name) const {
+        if (name == "hz") return hz;
+        if (name == "ticks") return ticks;
+        return std::nullopt;
+    }
+
+    std::optional<std::vector<std::filesystem::path>>
+    HostConfig::get_path_list(const std::string &name) const {
+        if (name == "load") return load_files;
         return std::nullopt;
     }
 
@@ -672,7 +756,7 @@ namespace common {
             if (arg == "--do" || arg == "--run") {
                 auto v = need_value(i, arg.c_str());
                 if (!v) return v;
-                cfg.compiler.run_scripts.emplace_back(*v);
+                cfg.compiler.do_files.emplace_back(*v);
                 ++i;
                 continue;
             }
@@ -704,111 +788,6 @@ namespace common {
         return std::nullopt;
     }
 
-    // ---------- (opt) ----------
-
-    namespace {
-
-        void print_field(const Config &cfg, const FieldInfo &f) {
-            std::optional<script::Object> v;
-            switch (f.scope) {
-            case Scope::Common: v = cfg.common.get(std::string(f.name)); break;
-            case Scope::Compiler: v = cfg.compiler.get(std::string(f.name)); break;
-            case Scope::Host: v = cfg.host.get(std::string(f.name)); break;
-            }
-            const std::string rendered = v ? v->print() : std::string("(unavailable)");
-            fmt::print(stderr, "  {:<14} {:<10} {}\n", f.name, f.type, rendered);
-        }
-
-    } // namespace
-
-    bool opt_list(Config &cfg) {
-        fmt::print(stderr, "\n");
-        fmt::print(stderr, "  {:<14} {:<10} {}\n", "KEY", "TYPE", "VALUE");
-        fmt::print(stderr, "  {:-<14} {:-<10} {:-<20}\n", "", "", "");
-
-        auto section = [&](const char *title, const std::vector<FieldInfo> &fields) {
-            fmt::print(stderr, "\n  {}\n", title);
-            for (const auto &f : fields) print_field(cfg, f);
-        };
-
-        section("Common", CommonConfig::fields());
-        section("Compiler", CompilerConfig::fields());
-        section("Host (reserved for carbon)", HostConfig::fields());
-
-        fmt::print(stderr, "\n");
-        return true;
-    }
-
-    bool opt_get(Config &cfg, const std::string &key) {
-        auto try_find = [&](const std::vector<FieldInfo> &fields, auto get_fn) -> bool {
-            for (const auto &f : fields) {
-                if (f.name != key) continue;
-                auto v = get_fn(std::string(f.name));
-                fmt::print(stderr, "{} = {}\n", f.name, v ? v->print() : "(unavailable)");
-                return true;
-            }
-            return false;
-        };
-
-        if (try_find(CommonConfig::fields(),
-                     [&](const std::string &n) { return cfg.common.get(n); }))
-            return true;
-        if (try_find(CompilerConfig::fields(),
-                     [&](const std::string &n) { return cfg.compiler.get(n); }))
-            return true;
-        if (try_find(HostConfig::fields(), [&](const std::string &n) { return cfg.host.get(n); }))
-            return true;
-
-        fmt::print(stderr, "(opt): unknown key '{}'\n", key);
-        return false;
-    }
-
-    bool opt_set(Config &cfg, const std::string &key, const script::Object &value) {
-        auto try_set = [&](const std::vector<FieldInfo> &fields,
-                           auto                          set_fn) -> std::optional<bool> {
-            for (const auto &f : fields) {
-                if (f.name != key) continue;
-                if (!f.mutable_in_repl) {
-                    fmt::print(stderr, "(opt): '{}' is read-only; set it on the command line\n",
-                               key);
-                    return false;
-                }
-                auto err = set_fn(std::string(f.name), value);
-                if (err) {
-                    fmt::print(stderr, "(opt): {}\n", *err);
-                    return false;
-                }
-                return true;
-            }
-            return std::nullopt;
-        };
-
-        if (auto r =
-                try_set(CommonConfig::fields(), [&](const std::string &n, const script::Object &v) {
-                    return cfg.common.set(n, v);
-                })) {
-            if (*r) fmt::print(stderr, "{} = {}\n", key, value.print());
-            return *r;
-        }
-        if (auto r = try_set(CompilerConfig::fields(),
-                             [&](const std::string &n, const script::Object &v) {
-                                 return cfg.compiler.set(n, v);
-                             })) {
-            if (*r) fmt::print(stderr, "{} = {}\n", key, value.print());
-            return *r;
-        }
-        if (auto r =
-                try_set(HostConfig::fields(), [&](const std::string &n, const script::Object &v) {
-                    return cfg.host.set(n, v);
-                })) {
-            if (*r) fmt::print(stderr, "{} = {}\n", key, value.print());
-            return *r;
-        }
-
-        fmt::print(stderr, "(opt): unknown key '{}'\n", key);
-        return false;
-    }
-
     // ---------- help ----------
 
     void print_help(Scope scope, const char *program_name) {
@@ -836,5 +815,30 @@ namespace common {
         fmt::print("Priority: CLI > env > soot.json > defaults.\n");
         fmt::print("Inside the REPL, type (opt) to list all options.\n");
     }
+
+    // ================================================================
+    // CommonConfig — dump (no-op)
+    // ================================================================
+    //
+    // set_dump/get_dump are declared on every struct because the
+    // REPL dispatcher instantiates the same lambda for all three.
+    // Only CompilerConfig has a real "dump" field; here they are
+    // stubs.
+
+    std::optional<std::string> CommonConfig::set_dump(const std::string &) {
+        return "CommonConfig has no 'dump' field";
+    }
+
+    std::optional<std::string> CommonConfig::get_dump() const { return std::nullopt; }
+    
+    // ================================================================
+    // HostConfig — dump (no-op)
+    // ================================================================
+
+    std::optional<std::string> HostConfig::set_dump(const std::string &) {
+        return "HostConfig has no 'dump' field";
+    }
+
+    std::optional<std::string> HostConfig::get_dump() const { return std::nullopt; }
 
 } // namespace common

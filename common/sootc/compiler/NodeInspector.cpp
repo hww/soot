@@ -1,4 +1,4 @@
-#include "sootc/node/NodeInspector.hpp"
+#include "sootc/compiler/NodeInspector.hpp"
 
 #include "sootc/node/AtNode.hpp"
 #include "sootc/node/BinaryNode.hpp"

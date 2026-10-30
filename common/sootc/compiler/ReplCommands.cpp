@@ -1,121 +1,288 @@
-// sootc/compiler/ReplCommands.cpp
-//
-// REPL command dispatch and handlers. Commands are recognised by
-// handle_repl_string() before the compile pipeline runs; see
-// Compiler.hpp for the contract.
-//
-// Handlers that change compiler options go through common::opt_set/
-// opt_get/opt_list, which own the dispatch across all scopes and know
-// which fields are mutable in the REPL. The const_cast is local to
-// those three calls: m_config is a const reference, but the REPL is
-// the one place that is allowed to mutate a copy in memory.
-
+﻿#include "sootc/compiler/ReplCommands.hpp"
 #include "sootc/compiler/Compiler.hpp"
-
-#include "carbon/file/Globals.hpp"
-#include "carbon/lib/StringIdManager.hpp"
-#include "carbon/vm/VirtualMachine.hpp"
-
-#include "script/Interpreter.hpp"
-#include "script/Object.hpp"
+#include "sootc/compiler/ConfigRepl.hpp"
+#include "sootc/compiler/NodeInspector.hpp"
 
 #include "sootc/node/FileNode.hpp"
-#include "sootc/node/NodeInspector.hpp"
+#include "sootc/node/GlobalNode.hpp"
 
-#include "type_system/TypeSystem.hpp"
+#include "carbon/file/SizeAssertions.hpp"
 
-#include "util/Config.hpp"
-#include "util/Log.hpp"
+namespace sootc::repl {
 
-#include "fmt/color.h"
-#include "fmt/format.h"
+    std::string_view group_name(CommandGroup g) {
+        switch (g) {
+        case CommandGroup::Session: return "Session";
+        case CommandGroup::Options: return "Options";
+        case CommandGroup::Run: return "Run";
+        case CommandGroup::Inspect: return "Inspect";
+        case CommandGroup::Save: return "Save";
+        case CommandGroup::GC: return "GC";
+        }
+        return "Other";
+    }
 
-#include <algorithm>
-#include <unordered_map>
-#include <vector>
-#include <file/SizeAssertions.hpp>
+    const std::vector<CommandInfo> &commands() {
+        static const std::vector<CommandInfo> kCommands = {
+            // ----- Session -----
+            {"help",
+             "h",
+             CommandGroup::Session,
+             "(help [cmd])",
+             "show help, optionally for one command",
+             {{"cmd", "string", "command name; omit for the full list"}},
+             &Compiler::cmd_help},
+            {"exit", "e", CommandGroup::Session, "(exit)", "leave the REPL", {}, &Compiler::cmd_e},
+            {"clear",
+             "",
+             CommandGroup::Session,
+             "(clear)",
+             "clear the screen",
+             {},
+             &Compiler::cmd_clear},
+            {"reload",
+             "",
+             CommandGroup::Session,
+             "(reload)",
+             "rebuild the compiler (keeps (opt) changes)",
+             {},
+             &Compiler::cmd_reload},
 
-namespace sootc {
+            // ----- Options -----
+            {"opt",
+             "",
+             CommandGroup::Options,
+             "(opt [name [value]])",
+             "list, read, or change an option",
+             {{"name", "string", "option name; see the list below"},
+              {"value", "any", "new value; type depends on the option"}},
+             &Compiler::cmd_opt},
+            {"opt-reset",
+             "",
+             CommandGroup::Options,
+             "(opt-reset [name])",
+             "reset one option (or all) to its startup value",
+             {{"name", "string", "option name; omit to reset every option"}},
+             &Compiler::cmd_opt_reset},
 
-    // ===============================================================
-    // Dispatch
-    // ===============================================================
+            // ----- Run -----
+            {"sc-run",
+             "run",
+             CommandGroup::Run,
+             "(sc-run name arg...)",
+             "call a compiled function",
+             {{"name", "symbol", "function name"},
+              {"arg", "any",
+               "argument; integer -> i64, float -> f32, string -> string, symbol -> StringId"}},
+             &Compiler::cmd_sc_run},
+            {"st-eval",
+             "ev",
+             CommandGroup::Run,
+             "(st-eval expr)",
+             "evaluate in the interpreter",
+             {{"expr", "any", "SOOT expression to evaluate in *global-env*"}},
+             &Compiler::cmd_st_eval},
 
-    const std::set<std::string> &Compiler::repl_commands() {
-        static const std::set<std::string> kCommands = {"help",
-                                                        "clear",
-                                                        "e",
-                                                        "reload",
-                                                        "sizes",
-                                                        "inspect-env",
-                                                        "inspect-env-soots",
-                                                        "has-macro",
-                                                        "list-symbols",
-                                                        "save-session",
-                                                        "save-module",
-                                                        "save-module-recursive",
-                                                        "sc-run",
-                                                        "sc-eval",
-                                                        "arg-set",
-                                                        "arg-get",
-                                                        "arg-ls",
-                                                        "gcls",
-                                                        "gc",
-                                                        "ts-info",
-                                                        "ast"};
+            // ----- Inspect -----
+            {"sc-env",
+             "",
+             CommandGroup::Inspect,
+             "(sc-env)",
+             "dump *soot-env* (compiler)",
+             {},
+             &Compiler::cmd_sc_env},
+            {"st-env",
+             "",
+             CommandGroup::Inspect,
+             "(st-env)",
+             "dump *global-env* (interpreter)",
+             {},
+             &Compiler::cmd_st_env},
+            {"sc-macro?",
+             "",
+             CommandGroup::Inspect,
+             "(sc-macro? name)",
+             "is `name` a macro visible to the compiler?",
+             {{"name", "symbol", "macro name to check"}},
+             &Compiler::cmd_sc_macro_p},
+            {"symbols",
+             "sym",
+             CommandGroup::Inspect,
+             "(symbols [filter])",
+             "list Globals symbols, optionally filtered",
+             {{"filter", "string", "substring to match; omit for all symbols"}},
+             &Compiler::cmd_symbols},
+            {"ts-info",
+             "",
+             CommandGroup::Inspect,
+             "(ts-info type)",
+             "print type info",
+             {{"type", "symbol", "type name"}},
+             &Compiler::cmd_ts_info},
+            {"ast",
+             "",
+             CommandGroup::Inspect,
+             "(ast)",
+             "dump the AST of compiled files",
+             {},
+             &Compiler::cmd_ast},
+            {"sizes",
+             "",
+             CommandGroup::Inspect,
+             "(sizes)",
+             "print structure sizes",
+             {},
+             &Compiler::cmd_sizes},
+
+            // ----- Save -----
+            {"save-session",
+             "",
+             CommandGroup::Save,
+             "(save-session [name])",
+             "save the REPL session to <name>.bin/.h",
+             {{"name", "string", "base name; default: the session name"}},
+             &Compiler::cmd_save_session},
+            {"save-module",
+             "",
+             CommandGroup::Save,
+             "(save-module path [out])",
+             "compile and save one .sc file as a module",
+             {{"path", "path", "path to the .sc file"},
+              {"out", "path", "output directory; default: compiler.out-dir"}},
+             &Compiler::cmd_save_module},
+            {"save-module-deps",
+             "",
+             CommandGroup::Save,
+             "(save-module-deps path [out])",
+             "save a module and all its dependencies",
+             {{"path", "path", "path to the .sc file"},
+              {"out", "path", "output directory; default: compiler.out-dir"}},
+             &Compiler::cmd_save_module_deps},
+
+            // ----- GC -----
+            {"gc", "", CommandGroup::GC, "(gc)", "run a GC pass", {}, &Compiler::cmd_gc_collect},
+            {"gc-list",
+             "gcls",
+             CommandGroup::GC,
+             "(gc-list)",
+             "list live GC objects (by type)",
+             {},
+             &Compiler::cmd_gc_list},
+        };
         return kCommands;
     }
 
-    std::optional<ReplStatus> Compiler::try_handle_repl_command(const script::Object &form) {
-        if (!form.is_pair()) return std::nullopt;
-        const auto &head = form.as_pair()->car;
-        if (!head.is_symbol()) return std::nullopt;
-        const std::string name = head.as_symbol().name_ptr;
-        if (!repl_commands().count(name)) return std::nullopt;
-        return dispatch_repl_command(name, form);
+    const CommandInfo *find_command(std::string_view name) {
+        for (const auto &c : commands()) {
+            if (c.long_name == name) return &c;
+            if (!c.short_name.empty() && c.short_name == name) return &c;
+        }
+        return nullptr;
     }
 
-    ReplStatus Compiler::dispatch_repl_command(const std::string    &name,
-                                               const script::Object &form) {
-        if (name == "help") return cmd_help(form);
-        if (name == "clear") return cmd_clear(form);
-        if (name == "e") return cmd_e(form);
-        if (name == "reload") return cmd_reload(form);
-        if (name == "sizes") return cmd_sizes(form);
-        if (name == "inspect-env") return cmd_inspect_env(form);
-        if (name == "inspect-env-soots") return cmd_inspect_env_soots(form);
-        if (name == "has-macro") return cmd_has_macro(form);
-        if (name == "list-symbols") return cmd_list_symbols(form);
-        if (name == "save-session") return cmd_save_session(form);
-        if (name == "save-module") return cmd_save_module(form);
-        if (name == "save-module-recursive") return cmd_save_module_recursive(form);
-        if (name == "sc-run") return cmd_sc_run(form);
-        if (name == "sc-eval") return cmd_sc_eval(form);
-        if (name == "arg-set") return cmd_arg_set(form);
-        if (name == "arg-get") return cmd_arg_get(form);
-        if (name == "arg-ls") return cmd_arg_list(form);
-        if (name == "gcls") return cmd_gc_list(form);
-        if (name == "gc") return cmd_gc_collect(form);
-        if (name == "ts-info") return cmd_ts_info(form);
-        if (name == "ast") return cmd_ast(form);
+    bool is_command_name(std::string_view name) { return find_command(name) != nullptr; }
 
-        fmt::print(fg(fmt::color::crimson), "; ERROR: unknown REPL command '{}'\n", name);
-        return ReplStatus::ERR;
-    }
+ } // namespace sootc::repl
 
+ namespace sootc {
     // ===============================================================
-    // Simple commands
+    // Session commands
     // ===============================================================
 
+    // (help)        — list every command, grouped by CommandGroup
+    // (help "cmd")  — show usage, summary, and old names for one command
     ReplStatus Compiler::cmd_help(const script::Object &form) {
-        (void)form;
-        if (m_repl) m_repl->print_help_message();
-        return ReplStatus::OK;
-    }
+        using namespace sootc::repl;
 
-    ReplStatus Compiler::cmd_clear(const script::Object &form) {
-        (void)form;
-        if (m_repl) m_repl->clear_screen();
+        // ----- (help) -----
+        auto rest = form.as_pair()->cdr;
+        if (rest.is_null()) {
+            fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\nSOOTC REPL — help\n\n");
+
+            // Walk the table once, group by CommandGroup. The groups
+            // come in the order declared in CommandGroup; within a
+            // group, commands appear in table order.
+            const CommandGroup groups[] = {
+                CommandGroup::Session, CommandGroup::Options, CommandGroup::Run,
+                CommandGroup::Inspect, CommandGroup::Save,    CommandGroup::GC,
+            };
+
+            for (CommandGroup g : groups) {
+                bool header_printed = false;
+                for (const auto &c : commands()) {
+                    if (c.group != g) continue;
+
+                    if (!header_printed) {
+                        fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold, "\n── {} ──\n",
+                                   group_name(g));
+                        header_printed = true;
+                    }
+
+                    const std::string name =
+                        c.short_name.empty() ? std::string(c.long_name)
+                                             : fmt::format("{} ({})", c.long_name, c.short_name);
+
+                    fmt::print("  {:<22} {}\n", name, c.summary);
+                }
+            }
+
+            fmt::print("\n");
+            fmt::print("Type (help \"command\") for details about one command.\n\n");
+            return ReplStatus::OK;
+        }
+
+        // ----- (help "cmd") -----
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_string() && !name_obj.is_symbol()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (help ...) name must be string or symbol\n");
+            return ReplStatus::ERR;
+        }
+        const std::string name = name_obj.to_std_string();
+
+        const CommandInfo *cmd = find_command(name);
+        if (!cmd) {
+            fmt::print(fg(fmt::color::yellow), "; help: unknown command '{}'\n", name);
+            return ReplStatus::ERR;
+        }
+
+        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "\n{}\n", cmd->long_name);
+        if (!cmd->short_name.empty()) { fmt::print("  alias:  {}\n", cmd->short_name); }
+        fmt::print("  group:  {}\n", group_name(cmd->group));
+        fmt::print("  usage:  {}\n", cmd->usage);
+        fmt::print("\n  {}\n\n", cmd->summary);
+
+        if (!cmd->params.empty()) {
+            fmt::print("  Parameters:\n");
+            for (const auto &p : cmd->params) {
+                fmt::print("    {:<10} {:<8} {}\n", std::string(p.name), std::string(p.type),
+                           std::string(p.description));
+            }
+            fmt::print("\n");
+        }
+
+        // `opt` takes option names as its first argument; list them
+        // here so the user does not have to guess. Other commands
+        // describe their arguments in `params`.
+        if (cmd->long_name == "opt") {
+            fmt::print("  Options (from Config::fields()):\n");
+            auto section = [](const char *title, const auto &fields) {
+                fmt::print("    ── {} ──\n", title);
+                for (const auto &f : fields) {
+                    const std::string allowed =
+                        f.allowed_values.empty()
+                            ? ""
+                            : std::string(" [") + std::string(f.allowed_values) + "]";
+                    fmt::print("    {:<14} {:<10}{}  {}\n", std::string(f.name),
+                               std::string(f.type), allowed, std::string(f.description));
+                }
+            };
+            section("Common", common::CommonConfig::fields());
+            section("Compiler", common::CompilerConfig::fields());
+            section("Host", common::HostConfig::fields());
+            fmt::print("\n");
+        }
+
         return ReplStatus::OK;
     }
 
@@ -124,251 +291,182 @@ namespace sootc {
         return ReplStatus::WANT_EXIT;
     }
 
+    ReplStatus Compiler::cmd_clear(const script::Object &form) {
+        (void)form;
+        if (m_repl) m_repl->clear_screen();
+        return ReplStatus::OK;
+    }
+
     ReplStatus Compiler::cmd_reload(const script::Object &form) {
         (void)form;
         return ReplStatus::WANT_RELOAD;
     }
 
-    ReplStatus Compiler::cmd_sizes(const script::Object &form) {
-        (void)form;
-        carbon::print_all_struct_sizes();
-        return ReplStatus::OK;
-    }
-
     // ===============================================================
-    // Environment inspection
+    // Options
     // ===============================================================
 
-    // Dump the compiler-side environment (*soot-env*).
-    //
-    // *soot-env* is the environment where lib.sc registers its macros.
-    // try_getting_macro_from_soot consults only this environment, so
-    // whatever appears here is what the compiler sees as macros.
-    ReplStatus Compiler::cmd_inspect_env(const script::Object &form) {
-        (void)form;
-        auto sootc_env = m_soot.get_soot_environment().as_env_ptr();
-
-        fmt::print("\n=== Compiler environment (*soot-env*) ===\n");
-
-        const auto &entries = sootc_env->vars.get_all_entries();
-        std::size_t used = 0;
-        for (const auto &entry : entries) {
-            if (!entry.key) continue;
-            ++used;
-
-            const char *kind = "value";
-            if (entry.value.is_macro()) kind = "macro";
-            else if (entry.value.is_function())
-                kind = "function";
-            else if (entry.value.is_special_form())
-                kind = "special-form";
-            else if (entry.value.is_primitive())
-                kind = "primitive";
-
-            fmt::print("  {:<40} {}\n", entry.key, kind);
-        }
-
-        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
-        return ReplStatus::OK;
-    }
-
-    // Dump the interpreter-side environment (*global-env*).
-    //
-    // *global-env* is where lib.st and the interpreter register their
-    // macros and built-in functions. The compiler does NOT consult this
-    // environment for macro dispatch.
-    ReplStatus Compiler::cmd_inspect_env_soots(const script::Object &form) {
-        (void)form;
-        auto global_env = m_soot.get_global_environment().as_env_ptr();
-
-        fmt::print("\n=== Interpreter environment (*global-env*) ===\n");
-
-        const auto &entries = global_env->vars.get_all_entries();
-        std::size_t used = 0;
-        for (const auto &entry : entries) {
-            if (!entry.key) continue;
-            ++used;
-
-            const char *kind = "value";
-            if (entry.value.is_macro()) kind = "macro";
-            else if (entry.value.is_function())
-                kind = "function";
-            else if (entry.value.is_special_form())
-                kind = "special-form";
-            else if (entry.value.is_primitive())
-                kind = "primitive";
-
-            fmt::print("  {:<40} {}\n", entry.key, kind);
-        }
-
-        fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
-        return ReplStatus::OK;
-    }
-
-    // Check whether `name` is a macro visible to the compiler, i.e. a
-    // macro registered in *soot-env*.
-    ReplStatus Compiler::cmd_has_macro(const script::Object &form) {
+    // (opt)             — list every option
+    // (opt "key")       — print one option
+    // (opt "key" value) — change one option in memory
+    ReplStatus Compiler::cmd_opt(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: (has-macro \"name\") requires a name\n");
-            return ReplStatus::ERR;
-        }
-        const auto &name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol() && !name_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (has-macro ...) name must be symbol or string\n");
-            return ReplStatus::ERR;
-        }
-        const std::string name = name_obj.to_std_string();
-        const bool        is_macro = is_soot_macro(name);
 
-        fmt::print(fg(is_macro ? fmt::color::green : fmt::color::yellow),
-                   "; has-macro \"{}\" => {}\n", name, is_macro ? "true" : "false");
-        return ReplStatus::OK;
-    }
-
-    // ===============================================================
-    // Symbol listing
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_list_symbols(const script::Object &form) {
-        (void)form;
-
-        carbon::Carbon *carbon = carbon::Carbon::current();
-        if (!carbon) {
-            fmt::print(fg(fmt::color::yellow), "; WARN: no active Carbon context\n");
+        // (opt)
+        if (rest.is_null()) {
+            sootc::repl::opt_list(const_cast<common::Config &>(m_config));
             return ReplStatus::OK;
         }
 
-        auto symbols = carbon->globals()->all_symbols();
-        for (auto &s : symbols) { fmt::print("  {}\n", s.to_cstring()); }
+        // (opt "key")
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (opt \"key\" [value]) requires a key\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &key_obj = rest.as_pair()->car;
+        if (!key_obj.is_string() && !key_obj.is_symbol()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (opt ...) key must be string or symbol\n");
+            return ReplStatus::ERR;
+        }
+        const std::string key = key_obj.to_std_string();
+
+        auto after_key = rest.as_pair()->cdr;
+
+        // (opt "key")
+        if (after_key.is_null()) {
+            if (!sootc::repl::opt_get(const_cast<common::Config &>(m_config), key)) {
+                return ReplStatus::ERR;
+            }
+            return ReplStatus::OK;
+        }
+
+        // (opt "key" value)
+        if (!after_key.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (opt \"{}\" value) requires a value\n",
+                       key);
+            return ReplStatus::ERR;
+        }
+        const auto &value = after_key.as_pair()->car;
+
+        if (!sootc::repl::opt_set(const_cast<common::Config &>(m_config), key, value)) {
+            return ReplStatus::ERR;
+        }
+        Type::log_level = m_config.common.log_level;
         return ReplStatus::OK;
     }
 
-    // ===============================================================
-    // Session / module saving
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_save_session(const script::Object &form) {
-        std::string session_name = m_session_name;
-
+    // (opt-reset)      — reset every option to its startup value
+    // (opt-reset "key") — reset one option
+    ReplStatus Compiler::cmd_opt_reset(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
-        if (rest.is_pair() && rest.as_pair()->car.is_string()) {
-            session_name = rest.as_pair()->car.to_std_string();
+
+        if (rest.is_null()) {
+            const_cast<common::Config &>(m_config) = m_startup_config;
+            Type::log_level = m_config.common.log_level;
+            fmt::print(fg(fmt::color::green), "; opt-reset: all options restored\n");
+            return ReplStatus::OK;
         }
 
-        try {
-            if (save_session(session_name, ".")) {
-                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                           "; saved session as {}.bin and {}.h\n", session_name, session_name);
+        const auto &key_obj = rest.as_pair()->car;
+        if (!key_obj.is_string() && !key_obj.is_symbol()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (opt-reset ...) key must be string or symbol\n");
+            return ReplStatus::ERR;
+        }
+        const std::string key = key_obj.to_std_string();
+
+        const auto *field = [&]() -> const common::FieldInfo * {
+            static const std::vector<common::FieldInfo> all = common::Config::all_fields();
+            for (const auto &f : all) {
+                if (f.name == key) return &f;
+            }
+            return nullptr;
+        }();
+
+        if (!field) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (opt-reset) unknown key '{}'\n", key);
+            return ReplStatus::ERR;
+        }
+        if (!field->mutable_in_repl) {
+            fmt::print(fg(fmt::color::yellow), "; ERROR: '{}' is read-only\n", key);
+            return ReplStatus::ERR;
+        }
+
+        // Copy just this field from the startup snapshot, using the
+        // typed getters/setters so we do not need to know the field
+        // names here.
+        common::Config &mutable_cfg = const_cast<common::Config &>(m_config);
+        switch (field->scope) {
+        case common::Scope::Common:
+            if (field->type == "bool" || field->type == "bool?") {
+                if (auto v = m_startup_config.common.get_bool(key)) {
+                    mutable_cfg.common.set_bool(key, *v);
+                }
+            } else if (field->type == "int") {
+                if (auto v = m_startup_config.common.get_int(key)) {
+                    mutable_cfg.common.set_int(key, *v);
+                }
+            } else if (field->type == "path-list") {
+                if (auto v = m_startup_config.common.get_path_list(key)) {
+                    mutable_cfg.common.set_path_list(key, *v);
+                }
             } else {
-                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-                           "; ERROR: failed to save session\n");
-                return ReplStatus::ERR;
+                if (auto v = m_startup_config.common.get_string(key)) {
+                    mutable_cfg.common.set_string(key, *v);
+                }
             }
-        } catch (const std::exception &e) {
-            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n", e.what());
-            return ReplStatus::ERR;
+            break;
+        case common::Scope::Compiler:
+            if (field->type == "bool" || field->type == "bool?") {
+                if (auto v = m_startup_config.compiler.get_bool(key)) {
+                    mutable_cfg.compiler.set_bool(key, *v);
+                }
+            } else if (field->type == "int") {
+                if (auto v = m_startup_config.compiler.get_int(key)) {
+                    mutable_cfg.compiler.set_int(key, *v);
+                }
+            } else if (field->type == "path-list") {
+                if (auto v = m_startup_config.compiler.get_path_list(key)) {
+                    mutable_cfg.compiler.set_path_list(key, *v);
+                }
+            } else {
+                if (auto v = m_startup_config.compiler.get_string(key)) {
+                    mutable_cfg.compiler.set_string(key, *v);
+                }
+            }
+            break;
+        case common::Scope::Host:
+            if (field->type == "bool" || field->type == "bool?") {
+                if (auto v = m_startup_config.host.get_bool(key)) {
+                    mutable_cfg.host.set_bool(key, *v);
+                }
+            } else if (field->type == "int") {
+                if (auto v = m_startup_config.host.get_int(key)) {
+                    mutable_cfg.host.set_int(key, *v);
+                }
+            } else if (field->type == "path-list") {
+                if (auto v = m_startup_config.host.get_path_list(key)) {
+                    mutable_cfg.host.set_path_list(key, *v);
+                }
+            } else {
+                if (auto v = m_startup_config.host.get_string(key)) {
+                    mutable_cfg.host.set_string(key, *v);
+                }
+            }
+            break;
         }
+
+        Type::log_level = m_config.common.log_level;
+        fmt::print(fg(fmt::color::green), "; opt-reset: '{}' restored\n", key);
         return ReplStatus::OK;
     }
 
-    // (save-module "path/to/foo.sc" ["out_dir"])
-    //
-    // Compile a .sc file as its own module and save it. This is the
-    // module-level counterpart to save-session: it writes what the
-    // file contains, not what the REPL has accumulated.
-    ReplStatus Compiler::cmd_save_module(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module \"path/to/file.sc\" [\"out_dir\"]) "
-                       "requires a path\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &path_obj = rest.as_pair()->car;
-        if (!path_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module ...) path must be a string\n");
-            return ReplStatus::ERR;
-        }
-
-        std::string path = path_obj.to_std_string();
-        std::string out_dir = "build";
-
-        auto after_path = rest.as_pair()->cdr;
-        if (after_path.is_pair()) {
-            const auto &dir_obj = after_path.as_pair()->car;
-            if (!dir_obj.is_string()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (save-module ...) out_dir must be a string\n");
-                return ReplStatus::ERR;
-            }
-            out_dir = dir_obj.to_std_string();
-        }
-
-        if (save_module(path, out_dir)) {
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK: module '{}' saved\n",
-                       path);
-            return ReplStatus::OK;
-        }
-        return ReplStatus::ERR;
-    }
-
-    ReplStatus Compiler::cmd_save_module_recursive(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module-recursive \"path\" [\"out_dir\"]) "
-                       "requires a path\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &path_obj = rest.as_pair()->car;
-        if (!path_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (save-module-recursive ...) path must be a string\n");
-            return ReplStatus::ERR;
-        }
-
-        std::string path = path_obj.to_std_string();
-        std::string out_dir = "build";
-
-        auto after_path = rest.as_pair()->cdr;
-        if (after_path.is_pair()) {
-            const auto &dir_obj = after_path.as_pair()->car;
-            if (!dir_obj.is_string()) {
-                fmt::print(fg(fmt::color::crimson),
-                           "; ERROR: (save-module-recursive ...) out_dir must be a string\n");
-                return ReplStatus::ERR;
-            }
-            out_dir = dir_obj.to_std_string();
-        }
-
-        if (save_module_recursive(path, out_dir)) {
-            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                       "; OK: module '{}' and dependencies saved\n", path);
-            return ReplStatus::OK;
-        }
-        return ReplStatus::ERR;
-    }
-
     // ===============================================================
-    // Execution
+    // Run
     // ===============================================================
 
-    // (sc-run name arg...)
-    //
-    // Execute a compiled function in the active runtime.
-    //
-    // Argument types are inferred from the SOOT object kind:
-    //   integer   -> i64
-    //   float     -> f32
-    //   string    -> std::string
-    //   symbol    -> StringId
-    //
-    // Example: (sc-run gcd 48 18)
     ReplStatus Compiler::cmd_sc_run(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
@@ -416,15 +514,11 @@ namespace sootc {
         return ReplStatus::OK;
     }
 
-    // (sc-eval expr)
-    //
-    // Evaluate a SOOT expression in the interpreter's global environment
-    // and print the result.
-    ReplStatus Compiler::cmd_sc_eval(const script::Object &form) {
+    ReplStatus Compiler::cmd_st_eval(const script::Object &form) {
         auto rest = form.as_pair()->cdr;
         if (!rest.is_pair()) {
             fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (sc-eval <expr>) requires an expression\n");
+                       "; ERROR: (st-eval <expr>) requires an expression\n");
             return ReplStatus::ERR;
         }
         try {
@@ -438,74 +532,287 @@ namespace sootc {
         return ReplStatus::OK;
     }
 
-    // ===============================================================
-    // Compiler options
-    // ===============================================================
-    //
-    // (arg-set "key" value), (arg-get "key"), (arg-ls [filter])
-    //
-    // These delegate to common::opt_set / opt_get / opt_list, which
-    // own the dispatch across all scopes and know which fields are
-    // mutable in the REPL. The const_cast is local to these three
-    // calls: m_config is a const reference, but the REPL is the one
-    // place that is allowed to mutate the in-memory snapshot.
+    std::optional<ReplStatus> Compiler::try_handle_repl_command(const script::Object &form) {
+        if (!form.is_pair()) return std::nullopt;
+        const auto &head = form.as_pair()->car;
+        if (!head.is_symbol()) return std::nullopt;
 
-    ReplStatus Compiler::cmd_arg_set(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set \"key\" value) requires a key and a value\n");
-            return ReplStatus::ERR;
-        }
-        const auto &key_obj = rest.as_pair()->car;
-        if (!key_obj.is_string() && !key_obj.is_symbol()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set ...) key must be string or symbol\n");
-            return ReplStatus::ERR;
-        }
-        auto after_key = rest.as_pair()->cdr;
-        if (!after_key.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-set \"{}\" value) requires a value\n",
-                       key_obj.to_std_string());
-            return ReplStatus::ERR;
-        }
-        const std::string key = key_obj.to_std_string();
-        const auto       &value = after_key.as_pair()->car;
+        const std::string               name = head.as_symbol().name_ptr;
+        const sootc::repl::CommandInfo *cmd = sootc::repl::find_command(name);
+        if (!cmd) return std::nullopt;
 
-        if (!common::opt_set(const_cast<common::Config &>(m_config), key, value)) {
-            return ReplStatus::ERR;
-        }
-        Type::log_level = m_config.common.log_level;
-        return ReplStatus::OK;
+        return dispatch_repl_command(*cmd, form);
     }
 
-    ReplStatus Compiler::cmd_arg_get(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson), "; ERROR: (arg-get \"key\") requires a key\n");
+    ReplStatus Compiler::dispatch_repl_command(const sootc::repl::CommandInfo &cmd,
+                                               const script::Object           &form) {
+        if (!cmd.handler) {
+            fmt::print(stderr, "; ERROR: '{}' is not implemented yet\n", cmd.long_name);
             return ReplStatus::ERR;
         }
-        const auto &key_obj = rest.as_pair()->car;
-        if (!key_obj.is_string() && !key_obj.is_symbol()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (arg-get ...) key must be string or symbol\n");
-            return ReplStatus::ERR;
-        }
-        if (!common::opt_get(const_cast<common::Config &>(m_config), key_obj.to_std_string())) {
-            return ReplStatus::ERR;
-        }
-        return ReplStatus::OK;
+        return (this->*cmd.handler)(form);
     }
 
-    ReplStatus Compiler::cmd_arg_list(const script::Object &form) {
+
+        // ===============================================================
+    // Inspect
+    // ===============================================================
+
+    namespace {
+
+        // Helper shared by (sc-env) and (st-env). Prints name -> kind
+        // for every used slot of `env`.
+        void print_env(const char *title, const script::EnvironmentObject &env) {
+            fmt::print("\n=== {} ===\n", title);
+
+            const auto &entries = env.vars.get_all_entries();
+            std::size_t used = 0;
+            for (const auto &entry : entries) {
+                if (!entry.key) continue;
+                ++used;
+
+                const char *kind = "value";
+                if (entry.value.is_macro()) kind = "macro";
+                else if (entry.value.is_function())
+                    kind = "function";
+                else if (entry.value.is_special_form())
+                    kind = "special-form";
+                else if (entry.value.is_primitive())
+                    kind = "primitive";
+
+                fmt::print("  {:<40} {}\n", entry.key, kind);
+            }
+
+            fmt::print("=== End ({} slots, {} used) ===\n\n", entries.size(), used);
+        }
+
+    } // namespace
+
+    ReplStatus Compiler::cmd_sc_env(const script::Object &form) {
         (void)form;
-        common::opt_list(const_cast<common::Config &>(m_config));
+        auto env = m_soot.get_soot_environment().as_env_ptr();
+        print_env("Compiler environment (*soot-env*)", *env);
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_st_env(const script::Object &form) {
+        (void)form;
+        auto env = m_soot.get_global_environment().as_env_ptr();
+        print_env("Interpreter environment (*global-env*)", *env);
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_sc_macro_p(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson), "; ERROR: (sc-macro? name) requires a name\n");
+            return ReplStatus::ERR;
+        }
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_symbol() && !name_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (sc-macro? ...) name must be symbol or string\n");
+            return ReplStatus::ERR;
+        }
+        const std::string name = name_obj.to_std_string();
+        const bool        is_macro = is_soot_macro(name);
+
+        fmt::print(fg(is_macro ? fmt::color::green : fmt::color::yellow),
+                   "; sc-macro? \"{}\" => {}\n", name, is_macro ? "true" : "false");
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_symbols(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+
+        std::string filter;
+        bool        has_filter = false;
+        if (rest.is_pair()) {
+            const auto &filter_obj = rest.as_pair()->car;
+            if (filter_obj.is_string() || filter_obj.is_symbol()) {
+                filter = filter_obj.to_std_string();
+                has_filter = true;
+            }
+        }
+
+        carbon::Carbon *carbon = carbon::Carbon::current();
+        if (!carbon) {
+            fmt::print(fg(fmt::color::yellow), "; WARN: no active Carbon context\n");
+            return ReplStatus::OK;
+        }
+
+        auto symbols = carbon->globals()->all_symbols();
+        for (auto &s : symbols) {
+            const std::string name = s.to_cstring();
+            if (has_filter && name.find(filter) == std::string::npos) continue;
+            fmt::print("  {}\n", name);
+        }
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (ts-info <type-name>) requires a type name\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &name_obj = rest.as_pair()->car;
+        if (!name_obj.is_symbol() && !name_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (ts-info ...) name must be symbol or string\n");
+            return ReplStatus::ERR;
+        }
+
+        const std::string type_name = name_obj.to_std_string();
+
+        Type *type = m_ts.lookup_type_no_throw(type_name);
+        if (!type) {
+            fmt::print(fg(fmt::color::yellow), "; ts-info: unknown type '{}'\n", type_name);
+            return ReplStatus::ERR;
+        }
+
+        fmt::print("{}\n", type->inspect());
+        fmt::print("  is_reference:           {}\n", type->is_reference());
+        fmt::print("  load_size:              {}\n", type->get_load_size());
+        fmt::print("  preferred_reg_class:    {}\n",
+                   reg_kind_to_string(type->get_preferred_reg_class()));
+
+        const auto &states = type->get_states_declared_for_type();
+        if (!states.empty()) {
+            fmt::print("  states ({}):\n", states.size());
+            for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
+        }
+
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_ast(const script::Object &form) {
+        (void)form;
+
+        fmt::print("=== FileNodes ({}) ===\n", m_file_nodes.size());
+        for (auto &[name, fn] : m_file_nodes) {
+            fmt::print("--- {} ---\n", name.string());
+            sootc::inspect_ast(fn.get());
+        }
+
+        fmt::print("=== GlobalNode ({}) ===\n", m_global_env->symbols().size());
+        inspect_ast(m_global_env.get());
+
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_sizes(const script::Object &form) {
+        (void)form;
+        carbon::print_all_struct_sizes();
         return ReplStatus::OK;
     }
 
     // ===============================================================
-    // Garbage collector
+    // Save
+    // ===============================================================
+
+    ReplStatus Compiler::cmd_save_session(const script::Object &form) {
+        std::string session_name = m_session_name;
+
+        auto rest = form.as_pair()->cdr;
+        if (rest.is_pair() && rest.as_pair()->car.is_string()) {
+            session_name = rest.as_pair()->car.to_std_string();
+        }
+
+        try {
+            if (save_session(session_name, ".")) {
+                fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                           "; saved session as {}.bin and {}.h\n", session_name, session_name);
+            } else {
+                fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+                           "; ERROR: failed to save session\n");
+                return ReplStatus::ERR;
+            }
+        } catch (const std::exception &e) {
+            fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n", e.what());
+            return ReplStatus::ERR;
+        }
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_save_module(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module \"path\" [\"out_dir\"]) requires a path\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &path_obj = rest.as_pair()->car;
+        if (!path_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module ...) path must be a string\n");
+            return ReplStatus::ERR;
+        }
+
+        std::string path = path_obj.to_std_string();
+        std::string out_dir = m_config.compiler.out_dir.string();
+
+        auto after_path = rest.as_pair()->cdr;
+        if (after_path.is_pair()) {
+            const auto &dir_obj = after_path.as_pair()->car;
+            if (!dir_obj.is_string()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (save-module ...) out_dir must be a string\n");
+                return ReplStatus::ERR;
+            }
+            out_dir = dir_obj.to_std_string();
+        }
+
+        if (save_module(path, out_dir)) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; OK: module '{}' saved\n",
+                       path);
+            return ReplStatus::OK;
+        }
+        return ReplStatus::ERR;
+    }
+
+    ReplStatus Compiler::cmd_save_module_deps(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+        if (!rest.is_pair()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module-deps \"path\" [\"out_dir\"]) requires a path\n");
+            return ReplStatus::ERR;
+        }
+
+        const auto &path_obj = rest.as_pair()->car;
+        if (!path_obj.is_string()) {
+            fmt::print(fg(fmt::color::crimson),
+                       "; ERROR: (save-module-deps ...) path must be a string\n");
+            return ReplStatus::ERR;
+        }
+
+        std::string path = path_obj.to_std_string();
+        std::string out_dir = m_config.compiler.out_dir.string();
+
+        auto after_path = rest.as_pair()->cdr;
+        if (after_path.is_pair()) {
+            const auto &dir_obj = after_path.as_pair()->car;
+            if (!dir_obj.is_string()) {
+                fmt::print(fg(fmt::color::crimson),
+                           "; ERROR: (save-module-deps ...) out_dir must be a string\n");
+                return ReplStatus::ERR;
+            }
+            out_dir = dir_obj.to_std_string();
+        }
+
+        if (save_module_recursive(path, out_dir)) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                       "; OK: module '{}' and dependencies saved\n", path);
+            return ReplStatus::OK;
+        }
+        return ReplStatus::ERR;
+    }
+
+    // ===============================================================
+    // GC
     // ===============================================================
 
     namespace {
@@ -543,8 +850,8 @@ namespace sootc {
         gc::collect();
         const auto after = gc::stats().live_objects;
 
-        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                   "; gc-collect: {} -> {} live objects\n", before, after);
+        fmt::print(fg(fmt::color::green) | fmt::emphasis::bold, "; gc: {} -> {} live objects\n",
+                   before, after);
         return ReplStatus::OK;
     }
 
@@ -592,68 +899,6 @@ namespace sootc {
         if (entries.size() > kMaxShow) {
             fmt::print("  ... and {} more\n", entries.size() - kMaxShow);
         }
-
-        return ReplStatus::OK;
-    }
-
-    // ===============================================================
-    // Type system
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_ts_info(const script::Object &form) {
-        auto rest = form.as_pair()->cdr;
-        if (!rest.is_pair()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (ts-info <type-name>) requires a type name\n");
-            return ReplStatus::ERR;
-        }
-
-        const auto &name_obj = rest.as_pair()->car;
-        if (!name_obj.is_symbol() && !name_obj.is_string()) {
-            fmt::print(fg(fmt::color::crimson),
-                       "; ERROR: (ts-info ...) name must be symbol or string\n");
-            return ReplStatus::ERR;
-        }
-
-        const std::string type_name = name_obj.to_std_string();
-
-        Type *type = m_ts.lookup_type_no_throw(type_name);
-        if (!type) {
-            fmt::print(fg(fmt::color::yellow), "; ts-info: unknown type '{}'\n", type_name);
-            return ReplStatus::ERR;
-        }
-
-        fmt::print("{}\n", type->inspect());
-
-        fmt::print("  is_reference:           {}\n", type->is_reference());
-        fmt::print("  load_size:              {}\n", type->get_load_size());
-        fmt::print("  preferred_reg_class:    {}\n",
-                   reg_kind_to_string(type->get_preferred_reg_class()));
-
-        const auto &states = type->get_states_declared_for_type();
-        if (!states.empty()) {
-            fmt::print("  states ({}):\n", states.size());
-            for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
-        }
-
-        return ReplStatus::OK;
-    }
-
-    // ===============================================================
-    // AST
-    // ===============================================================
-
-    ReplStatus Compiler::cmd_ast(const script::Object &form) {
-        (void)form;
-
-        fmt::print("=== FileNodes ({}) ===\n", m_file_nodes.size());
-        for (auto &[name, fn] : m_file_nodes) {
-            fmt::print("--- {} ---\n", name.string());
-            inspect_ast(fn.get());
-        }
-
-        fmt::print("=== GlobalNode ({}) ===\n", m_global_env->symbols().size());
-        inspect_ast(m_global_env.get());
 
         return ReplStatus::OK;
     }

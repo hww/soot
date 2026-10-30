@@ -15,6 +15,9 @@
 #include "sootc/compiler/FileCompiler.hpp"
 #include "sootc/compiler/Macro.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
+#include "sootc/compiler/ConfigRepl.hpp"
+#include "sootc/compiler/ReplCommands.hpp"
+#include "sootc/compiler/NodeInspector.hpp"
 
 #include "sootc/node/DataDeclarationNode.hpp"
 #include "sootc/node/EnumDeclarationNode.hpp"
@@ -24,7 +27,6 @@
 #include "sootc/node/TypeDeclarationNode.hpp"
 #include "sootc/node/StaticDefineNode.hpp"
 #include "sootc/node/StateScriptNode.hpp"
-#include "sootc/node/NodeInspector.hpp"
 
 #include "sootc/runtime/LocalVmRuntime.hpp"
 #include "sootc/runtime/NullRuntime.hpp"
@@ -42,7 +44,6 @@
 #include "util/FileUtil.hpp"
 #include "util/ProjectConfig.hpp"
 #include "util/Log.hpp"
-#include <Config.cpp>
 
 namespace sootc {
 
@@ -60,7 +61,7 @@ namespace sootc {
              const std::string &user_profile, std::unique_ptr<REPL::Wrapper> repl)
         : m_ts(TypeSystem::instance()), m_platform(cfg.common.platform),
           m_soot(user_profile, false, true, cfg.common.platform), m_repl(std::move(repl)),
-          m_config(cfg) {
+          m_config(cfg), m_startup_config(cfg) {
         (void)repl_config;
 
         Type::log_level = m_config.common.log_level;
@@ -1174,12 +1175,6 @@ namespace sootc {
                     return ReplStatus::ERR;
                 }
 
-                if (!*result) {
-                    fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
-                               "; OK (types/enums registered)\n");
-                    continue;
-                }
-
                 if (m_config.compiler.print_listing) { print_listing(**result); }
 
                 bool loaded = m_runtime->load_module(std::move(**result));
@@ -1285,10 +1280,8 @@ namespace sootc {
     void Compiler::setup_repl() {
         if (!m_repl) { m_repl = std::make_unique<REPL::Wrapper>(m_platform); }
 
-        // Give (opt ...) access to the interpreter, so that
-        // (opt key) can build script::Objects. Without this, every
-        // (opt key) prints (unavailable).
-        common::set_repl_interpreter(&m_soot);
+        // Give (opt ...) access to the interpreter.
+        sootc::repl::set_repl_interpreter(&m_soot);
 
         m_repl->username = m_config.compiler.user_profile;
         m_repl->init_settings();

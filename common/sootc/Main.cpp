@@ -171,9 +171,9 @@ int main(int argc, char *argv[]) {
         // input files. A failure aborts immediately (non-zero exit).
         // (e) inside a script exits with code 0.
 
-        const bool had_do_scripts = !cfg.compiler.run_scripts.empty();
+        const bool had_do_scripts = !cfg.compiler.do_files.empty();
 
-        for (const auto &script_path : cfg.compiler.run_scripts) {
+        for (const auto &script_path : cfg.compiler.do_files) {
             std::string script = file_util::read_text(script_path);
             if (script.empty()) {
                 lg::error("Cannot read script: {}", script_path.string());

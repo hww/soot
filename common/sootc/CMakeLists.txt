@@ -17,16 +17,17 @@ add_library(libsootc
     common/sootc/node/StoreGlobalNode.cpp
     common/sootc/node/AtNode.cpp
     common/sootc/node/StoreFieldNode.cpp
-    common/sootc/node/NodeInspector.cpp
-
+    
     common/sootc/runtime/LocalVmRuntime.cpp
     common/sootc/runtime/RemoteRuntime.cpp
 
+    common/sootc/compiler/NodeInspector.cpp
     common/sootc/compiler/NodeBuilder.cpp
     common/sootc/compiler/Compiler.cpp
     common/sootc/compiler/SaveModule.cpp
     common/sootc/compiler/ReplCommands.cpp
     common/sootc/compiler/StateScriptCompilation.cpp
+    common/sootc/compiler/ConfigRepl.cpp
     common/sootc/compiler/Bootstrap.cpp
     common/sootc/compiler/FunctionCompiler.cpp
     common/sootc/compiler/FileCompiler.cpp

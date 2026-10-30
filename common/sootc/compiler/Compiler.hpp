@@ -16,6 +16,7 @@
 #include "sootc/compiler/CompilerError.hpp"
 #include "sootc/compiler/ModuleRef.hpp"
 #include "sootc/compiler/NodeBuilder.hpp"
+#include "sootc/compiler/ReplCommands.hpp"
 
 #include "sootc/runtime/Runtime.hpp"
 
@@ -363,29 +364,36 @@ namespace sootc {
 
         // ----- REPL command handlers -----
         //
-        // Declared here, defined in ReplCommands.cpp.
+        // Declared here, defined in ReplCommands.cpp. The set of
+        // commands, their aliases, old names, and help text live in
+        // ReplCommands.hpp's command table; this section lists only
+        // the handlers the table points at.
 
         ReplStatus cmd_help(const script::Object &form);
-        ReplStatus cmd_clear(const script::Object &form);
         ReplStatus cmd_e(const script::Object &form);
+        ReplStatus cmd_clear(const script::Object &form);
         ReplStatus cmd_reload(const script::Object &form);
-        ReplStatus cmd_sizes(const script::Object &form);
-        ReplStatus cmd_inspect_env(const script::Object &form);
-        ReplStatus cmd_inspect_env_soots(const script::Object &form);
-        ReplStatus cmd_has_macro(const script::Object &form);
-        ReplStatus cmd_list_symbols(const script::Object &form);
-        ReplStatus cmd_save_session(const script::Object &form);
-        ReplStatus cmd_save_module(const script::Object &form);
-        ReplStatus cmd_save_module_recursive(const script::Object &form);
+
+        ReplStatus cmd_opt(const script::Object &form);
+        ReplStatus cmd_opt_reset(const script::Object &form);
+
         ReplStatus cmd_sc_run(const script::Object &form);
-        ReplStatus cmd_sc_eval(const script::Object &form);
-        ReplStatus cmd_arg_set(const script::Object &form);
-        ReplStatus cmd_arg_get(const script::Object &form);
-        ReplStatus cmd_arg_list(const script::Object &form);
-        ReplStatus cmd_gc_list(const script::Object &form);
-        ReplStatus cmd_gc_collect(const script::Object &form);
+        ReplStatus cmd_st_eval(const script::Object &form);
+
+        ReplStatus cmd_sc_env(const script::Object &form);
+        ReplStatus cmd_st_env(const script::Object &form);
+        ReplStatus cmd_sc_macro_p(const script::Object &form);
+        ReplStatus cmd_symbols(const script::Object &form);
         ReplStatus cmd_ts_info(const script::Object &form);
         ReplStatus cmd_ast(const script::Object &form);
+        ReplStatus cmd_sizes(const script::Object &form);
+
+        ReplStatus cmd_save_session(const script::Object &form);
+        ReplStatus cmd_save_module(const script::Object &form);
+        ReplStatus cmd_save_module_deps(const script::Object &form);
+
+        ReplStatus cmd_gc_collect(const script::Object &form);
+        ReplStatus cmd_gc_list(const script::Object &form);
 
     private:
         // ================================================================
@@ -475,8 +483,6 @@ namespace sootc {
         ReplStatus compile_and_report(script::Object forms);
         ReplStatus try_interpret_then_compile(script::Object form);
 
-        // @brief The set of names recognised as REPL commands.
-        static const std::set<std::string> &repl_commands();
 
         // @brief If `form` parses to a REPL command, dispatch it.
         //
@@ -486,7 +492,8 @@ namespace sootc {
         std::optional<ReplStatus> try_handle_repl_command(const script::Object &form);
 
         // @brief Map a command name to its handler.
-        ReplStatus dispatch_repl_command(const std::string &name, const script::Object &form);
+        ReplStatus dispatch_repl_command(const sootc::repl::CommandInfo &cmd,
+                                         const script::Object           &form);
 
         // ================================================================
         // Helpers
@@ -527,6 +534,10 @@ namespace sootc {
         // (main, or a test) must keep it alive for the lifetime of the
         // Compiler.
         const common::Config &m_config;
+        // Snapshot of the config as it was at construction time.
+        // Used by (opt-reset) to restore a field (or all fields) to
+        // its startup value.
+        const common::Config m_startup_config;
 
         // ----- Core subsystems -----
 
