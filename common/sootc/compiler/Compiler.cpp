@@ -1348,7 +1348,7 @@ namespace sootc {
     // REPL callbacks
     // ===============================================================
 
-    replxx::Replxx::completions_t
+      replxx::Replxx::completions_t
     Compiler::find_symbols_or_object_file_by_prefix(const std::string &context, int &context_len,
                                                     const std::vector<std::string> &examples) {
         replxx::Replxx::completions_t matches;
@@ -1358,16 +1358,65 @@ namespace sootc {
             return matches;
         }
 
-        context_len = static_cast<int>(context.length());
+        // The context is "what has been typed up to the cursor",
+        // e.g. "(help" or "(sc-run gc". We want the last token
+        // ("help", "gc"), not the whole line.
+        auto [token, after_paren] = m_repl ? m_repl->get_current_repl_token(context)
+                                           : std::pair<std::string, bool>{context, false};
 
-        // Add matching examples.
-        for (const auto &ex : examples) {
-            if (ex.find(context) == 0) { matches.emplace_back(ex); }
+        if (token.empty()) {
+            context_len = 0;
+            return matches;
         }
 
-        // Add matching symbols from the interpreter.
-        auto symbols = m_soot.get_all_symbols_matching(context);
-        for (const auto &sym : symbols) { matches.emplace_back(sym); }
+        context_len = static_cast<int>(token.length());
+        lg::debug("completions: context='{}' token='{}' after_paren={}", context, token,
+                  after_paren);
+
+        // Language forms: always candidates, in both positions.
+        for (const auto &ex : examples) {
+            if (ex.rfind(token, 0) == 0 && ex != token) { matches.emplace_back(ex); }
+        }
+
+        if (after_paren) {
+            // Command position: commands from the table, plus
+            // language forms from `examples`.
+            for (const auto &c : sootc::repl_commands::commands()) {
+                const std::string name = std::string(c.long_name);
+                if (name == token) {
+                    matches.emplace_back(name + " ");
+                } else if (!token.empty() && name.rfind(token, 0) == 0) {
+                    matches.emplace_back(name);
+                }
+                if (!c.short_name.empty()) {
+                    const std::string sname = std::string(c.short_name);
+                    if (sname == token) {
+                        matches.emplace_back(sname + " ");
+                    } else if (!token.empty() && sname.rfind(token, 0) == 0) {
+                        matches.emplace_back(sname);
+                    }
+                }
+            }
+
+            // Language forms: `examples` store "(defun ", "(define ",
+            // ... The user has typed "def", so strip the "(" and
+            // match against the body.
+            for (const auto &ex : examples) {
+                std::string_view body = ex;
+                if (!body.empty() && body.front() == '(') body.remove_prefix(1);
+                const std::string body_str(body);
+                if (body_str == token) {
+                    matches.emplace_back(token + " ");
+                } else if (!token.empty() && body_str.rfind(token, 0) == 0) {
+                    matches.emplace_back(body_str);
+                }
+            }
+        } else {
+            // Argument position: offer interpreter symbols (functions,
+            // macros, globals). Commands are not valid here.
+            auto symbols = m_soot.get_all_symbols_matching(token);
+            for (const auto &sym : symbols) { matches.emplace_back(sym); }
+        }
 
         return matches;
     }
@@ -1383,49 +1432,90 @@ namespace sootc {
             return hints;
         }
 
-        context_len = static_cast<int>(context.length());
+        // context is "what has been typed up to the cursor", e.g.
+        // "(defun" or "(sc-run ". token is the last word ("defun"),
+        // without the leading '('. Two-stage hints:
+        //   * token == "defun"  -> show the syntax of the form;
+        //   * token == "def"    -> show the rest of the name (examples).
+        auto [token, after_paren] = m_repl ? m_repl->get_current_repl_token(context)
+                                           : std::pair<std::string, bool>{context, false};
+
+        // Add the hint after the cursor, do not replace anything.
+        // With context_len == 0 replxx appends the hint, so
+        // "(defun" + " (name args body...)" = "(defun (name args body...)".
+        context_len = 0;
         color = replxx::Replxx::Color::BRIGHTCYAN;
 
-        if (context == "defun" || context == "defmacro") {
+        // ----- Stage 1: syntax of a form whose name is complete -----
+        if (token == "defun" || token == "defmacro") {
             hints.push_back(" (name args body...)");
-        } else if (context == "if") {
+        } else if (token == "if") {
             hints.push_back(" (test then else)");
-        } else if (context == "when") {
+        } else if (token == "when") {
             hints.push_back(" (test body...)");
-        } else if (context == "cond") {
+        } else if (token == "unless") {
+            hints.push_back(" (test body...)");
+        } else if (token == "cond") {
             hints.push_back(" (clause...)");
-        } else if (context == "let" || context == "let*") {
+        } else if (token == "let" || token == "let*") {
             hints.push_back(" ((var val)...) body...");
-        } else if (context == "lambda") {
+        } else if (token == "lambda") {
             hints.push_back(" (args body...)");
-        } else if (context == "define") {
+        } else if (token == "define") {
             hints.push_back(" (name value)");
-        } else if (context == "set!") {
+        } else if (token == "set!") {
             hints.push_back(" (var value)");
-        } else if (context == "quote") {
+        } else if (token == "quote") {
             hints.push_back(" (expr)");
-        } else if (context == "load" || context == "compile") {
+        } else if (token == "load" || token == "compile") {
             hints.push_back(" \"filename\"");
-        } else if (context == "deftype") {
+        } else if (token == "deftype") {
             hints.push_back(" (name parent (field...))");
-        } else if (context == "defenum") {
+        } else if (token == "defenum") {
             hints.push_back(" (name values...)");
-        } else if (context == "sc-run") {
+        } else if (token == "sc-run") {
             hints.push_back(" (name arg...)");
-        } else if (context == "sc-eval") {
-            hints.push_back(" (form)");
-        } else if (context == "save-session") {
+        } else if (token == "st-eval") {
+            hints.push_back(" (expr)");
+        } else if (token == "save-session") {
             hints.push_back(" \"name\"");
+        } else if (token == "save-module" || token == "save-module-deps") {
+            hints.push_back(" \"path\" [\"out-dir\"]");
+        } else if (token == "sc-macro?") {
+            hints.push_back(" (name)");
+        } else if (token == "symbols") {
+            hints.push_back(" [filter]");
+        } else if (token == "ts-info") {
+            hints.push_back(" (type)");
+        } else if (token == "help") {
+            hints.push_back(" [command]");
+        } else if (token == "opt" || token == "opt-reset") {
+            hints.push_back(" [name [value]]");
         }
 
-        if (hints.empty()) {
+        // ----- Stage 2: rest of the name, from `examples` -----
+        //
+        // Only when stage 1 produced nothing and the user has started
+        // typing a name (token is not empty). With token == "" the
+        // context is just "(", and a hint would duplicate the "("
+        // from the example, giving "((define".
+        //
+        // `examples` store the whole form, e.g. "(defun ". The user
+        // has typed "def", so the "(" must be stripped from the
+        // example before matching.
+        if (hints.empty() && !token.empty()) {
             for (const auto &ex : examples) {
-                if (ex.find(context) == 0 && ex != context) {
-                    hints.push_back(ex.substr(context.length()));
+                std::string_view body = ex;
+                if (!body.empty() && body.front() == '(') body.remove_prefix(1);
+                if (body.rfind(token, 0) == 0 && body != token) {
+                    hints.push_back(std::string(body.substr(token.length())));
+                    break;
                 }
             }
         }
 
+        lg::debug("hints: context='{}' token='{}' context_len={} hints={}", context, token,
+                  context_len, hints.size());
         return hints;
     }
 

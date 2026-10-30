@@ -160,6 +160,21 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
+        // Welcome banner. Same shape as the interpreter's, different
+        // text: sootc has (help)/(opt), and the prompt changes with
+        // --mode, so the banner is the same in every mode.
+        if (repl::Wrapper *shell = compiler->repl_wrapper()) {
+            repl::WelcomeInfo info;
+            info.title = "SOOTC";
+            info.subtitle = "compiler";
+            info.hints = {
+                {"(help)", "show help"},
+                {"(opt)", "list or change options"},
+                {"(e)", "quit"},
+            };
+            shell->print_welcome_message(info, {});
+        }
+
         // ----- Startup commands -----
         for (const auto &cmd : startup_file.run_before_listen) {
             compiler->handle_repl_string(cmd);
@@ -232,9 +247,6 @@ int main(int argc, char *argv[]) {
         }
 
         // ----- REPL -----
-        fmt::print(fg(fmt::color::cyan) | fmt::emphasis::bold, "=== SOOT Compiler v1.0 ===\n");
-        fmt::print("Type (help) for help, (e) to quit\n");
-
         sootc::ReplStatus status = sootc::ReplStatus::OK;
         while (status != sootc::ReplStatus::WANT_EXIT) {
             if (status == sootc::ReplStatus::WANT_RELOAD) {

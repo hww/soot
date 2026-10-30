@@ -137,6 +137,12 @@ namespace sootc {
 
         GlobalNode       *global_env() { return m_global_env.get(); }
         const GlobalNode *global_env() const { return m_global_env.get(); }
+        
+        // ----- REPL shell -----
+
+        /// @brief The REPL shell, for welcome banner and history.
+        /// @return nullptr if the compiler was created without a REPL.
+        repl::Wrapper *repl_wrapper() { return m_repl.get(); }
 
         // ----- Compilation -----
 

@@ -60,7 +60,8 @@ void Wrapper::print_welcome_message(const WelcomeInfo              &info,
     if (!username.empty() && username != "#f" && username != "unknown") {
         welcome += fmt::format(fg(fmt::color::light_green), " {}", username);
     }
-    add_line(2, welcome + "!");
+    welcome += "!";
+    add_line(2, welcome);
 
     if (!info.subtitle.empty()) { add_line(3, fmt::format("  {}", info.subtitle)); }
 
@@ -90,9 +91,10 @@ void Wrapper::print_welcome_message(const WelcomeInfo              &info,
 
     int line = 8;
     for (const auto &[cmd, desc] : info.hints) {
+        if (line >= static_cast<int>(std::size(logo))) break;
         add_line(line++, fmt::format("    {} {}", fmt::format(cyan, "{}", cmd), desc));
     }
-    add_line(line, "");
+    if (line < static_cast<int>(std::size(logo))) add_line(line, "");
 
     fmt::print("{}", message);
 }
