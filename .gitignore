@@ -39,3 +39,4 @@ soot_understand.udb
 build-release/
 build-release/
 build-debug/
+build-*/
