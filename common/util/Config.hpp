@@ -8,8 +8,9 @@
 #include <string_view>
 #include <vector>
 
-#include "CommonTypes.hpp" // SootPlatform
-#include "util/Log.hpp"    // lg::level
+#include "CommonTypes.hpp"
+#include "util/Log.hpp"
+#include "util/KeyBind.hpp"
 
 namespace common {
 
@@ -29,8 +30,9 @@ namespace common {
         Common,   ///< project_root, sidbase, platform, log, color, search_paths
         Compiler, ///< mode, dump, out_dir, repl, profile, runtime, do_files
         Host,     ///< listen, serve, hz, ticks, run_state_script, load_files
+        Shell
     };
-
+    
     // ================================================================
     // FieldInfo
     // ================================================================
@@ -51,6 +53,46 @@ namespace common {
         bool             mutable_in_repl; ///< false => (opt) prints "read-only"
         std::string_view description;     ///< one-line description for help
         std::string_view allowed_values;
+    };
+
+    // ================================================================
+    // ShellConfig
+    // ================================================================
+
+    /// @brief Configuration for the REPL shell (replxx), not for the
+    ///        tool it drives.
+    ///
+    /// @details Keybinds, history, and search dirs are the same for
+    ///          every tool that uses the shell. The interpreter's
+    ///          game/nREPL settings are NOT here: they belong to the
+    ///          interpreter, not to the shell.
+    struct ShellConfig {
+        /// @brief Keyboard shortcuts. Set from the CLI, so not
+        ///        mutable via (opt).
+        std::vector<KeyBind> keybinds;
+
+        /// @brief Append user keybinds to the defaults.
+        bool append_keybinds = true;
+
+        /// @brief Directories shown in the banner and searched for
+        ///        sources.
+        std::vector<std::string> asm_file_search_dirs;
+
+        static const std::vector<FieldInfo> &fields();
+
+        std::optional<std::string> set_string(const std::string &name, const std::string &value);
+        std::optional<std::string> set_bool(const std::string &name, bool value);
+        std::optional<std::string> set_int(const std::string &name, int64_t value);
+        std::optional<std::string> set_path_list(const std::string                        &name,
+                                                 const std::vector<std::filesystem::path> &value);
+        std::optional<std::string> set_dump(const std::string &value);
+
+        std::optional<std::string> get_string(const std::string &name) const;
+        std::optional<bool>        get_bool(const std::string &name) const;
+        std::optional<int64_t>     get_int(const std::string &name) const;
+        std::optional<std::vector<std::filesystem::path>>
+                                   get_path_list(const std::string &name) const;
+        std::optional<std::string> get_dump() const;
     };
 
     // ================================================================
@@ -117,12 +159,13 @@ namespace common {
 
     /// @brief Options read by `sootc`.
     struct CompilerConfig {
-        /// @brief Compilation mode: "compile" | "interpret" | "hybrid".
-        /// @details Replaces the old --compile-only / --interpret-only
-        ///          pair, which could conflict and could not express
-        ///          HYBRID explicitly.
-        std::string mode = "hybrid";
+        enum class Mode { Compile, Interpret };
 
+        /// @brief Compilation mode: "compile" | "interpret".
+        /// @details Replaces the old --compile-only / --interpret-only
+        Mode        mode = Mode::Compile;
+        std::string mode_str = "compile"; // kept in sync for JSON/CLI
+        
         // ----- Dumps -----
         //
         // Replaces the four flags --debug-ast/ir/asm and
@@ -151,6 +194,9 @@ namespace common {
         std::vector<std::filesystem::path> do_files;
 
         static const std::vector<FieldInfo> &fields();
+
+        static std::string_view    mode_name(Mode m);
+        static std::optional<Mode> parse_mode(std::string_view s);
 
         std::optional<std::string> set_string(const std::string &name, const std::string &value);
         std::optional<std::string> set_bool(const std::string &name, bool value);
@@ -235,7 +281,7 @@ namespace common {
         CommonConfig   common;
         CompilerConfig compiler;
         HostConfig     host;
-
+        ShellConfig    shell; 
         /// @brief Common + Compiler + Host, in that order.
         /// @details Used by `(opt)` with no arguments and by
         ///          `print_help` when the tool wants to show

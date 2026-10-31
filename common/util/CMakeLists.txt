@@ -17,6 +17,7 @@ common/util/Diff.cpp
 common/util/math/Geometry.cpp  
 common/util/ProjectConfig.cpp   
 common/util/Config.cpp
+common/util/KeyBind.cpp
 )
 
 # Линкуем fmt если нужно

@@ -57,12 +57,11 @@ namespace sootc {
     // @param user_profile  Profile name, kept for repl::Wrapper.
     //                      Same value as cfg.compiler.user_profile.
     // @param repl          Optional REPL wrapper.
-    Compiler::Compiler(const common::Config &cfg, const std::optional<repl::Config> repl_config,
+    Compiler::Compiler(const common::Config &cfg,
              const std::string &user_profile, std::unique_ptr<repl::Wrapper> repl)
         : m_ts(TypeSystem::instance()), m_platform(cfg.common.platform),
           m_soot(user_profile, false, true, cfg.common.platform), m_repl(std::move(repl)),
           m_config(cfg), m_startup_config(cfg) {
-        (void)repl_config;
 
         Type::log_level = m_config.common.log_level;
 
@@ -157,7 +156,7 @@ namespace sootc {
         // 2. SOOTC bootstrap -> compiler (lib.sc).
         load_soc_bootstrap();
 
-        if (m_config.compiler.mode == "compile") { setup_repl(); }
+        if (m_config.compiler.mode == common::CompilerConfig::Mode::Compile) { setup_repl(); }
 
         if (user_profile != "#f") { load_user_profile(); }
 
@@ -165,13 +164,12 @@ namespace sootc {
         if (m_repl) {
             m_repl->load_history();
 
-            m_repl->examples = {"(define ",      "(defun ",       "(defmacro ", "(if ",
-                                "(when ",        "(unless ",      "(cond ",     "(let ",
-                                "(lambda ",      "(set! ",        "(quote ",    "(load \"",
-                                "(compile \"",   "(deftype ",     "(defenum ",  "(sc-run ",
-                                "(sc-eval ",     "(inspect-env)", "(e)",        "(reload)",
-                                "(help)",        "(clear)",       "(sizes)",    "(list-symbols)",
-                                "(save-session ", "(load-module"};
+                        // Language forms only. Commands (help, opt, sc-run, ...)
+            // are in the command table and are picked up by
+            // find_symbols_or_object_file_by_prefix from there.
+            m_repl->examples = {"(define ", "(defun ",  "(defmacro ",  "(if ",      "(when ",
+                                "(unless ", "(cond ",   "(let ",       "(lambda ",  "(set! ",
+                                "(quote ",  "(load \"", "(compile \"", "(deftype ", "(defenum "};
 
             m_repl->regex_colors = {
                 {";[^\n]*", replxx::Replxx::Color::BRIGHTCYAN},
@@ -1075,12 +1073,10 @@ namespace sootc {
     std::string Compiler::get_prompt() {
         std::string prompt = "";
 
-        if (m_config.compiler.mode == "compile") {
-            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sc > ");
-        } else if (m_config.compiler.mode == "interpret") {
-            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "si > ");
+        if (m_config.compiler.mode == common::CompilerConfig::Mode::Interpret) {
+            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "si> ");
         } else {
-            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sci> ");
+            prompt = fmt::format(fmt::emphasis::bold | fg(fmt::color::cyan), "sc> ");
         }
         return "\033[0m" + prompt;
     }
@@ -1128,6 +1124,35 @@ namespace sootc {
                 fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
                            "; ERROR: failed to read input\n");
                 return ReplStatus::ERR;
+            }
+
+                        // In interpret mode, every input goes to the interpreter,
+            // not to the compiler. REPL commands are still handled by
+            // try_handle_repl_command, so (help), (opt), (e), ... work.
+            if (m_config.compiler.mode == common::CompilerConfig::Mode::Interpret) {
+                auto cur = forms;
+                while (cur.is_pair()) {
+                    auto form = cur.as_pair()->car;
+                    cur = cur.as_pair()->cdr;
+
+                    if (auto status = try_handle_repl_command(form)) {
+                        if (*status == ReplStatus::WANT_EXIT) return ReplStatus::WANT_EXIT;
+                        if (*status == ReplStatus::WANT_RELOAD) return ReplStatus::WANT_RELOAD;
+                        if (*status == ReplStatus::ERR) return ReplStatus::ERR;
+                        continue;
+                    }
+
+                    try {
+                        auto result =
+                            m_soot.eval_form(form, m_soot.get_global_environment().as_env_ptr());
+                        fmt::print(fg(fmt::color::cyan), "; => {}\n", result.print());
+                    } catch (const std::exception &e) {
+                        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "; ERROR: {}\n",
+                                   e.what());
+                        return ReplStatus::ERR;
+                    }
+                }
+                return ReplStatus::OK;
             }
 
             // Walk the top-level forms. For each:
@@ -1278,7 +1303,10 @@ namespace sootc {
     // Set up the REPL wrapper. If a wrapper was already provided to the
     // constructor, reuse it; otherwise create a fresh one.
     void Compiler::setup_repl() {
-        if (!m_repl) { m_repl = std::make_unique<repl::Wrapper>(m_platform); }
+        if (!m_repl) {
+            m_repl = std::make_unique<repl::Wrapper>(m_config.compiler.user_profile, m_config.shell,
+                                                     repl::StartupFile{}, false);
+        }
 
         // Give (opt ...) access to the interpreter.
         sootc::repl_commands::set_repl_interpreter(&m_soot);
@@ -1410,6 +1438,11 @@ namespace sootc {
                 } else if (!token.empty() && body_str.rfind(token, 0) == 0) {
                     matches.emplace_back(body_str);
                 }
+            }
+
+            if (m_config.compiler.mode == common::CompilerConfig::Mode::Interpret) {
+                auto symbols = m_soot.get_all_symbols_matching(token);
+                for (const auto &sym : symbols) { matches.emplace_back(sym); }
             }
         } else {
             // Argument position: offer interpreter symbols (functions,

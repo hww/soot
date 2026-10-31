@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "config.h"
+#include "util/Config.hpp"   
 
 #include "third_party/replxx/include/replxx.hxx"
 
@@ -33,18 +33,19 @@ namespace repl {
     class Wrapper {
     public:
         std::string              username;
-        Config                   repl_config;
+        common::ShellConfig      shell_config;
         StartupFile              startup_file;
         bool                     nrepl_alive = false;
         std::vector<std::string> examples{};
 
         std::vector<std::pair<std::string, replxx::Replxx::Color>> regex_colors{};
 
-        Wrapper(SootPlatform version) : repl_config(version) {}
-        Wrapper(const std::string &_username, const Config &config, const StartupFile &startup,
-                bool _nrepl_alive)
-            : username(_username), repl_config(config), startup_file(startup),
+        Wrapper() = default;
+        Wrapper(const std::string &_username, const common::ShellConfig &config,
+                const StartupFile &startup, bool _nrepl_alive)
+            : username(_username), shell_config(config), startup_file(startup),
               nrepl_alive(_nrepl_alive) {}
+
         replxx::Replxx &get_repl() { return repl; }
         void            init_settings();
         void            reload_startup_file();
@@ -66,12 +67,9 @@ namespace repl {
     private:
         replxx::Replxx                      repl;
         replxx::Replxx::key_press_handler_t commit_text_action(std::string text_to_commit);
-        std::vector<repl::KeyBind>          keybindings = {};
     };
 
     std::string  find_repl_username();
     StartupFile  load_user_startup_file(const std::string &username,
                                         const SootPlatform game_version);
-    repl::Config load_repl_config(const std::string &username, const SootPlatform game_version,
-                                  const int nrepl_port);
 } // namespace repl

@@ -16,16 +16,18 @@ namespace repl {
         return "Other";
     }
 
-    const CommandInfo *find_command(const std::vector<CommandInfo> &table, std::string_view name) {
+    const CommandInfo *find_command(const std::vector<CommandInfo> &table, std::string_view name,
+                                    common::CompilerConfig::Mode mode) {
         for (const auto &c : table) {
             if (c.long_name == name) return &c;
-            if (!c.short_name.empty() && c.short_name == name) return &c;
+            if (!c.short_name.empty() && c.is_available_for(mode) && c.short_name == name)
+                return &c;
         }
         return nullptr;
     }
 
-    bool is_command_name(const std::vector<CommandInfo> &table, std::string_view name) {
-        return find_command(table, name) != nullptr;
+    bool is_command_name(const std::vector<CommandInfo> &table, std::string_view name,
+                         common::CompilerConfig::Mode mode) {
+        return find_command(table, name, mode) != nullptr;
     }
-
 } // namespace repl

@@ -1,6 +1,8 @@
 // common/repl/CommandTable.hpp
 #pragma once
 
+#include "util/Config.hpp"
+
 #include <string_view>
 #include <vector>
 
@@ -22,6 +24,16 @@ namespace repl {
         Inspect,
         Save,
         GC,
+    };
+
+    // Which modes a command is available in. Compile is the
+    // superset: the compiler uses the interpreter internally, so
+    // st-eval/st-env work there too. Interpret has only the
+    // interpreter-side commands.
+    enum class CommandMode : uint8_t {
+        Interpret = 1,
+        Compile = 2,
+        Both = Interpret | Compile,
     };
 
     std::string_view group_name(CommandGroup g);
@@ -52,6 +64,9 @@ namespace repl {
         /// @brief Group in (help): Session, Options, Run, ...
         CommandGroup group;
 
+        /// @brief Where this command can be used, ...
+        CommandMode modes = CommandMode::Both;
+
         /// @brief Usage string for (help "cmd").
         std::string_view usage;
 
@@ -66,11 +81,22 @@ namespace repl {
 
         /// @brief Handler. May be nullptr while porting.
         Handler handler;
+
+
+    bool is_available_for(common::CompilerConfig::Mode mode) const {
+            CommandMode m = (mode == common::CompilerConfig::Mode::Compile)
+                                ? CommandMode::Compile
+                                : CommandMode::Interpret;
+            return (static_cast<uint8_t>(m) & static_cast<uint8_t>(modes)) != 0;
+        }
+
     };
-    ;
+   
 
-    const CommandInfo *find_command(const std::vector<CommandInfo> &table, std::string_view name);
+    const CommandInfo *find_command(const std::vector<CommandInfo> &table, std::string_view name,
+                                    common::CompilerConfig::Mode mode);
 
-    bool is_command_name(const std::vector<CommandInfo> &table, std::string_view name);
+    bool is_command_name(const std::vector<CommandInfo> &table, std::string_view name,
+                         common::CompilerConfig::Mode mode);
 
 } // namespace repl

@@ -1,5 +1,8 @@
-﻿#include "repl/CommandTable.hpp"
-#include "sootc/compiler/ReplCommands.hpp"
+﻿#include "sootc/compiler/ReplCommands.hpp"
+
+#include "common/repl/CommandTable.hpp"
+#include "common/repl/ReplWrapper.hpp"
+
 #include "sootc/compiler/Compiler.hpp"
 #include "sootc/compiler/ConfigRepl.hpp"
 #include "sootc/compiler/NodeInspector.hpp"
@@ -22,21 +25,34 @@ namespace sootc::repl_commands {
             {"help",
              "h",
              CommandGroup::Session,
+             CommandMode::Both,
              "(help [cmd])",
              "show help, optionally for one command",
              {{"cmd", "string", "command name; omit for the full list"}},
              &Compiler::cmd_help},
-            {"exit", "e", CommandGroup::Session, "(exit)", "leave the REPL", {}, &Compiler::cmd_e},
+            
+            {"exit",
+             "e",
+             CommandGroup::Session,
+             CommandMode::Both,
+             "(exit)",
+             "leave the REPL",
+             {},
+             &Compiler::cmd_e},
+            
             {"clear",
              "",
              CommandGroup::Session,
+             CommandMode::Both,
              "(clear)",
              "clear the screen",
              {},
              &Compiler::cmd_clear},
+            
             {"reload",
              "",
              CommandGroup::Session,
+             CommandMode::Both,
              "(reload)",
              "rebuild the compiler (keeps (opt) changes)",
              {},
@@ -46,83 +62,111 @@ namespace sootc::repl_commands {
             {"opt",
              "",
              CommandGroup::Options,
+             CommandMode::Both,
              "(opt [name [value]])",
              "list, read, or change an option",
              {{"name", "string", "option name; see the list below"},
               {"value", "any", "new value; type depends on the option"}},
              &Compiler::cmd_opt},
+            
             {"opt-reset",
              "",
              CommandGroup::Options,
+             CommandMode::Both,
              "(opt-reset [name])",
              "reset one option (or all) to its startup value",
              {{"name", "string", "option name; omit to reset every option"}},
              &Compiler::cmd_opt_reset},
 
             // ----- Run -----
-            {"sc-run",
-             "run",
+            {"call",
+             "",
              CommandGroup::Run,
+             CommandMode::Compile,
              "(sc-run name arg...)",
              "call a compiled function",
              {{"name", "symbol", "function name"},
               {"arg", "any",
                "argument; integer -> i64, float -> f32, string -> string, symbol -> StringId"}},
              &Compiler::cmd_sc_run},
-            {"st-eval",
+            
+            {"eval",
              "ev",
              CommandGroup::Run,
+             CommandMode::Compile,
              "(st-eval expr)",
              "evaluate in the interpreter",
              {{"expr", "any", "SOOT expression to evaluate in *global-env*"}},
              &Compiler::cmd_st_eval},
 
             // ----- Inspect -----
-            {"sc-env",
+            {"envc",
              "",
              CommandGroup::Inspect,
+             CommandMode::Compile,
              "(sc-env)",
              "dump *soot-env* (compiler)",
              {},
              &Compiler::cmd_sc_env},
-            {"st-env",
+            
+            {"env",
              "",
              CommandGroup::Inspect,
+             CommandMode::Both,
              "(st-env)",
              "dump *global-env* (interpreter)",
              {},
              &Compiler::cmd_st_env},
-            {"sc-macro?",
+            
+            {"macro?",
              "",
              CommandGroup::Inspect,
+             CommandMode::Compile,
              "(sc-macro? name)",
              "is `name` a macro visible to the compiler?",
              {{"name", "symbol", "macro name to check"}},
              &Compiler::cmd_sc_macro_p},
+
             {"symbols",
              "sym",
              CommandGroup::Inspect,
+             CommandMode::Both,
              "(symbols [filter])",
              "list Globals symbols, optionally filtered",
              {{"filter", "string", "substring to match; omit for all symbols"}},
              &Compiler::cmd_symbols},
-            {"ts-info",
-             "",
+
+            {"tinfo",
+             "ti",
              CommandGroup::Inspect,
-             "(ts-info type)",
+             CommandMode::Compile,
+             "(tinfo type)",
              "print type info",
              {{"type", "symbol", "type name"}},
              &Compiler::cmd_ts_info},
+            
+            {"types",
+             "",
+             CommandGroup::Inspect,
+             CommandMode::Compile,
+             "(types)",
+             "print types info",
+             {},
+             &Compiler::cmd_ts_list},
+
             {"ast",
              "",
              CommandGroup::Inspect,
+             CommandMode::Compile,
              "(ast)",
              "dump the AST of compiled files",
              {},
              &Compiler::cmd_ast},
+
             {"sizes",
              "",
              CommandGroup::Inspect,
+             CommandMode::Compile,
              "(sizes)",
              "print structure sizes",
              {},
@@ -130,23 +174,28 @@ namespace sootc::repl_commands {
 
             // ----- Save -----
             {"save-session",
-             "",
+             "ss",
              CommandGroup::Save,
+             CommandMode::Compile,
              "(save-session [name])",
              "save the REPL session to <name>.bin/.h",
              {{"name", "string", "base name; default: the session name"}},
              &Compiler::cmd_save_session},
+
             {"save-module",
-             "",
+             "sm",
              CommandGroup::Save,
+             CommandMode::Compile,
              "(save-module path [out])",
              "compile and save one .sc file as a module",
              {{"path", "path", "path to the .sc file"},
               {"out", "path", "output directory; default: compiler.out-dir"}},
              &Compiler::cmd_save_module},
+
             {"save-module-deps",
-             "",
+             "smr",
              CommandGroup::Save,
+             CommandMode::Compile,
              "(save-module-deps path [out])",
              "save a module and all its dependencies",
              {{"path", "path", "path to the .sc file"},
@@ -154,11 +203,20 @@ namespace sootc::repl_commands {
              &Compiler::cmd_save_module_deps},
 
             // ----- GC -----
-            {"gc", "", CommandGroup::GC, "(gc)", "run a GC pass", {}, &Compiler::cmd_gc_collect},
-            {"gc-list",
-             "gcls",
+            {"gc",
+             "",
              CommandGroup::GC,
-             "(gc-list)",
+             CommandMode::Compile,
+             "(gc)",
+             "run a GC pass",
+             {},
+             &Compiler::cmd_gc_collect},
+
+            {"gcls",
+             "",
+             CommandGroup::GC,
+             CommandMode::Compile,
+             "(gcls)",
              "list live GC objects (by type)",
              {},
              &Compiler::cmd_gc_list},
@@ -166,10 +224,10 @@ namespace sootc::repl_commands {
         return kCommands;
     }
 
- } // namespace sootc::repl
+} // namespace sootc::repl_commands
 
- namespace sootc {
-     using namespace sootc::repl_commands;
+namespace sootc {
+    using namespace sootc::repl_commands;
     // ===============================================================
     // Session commands
     // ===============================================================
@@ -177,7 +235,7 @@ namespace sootc::repl_commands {
     // (help)        — list every command, grouped by CommandGroup
     // (help "cmd")  — show usage, summary, and old names for one command
     ReplStatus Compiler::cmd_help(const script::Object &form) {
-  
+
 
         // ----- (help) -----
         auto rest = form.as_pair()->cdr;
@@ -188,15 +246,17 @@ namespace sootc::repl_commands {
             // come in the order declared in CommandGroup; within a
             // group, commands appear in table order.
             const CommandGroup groups[] = {
-                CommandGroup::Session, CommandGroup::Options,
-                CommandGroup::Run,     CommandGroup::Inspect,
-                CommandGroup::Save,    CommandGroup::GC,
+                CommandGroup::Session, CommandGroup::Options, CommandGroup::Run,
+                CommandGroup::Inspect, CommandGroup::Save,    CommandGroup::GC,
             };
+
+            auto mode = m_config.compiler.mode;
 
             for (CommandGroup g : groups) {
                 bool header_printed = false;
                 for (const auto &c : commands()) {
                     if (c.group != g) continue;
+                    if (!c.is_available_for(mode)) continue;
 
                     if (!header_printed) {
                         fmt::print(fg(fmt::color::yellow) | fmt::emphasis::bold, "\n── {} ──\n",
@@ -226,7 +286,7 @@ namespace sootc::repl_commands {
         }
         const std::string name = name_obj.to_std_string();
 
-        const CommandInfo *cmd = find_command(commands(), name);
+        const CommandInfo *cmd = find_command(commands(), name, m_config.compiler.mode);
         if (!cmd) {
             fmt::print(fg(fmt::color::yellow), "; help: unknown command '{}'\n", name);
             return ReplStatus::ERR;
@@ -322,9 +382,7 @@ namespace sootc::repl_commands {
 
         // (opt "key")
         if (after_key.is_null()) {
-            if (!opt_get(const_cast<common::Config &>(m_config), key)) {
-                return ReplStatus::ERR;
-            }
+            if (!opt_get(const_cast<common::Config &>(m_config), key)) { return ReplStatus::ERR; }
             return ReplStatus::OK;
         }
 
@@ -523,15 +581,14 @@ namespace sootc::repl_commands {
         const auto &head = form.as_pair()->car;
         if (!head.is_symbol()) return std::nullopt;
 
-        const std::string               name = head.as_symbol().name_ptr;
-        const CommandInfo *cmd = find_command(commands(), name);
+        const std::string  name = head.as_symbol().name_ptr;
+        const CommandInfo *cmd = find_command(commands(), name, m_config.compiler.mode);
         if (!cmd) return std::nullopt;
 
         return dispatch_repl_command(*cmd, form);
     }
 
-    ReplStatus Compiler::dispatch_repl_command(const CommandInfo &cmd,
-                                               const script::Object           &form) {
+    ReplStatus Compiler::dispatch_repl_command(const CommandInfo &cmd, const script::Object &form) {
         if (!cmd.handler) {
             fmt::print(stderr, "; ERROR: '{}' is not implemented yet\n", cmd.long_name);
             return ReplStatus::ERR;
@@ -540,7 +597,7 @@ namespace sootc::repl_commands {
     }
 
 
-        // ===============================================================
+    // ===============================================================
     // Inspect
     // ===============================================================
 
@@ -671,6 +728,42 @@ namespace sootc::repl_commands {
             for (const auto &[k, v] : states) { fmt::print("    {:<24}  {}\n", k, v.print()); }
         }
 
+        return ReplStatus::OK;
+    }
+
+    ReplStatus Compiler::cmd_ts_list(const script::Object &form) {
+        auto rest = form.as_pair()->cdr;
+
+        std::string filter;
+        bool        has_filter = false;
+        if (rest.is_pair()) {
+            const auto &filter_obj = rest.as_pair()->car;
+            if (filter_obj.is_string() || filter_obj.is_symbol()) {
+                filter = filter_obj.to_std_string();
+                has_filter = true;
+            }
+        }
+
+        auto names = m_ts.get_all_type_names();
+        std::sort(names.begin(), names.end());
+
+        std::size_t shown = 0;
+        for (const auto &name : names) {
+            if (has_filter && name.find(filter) == std::string::npos) continue;
+
+            Type       *type = m_ts.lookup_type_no_throw(name);
+            const char *kind = type ? type->class_name().c_str() : "?";
+
+            fmt::print("  {:<40} {}\n", name, kind);
+            ++shown;
+        }
+
+        if (shown == 0) {
+            fmt::print(fg(fmt::color::yellow), "; types: no matches\n");
+            return ReplStatus::OK;
+        }
+
+        fmt::print(fg(fmt::color::cyan), "; types: {} shown\n", shown);
         return ReplStatus::OK;
     }
 

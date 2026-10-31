@@ -6,6 +6,8 @@
 
 #include "sootc/compiler/Compiler.hpp"
 
+#include "repl/ReplWrapper.hpp"
+
 #include "util/Config.hpp"
 #include "util/FileUtil.hpp"
 #include "util/Log.hpp"
@@ -139,9 +141,14 @@ int main(int argc, char *argv[]) {
 
         // ----- REPL shell configuration -----
 
-        repl::Config repl_config(cfg.common.platform);
-        repl_config.asm_file_search_dirs.push_back(cfg.common.project_root.string());
-        repl_config.per_game_history = true;
+        // sootc keybinds
+        cfg.shell.keybinds = {
+            {common::KeyBind::Modifier::CTRL, "Q", "Exit the REPL", "(e)"},
+            {common::KeyBind::Modifier::CTRL, "L", "Clear the screen", "(clear)"},
+        };
+        for (const auto &p : cfg.common.search_paths) {
+            cfg.shell.asm_file_search_dirs.push_back(p.string());
+        }
 
         auto startup_file =
             repl::load_user_startup_file(cfg.compiler.user_profile, cfg.common.platform);
@@ -150,11 +157,10 @@ int main(int argc, char *argv[]) {
 
         std::unique_ptr<sootc::Compiler> compiler;
         try {
-            compiler = std::make_unique<sootc::Compiler>(
-                cfg, repl_config, cfg.compiler.user_profile,
-                std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, repl_config,
-                                                startup_file,
-                                                /*nrepl_alive=*/false));
+            auto w = std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, cfg.shell,
+                                                     startup_file, false);
+            compiler =
+                std::make_unique<sootc::Compiler>(cfg, cfg.compiler.user_profile, std::move(w));
         } catch (const std::exception &e) {
             lg::error("Failed to create Compiler: {}", e.what());
             return 1;
@@ -251,11 +257,10 @@ int main(int argc, char *argv[]) {
         while (status != sootc::ReplStatus::WANT_EXIT) {
             if (status == sootc::ReplStatus::WANT_RELOAD) {
                 lg::info("Reloading compiler...");
-                compiler = std::make_unique<sootc::Compiler>(
-                    cfg, repl_config, cfg.compiler.user_profile,
-                    std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, repl_config,
-                                                    startup_file,
-                                                    /*nrepl_alive=*/false));
+                auto w = std::make_unique<repl::Wrapper>(cfg.compiler.user_profile, cfg.shell,
+                                                         startup_file, false);
+                compiler =
+                    std::make_unique<sootc::Compiler>(cfg, cfg.compiler.user_profile, std::move(w));
                 status = sootc::ReplStatus::OK;
             }
 

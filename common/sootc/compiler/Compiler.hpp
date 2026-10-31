@@ -122,7 +122,7 @@ namespace sootc {
         // @param user_profile Profile name, kept for repl::Wrapper.
         //                     Same value as cfg.compiler.user_profile.
         // @param repl         Optional REPL wrapper.
-        Compiler(const common::Config &cfg, const std::optional<repl::Config> repl_config = {},
+        Compiler(const common::Config &cfg,
                  const std::string             &user_profile = "#f",
                  std::unique_ptr<repl::Wrapper> repl = nullptr);
 
@@ -391,6 +391,7 @@ namespace sootc {
         ReplStatus cmd_sc_macro_p(const script::Object &form);
         ReplStatus cmd_symbols(const script::Object &form);
         ReplStatus cmd_ts_info(const script::Object &form);
+        ReplStatus cmd_ts_list(const script::Object &form);
         ReplStatus cmd_ast(const script::Object &form);
         ReplStatus cmd_sizes(const script::Object &form);
 

@@ -4,7 +4,7 @@
 #include "util/ProjectConfig.hpp"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
-#include "repl/repl_wrapper.h"
+#include "repl/ReplWrapper.hpp"
 #include <cctype>
 
 namespace script {

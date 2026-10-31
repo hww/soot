@@ -187,7 +187,7 @@ namespace common {
 
     const std::vector<FieldInfo> &CompilerConfig::fields() {
         static const std::vector<FieldInfo> kFields = {
-            {"mode", "enum", Scope::Compiler, true, "compile|interpret|hybrid."},
+            {"mode", "enum", Scope::Compiler, true, "compile|interpret."},
             {"dump", "string", Scope::Compiler, true, "Comma-separated: ast,ir,asm,listing."},
             {"out-dir", "path", Scope::Compiler, true, "Output directory for .bin/.h."},
             {"search-paths", "path-list", Scope::Compiler, true, "Module search paths."},
@@ -199,14 +199,26 @@ namespace common {
         };
         return kFields;
     }
+    std::string_view CompilerConfig::mode_name(Mode m) {
+        switch (m) {
+        case Mode::Compile: return "compile";
+        case Mode::Interpret: return "interpret";
+        }
+        return "compile";
+    }
 
-     std::optional<std::string> CompilerConfig::set_string(const std::string &name,
+    std::optional<CompilerConfig::Mode> CompilerConfig::parse_mode(std::string_view s) {
+        if (s == "compile") return Mode::Compile;
+        if (s == "interpret") return Mode::Interpret;
+        return std::nullopt;
+    }
+
+    std::optional<std::string> CompilerConfig::set_string(const std::string &name,
                                                           const std::string &value) {
         if (name == "mode") {
-            if (value != "compile" && value != "interpret" && value != "hybrid") {
-                return fmt::format("mode must be compile|interpret|hybrid, got '{}'", value);
-            }
-            mode = value;
+            auto m = parse_mode(value);
+            if (!m) return fmt::format("mode must be compile|interpret, got '{}'", value);
+            mode = *m;
             return std::nullopt;
         }
         if (name == "out-dir") {
@@ -247,7 +259,7 @@ namespace common {
     }
 
     std::optional<std::string> CompilerConfig::get_string(const std::string &name) const {
-        if (name == "mode") return mode;
+        if (name == "mode") return std::string(mode_name(mode));
         if (name == "out-dir") return out_dir.string();
         if (name == "profile") return user_profile;
         if (name == "runtime") return runtime_url.empty() ? "local" : runtime_url;
@@ -379,6 +391,76 @@ namespace common {
         return std::nullopt;
     }
 
+    // ---------- ShellConfig ----------
+
+    const std::vector<FieldInfo> &ShellConfig::fields() {
+        static const std::vector<FieldInfo> kFields = {
+            {"keybinds", "keybind-list", Scope::Shell, false,
+             "Keyboard shortcuts for the REPL (set via CLI or soot.json).", ""},
+            {"append-keybinds", "bool", Scope::Shell, true,
+             "Append custom keybinds to the defaults.", "true|false"},
+            {"per-game-history", "bool", Scope::Shell, true,
+             "Keep a separate history per game (interpreter only).", "true|false"},
+            {"asm-file-search-dirs", "path-list", Scope::Shell, true,
+             "Directories shown in the banner and searched for sources.", ""},
+        };
+        return kFields;
+    }
+
+    std::optional<std::string> ShellConfig::set_string(const std::string &, const std::string &) {
+        return "ShellConfig has no string fields";
+    }
+
+    std::optional<std::string> ShellConfig::set_bool(const std::string &name, bool value) {
+        if (name == "append-keybinds") {
+            append_keybinds = value;
+            return std::nullopt;
+        }
+        return fmt::format("unknown bool field '{}'", name);
+    }
+
+    std::optional<std::string> ShellConfig::set_int(const std::string &, int64_t) {
+        return "ShellConfig has no int fields";
+    }
+
+    std::optional<std::string>
+    ShellConfig::set_path_list(const std::string                        &name,
+                               const std::vector<std::filesystem::path> &value) {
+        if (name == "asm-file-search-dirs") {
+            asm_file_search_dirs.clear();
+            for (const auto &p : value) asm_file_search_dirs.push_back(p.string());
+            return std::nullopt;
+        }
+        return fmt::format("unknown path-list field '{}'", name);
+    }
+
+    std::optional<std::string> ShellConfig::set_dump(const std::string &) {
+        return "ShellConfig has no 'dump' field";
+    }
+
+    std::optional<std::string> ShellConfig::get_string(const std::string &) const {
+        return std::nullopt;
+    }
+
+    std::optional<bool> ShellConfig::get_bool(const std::string &name) const {
+        if (name == "append-keybinds") return append_keybinds;
+        return std::nullopt;
+    }
+
+    std::optional<int64_t> ShellConfig::get_int(const std::string &) const { return std::nullopt; }
+
+    std::optional<std::vector<std::filesystem::path>>
+    ShellConfig::get_path_list(const std::string &name) const {
+        if (name == "asm-file-search-dirs") {
+            std::vector<std::filesystem::path> out;
+            for (const auto &s : asm_file_search_dirs) out.emplace_back(s);
+            return out;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::string> ShellConfig::get_dump() const { return std::nullopt; }
+
     // ---------- Config ----------
 
     std::vector<FieldInfo> Config::all_fields() {
@@ -386,6 +468,7 @@ namespace common {
         for (const auto &f : CommonConfig::fields()) out.push_back(f);
         for (const auto &f : CompilerConfig::fields()) out.push_back(f);
         for (const auto &f : HostConfig::fields()) out.push_back(f);
+        for (const auto &f : ShellConfig::fields()) out.push_back(f); 
         return out;
     }
 
@@ -423,9 +506,9 @@ namespace common {
         std::optional<std::string> read_compiler(const nlohmann::json &j, CompilerConfig &c) {
             if (j.contains("mode")) {
                 const auto s = j.at("mode").get<std::string>();
-                if (s != "compile" && s != "interpret" && s != "hybrid")
-                    return fmt::format("soot.json: unknown mode '{}'", s);
-                c.mode = s;
+                auto       m = CompilerConfig::parse_mode(s);
+                if (!m) return fmt::format("soot.json: unknown mode '{}'", s);
+                c.mode = *m;
             }
             if (j.contains("dump")) {
                 c.dump_ast = c.dump_ir = c.dump_asm = c.print_listing = false;
@@ -458,6 +541,17 @@ namespace common {
             return std::nullopt;
         }
 
+        std::optional<std::string> read_shell(const nlohmann::json &j, ShellConfig &c) {
+            if (j.contains("append-keybinds"))
+                c.append_keybinds = j.at("append-keybinds").get<bool>();
+            if (j.contains("asm-file-search-dirs")) {
+                c.asm_file_search_dirs.clear();
+                for (const auto &p : j.at("asm-file-search-dirs")) {
+                    c.asm_file_search_dirs.push_back(p.get<std::string>());
+                }
+            }
+            return std::nullopt;
+        }
     } // namespace
 
     std::optional<std::string> load_json(const std::string &explicit_config,
@@ -513,6 +607,10 @@ namespace common {
                 if (!j.at("host").is_object()) return "soot.json: \"host\" must be an object";
                 if (auto err = read_host(j.at("host"), cfg.host)) return err;
             }
+            if (j.contains("shell")) {
+                if (!j.at("shell").is_object()) { return "soot.json: \"shell\" must be an object"; }
+                if (auto err = read_shell(j.at("shell"), cfg.shell)) return err;
+            }
 
             return std::nullopt;
         } catch (const std::exception &e) { return fmt::format("soot.json: {}", e.what()); }
@@ -538,9 +636,9 @@ namespace common {
         if (auto v = getenv_str("SOOT_COLOR")) cfg.common.color = *v;
 
         if (auto v = getenv_str("SOOT_MODE")) {
-            if (*v != "compile" && *v != "interpret" && *v != "hybrid")
-                return fmt::format("SOOT_MODE: unknown mode '{}'", *v);
-            cfg.compiler.mode = *v;
+            auto m = cfg.compiler.parse_mode(*v);
+            if (!m) return fmt::format("SOOT_MODE: unknown mode '{}'", *v);
+            cfg.compiler.mode = *m;
         }
         if (auto v = getenv_str("SOOT_RUNTIME"))
             cfg.compiler.runtime_url = (*v == "local") ? std::string{} : *v;
@@ -702,10 +800,9 @@ namespace common {
             if (arg == "--mode") {
                 auto v = need_value(i, "--mode");
                 if (!v) return v;
-                if (*v != "compile" && *v != "interpret" && *v != "hybrid") {
-                    return fmt::format("--mode: must be compile|interpret|hybrid, got '{}'", *v);
-                }
-                cfg.compiler.mode = *v;
+                auto m = CompilerConfig::parse_mode(*v);
+                if (!m) return fmt::format("--mode: must be compile|interpret, got '{}'", *v);
+                cfg.compiler.mode = *m;
                 ++i;
                 continue;
             }
@@ -769,7 +866,7 @@ namespace common {
 
             // Recognise options from the other tool and report them as
             // such, instead of "unknown option". A user who types
-            // `carbon --mode hybrid` should see that --mode belongs to
+            // `carbon --mode cimpile` should see that --mode belongs to
             // sootc, not to carbon.
             for (const auto &f : Config::all_fields()) {
                 if (f.scope == scope || f.scope == Scope::Common) continue;

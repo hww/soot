@@ -22,8 +22,8 @@ std::string read_file(const std::string& filename) {
 int main(int argc, char* argv[]) {
     (void)argv;
     try {
-        repl::Wrapper repl(SootPlatform::Default);
-        Interpreter interpreter;
+        repl::Wrapper shell;
+        Interpreter   interpreter;
         
         // Если есть аргументы командной строки, обработать их
         if (argc > 1) {
@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Command line arguments not yet implemented\n";
         }
         
-        interpreter.execute_repl(repl);
+        interpreter.execute_repl(shell);
     } 
     catch (const std::exception& e) {
         std::cerr << "Fatal error: " << e.what() << std::endl;

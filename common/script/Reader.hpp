@@ -2,7 +2,7 @@
 
 #include "script/Object.hpp"
 #include "TextDb.hpp"
-#include "repl/repl_wrapper.h"
+#include "repl/ReplWrapper.hpp"
 #include <memory>
 #include <unordered_map>
 #include <vector>
