@@ -36,3 +36,6 @@ soot_understand.udb
 *.TMP
 *~RF*
 *.bin
+build-release/
+build-release/
+build-debug/
