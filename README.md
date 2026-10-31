@@ -374,5 +374,3 @@ MIT. See [LICENSE](LICENSE).
 ---
 
 ⭐ **Star this repo if you find SOOT useful!** ⭐
-```
-
